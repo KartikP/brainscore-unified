@@ -37,14 +37,14 @@ def load_model(identifier: str) -> UnifiedModel:
     try:
         from brainscore_vision import load_model as load_vision_model
         return load_vision_model(identifier)
-    except (KeyError, ImportError):
+    except (KeyError, ImportError, AssertionError):
         pass
 
     # Fallback to language
     try:
         from brainscore_language import load_model as load_language_model
         return load_language_model(identifier)
-    except (KeyError, ImportError):
+    except (KeyError, ImportError, AssertionError):
         pass
 
     raise KeyError(
@@ -65,14 +65,14 @@ def load_benchmark(identifier: str) -> Benchmark:
     try:
         from brainscore_vision import load_benchmark as load_vision_benchmark
         return load_vision_benchmark(identifier)
-    except (KeyError, ImportError):
+    except (KeyError, ImportError, AssertionError):
         pass
 
     # Fallback to language
     try:
         from brainscore_language import load_benchmark as load_language_benchmark
         return load_language_benchmark(identifier)
-    except (KeyError, ImportError):
+    except (KeyError, ImportError, AssertionError):
         pass
 
     raise KeyError(
