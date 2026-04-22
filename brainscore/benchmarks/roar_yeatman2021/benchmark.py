@@ -95,7 +95,12 @@ def _load_stimulus_set(data_dir: Path = DATA_DIR) -> StimulusSet:
     df['numeric_label'] = df['label']
     df['image_file_name'] = df['filename'].apply(
         lambda fn: str(stimuli_dir / fn))
-    df = df[['stimulus_id', 'image_file_name', 'image_label',
+    # `sentence` column lets text-only models (e.g., GPT-2) process the
+    # word string directly. Vision models still route via image_file_name
+    # (MODALITY_PRIORITY in BrainScoreModel picks vision when both are
+    # present).
+    df['sentence'] = df['word']
+    df = df[['stimulus_id', 'image_file_name', 'sentence', 'image_label',
              'numeric_label', 'word', 'realpseudo']]
 
     stimulus_set = StimulusSet(df)
