@@ -87,3 +87,35 @@ def test_post_hook_bad_seqlen_raises():
     arr = np.random.randn(1, 13, 8).astype(np.float32)  # prime, not a multiple
     with pytest.raises(ValueError, match="unable to infer"):
         _vjepa_post_hook(arr)
+
+
+def test_preprocess_pads_short_videos_to_64():
+    """Lahner2024 has some 45-frame clips at 15 FPS. V-JEPA expects 64 frames
+    per video, and variable T across videos breaks the cross-video stack in
+    VideoWrapper._package. Preprocessing must pad to exactly NUM_INPUT_FRAMES.
+    """
+    import torch
+    from brainscore.models.vjepa.model import _make_preprocessing
+
+    class _FakeProcessor:
+        """Mimics VJEPA2VideoProcessor — returns (1, T, C, H, W)."""
+        def __call__(self, frames, return_tensors='pt'):
+            T = len(frames)
+            return {'pixel_values_videos': torch.zeros(1, T, 3, 256, 256)}
+
+    preprocess = _make_preprocessing(_FakeProcessor())
+    # Short video: 45 frames
+    short = [np.zeros((224, 224, 3), dtype=np.uint8) for _ in range(45)]
+    out_short = preprocess(short)
+    assert out_short.shape == (NUM_INPUT_FRAMES, 3, 256, 256)
+    # Long video: 181 frames
+    long_ = [np.zeros((224, 224, 3), dtype=np.uint8) for _ in range(181)]
+    out_long = preprocess(long_)
+    assert out_long.shape == (NUM_INPUT_FRAMES, 3, 256, 256)
+    # Exact video: 64 frames — unchanged
+    exact = [np.zeros((224, 224, 3), dtype=np.uint8) for _ in range(64)]
+    out_exact = preprocess(exact)
+    assert out_exact.shape == (NUM_INPUT_FRAMES, 3, 256, 256)
+    # Empty → error
+    with pytest.raises(ValueError, match="empty frame list"):
+        preprocess([])

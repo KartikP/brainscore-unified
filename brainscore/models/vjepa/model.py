@@ -58,11 +58,28 @@ def _make_preprocessing(processor):
     Takes a list of HxWx3 RGB numpy frames, returns a (T, C, H, W) tensor
     ready for V-JEPA2. The processor resizes to 256x256 and normalizes
     with the V-JEPA-specific mean/std.
+
+    VideoWrapper's default frame sampler returns fewer than ``num_frames``
+    when the underlying video has fewer frames (e.g., Lahner2024 has some
+    clips at 15 FPS × 3 s = 45 frames). V-JEPA2 tubelets would then vary
+    in count per video, breaking the cross-video stack in ``_package``.
+    We pad/truncate to exactly NUM_INPUT_FRAMES here so every video yields
+    the same 32 temporal tubelets regardless of source FPS.
     """
     def preprocess(frames: List[np.ndarray]):
-        # VJEPA2VideoProcessor accepts a list of frames for one video and
-        # returns pixel_values_videos of shape (1, T, C, H, W); drop batch dim.
-        out = processor(list(frames), return_tensors='pt')
+        frames = list(frames)
+        if len(frames) == 0:
+            raise ValueError("V-JEPA preprocess received empty frame list")
+        if len(frames) < NUM_INPUT_FRAMES:
+            pad_n = NUM_INPUT_FRAMES - len(frames)
+            frames = frames + [frames[-1]] * pad_n  # repeat last frame
+        elif len(frames) > NUM_INPUT_FRAMES:
+            # Evenly subsample to NUM_INPUT_FRAMES — guards against the
+            # target-fps sampling path returning more than we expect.
+            idxs = [int(round(i * (len(frames) - 1) / (NUM_INPUT_FRAMES - 1)))
+                    for i in range(NUM_INPUT_FRAMES)]
+            frames = [frames[i] for i in idxs]
+        out = processor(frames, return_tensors='pt')
         key = 'pixel_values_videos' if 'pixel_values_videos' in out else 'pixel_values'
         return out[key][0]  # (T, C, H, W)
     return preprocess
