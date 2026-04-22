@@ -33,6 +33,34 @@ Scoring pipeline:
     4. Average neural assembly across 10 repetitions → one BOLD vector
        per video per voxel
     5. Cross-validated PLS regression → Pearson per voxel → median
+
+## IMPORTANT: what this benchmark does NOT measure
+
+This is a **frame-aggregated** naturalistic benchmark, not a video-native one.
+For each 3-second video, the model sees N static frames (default 3: at
+0.5s / 1.5s / 2.5s), processes each as an independent image, and the
+N feature vectors are **mean-pooled** before regression. The model does
+NOT see motion, temporal ordering, optical flow, or event dynamics —
+it sees a bag of snapshots.
+
+Consequences:
+    - A score here measures **how well static spatial features of a video
+      predict BOLD responses**, not how well the model understands video.
+    - Image-only models (CLIP, ResNet, ViT) can produce meaningful scores
+      despite having zero video understanding.
+    - Two videos that differ only in temporal order (e.g., a clip played
+      forward vs. reversed) produce IDENTICAL model features under this
+      pipeline. If the BOLD responses differ, this benchmark cannot
+      detect that difference.
+
+To get a *true* video-native score, register a model with VideoWrapper
+(see ``unified/brainscore/model_helpers/video_wrapper.py``) which feeds
+the model a proper ``(T, C, H, W)`` video tensor. Video-native models
+(V-JEPA, VideoMAE, TimeSformer) internally integrate over time and can
+be meaningfully compared against this frame-aggregated baseline.
+
+The score attrs include ``pipeline='frame_aggregation'`` and
+``n_frames_per_video`` to make this sampling explicit on every result.
 """
 
 from pathlib import Path
@@ -398,6 +426,15 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
         score.attrs['n_videos'] = int(n)
         score.attrs['sample_times_ms'] = self._sample_times_ms
+        # Make the pipeline explicit so downstream consumers know what
+        # assumption the score was computed under.
+        score.attrs['pipeline'] = 'frame_aggregation'
+        score.attrs['n_frames_per_video'] = len(self._sample_times_ms)
+        score.attrs['note'] = (
+            f'{len(self._sample_times_ms)} static frames per video, '
+            f'mean-pooled before regression. Temporal dynamics discarded. '
+            f'See benchmark docstring.'
+        )
         if mask is not None:
             score.attrs['voxel_mask_n_total'] = int(mask.size)
             score.attrs['voxel_mask_n_kept'] = int(mask.sum())
