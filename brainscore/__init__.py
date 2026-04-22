@@ -22,6 +22,23 @@ benchmark_registry: Dict[str, Callable[[], Benchmark]] = {}
 metric_registry: Dict[str, Callable[[], Metric]] = {}
 
 
+def _populate_unified_registries() -> None:
+    """Import benchmark + model subpackages so they register factories.
+
+    Kept internal and called once at import time. Imports are cheap (each
+    subpackage just registers a factory; heavy data loading happens at
+    factory call time).
+    """
+    try:
+        from . import benchmarks  # noqa: F401
+    except ImportError as e:
+        _logger.warning(f"failed to import unified benchmarks: {e}")
+    try:
+        from . import models  # noqa: F401
+    except ImportError as e:
+        _logger.warning(f"failed to import unified models: {e}")
+
+
 def load_model(identifier: str) -> UnifiedModel:
     """Load a model by identifier.
 
@@ -92,3 +109,7 @@ def score(model_identifier: str, benchmark_identifier: str) -> Score:
     result.attrs['model_identifier'] = model_identifier
     result.attrs['benchmark_identifier'] = benchmark_identifier
     return result
+
+
+# Populate unified registries once at import time
+_populate_unified_registries()
