@@ -19,6 +19,8 @@ Layer counts:
 """
 
 import functools
+import re
+from typing import List
 
 import torch
 from PIL import Image
@@ -26,6 +28,7 @@ from transformers import AutoProcessor, Blip2ForConditionalGeneration
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore_core.model_interface import BrainScoreModel
+from brainscore_vision.model_helpers.activations.pca import LayerPCA
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
 
@@ -38,6 +41,57 @@ REGION_LAYER_MAP = {
     # Language region — relative to language_model.model.decoder (TextWrapper root)
     'language_system': 'layers.28',
 }
+
+
+def _make_generation_fn(blip_model, blip_processor, max_new_tokens: int = 8):
+    """Generation callable for BLIP-2 instruction-following.
+
+    BLIP-2 OPT-2.7B isn't as instruction-tuned as Qwen-VL (no RLHF), so we
+    prompt it in a captioning-style template that it handles better:
+    "Question: {instruction} Answer:" → model completes with label.
+    """
+    device = next(blip_model.parameters()).device
+
+    def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
+        image = Image.open(stimulus_row['image_file_name']).convert('RGB')
+        # BLIP-2 OPT responds best to "Question: ... Answer:" template
+        prompt = (f"Question: {instruction} "
+                  f"Choose from: {', '.join(label_set)}. Answer:")
+        inputs = blip_processor(text=prompt, images=image,
+                                return_tensors='pt')
+        # Explicit per-tensor device move. BatchFeature.to(device) does not
+        # reliably move all tensors on MPS; BLIP-2's generate() accesses
+        # input_ids inside get_input_embeddings() and needs it on the same
+        # device as the embedding weights.
+        model_dtype = next(blip_model.parameters()).dtype
+        inputs = {
+            k: (v.to(device, dtype=model_dtype) if torch.is_tensor(v) and v.is_floating_point()
+                else (v.to(device) if torch.is_tensor(v) else v))
+            for k, v in inputs.items()
+        }
+
+        with torch.no_grad():
+            generated = blip_model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+            )
+
+        response = blip_processor.tokenizer.decode(
+            generated[0], skip_special_tokens=True).strip().lower()
+        # BLIP-2 echoes the prompt sometimes; strip it
+        if 'answer:' in response:
+            response = response.split('answer:')[-1].strip()
+
+        for lbl in label_set:
+            if response == lbl.lower():
+                return lbl
+        for lbl in label_set:
+            if re.search(rf'\b{re.escape(lbl.lower())}\b', response):
+                return lbl
+        return response  # unparseable — caller defaults to label_set[0]
+
+    return generate
 
 
 def _load_preprocess_images(image_filepaths, processor, image_size=224):
@@ -79,6 +133,13 @@ def get_model(identifier: str) -> BrainScoreModel:
     )
     activations_model.image_size = 224
 
+    # ViT-G hook outputs (batch, 257, 1408) flatten to 361K features per image.
+    # That's too many for sklearn PLS at scoring time. LayerPCA(1000) is the
+    # convention used by LayerSelection / Layer Mapping Explorer — it fits a
+    # PCA on 1000 ImageNet validation images and reduces hook output to 1000D.
+    # First-time overhead is ~1-2 min per layer; result cached to disk.
+    LayerPCA.hook(activations_model, n_components=1000)
+
     # Text: TextWrapper wraps the OPT decoder. Causal LM → last_token aggregation.
     # Wrap language_model.model.decoder so layer paths are 'layers.{N}'.
     text_wrapper = TextWrapper(
@@ -88,6 +149,22 @@ def get_model(identifier: str) -> BrainScoreModel:
         layer_aggregation='last_token',
         max_length=512,
     )
+
+    # BLIP-2 is composed of vision_model + qformer + language_projection +
+    # language_model. Each wrapper moves only its sub-module to device, so
+    # qformer/language_projection can end up on a different device than
+    # vision_model and language_model. Force-align to one device for
+    # end-to-end generate() to work.
+    if torch.cuda.is_available():
+        target_device = torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        target_device = torch.device('mps')
+    else:
+        target_device = torch.device('cpu')
+    blip_model = blip_model.to(target_device)
+
+    # Generation path (BLIP-2's OPT decoder does instruction-style completion).
+    generation_fn = _make_generation_fn(blip_model, blip_processor)
 
     return BrainScoreModel(
         identifier=identifier,
@@ -99,4 +176,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         },
         activations_model=activations_model,
         visual_degrees=8,
+        generation_fn=generation_fn,
+        # Readout path also available — PCA-1000 features from 'IT' layer.
+        behavioral_readout_layer='encoder.layers.34',
     )
