@@ -283,6 +283,31 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             video_col='video_path',
         )
 
+    def _videos_stimulus_set(self):
+        """Produce a StimulusSet with one row per video and a ``video_path``
+        column — the input shape that ``VideoWrapper`` expects.
+
+        Unlike ``_expand_videos()``, this does NOT pre-extract frames;
+        the VideoWrapper samples frames from the full video internally,
+        preserving temporal order.
+        """
+        import pandas as pd
+        from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+        stim = self.stimulus_set
+        rows = []
+        for _, row in stim.iterrows():
+            video_path = stim.get_stimulus(row['stimulus_id'])
+            rows.append({
+                'stimulus_id': row['stimulus_id'],
+                'video_path': str(video_path),
+            })
+        df = pd.DataFrame(rows)
+        videos_set = StimulusSet(df)
+        videos_set.identifier = f'{stim.identifier}-videos'
+        videos_set.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
+        return videos_set
+
     def _average_repetitions(self) -> NeuronRecordingAssembly:
         """Average the 10 repetitions per video → one BOLD vector per video."""
         a = self.assembly.squeeze('time_bin', drop=True)  # drop the unit dim
@@ -353,24 +378,38 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return r_full
 
     def __call__(self, candidate) -> Score:
-        from brainscore_vision.model_helpers.brain_transformation.neural import (
-            LayerScores,
-        )
         from scipy.stats import pearsonr
-        # 1. Expand videos into per-frame stimuli
-        frame_stim = self._expand_videos()
-        # 2. Configure model for neural recording at its IT/visual layer
+
+        # Configure the model's recording once (both paths use it).
         candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
-        # 3. Get per-frame activations via the unified process() path
-        per_frame = candidate.process(frame_stim)
-        # 4. Pool frames → one vector per video via temporal_bin
-        per_video = temporal_bin(
-            per_frame,
-            time_bins=[(0, VIDEO_DURATION_MS)],
-        )
-        # Squeeze the time_bin dim (we only asked for one bin)
-        model_mat = per_video.values[:, 0, :]  # (n_videos, n_features)
-        clip_ids = per_video.indexes['presentation'].get_level_values('clip_id')
+
+        # Dispatch on the model's declared modality support. Video-native
+        # models (VideoMAE, V-JEPA) process a whole video at once and
+        # preserve temporal structure; image models see static frames.
+        if 'video' in getattr(candidate, 'supported_modalities', set()):
+            pipeline_mode = 'video_native'
+            video_stim = self._videos_stimulus_set()
+            result = candidate.process(video_stim)
+            # result dims expected: (presentation, time_bin, neuroid)
+            # Collapse time via mean — Lahner2024 has one BOLD estimate
+            # per video, so we aggregate temporal features to one vector.
+            data = result.values
+            if data.ndim == 3:
+                model_mat = data.mean(axis=1)  # (n_videos, n_features)
+            else:
+                model_mat = data
+            clip_ids = list(result.indexes['presentation'].get_level_values('stimulus_id'))
+        else:
+            pipeline_mode = 'frame_aggregation'
+            frame_stim = self._expand_videos()
+            per_frame = candidate.process(frame_stim)
+            per_video = temporal_bin(
+                per_frame,
+                time_bins=[(0, VIDEO_DURATION_MS)],
+            )
+            model_mat = per_video.values[:, 0, :]  # (n_videos, n_features)
+            clip_ids = list(
+                per_video.indexes['presentation'].get_level_values('clip_id'))
 
         # 5. Average neural across repetitions; align to model order
         neural = self._average_repetitions()
@@ -425,16 +464,24 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
         score.attrs['n_videos'] = int(n)
-        score.attrs['sample_times_ms'] = self._sample_times_ms
         # Make the pipeline explicit so downstream consumers know what
         # assumption the score was computed under.
-        score.attrs['pipeline'] = 'frame_aggregation'
-        score.attrs['n_frames_per_video'] = len(self._sample_times_ms)
-        score.attrs['note'] = (
-            f'{len(self._sample_times_ms)} static frames per video, '
-            f'mean-pooled before regression. Temporal dynamics discarded. '
-            f'See benchmark docstring.'
-        )
+        score.attrs['pipeline'] = pipeline_mode
+        if pipeline_mode == 'frame_aggregation':
+            score.attrs['sample_times_ms'] = self._sample_times_ms
+            score.attrs['n_frames_per_video'] = len(self._sample_times_ms)
+            score.attrs['note'] = (
+                f'{len(self._sample_times_ms)} static frames per video, '
+                f'mean-pooled before regression. Temporal dynamics discarded. '
+                f'See benchmark docstring.'
+            )
+        else:  # video_native
+            score.attrs['note'] = (
+                'Video-native model: full temporal dynamics preserved '
+                'through the encoder; features mean-pooled across output '
+                'time steps for regression against the single Lahner2024 '
+                'BOLD estimate per video.'
+            )
         if mask is not None:
             score.attrs['voxel_mask_n_total'] = int(mask.size)
             score.attrs['voxel_mask_n_kept'] = int(mask.sum())

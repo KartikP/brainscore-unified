@@ -134,6 +134,14 @@ class VideoWrapper:
             in this version).
         hook_time_axis: Which axis of the hook output corresponds to time.
             Default 1 (after batch). Set to 0 if hook drops the batch dim.
+            Ignored when ``post_hook_fn`` is set.
+        post_hook_fn: Optional callable applied to raw hook output before
+            the wrapper assumes a ``(B, T, features)`` layout. Use this for
+            models whose hook output interleaves time and space in the
+            sequence dim — e.g., VideoMAE's ``(B, T_tubelets * spatial, H)``
+            needs to be reshaped to ``(B, T_tubelets, H)`` with
+            mean-over-spatial. Signature:
+            ``(raw_hook_output: np.ndarray) -> np.ndarray of shape (B, T, F)``.
         t_to_time_ms_fn: Callable ``(n_time_steps_out, video_duration_ms) -> list[float]``
             returning the absolute timestamp (ms) for each output time step.
             Default: evenly spread across the video duration.
@@ -151,6 +159,7 @@ class VideoWrapper:
         frame_sampler: Optional[Callable] = None,
         forward_kwargs: Optional[Dict] = None,
         hook_time_axis: int = 1,
+        post_hook_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         t_to_time_ms_fn: Optional[Callable[[int, float], List[float]]] = None,
         batch_size: int = 1,
     ):
@@ -162,6 +171,7 @@ class VideoWrapper:
         self._frame_sampler = frame_sampler or default_uniform_frame_sampler
         self._forward_kwargs = dict(forward_kwargs or {})
         self._hook_time_axis = hook_time_axis
+        self._post_hook_fn = post_hook_fn
         self._t_to_time_ms_fn = t_to_time_ms_fn or _default_time_mapping
         self._batch_size = batch_size
 
@@ -338,16 +348,24 @@ class VideoWrapper:
     def _flatten_layer_output(self, arr: np.ndarray) -> np.ndarray:
         """Return (B, T, features) from arbitrary hook output.
 
-        Uses self._hook_time_axis to identify the temporal dim in the
-        hook's output, then flattens everything after (B, T) into
-        ``features``.
+        If ``post_hook_fn`` was provided, defer to it — it handles
+        arbitrary time/space layouts (e.g., VideoMAE's interleaved
+        seq_len). Otherwise use ``hook_time_axis`` to identify the
+        temporal dim in the hook's output, then flatten everything
+        after (B, T) into ``features``.
         """
+        if self._post_hook_fn is not None:
+            out = self._post_hook_fn(arr)
+            if out.ndim != 3:
+                raise ValueError(
+                    f"post_hook_fn returned shape {out.shape}; expected "
+                    f"(B, T, F).")
+            return out
         if arr.ndim < 2:
             raise ValueError(
                 f"VideoWrapper hook output has ndim={arr.ndim}, expected >=2 "
                 f"(at minimum (B, T, ...)).")
         if self._hook_time_axis != 1:
-            # Move the time axis into position 1
             arr = np.moveaxis(arr, self._hook_time_axis, 1)
         B, T = arr.shape[0], arr.shape[1]
         return arr.reshape(B, T, -1)
