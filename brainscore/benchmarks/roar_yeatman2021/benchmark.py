@@ -1,38 +1,54 @@
 """
-ROAR (Rapid Online Assessment of Reading) — Yeatman 2021 benchmark.
+ROAR (Rapid Online Assessment of Reading) — Yeatman 2021 lexical decision.
 
-Lexical decision task: 500 visually-presented words and pseudo-words. Humans
-judge "real" vs "pseudo". Behavioral ground truth is per-stimulus mean
-accuracy across 120 subjects.
+Protocol replicates Honarmand et al. (2026 ICLR) "Inducing Dyslexia in Vision
+Language Models" (https://arxiv.org/abs/2509.24597). Section 3:
 
-Model must implement behavioral readout (see BrainScoreModel.behavioral_readout_layer):
-the model's predicted P(real) for each stimulus is correlated against human
-per-stimulus accuracy via Pearson r.
+    "We present 200 real words and 200 pseudo words drawn from the full
+    ROAR-Word corpus as the train set for finding the minimal VWFA mask,
+    with the remaining 50 real words and 50 pseudo words serving as the
+    test set for lexical evaluation. [...] we evaluate performance solely
+    based on the accuracy of lexical decisions. [...] We define 65% ROAR
+    performance as the threshold at which subjects are considered as
+    dyslexic. This number is one standard deviation below the mean
+    ROAR-score of the human population."
+
+Our implementation:
+1. Deterministic 400/100 train/test split (200 real + 200 pseudo train,
+   50 real + 50 pseudo test) seeded on stimulus_id.
+2. Fit ProbabilitiesClassifier on the 400 train stimuli.
+3. Predict on the 100 test stimuli; compute accuracy.
+4. Return model accuracy. Score is ceiling-normalized by human mean
+   accuracy on the same 100 test stimuli.
+5. `attrs['dyslexic']` flag: True if raw accuracy < 0.65 (paper's threshold).
+
+This is unified-interface-native: it uses BrainScoreModel's behavioral
+readout (start_task(TaskContext(task_type='probabilities', ...)) +
+process(test_stimuli) -> BehavioralAssembly).
 
 Data sources (s3://brainscore-storage/brainscore-vision/data/user_764/):
 - assy_Yeatman2021.nc       — 60,000 trials (500 stimuli × 120 subjects)
 - stimulus_Yeatman2021.csv  — stimulus metadata (label, word, real/pseudo)
 - stimulus_Yeatman2021.zip  — 500 PNG images, 500×300 RGB
 
-This is the first Brain-Score behavioral benchmark that uses the unified
-interface: it calls model.process() directly, relying on BrainScoreModel's
-behavioral readout (ProbabilitiesClassifier) to turn features into
-per-label probabilities.
+Human assembly schema (verified April 2026):
+- `data`: subject response (1 = "real", 0 = "pseudo")
+- `correct`: ground-truth label (1 = real word, 0 = pseudo-word) — the
+  name is misleading; this is the stimulus label, NOT per-trial accuracy.
+  Accuracy is computed as (data == correct).
 """
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import xarray as xr
-from scipy.stats import pearsonr
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
 
 BIBTEX = """@article{yeatman2021rapid,
@@ -44,174 +60,174 @@ BIBTEX = """@article{yeatman2021rapid,
   number={1},
   pages={6396},
   year={2021},
-  publisher={Nature Publishing Group UK London},
   doi={10.1038/s41598-021-85907-x}
+}
+
+@inproceedings{honarmand2026inducing,
+  title={Inducing Dyslexia in Vision Language Models},
+  author={Honarmand, Melika and Sharma, Ayati and AlKhamissi, Badr and
+          Mehrer, Johannes and Schrimpf, Martin},
+  booktitle={International Conference on Learning Representations},
+  year={2026},
+  url={https://arxiv.org/abs/2509.24597}
 }"""
 
 
 DATA_DIR = Path('/Users/kartik/Brain-Score Unified/data/roar_yeatman2021')
 
+# Paper protocol: 200/50 real, 200/50 pseudo
+TRAIN_PER_CLASS = 200
+TEST_PER_CLASS = 50
+DYSLEXIA_THRESHOLD = 0.65  # 1 SD below human mean (Honarmand et al. 2026)
+SPLIT_SEED = 0
+
 
 def _load_stimulus_set(data_dir: Path = DATA_DIR) -> StimulusSet:
-    """Load the ROAR stimulus set.
+    """Load the ROAR stimulus set with labels.
 
-    Returns a StimulusSet with columns:
-    - stimulus_id: 'roar_0000' through 'roar_0499'
-    - image_file_name: absolute path to the PNG
-    - image_label: 'real' or 'pseudo' (string labels for ProbabilitiesClassifier)
-    - word: the displayed word string
-    - numeric_label: 1 (real) or 0 (pseudo)
+    Columns: stimulus_id, image_file_name, image_label ('real'/'pseudo'),
+    numeric_label (0/1), word, realpseudo.
     """
     csv_path = data_dir / 'stimulus_Yeatman2021.csv'
     stimuli_dir = data_dir / 'stimuli'
     df = pd.read_csv(csv_path)
-
-    # Map numeric labels to canonical string labels used by ProbabilitiesClassifier
-    label_map = {1: 'real', 0: 'pseudo'}
-    df['image_label'] = df['label'].map(label_map)
+    df['image_label'] = df['label'].map({1: 'real', 0: 'pseudo'})
     df['numeric_label'] = df['label']
     df['image_file_name'] = df['filename'].apply(
         lambda fn: str(stimuli_dir / fn))
-
-    # Keep only the columns we need in a clean order
     df = df[['stimulus_id', 'image_file_name', 'image_label',
              'numeric_label', 'word', 'realpseudo']]
 
     stimulus_set = StimulusSet(df)
     stimulus_set.identifier = 'Yeatman2021'
-    # stimulus_paths dict is used by some downstream code (e.g., VLMVisionWrapper)
     stimulus_set.stimulus_paths = dict(
         zip(df['stimulus_id'].values, df['image_file_name'].values))
     return stimulus_set
 
 
-def _load_human_assembly(data_dir: Path = DATA_DIR) -> xr.Dataset:
-    """Load the 60,000-trial human behavioral dataset.
+def _split_train_test(stimulus_set: StimulusSet,
+                      train_per_class: int = TRAIN_PER_CLASS,
+                      test_per_class: int = TEST_PER_CLASS,
+                      seed: int = SPLIT_SEED) -> Tuple[StimulusSet, StimulusSet]:
+    """Deterministic stratified split.
 
-    Schema (verified against CSV labels, April 2026):
-    - `data`: subject's response (1 = "real", 0 = "pseudo")
-    - `correct`: ground-truth label (1 = real word, 0 = pseudo-word)
-      — NOTE: the name is misleading; this is the stimulus label, not
-      whether the subject was correct. Per-trial accuracy is (data == correct).
-    - `stimulus_id`, `subject`: coordinates on the presentation dim.
+    Returns (train_stimuli, test_stimuli). The split is seeded on
+    stimulus_id ordering for reproducibility.
     """
+    rng = np.random.default_rng(seed)
+    train_ids: List[str] = []
+    test_ids: List[str] = []
+
+    for label in ('real', 'pseudo'):
+        mask = stimulus_set['image_label'] == label
+        ids = sorted(stimulus_set.loc[mask, 'stimulus_id'].tolist())
+        if len(ids) < train_per_class + test_per_class:
+            raise ValueError(
+                f"Not enough {label} stimuli: need "
+                f"{train_per_class + test_per_class}, got {len(ids)}.")
+        shuffled = rng.permutation(ids)
+        train_ids.extend(shuffled[:train_per_class].tolist())
+        test_ids.extend(shuffled[train_per_class:train_per_class + test_per_class].tolist())
+
+    train = _slice_stimulus_set(stimulus_set, train_ids, suffix='train')
+    test = _slice_stimulus_set(stimulus_set, test_ids, suffix='test')
+    return train, test
+
+
+def _slice_stimulus_set(stimulus_set: StimulusSet, ids: List[str],
+                        suffix: str) -> StimulusSet:
+    subset_df = stimulus_set[stimulus_set['stimulus_id'].isin(ids)].reset_index(drop=True)
+    new_set = StimulusSet(subset_df)
+    new_set.identifier = f'{stimulus_set.identifier}-{suffix}'
+    new_set.stimulus_paths = {
+        sid: stimulus_set.stimulus_paths[sid] for sid in subset_df['stimulus_id']
+    }
+    return new_set
+
+
+def _load_human_assembly(data_dir: Path = DATA_DIR) -> xr.Dataset:
+    """Load the 60k-trial human behavioral dataset."""
     return xr.open_dataset(data_dir / 'assy_Yeatman2021.nc')
 
 
-def _aggregate_per_stimulus_accuracy(ds: xr.Dataset) -> pd.Series:
-    """Mean human accuracy per stimulus across all subjects.
-
-    Returns a pandas Series indexed by stimulus_id with values in [0, 1].
-    Accuracy is computed as (response == ground_truth_label).
-    """
+def _human_accuracy_on_stimuli(ds: xr.Dataset, stimulus_ids: List[str]) -> float:
+    """Mean human accuracy across subjects and the given stimuli."""
     accuracy = (ds['data'].values == ds['correct'].values).astype(float)
-    df = pd.DataFrame({
-        'stimulus_id': ds['stimulus_id'].values,
-        'accuracy': accuracy,
-    })
-    return df.groupby('stimulus_id')['accuracy'].mean()
-
-
-def _split_half_ceiling(ds: xr.Dataset, n_splits: int = 100,
-                        random_state: int = 0) -> float:
-    """Split-half subject reliability as the noise ceiling.
-
-    Split subjects into two random halves, compute per-stimulus mean accuracy
-    in each half, correlate, and apply Spearman-Brown correction. Repeat
-    `n_splits` times and return the mean.
-    """
-    rng = np.random.default_rng(random_state)
-    subjects = np.unique(ds['subject'].values)
-    n_sub = len(subjects)
-
-    accuracy = (ds['data'].values == ds['correct'].values).astype(float)
-    df = pd.DataFrame({
-        'stimulus_id': ds['stimulus_id'].values,
-        'subject': ds['subject'].values,
-        'accuracy': accuracy,
-    })
-
-    correlations = []
-    for _ in range(n_splits):
-        shuffled = rng.permutation(subjects)
-        half_a = set(shuffled[:n_sub // 2])
-        half_b = set(shuffled[n_sub // 2:])
-        acc_a = df[df['subject'].isin(half_a)].groupby('stimulus_id')['accuracy'].mean()
-        acc_b = df[df['subject'].isin(half_b)].groupby('stimulus_id')['accuracy'].mean()
-        common = acc_a.index.intersection(acc_b.index)
-        r, _ = pearsonr(acc_a.loc[common].values, acc_b.loc[common].values)
-        correlations.append(r)
-    r_half = np.mean(correlations)
-    # Spearman-Brown: double the correlation because full data has 2× subjects
-    r_full = 2 * r_half / (1 + r_half)
-    return float(r_full)
+    stim_ids = ds['stimulus_id'].values
+    mask = np.isin(stim_ids, stimulus_ids)
+    if mask.sum() == 0:
+        raise ValueError("No human trials matched the given stimulus_ids")
+    return float(accuracy[mask].mean())
 
 
 class Yeatman2021LexicalDecision(BenchmarkBase):
-    """ROAR lexical decision benchmark (Yeatman 2021).
+    """ROAR lexical decision — paper-replication (Honarmand et al. 2026).
 
-    Workflow:
-    1. Start task: tell the model to produce probabilities with ROAR stimuli
-       as fitting data (labels: 'real' / 'pseudo').
-    2. Process stimuli: get a BehavioralAssembly (500, 2) of per-label probs.
-    3. Score: Pearson r between model P(real) and human per-stimulus accuracy.
-
-    The fitting and evaluation stimuli are the same 500 items — this benchmark
-    tests how well the model's wordness judgment tracks human accuracy
-    patterns, not held-out classification accuracy.
+    Train on 400 stimuli (200 real + 200 pseudo), test on 100 (50/50).
+    Metric: model accuracy on test set, ceiling-normalized by human
+    mean accuracy on the same test stimuli.
     """
 
-    def __init__(self, ceiling: Optional[float] = None):
-        self._stimulus_set = _load_stimulus_set()
-        self._human_assembly = _load_human_assembly()
-        self._human_accuracy = _aggregate_per_stimulus_accuracy(self._human_assembly)
+    def __init__(self):
+        stimulus_set = _load_stimulus_set()
+        self._train_stimuli, self._test_stimuli = _split_train_test(stimulus_set)
+        self._human_ds = _load_human_assembly()
 
-        if ceiling is None:
-            # Compute ceiling once (it's deterministic given random_state)
-            ceiling = _split_half_ceiling(self._human_assembly, n_splits=100)
+        test_ids = list(self._test_stimuli['stimulus_id'].values)
+        self._human_accuracy = _human_accuracy_on_stimuli(self._human_ds, test_ids)
 
         super().__init__(
             identifier='Yeatman2021-lexical_decision',
-            version=1,
+            version=2,
             parent='behavioral',
-            ceiling=Score(ceiling),
+            ceiling=Score(self._human_accuracy),
             bibtex=BIBTEX,
         )
 
     def __call__(self, candidate) -> Score:
-        # Fit behavioral readout on the stimulus set with its real/pseudo labels
+        # Fit behavioral readout on the 400-item train set
         task_context = TaskContext(
             task_type='probabilities',
-            fitting_stimuli=self._stimulus_set,
+            fitting_stimuli=self._train_stimuli,
             label_set=['real', 'pseudo'],
-            instruction="Is the displayed string a real English word or a pseudo-word?",
+            instruction='Is this a real word or a pseudo word?',
         )
         candidate.start_task(task_context)
 
-        # Get per-stimulus probabilities
-        predictions = candidate.process(self._stimulus_set)
-        # predictions has dims (presentation, choice). 'choice' contains
-        # 'real' and 'pseudo' in the order the classifier first saw them.
-        model_p_real = predictions.sel(choice='real').values
+        # Predict on the 100-item test set
+        predictions = candidate.process(self._test_stimuli)
+        choice_values = list(predictions['choice'].values)
 
-        # Align to the same stimulus order as human_accuracy
+        # argmax over choices to get predicted label per stimulus
+        prob_matrix = predictions.values  # (n_test, n_choices)
+        pred_idx = prob_matrix.argmax(axis=1)
+        predicted_labels = [choice_values[i] for i in pred_idx]
+
+        # Ground truth
         stim_ids = list(predictions['stimulus_id'].values)
-        human_acc = self._human_accuracy.reindex(stim_ids).values
+        truth_map = dict(zip(
+            self._test_stimuli['stimulus_id'].values,
+            self._test_stimuli['image_label'].values,
+        ))
+        truth = [truth_map[sid] for sid in stim_ids]
 
-        mask = ~np.isnan(human_acc)
-        if not mask.all():
-            # Shouldn't normally happen — every ROAR stimulus has subject data
-            n_missing = int((~mask).sum())
-            raise ValueError(
-                f"{n_missing} stimuli have no human accuracy data; "
-                f"check stimulus_id alignment.")
+        correct = [p == t for p, t in zip(predicted_labels, truth)]
+        raw_accuracy = float(np.mean(correct))
 
-        raw_r, p_value = pearsonr(model_p_real, human_acc)
         ceiling_value = float(self.ceiling)
-        ceiled = raw_r / ceiling_value
+        ceiled = raw_accuracy / ceiling_value
+
         score = Score(ceiled)
-        score.attrs['raw'] = Score(raw_r)
+        score.attrs['raw'] = Score(raw_accuracy)
         score.attrs['ceiling'] = ceiling_value
-        score.attrs['p_value'] = float(p_value)
-        score.attrs['n_stimuli'] = int(mask.sum())
+        score.attrs['n_test_stimuli'] = len(stim_ids)
+        score.attrs['dyslexia_threshold'] = DYSLEXIA_THRESHOLD
+        score.attrs['dyslexic'] = bool(raw_accuracy < DYSLEXIA_THRESHOLD)
+        # Breakdown by stimulus class
+        truth_arr = np.array(truth)
+        correct_arr = np.array(correct)
+        for label in ('real', 'pseudo'):
+            mask = truth_arr == label
+            if mask.any():
+                score.attrs[f'accuracy_{label}'] = float(correct_arr[mask].mean())
         return score

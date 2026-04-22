@@ -1,8 +1,7 @@
-"""Smoke tests for the ROAR (Yeatman2021) lexical decision benchmark.
+"""Tests for the ROAR (Yeatman2021) lexical decision benchmark.
 
-Validates that the benchmark loads, the stimulus/assembly shapes are right,
-the ceiling is computed, and scoring integrates end-to-end with
-BrainScoreModel's behavioral readout.
+Protocol replicates Honarmand et al. (2026 ICLR): 400 train / 100 test,
+accuracy metric, 65% dyslexia threshold.
 """
 
 import numpy as np
@@ -19,47 +18,53 @@ class TestRoarYeatman2021:
         import brainscore
         assert 'Yeatman2021-lexical_decision' in brainscore.benchmark_registry
 
-    def test_stimulus_set(self, benchmark):
-        stim = benchmark._stimulus_set
-        assert len(stim) == 500
-        assert set(stim['image_label'].unique()) == {'real', 'pseudo'}
-        # Balanced real vs pseudo
-        counts = stim['image_label'].value_counts()
-        assert abs(counts['real'] - counts['pseudo']) < 50
+    def test_split_sizes(self, benchmark):
+        assert len(benchmark._train_stimuli) == 400
+        assert len(benchmark._test_stimuli) == 100
+        train_counts = benchmark._train_stimuli['image_label'].value_counts().to_dict()
+        test_counts = benchmark._test_stimuli['image_label'].value_counts().to_dict()
+        assert train_counts['real'] == 200 and train_counts['pseudo'] == 200
+        assert test_counts['real'] == 50 and test_counts['pseudo'] == 50
 
-    def test_human_accuracy_range(self, benchmark):
+    def test_no_train_test_leakage(self, benchmark):
+        train_ids = set(benchmark._train_stimuli['stimulus_id'])
+        test_ids = set(benchmark._test_stimuli['stimulus_id'])
+        assert not (train_ids & test_ids), "train and test overlap"
+
+    def test_human_accuracy_on_test(self, benchmark):
+        """Human accuracy on the 100-stim test set should be in the
+        expected range (mean ~0.80 overall)."""
         acc = benchmark._human_accuracy
-        # Should be realistic human performance (well above chance, below ceiling)
-        assert 0.7 < acc.mean() < 0.9
-        assert acc.min() >= 0.0
-        assert acc.max() <= 1.0
-        # Spread should be non-trivial
-        assert acc.std() > 0.05
+        assert 0.6 < acc < 0.95, f"unexpected human accuracy: {acc}"
 
-    def test_ceiling(self, benchmark):
-        ceiling = float(benchmark.ceiling)
-        # Split-half reliability for 120 subjects should be high
-        assert 0.85 < ceiling < 1.0
+    def test_dyslexia_threshold(self, benchmark):
+        from brainscore.benchmarks.roar_yeatman2021.benchmark import DYSLEXIA_THRESHOLD
+        assert DYSLEXIA_THRESHOLD == 0.65
 
     def test_score_clip(self, benchmark):
-        """End-to-end: fit behavioral readout on CLIP, score against humans."""
+        """End-to-end: fit behavioral readout on CLIP train set, measure
+        test accuracy, check metric structure."""
         import brainscore
         import brainscore_vision  # register CLIP
         model = brainscore.load_model('clip-vit-b-32')
         score = benchmark(model)
 
-        # Sanity checks on the score
         raw = float(score.attrs['raw'])
         ceiled = float(score)
         ceiling = score.attrs['ceiling']
-        p_value = score.attrs['p_value']
 
-        assert -1.0 <= raw <= 1.0
-        assert score.attrs['n_stimuli'] == 500
-        assert 0.85 < ceiling < 1.0
-        # CLIP should produce a significant positive correlation (features
-        # capture some word-ness structure)
-        assert raw > 0.1, f"expected positive correlation, got raw r={raw}"
-        assert p_value < 0.01
-        # ceiled == raw / ceiling
+        # Accuracy is in [0, 1]
+        assert 0.0 <= raw <= 1.0
+        assert score.attrs['n_test_stimuli'] == 100
+        # Human accuracy is ceiling
+        assert 0.6 < ceiling < 0.95
+        # Ceiled score is raw / ceiling
         assert np.isclose(ceiled, raw / ceiling)
+        # CLIP should do better than chance
+        assert raw > 0.55, f"CLIP raw accuracy too low: {raw}"
+        # Per-class accuracies are reported
+        assert 'accuracy_real' in score.attrs
+        assert 'accuracy_pseudo' in score.attrs
+        # Dyslexia flag present
+        assert isinstance(score.attrs['dyslexic'], bool)
+        assert score.attrs['dyslexia_threshold'] == 0.65
