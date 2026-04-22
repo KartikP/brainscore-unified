@@ -53,7 +53,12 @@ class TextWrapper:
         self._layer_aggregation = layer_aggregation
         self._max_length = max_length
         self._batch_size = batch_size
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            self._device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            self._device = torch.device("mps")
+        else:
+            self._device = torch.device("cpu")
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
