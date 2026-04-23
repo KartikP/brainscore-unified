@@ -11,4 +11,5 @@ from . import gpt2            # noqa: F401
 from . import random_vit_b_32  # noqa: F401   null-control: untrained ViT + logistic
 from . import chance_baseline   # noqa: F401   null-control: uniform probabilities
 from . import videomae_base     # noqa: F401   native-temporal video model (pixel-reconstruction)
-from . import vjepa             # noqa: F401   native-temporal video model (representation-reconstruction)
+from . import vjepa             # noqa: F401   native-temporal video model (representation-reconstruction, V-JEPA v2)
+from . import vjepa_v1          # noqa: F401   native-temporal video model (representation-reconstruction, V-JEPA v1 — EPFL paper's exact checkpoint)
