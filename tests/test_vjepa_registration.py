@@ -31,7 +31,7 @@ def test_vjepa_constants():
     assert NUM_TEMPORAL_STEPS == 32  # tubelet_size=2
     assert NUM_SPATIAL_PATCHES == 256  # (256/16)**2
     # Sanity: ViT-L layer count must accommodate the IT mapping.
-    assert REGION_LAYER_MAP['IT'] == 'encoder.layer.23'
+    assert REGION_LAYER_MAP['IT'] == 'encoder.layer.16'  # aligned with v1 sweep peak
     for region in ('V1', 'V2', 'V4', 'IT'):
         assert region in REGION_LAYER_MAP
 

@@ -37,7 +37,7 @@ def test_constants_match_vitl16():
     assert NUM_SPATIAL_PATCHES == 196  # (224/16)^2
     assert PATCH_SIZE == 16
     assert IMG_SIZE == 224
-    assert REGION_LAYER_MAP['IT'] == 'backbone.blocks.23'
+    assert REGION_LAYER_MAP['IT'] == 'backbone.blocks.16'  # per-voxel sweep peak
     for region in ('V1', 'V2', 'V4', 'IT'):
         assert region in REGION_LAYER_MAP
 
