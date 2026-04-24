@@ -426,16 +426,19 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 
         # 6. Cross-validated Ridge regression → per-voxel Pearson
         # (using sklearn directly keeps brainscore_core dependency-clean)
+        # Ridge auto-centers via its intercept; explicit per-feature
+        # StandardScaler over-rescales heterogeneous-variance features and
+        # costs ~0.18 raw r on Lahner2024 (see 2026-04-24 replication note).
+        # Pass raw features directly.
         from sklearn.model_selection import KFold
         from sklearn.linear_model import Ridge
-        from sklearn.preprocessing import StandardScaler
 
         n = model_mat.shape[0]
         kf = KFold(n_splits=5, shuffle=True, random_state=0)
         fold_preds = np.zeros_like(neural_mat)
         for train_idx, test_idx in kf.split(np.arange(n)):
-            X_train = StandardScaler().fit_transform(model_mat[train_idx])
-            X_test = StandardScaler().fit_transform(model_mat[test_idx])
+            X_train = model_mat[train_idx]
+            X_test = model_mat[test_idx]
             y_train = neural_mat[train_idx]
             reg = Ridge(alpha=1.0).fit(X_train, y_train)
             fold_preds[test_idx] = reg.predict(X_test)
