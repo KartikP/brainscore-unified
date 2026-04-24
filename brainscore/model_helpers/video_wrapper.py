@@ -154,6 +154,7 @@ class VideoWrapper:
         model,
         preprocessing: Callable[[List[np.ndarray]], 'torch.Tensor'],  # noqa: F821
         identifier: Optional[str] = None,
+        backbone_id: Optional[str] = None,
         target_fps: float = 5.0,
         num_frames: Optional[int] = None,
         frame_sampler: Optional[Callable] = None,
@@ -184,6 +185,10 @@ class VideoWrapper:
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
+        # V-JEPA v1/v2 both wrap the same underlying ViT-L weights in many
+        # configurations; set a shared backbone_id so cached activations
+        # are reused across registrations. Defaults to identifier.
+        self._backbone_id = backbone_id or self._identifier
 
     @property
     def identifier(self) -> str:
@@ -192,6 +197,10 @@ class VideoWrapper:
     @identifier.setter
     def identifier(self, value: str) -> None:
         self._identifier = value
+
+    @property
+    def backbone_id(self) -> str:
+        return self._backbone_id
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs) -> NeuroidAssembly:
         """Extract temporal activations from a batch of videos.
@@ -236,9 +245,9 @@ class VideoWrapper:
             f"image_file_name, filename. Got: {list(stimulus_set.columns)}")
 
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
-        if self._identifier and stimuli_identifier:
+        if self._backbone_id and stimuli_identifier:
             return self._from_paths_stored(
-                identifier=self._identifier,
+                identifier=self._backbone_id,
                 stimuli_identifier=stimuli_identifier,
                 layers=layers,
                 paths=paths,

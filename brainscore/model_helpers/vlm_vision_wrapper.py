@@ -59,6 +59,7 @@ class VLMVisionWrapper:
     """
 
     def __init__(self, model, processor, identifier: Optional[str] = None,
+                 backbone_id: Optional[str] = None,
                  image_input_key: str = 'pixel_values',
                  forward_kwargs_map: Optional[Dict[str, str]] = None,
                  patch_count_fn: Optional[Callable] = None,
@@ -81,6 +82,11 @@ class VLMVisionWrapper:
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
+        # When two VLMs share the same visual backbone (e.g. ViT-G across
+        # BLIP-2 and a future InstructBLIP registration) set the same
+        # backbone_id so the @store_xarray cache is reused. Default = the
+        # model's own identifier for backwards compatibility.
+        self._backbone_id = backbone_id or self._identifier
 
     @property
     def identifier(self) -> str:
@@ -89,6 +95,10 @@ class VLMVisionWrapper:
     @identifier.setter
     def identifier(self, value: str) -> None:
         self._identifier = value
+
+    @property
+    def backbone_id(self) -> str:
+        return self._backbone_id
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
         """Extract activations from image stimuli.
@@ -128,9 +138,9 @@ class VLMVisionWrapper:
             f"Columns: {list(stimulus_set.columns)}")
 
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
-        if self._identifier and stimuli_identifier:
+        if self._backbone_id and stimuli_identifier:
             return self._from_paths_stored(
-                identifier=self._identifier,
+                identifier=self._backbone_id,
                 stimuli_identifier=stimuli_identifier,
                 layers=layers,
                 paths=paths,

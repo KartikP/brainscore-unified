@@ -37,14 +37,21 @@ class TextWrapper:
     Args:
         model: A PyTorch text model (e.g., CLIPTextModel, GPT2Model).
         tokenizer: A HuggingFace tokenizer.
-        identifier: Model identifier for caching. Defaults to class name.
+        identifier: Model identifier for display/logging. Defaults to class name.
+        backbone_id: Optional cache-key identifier. When two registrations
+            share the same underlying backbone weights (e.g., two LM-adapted
+            models sitting on top of the same LLaMA-3.2-3B) they can pass the
+            same ``backbone_id`` so the @store_xarray cache entry is shared
+            across registrations. Defaults to ``identifier`` for backwards
+            compatibility — existing registrations keep the old per-model
+            cache layout.
         layer_aggregation: How to reduce (batch, seq_len, hidden) to (batch, hidden).
             'last_token' for causal models, 'mean_tokens' for encoders.
         max_length: Max token length for truncation.
         batch_size: Number of texts per forward pass.
     """
 
-    def __init__(self, model, tokenizer, identifier=None,
+    def __init__(self, model, tokenizer, identifier=None, backbone_id=None,
                  layer_aggregation='last_token', max_length=512,
                  batch_size=32):
         import torch
@@ -62,6 +69,10 @@ class TextWrapper:
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
+        # Cache key: prefer explicit backbone_id, fall back to identifier.
+        # Keeping this as a separate attribute lets BrainScoreModel swap the
+        # cache-key without disturbing log/telemetry identifiers.
+        self._backbone_id = backbone_id or self._identifier
         self._stimuli_identifier = None
 
     @property
@@ -71,6 +82,10 @@ class TextWrapper:
     @identifier.setter
     def identifier(self, value):
         self._identifier = value
+
+    @property
+    def backbone_id(self):
+        return self._backbone_id
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
         """Extract activations from text stimuli.
@@ -110,9 +125,9 @@ class TextWrapper:
                 f"Columns: {list(stimulus_set.columns)}")
 
     def _from_texts_cached(self, texts, layers, stimuli_identifier=None):
-        if self._identifier and stimuli_identifier:
+        if self._backbone_id and stimuli_identifier:
             return self._from_texts_stored(
-                identifier=self._identifier,
+                identifier=self._backbone_id,
                 stimuli_identifier=stimuli_identifier,
                 layers=layers,
                 texts=texts,
