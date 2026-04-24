@@ -129,6 +129,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             # The wrapper handles frame sampling + forward pass + hook + packaging.
             'video': video_wrapper,
         },
+        required_modalities={'video'},
         activations_model=None,  # VideoWrapper IS the activations_model
         visual_degrees=8,
     )

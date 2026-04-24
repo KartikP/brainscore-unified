@@ -152,6 +152,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             # column to this VideoWrapper (see BrainScoreModel.COLUMN_TO_MODALITY).
             'video': video_wrapper,
         },
+        required_modalities={'video'},
         activations_model=None,  # VideoWrapper IS the activations_model
         visual_degrees=8,
     )

@@ -43,6 +43,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         preprocessors={
             'text': text_wrapper,
         },
+        required_modalities={'text'},
         # GPT-2 is not instruction-tuned; no generation_fn.
         # Behavioral tasks route through the readout path (logistic on features).
         behavioral_readout_layer='h.11',
