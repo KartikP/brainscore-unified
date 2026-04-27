@@ -1,46 +1,51 @@
 """
-Lahner 2024 BOLDMoments — TR-resolved fMRI variant.
+Lahner 2024 BOLDMoments — TR-resolved fMRI variant (continuous-time encoding).
 
-Same stimuli as the existing GLM-beta variant (Lahner2024BOLDMoments), but
-predicts the per-TR BOLD time-series rather than per-clip beta estimates.
-This is the first benchmark to actually exercise the temporal kit
-(`temporal_bin`, `hrf_convolve`, `contiguous_block_cv`, absolute timestamps)
-end-to-end.
+Same stimuli as the existing GLM-beta variant (`Lahner2024BOLDMoments`), but
+predicts the per-TR BOLD time-series of each scanning run rather than a
+per-clip GLM beta. M12-lite — the first benchmark that actually exercises
+the temporal kit (`temporal_bin`, `hrf_convolve`, `contiguous_block_cv`,
+absolute timestamps) end-to-end.
 
-Assembly shape (from `prepare_timeresolved_assembly.py` / S3):
-    (time_bin = N_TR_per_clip,  neuroid = 20484,  presentation = 10260)
+## Design: continuous-time encoding
 
-where:
-    - presentation = 1026 stimuli × 10 reps  (matches GLM-beta variant)
-    - neuroid = 20484 fsaverage5 cortical vertices
-    - time_bin = N_TR_per_clip TR-aligned bins covering each 3 s clip + HRF tail
+For each (subject, run), the brain produces a continuous BOLD time-series at
+TR=1.75 s across the whole run (~263 TRs covering ~113 stimulus events at
+4 s SOA). The model produces per-stimulus features. We HRF-convolve and
+place the per-stimulus features at the right TR offsets within run-time,
+producing a continuous "expected response" time-series at TR resolution.
+Per-voxel ridge regression maps that to the actual BOLD signal, with
+leave-one-run-out cross-validation.
 
-## Pipeline (per model):
+This avoids the rapid-event-related design's overlap problem (per-trial
+windowing with K>2 TRs has neighboring-trial contamination at SOA=4 s
+relative to TR=1.75 s). Continuous-time encoding is the standard
+naturalistic-fMRI approach (Huth lab, Friends/Sherlock benchmarks).
 
-    1. Build a video stimulus set (one row per video; reuses parent class helper).
-    2. model.start_recording('IT', time_bins=<TR-aligned bins>) and process(stim)
-       → per-clip activations at the model's native rate.
-    3. HRF-convolve the model features along the time axis (model rate).
-    4. Resample model time bins to TR rate via temporal_bin (or linear interp).
-    5. Contiguous-block CV over clips (block_size = 10 clips, ~10s scanner block).
-    6. Per-(voxel, TR) ridge regression.
-    7. Per-voxel Pearson averaged across TRs → median across voxels.
+## Pipeline (per model)
 
-## Why this is M12-lite
-
-This is single-region, single-modality, single-subject-axis (averaged across
-the 10 BOLDMoments subjects). It validates the entire temporal kit on real
-TR-resolved fMRI without the multi-region or multi-modal complexity of the
-full M12 (cross-modal coherence) benchmark. If this works end-to-end, M12-full
-is an additive extension, not a fundamental rewrite.
+    1. Discover unique stimuli from events (1102 unique videos).
+    2. Extract per-stimulus features ONCE via model.process(unique_stim_set):
+       - video-native models: per-clip features at the model's native time bins
+         (mean-pooled if per-frame, kept temporal otherwise)
+       - frame-aggregation models: per-clip features (mean of N still frames)
+    3. For each (subject, run):
+       a. Build a feature time-series at TR resolution by placing each clip's
+          features at floor(onset_sec / TR) within the run.
+       b. HRF-convolve along the time axis using the canonical SPM double-gamma.
+       c. Crop / pad to the run's actual TR length.
+    4. Concatenate (subject, run) feature time-series into the design matrix X.
+       Concatenate (subject, run) BOLD time-series into Y.
+    5. Per-voxel ridge regression with leave-one-run-out CV via
+       contiguous_block_cv at the run-block level.
+    6. Per-voxel Pearson on held-out predictions, median across voxels.
 
 ## Comparison story
 
-Same 1026 videos, same 6 models (V-JEPA v1, V-JEPA v2, VideoMAE, CLIP-frame,
-Qwen, BLIP-2), but the model has to predict a TR-resolved trajectory rather
-than a single per-clip beta. Score delta between the two variants quantifies
-how much temporal information the model adds (or how much the GLM beta
-already captured).
+Same 1026+ videos, same models, but model has to predict TR-resolved
+trajectories rather than per-clip betas. Score delta between this variant
+and `Lahner2024-fMRI-naturalistic` quantifies how much temporal information
+the model adds (or how much the GLM beta already captured).
 """
 
 from typing import List, Optional
@@ -60,30 +65,31 @@ from brainscore_core.temporal import (
     contiguous_block_cv,
     double_gamma_hrf,
     hrf_convolve,
-    temporal_bin,
 )
 
 # Reuse stimulus loader + bibtex + S3 paths from the existing variant
 from .benchmark import (
     BIBTEX,
     STIMULUS_BUCKET,
-    VIDEO_DURATION_MS,
-    Lahner2024BOLDMoments,        # parent class — provides _videos_stimulus_set, _expand_videos
+    Lahner2024BOLDMoments,        # parent class — provides _videos_stimulus_set
     load_stimulus_set,
 )
 
 
-# ── S3 metadata for the TR-resolved assembly ──────────────────────────
-# These get filled in once `prepare_timeresolved_assembly.py` runs on EC2
-# and uploads the artifact. Until then, loading raises explicitly.
+# ── S3 metadata for the TR-resolved artifacts ─────────────────────────
+# Filled in once `prepare_timeresolved_assembly.py` uploads to S3.
+# Until then, loading raises with an explicit handoff message.
 
 TIMERESOLVED_ASSEMBLY_ID = 'Lahner2024-fMRI-timeresolved'
-TIMERESOLVED_ASSEMBLY_VERSION_ID: Optional[str] = None    # TODO: fill from prep script output
-TIMERESOLVED_ASSEMBLY_SHA1: Optional[str] = None          # TODO: fill from prep script output
+TIMERESOLVED_ASSEMBLY_VERSION_ID: Optional[str] = None    # TODO: paste from prep script
+TIMERESOLVED_ASSEMBLY_SHA1: Optional[str]       = None    # TODO: paste from prep script
+TIMERESOLVED_EVENTS_VERSION_ID: Optional[str]   = None    # TODO: paste from prep script
+TIMERESOLVED_EVENTS_SHA1: Optional[str]         = None    # TODO: paste from prep script
 
-# Matches what prepare_timeresolved_assembly.py picks. We store as a
-# constant here too so the benchmark can sanity-check the loaded assembly.
-EXPECTED_PER_CLIP_WINDOW_SEC = 12.0
+# Confirmed scanner / paradigm parameters (from EC2 recon, ds005165 v1.0.4)
+TR_SEC = 1.75
+SOA_SEC = 4.0
+CLIP_DURATION_SEC = 3.0
 
 
 # ── Loader ────────────────────────────────────────────────────────────
@@ -93,8 +99,9 @@ def load_timeresolved_assembly(merge_stimulus_set_meta: bool = True) -> NeuronRe
         raise RuntimeError(
             "Lahner2024 TR-resolved assembly is not yet hosted on S3. "
             "Run `prepare_timeresolved_assembly.py` on EC2 to download from "
-            "OpenNeuro ds005165, build the assembly, and upload — then paste "
-            "the resulting (version_id, sha1) into benchmark_timeresolved.py."
+            "OpenNeuro ds005165 v1.0.4, downsample fsaverage→fsaverage5, build "
+            "the per-(subject, run) assembly, and upload — then paste the "
+            "resulting (version_id, sha1) tuples into benchmark_timeresolved.py."
         )
     return load_assembly_from_s3(
         identifier=TIMERESOLVED_ASSEMBLY_ID,
@@ -107,35 +114,47 @@ def load_timeresolved_assembly(merge_stimulus_set_meta: bool = True) -> NeuronRe
     )
 
 
+def load_timeresolved_events():
+    """Load the per-trial events sidecar CSV (long format).
+
+    Columns: subject, session, run, task, trial_idx, stimulus_id,
+             onset_sec, duration_sec, trial_type.
+    """
+    if TIMERESOLVED_EVENTS_VERSION_ID is None or TIMERESOLVED_EVENTS_SHA1 is None:
+        raise RuntimeError(
+            "Lahner2024 TR-resolved events sidecar is not yet hosted on S3."
+        )
+    # TODO on EC2-side prep: implement loader. For now, the same load_assembly_from_s3
+    # plumbing won't quite work since this is a CSV not an xarray .nc. Use boto3
+    # directly OR add a load_csv_from_s3 helper to brainio.
+    raise NotImplementedError(
+        "TODO: implement S3 CSV loader. Either use boto3.s3.get_object directly, "
+        "or add load_csv_from_s3 to brainscore_core.supported_data_standards.brainio.s3."
+    )
+
+
 # ── Benchmark class ───────────────────────────────────────────────────
 
 class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
-    """Predict per-TR BOLD time-series for each 3 s BoldMoments clip.
+    """Predict per-TR BOLD time-series for each BoldMoments scanning run.
 
-    Inherits stimulus-handling helpers from `Lahner2024BOLDMoments`
-    (the GLM-beta variant) — stimuli are identical between the two.
+    Inherits stimulus-handling helpers from `Lahner2024BOLDMoments` (the
+    GLM-beta variant) — stimuli are identical between the two variants.
     Only the neural target and the regression machinery differ.
     """
 
     def __init__(
         self,
         ceiling: Optional[float] = None,
-        reliability_threshold: Optional[float] = None,
-        cv_block_size_clips: int = 10,
+        cv_n_held_out_runs: int = 1,
         identifier_suffix: str = '-timeresolved',
-        # Allow the prep script to be re-run with a different window;
-        # this constant pins the runtime expectation so we error if mismatched.
-        expected_per_clip_window_sec: float = EXPECTED_PER_CLIP_WINDOW_SEC,
     ):
-        self._reliability_threshold = reliability_threshold
-        self._cv_block_size_clips = cv_block_size_clips
-        self._expected_per_clip_window_sec = expected_per_clip_window_sec
+        self._cv_n_held_out_runs = cv_n_held_out_runs
         self._assembly: Optional[NeuronRecordingAssembly] = None
+        self._events = None
         self._stimulus_set = None
-        self._voxel_mask: Optional[np.ndarray] = None
 
-        # We delegate stimulus prep to a sibling instance of the GLM-beta variant
-        # so we don't duplicate _expand_videos / _videos_stimulus_set logic.
+        # Delegate stimulus prep to the GLM-beta variant — identical stimuli.
         self._stim_helper = Lahner2024BOLDMoments(reliability_threshold=None)
 
         super().__init__(
@@ -153,191 +172,134 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             self._sanity_check_assembly(self._assembly)
         return self._assembly
 
-    def _sanity_check_assembly(self, assembly):
-        # Verify the loaded assembly matches what the prep script promised.
-        assert 'time_bin_start_ms' in assembly.coords, \
-            "TR-resolved assembly must have time_bin_start_ms coord"
-        assert 'time_bin_end_ms' in assembly.coords, \
-            "TR-resolved assembly must have time_bin_end_ms coord"
-        n_tr = assembly.sizes['time_bin']
-        if n_tr <= 1:
-            raise RuntimeError(
-                f"TR-resolved assembly has {n_tr} time_bin(s); expected >1. "
-                f"Looks like the GLM-beta variant assembly was loaded by mistake."
-            )
+    @property
+    def events(self):
+        if self._events is None:
+            self._events = load_timeresolved_events()
+        return self._events
 
     @property
     def stimulus_set(self):
         return self._stim_helper.stimulus_set
 
-    def _average_repetitions(self) -> NeuronRecordingAssembly:
-        """Average the 10 repetitions per video → one (time_bin, neuroid) per video."""
-        a = self.assembly
-        # group by stimulus_id, mean over repetitions of presentation axis
-        return a.groupby('stimulus_id').mean('presentation')
+    def _sanity_check_assembly(self, assembly):
+        assert 'time_bin_start_ms' in assembly.coords
+        assert 'subject' in assembly.coords
+        assert 'run' in assembly.coords
+        assert 'n_valid_TR' in assembly.coords
+        assert assembly.sizes['neuroid'] == 20484
+        assert assembly.sizes['time_bin'] > 1, \
+            "TR-resolved assembly must have time_bin > 1; got the GLM-beta variant by mistake?"
 
     def __call__(self, candidate) -> Score:
-        # 1. Configure recording. We pass TR-aligned time_bins from the
-        #    assembly — the model's VideoWrapper will produce activations at
-        #    its native rate; the benchmark resamples to these bins before
-        #    regression.
-        target_assembly = self._average_repetitions()
-        # target shape: (stimulus_id, time_bin, neuroid)  (after groupby)
-        # OR (time_bin, neuroid, stimulus_id) depending on dim ordering — handle both.
+        # 1. Get per-stimulus model features (one feature vector per unique stimulus).
+        per_stim_features, stimulus_ids = self._extract_per_stimulus_features(candidate)
+        # per_stim_features shape: (n_stimuli, n_features)
+        # stimulus_ids: list of length n_stimuli
 
-        target_time_bins = list(zip(
-            target_assembly['time_bin_start_ms'].values.tolist(),
-            target_assembly['time_bin_end_ms'].values.tolist(),
-        ))
+        stim_idx = {sid: i for i, sid in enumerate(stimulus_ids)}
 
-        candidate.start_recording('IT', time_bins=target_time_bins)
+        # 2. For each (subject, run) presentation: build feature time-series at TR
+        #    resolution by placing per-stim features at onset TRs, then HRF-convolve.
+        assembly = self.assembly
+        n_TR_max = assembly.sizes['time_bin']
+        n_features = per_stim_features.shape[1]
+        n_runs = assembly.sizes['presentation']
 
-        # 2. Get model activations. Same dispatch as the GLM-beta variant —
-        #    video-native models go straight; image models get the frame-aggregated
-        #    pseudo-temporal path.
-        if 'video' in getattr(candidate, 'supported_modalities', set()):
-            pipeline_mode = 'video_native'
-            video_stim = self._stim_helper._videos_stimulus_set()
-            model_features = candidate.process(video_stim)
-            # model_features dims: (presentation, time_bin_model, neuroid)
-            # model_time may not match target_time_bins yet — we'll resample below.
-        else:
-            pipeline_mode = 'frame_aggregation'
-            frame_stim = self._stim_helper._expand_videos()
-            per_frame = candidate.process(frame_stim)
-            # For image models we need per-clip per-TR features. The simplest
-            # consistent approach: use the existing per-clip mean (one feature
-            # vector per clip) and broadcast to all TRs. This means image
-            # models can't beat their GLM-beta-variant score — they have no
-            # temporal information to add.
-            per_video = temporal_bin(per_frame, time_bins=[(0, VIDEO_DURATION_MS)])
-            model_features = self._broadcast_to_tr_axis(per_video, n_tr=len(target_time_bins))
+        feature_ts = np.zeros((n_runs, n_TR_max, n_features), dtype=np.float32)
+        for run_idx in range(n_runs):
+            run_id = (str(assembly['subject'].values[run_idx]),
+                      str(assembly['session'].values[run_idx]),
+                      str(assembly['run'].values[run_idx]))
+            run_events = self._events_for_run(*run_id)
+            for _, ev in run_events.iterrows():
+                if ev['stimulus_id'] not in stim_idx:
+                    continue   # oddball or stimulus the model couldn't process
+                onset_TR = int(np.floor(ev['onset_sec'] / TR_SEC))
+                if 0 <= onset_TR < n_TR_max:
+                    feature_ts[run_idx, onset_TR, :] += per_stim_features[stim_idx[ev['stimulus_id']]]
 
-        # 3. Apply HRF convolution to model features along the time axis.
-        #    Sampling rate = 1000 / (mean TR width in ms).
-        tr_width_ms = float(np.mean(np.diff(
-            np.array([s for s, _ in target_time_bins]))))
-        sample_rate_hz = 1000.0 / tr_width_ms
-        model_features = self._hrf_convolve_features(model_features,
-                                                     sample_rate_hz=sample_rate_hz)
+        # HRF-convolve along time axis. hrf_convolve expects (n_time, n_features).
+        hrf_kernel = double_gamma_hrf(duration_sec=32.0, sampling_rate_hz=1.0/TR_SEC)
+        feature_ts_convolved = np.zeros_like(feature_ts)
+        for run_idx in range(n_runs):
+            feature_ts_convolved[run_idx] = hrf_convolve(
+                feature_ts[run_idx], sampling_rate_hz=1.0/TR_SEC, hrf=hrf_kernel)
 
-        # 4. Resample model features to the target TR grid via temporal_bin
-        #    on absolute timestamps.
-        model_features_aligned = self._resample_to_target_grid(
-            model_features, target_time_bins=target_time_bins,
-            pipeline_mode=pipeline_mode)
+        # 3. Concatenate (run, TR) → flat (n_obs, n_features); same for BOLD.
+        #    Mask padded entries via n_valid_TR.
+        X_flat, Y_flat, run_idx_per_obs = self._concatenate_with_mask(
+            feature_ts_convolved, assembly)
 
-        # 5. Per-(voxel, TR) ridge with contiguous-block CV.
-        per_voxel_per_tr_r = self._cross_validated_pearson(
-            model=model_features_aligned, neural=target_assembly,
-            block_size_clips=self._cv_block_size_clips,
+        # 4. Per-voxel ridge regression with leave-one-run-out CV.
+        per_voxel_r = self._cross_validated_ridge(
+            X_flat, Y_flat, run_idx_per_obs,
+            n_held_out=self._cv_n_held_out_runs,
         )
-        # per_voxel_per_tr_r shape: (n_voxels, n_tr)
 
-        # Optional voxel mask
-        if self._reliability_threshold is not None:
-            mask = self._stim_helper._get_voxel_mask()  # NB: trained on GLM-beta variant
-            # TODO: decide whether to recompute reliability on TR-resolved data
-            # OR reuse the GLM-beta-derived mask. Reusing is faster + comparable
-            # across variants; recomputing is more rigorous.
-            if mask is not None:
-                per_voxel_per_tr_r = per_voxel_per_tr_r[mask]
-
-        # 6. Aggregate. Two sensible options:
-        #    a) median over voxels of mean-over-TRs → single number
-        #    b) median over voxels at the peak HRF TR (~5-6s post-stim) → comparable to GLM-beta
-        # We report both.
-        mean_over_tr_per_voxel = np.nanmean(per_voxel_per_tr_r, axis=1)
-        median_r = float(np.nanmedian(mean_over_tr_per_voxel))
-
-        # Peak-TR score: pick the TR closest to the HRF peak (~5s post stimulus onset)
-        peak_tr_idx = self._pick_peak_hrf_tr_idx(target_time_bins, peak_sec=5.0)
-        peak_tr_r = per_voxel_per_tr_r[:, peak_tr_idx]
-        median_r_peak = float(np.nanmedian(peak_tr_r))
+        # 5. Aggregate.
+        per_voxel_r_finite = per_voxel_r[~np.isnan(per_voxel_r)]
+        median_r = float(np.median(per_voxel_r_finite))
+        mean_r = float(np.mean(per_voxel_r_finite))
 
         score = Score(median_r / float(self.ceiling))
         score.attrs['raw'] = Score(median_r)
-        score.attrs['median_r_peak_hrf_tr'] = median_r_peak
-        score.attrs['peak_hrf_tr_idx'] = int(peak_tr_idx)
-        score.attrs['n_tr'] = len(target_time_bins)
-        score.attrs['n_voxels_scored'] = int(per_voxel_per_tr_r.shape[0])
-        score.attrs['pipeline'] = pipeline_mode
-        score.attrs['cv_block_size_clips'] = self._cv_block_size_clips
+        score.attrs['mean_r'] = mean_r
+        score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
+        score.attrs['n_runs'] = n_runs
+        score.attrs['n_observations'] = int(len(Y_flat))
+        score.attrs['cv_n_held_out_runs'] = self._cv_n_held_out_runs
+        score.attrs['pipeline'] = 'continuous_time_encoding'
         return score
 
-    # ── Helpers (each one is a placeholder / TODO that EC2 work fills in) ──
+    # ── Helpers (each TODO has detailed instructions) ──────────────
 
-    def _broadcast_to_tr_axis(self, per_video_assembly, n_tr: int):
-        """Broadcast a (presentation, 1, neuroid) frame-aggregated assembly
-        to (presentation, n_tr, neuroid) by duplicating along the new time axis.
-        Image models have no temporal information to add."""
-        raise NotImplementedError(
-            "TODO: broadcast per_video_assembly's single time_bin across n_tr time_bins. "
-            "Use np.broadcast_to + reconstruct DataArray with new time_bin coord."
-        )
+    def _extract_per_stimulus_features(self, candidate):
+        """One forward pass per unique stimulus → (n_stimuli, n_features).
 
-    def _hrf_convolve_features(self, features_assembly, sample_rate_hz: float):
-        """Convolve features along the time_bin axis with the canonical HRF.
-
-        Wraps `core/brainscore_core/temporal.py::hrf_convolve` which expects
-        a 2-D (n_time, n_features) numpy input. We'll need to reshape per-clip
-        slices, convolve, and reassemble.
+        TODO:
+            - Build a unique-stimulus set from events (1102 unique videos).
+            - Dispatch on candidate.supported_modalities:
+                * 'video' in supported  → use _videos_stimulus_set, call process,
+                  mean-pool over time_bin axis to get per-stimulus features
+                * else                  → use _expand_videos + per-frame extraction +
+                  temporal_bin to single bin = mean over frames
+            - Return (features (n_stimuli, n_features), stimulus_ids list)
         """
         raise NotImplementedError(
-            "TODO: per clip, slice features along time_bin → 2-D (n_time, n_neuroid) → "
-            "hrf_convolve → reassemble. Or: vectorize across clips by treating "
-            "(presentation × neuroid) as the feature axis and convolving along time."
+            "TODO: extract per-stimulus features once. See docstring."
         )
 
-    def _resample_to_target_grid(self, model_features, target_time_bins, pipeline_mode: str):
-        """Resample model time axis to TR grid.
+    def _events_for_run(self, subject, session, run):
+        """Filter the events DataFrame to one (subject, session, run)."""
+        ev = self.events
+        mask = ((ev['subject'] == subject) &
+                (ev['session'] == session) &
+                (ev['run'] == run))
+        return ev[mask]
 
-        Uses `temporal_bin` if model_features carries `frame_time_ms` per timestamp.
-        For video-native models with internal step indices, we first attach
-        absolute timestamps using the start_recording time_bins as the target,
-        and the model's known native rate to back-compute step → ms.
+    def _concatenate_with_mask(self, feature_ts_convolved, assembly):
+        """Flatten (run, TR) → (n_obs,) for valid TRs only.
+
+        TODO:
+            - For each presentation idx, take feature_ts_convolved[idx, :n_valid_TR, :]
+              and assembly[:n_valid_TR, :, idx].T  → (n_valid_TR, n_voxels)
+            - Stack across runs into X_flat (n_obs, n_features) and Y_flat (n_obs, n_voxels)
+            - Track run_idx_per_obs for CV.
         """
-        raise NotImplementedError(
-            "TODO: handle (a) the video-native case where features come with "
-            "step-indexed time_bin (need to attach absolute timestamps), and "
-            "(b) the frame-aggregation case where features are already "
-            "broadcast to TR grid (no resample needed)."
-        )
+        raise NotImplementedError("TODO: flatten + mask. See docstring.")
 
-    def _cross_validated_pearson(self, model, neural, block_size_clips: int):
-        """Per-(voxel, TR) ridge with contiguous-block CV over the clip axis.
+    def _cross_validated_ridge(self, X_flat, Y_flat, run_idx_per_obs,
+                               n_held_out: int):
+        """Leave-K-runs-out ridge per voxel; return (n_voxels,) Pearson array.
 
-        Uses `core/brainscore_core/temporal.py::contiguous_block_cv` for splits.
-        Returns (n_voxels, n_tr) of Pearson r values.
+        TODO:
+            - Use contiguous_block_cv at the RUN level (not the obs level).
+              Iterate held-out RUN indices; build train/test masks via run_idx_per_obs.
+            - For each fold:
+                X_train, X_test, Y_train, Y_test
+                Ridge(alpha=1.0).fit(X_train, Y_train).predict(X_test) → fold_preds
+                Accumulate per-voxel held-out predictions
+            - After all folds: per-voxel Pearson(Y_flat, accumulated_preds).
         """
-        from sklearn.linear_model import Ridge
-
-        # Align by stimulus_id
-        # model shape:  (n_clips, n_tr_model, n_neuroid_model)
-        # neural shape: (n_clips, n_tr_neural, n_voxels)
-        # n_tr_model and n_tr_neural should match after _resample_to_target_grid
-
-        raise NotImplementedError(
-            "TODO: for each TR index t in 0..n_tr-1:\n"
-            "  X = model[:, t, :]  →  (n_clips, n_features)\n"
-            "  y = neural[:, t, :] →  (n_clips, n_voxels)\n"
-            "  for train_idx, test_idx in contiguous_block_cv(n_clips, block_size_clips):\n"
-            "    fit Ridge on train, predict test → fold_preds\n"
-            "  per-voxel Pearson(y_true, y_fold_preds) at this TR\n"
-            "Stack across TRs → (n_voxels, n_tr) result."
-        )
-
-    def _pick_peak_hrf_tr_idx(self, time_bins, peak_sec: float = 5.0) -> int:
-        """Find the TR whose center is closest to peak_sec post-stimulus onset."""
-        starts_ms = np.array([s for s, _ in time_bins])
-        ends_ms = np.array([e for _, e in time_bins])
-        centers_sec = ((starts_ms + ends_ms) / 2.0) / 1000.0
-        return int(np.argmin(np.abs(centers_sec - peak_sec)))
-
-
-def Lahner2024BOLDMoments_timeresolved_visualROI():
-    """Visual-ROI variant of the TR-resolved benchmark."""
-    return Lahner2024BOLDMoments_timeresolved(
-        reliability_threshold=0.3,
-        identifier_suffix='-timeresolved-visualROI',
-    )
+        raise NotImplementedError("TODO: leave-K-runs-out ridge per voxel. See docstring.")
