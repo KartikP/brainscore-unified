@@ -89,6 +89,10 @@ TIMERESOLVED_EVENTS_SHA1: Optional[str]         = '783c5b33a75f121812a49b8b0a763
 # Confirmed scanner / paradigm parameters (from EC2 recon, ds005165 v1.0.4)
 TR_SEC = 1.75
 SOA_SEC = 4.0
+
+# Cap on per-stimulus feature dim before ridge — guards a 64GB OOM on g5.4xlarge
+# when n_TR_obs ≈ 127k and flattened ViT features ≈ 38k. See `_extract_per_stimulus_features`.
+FEATURE_DIM_CAP = 512
 CLIP_DURATION_SEC = 3.0
 
 
@@ -306,6 +310,15 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             features = per_video.values[:, 0, :]
             stimulus_ids = list(
                 per_video.indexes['presentation'].get_level_values('clip_id'))
+
+        # Cap feature dim before per-voxel ridge — flattened ViT layer outputs
+        # (e.g. CLIP encoder.layers.10 = 50 tokens × 768 = 38400) make X scale
+        # to (127k TR-obs × 38k feat × 4B) ≈ 19 GB and OOM the 64GB box.
+        # TruncatedSVD to 512 keeps almost all variance and shrinks X 75×.
+        if features.shape[1] > FEATURE_DIM_CAP:
+            from sklearn.decomposition import TruncatedSVD
+            svd = TruncatedSVD(n_components=FEATURE_DIM_CAP, random_state=0)
+            features = svd.fit_transform(features).astype(np.float32)
 
         return features, stimulus_ids
 
