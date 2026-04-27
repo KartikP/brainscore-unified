@@ -156,7 +156,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     def __init__(
         self,
         ceiling: Optional[float] = None,
-        cv_n_held_out_runs: int = 1,
+        cv_n_held_out_runs: int = 52,
         identifier_suffix: str = '-timeresolved',
     ):
         self._cv_n_held_out_runs = cv_n_held_out_runs
