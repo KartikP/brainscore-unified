@@ -285,7 +285,9 @@ def extract_subject_task_runs(
             if not isinstance(s, str):
                 return None
             try:
-                return f"stimulus_{int(Path(s).stem)}"
+                # Zero-pad to 4 digits to match the stimulus_set's
+                # `stimulus_0001`-style IDs (events tsv uses raw `1`, `10`).
+                return f"stimulus_{int(Path(s).stem):04d}"
             except ValueError:
                 return None
 

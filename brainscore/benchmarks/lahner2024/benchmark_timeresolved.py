@@ -83,8 +83,8 @@ from .benchmark import (
 TIMERESOLVED_ASSEMBLY_ID = 'Lahner2024-fMRI-timeresolved'
 TIMERESOLVED_ASSEMBLY_VERSION_ID: Optional[str] = '6VFZOroMxaNg1P_xSQAYwGq7.Fc63zz_'
 TIMERESOLVED_ASSEMBLY_SHA1: Optional[str]       = '4d06589dde6dddf273a489a64da1337940d5fafd'
-TIMERESOLVED_EVENTS_VERSION_ID: Optional[str]   = 'TJm2N1Uf4FCKx8cspdl3m3U9jTuFmI_5'
-TIMERESOLVED_EVENTS_SHA1: Optional[str]         = '7d504ba0106f002dea03526a4999ef44b6d3b7dc'
+TIMERESOLVED_EVENTS_VERSION_ID: Optional[str]   = 'MYar7u8KE_D.i4MXZ83GurH1EDECZ.jo'
+TIMERESOLVED_EVENTS_SHA1: Optional[str]         = '783c5b33a75f121812a49b8b0a7639b9ed07c6a3'
 
 # Confirmed scanner / paradigm parameters (from EC2 recon, ds005165 v1.0.4)
 TR_SEC = 1.75
