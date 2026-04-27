@@ -282,6 +282,10 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         stim_set_ids = set(full_stim['stimulus_id'].astype(str).tolist())
         unique_ids = sorted(unique_event_ids & stim_set_ids)
 
+        # Activate the model's recording layer. Mirrors the GLM-beta variant:
+        # IT-mapped features predict whole-cortex BOLD via per-voxel ridge.
+        candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
+
         if 'video' in getattr(candidate, 'supported_modalities', set()):
             video_stim = self._stim_helper._videos_stimulus_set()
             # Restrict to the unique_ids we need
