@@ -139,14 +139,22 @@ def main():
                         default='Lahner2024-fMRI-timeresolved-events.csv')
     args = parser.parse_args()
 
-    # 1. For each (subject, run): download fsaverage L+R giis, downsample to
-    #    fsaverage5, concatenate, parse events.tsv. Result is a list of dicts
-    #    with 'time_series' (n_TR, 20484), 'events' DataFrame, and metadata.
+    # 1. For each subject: extract all runs for all requested tasks, then DELETE
+    #    the per-subject gii cache before moving to the next subject. Per-subject
+    #    cache footprint is ~20GB (52 runs × ~380MB L+R each); without cleanup
+    #    the full 10-subject run would need ~200GB free.
+    import shutil
     run_records = []
     for subject in args.subjects:
+        subj_cache = args.data_cache / 'derivatives' / 'versionB' / 'fmriprep' / subject
         for task in args.tasks:
             run_records.extend(extract_subject_task_runs(
                 subject=subject, task=task, data_cache=args.data_cache))
+        # Purge giis for this subject — extracted time-series already in records[].
+        # Keep events.tsv files (small) under the raw cache path.
+        if subj_cache.exists():
+            print(f"  cleanup: removing {subj_cache} (~20GB)", flush=True)
+            shutil.rmtree(subj_cache, ignore_errors=True)
 
     if not run_records:
         raise SystemExit(f"No runs extracted for subjects={args.subjects} tasks={args.tasks}.")
