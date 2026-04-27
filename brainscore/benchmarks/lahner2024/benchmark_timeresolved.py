@@ -352,32 +352,43 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         return X_flat, Y_flat, run_idx_per_obs
 
     def _cross_validated_ridge(self, X_flat, Y_flat, run_idx_per_obs, n_held_out: int):
-        """Leave-K-runs-out ridge per voxel; return (n_voxels,) Pearson array."""
+        """Leave-K-runs-out ridge per voxel; return (n_voxels,) Pearson array.
+
+        Voxel-batched: holding the full held_out_preds (n_obs × 20484 × 4B = 10 GB)
+        plus sklearn's internal Y copies during fit blew past 64GB. We batch the
+        voxel axis so peak memory is bounded by VOXEL_BATCH × n_obs × 4B (~1 GB).
+        """
         from sklearn.linear_model import Ridge
 
         n_runs = int(run_idx_per_obs.max() + 1)
         n_obs, n_voxels = Y_flat.shape
-        held_out_preds = np.full_like(Y_flat, np.nan)
-
-        for train_runs, test_runs in contiguous_block_cv(
-                n_samples=n_runs, block_size_samples=n_held_out):
-            train_mask = np.isin(run_idx_per_obs, train_runs)
-            test_mask  = np.isin(run_idx_per_obs, test_runs)
-            reg = Ridge(alpha=1.0).fit(X_flat[train_mask], Y_flat[train_mask])
-            held_out_preds[test_mask] = reg.predict(X_flat[test_mask])
-
-        # Per-voxel Pearson: ignore any rows that didn't get a prediction
-        # (shouldn't happen with full coverage, but guard).
         per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)
-        valid = ~np.isnan(held_out_preds[:, 0])
-        if not valid.any():
-            return per_voxel_r
-        Yt = Y_flat[valid]
-        Yp = held_out_preds[valid]
-        Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
-        Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
-        num = (Yt_c * Yp_c).sum(axis=0)
-        den = np.sqrt((Yt_c ** 2).sum(axis=0) * (Yp_c ** 2).sum(axis=0))
-        with np.errstate(divide='ignore', invalid='ignore'):
-            per_voxel_r = np.where(den > 0, num / den, np.nan).astype(np.float32)
+
+        # Precompute fold masks once.
+        fold_masks = [
+            (np.isin(run_idx_per_obs, train_runs), np.isin(run_idx_per_obs, test_runs))
+            for train_runs, test_runs in contiguous_block_cv(
+                n_samples=n_runs, block_size_samples=n_held_out)
+        ]
+
+        VOXEL_BATCH = 2000
+        for v_start in range(0, n_voxels, VOXEL_BATCH):
+            v_end = min(v_start + VOXEL_BATCH, n_voxels)
+            Y_sub = Y_flat[:, v_start:v_end]
+            held_out_preds = np.full_like(Y_sub, np.nan)
+            for train_mask, test_mask in fold_masks:
+                reg = Ridge(alpha=1.0).fit(X_flat[train_mask], Y_sub[train_mask])
+                held_out_preds[test_mask] = reg.predict(X_flat[test_mask])
+
+            valid = ~np.isnan(held_out_preds[:, 0])
+            if not valid.any():
+                continue
+            Yt = Y_sub[valid]
+            Yp = held_out_preds[valid]
+            Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
+            Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
+            num = (Yt_c * Yp_c).sum(axis=0)
+            den = np.sqrt((Yt_c ** 2).sum(axis=0) * (Yp_c ** 2).sum(axis=0))
+            with np.errstate(divide='ignore', invalid='ignore'):
+                per_voxel_r[v_start:v_end] = np.where(den > 0, num / den, np.nan)
         return per_voxel_r
