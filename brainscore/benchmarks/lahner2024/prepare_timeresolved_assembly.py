@@ -441,7 +441,12 @@ def compute_sha1(path: Path) -> str:
 
 
 def upload_to_s3(local_path: Path, bucket: str, key: str) -> str:
-    """Upload, return the new version_id."""
+    """Upload via multipart, return the new version_id.
+
+    `upload_file` auto-multiparts above 8 MB, so files >5 GB (S3 single-PUT cap)
+    work transparently. `head_object` afterwards retrieves the version_id since
+    `upload_file` does not return it.
+    """
     import boto3
     parts = bucket.split('/', 1)
     bucket_name = parts[0]
@@ -449,9 +454,9 @@ def upload_to_s3(local_path: Path, bucket: str, key: str) -> str:
     full_key = f'{key_prefix}/{key}' if key_prefix else key
 
     s3 = boto3.client('s3')
-    with open(local_path, 'rb') as f:
-        response = s3.put_object(Bucket=bucket_name, Key=full_key, Body=f)
-    return response.get('VersionId', '')
+    s3.upload_file(str(local_path), bucket_name, full_key)
+    head = s3.head_object(Bucket=bucket_name, Key=full_key)
+    return head.get('VersionId', '')
 
 
 if __name__ == '__main__':
