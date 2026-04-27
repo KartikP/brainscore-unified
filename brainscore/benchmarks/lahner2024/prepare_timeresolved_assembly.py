@@ -131,6 +131,12 @@ def main():
     parser.add_argument('--tasks', nargs='+', default=list(TASKS),
                         help="Which task names to include (default: test + train).")
     parser.add_argument('--upload-to-s3', action='store_true')
+    parser.add_argument('--checkpoint-path', type=Path,
+                        default=Path('/home/ubuntu/lahner2024_prep/run_records.pkl'),
+                        help='Pickle of run_records — saved after extraction so '
+                             'a downstream failure does not require re-downloading.')
+    parser.add_argument('--from-checkpoint', action='store_true',
+                        help='Skip extraction; load run_records from checkpoint.')
     parser.add_argument('--s3-bucket', type=str,
                         default='brainscore-storage/brainscore-vision/benchmarks/Lahner2024-fMRI')
     parser.add_argument('--s3-key-assembly', type=str,
@@ -144,17 +150,30 @@ def main():
     #    cache footprint is ~20GB (52 runs × ~380MB L+R each); without cleanup
     #    the full 10-subject run would need ~200GB free.
     import shutil
-    run_records = []
-    for subject in args.subjects:
-        subj_cache = args.data_cache / 'derivatives' / 'versionB' / 'fmriprep' / subject
-        for task in args.tasks:
-            run_records.extend(extract_subject_task_runs(
-                subject=subject, task=task, data_cache=args.data_cache))
-        # Purge giis for this subject — extracted time-series already in records[].
-        # Keep events.tsv files (small) under the raw cache path.
-        if subj_cache.exists():
-            print(f"  cleanup: removing {subj_cache} (~20GB)", flush=True)
-            shutil.rmtree(subj_cache, ignore_errors=True)
+    import pickle
+    if args.from_checkpoint and args.checkpoint_path.exists():
+        print(f"Loading run_records from checkpoint {args.checkpoint_path}", flush=True)
+        with open(args.checkpoint_path, 'rb') as f:
+            run_records = pickle.load(f)
+        print(f"  loaded {len(run_records)} runs", flush=True)
+    else:
+        run_records = []
+        for subject in args.subjects:
+            subj_cache = args.data_cache / 'derivatives' / 'versionB' / 'fmriprep' / subject
+            for task in args.tasks:
+                run_records.extend(extract_subject_task_runs(
+                    subject=subject, task=task, data_cache=args.data_cache))
+            # Purge giis for this subject — extracted time-series already in records[].
+            # Keep events.tsv files (small) under the raw cache path.
+            if subj_cache.exists():
+                print(f"  cleanup: removing {subj_cache} (~20GB)", flush=True)
+                shutil.rmtree(subj_cache, ignore_errors=True)
+        # Persist run_records so a downstream failure does not require re-downloading.
+        args.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.checkpoint_path, 'wb') as f:
+            pickle.dump(run_records, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"\nCheckpoint saved: {args.checkpoint_path} "
+              f"({args.checkpoint_path.stat().st_size/1e9:.2f} GB)", flush=True)
 
     if not run_records:
         raise SystemExit(f"No runs extracted for subjects={args.subjects} tasks={args.tasks}.")
@@ -163,7 +182,12 @@ def main():
     assembly = build_assembly(run_records)
     events_df = build_events_table(run_records)
 
-    # 3. Save locally.
+    # 3. Reset the gather_indexes-induced MultiIndexes — netCDF cannot serialize
+    #    them in xarray 2022.3.0. The brainio loader re-applies gather_indexes
+    #    on read, so this is transparent to consumers.
+    assembly = assembly.reset_index(['time_bin', 'neuroid', 'presentation'])
+
+    # 4. Save locally.
     assembly.to_netcdf(args.output_path)
     events_df.to_csv(args.events_path, index=False)
     sha1_assembly = compute_sha1(args.output_path)
@@ -173,7 +197,7 @@ def main():
     print(f"Wrote events:    {args.events_path}  ({args.events_path.stat().st_size/1e6:.1f} MB)")
     print(f"  sha1: {sha1_events}")
 
-    # 4. Upload.
+    # 5. Upload.
     if args.upload_to_s3:
         v_assembly = upload_to_s3(args.output_path, args.s3_bucket, args.s3_key_assembly)
         v_events   = upload_to_s3(args.events_path, args.s3_bucket, args.s3_key_events)
