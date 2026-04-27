@@ -189,10 +189,14 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         return self._stim_helper.stimulus_set
 
     def _sanity_check_assembly(self, assembly):
-        assert 'time_bin_start_ms' in assembly.coords
-        assert 'subject' in assembly.coords
-        assert 'run' in assembly.coords
-        assert 'n_valid_TR' in assembly.coords
+        # MultiIndex level coords are exposed via .indexes[dim].names in xarray 2022.3,
+        # not via .coords (top-level coords are just the dim coords themselves).
+        time_bin_levels = list(assembly.indexes['time_bin'].names)
+        presentation_levels = list(assembly.indexes['presentation'].names)
+        assert 'time_bin_start_ms' in time_bin_levels, time_bin_levels
+        assert 'subject' in presentation_levels, presentation_levels
+        assert 'run' in presentation_levels, presentation_levels
+        assert 'n_valid_TR' in presentation_levels, presentation_levels
         assert assembly.sizes['neuroid'] == 20484
         assert assembly.sizes['time_bin'] > 1, \
             "TR-resolved assembly must have time_bin > 1; got the GLM-beta variant by mistake?"
