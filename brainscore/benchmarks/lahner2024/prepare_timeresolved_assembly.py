@@ -249,12 +249,15 @@ def extract_subject_task_runs(
         assert ts_L.shape == ts_R.shape, f"hemi shape mismatch: {ts_L.shape} vs {ts_R.shape}"
         ts_LR = np.concatenate([ts_L, ts_R], axis=1).astype(np.float32)  # (n_TR, 20484)
 
-        # 5. Parse events.tsv, filter, derive stimulus_id from stim_file
+        # 5. Parse events.tsv, filter, derive stimulus_id from stim_file.
+        # The existing BoldMoments stimulus_set uses 'stimulus_<NNNN>' as the ID
+        # (e.g., 'stimulus_1074' for test/1074.mp4 and 'stimulus_0444' for
+        # train/0444.mp4). We derive the same format here so events join cleanly
+        # to the stimulus_set at scoring time.
         events_df = pd.read_csv(events_local, sep='\t')
         events_df = events_df[events_df['trial_type'].isin(['test', 'train'])].copy()
-        # stim_file looks like 'test/1074.mp4' or 'train/0123.mp4' → 'test_1074'
         events_df['stimulus_id'] = events_df['stim_file'].apply(
-            lambda s: f"{Path(s).parent.name}_{Path(s).stem}" if isinstance(s, str) else None)
+            lambda s: f"stimulus_{Path(s).stem}" if isinstance(s, str) else None)
         events_df = events_df[events_df['stimulus_id'].notna()].reset_index(drop=True)
 
         records.append({
