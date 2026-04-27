@@ -157,15 +157,21 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         self,
         ceiling: Optional[float] = None,
         cv_n_held_out_runs: int = 52,
+        reliability_threshold: Optional[float] = None,
         identifier_suffix: str = '-timeresolved',
     ):
         self._cv_n_held_out_runs = cv_n_held_out_runs
+        self._reliability_threshold = reliability_threshold
+        self._voxel_mask: Optional[np.ndarray] = None
         self._assembly: Optional[NeuronRecordingAssembly] = None
         self._events = None
         self._stimulus_set = None
 
         # Delegate stimulus prep to the GLM-beta variant — identical stimuli.
-        self._stim_helper = Lahner2024BOLDMoments(reliability_threshold=None)
+        # We also reuse its reliability machinery for visualROI variants
+        # (TR-resolved has no per-stim reps to compute split-half on).
+        self._stim_helper = Lahner2024BOLDMoments(
+            reliability_threshold=reliability_threshold)
 
         super().__init__(
             identifier=f'Lahner2024-fMRI-naturalistic{identifier_suffix}',
@@ -191,6 +197,20 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     @property
     def stimulus_set(self):
         return self._stim_helper.stimulus_set
+
+    @property
+    def voxel_mask(self) -> Optional[np.ndarray]:
+        """Lazy boolean mask over the 20484 fsaverage5 voxels.
+
+        Computed via the GLM-beta variant's split-half reliability (which has
+        per-stim reps); the same mask is meaningful here because both variants
+        share the identical fsaverage5 voxel space.
+        """
+        if self._reliability_threshold is None:
+            return None
+        if self._voxel_mask is None:
+            self._voxel_mask = self._stim_helper._get_voxel_mask()
+        return self._voxel_mask
 
     def _sanity_check_assembly(self, assembly):
         # MultiIndex level coords are exposed via .indexes[dim].names in xarray 2022.3,
@@ -251,7 +271,10 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             n_held_out=self._cv_n_held_out_runs,
         )
 
-        # 5. Aggregate.
+        # 5. Aggregate. Apply voxel mask first if visualROI variant.
+        mask = self.voxel_mask
+        if mask is not None:
+            per_voxel_r = per_voxel_r[mask]
         per_voxel_r_finite = per_voxel_r[~np.isnan(per_voxel_r)]
         median_r = float(np.median(per_voxel_r_finite))
         mean_r = float(np.mean(per_voxel_r_finite))
@@ -402,3 +425,16 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             with np.errstate(divide='ignore', invalid='ignore'):
                 per_voxel_r[v_start:v_end] = np.where(den > 0, num / den, np.nan)
         return per_voxel_r
+
+
+def Lahner2024BOLDMoments_timeresolved_visualROI():
+    """ROI variant: only voxels with split-half reliability >= 0.3.
+
+    Mirrors the GLM-beta `-visualROI` variant. Reliability is computed on the
+    GLM-beta assembly (which has 10 reps/stim) and applied to the TR-resolved
+    encoding result; both share the identical fsaverage5 voxel space.
+    """
+    return Lahner2024BOLDMoments_timeresolved(
+        reliability_threshold=0.3,
+        identifier_suffix='-timeresolved-visualROI',
+    )

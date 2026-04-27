@@ -27,10 +27,13 @@ DEFAULT_MODELS = [
     'vjepa1-vitl',
     'vjepa2-vitl',
 ]
-DEFAULT_VARIANTS = ['naturalistic', 'timeresolved']    # GLM-beta vs TR-resolved
+DEFAULT_VARIANTS = ['naturalistic', 'naturalistic-visualROI',
+                    'timeresolved', 'timeresolved-visualROI']
 VARIANT_BENCHMARK = {
-    'naturalistic': 'Lahner2024-fMRI-naturalistic',
-    'timeresolved': 'Lahner2024-fMRI-naturalistic-timeresolved',
+    'naturalistic':            'Lahner2024-fMRI-naturalistic',
+    'naturalistic-visualROI':  'Lahner2024-fMRI-naturalistic-visualROI',
+    'timeresolved':            'Lahner2024-fMRI-naturalistic-timeresolved',
+    'timeresolved-visualROI':  'Lahner2024-fMRI-naturalistic-timeresolved-visualROI',
 }
 
 
