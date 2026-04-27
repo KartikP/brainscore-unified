@@ -250,14 +250,22 @@ def extract_subject_task_runs(
         ts_LR = np.concatenate([ts_L, ts_R], axis=1).astype(np.float32)  # (n_TR, 20484)
 
         # 5. Parse events.tsv, filter, derive stimulus_id from stim_file.
-        # The existing BoldMoments stimulus_set uses 'stimulus_<NNNN>' as the ID
-        # (e.g., 'stimulus_1074' for test/1074.mp4 and 'stimulus_0444' for
-        # train/0444.mp4). We derive the same format here so events join cleanly
-        # to the stimulus_set at scoring time.
+        # The existing BoldMoments stimulus_set uses 'stimulus_<N>' as the ID
+        # — N is the integer file number with NO leading zeros (so train/0444.mp4
+        # → 'stimulus_444' and test/1074.mp4 → 'stimulus_1074'). We strip leading
+        # zeros via int() so events join cleanly to the stimulus_set.
         events_df = pd.read_csv(events_local, sep='\t')
         events_df = events_df[events_df['trial_type'].isin(['test', 'train'])].copy()
-        events_df['stimulus_id'] = events_df['stim_file'].apply(
-            lambda s: f"stimulus_{Path(s).stem}" if isinstance(s, str) else None)
+
+        def _stim_id_from_path(s):
+            if not isinstance(s, str):
+                return None
+            try:
+                return f"stimulus_{int(Path(s).stem)}"
+            except ValueError:
+                return None
+
+        events_df['stimulus_id'] = events_df['stim_file'].apply(_stim_id_from_path)
         events_df = events_df[events_df['stimulus_id'].notna()].reset_index(drop=True)
 
         records.append({
