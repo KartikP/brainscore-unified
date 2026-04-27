@@ -195,28 +195,125 @@ def extract_subject_task_runs(
         'time_series':  np.ndarray (n_TR, 20484) on fsaverage5
         'events':       pd.DataFrame from events.tsv (filtered to non-oddball trials)
         'n_TR':         int — len(time_series)
-
-    TODO on EC2:
-        1. List S3 keys for this (subject, task) under both raw BIDS (events.tsv)
-           and fmriprep derivatives (giis).
-           - raw events:  s3://openneuro.org/ds005165/<sub>/ses-*/func/<sub>_ses-*_task-{task}_run-*_events.tsv
-           - fmriprep:    s3://openneuro.org/ds005165/derivatives/versionB/fmriprep/<sub>/ses-*/func/
-                              <sub>_ses-*_task-{task}_run-*_hemi-{L,R}_space-fsaverage_bold.func.gii
-        2. For each run number found, download L + R giis + events.tsv to data_cache.
-        3. Load each gii via nibabel.load(...).agg_data() → (n_TR, n_vertices_hemi_full)
-        4. Downsample fsaverage → fsaverage5 via:
-              from nilearn import surface
-              # Use neuromaps or freesurfer mri_surf2surf — TBD which is fastest
-           Final per-hemi shape: (n_TR, 10242)
-        5. Concatenate L + R along vertex axis: (n_TR, 20484)
-        6. Read events.tsv via pd.read_csv(sep='\\t')
-        7. Filter to trial_type='test' or 'train' (drop oddballs)
-        8. Add stimulus_id column derived from stim_file ('test/1074.mp4' → 'test_1074')
-        9. Return one dict per run.
     """
-    raise NotImplementedError(
-        f"TODO on EC2 for ({subject}, {task}). See docstring for step-by-step."
+    import subprocess
+
+    data_cache.mkdir(parents=True, exist_ok=True)
+
+    # 1. List sessions for this subject under fmriprep derivatives
+    fmriprep_root = f'{OPENNEURO_BASE}/{FMRIPREP_PREFIX}/{subject}'
+    cp = subprocess.run(
+        ['aws', 's3', 'ls', '--no-sign-request', '--recursive', f'{fmriprep_root}/'],
+        capture_output=True, text=True, check=True,
     )
+    # Filter to L-hemi gii files for this task (each run has paired L+R)
+    pattern_L = f'_task-{task}_run-'
+    pattern_L_suffix = '_hemi-L_space-fsaverage_bold.func.gii'
+    run_keys_L = []
+    for line in cp.stdout.splitlines():
+        path = line.strip().split()[-1]
+        if pattern_L in path and pattern_L_suffix in path:
+            run_keys_L.append(path)
+    print(f"  ({subject}, {task}): found {len(run_keys_L)} runs", flush=True)
+
+    records = []
+    for L_key in sorted(run_keys_L):
+        # Parse out (session, run) from the key path
+        # ds005165/derivatives/versionB/fmriprep/sub-01/ses-02/func/sub-01_ses-02_task-test_run-1_hemi-L_space-fsaverage_bold.func.gii
+        basename = Path(L_key).name
+        parts = basename.split('_')
+        session = next(p for p in parts if p.startswith('ses-'))
+        run = next(p for p in parts if p.startswith('run-'))
+        R_key = L_key.replace('_hemi-L_', '_hemi-R_')
+
+        # 2. Find the matching raw events.tsv — under raw BIDS (NOT derivatives)
+        events_key = (f'ds005165/{subject}/{session}/func/'
+                      f'{subject}_{session}_task-{task}_{run}_events.tsv')
+
+        # 3. Download all three (cached locally).
+        L_local = _s3_download(L_key, data_cache)
+        R_local = _s3_download(R_key, data_cache)
+        events_local = _s3_download(events_key, data_cache)
+
+        # 4. Load gii → (n_TR, n_vertices_full_fsaverage), downsample to fsaverage5
+        ts_L = _load_gii_and_downsample(L_local)   # (n_TR, 10242)
+        ts_R = _load_gii_and_downsample(R_local)
+        assert ts_L.shape == ts_R.shape, f"hemi shape mismatch: {ts_L.shape} vs {ts_R.shape}"
+        ts_LR = np.concatenate([ts_L, ts_R], axis=1).astype(np.float32)  # (n_TR, 20484)
+
+        # 5. Parse events.tsv, filter, derive stimulus_id from stim_file
+        events_df = pd.read_csv(events_local, sep='\t')
+        events_df = events_df[events_df['trial_type'].isin(['test', 'train'])].copy()
+        # stim_file looks like 'test/1074.mp4' or 'train/0123.mp4' → 'test_1074'
+        events_df['stimulus_id'] = events_df['stim_file'].apply(
+            lambda s: f"{Path(s).parent.name}_{Path(s).stem}" if isinstance(s, str) else None)
+        events_df = events_df[events_df['stimulus_id'].notna()].reset_index(drop=True)
+
+        records.append({
+            'subject':     subject,
+            'session':     session,
+            'run':         run,
+            'task':        task,
+            'time_series': ts_LR,
+            'events':      events_df,
+            'n_TR':        ts_LR.shape[0],
+        })
+        print(f"    {subject}/{session}/{task}/{run}: "
+              f"{ts_LR.shape[0]} TRs, {len(events_df)} non-oddball trials", flush=True)
+
+    return records
+
+
+def _s3_download(s3_key: str, cache_dir: Path) -> Path:
+    """Cached download from openneuro.org S3. Returns local path."""
+    import subprocess
+    # s3_key may be path-like (no scheme) — strip leading "ds005165/" if present
+    if s3_key.startswith('ds005165/'):
+        relative = s3_key[len('ds005165/'):]
+    else:
+        relative = s3_key
+    local_path = cache_dir / relative
+    if local_path.exists():
+        return local_path
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ['aws', 's3', 'cp', '--no-sign-request',
+         f's3://openneuro.org/ds005165/{relative}', str(local_path), '--quiet'],
+        check=True,
+    )
+    return local_path
+
+
+def _load_gii_and_downsample(gii_path: Path) -> np.ndarray:
+    """Load a fsaverage gifti time-series and downsample to fsaverage5.
+
+    Convention: fsaverage5 vertices are a hierarchical icosahedral subdivision
+    of fsaverage7 (full fsaverage). Specifically, fsaverage5's 10242 vertices
+    correspond to the first 10242 vertices of fsaverage(7)'s 163842 — the
+    earlier vertices in the sequence are the lower-resolution mesh.
+
+    This is a property of FreeSurfer's recursive icosahedral mesh construction.
+    Verified against neuromaps internally before adopting.
+
+    Returns: (n_TR, 10242) — n_TR same as the source gii.
+    """
+    import nibabel as nib
+    img = nib.load(str(gii_path))
+    # gifti agg_data() for time-series surfaces returns a tuple of arrays per
+    # darray — one per TR, each of shape (n_vertices_full,). Stack to
+    # (n_TR, n_vertices_full).
+    data_per_tr = img.agg_data()
+    if isinstance(data_per_tr, tuple):
+        # multiple darrays — one per TR
+        ts_full = np.stack(data_per_tr, axis=0)
+    else:
+        # single 2-D darray
+        ts_full = np.asarray(data_per_tr)
+        if ts_full.shape[0] > ts_full.shape[1]:
+            # Heuristic: more rows than cols → likely (n_vertices, n_TR); transpose.
+            ts_full = ts_full.T
+    # Downsample to fsaverage5 — first 10242 vertices.
+    return ts_full[:, :N_VERTICES_PER_HEMI]
 
 
 # ── Building the assembly ─────────────────────────────────────────────

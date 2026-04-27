@@ -120,17 +120,23 @@ def load_timeresolved_events():
     Columns: subject, session, run, task, trial_idx, stimulus_id,
              onset_sec, duration_sec, trial_type.
     """
+    import io
+    import boto3
+    import pandas as pd
+
     if TIMERESOLVED_EVENTS_VERSION_ID is None or TIMERESOLVED_EVENTS_SHA1 is None:
         raise RuntimeError(
-            "Lahner2024 TR-resolved events sidecar is not yet hosted on S3."
+            "Lahner2024 TR-resolved events sidecar is not yet hosted on S3. "
+            "Same handoff as load_timeresolved_assembly."
         )
-    # TODO on EC2-side prep: implement loader. For now, the same load_assembly_from_s3
-    # plumbing won't quite work since this is a CSV not an xarray .nc. Use boto3
-    # directly OR add a load_csv_from_s3 helper to brainio.
-    raise NotImplementedError(
-        "TODO: implement S3 CSV loader. Either use boto3.s3.get_object directly, "
-        "or add load_csv_from_s3 to brainscore_core.supported_data_standards.brainio.s3."
-    )
+    parts = STIMULUS_BUCKET.split('/', 1)
+    bucket = parts[0]
+    key = (f'{parts[1]}/Lahner2024-fMRI-timeresolved-events.csv'
+           if len(parts) > 1 else 'Lahner2024-fMRI-timeresolved-events.csv')
+    s3 = boto3.client('s3')
+    obj = s3.get_object(Bucket=bucket, Key=key, VersionId=TIMERESOLVED_EVENTS_VERSION_ID)
+    body = obj['Body'].read()
+    return pd.read_csv(io.BytesIO(body))
 
 
 # ── Benchmark class ───────────────────────────────────────────────────
@@ -257,18 +263,43 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     def _extract_per_stimulus_features(self, candidate):
         """One forward pass per unique stimulus → (n_stimuli, n_features).
 
-        TODO:
-            - Build a unique-stimulus set from events (1102 unique videos).
-            - Dispatch on candidate.supported_modalities:
-                * 'video' in supported  → use _videos_stimulus_set, call process,
-                  mean-pool over time_bin axis to get per-stimulus features
-                * else                  → use _expand_videos + per-frame extraction +
-                  temporal_bin to single bin = mean over frames
-            - Return (features (n_stimuli, n_features), stimulus_ids list)
+        Builds a unique-stimulus set from events (≤1102 unique videos), then
+        dispatches based on candidate's modality support:
+        - video-native: use _videos_stimulus_set, mean-pool over time_bin axis
+        - frame-aggregation: use _expand_videos + temporal_bin to one bin
+        Returns (features array (n_stimuli, n_features), stimulus_ids list).
         """
-        raise NotImplementedError(
-            "TODO: extract per-stimulus features once. See docstring."
-        )
+        from .benchmark import VIDEO_DURATION_MS
+        from brainscore_core.temporal import temporal_bin
+
+        # Unique stimulus_ids in events that ALSO appear in our stimulus_set
+        unique_event_ids = set(self.events['stimulus_id'].unique().tolist())
+        full_stim = self._stim_helper.stimulus_set
+        stim_set_ids = set(full_stim['stimulus_id'].astype(str).tolist())
+        unique_ids = sorted(unique_event_ids & stim_set_ids)
+
+        if 'video' in getattr(candidate, 'supported_modalities', set()):
+            video_stim = self._stim_helper._videos_stimulus_set()
+            # Restrict to the unique_ids we need
+            video_stim = video_stim[video_stim['stimulus_id'].isin(unique_ids)]
+            result = candidate.process(video_stim)
+            data = result.values
+            if data.ndim == 3:    # (presentation, time_bin, neuroid) → mean over time
+                features = data.mean(axis=1)
+            else:                  # (presentation, neuroid)
+                features = data
+            stimulus_ids = list(
+                result.indexes['presentation'].get_level_values('stimulus_id'))
+        else:
+            frame_stim = self._stim_helper._expand_videos()
+            frame_stim = frame_stim[frame_stim['clip_id'].isin(unique_ids)]
+            per_frame = candidate.process(frame_stim)
+            per_video = temporal_bin(per_frame, time_bins=[(0, VIDEO_DURATION_MS)])
+            features = per_video.values[:, 0, :]
+            stimulus_ids = list(
+                per_video.indexes['presentation'].get_level_values('clip_id'))
+
+        return features, stimulus_ids
 
     def _events_for_run(self, subject, session, run):
         """Filter the events DataFrame to one (subject, session, run)."""
@@ -279,27 +310,53 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         return ev[mask]
 
     def _concatenate_with_mask(self, feature_ts_convolved, assembly):
-        """Flatten (run, TR) → (n_obs,) for valid TRs only.
+        """Flatten (run, TR, ...) into long (n_obs, ...) tables, masking padding.
 
-        TODO:
-            - For each presentation idx, take feature_ts_convolved[idx, :n_valid_TR, :]
-              and assembly[:n_valid_TR, :, idx].T  → (n_valid_TR, n_voxels)
-            - Stack across runs into X_flat (n_obs, n_features) and Y_flat (n_obs, n_voxels)
-            - Track run_idx_per_obs for CV.
+        For each presentation idx, take only the first n_valid_TR rows;
+        stack across runs.
         """
-        raise NotImplementedError("TODO: flatten + mask. See docstring.")
+        n_valid = assembly['n_valid_TR'].values.astype(int)   # (n_runs,)
+        # assembly dims: (time_bin, neuroid, presentation). Reorder to
+        # (presentation, time_bin, neuroid) for slicing.
+        bold = assembly.transpose('presentation', 'time_bin', 'neuroid').values
 
-    def _cross_validated_ridge(self, X_flat, Y_flat, run_idx_per_obs,
-                               n_held_out: int):
-        """Leave-K-runs-out ridge per voxel; return (n_voxels,) Pearson array.
+        X_chunks, Y_chunks, run_chunks = [], [], []
+        for run_idx, n_TR in enumerate(n_valid):
+            X_chunks.append(feature_ts_convolved[run_idx, :n_TR, :])
+            Y_chunks.append(bold[run_idx, :n_TR, :])
+            run_chunks.append(np.full(n_TR, run_idx, dtype=np.int32))
+        X_flat = np.concatenate(X_chunks, axis=0).astype(np.float32)
+        Y_flat = np.concatenate(Y_chunks, axis=0).astype(np.float32)
+        run_idx_per_obs = np.concatenate(run_chunks, axis=0)
+        return X_flat, Y_flat, run_idx_per_obs
 
-        TODO:
-            - Use contiguous_block_cv at the RUN level (not the obs level).
-              Iterate held-out RUN indices; build train/test masks via run_idx_per_obs.
-            - For each fold:
-                X_train, X_test, Y_train, Y_test
-                Ridge(alpha=1.0).fit(X_train, Y_train).predict(X_test) → fold_preds
-                Accumulate per-voxel held-out predictions
-            - After all folds: per-voxel Pearson(Y_flat, accumulated_preds).
-        """
-        raise NotImplementedError("TODO: leave-K-runs-out ridge per voxel. See docstring.")
+    def _cross_validated_ridge(self, X_flat, Y_flat, run_idx_per_obs, n_held_out: int):
+        """Leave-K-runs-out ridge per voxel; return (n_voxels,) Pearson array."""
+        from sklearn.linear_model import Ridge
+
+        n_runs = int(run_idx_per_obs.max() + 1)
+        n_obs, n_voxels = Y_flat.shape
+        held_out_preds = np.full_like(Y_flat, np.nan)
+
+        for train_runs, test_runs in contiguous_block_cv(
+                n_samples=n_runs, block_size_samples=n_held_out):
+            train_mask = np.isin(run_idx_per_obs, train_runs)
+            test_mask  = np.isin(run_idx_per_obs, test_runs)
+            reg = Ridge(alpha=1.0).fit(X_flat[train_mask], Y_flat[train_mask])
+            held_out_preds[test_mask] = reg.predict(X_flat[test_mask])
+
+        # Per-voxel Pearson: ignore any rows that didn't get a prediction
+        # (shouldn't happen with full coverage, but guard).
+        per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)
+        valid = ~np.isnan(held_out_preds[:, 0])
+        if not valid.any():
+            return per_voxel_r
+        Yt = Y_flat[valid]
+        Yp = held_out_preds[valid]
+        Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
+        Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
+        num = (Yt_c * Yp_c).sum(axis=0)
+        den = np.sqrt((Yt_c ** 2).sum(axis=0) * (Yp_c ** 2).sum(axis=0))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            per_voxel_r = np.where(den > 0, num / den, np.nan).astype(np.float32)
+        return per_voxel_r
