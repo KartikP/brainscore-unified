@@ -140,7 +140,7 @@ def main():
     parser.add_argument('--s3-bucket', type=str,
                         default='brainscore-storage/brainscore-vision/benchmarks/Lahner2024-fMRI')
     parser.add_argument('--s3-key-assembly', type=str,
-                        default='Lahner2024-fMRI-timeresolved.nc')
+                        default='assy_Lahner2024-fMRI-timeresolved.nc')
     parser.add_argument('--s3-key-events', type=str,
                         default='Lahner2024-fMRI-timeresolved-events.csv')
     args = parser.parse_args()
