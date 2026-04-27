@@ -94,7 +94,7 @@ CLIP_DURATION_SEC = 3.0
 
 # ── Loader ────────────────────────────────────────────────────────────
 
-def load_timeresolved_assembly(merge_stimulus_set_meta: bool = True) -> NeuronRecordingAssembly:
+def load_timeresolved_assembly(merge_stimulus_set_meta: bool = False) -> NeuronRecordingAssembly:
     if TIMERESOLVED_ASSEMBLY_VERSION_ID is None or TIMERESOLVED_ASSEMBLY_SHA1 is None:
         raise RuntimeError(
             "Lahner2024 TR-resolved assembly is not yet hosted on S3. "
