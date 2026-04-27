@@ -333,8 +333,13 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     def _concatenate_with_mask(self, feature_ts_convolved, assembly):
         """Flatten (run, TR, ...) into long (n_obs, ...) tables, masking padding.
 
-        For each presentation idx, take only the first n_valid_TR rows;
-        stack across runs.
+        Per-run-per-voxel z-score the BOLD signal. Raw fmriprep gii outputs
+        carry scanner intensity (~5000–10000) with subject-specific means;
+        feeding those directly into ridge causes cross-fold leakage where
+        the leave-one-subject-out intercept anti-correlates with the held
+        subject's mean — yielding strong spurious negative pearson r.
+        Z-scoring each run-voxel removes that DC component (standard fMRI
+        encoding convention; matches Conwell 2023 / Khosla 2022 et al.).
         """
         n_valid = assembly['n_valid_TR'].values.astype(int)   # (n_runs,)
         # assembly dims: (time_bin, neuroid, presentation). Reorder to
@@ -344,7 +349,12 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         X_chunks, Y_chunks, run_chunks = [], [], []
         for run_idx, n_TR in enumerate(n_valid):
             X_chunks.append(feature_ts_convolved[run_idx, :n_TR, :])
-            Y_chunks.append(bold[run_idx, :n_TR, :])
+            Y_run = bold[run_idx, :n_TR, :].astype(np.float32)
+            mu = np.nanmean(Y_run, axis=0, keepdims=True)
+            sd = np.nanstd(Y_run, axis=0, keepdims=True)
+            with np.errstate(invalid='ignore', divide='ignore'):
+                Y_run = np.where(sd > 0, (Y_run - mu) / sd, 0.0)
+            Y_chunks.append(Y_run)
             run_chunks.append(np.full(n_TR, run_idx, dtype=np.int32))
         X_flat = np.concatenate(X_chunks, axis=0).astype(np.float32)
         Y_flat = np.concatenate(Y_chunks, axis=0).astype(np.float32)
