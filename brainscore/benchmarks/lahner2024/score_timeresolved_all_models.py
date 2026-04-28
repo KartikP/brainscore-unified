@@ -28,12 +28,15 @@ DEFAULT_MODELS = [
     'vjepa2-vitl',
 ]
 DEFAULT_VARIANTS = ['naturalistic', 'naturalistic-visualROI',
-                    'timeresolved', 'timeresolved-visualROI']
+                    'timeresolved', 'timeresolved-visualROI',
+                    'timeresolved-improved', 'timeresolved-improved-visualROI']
 VARIANT_BENCHMARK = {
-    'naturalistic':            'Lahner2024-fMRI-naturalistic',
-    'naturalistic-visualROI':  'Lahner2024-fMRI-naturalistic-visualROI',
-    'timeresolved':            'Lahner2024-fMRI-naturalistic-timeresolved',
-    'timeresolved-visualROI':  'Lahner2024-fMRI-naturalistic-timeresolved-visualROI',
+    'naturalistic':                       'Lahner2024-fMRI-naturalistic',
+    'naturalistic-visualROI':             'Lahner2024-fMRI-naturalistic-visualROI',
+    'timeresolved':                       'Lahner2024-fMRI-naturalistic-timeresolved',
+    'timeresolved-visualROI':             'Lahner2024-fMRI-naturalistic-timeresolved-visualROI',
+    'timeresolved-improved':              'Lahner2024-fMRI-naturalistic-timeresolved-improved',
+    'timeresolved-improved-visualROI':    'Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI',
 }
 
 

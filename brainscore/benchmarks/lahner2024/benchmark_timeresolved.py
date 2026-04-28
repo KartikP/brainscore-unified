@@ -86,6 +86,18 @@ TIMERESOLVED_ASSEMBLY_SHA1: Optional[str]       = '4d06589dde6dddf273a489a64da13
 TIMERESOLVED_EVENTS_VERSION_ID: Optional[str]   = 'MYar7u8KE_D.i4MXZ83GurH1EDECZ.jo'
 TIMERESOLVED_EVENTS_SHA1: Optional[str]         = '783c5b33a75f121812a49b8b0a7639b9ed07c6a3'
 
+# Motion-confound sidecar — fmriprep nuisance regressors per (subject, run, TR).
+# Filled by prepare_motion_sidecar.py + paste step. Used by the `-improved`
+# variants for per-run motion regression before z-score + ridge.
+TIMERESOLVED_MOTION_VERSION_ID: Optional[str]   = None
+TIMERESOLVED_MOTION_SHA1: Optional[str]         = None
+MOTION_COLUMNS = [
+    'trans_x', 'trans_y', 'trans_z',
+    'rot_x',   'rot_y',   'rot_z',
+    'framewise_displacement',
+    'csf', 'white_matter',
+]
+
 # Confirmed scanner / paradigm parameters (from EC2 recon, ds005165 v1.0.4)
 TR_SEC = 1.75
 SOA_SEC = 4.0
@@ -116,6 +128,30 @@ def load_timeresolved_assembly(merge_stimulus_set_meta: bool = False) -> NeuronR
         stimulus_set_loader=load_stimulus_set,
         merge_stimulus_set_meta=merge_stimulus_set_meta,
     )
+
+
+def load_timeresolved_motion():
+    """Load the motion-confound sidecar CSV.
+
+    Long-format: one row per (subject, session, task, run, tr_idx) with
+    columns matching MOTION_COLUMNS. Used by the `-improved` variants for
+    per-run motion regression of BOLD before z-score + ridge.
+    """
+    import io
+    import boto3
+    import pandas as pd
+
+    if TIMERESOLVED_MOTION_VERSION_ID is None or TIMERESOLVED_MOTION_SHA1 is None:
+        raise RuntimeError(
+            "Lahner2024 TR-resolved motion sidecar is not yet hosted on S3. "
+            "Run prepare_motion_sidecar.py + paste version_id/sha1.")
+    parts = STIMULUS_BUCKET.split('/', 1)
+    bucket = parts[0]
+    key = (f'{parts[1]}/Lahner2024-fMRI-timeresolved-motion.csv'
+           if len(parts) > 1 else 'Lahner2024-fMRI-timeresolved-motion.csv')
+    s3 = boto3.client('s3')
+    obj = s3.get_object(Bucket=bucket, Key=key, VersionId=TIMERESOLVED_MOTION_VERSION_ID)
+    return pd.read_csv(io.BytesIO(obj['Body'].read()))
 
 
 def load_timeresolved_events():
@@ -159,12 +195,21 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         cv_n_held_out_runs: int = 52,
         reliability_threshold: Optional[float] = None,
         identifier_suffix: str = '-timeresolved',
+        apply_motion_regression: bool = False,
+        cv_mode: str = 'subject_out',           # 'subject_out' | 'within_subject'
+        within_subject_n_held_out: int = 10,    # block size when cv_mode='within_subject'
     ):
+        if cv_mode not in ('subject_out', 'within_subject'):
+            raise ValueError(f"cv_mode must be 'subject_out' or 'within_subject', got {cv_mode!r}")
         self._cv_n_held_out_runs = cv_n_held_out_runs
         self._reliability_threshold = reliability_threshold
+        self._apply_motion_regression = apply_motion_regression
+        self._cv_mode = cv_mode
+        self._within_subject_n_held_out = within_subject_n_held_out
         self._voxel_mask: Optional[np.ndarray] = None
         self._assembly: Optional[NeuronRecordingAssembly] = None
         self._events = None
+        self._motion = None
         self._stimulus_set = None
 
         # Delegate stimulus prep to the GLM-beta variant — identical stimuli.
@@ -193,6 +238,15 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         if self._events is None:
             self._events = load_timeresolved_events()
         return self._events
+
+    @property
+    def motion(self):
+        """Lazy-load motion sidecar; returns None if motion regression is off."""
+        if not self._apply_motion_regression:
+            return None
+        if self._motion is None:
+            self._motion = load_timeresolved_motion()
+        return self._motion
 
     @property
     def stimulus_set(self):
@@ -261,15 +315,26 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 feature_ts[run_idx], sampling_rate_hz=1.0/TR_SEC, hrf=hrf_kernel)
 
         # 3. Concatenate (run, TR) → flat (n_obs, n_features); same for BOLD.
-        #    Mask padded entries via n_valid_TR.
-        X_flat, Y_flat, run_idx_per_obs = self._concatenate_with_mask(
+        #    Optionally regress motion confounds out of BOLD per-run before
+        #    z-score. Track subject per-obs so within_subject CV can split
+        #    runs within each subject independently.
+        X_flat, Y_flat, run_idx_per_obs, subject_per_obs = self._concatenate_with_mask(
             feature_ts_convolved, assembly)
 
-        # 4. Per-voxel ridge regression with leave-one-run-out CV.
-        per_voxel_r = self._cross_validated_ridge(
-            X_flat, Y_flat, run_idx_per_obs,
-            n_held_out=self._cv_n_held_out_runs,
-        )
+        # 4. Per-voxel ridge regression. Two CV modes:
+        #    - 'subject_out' (default): leave-1-subject-out global CV (10 folds).
+        #    - 'within_subject': per-subject leave-K-runs-out, average per-voxel
+        #      r across subjects (closer to standard encoding-lit practice).
+        if self._cv_mode == 'within_subject':
+            per_voxel_r = self._cross_validated_ridge_within_subject(
+                X_flat, Y_flat, run_idx_per_obs, subject_per_obs,
+                n_held_out_per_subject=self._within_subject_n_held_out,
+            )
+        else:
+            per_voxel_r = self._cross_validated_ridge(
+                X_flat, Y_flat, run_idx_per_obs,
+                n_held_out=self._cv_n_held_out_runs,
+            )
 
         # 5. Aggregate. Apply voxel mask first if visualROI variant.
         mask = self.voxel_mask
@@ -285,7 +350,11 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
         score.attrs['n_runs'] = n_runs
         score.attrs['n_observations'] = int(len(Y_flat))
-        score.attrs['cv_n_held_out_runs'] = self._cv_n_held_out_runs
+        score.attrs['cv_mode'] = self._cv_mode
+        score.attrs['cv_n_held_out_runs'] = (self._within_subject_n_held_out
+                                              if self._cv_mode == 'within_subject'
+                                              else self._cv_n_held_out_runs)
+        score.attrs['motion_regressed'] = bool(self._apply_motion_regression)
         score.attrs['pipeline'] = 'continuous_time_encoding'
         return score
 
@@ -356,33 +425,75 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     def _concatenate_with_mask(self, feature_ts_convolved, assembly):
         """Flatten (run, TR, ...) into long (n_obs, ...) tables, masking padding.
 
-        Per-run-per-voxel z-score the BOLD signal. Raw fmriprep gii outputs
-        carry scanner intensity (~5000–10000) with subject-specific means;
-        feeding those directly into ridge causes cross-fold leakage where
-        the leave-one-subject-out intercept anti-correlates with the held
-        subject's mean — yielding strong spurious negative pearson r.
-        Z-scoring each run-voxel removes that DC component (standard fMRI
-        encoding convention; matches Conwell 2023 / Khosla 2022 et al.).
-        """
-        n_valid = assembly['n_valid_TR'].values.astype(int)   # (n_runs,)
-        # assembly dims: (time_bin, neuroid, presentation). Reorder to
-        # (presentation, time_bin, neuroid) for slicing.
-        bold = assembly.transpose('presentation', 'time_bin', 'neuroid').values
+        Pipeline per run:
+          1. Slice to n_valid_TR (drop padding).
+          2. (Optional) regress motion confounds out of BOLD per voxel — OLS
+             of BOLD on [trans_x..rot_z, FD, csf, white_matter] + intercept,
+             keep residuals. Standard fMRI denoising step (Power 2014, Ciric
+             2017). Adds noise-cleaning before z-score.
+          3. Per-voxel z-score the residual BOLD. Removes subject-specific DC
+             that would otherwise leak into the ridge intercept across folds.
 
-        X_chunks, Y_chunks, run_chunks = [], [], []
+        Returns:
+            X_flat: (n_obs, n_features)
+            Y_flat: (n_obs, n_voxels)
+            run_idx_per_obs: (n_obs,) int — index into assembly's presentation
+                axis. Two presentations may differ in subject; same run_idx ⇒
+                same run.
+            subject_per_obs: (n_obs,) object — subject string per observation.
+                Threaded through so within-subject CV can split runs WITHIN
+                each subject independently.
+        """
+        n_valid = assembly['n_valid_TR'].values.astype(int)
+        bold = assembly.transpose('presentation', 'time_bin', 'neuroid').values
+        subjects_per_run = assembly['subject'].values
+        sessions_per_run = assembly['session'].values
+        runs_per_run     = assembly['run'].values
+        tasks_per_run    = assembly['task'].values
+
+        # Pre-index motion sidecar by (subject, session, task, run) for O(1) lookup.
+        motion_df = self.motion
+        motion_lookup = None
+        if motion_df is not None:
+            motion_lookup = {
+                (s, ses, t, r): g[MOTION_COLUMNS].values.astype(np.float32)
+                for (s, ses, t, r), g in motion_df.groupby(
+                    ['subject', 'session', 'task', 'run'], sort=False)
+            }
+
+        X_chunks, Y_chunks, run_chunks, subj_chunks = [], [], [], []
         for run_idx, n_TR in enumerate(n_valid):
             X_chunks.append(feature_ts_convolved[run_idx, :n_TR, :])
             Y_run = bold[run_idx, :n_TR, :].astype(np.float32)
+
+            if motion_lookup is not None:
+                key = (str(subjects_per_run[run_idx]),
+                       str(sessions_per_run[run_idx]),
+                       str(tasks_per_run[run_idx]),
+                       str(runs_per_run[run_idx]))
+                M = motion_lookup.get(key)
+                if M is not None and len(M) >= n_TR:
+                    M = M[:n_TR]
+                    # OLS with intercept: residuals of Y on [1, M].
+                    M_design = np.concatenate([np.ones((n_TR, 1), dtype=np.float32), M],
+                                              axis=1)
+                    # solve M_design @ B = Y → B (n_motion+1, n_voxels)
+                    B, *_ = np.linalg.lstsq(M_design, np.nan_to_num(Y_run), rcond=None)
+                    Y_run = Y_run - M_design @ B
+
             mu = np.nanmean(Y_run, axis=0, keepdims=True)
             sd = np.nanstd(Y_run, axis=0, keepdims=True)
             with np.errstate(invalid='ignore', divide='ignore'):
                 Y_run = np.where(sd > 0, (Y_run - mu) / sd, 0.0)
             Y_chunks.append(Y_run)
             run_chunks.append(np.full(n_TR, run_idx, dtype=np.int32))
+            subj_chunks.append(np.full(n_TR, str(subjects_per_run[run_idx]), dtype=object))
+
         X_flat = np.concatenate(X_chunks, axis=0).astype(np.float32)
         Y_flat = np.concatenate(Y_chunks, axis=0).astype(np.float32)
         run_idx_per_obs = np.concatenate(run_chunks, axis=0)
-        return X_flat, Y_flat, run_idx_per_obs
+        subject_per_obs = np.concatenate(subj_chunks, axis=0)
+        return X_flat, Y_flat, run_idx_per_obs, subject_per_obs
 
     def _cross_validated_ridge(self, X_flat, Y_flat, run_idx_per_obs, n_held_out: int):
         """Leave-K-runs-out ridge per voxel; return (n_voxels,) Pearson array.
@@ -426,6 +537,68 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 per_voxel_r[v_start:v_end] = np.where(den > 0, num / den, np.nan)
         return per_voxel_r
 
+    def _cross_validated_ridge_within_subject(self, X_flat, Y_flat,
+                                              run_idx_per_obs, subject_per_obs,
+                                              n_held_out_per_subject: int):
+        """Per-subject leave-K-runs-out ridge; average per-voxel r across subjects.
+
+        For each subject independently: do leave-K-runs-out CV across that
+        subject's runs only (block_size_samples=n_held_out_per_subject), fit
+        ridge on subject-internal train, predict subject-internal held-out.
+        Compute per-voxel pearson r on held-out predictions stitched across
+        the subject's CV folds. Final per-voxel r = mean across subjects
+        (NaN-aware).
+
+        This matches standard fMRI encoding practice (Conwell, Allen, NSD)
+        where train/test splits are within-subject, and avoids the cross-
+        subject mean-leakage that plagues subject_out CV.
+        """
+        from sklearn.linear_model import Ridge
+
+        n_obs, n_voxels = Y_flat.shape
+        unique_subjects = np.unique(subject_per_obs)
+        per_subject_r = np.full((len(unique_subjects), n_voxels), np.nan,
+                                dtype=np.float32)
+
+        VOXEL_BATCH = 2000
+        for s_idx, subj in enumerate(unique_subjects):
+            sub_obs = (subject_per_obs == subj)
+            X_sub = X_flat[sub_obs]
+            Y_sub_full = Y_flat[sub_obs]
+            run_sub = run_idx_per_obs[sub_obs]
+            sub_unique_runs = np.unique(run_sub)
+            n_sub_runs = len(sub_unique_runs)
+
+            fold_masks = []
+            for train_local, test_local in contiguous_block_cv(
+                    n_samples=n_sub_runs, block_size_samples=n_held_out_per_subject):
+                train_runs = sub_unique_runs[train_local]
+                test_runs  = sub_unique_runs[test_local]
+                fold_masks.append((np.isin(run_sub, train_runs),
+                                   np.isin(run_sub, test_runs)))
+
+            for v_start in range(0, n_voxels, VOXEL_BATCH):
+                v_end = min(v_start + VOXEL_BATCH, n_voxels)
+                Y_sub_batch = Y_sub_full[:, v_start:v_end]
+                held_out_preds = np.full_like(Y_sub_batch, np.nan)
+                for tm, em in fold_masks:
+                    reg = Ridge(alpha=1.0).fit(X_sub[tm], Y_sub_batch[tm])
+                    held_out_preds[em] = reg.predict(X_sub[em])
+                valid = ~np.isnan(held_out_preds[:, 0])
+                if not valid.any():
+                    continue
+                Yt = Y_sub_batch[valid]; Yp = held_out_preds[valid]
+                Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
+                Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
+                num = (Yt_c * Yp_c).sum(axis=0)
+                den = np.sqrt((Yt_c**2).sum(axis=0) * (Yp_c**2).sum(axis=0))
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    per_subject_r[s_idx, v_start:v_end] = np.where(
+                        den > 0, num / den, np.nan)
+
+        # Mean per-voxel r across subjects, ignoring NaNs.
+        return np.nanmean(per_subject_r, axis=0).astype(np.float32)
+
 
 def Lahner2024BOLDMoments_timeresolved_visualROI():
     """ROI variant: only voxels with split-half reliability >= 0.3.
@@ -437,4 +610,43 @@ def Lahner2024BOLDMoments_timeresolved_visualROI():
     return Lahner2024BOLDMoments_timeresolved(
         reliability_threshold=0.3,
         identifier_suffix='-timeresolved-visualROI',
+    )
+
+
+def Lahner2024BOLDMoments_timeresolved_improved():
+    """`-improved` variant: motion-regression + within-subject CV.
+
+    Two upgrades over the baseline TR-resolved variant, both standard fMRI
+    encoding practice:
+
+    1. **Motion regression.** Per-run OLS regression of BOLD on 9 fmriprep
+       confound regressors (6 motion params + framewise displacement +
+       csf/white-matter signal); residuals replace raw BOLD before z-score.
+       Removes scanner/physiology variance that confounds stimulus-driven
+       signal. (Power 2014, Ciric 2017.)
+    2. **Within-subject CV.** Leave-K-runs-out CV inside each subject
+       independently; per-voxel r averaged across subjects. Avoids the
+       cross-subject mean-leakage that hurt the baseline `subject_out` CV
+       and matches NSD / Conwell / Allen encoding pipelines.
+
+    Together expected to lift TR-resolved-ROI raw r from ~0.066 (baseline)
+    toward ~0.13–0.18 (literature norm for single-trial encoding without
+    GLMsingle-style denoising).
+    """
+    return Lahner2024BOLDMoments_timeresolved(
+        identifier_suffix='-timeresolved-improved',
+        apply_motion_regression=True,
+        cv_mode='within_subject',
+        within_subject_n_held_out=10,
+    )
+
+
+def Lahner2024BOLDMoments_timeresolved_improved_visualROI():
+    """`-improved-visualROI`: motion-regression + within-subject CV + ROI mask."""
+    return Lahner2024BOLDMoments_timeresolved(
+        reliability_threshold=0.3,
+        identifier_suffix='-timeresolved-improved-visualROI',
+        apply_motion_regression=True,
+        cv_mode='within_subject',
+        within_subject_n_held_out=10,
     )
