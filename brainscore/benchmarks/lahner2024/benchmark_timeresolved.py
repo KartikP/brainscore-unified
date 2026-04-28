@@ -89,8 +89,8 @@ TIMERESOLVED_EVENTS_SHA1: Optional[str]         = '783c5b33a75f121812a49b8b0a763
 # Motion-confound sidecar — fmriprep nuisance regressors per (subject, run, TR).
 # Filled by prepare_motion_sidecar.py + paste step. Used by the `-improved`
 # variants for per-run motion regression before z-score + ridge.
-TIMERESOLVED_MOTION_VERSION_ID: Optional[str]   = None
-TIMERESOLVED_MOTION_SHA1: Optional[str]         = None
+TIMERESOLVED_MOTION_VERSION_ID: Optional[str]   = 'wR1CwATaRjpEgvpR4ozr_UzkTS6yitjR'
+TIMERESOLVED_MOTION_SHA1: Optional[str]         = '827130c78f6b706b52f6d0d28962eb2301bee00b'
 MOTION_COLUMNS = [
     'trans_x', 'trans_y', 'trans_z',
     'rot_x',   'rot_y',   'rot_z',
