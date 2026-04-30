@@ -165,24 +165,89 @@ def _human_accuracy_on_stimuli(ds: xr.Dataset, stimulus_ids: List[str]) -> float
     return float(accuracy[mask].mean())
 
 
+SUPPORTED_MODALITIES = {'vision', 'text'}
+
+# Maps the model-side modality name to the user-facing leaderboard suffix.
+# 'vision' (model speak) → 'image' (benchmark identifier suffix). 'text'
+# stays 'text'. Keep this mapping local to ROAR so other benchmarks pick
+# their own conventions.
+_MODALITY_TO_SUFFIX = {'vision': 'image', 'text': 'text'}
+
+# Columns to retain per modality. Anything not in the retained set is
+# dropped from the projected stimulus set so model-side modality detection
+# picks unambiguously and no stimulus row carries a modality the benchmark
+# isn't presenting.
+_MODALITY_COLUMNS = {
+    'vision': {'image_file_name'},
+    'text': {'sentence'},
+}
+
+
+def _project_to_modality(stimulus_set: StimulusSet, modality: str) -> StimulusSet:
+    """Return a view of the stimulus set restricted to one input format.
+
+    Drops the columns belonging to other modalities so that model-side
+    `_detect_modalities` picks unambiguously. Preserves all metadata
+    columns (label, word, etc.) and the stimulus_paths mapping.
+    """
+    keep_modality = _MODALITY_COLUMNS[modality]
+    drop = set()
+    for mod, cols in _MODALITY_COLUMNS.items():
+        if mod != modality:
+            drop |= cols
+    keep_cols = [c for c in stimulus_set.columns if c not in drop]
+    df = stimulus_set[keep_cols].copy()
+
+    projected = StimulusSet(df)
+    projected.identifier = f'{stimulus_set.identifier}-{_MODALITY_TO_SUFFIX[modality]}'
+    if modality == 'vision':
+        # Vision still resolves stimulus paths via stimulus_paths.
+        projected.stimulus_paths = dict(stimulus_set.stimulus_paths)
+    return projected
+
+
 class Yeatman2021LexicalDecision(BenchmarkBase):
     """ROAR lexical decision — paper-replication (Honarmand et al. 2026).
 
     Train on 400 stimuli (200 real + 200 pseudo), test on 100 (50/50).
     Metric: model accuracy on test set, ceiling-normalized by human
     mean accuracy on the same test stimuli.
+
+    Per the April 30, 2026 design decision, each leaderboard benchmark
+    declares exactly one input format. ROAR is parameterized over the
+    `modality` argument and registered as two pinned variants:
+    `Yeatman2021-lexical_decision-image` and
+    `Yeatman2021-lexical_decision-text`. Both share the same train/test
+    split, ceiling, and metric — only the presentation differs.
+
+    Toolbox use: construct directly with `modality='vision'` or
+    `modality='text'` to compare across input formats.
     """
 
-    def __init__(self):
-        stimulus_set = _load_stimulus_set()
-        self._train_stimuli, self._test_stimuli = _split_train_test(stimulus_set)
+    SUPPORTED_MODALITIES = SUPPORTED_MODALITIES
+
+    def __init__(self, modality: str = 'vision'):
+        assert modality in self.SUPPORTED_MODALITIES, (
+            f"modality must be one of {self.SUPPORTED_MODALITIES}; "
+            f"got {modality!r}")
+        self.modality = modality
+        self.required_modalities = {modality}
+
+        full_stimulus_set = _load_stimulus_set()
+        # Split first on the full set so the train/test partition is the
+        # same across modality variants. Then project each side to the
+        # chosen modality.
+        train_full, test_full = _split_train_test(full_stimulus_set)
+        self._train_stimuli = _project_to_modality(train_full, modality)
+        self._test_stimuli = _project_to_modality(test_full, modality)
         self._human_ds = _load_human_assembly()
 
         test_ids = list(self._test_stimuli['stimulus_id'].values)
         self._human_accuracy = _human_accuracy_on_stimuli(self._human_ds, test_ids)
 
+        suffix = _MODALITY_TO_SUFFIX[modality]
         super().__init__(
-            identifier='Yeatman2021-lexical_decision',
+            identifier=f'Yeatman2021-lexical_decision-{suffix}',
             version=2,
             parent='behavioral',
             ceiling=Score(self._human_accuracy),
