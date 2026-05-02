@@ -103,8 +103,8 @@ class UnifiedInterfacePolicy(PI_Policy):
     between the molmospaces eval driver and the π0 server.
     """
 
-    def __init__(self, exp_config) -> None:
-        super().__init__(exp_config)
+    def __init__(self, exp_config, task=None) -> None:
+        super().__init__(exp_config, task)
         self._step_counter = 0
 
         # Build the BrainScoreModel that owns the schema-bridging action_fn.
