@@ -210,3 +210,106 @@ class TestTextWrapperCausalMode:
         r11 = gpt2_text_wrapper(stimuli, layers=['h.11'])
         assert r0.shape == r11.shape
         assert not np.allclose(r0.values, r11.values)
+
+
+# ── per-token mode + auto-chunking ──────────────────────────────────
+
+
+@pytest.fixture(scope='module')
+def gpt2_per_token_wrapper():
+    """GPT-2 wrapper in per_token mode with a small max_length so chunking
+    triggers naturally on transcripts longer than ~16 tokens."""
+    from transformers import GPT2Model, GPT2Tokenizer
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+
+    gpt2 = GPT2Model.from_pretrained('gpt2')
+    tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+    tokenizer.pad_token = tokenizer.eos_token
+
+    return TextWrapper(
+        model=gpt2,
+        tokenizer=tokenizer,
+        identifier='gpt2-per-token',
+        layer_aggregation='per_token',
+        max_length=16,
+    )
+
+
+class TestTextWrapperPerToken:
+    """per_token aggregation returns (presentation, time_bin, neuroid)."""
+
+    def test_invalid_aggregation_raises(self):
+        from transformers import GPT2Model, GPT2Tokenizer
+        from brainscore.model_helpers.text_wrapper import TextWrapper
+        gpt2 = GPT2Model.from_pretrained('gpt2')
+        tok = GPT2Tokenizer.from_pretrained('gpt2')
+        with pytest.raises(ValueError, match="layer_aggregation must be"):
+            TextWrapper(model=gpt2, tokenizer=tok, layer_aggregation='nope')
+
+    def test_dims_include_time_bin(self, gpt2_per_token_wrapper):
+        stimuli = StimulusSet(pd.DataFrame({
+            'sentence': ['hello world', 'a quick test'],
+            'stimulus_id': ['p0', 'p1'],
+        }))
+        stimuli.identifier = 'per_token_short'
+        result = gpt2_per_token_wrapper(stimuli, layers=['h.6'])
+        assert result.dims == ('presentation', 'time_bin', 'neuroid')
+        assert result.shape[0] == 2
+        assert result.shape[2] == 768
+
+    def test_token_length_coord_attached(self, gpt2_per_token_wrapper):
+        stimuli = StimulusSet(pd.DataFrame({
+            'sentence': ['short', 'a longer sentence with more tokens'],
+            'stimulus_id': ['t0', 't1'],
+        }))
+        stimuli.identifier = 'per_token_lengths'
+        result = gpt2_per_token_wrapper(stimuli, layers=['h.6'])
+        assert 'token_length' in result.coords
+        lengths = list(result['token_length'].values)
+        assert lengths[1] > lengths[0]
+
+    def test_long_input_is_chunked_not_truncated(self, gpt2_per_token_wrapper):
+        """A transcript longer than max_length=16 must produce time_bin
+        > max_length when per_token mode is used (i.e., chunking ran)."""
+        long_text = ' '.join([f'word{i}' for i in range(60)])
+        stimuli = StimulusSet(pd.DataFrame({
+            'sentence': [long_text],
+            'stimulus_id': ['long0'],
+        }))
+        stimuli.identifier = 'per_token_long'
+        result = gpt2_per_token_wrapper(stimuli, layers=['h.6'])
+        assert result.sizes['time_bin'] > 16
+        # And the token_length coord must reflect the full token count
+        assert int(result['token_length'].values[0]) > 16
+
+    def test_padding_is_nan_past_token_length(self, gpt2_per_token_wrapper):
+        """Shorter inputs in a multi-input batch must be NaN-padded
+        in time so callers can mask them out."""
+        stimuli = StimulusSet(pd.DataFrame({
+            'sentence': ['one two', ' '.join(f'word{i}' for i in range(40))],
+            'stimulus_id': ['p_short', 'p_long'],
+        }))
+        stimuli.identifier = 'per_token_mixed'
+        result = gpt2_per_token_wrapper(stimuli, layers=['h.6'])
+        # Find the short presentation index
+        ids = list(result['stimulus_id'].values)
+        short_idx = ids.index('p_short')
+        short_len = int(result['token_length'].values[short_idx])
+        # Beyond short_len, padding should be NaN
+        beyond = result.values[short_idx, short_len:, :]
+        assert np.isnan(beyond).all()
+
+    def test_per_token_features_differ_across_positions(
+            self, gpt2_per_token_wrapper):
+        """Two different token positions in the same input should have
+        different activations — guards against accidental aggregation."""
+        stimuli = StimulusSet(pd.DataFrame({
+            'sentence': ['the cat sat on the mat'],
+            'stimulus_id': ['s0'],
+        }))
+        stimuli.identifier = 'per_token_distinct'
+        result = gpt2_per_token_wrapper(stimuli, layers=['h.6'])
+        first_token = result.values[0, 0, :]
+        last_real = result.values[0,
+                                  int(result['token_length'].values[0]) - 1, :]
+        assert not np.allclose(first_token, last_real)
