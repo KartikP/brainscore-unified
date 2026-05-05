@@ -29,43 +29,67 @@ on real model forward passes against real BOLD data.
 
 ## Results
 
-| Variant | Video-only (vjepa1-vitl) | Multimodal (vjepa1-wav2vec2) | Δ raw r | Relative |
-|---|---|---|---|---|
-| Whole cortex | 0.0832 | 0.0648 | **−0.018** | −22% |
-| Visual ROI (rel ≥ 0.3) | 0.5329 | 0.4613 | **−0.072** | −13% |
+### Whole-cortex vs visual-ROI (concat mode only)
 
-Audio features lower brain-score on BOTH variants. The visual-ROI
-result is the most diagnostic — those voxels are deliberately filtered
-to visual cortex, where audio carries no targeted predictive signal,
-so the additional 768 audio features dilute ridge's capacity on the
-1024 useful video features.
+| Variant | Video-only (vjepa1-vitl) | Multimodal (vjepa1-wav2vec2, concat) | Δ raw r |
+|---|---|---|---|
+| Whole cortex | 0.0832 | 0.0648 | −0.018 (−22%) |
+| Visual ROI (rel ≥ 0.3) | 0.5329 | 0.4613 | −0.072 (−13%) |
+
+### Four-mode decomposition on visual-ROI
+
+| Mode | What ridge sees | Visual-ROI raw r | Δ vs video-only |
+|---|---|---|---|
+| **video_only** | 1024 video features | **0.5325** | — |
+| audio_only | 768 audio features | 0.0602 | (near-zero) |
+| concat | 1792 [video\|audio] | 0.4613 | −0.071 |
+| per_modality | sep ridges, summed | 0.4330 | **−0.099 (worst)** |
+
+The video_only score (0.5325) matches the V-JEPA v1 standalone baseline
+(0.5329 in CLAUDE.md) within rounding — confirms the multimodal
+benchmark's video pipeline reproduces the existing video-only path.
+
+Audio features carry essentially no information about visual-ROI BOLD
+on Lahner stimuli (audio_only ≈ 0.06).
+
+**Surprise:** per-modality ridge underperforms concat. With α=1.0
+forced equal across modalities, audio's separate ridge fits training
+noise and contributes test-set predictions whose variance is unrelated
+to y; adding those to video's well-tuned predictions lowers
+correlation. Concat dilutes but at least implicitly down-weights audio
+columns during the joint fit; per-modality gives audio a full
+α-budget for noise.
 
 ## Interpretation
 
-**Concatenated multimodal features hurt for visually-driven stimuli.**
-Ridge regularization treats every feature dimension symmetrically; on
-visual cortex, the audio columns of the design matrix do not improve
-held-out prediction yet they consume α-budget that ridge would
-otherwise spend on the predictive video columns.
+**Both naive multimodal modes lose to video-only on visual cortex.**
 
-This is consistent with how multimodal feature fusion works at the
-encoding-model layer in the absence of dataset-targeted gating —
-adding modality-irrelevant features hurts when the feature pool is
-much larger than the sample count (here 1792 features × 1026 clips,
-ridge α = 1.0 is global, no per-modality scaling).
+- **concat** (joint ridge on `[video|audio]`) suffers feature-space
+  dilution: 768 audio columns absorb α-budget that would otherwise
+  shrink video columns toward signal. Net: −0.071.
+- **per_modality** (separate ridges, summed predictions) suffers
+  noise injection: audio's ridge fits training noise, test-set
+  audio predictions have variance unrelated to y, adding them to
+  video's clean predictions perturbs the joint output. Net: −0.099,
+  *worse* than concat.
 
-**What this does NOT prove:** it does not prove audio is uninformative
-about brain activity in general. The Lahner clips were curated for
-visual content and many silent activities; auditory cortex voxels are
-mostly NOT in the visual-ROI mask; whole-cortex voxels are dominated
-by noise. A benchmark that targets auditory ROI (e.g.,
-voxels-with-A1-overlap) or that models per-modality gating would
-likely show audio helping.
+The clean diagnosis: **flat α across modalities of asymmetric utility
+is wrong.** Banded ridge with per-modality α tuned via cross-
+validation (Nunez-Elizalde 2019; Gallant lab `himalaya`) would shrink
+audio toward zero contribution and let video do its job. The natural
+fifth mode for this benchmark.
 
-**What it does prove:** the unified-interface multimodal scoring
-pipeline runs end-to-end, produces a reproducible number, and the
-result is interpretable rather than artifactual. The comparison flags
-a real failure mode — ridge-on-concat — that motivates the next
+**What this does NOT prove:** does not prove audio is uninformative
+for brain activity in general. Lahner targets visual cortex; auditory
+voxels are mostly outside the visual-ROI mask; whole-cortex voxels
+are dominated by noise. An auditory-ROI variant would likely flip
+the asymmetry.
+
+**What it does prove:** the unified-interface multimodal pipeline
+runs end-to-end, produces a reproducible number, and the four-mode
+decomposition is interpretable. Flagging a real, well-known failure
+mode (joint ridge on grouped features of asymmetric utility) is a
+useful empirical contribution; the fix (banded ridge) is the next
 experiment.
 
 ## Significance for the unified interface
@@ -113,3 +137,13 @@ python -m brainscore.benchmarks.lahner2024.score_multimodal
 Total elapsed in our run: 697 s (12 min). The first ~660 s is
 Wav2Vec2 + V-JEPA forward passes (cached for subsequent runs); the
 last ~30 s is per-voxel ridge + Pearson.
+
+Then the four-mode driver:
+
+```bash
+# 3. Score 4 modes on visual-ROI (cached features → ~3.5 min)
+python -u -m brainscore.benchmarks.lahner2024.score_multimodal_modes
+# writes /tmp/lahner_multimodal_modes.json
+```
+
+Reuses the per-modality activation caches written by step 2.

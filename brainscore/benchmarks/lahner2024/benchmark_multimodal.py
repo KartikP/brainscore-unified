@@ -64,13 +64,19 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
     overrides ``__call__`` to drive a per-modality extraction.
     """
 
+    VALID_MODES = ('concat', 'per_modality', 'video_only', 'audio_only')
+
     def __init__(
         self,
         audio_dir: Optional[str] = None,
         ceiling: Optional[float] = None,
         reliability_threshold: Optional[float] = None,
         identifier_suffix: str = '-multimodal',
+        mode: str = 'concat',
     ):
+        if mode not in self.VALID_MODES:
+            raise ValueError(
+                f"mode must be one of {self.VALID_MODES}; got {mode!r}.")
         super().__init__(
             ceiling=ceiling,
             reliability_threshold=reliability_threshold,
@@ -78,6 +84,18 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         )
         from pathlib import Path
         self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
+        # Scoring mode:
+        # - 'concat': fit one Ridge on [video|audio] concat (default; what
+        #   we shipped first). Sensitive to dilution when one modality
+        #   carries little target-aligned signal.
+        # - 'per_modality': fit Ridge on video features and Ridge on
+        #   audio features separately, sum the held-out predictions.
+        #   Equivalent to fitting two independent encoders and adding
+        #   their outputs — eliminates cross-modality regularization
+        #   competition.
+        # - 'video_only' / 'audio_only': single-tower upper-bounds for
+        #   isolating each modality's contribution.
+        self._mode = mode
 
     # ── Per-modality stim sets ─────────────────────────────────────
 
@@ -203,6 +221,19 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         features, clip_ids, modality_per_neuroid = (
             self._multimodal_features(candidate))
 
+        # Slice features per scoring mode. modality_per_neuroid is a
+        # parallel array tagging each column 'video' or 'audio'.
+        v_mask = modality_per_neuroid == 'video'
+        a_mask = modality_per_neuroid == 'audio'
+        if self._mode == 'video_only':
+            features_groups = [features[:, v_mask]]
+        elif self._mode == 'audio_only':
+            features_groups = [features[:, a_mask]]
+        elif self._mode == 'per_modality':
+            features_groups = [features[:, v_mask], features[:, a_mask]]
+        else:  # 'concat'
+            features_groups = [features]
+
         # Align neural to model order; mask voxels per ROI threshold.
         neural = self._average_repetitions()
         neural_aligned = neural.sel(
@@ -219,11 +250,18 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
 
         n = features.shape[0]
         kf = KFold(n_splits=5, shuffle=True, random_state=0)
+        # Per-modality (or single-group) ridge: fit one Ridge per group on
+        # train, predict on test, sum predictions across groups. With one
+        # group ('concat' / 'video_only' / 'audio_only') this collapses to
+        # the simple ridge call. Summing predictions across separately-fit
+        # models is equivalent to fitting independent encoders and adding
+        # their outputs — no cross-modality regularization competition.
         fold_preds = np.zeros_like(neural_mat)
         for train_idx, test_idx in kf.split(np.arange(n)):
-            reg = Ridge(alpha=1.0).fit(
-                features[train_idx], neural_mat[train_idx])
-            fold_preds[test_idx] = reg.predict(features[test_idx])
+            for X in features_groups:
+                reg = Ridge(alpha=1.0).fit(
+                    X[train_idx], neural_mat[train_idx])
+                fold_preds[test_idx] += reg.predict(X[test_idx])
 
         n_voxels = neural_mat.shape[1]
         per_voxel_r = np.zeros(n_voxels)
@@ -243,7 +281,8 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
         score.attrs['n_videos'] = int(n)
-        score.attrs['pipeline'] = 'multimodal_av_concat'
+        score.attrs['pipeline'] = f'multimodal_av_{self._mode}'
+        score.attrs['mode'] = self._mode
         score.attrs['n_features_video'] = int(
             (modality_per_neuroid == 'video').sum())
         score.attrs['n_features_audio'] = int(
