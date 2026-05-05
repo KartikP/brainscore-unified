@@ -380,10 +380,26 @@ class AudioWrapper:
 
     def _get_activations_batched(self, waveforms, layers):
         """Batch forward-pass over waveforms; return OrderedDict of per-layer
-        arrays shaped (n_clips, ...) depending on layer_aggregation."""
-        total = len(waveforms)
-        layer_outputs: Optional[OrderedDict] = None
+        arrays shaped (n_clips, ...) depending on layer_aggregation.
 
+        Pre-pads all waveforms to a uniform length so T_hook is constant
+        across batches. Without this, two batches with slightly different
+        max-input-length (e.g., 48112-sample vs 48128-sample clips, both
+        nominally 3 s) produce different output T (150 vs 151 timesteps)
+        and the cross-batch buffer slot assignment breaks. The processor
+        pads internally anyway; we just lift that to a global pad so the
+        per-batch shape is fixed.
+        """
+        total = len(waveforms)
+        if total > 0:
+            max_len = max(len(w) for w in waveforms)
+            waveforms = [
+                w if len(w) == max_len
+                else np.pad(w, (0, max_len - len(w)), mode='constant')
+                for w in waveforms
+            ]
+
+        layer_outputs: Optional[OrderedDict] = None
         for batch_start in tqdm(range(0, total, self._batch_size),
                                 unit_scale=self._batch_size,
                                 desc="audio activations"):
