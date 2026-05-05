@@ -6,6 +6,10 @@ from .benchmark_timeresolved import (
     Lahner2024BOLDMoments_timeresolved_improved,
     Lahner2024BOLDMoments_timeresolved_improved_visualROI,
 )
+from .benchmark_multimodal import (
+    Lahner2024BOLDMoments_multimodal,
+    Lahner2024BOLDMoments_multimodal_visualROI,
+)
 
 # Existing GLM-beta variants — one beta per voxel per stimulus per repetition.
 benchmark_registry['Lahner2024-fMRI-naturalistic'] = Lahner2024BOLDMoments
@@ -25,3 +29,10 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-improved'] = (
     Lahner2024BOLDMoments_timeresolved_improved)
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI'] = (
     Lahner2024BOLDMoments_timeresolved_improved_visualROI)
+
+# Multimodal A+V variant — first benchmark to exercise the unified
+# multi-region recording API + per-modality dispatch on real fMRI.
+benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal'] = (
+    Lahner2024BOLDMoments_multimodal)
+benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-visualROI'] = (
+    Lahner2024BOLDMoments_multimodal_visualROI)

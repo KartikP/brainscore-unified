@@ -13,3 +13,4 @@ from . import chance_baseline   # noqa: F401   null-control: uniform probabiliti
 from . import videomae_base     # noqa: F401   native-temporal video model (pixel-reconstruction)
 from . import vjepa             # noqa: F401   native-temporal video model (representation-reconstruction, V-JEPA v2)
 from . import vjepa_v1          # noqa: F401   native-temporal video model (representation-reconstruction, V-JEPA v1 — EPFL paper's exact checkpoint)
+from . import multimodal_av_vjepa_wav2vec2  # noqa: F401  multimodal A+V: V-JEPA v1 video + Wav2Vec2-base audio

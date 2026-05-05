@@ -589,7 +589,15 @@ class AudioWrapper:
         )
 
     def _attach_stimulus_set_meta(self, activations, stimulus_set):
-        """Copy stimulus-set columns into the presentation axis."""
+        """Copy stimulus-set columns into the presentation axis.
+
+        Resets any existing presentation MultiIndex first so re-assigning
+        ``stimulus_id`` doesn't collide with a pre-built MultiIndex level
+        (which gather_indexes builds during NeuroidAssembly construction
+        whenever there are multiple presentation coords). Same fix as
+        TextWrapper. The reset is a no-op when presentation has only the
+        single stimulus_id coord.
+        """
         stimulus_ids = list(stimulus_set['stimulus_id'].values)
         n = len(stimulus_ids)
         if activations.sizes['presentation'] != n:
@@ -597,6 +605,11 @@ class AudioWrapper:
                 f"Mismatch between activations ({activations.sizes['presentation']}) "
                 f"and stimulus set ({n}) on the presentation axis."
             )
+        if 'presentation' in activations.indexes:
+            try:
+                activations = activations.reset_index('presentation')
+            except (ValueError, KeyError):
+                pass
         activations = activations.assign_coords({
             'stimulus_id': ('presentation', stimulus_ids),
         })
