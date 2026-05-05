@@ -232,32 +232,107 @@ class TestAggregate:
 
 class TestWaveformLoading:
 
-    def test_truncates_over_max_duration(self):
+    def test_load_returns_full_clip_no_truncation(self):
+        """Loader returns the full waveform — chunking happens later."""
         from brainscore.model_helpers.audio_wrapper import AudioWrapper
         import torch.nn as nn
         long_wav = np.zeros(16000 * 70, dtype=np.float32)  # 70s @ 16k
-
         w = AudioWrapper(
             model=nn.Identity(), processor=_FakeProcessor(16000),
-            identifier='w',
-            max_duration_sec=60.0,
-            audio_loader=lambda path, sr: long_wav,
-        )
-        with pytest.warns(UserWarning, match="truncating"):
-            out = w._load_waveform('fake.wav')
-        assert out.shape == (16000 * 60,)
-
-    def test_does_not_truncate_when_disabled(self):
-        from brainscore.model_helpers.audio_wrapper import AudioWrapper
-        import torch.nn as nn
-        long_wav = np.zeros(16000 * 70, dtype=np.float32)
-        w = AudioWrapper(
-            model=nn.Identity(), processor=_FakeProcessor(16000),
-            identifier='w', max_duration_sec=None,
+            identifier='w', max_duration_sec=60.0,
             audio_loader=lambda path, sr: long_wav,
         )
         out = w._load_waveform('fake.wav')
         assert out.shape == long_wav.shape
+
+
+class TestWaveformChunking:
+    """Long clips are split into chunks rather than truncated."""
+
+    def test_short_clip_single_chunk(self):
+        from brainscore.model_helpers.audio_wrapper import AudioWrapper
+        import torch.nn as nn
+        wav = np.zeros(16000 * 30, dtype=np.float32)  # 30s
+        w = AudioWrapper(
+            model=nn.Identity(), processor=_FakeProcessor(16000),
+            identifier='w', max_duration_sec=60.0,
+        )
+        chunks = w._chunk_waveform(wav)
+        assert len(chunks) == 1
+        # No copy: chunks[0] is the original array (or a view)
+        assert chunks[0].shape == wav.shape
+
+    def test_long_clip_split_at_max_duration(self):
+        from brainscore.model_helpers.audio_wrapper import AudioWrapper
+        import torch.nn as nn
+        wav = np.arange(16000 * 150, dtype=np.float32)  # 150s
+        w = AudioWrapper(
+            model=nn.Identity(), processor=_FakeProcessor(16000),
+            identifier='w', max_duration_sec=60.0,
+        )
+        chunks = w._chunk_waveform(wav)
+        # 150s / 60s/chunk = 2 full + 1 partial = 3 chunks
+        assert len(chunks) == 3
+        assert chunks[0].shape == (16000 * 60,)
+        assert chunks[1].shape == (16000 * 60,)
+        assert chunks[2].shape == (16000 * 30,)
+        # Concatenating chunks must reproduce the original waveform
+        np.testing.assert_array_equal(np.concatenate(chunks), wav)
+
+    def test_chunking_disabled_when_max_duration_none(self):
+        from brainscore.model_helpers.audio_wrapper import AudioWrapper
+        import torch.nn as nn
+        wav = np.zeros(16000 * 200, dtype=np.float32)  # 200s
+        w = AudioWrapper(
+            model=nn.Identity(), processor=_FakeProcessor(16000),
+            identifier='w', max_duration_sec=None,
+        )
+        chunks = w._chunk_waveform(wav)
+        assert len(chunks) == 1
+        assert chunks[0].shape == wav.shape
+
+    def test_recombine_2d_per_clip_mean_across_chunks(self):
+        """For (n_chunks, H) layer outputs (mean_time / pooled), recombine
+        averages across chunks belonging to the same clip."""
+        from brainscore.model_helpers.audio_wrapper import AudioWrapper
+        import torch.nn as nn
+        w = AudioWrapper(
+            model=nn.Identity(), processor=_FakeProcessor(16000),
+            identifier='w', max_duration_sec=60.0,
+        )
+        # 4 chunks: clip 0 has chunks {0,1,2}, clip 1 has chunk {3}
+        chunk_arr = np.array([[1, 1], [3, 3], [5, 5], [10, 20]],
+                             dtype=np.float32)
+        out = w._recombine_2d(chunk_arr,
+                              clip_chunks=[[0, 1, 2], [3]], n_clips=2)
+        assert out.shape == (2, 2)
+        np.testing.assert_allclose(out[0], [3.0, 3.0])  # mean of 1,3,5
+        np.testing.assert_allclose(out[1], [10.0, 20.0])
+
+    def test_recombine_3d_per_clip_concat_along_time(self):
+        """For (n_chunks, T, H) layer outputs (time_series), recombine
+        concatenates along time and NaN-pads shorter clips."""
+        from brainscore.model_helpers.audio_wrapper import AudioWrapper
+        import torch.nn as nn
+        w = AudioWrapper(
+            model=nn.Identity(), processor=_FakeProcessor(16000),
+            identifier='w', max_duration_sec=60.0,
+            layer_aggregation='time_series',
+        )
+        # 3 chunks @ T=2, H=2. Clip 0 = chunks {0,1} → T=4. Clip 1 = {2} → T=2.
+        chunk_arr = np.array([
+            [[1, 1], [2, 2]],
+            [[3, 3], [4, 4]],
+            [[7, 8], [9, 10]],
+        ], dtype=np.float32)
+        out = w._recombine_3d(chunk_arr,
+                              clip_chunks=[[0, 1], [2]], n_clips=2)
+        assert out.shape == (2, 4, 2)  # T_max = 4
+        np.testing.assert_allclose(out[0],
+                                   [[1, 1], [2, 2], [3, 3], [4, 4]])
+        # Clip 1 has T=2 valid + NaN padding for T=2,3
+        np.testing.assert_allclose(out[1, :2], [[7, 8], [9, 10]])
+        assert np.isnan(out[1, 2:]).all()
 
 
 # ── Cache key propagation ───────────────────────────────────────────

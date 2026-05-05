@@ -256,23 +256,120 @@ class AudioWrapper:
         logger.info(f"Running {len(paths)} audio clips through "
                     f"{self._identifier}")
         waveforms = [self._load_waveform(p) for p in paths]
-        layer_activations = self._get_activations_batched(waveforms, layers)
+
+        # Chunk waveforms longer than max_duration_sec so movie-length
+        # audio doesn't get silently truncated. Short clips become a
+        # single chunk; long clips become N chunks. We track which clip
+        # each chunk belongs to so we can recombine per-clip after the
+        # forward pass.
+        chunks: List[np.ndarray] = []
+        chunk_to_clip: List[int] = []
+        for clip_idx, wav in enumerate(waveforms):
+            for c in self._chunk_waveform(wav):
+                chunks.append(c)
+                chunk_to_clip.append(clip_idx)
+
+        chunk_activations = self._get_activations_batched(chunks, layers)
+        layer_activations = self._recombine_chunks(
+            chunk_activations, chunk_to_clip, n_clips=len(waveforms))
         return self._package(layer_activations, paths)
 
     # ── Waveform loading ────────────────────────────────────────────
 
     def _load_waveform(self, audio_path: str) -> np.ndarray:
-        wav = self._audio_loader(audio_path, self._target_sample_rate)
-        if self._max_duration_sec is not None:
-            max_samples = int(self._max_duration_sec * self._target_sample_rate)
-            if len(wav) > max_samples:
-                warnings.warn(
-                    f"Clip {audio_path!r} is longer than max_duration_sec="
-                    f"{self._max_duration_sec}s; truncating from "
-                    f"{len(wav) / self._target_sample_rate:.1f}s."
+        """Load and resample a waveform. Long clips are NOT truncated here
+        — chunking happens later in ``_chunk_waveform`` so the per-clip
+        activations cover the full duration."""
+        return self._audio_loader(audio_path, self._target_sample_rate)
+
+    def _chunk_waveform(self, wav: np.ndarray) -> List[np.ndarray]:
+        """Split a waveform into chunks of at most ``max_duration_sec``.
+
+        - Short clips return a single-element list (no copy).
+        - Long clips are split into N consecutive non-overlapping chunks.
+          The last chunk may be shorter than ``max_duration_sec``.
+        - When ``max_duration_sec`` is None, no chunking happens.
+
+        Replaces the old ``_load_waveform`` truncation: M12-full needs
+        full-duration features for movie-length audio, not silent
+        cropping at the 60s mark.
+        """
+        if self._max_duration_sec is None:
+            return [wav]
+        max_samples = int(self._max_duration_sec * self._target_sample_rate)
+        if len(wav) <= max_samples:
+            return [wav]
+        chunks = []
+        for start in range(0, len(wav), max_samples):
+            chunks.append(wav[start:start + max_samples])
+        return chunks
+
+    def _recombine_chunks(
+        self,
+        chunk_activations: OrderedDict,
+        chunk_to_clip: List[int],
+        n_clips: int,
+    ) -> OrderedDict:
+        """Recombine per-chunk activations back to per-clip arrays.
+
+        - ``mean_time`` (and pooled-output (B, H)): per-clip mean across
+          the clip's chunks. (Each chunk already had its time axis
+          reduced via attention-masked mean; combining means across
+          chunks of similar length is a close enough approximation.)
+        - ``time_series``: per-clip concat along the time axis. Returns
+          a (n_clips, T_max, H) array NaN-padded for shorter clips so
+          downstream packaging gets a regular tensor.
+
+        This collapses the chunk axis but preserves per-clip ordering
+        of time. M12-full naturalistic benchmarks consume the result
+        directly via temporal_bin alignment to the brain's TR grid.
+        """
+        # Bucket chunk indices by clip
+        clip_chunks: List[List[int]] = [[] for _ in range(n_clips)]
+        for chunk_idx, clip_idx in enumerate(chunk_to_clip):
+            clip_chunks[clip_idx].append(chunk_idx)
+
+        out: OrderedDict = OrderedDict()
+        for layer_name, chunk_arr in chunk_activations.items():
+            if chunk_arr.ndim == 2:  # (n_chunks, H) — pooled or mean_time
+                out[layer_name] = self._recombine_2d(
+                    chunk_arr, clip_chunks, n_clips)
+            elif chunk_arr.ndim == 3:  # (n_chunks, T, H) — time_series
+                out[layer_name] = self._recombine_3d(
+                    chunk_arr, clip_chunks, n_clips)
+            else:
+                raise ValueError(
+                    f"Unexpected chunk activation rank {chunk_arr.ndim} "
+                    f"for layer {layer_name!r}; expected 2 or 3."
                 )
-                wav = wav[:max_samples]
-        return wav
+        return out
+
+    @staticmethod
+    def _recombine_2d(chunk_arr, clip_chunks, n_clips):
+        """Per-clip mean across chunks."""
+        n_features = chunk_arr.shape[1]
+        out = np.empty((n_clips, n_features), dtype=chunk_arr.dtype)
+        for clip_idx, chunk_indices in enumerate(clip_chunks):
+            out[clip_idx] = chunk_arr[chunk_indices].mean(axis=0)
+        return out
+
+    @staticmethod
+    def _recombine_3d(chunk_arr, clip_chunks, n_clips):
+        """Per-clip concat along time, NaN-padded to a common T_max."""
+        n_features = chunk_arr.shape[2]
+        clip_T = [chunk_arr[idxs].shape[0] * chunk_arr.shape[1]
+                  for idxs in clip_chunks]
+        # n_chunks_for_clip * chunk_T = total per-clip T
+        # Each chunk contributes the same per-chunk T (batched together
+        # in the same forward pass), so this is exact.
+        t_max = max(clip_T) if clip_T else 0
+        out = np.full((n_clips, t_max, n_features), np.nan,
+                      dtype=chunk_arr.dtype)
+        for clip_idx, chunk_indices in enumerate(clip_chunks):
+            concatted = np.concatenate(
+                [chunk_arr[i] for i in chunk_indices], axis=0)
+            out[clip_idx, :concatted.shape[0], :] = concatted
+        return out
 
     # ── Batched forward pass ────────────────────────────────────────
 
