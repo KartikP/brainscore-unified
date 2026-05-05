@@ -38,13 +38,33 @@ on real model forward passes against real BOLD data.
 
 ### Five-mode decomposition on visual-ROI
 
-| Mode | What ridge sees | Visual-ROI raw r | Δ vs video-only |
+| Mode | What ridge sees | Visual-ROI raw r | Δ vs video-only(α=1) |
 |---|---|---|---|
 | video_only | 1024 video features (α=1) | 0.5325 | — |
-| audio_only | 768 audio features (α=1) | 0.0602 | (near-zero) |
+| audio_only | 768 audio features (α=1) | 0.0602 | — |
 | concat | 1792 [video\|audio] (α=1 flat) | 0.4613 | −0.071 |
 | per_modality | sep ridges, summed (α=1 each) | 0.4330 | −0.099 (worst) |
-| **banded** | 1792 [video\|audio] (α_v=10, α_a=10000 via CV) | **0.5760** | **+0.044 (best)** |
+| banded | 1792 [video\|audio] (α_v=10, α_a=10000 via CV) | 0.5760 | +0.044 |
+
+### α ablation: banded's gain was α-tuning, not multimodal
+
+| α_video | video_only raw r |
+|---|---|
+| 1 | 0.5325 |
+| **10** | **0.5759** ← matches banded |
+| 100 | 0.5374 |
+| 1000 | 0.4505 |
+
+`video_only(α=10) = 0.5759` ≈ `banded = 0.5760`. **The full +0.044 banded
+gain over `video_only(α=1)` is α-tuning on the video tower, not
+multimodal lift.** Audio contributes nothing under banded ridge — its
+α was pinned at 10000 (full shrinkage), reducing the joint fit to a
+unimodal video fit at the better α.
+
+Honest takeaway: V-JEPA video + Wav2Vec2 audio shows zero net
+multimodal benefit on Lahner visual-ROI. Banded ridge is still the
+right framework for asymmetric multimodal — it just had nothing real
+to gain from audio here.
 
 The video_only score (0.5325) matches the V-JEPA v1 standalone baseline
 (0.5329 in CLAUDE.md) within rounding — confirms the multimodal
