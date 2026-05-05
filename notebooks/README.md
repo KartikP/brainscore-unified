@@ -12,9 +12,9 @@ Short, runnable notebooks that each demonstrate **one** feature of the unified m
 
 ## Current notebooks
 
-| Notebook | Feature demonstrated | Time |
-|---|---|---|
-| `state_change.ipynb` | `process(StateChange)` — install/observe/reset a layer ablation; visualizes activation changes + behavioral effect on a CLIP caption-matching task | ~30s |
+| Notebook | Feature demonstrated | Hardware | Time |
+|---|---|---|---|
+| `state_change.ipynb` | `process(StateChange)` — install/observe/reset a layer ablation; localizer-based identification of word-selective units in Qwen2.5-VL's late LM layer (`model.language_model.layers.28`); Honarmand-style induced-dyslexia behavioral test on rendered word/pseudoword images | GPU (CUDA or MPS) | ~3 min |
 
 ## Adding a new notebook
 
