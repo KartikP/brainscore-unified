@@ -64,7 +64,14 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
     overrides ``__call__`` to drive a per-modality extraction.
     """
 
-    VALID_MODES = ('concat', 'per_modality', 'video_only', 'audio_only')
+    VALID_MODES = ('concat', 'per_modality', 'video_only', 'audio_only',
+                   'banded')
+    # Banded-ridge α grid. Per-modality α is selected from this grid via
+    # held-out validation inside each outer CV fold. Logarithmic spread
+    # gives banded ridge enough range to push uninformative modalities
+    # to ~zero contribution (the audio-on-visual-cortex case) without
+    # over-shrinking informative ones.
+    BANDED_ALPHA_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
 
     def __init__(
         self,
@@ -141,6 +148,77 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         return out
 
     # ── Per-modality extraction + concat ──────────────────────────
+
+    def _banded_ridge_fit_predict(self, X_train_groups, X_test_groups,
+                                  Y_train):
+        """Banded ridge with per-group α tuned on a held-out validation slice.
+
+        Closed form: solve (X^T X + diag(λ)) W = X^T Y where X is the
+        column-concatenation of the groups and λ has α_v on group-1
+        columns and α_a on group-2 columns. Per-group α is selected by
+        grid search; the criterion is mean Pearson r on a 20% inner
+        validation split (no nested CV — single hold-out, faster and
+        adequate for the diagnostic).
+
+        Returns (Y_test_pred, (alpha_v, alpha_a)).
+        """
+        rng = np.random.default_rng(0)
+        n_train = X_train_groups[0].shape[0]
+        n_val = max(1, int(round(n_train * 0.2)))
+        perm = rng.permutation(n_train)
+        val_idx = perm[:n_val]
+        inner_train_idx = perm[n_val:]
+
+        def _stack(groups, idx):
+            return np.concatenate([g[idx] for g in groups], axis=1)
+
+        sizes = [g.shape[1] for g in X_train_groups]
+
+        def _fit(X_full, lam_diag, Y):
+            XtX = X_full.T @ X_full
+            XtY = X_full.T @ Y
+            A = XtX + np.diag(lam_diag)
+            return np.linalg.solve(A, XtY)
+
+        # Grid search over (α_v, α_a) on inner validation
+        X_inner_train = _stack(X_train_groups, inner_train_idx)
+        X_val = _stack(X_train_groups, val_idx)
+        Y_inner_train = Y_train[inner_train_idx]
+        Y_val = Y_train[val_idx]
+
+        best_score = -np.inf
+        best_alpha = (1.0, 1.0)
+        for alpha_v in self.BANDED_ALPHA_GRID:
+            for alpha_a in self.BANDED_ALPHA_GRID:
+                lam_diag = np.concatenate([
+                    np.full(sizes[0], alpha_v),
+                    np.full(sizes[1], alpha_a),
+                ])
+                W = _fit(X_inner_train, lam_diag, Y_inner_train)
+                Y_val_pred = X_val @ W
+                # Mean across voxels of per-voxel Pearson r on val slice
+                yt = Y_val - Y_val.mean(axis=0)
+                yp = Y_val_pred - Y_val_pred.mean(axis=0)
+                num = (yt * yp).sum(axis=0)
+                den = np.sqrt((yt ** 2).sum(axis=0)
+                              * (yp ** 2).sum(axis=0))
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    r = np.where(den > 0, num / den, 0.0)
+                score = float(np.mean(r))
+                if score > best_score:
+                    best_score = score
+                    best_alpha = (alpha_v, alpha_a)
+
+        # Refit on the full fold's training data with the chosen (α_v, α_a)
+        alpha_v, alpha_a = best_alpha
+        lam_diag = np.concatenate([
+            np.full(sizes[0], alpha_v),
+            np.full(sizes[1], alpha_a),
+        ])
+        X_full_train = _stack(X_train_groups, slice(None))
+        X_full_test = _stack(X_test_groups, slice(None))
+        W = _fit(X_full_train, lam_diag, Y_train)
+        return X_full_test @ W, best_alpha
 
     @staticmethod
     def _read_stimulus_ids(assembly):
@@ -231,6 +309,11 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
             features_groups = [features[:, a_mask]]
         elif self._mode == 'per_modality':
             features_groups = [features[:, v_mask], features[:, a_mask]]
+        elif self._mode == 'banded':
+            # Banded ridge solves jointly with a per-modality penalty.
+            # Pass the v/a partition through to the fold loop so each
+            # fold can tune α_v / α_a on inner held-out data.
+            features_groups = [features[:, v_mask], features[:, a_mask]]
         else:  # 'concat'
             features_groups = [features]
 
@@ -250,18 +333,26 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
 
         n = features.shape[0]
         kf = KFold(n_splits=5, shuffle=True, random_state=0)
-        # Per-modality (or single-group) ridge: fit one Ridge per group on
-        # train, predict on test, sum predictions across groups. With one
-        # group ('concat' / 'video_only' / 'audio_only') this collapses to
-        # the simple ridge call. Summing predictions across separately-fit
-        # models is equivalent to fitting independent encoders and adding
-        # their outputs — no cross-modality regularization competition.
         fold_preds = np.zeros_like(neural_mat)
+        chosen_alphas = []
         for train_idx, test_idx in kf.split(np.arange(n)):
-            for X in features_groups:
-                reg = Ridge(alpha=1.0).fit(
-                    X[train_idx], neural_mat[train_idx])
-                fold_preds[test_idx] += reg.predict(X[test_idx])
+            if self._mode == 'banded':
+                X_train = [g[train_idx] for g in features_groups]
+                X_test = [g[test_idx] for g in features_groups]
+                Y_train = neural_mat[train_idx]
+                preds, alpha_pair = self._banded_ridge_fit_predict(
+                    X_train, X_test, Y_train)
+                fold_preds[test_idx] = preds
+                chosen_alphas.append(alpha_pair)
+            else:
+                # Per-modality ridge (sum of independents) when
+                # features_groups has 2 entries; concat / video_only /
+                # audio_only when it has 1. Each group gets its own
+                # Ridge with α=1.0 and predictions are summed.
+                for X in features_groups:
+                    reg = Ridge(alpha=1.0).fit(
+                        X[train_idx], neural_mat[train_idx])
+                    fold_preds[test_idx] += reg.predict(X[test_idx])
 
         n_voxels = neural_mat.shape[1]
         per_voxel_r = np.zeros(n_voxels)
@@ -283,6 +374,11 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         score.attrs['n_videos'] = int(n)
         score.attrs['pipeline'] = f'multimodal_av_{self._mode}'
         score.attrs['mode'] = self._mode
+        if chosen_alphas:
+            score.attrs['banded_alpha_video_per_fold'] = [
+                float(av) for av, _ in chosen_alphas]
+            score.attrs['banded_alpha_audio_per_fold'] = [
+                float(aa) for _, aa in chosen_alphas]
         score.attrs['n_features_video'] = int(
             (modality_per_neuroid == 'video').sum())
         score.attrs['n_features_audio'] = int(

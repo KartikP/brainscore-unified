@@ -36,14 +36,15 @@ on real model forward passes against real BOLD data.
 | Whole cortex | 0.0832 | 0.0648 | −0.018 (−22%) |
 | Visual ROI (rel ≥ 0.3) | 0.5329 | 0.4613 | −0.072 (−13%) |
 
-### Four-mode decomposition on visual-ROI
+### Five-mode decomposition on visual-ROI
 
 | Mode | What ridge sees | Visual-ROI raw r | Δ vs video-only |
 |---|---|---|---|
-| **video_only** | 1024 video features | **0.5325** | — |
-| audio_only | 768 audio features | 0.0602 | (near-zero) |
-| concat | 1792 [video\|audio] | 0.4613 | −0.071 |
-| per_modality | sep ridges, summed | 0.4330 | **−0.099 (worst)** |
+| video_only | 1024 video features (α=1) | 0.5325 | — |
+| audio_only | 768 audio features (α=1) | 0.0602 | (near-zero) |
+| concat | 1792 [video\|audio] (α=1 flat) | 0.4613 | −0.071 |
+| per_modality | sep ridges, summed (α=1 each) | 0.4330 | −0.099 (worst) |
+| **banded** | 1792 [video\|audio] (α_v=10, α_a=10000 via CV) | **0.5760** | **+0.044 (best)** |
 
 The video_only score (0.5325) matches the V-JEPA v1 standalone baseline
 (0.5329 in CLAUDE.md) within rounding — confirms the multimodal
@@ -52,13 +53,20 @@ benchmark's video pipeline reproduces the existing video-only path.
 Audio features carry essentially no information about visual-ROI BOLD
 on Lahner stimuli (audio_only ≈ 0.06).
 
-**Surprise:** per-modality ridge underperforms concat. With α=1.0
-forced equal across modalities, audio's separate ridge fits training
-noise and contributes test-set predictions whose variance is unrelated
-to y; adding those to video's well-tuned predictions lowers
-correlation. Concat dilutes but at least implicitly down-weights audio
-columns during the joint fit; per-modality gives audio a full
-α-budget for noise.
+**Surprise from the first pass:** per-modality ridge underperforms
+concat. With α=1.0 forced equal across modalities, audio's separate
+ridge fits training noise and contributes test-set predictions whose
+variance is unrelated to y; adding those to video's well-tuned
+predictions lowers correlation. Concat dilutes but at least implicitly
+down-weights audio columns during the joint fit; per-modality gives
+audio a full α-budget for noise.
+
+**Banded ridge is the fix.** Per-group α tuned via 20% inner held-out
+slice within each outer fold; grid is α ∈ {1, 10, 100, 1000, 10000}^2.
+All 5 outer folds independently chose α_video=10 + α_audio=10000:
+audio shrunk to near-zero contribution, video gets moderate
+shrinkage. Result: **+0.044 over video-only** — first multimodal
+score on this benchmark to exceed the unimodal baseline.
 
 ## Interpretation
 

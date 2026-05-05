@@ -27,7 +27,8 @@ def main():
     model = brainscore.load_model('vjepa1-wav2vec2')
 
     out = {}
-    for mode in ('concat', 'per_modality', 'video_only', 'audio_only'):
+    for mode in ('concat', 'per_modality', 'video_only', 'audio_only',
+                 'banded'):
         log(f'scoring mode={mode} on visualROI ...')
         b = Lahner2024BOLDMoments_multimodal(
             reliability_threshold=0.3,
@@ -35,7 +36,7 @@ def main():
             identifier_suffix=f'-multimodal-visualROI-{mode}',
         )
         score = b(model)
-        out[mode] = {
+        entry = {
             'raw_r': float(score.attrs['raw']),
             'mean_r': score.attrs['mean_r'],
             'n_voxels_scored': score.attrs['n_voxels_scored'],
@@ -43,7 +44,13 @@ def main():
             'n_features_audio': score.attrs['n_features_audio'],
             'pipeline': score.attrs['pipeline'],
         }
-        log(f'  raw r = {out[mode]["raw_r"]:.4f}')
+        if 'banded_alpha_video_per_fold' in score.attrs:
+            entry['banded_alpha_video_per_fold'] = (
+                score.attrs['banded_alpha_video_per_fold'])
+            entry['banded_alpha_audio_per_fold'] = (
+                score.attrs['banded_alpha_audio_per_fold'])
+        out[mode] = entry
+        log(f'  raw r = {entry["raw_r"]:.4f}')
 
     out_path = Path('/tmp/lahner_multimodal_modes.json')
     with open(out_path, 'w') as f:
