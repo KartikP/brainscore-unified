@@ -22,6 +22,7 @@ from typing import List
 import torch
 from PIL import Image
 
+from brainscore.perturbation import build_pytorch_ablation_fn
 from brainscore_core.model_interface import BrainScoreModel
 
 
@@ -144,4 +145,10 @@ def get_model(identifier: str) -> BrainScoreModel:
         # Also enable the readout path so Qwen can be compared on the same
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',
+        # Perturbation support — `state_change_fn` enables ablation
+        # experiments (Honarmand-style induced dyslexia, etc.). Layer paths
+        # in the StateChange.target.Selection are resolved against the full
+        # qwen_model (so 'model.visual.blocks.28' or
+        # 'model.language_model.layers.28' both work).
+        state_change_fn=build_pytorch_ablation_fn(qwen_model),
     )

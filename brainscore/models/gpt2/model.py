@@ -9,6 +9,7 @@ Architecture:
   h.{0-11}  -- 12 transformer decoder layers
 """
 
+from brainscore.perturbation import build_pytorch_ablation_fn
 from brainscore_core.model_interface import BrainScoreModel
 
 
@@ -47,4 +48,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         # GPT-2 is not instruction-tuned; no generation_fn.
         # Behavioral tasks route through the readout path (logistic on features).
         behavioral_readout_layer='h.11',
+        # Perturbation support — ablate transformer layers (e.g., 'h.10') to
+        # measure their contribution to text-only ROAR or Pereira.
+        state_change_fn=build_pytorch_ablation_fn(gpt2),
     )
