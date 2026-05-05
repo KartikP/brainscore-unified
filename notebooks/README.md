@@ -14,7 +14,8 @@ Short, runnable notebooks that each demonstrate **one** feature of the unified m
 
 | Notebook | Feature demonstrated | Hardware | Time |
 |---|---|---|---|
-| `state_change.ipynb` | `process(StateChange)` — install/observe/reset a layer ablation; localizer-based identification of word-selective units in Qwen2.5-VL's late LM layer (`model.language_model.layers.28`); Honarmand-style induced-dyslexia behavioral test on rendered word/pseudoword images | GPU (CUDA or MPS) | ~3 min |
+| `state_change.ipynb` | `process(StateChange)` — install/observe/reset a distributed MLP-only ablation across 5 late layers of Qwen2.5-VL. Honarmand-style induced-dyslexia behavioral test on a small synthetic stimulus set with hand-rolled scoring (bypasses `bs_model.process`'s full pipeline). Designed for fast iteration on the lesion mechanics. | GPU (CUDA or MPS) | ~3 min |
+| `yeatman2021_state_change.ipynb` | Production-pipeline counterpart. Same lesion mechanics but uses the actual `Yeatman2021-lexical_decision-image` benchmark (200 train + 100 test ROAR stimuli) and routes scoring through `benchmark(bs_model)` → `bs_model.process(stimulus_set)` → registration's `generation_fn`. Reports published-comparable numbers including the 0.65 dyslexia threshold. | GPU (CUDA or MPS) | ~40 min on Mac MPS, ~15 min on EC2 |
 
 ## Adding a new notebook
 
