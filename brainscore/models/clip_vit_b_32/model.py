@@ -17,7 +17,6 @@ from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
-from brainscore.perturbation import build_pytorch_ablation_fn
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
@@ -90,10 +89,4 @@ def get_model(identifier: str) -> BrainScoreModel:
         # the 'IT' layer convention). Behavioral benchmarks like Ferguson2024
         # will fit a logistic readout on top of this layer's features.
         behavioral_readout_layer='encoder.layers.10',
-        # Perturbation support — `state_change_fn` enables ablation
-        # experiments. Layer paths in the StateChange.target.Selection are
-        # resolved against the full clip_model (so e.g.
-        # 'vision_model.encoder.layers.10' or 'text_model.encoder.layers.10'
-        # both work). See unified/brainscore/perturbation.py for the helper.
-        state_change_fn=build_pytorch_ablation_fn(clip_model),
     )
