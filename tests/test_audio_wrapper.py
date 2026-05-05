@@ -372,3 +372,82 @@ class TestColumnToModality:
         assert mapping.get('audio_path') == 'audio'
         assert mapping.get('audio_file_name') == 'audio'
         assert mapping.get('audio_file') == 'audio'
+
+
+# ── Temporal coords on time_series output ──────────────────────────
+
+
+class TestTemporalCoords:
+    """Verify time_bin_start_ms / time_bin_end_ms coords are derived
+    from the model's per-step duration after the first forward pass."""
+
+    def test_step_ms_unset_before_any_forward_pass(self, wrapper):
+        assert wrapper._step_ms is None
+
+    def test_pack_3d_omits_time_coords_when_step_ms_unset(self, wrapper):
+        # Synthetic time_series output — _step_ms left as None
+        act = np.zeros((2, 5, 4), dtype=np.float32)
+        assembly = wrapper._pack_3d(
+            act, layer_name='enc', paths=['a', 'b'], n_time=5, n_features=4)
+        assert 'time_bin_start_ms' not in assembly.coords
+        assert 'time_bin_end_ms' not in assembly.coords
+
+    def test_pack_3d_attaches_time_coords_when_step_ms_set(self, wrapper):
+        wrapper._step_ms = 20.0  # mimic a Wav2Vec2-style 50 Hz output
+        act = np.zeros((1, 4, 3), dtype=np.float32)
+        assembly = wrapper._pack_3d(
+            act, layer_name='enc', paths=['a'], n_time=4, n_features=3)
+        np.testing.assert_allclose(
+            assembly['time_bin_start_ms'].values, [0.0, 20.0, 40.0, 60.0])
+        np.testing.assert_allclose(
+            assembly['time_bin_end_ms'].values, [20.0, 40.0, 60.0, 80.0])
+
+    def test_run_one_batch_sets_step_ms_from_input_output_ratio(self):
+        """First forward pass derives step_ms from longest input clip
+        length and the hook output's time axis."""
+        from brainscore.model_helpers.audio_wrapper import AudioWrapper
+        import torch
+        import torch.nn as nn
+
+        class _StridedFakeModel(nn.Module):
+            """nn.Module that emits a (B, T_out, H) hook output."""
+            def __init__(self, t_out=50, hidden=4):
+                super().__init__()
+                self._t_out = t_out
+                self._hidden = hidden
+                self.encoder = nn.Identity()  # hook target
+
+            def forward(self, **kwargs):
+                B = kwargs['input_values'].shape[0]
+                # Trigger the hook by passing through a tensor with the
+                # downsampled time axis. Hook is on `self.encoder` which
+                # is Identity — so whatever we pass through it appears
+                # as the captured output.
+                t = torch.zeros(B, self._t_out, self._hidden)
+                self.encoder(t)
+                return None
+
+        model = _StridedFakeModel(t_out=50, hidden=4)
+        # 1s @ 16kHz input → 50 output steps means step_ms = 1000/50 = 20
+        w = AudioWrapper(
+            model=model, processor=_FakeProcessor(16000),
+            identifier='strided', layer_aggregation='time_series',
+        )
+        wav = np.zeros(16000, dtype=np.float32)  # 1s
+        w._run_one_batch([wav], layers=['encoder'])
+        assert w._step_ms == pytest.approx(20.0, rel=1e-6)
+
+    def test_pack_3d_time_coords_independent_of_layer_name(self, wrapper):
+        """time_bin_start_ms / time_bin_end_ms only depend on _step_ms
+        and n_time, not the layer name — important for multi-layer
+        outputs that get concatenated along neuroid."""
+        wrapper._step_ms = 25.0
+        act = np.zeros((1, 3, 2), dtype=np.float32)
+        a1 = wrapper._pack_3d(
+            act, layer_name='layer.1', paths=['a'], n_time=3, n_features=2)
+        a2 = wrapper._pack_3d(
+            act, layer_name='layer.2', paths=['a'], n_time=3, n_features=2)
+        np.testing.assert_allclose(
+            a1['time_bin_start_ms'].values, a2['time_bin_start_ms'].values)
+        np.testing.assert_allclose(
+            a1['time_bin_end_ms'].values, a2['time_bin_end_ms'].values)

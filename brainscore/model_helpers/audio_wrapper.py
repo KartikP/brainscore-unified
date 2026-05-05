@@ -176,6 +176,11 @@ class AudioWrapper:
 
         self._identifier = identifier or model.__class__.__name__
         self._backbone_id = backbone_id or self._identifier
+        # Per-step duration in ms, derived from the first forward pass.
+        # Used to attach time_bin_start_ms / time_bin_end_ms coords to
+        # time_series outputs. Stays None until at least one batch has
+        # been processed.
+        self._step_ms: Optional[float] = None
 
     # ── Identity ────────────────────────────────────────────────────
 
@@ -427,6 +432,22 @@ class AudioWrapper:
                 h.remove()
 
         attention_mask = processed.get('attention_mask')
+
+        # Capture per-step duration for downstream temporal coord
+        # attachment. Compute from the longest input in the batch (the
+        # padded length the model actually saw) and the hook output's
+        # time axis. Stable across batches when the model has uniform
+        # conv stride (Wav2Vec2, Wav2Vec-Bert, HuBERT, etc.); we cache
+        # the first non-None measurement.
+        if self._step_ms is None:
+            input_samples = max(len(w) for w in batch_waveforms)
+            for layer_name, act in layer_results.items():
+                if act.ndim == 3 and act.shape[1] > 0:
+                    duration_ms = (input_samples
+                                   / self._target_sample_rate * 1000.0)
+                    self._step_ms = duration_ms / act.shape[1]
+                    break
+
         return self._aggregate(layer_results, attention_mask)
 
     def _aggregate(self, layer_results, attention_mask):
@@ -543,19 +564,27 @@ class AudioWrapper:
                       for i in range(n_features)]
         layer_coord = [layer_name] * n_features
         stimulus_id = list(range(len(paths)))
-        # Time bins are just ordinal step indices; downstream code will
-        # attach absolute timestamps (via temporal_bin / frame sampling)
-        # when needed.
         time_bin_ids = list(range(n_time))
+        coords = {
+            'stimulus_id': ('presentation', stimulus_id),
+            'stimulus_path': ('presentation', list(paths)),
+            'time_bin_id': ('time_bin', time_bin_ids),
+            'neuroid_id': ('neuroid', neuroid_id),
+            'layer': ('neuroid', layer_coord),
+        }
+        # If the wrapper knows its model's per-step duration (set during
+        # the first forward pass), expose absolute ms boundaries on the
+        # time_bin axis so naturalistic benchmarks can align directly to
+        # the brain's TR grid via temporal_bin without reconstructing
+        # the model's downsampling factor.
+        if self._step_ms is not None:
+            starts = np.arange(n_time, dtype=np.float64) * self._step_ms
+            ends = starts + self._step_ms
+            coords['time_bin_start_ms'] = ('time_bin', starts)
+            coords['time_bin_end_ms'] = ('time_bin', ends)
         return NeuroidAssembly(
             activations,
-            coords={
-                'stimulus_id': ('presentation', stimulus_id),
-                'stimulus_path': ('presentation', list(paths)),
-                'time_bin_id': ('time_bin', time_bin_ids),
-                'neuroid_id': ('neuroid', neuroid_id),
-                'layer': ('neuroid', layer_coord),
-            },
+            coords=coords,
             dims=['presentation', 'time_bin', 'neuroid'],
         )
 
