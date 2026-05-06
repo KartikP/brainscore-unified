@@ -80,6 +80,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         reliability_threshold: Optional[float] = None,
         identifier_suffix: str = '-multimodal',
         mode: str = 'concat',
+        voxel_mask_fn: Optional[callable] = None,
     ):
         if mode not in self.VALID_MODES:
             raise ValueError(
@@ -91,6 +92,11 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         )
         from pathlib import Path
         self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
+        # Optional custom voxel mask. When set, overrides the
+        # reliability-threshold mask from the parent class — the
+        # auditory-ROI variant uses this with a Destrieux-based mask
+        # over auditory cortex vertices on fsaverage5.
+        self._voxel_mask_fn = voxel_mask_fn
         # Scoring mode:
         # - 'concat': fit one Ridge on [video|audio] concat (default; what
         #   we shipped first). Sensitive to dilution when one modality
@@ -103,6 +109,20 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         # - 'video_only' / 'audio_only': single-tower upper-bounds for
         #   isolating each modality's contribution.
         self._mode = mode
+
+    def _get_voxel_mask(self):
+        """Return the voxel mask for this benchmark variant.
+
+        - If ``voxel_mask_fn`` was passed, call it (one-time) and cache.
+        - Otherwise fall back to the parent's split-half-reliability mask.
+        """
+        if self._voxel_mask_fn is None:
+            return super()._get_voxel_mask()
+        if not hasattr(self, '_custom_mask_cache'):
+            mask = self._voxel_mask_fn()
+            mask = np.asarray(mask, dtype=bool)
+            self._custom_mask_cache = mask
+        return self._custom_mask_cache
 
     # ── Per-modality stim sets ─────────────────────────────────────
 
@@ -386,8 +406,12 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         if mask is not None:
             score.attrs['voxel_mask_n_total'] = int(mask.size)
             score.attrs['voxel_mask_n_kept'] = int(mask.sum())
-            score.attrs['reliability_threshold'] = float(
-                self._reliability_threshold)
+            if self._reliability_threshold is not None:
+                score.attrs['reliability_threshold'] = float(
+                    self._reliability_threshold)
+            if self._voxel_mask_fn is not None:
+                score.attrs['voxel_mask_source'] = (
+                    self._voxel_mask_fn.__name__)
         return score
 
 
@@ -399,4 +423,24 @@ def Lahner2024BOLDMoments_multimodal_visualROI(
         audio_dir=audio_dir,
         reliability_threshold=0.3,
         identifier_suffix='-multimodal-visualROI',
+    )
+
+
+def Lahner2024BOLDMoments_multimodal_auditoryROI(
+        audio_dir: Optional[str] = None,
+        mode: str = 'concat'):
+    """Auditory-cortex variant. Uses the Destrieux 2009 surface atlas
+    on fsaverage5 to select early auditory + planum voxels (HG, lateral
+    STG, planum polare/tempo, transverse temporal sulcus). ~526 voxels.
+
+    This is the variant where audio features SHOULD predict and video
+    features SHOULD NOT — fair test of whether the multimodal pipeline
+    detects asymmetric utility in either direction.
+    """
+    from .auditory_roi import build_auditory_mask
+    return Lahner2024BOLDMoments_multimodal(
+        audio_dir=audio_dir,
+        mode=mode,
+        identifier_suffix='-multimodal-auditoryROI',
+        voxel_mask_fn=build_auditory_mask,
     )

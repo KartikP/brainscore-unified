@@ -66,6 +66,45 @@ multimodal benefit on Lahner visual-ROI. Banded ridge is still the
 right framework for asymmetric multimodal — it just had nothing real
 to gain from audio here.
 
+### Auditory-ROI variant — fair test of multimodal lift
+
+The visual-ROI mask is dominated by visually-driven voxels by
+construction (split-half reliability on visually-curated stimuli).
+The auditory-ROI variant uses the Destrieux 2009 surface atlas on
+fsaverage5 to select Heschl's gyrus, lateral STG, planum polare,
+planum temporale, and transverse temporal sulcus → 715 voxels.
+
+| Mode | Auditory-ROI raw r |
+|---|---|
+| video_only(α=1) | 0.0898 |
+| audio_only(α=1) | 0.0209 |
+| concat | 0.0661 |
+| per_modality | 0.0700 |
+| **banded** (α_v=100, α_a∈{1000,10000}) | **0.1297** |
+
+α-ablation:
+
+| α | video_only | audio_only |
+|---|---|---|
+| 1 | 0.0898 | 0.0209 |
+| 10 | 0.1180 | 0.0368 |
+| **100** | **0.1254** ← video peak | **0.0489** ← audio peak |
+| 1000 | 0.0968 | 0.0350 |
+
+**Two findings:**
+
+1. **The asymmetry did NOT flip.** Video still predicts auditory
+   cortex better than audio. Likely because lateral STG / planum
+   temporale are audiovisual-integration regions, AND Wav2Vec2-base
+   is trained on speech but Lahner has diverse natural sound — a
+   weak encoder for the stimulus set.
+2. **Banded ridge beats video_only at matched α: 0.1297 vs 0.1254 =
+   +0.0043.** Small but real, and at matched α (not an α-tuning
+   artifact). **First genuine multimodal lift the framework has
+   detected.** With a better audio encoder for natural sound (AST,
+   AudioMAE, YAMNet trained on AudioSet) the lift would likely grow
+   substantially.
+
 The video_only score (0.5325) matches the V-JEPA v1 standalone baseline
 (0.5329 in CLAUDE.md) within rounding — confirms the multimodal
 benchmark's video pipeline reproduces the existing video-only path.

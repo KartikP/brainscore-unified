@@ -9,6 +9,7 @@ from .benchmark_timeresolved import (
 from .benchmark_multimodal import (
     Lahner2024BOLDMoments_multimodal,
     Lahner2024BOLDMoments_multimodal_visualROI,
+    Lahner2024BOLDMoments_multimodal_auditoryROI,
 )
 
 # Existing GLM-beta variants — one beta per voxel per stimulus per repetition.
@@ -36,3 +37,5 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal'] = (
     Lahner2024BOLDMoments_multimodal)
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-visualROI'] = (
     Lahner2024BOLDMoments_multimodal_visualROI)
+benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = (
+    Lahner2024BOLDMoments_multimodal_auditoryROI)
