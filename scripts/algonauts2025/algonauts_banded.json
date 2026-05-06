@@ -1,0 +1,54 @@
+{
+  "mode": "banded",
+  "bands": [
+    "video",
+    "audio",
+    "text"
+  ],
+  "band_widths": [
+    768,
+    768,
+    384
+  ],
+  "stimulus_window": 5,
+  "hrf_delay": 3,
+  "results": {
+    "mode": "banded",
+    "bands": [
+      "video",
+      "audio",
+      "text"
+    ],
+    "chosen_alphas_per_fold": [
+      {
+        "video": 100000.0,
+        "audio": 1000.0,
+        "text": 1000.0
+      },
+      {
+        "video": 100000.0,
+        "audio": 10000.0,
+        "text": 1000.0
+      },
+      {
+        "video": 100000.0,
+        "audio": 10000.0,
+        "text": 1000.0
+      },
+      {
+        "video": 100000.0,
+        "audio": 10000.0,
+        "text": 1000.0
+      },
+      {
+        "video": 100000.0,
+        "audio": 10000.0,
+        "text": 1000.0
+      }
+    ],
+    "median_r": 0.21296986937522888,
+    "mean_r": 0.23648758232593536,
+    "n_parcels_scored": 1000,
+    "n_TRs": 159141
+  }
+}
