@@ -164,6 +164,24 @@ running costs ~$1.20/hour.
 | **Total first run** | **~2.5 hrs** | **~$3.00** |
 | Subsequent runs (caches warm) | 30-60 min | $0.60-1.20 |
 
+## Model combos to score
+
+The full validation matrix has 11 A+V combos:
+
+| Family | Signal-Signal | Signal-Null | Null-Signal | Null-Null |
+|---|---|---|---|---|
+| V-JEPA v1 + Wav2Vec2 | `vjepa1-wav2vec2` | `vjepa1-random-wav2vec2` | `random-vjepa1-wav2vec2` | `random-vjepa1-random-wav2vec2` |
+| CLIP ViT-B/32 + Wav2Vec2 | `clip-wav2vec2` | `clip-random-wav2vec2` | `random-clip-wav2vec2` | `random-clip-random-wav2vec2` |
+| BLIP-2 ViT-G + Wav2Vec2 | `blip2-wav2vec2` | (skipped — heavy) | (skipped — heavy) | (skipped — heavy) |
+| Qwen2.5-VL-3B + Wav2Vec2 | `qwen2.5-vl-wav2vec2` | (skipped — heavy) | (skipped — heavy) | (skipped — heavy) |
+
+Plus standalone `random-wav2vec2-base` for audio-only null reference.
+
+V-JEPA and CLIP combos cover all four signal/null permutations (cheap
+re-randomization). BLIP-2 and Qwen-VL ship signal-only because their
+backbones are 2.7B and 3B params respectively — the V-JEPA/CLIP nulls
+already cover the validation criteria.
+
 ## What this validates
 
 1. **Pipeline runs** end-to-end on TR-resolved data with two modalities

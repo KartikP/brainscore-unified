@@ -169,19 +169,31 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         stim_set_ids = set(full_stim['stimulus_id'].astype(str).tolist())
         unique_ids = sorted(unique_event_ids & stim_set_ids)
 
-        # Accept dual-modality models only (cleaner error than letting
-        # downstream slicing fail). For unimodal models, fall back to
-        # the parent class's single-modality extraction.
+        # Accept dual-modality models — visual tower can be 'video'
+        # (native-temporal) or 'vision' (frame-aggregation). For
+        # unimodal models, fall back to the parent class's
+        # single-modality extraction.
         supports = getattr(candidate, 'supported_modalities', set())
-        if 'video' not in supports or 'audio' not in supports:
+        has_visual = 'video' in supports or 'vision' in supports
+        if not has_visual or 'audio' not in supports:
             self._modality_per_feature = None
             return super()._extract_per_stimulus_features(candidate)
 
-        # ── Video tower ────────────────────────────────────────────
+        # ── Visual tower ───────────────────────────────────────────
         from .benchmark import VIDEO_DURATION_MS
+        from brainscore_core.temporal import temporal_bin
         candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
-        video_stim = self._video_stim_set_for(unique_ids)
-        video_assembly = candidate.process(video_stim)
+        if 'video' in supports:
+            video_stim = self._video_stim_set_for(unique_ids)
+            video_assembly = candidate.process(video_stim)
+        else:
+            # Frame-aggregation: expand into N frames, run still-image
+            # path, then mean-pool over time bins.
+            frame_stim = self._stim_helper._expand_videos()
+            frame_stim = frame_stim[frame_stim['clip_id'].isin(unique_ids)]
+            per_frame = candidate.process(frame_stim)
+            video_assembly = temporal_bin(
+                per_frame, time_bins=[(0, VIDEO_DURATION_MS)])
         v_data = video_assembly.values
         if v_data.ndim == 3:    # (presentation, time_bin, neuroid)
             v_features = v_data.mean(axis=1)
@@ -229,11 +241,23 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
     @staticmethod
     def _read_stimulus_ids(assembly):
+        """Same logic as the GLM-beta multimodal benchmark — handles
+        both native-video assemblies (use 'stimulus_id') and frame-
+        aggregation assemblies from temporal_bin (use 'clip_id')."""
         if 'presentation' in assembly.indexes:
             idx = assembly.indexes['presentation']
             if hasattr(idx, 'get_level_values'):
-                return list(idx.get_level_values('stimulus_id'))
-        return list(assembly['stimulus_id'].values)
+                names = list(idx.names) if hasattr(idx, 'names') else []
+                if 'stimulus_id' in names:
+                    return list(idx.get_level_values('stimulus_id'))
+                if 'clip_id' in names:
+                    return list(idx.get_level_values('clip_id'))
+        for col in ('stimulus_id', 'clip_id'):
+            if col in assembly.coords:
+                return list(assembly[col].values)
+        raise KeyError(
+            f"assembly has neither 'stimulus_id' nor 'clip_id' on its "
+            f"presentation axis; coords={list(assembly.coords)}")
 
     # ── Override scoring to support per-modality / banded modes ─────
 

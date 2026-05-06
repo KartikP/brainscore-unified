@@ -243,15 +243,29 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
     @staticmethod
     def _read_stimulus_ids(assembly):
         """Read stimulus_id from the presentation axis whether it's a
-        MultiIndex level or a plain coord. AudioWrapper resets the
-        presentation MultiIndex during meta attachment (to avoid level-
-        name collisions); VideoWrapper preserves it. Both paths land on
-        the same canonical stimulus_id values."""
+        MultiIndex level or a plain coord, and whether the assembly came
+        from native-video extraction (uses 'stimulus_id') or
+        frame-aggregation via temporal_bin (uses 'clip_id').
+
+        Three sources are tried in order:
+        1. MultiIndex level 'stimulus_id'
+        2. MultiIndex level 'clip_id' (frame-aggregation path)
+        3. Top-level coord 'stimulus_id' or 'clip_id'
+        """
         if 'presentation' in assembly.indexes:
             idx = assembly.indexes['presentation']
             if hasattr(idx, 'get_level_values'):
-                return list(idx.get_level_values('stimulus_id'))
-        return list(assembly['stimulus_id'].values)
+                names = list(idx.names) if hasattr(idx, 'names') else []
+                if 'stimulus_id' in names:
+                    return list(idx.get_level_values('stimulus_id'))
+                if 'clip_id' in names:
+                    return list(idx.get_level_values('clip_id'))
+        for col in ('stimulus_id', 'clip_id'):
+            if col in assembly.coords:
+                return list(assembly[col].values)
+        raise KeyError(
+            f"assembly has neither 'stimulus_id' nor 'clip_id' on its "
+            f"presentation axis; coords={list(assembly.coords)}")
 
     @staticmethod
     def _to_2d(assembly):
@@ -264,18 +278,39 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         return assembly
 
     def _multimodal_features(self, candidate):
-        """Extract video + audio features from the candidate.
+        """Extract visual + audio features from the candidate.
+
+        Visual tower routing:
+        - candidate has 'video' modality → use video stim set, native
+          temporal extraction (V-JEPA / VideoMAE / etc.)
+        - candidate has 'vision' modality (still-image only) → use
+          frame-aggregation: extract N frames per clip, run CLIP/BLIP-2/
+          Qwen-VL on each as a still image, mean-pool over frames
+
+        The first branch produces richer temporal features but is only
+        available for native-video models. The second branch lets us
+        score CLIP-class VLMs on the same multimodal benchmark by
+        treating them as frame extractors.
 
         Returns:
-            features: (n_videos, n_features) numpy array, video features
-                first, audio features second.
-            clip_ids: list of stimulus_ids in the same order as features.
+            features: (n_videos, n_features) numpy array, visual first,
+                audio second.
+            clip_ids: list of stimulus_ids in the same order.
             modality_per_neuroid: ndarray of {'video', 'audio'} strings,
-                one per output feature column. Stored on the score as
-                ``modality_split`` for downstream introspection.
+                one per output feature column.
         """
+        supports = getattr(candidate, 'supported_modalities', set())
         candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
-        video_assembly = candidate.process(self._video_stim_set())
+        if 'video' in supports:
+            video_assembly = candidate.process(self._video_stim_set())
+        else:
+            # Frame-aggregation path: expand each clip into N frames,
+            # process them as a still-image stim set, then mean-pool.
+            from brainscore_core.temporal import temporal_bin
+            frame_stim = self._expand_videos()
+            per_frame = candidate.process(frame_stim)
+            video_assembly = temporal_bin(
+                per_frame, time_bins=[(0, VIDEO_DURATION_MS)])
         video_2d = self._to_2d(video_assembly)
         video_clip_ids = self._read_stimulus_ids(video_2d)
         v_feats = video_2d.values
@@ -302,17 +337,18 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
     # ── Scoring ────────────────────────────────────────────────────
 
     def __call__(self, candidate) -> Score:
-        if 'audio' not in getattr(candidate, 'supported_modalities', set()):
+        supports = getattr(candidate, 'supported_modalities', set())
+        if 'audio' not in supports:
             raise ValueError(
                 f"{self.identifier} requires the candidate to support both "
-                f"'video' and 'audio' modalities. Got "
-                f"supported_modalities={candidate.supported_modalities}. "
+                f"a visual modality ('video' or 'vision') AND 'audio'. Got "
+                f"supported_modalities={supports}. "
                 f"Use Lahner2024-fMRI-naturalistic for video-only models."
             )
-        if 'video' not in candidate.supported_modalities:
+        if 'video' not in supports and 'vision' not in supports:
             raise ValueError(
                 f"{self.identifier} requires the candidate to support both "
-                f"'video' and 'audio' modalities. Got "
+                f"a visual modality ('video' or 'vision') AND 'audio'. Got "
                 f"supported_modalities={candidate.supported_modalities}."
             )
 

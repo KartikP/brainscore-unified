@@ -42,6 +42,36 @@ def test_random_wav2vec2_audio_null_registered():
     assert 'random-wav2vec2-base' in brainscore.model_registry
 
 
+def test_clip_wav2vec2_combos_registered():
+    """All 4 signal/null permutations for CLIP+Wav2Vec2."""
+    for ident in (
+        'clip-wav2vec2',
+        'random-clip-wav2vec2',
+        'clip-random-wav2vec2',
+        'random-clip-random-wav2vec2',
+    ):
+        assert ident in brainscore.model_registry, (
+            f"missing CLIP+Wav2Vec2 combo: {ident}")
+
+
+def test_blip2_wav2vec2_registered():
+    assert 'blip2-wav2vec2' in brainscore.model_registry
+
+
+def test_qwen_vl_wav2vec2_registered():
+    assert 'qwen2.5-vl-wav2vec2' in brainscore.model_registry
+
+
+def test_total_multimodal_combo_count():
+    """Sanity: 11 A+V combos total spanning V-JEPA / CLIP / BLIP-2 /
+    Qwen-VL families plus the standalone random-Wav2Vec2 audio null."""
+    combos = [k for k in brainscore.model_registry
+              if 'wav2vec' in k.lower()]
+    assert len(combos) == 11, (
+        f"expected 11 wav2vec2-related registrations, got {len(combos)}: "
+        f"{sorted(combos)}")
+
+
 # ── Mode validation ───────────────────────────────────────────────
 
 
