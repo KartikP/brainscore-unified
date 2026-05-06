@@ -32,11 +32,29 @@ echo "Subjects to fetch: $SUBJECTS"
 echo "Skip stimuli:     $SKIP_STIMULI"
 echo
 
-# 1. Install DataLad if missing (uses pipx for an isolated install)
+# 1. Install DataLad + git-annex >=10.x. The Ubuntu 22.04 default
+#    git-annex (8.x) is too old for current DataLad — it crashes with
+#    "No working git-annex installation of version >= 10.20230126".
+#    Conda-forge ships a recent git-annex; install it via the
+#    base conda env so it's first on PATH.
+if ! command -v conda >/dev/null 2>&1; then
+    [ -d "$HOME/miniconda" ] && export PATH="$HOME/miniconda/bin:$PATH"
+fi
+if command -v conda >/dev/null 2>&1; then
+    GIT_ANNEX_VERSION=$(git-annex version 2>/dev/null | awk '/^git-annex version:/ {print $3}')
+    case "$GIT_ANNEX_VERSION" in
+        10.*|11.*) ;;
+        *)
+            echo "Installing recent git-annex from conda-forge..."
+            conda install -y -n base -c conda-forge git-annex >/dev/null 2>&1
+            ;;
+    esac
+fi
+
 if ! command -v datalad >/dev/null 2>&1; then
     echo "Installing DataLad..."
     if ! command -v pipx >/dev/null 2>&1; then
-        sudo apt-get update -qq && sudo apt-get install -y -qq pipx git-annex
+        sudo apt-get update -qq && sudo apt-get install -y -qq pipx
         pipx ensurepath
         export PATH="$HOME/.local/bin:$PATH"
     fi
@@ -44,7 +62,17 @@ if ! command -v datalad >/dev/null 2>&1; then
     pipx inject datalad datalad-osf  # for OSF-hosted subdatasets
 fi
 
+# pipx installs to ~/.local/bin which may not be in the current shell's
+# PATH (ensurepath only updates shell rc files for future logins).
+# Add it directly so the rest of this script can find datalad.
+export PATH="$HOME/.local/bin:$HOME/miniconda/bin:$PATH"
+
+# Configure git identity if missing (DataLad warns otherwise)
+git config --global user.email "algonauts@local" 2>/dev/null || true
+git config --global user.name "Algonauts EC2" 2>/dev/null || true
+
 datalad --version | head -1
+git-annex version | head -1
 
 # 2. Install the dataset metadata (no downloads yet)
 mkdir -p "$DATA_ROOT"
