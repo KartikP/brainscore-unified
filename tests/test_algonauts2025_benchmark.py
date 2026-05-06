@@ -71,14 +71,16 @@ def test_valid_modes_construct():
 # ── Scaffold contract ─────────────────────────────────────────────
 
 
-def test_call_raises_not_implemented():
-    """Until the actual scoring pipeline is built, __call__ must
-    refuse to silently produce a wrong result."""
+def test_held_out_splits_raise_not_implemented():
+    """Held-out (S7, OOD) prediction generation isn't built yet —
+    Phase 3 ships training-split scoring first."""
     from brainscore.benchmarks.algonauts2025.benchmark import (
-        Algonauts2025Friends)
-    b = Algonauts2025Friends(subject=1)
-    with pytest.raises(NotImplementedError, match="scoring not yet"):
-        b(candidate=None)
+        Algonauts2025FriendsS7, Algonauts2025OOD)
+    for cls in (Algonauts2025FriendsS7, Algonauts2025OOD):
+        b = cls(subject=1)
+        with pytest.raises(NotImplementedError,
+                           match="Held-out scoring"):
+            b(candidate=None)
 
 
 def test_assembly_load_raises_clear_error_when_data_missing(tmp_path):
