@@ -1,4 +1,6 @@
 from brainscore import model_registry
-from .model import get_model
+from .model import get_model, SUPPORTED_IDENTIFIERS
 
-model_registry['vjepa1-wav2vec2'] = lambda: get_model('vjepa1-wav2vec2')
+# Register all four signal/null combinations from one parametrized factory.
+for _ident in SUPPORTED_IDENTIFIERS:
+    model_registry[_ident] = (lambda i=_ident: get_model(i))

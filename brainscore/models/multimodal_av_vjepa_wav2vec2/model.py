@@ -56,30 +56,40 @@ REGION_MODALITY_MAP = {
 }
 
 
-def _build_video_wrapper(identifier: str):
+def _build_video_wrapper(identifier: str, random_init: bool = False):
     """Reuse the V-JEPA v1 backbone + preprocessing from the standalone
     registration. Identifier passed in so VideoWrapper's cache key is
     distinct from the standalone vjepa1-vitl entry — we don't share
-    backbone_id because the benchmark routing differs."""
+    backbone_id because the benchmark routing differs.
+
+    When ``random_init`` is True, replaces the loaded checkpoint with
+    fresh random initialization (deterministic via ``torch.manual_seed(0)``).
+    Used for the null-control variants.
+    """
     from brainscore.model_helpers.video_wrapper import VideoWrapper
     from brainscore.models.vjepa_v1.model import (
         _BCTPermuteAdapter, _default_cache_dir, _download_checkpoint,
         _load_vjepa_v1_vitl, _make_preprocessing, _vjepa_v1_post_hook,
         CHECKPOINT_URL, NUM_INPUT_FRAMES,
     )
+    from .backbone_inits import randomize_module_in_place
 
     cache = _default_cache_dir()
     ckpt = _download_checkpoint(CHECKPOINT_URL, cache / 'vitl16.pth.tar')
     backbone = _load_vjepa_v1_vitl(ckpt).eval()
+    if random_init:
+        # Random-init the loaded backbone in-place. Deterministic seed.
+        randomize_module_in_place(backbone, seed=0)
     model = _BCTPermuteAdapter(backbone).eval()
     preprocessing = _make_preprocessing()
+    # Distinct backbone_id keeps cached activations separate so the
+    # null variant doesn't poison the trained-model cache.
+    backbone_id = 'random-vjepa1-vitl' if random_init else 'vjepa1-vitl'
     wrapper = VideoWrapper(
         model=model,
         preprocessing=preprocessing,
         identifier=f'{identifier}-video',
-        # Share the V-JEPA v1 standalone backbone cache key — same weights,
-        # same forward pass; activations cached under one identifier.
-        backbone_id='vjepa1-vitl',
+        backbone_id=backbone_id,
         num_frames=NUM_INPUT_FRAMES,
         post_hook_fn=_vjepa_v1_post_hook,
         batch_size=4,
@@ -87,15 +97,26 @@ def _build_video_wrapper(identifier: str):
     return wrapper, model
 
 
-def _build_audio_wrapper(identifier: str):
+def _build_audio_wrapper(identifier: str, random_init: bool = False):
     """Wrap Wav2Vec2-base with AudioWrapper. AudioWrapper handles the
     whole audio pipeline (load WAV, resample, processor, hook, batch,
-    cache, package) — symmetric with the other wrappers."""
-    from transformers import Wav2Vec2Model, Wav2Vec2FeatureExtractor
+    cache, package) — symmetric with the other wrappers.
+
+    ``random_init=True`` constructs from config (random weights,
+    deterministic seed) instead of loading the pretrained checkpoint.
+    """
+    from transformers import (
+        Wav2Vec2Model, Wav2Vec2Config, Wav2Vec2FeatureExtractor)
     from brainscore.model_helpers.audio_wrapper import AudioWrapper
     from scipy.io import wavfile
+    import torch
 
-    model = Wav2Vec2Model.from_pretrained(AUDIO_HF_ID).eval()
+    if random_init:
+        config = Wav2Vec2Config.from_pretrained(AUDIO_HF_ID)
+        torch.manual_seed(0)
+        model = Wav2Vec2Model(config).eval()
+    else:
+        model = Wav2Vec2Model.from_pretrained(AUDIO_HF_ID).eval()
     processor = Wav2Vec2FeatureExtractor.from_pretrained(AUDIO_HF_ID)
 
     def _wav_loader(audio_path: str, target_rate: int) -> np.ndarray:
@@ -117,11 +138,12 @@ def _build_audio_wrapper(identifier: str):
             wav = wav.mean(axis=-1)
         return wav
 
+    backbone_id = 'random-wav2vec2-base' if random_init else 'wav2vec2-base'
     wrapper = AudioWrapper(
         model=model,
         processor=processor,
         identifier=f'{identifier}-audio',
-        backbone_id='wav2vec2-base',
+        backbone_id=backbone_id,
         layer_aggregation='time_series',  # keep T axis for temporal alignment
         max_duration_sec=60.0,
         batch_size=4,
@@ -131,18 +153,29 @@ def _build_audio_wrapper(identifier: str):
     return wrapper, model
 
 
-def get_model(identifier: str) -> BrainScoreModel:
-    assert identifier == 'vjepa1-wav2vec2'
+SUPPORTED_IDENTIFIERS = (
+    'vjepa1-wav2vec2',                  # signal video + signal audio
+    'random-vjepa1-wav2vec2',           # null   video + signal audio
+    'vjepa1-random-wav2vec2',           # signal video + null   audio
+    'random-vjepa1-random-wav2vec2',    # null   video + null   audio
+)
 
-    video_wrapper, video_model = _build_video_wrapper(identifier)
-    audio_wrapper, audio_model = _build_audio_wrapper(identifier)
+
+def get_model(identifier: str) -> BrainScoreModel:
+    if identifier not in SUPPORTED_IDENTIFIERS:
+        raise AssertionError(
+            f"unknown multimodal identifier {identifier!r}; "
+            f"expected one of {SUPPORTED_IDENTIFIERS}")
+    random_video = identifier.startswith('random-vjepa1')
+    random_audio = 'random-wav2vec2' in identifier
+
+    video_wrapper, video_model = _build_video_wrapper(
+        identifier, random_init=random_video)
+    audio_wrapper, audio_model = _build_audio_wrapper(
+        identifier, random_init=random_audio)
 
     return BrainScoreModel(
         identifier=identifier,
-        # No single fused model — preprocessors hold their own backbones.
-        # `model` is unused when every preprocessor is an extractor
-        # (PytorchWrapper / TextWrapper / VideoWrapper / AudioWrapper),
-        # which all duck-type as having an ``identifier`` attribute.
         model=None,
         region_layer_map=REGION_LAYER_MAP,
         region_modality_map=REGION_MODALITY_MAP,
@@ -150,8 +183,6 @@ def get_model(identifier: str) -> BrainScoreModel:
             'video': video_wrapper,
             'audio': audio_wrapper,
         },
-        # Both towers are required — the multimodal score wouldn't make
-        # sense if a benchmark provided only one stream.
         required_modalities={'video', 'audio'},
         activations_model=None,
         visual_degrees=8,
