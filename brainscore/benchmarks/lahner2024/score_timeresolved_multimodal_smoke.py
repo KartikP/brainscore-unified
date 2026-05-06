@@ -25,6 +25,18 @@ def main():
 
     log('loading model: vjepa1-wav2vec2 (signal both towers)...')
     model = brainscore.load_model('vjepa1-wav2vec2')
+    log('model loaded')
+
+    log('preloading TR-resolved assembly (~11 GB from S3 if not cached)...')
+    b_pre = Lahner2024BOLDMoments_timeresolved_multimodal_auditoryROI()
+    _ = b_pre.assembly  # force lazy load
+    log(f'assembly: {dict(b_pre.assembly.sizes)}')
+    log('events sidecar...')
+    _ = b_pre.events
+    log(f'events rows: {len(b_pre.events)}')
+    log('voxel mask...')
+    _ = b_pre.voxel_mask
+    log(f'mask voxels kept: {int(b_pre.voxel_mask.sum())}')
 
     out = {}
     for mode in ('video_only', 'audio_only', 'concat', 'per_modality',

@@ -14,3 +14,4 @@ from . import videomae_base     # noqa: F401   native-temporal video model (pixe
 from . import vjepa             # noqa: F401   native-temporal video model (representation-reconstruction, V-JEPA v2)
 from . import vjepa_v1          # noqa: F401   native-temporal video model (representation-reconstruction, V-JEPA v1 — EPFL paper's exact checkpoint)
 from . import multimodal_av_vjepa_wav2vec2  # noqa: F401  multimodal A+V: V-JEPA v1 video + Wav2Vec2-base audio
+from . import random_wav2vec2  # noqa: F401  null-control: random-init Wav2Vec2-base for audio

@@ -266,7 +266,6 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
     def _call_with_mode(self, candidate) -> Score:
         from brainscore_core.temporal import double_gamma_hrf, hrf_convolve
-        from .benchmark_timeresolved import N_RUNS_USED
 
         # Same as parent.__call__ up to the X_flat / Y_flat point
         per_stim_features, stimulus_ids = (
