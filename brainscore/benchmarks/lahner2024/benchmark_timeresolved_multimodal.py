@@ -363,49 +363,65 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
     def _fit_score_with_groups(self, feature_groups, Y_flat,
                                run_idx_per_obs, subject_per_obs):
-        """Mode-specific ridge fit. Returns per-voxel Pearson r."""
+        """Mode-specific ridge fit. Returns per-voxel Pearson r.
+
+        Voxel-batched (VOXEL_BATCH=2000) to keep peak memory bounded —
+        same pattern as the parent class's _cross_validated_ridge.
+        Without this, scoring on the 4042-voxel visualROI variant OOMs
+        around the held_out_preds shadow array + sklearn's per-fold
+        Y copies (CLAUDE.md note from M12-lite).
+        """
         from sklearn.linear_model import Ridge
         from sklearn.model_selection import KFold
 
-        # Use the same CV strategy as the parent; we just change the
-        # fit logic per mode.
-        n_voxels = Y_flat.shape[1]
-        per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float64)
+        n_obs, n_voxels = Y_flat.shape
         unique_runs = np.unique(run_idx_per_obs)
         n_runs = len(unique_runs)
         n_held = self._cv_n_held_out_runs
 
         kf = KFold(n_splits=max(2, n_runs // n_held), shuffle=True,
                    random_state=0)
-        fold_preds = np.zeros_like(Y_flat)
+        fold_masks = []
         for train_runs, test_runs in kf.split(unique_runs):
-            train_run_ids = unique_runs[train_runs]
-            test_run_ids = unique_runs[test_runs]
-            tr_mask = np.isin(run_idx_per_obs, train_run_ids)
-            te_mask = np.isin(run_idx_per_obs, test_run_ids)
-            Y_tr = Y_flat[tr_mask]
-            Y_te = Y_flat[te_mask]
-            if self._mode == 'banded':
-                # Single shared (α_v, α_a) tuned via 20% inner-train hold-out
-                preds = self._banded_fit_predict(
-                    feature_groups, tr_mask, te_mask, Y_tr)
-                fold_preds[te_mask] = preds
-            else:
-                # Concat / per_modality / single-tower
-                preds = np.zeros_like(Y_te)
-                for group in feature_groups:
-                    Xg_tr = group[tr_mask]
-                    Xg_te = group[te_mask]
-                    reg = Ridge(alpha=1.0).fit(Xg_tr, Y_tr)
-                    preds += reg.predict(Xg_te)
-                fold_preds[te_mask] = preds
+            tr_mask = np.isin(run_idx_per_obs, unique_runs[train_runs])
+            te_mask = np.isin(run_idx_per_obs, unique_runs[test_runs])
+            fold_masks.append((tr_mask, te_mask))
 
-        # Per-voxel Pearson on held-out predictions
-        for j in range(n_voxels):
-            yt = Y_flat[:, j]
-            yp = fold_preds[:, j]
-            if yt.std() > 0 and yp.std() > 0:
-                per_voxel_r[j] = np.corrcoef(yt, yp)[0, 1]
+        per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)
+        VOXEL_BATCH = 2000
+        for v_start in range(0, n_voxels, VOXEL_BATCH):
+            v_end = min(v_start + VOXEL_BATCH, n_voxels)
+            Y_sub = Y_flat[:, v_start:v_end]
+            held_out_preds = np.full_like(Y_sub, np.nan, dtype=np.float32)
+
+            for tr_mask, te_mask in fold_masks:
+                Y_tr = Y_sub[tr_mask]
+                if self._mode == 'banded':
+                    preds = self._banded_fit_predict(
+                        feature_groups, tr_mask, te_mask, Y_tr)
+                    held_out_preds[te_mask] = preds.astype(np.float32)
+                else:
+                    preds = np.zeros((te_mask.sum(), v_end - v_start),
+                                     dtype=np.float32)
+                    for group in feature_groups:
+                        reg = Ridge(alpha=1.0).fit(group[tr_mask], Y_tr)
+                        preds += reg.predict(group[te_mask]).astype(np.float32)
+                    held_out_preds[te_mask] = preds
+
+            valid = ~np.isnan(held_out_preds[:, 0])
+            if not valid.any():
+                continue
+            Yt = Y_sub[valid]
+            Yp = held_out_preds[valid]
+            Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
+            Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
+            num = (Yt_c * Yp_c).sum(axis=0)
+            den = np.sqrt((Yt_c ** 2).sum(axis=0)
+                          * (Yp_c ** 2).sum(axis=0))
+            with np.errstate(divide='ignore', invalid='ignore'):
+                per_voxel_r[v_start:v_end] = np.where(
+                    den > 0, num / den, np.nan)
+
         return per_voxel_r
 
     def _banded_fit_predict(self, feature_groups, tr_mask, te_mask, Y_tr):
