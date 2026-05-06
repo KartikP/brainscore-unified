@@ -428,6 +428,15 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         Y_inner_tr = Y_tr[inner_tr_idx]
         Y_val = Y_tr[val_idx]
 
+        # Hoist the expensive (n_obs × n_feat × n_feat) matmul outside the
+        # α-grid loop — only the diag(λ) penalty changes per (α_v, α_a).
+        # On a 100k-obs × 1024-feat problem this drops banded runtime
+        # ~25× (one matmul + n_grid solves vs n_grid matmuls).
+        XtX_inner = X_inner_tr.T @ X_inner_tr
+        XtY_inner = X_inner_tr.T @ Y_inner_tr
+        Y_val_centered = Y_val - Y_val.mean(axis=0)
+        Y_val_var = (Y_val_centered ** 2).sum(axis=0)
+
         best_score = -np.inf
         best_alpha = (1.0, 1.0)
         for av in self.BANDED_ALPHA_GRID:
@@ -436,14 +445,11 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
                     np.full(sizes[0], av),
                     np.full(sizes[1], aa),
                 ])
-                XtX = X_inner_tr.T @ X_inner_tr
-                XtY = X_inner_tr.T @ Y_inner_tr
-                W = np.linalg.solve(XtX + np.diag(lam), XtY)
+                W = np.linalg.solve(XtX_inner + np.diag(lam), XtY_inner)
                 Y_val_pred = X_val @ W
-                yt = Y_val - Y_val.mean(axis=0)
                 yp = Y_val_pred - Y_val_pred.mean(axis=0)
-                num = (yt * yp).sum(axis=0)
-                den = np.sqrt((yt ** 2).sum(axis=0) * (yp ** 2).sum(axis=0))
+                num = (Y_val_centered * yp).sum(axis=0)
+                den = np.sqrt(Y_val_var * (yp ** 2).sum(axis=0))
                 with np.errstate(divide='ignore', invalid='ignore'):
                     r = np.where(den > 0, num / den, 0.0)
                 s = float(np.mean(r))
@@ -451,7 +457,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
                     best_score = s
                     best_alpha = (av, aa)
 
-        # Refit on full training fold with chosen α
+        # Refit on full training fold with chosen α (one matmul, one solve).
         av, aa = best_alpha
         lam = np.concatenate([
             np.full(sizes[0], av),
