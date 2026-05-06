@@ -40,6 +40,26 @@ TR_SEC = 1.49
 DEFAULT_ASSEMBLY_ROOT = Path('~/.brainio/algonauts2025').expanduser()
 
 
+def _ffmpeg_extract_one(args):
+    """Worker for the frame-extraction Pool. Tuple-args because Pool.imap
+    doesn't take starargs."""
+    import subprocess
+    video_path, out_dir, fps_offset, resize, n_TRs = args
+    out_pat = f'{out_dir}/%04d.jpg'
+    duration = TR_SEC * (n_TRs + 1)  # safety bound
+    cmd = [
+        'ffmpeg', '-y', '-loglevel', 'error',
+        '-ss', f'{TR_SEC * fps_offset:.4f}',
+        '-i', video_path,
+        '-t', f'{duration:.4f}',
+        '-vf', f'fps=1/{TR_SEC},scale={resize}:{resize}',
+        '-q:v', '3',
+        out_pat,
+    ]
+    subprocess.run(cmd, check=False, capture_output=True)
+    return video_path
+
+
 class _Algonauts2025Base(BenchmarkBase):
     """Shared logic across the three splits."""
 
@@ -145,29 +165,32 @@ class _Algonauts2025Base(BenchmarkBase):
         """Cache dir for extracted frames. Idempotent across runs."""
         return self._assembly_root / 'frames'
 
-    def _expand_to_per_TR_frames(self, fps_offset: float = 0.5):
+    def _expand_to_per_TR_frames(self, fps_offset: float = 0.5,
+                                 resize: int = 224, n_workers: int = 8):
         """Build a frame-level StimulusSet — one row per (stim_id, TR).
 
-        For each unique stimulus_id in this benchmark's stim_set:
-        - open the .mkv with cv2
-        - sample one frame at TR midpoint (TR_SEC * (t + fps_offset))
-        - cache as PNG under {frames_dir}/{stim_id}/{t:04d}.png
-        Returns a StimulusSet with columns (stimulus_id, t_within_run,
-        frame_id, image_file_name) — frame_id is unique per row.
+        Uses ffmpeg via parallel subprocesses (~10x faster than cv2's
+        Python loop). Each worker extracts all TR-midpoint frames from
+        one video in a single ffmpeg call:
+            ffmpeg -ss {offset} -i {video} \
+                -vf "fps=1/{TR_SEC},scale={R}:{R}" -q:v 3 \
+                {dir}/%04d.jpg
+        Saves resized JPEGs (~10 KB each at 224×224) to
+        {frames_dir}/{stim_id}/{t:04d}.jpg.
         """
+        import multiprocessing as mp
         import pandas as pd
         from brainscore_core.supported_data_standards.brainio.stimuli import (
             StimulusSet)
-        import cv2
-        from PIL import Image
 
         frames_dir = self._frames_dir()
         frames_dir.mkdir(parents=True, exist_ok=True)
         stim_df = self.stimulus_set
-        # Sample counts come from the assembly: count TRs per stim_id.
         stim_to_n_TRs = self._stim_id_to_n_TRs()
 
+        # Plan extraction jobs. Skip stims whose JPEGs already exist.
         rows = []
+        jobs = []
         for _, srow in stim_df.iterrows():
             stim_id = srow['stimulus_id']
             video_path = Path(srow['video_path'])
@@ -175,49 +198,75 @@ class _Algonauts2025Base(BenchmarkBase):
                 continue
             n_TRs = stim_to_n_TRs.get(stim_id)
             if n_TRs is None:
-                # No fMRI for this stim — could still happen for held-out
-                # stubs (NaN-filled assemblies). Use whatever the assembly
-                # says (which may still produce zero rows).
                 continue
             stim_frame_dir = frames_dir / stim_id
             stim_frame_dir.mkdir(parents=True, exist_ok=True)
-            cap = None
-            for t in range(n_TRs):
-                out = stim_frame_dir / f'{t:04d}.png'
-                if not out.exists():
-                    if cap is None:
-                        cap = cv2.VideoCapture(str(video_path))
-                        if not cap.isOpened():
-                            raise IOError(f'cv2 cannot open {video_path}')
-                        fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
-                    target_sec = TR_SEC * (t + fps_offset)
-                    cap.set(cv2.CAP_PROP_POS_MSEC, target_sec * 1000.0)
-                    ok, frame = cap.read()
-                    if not ok:
-                        # Past end of video — fall back to last good frame
-                        # and accept duplication for the trailing TRs.
-                        cap.set(cv2.CAP_PROP_POS_FRAMES,
-                                int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) - 1)
-                        ok, frame = cap.read()
-                        if not ok:
-                            raise IOError(
-                                f'cv2 cannot read trailing frame from '
-                                f'{video_path} at TR {t}')
-                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    Image.fromarray(frame_rgb).save(out)
+            target_paths = [stim_frame_dir / f'{t+1:04d}.jpg'  # ffmpeg %04d starts at 1
+                            for t in range(n_TRs)]
+            for t, out in enumerate(target_paths):
+                # PytorchWrapper indexes ``stimulus_set['stimulus_id']``
+                # for path lookup, so each row's stimulus_id must be
+                # globally unique. Use frame_id as the canonical ID;
+                # keep the per-clip stim_id under ``clip_id`` for
+                # downstream TR-alignment.
+                frame_id = f'{stim_id}_t{t:04d}'
                 rows.append({
-                    'stimulus_id': stim_id,
+                    'stimulus_id': frame_id,
+                    'frame_id': frame_id,
+                    'clip_id': stim_id,
                     't_within_run': t,
-                    'frame_id': f'{stim_id}_t{t:04d}',
                     'image_file_name': str(out),
                 })
-            if cap is not None:
-                cap.release()
+            if not all(p.exists() for p in target_paths):
+                jobs.append((str(video_path), str(stim_frame_dir),
+                             fps_offset, resize, n_TRs))
+
+        if jobs:
+            print(f'  extracting frames for {len(jobs)} videos via '
+                  f'ffmpeg (n_workers={n_workers})...')
+            # 'fork' avoids the re-import that 'spawn' triggers (which
+            # makes the worker re-execute the driver script's top-level
+            # code). ffmpeg is just a subprocess so fork is safe here.
+            ctx = mp.get_context('fork')
+            with ctx.Pool(processes=n_workers) as pool:
+                for done, _ in enumerate(
+                        pool.imap_unordered(_ffmpeg_extract_one, jobs), 1):
+                    if done % 25 == 0 or done == len(jobs):
+                        print(f'    {done}/{len(jobs)} videos done',
+                              flush=True)
+
+        # ffmpeg sometimes outputs fewer frames than the assembly's
+        # n_TRs expects (video shorter than the fMRI run by 1-2 TRs).
+        # Fill any missing trailing frames by symlinking the last
+        # existing one so downstream extraction sees a complete set.
+        import shutil
+        n_filled = 0
+        for _, srow in stim_df.iterrows():
+            stim_id = srow['stimulus_id']
+            n_TRs = stim_to_n_TRs.get(stim_id)
+            if n_TRs is None:
+                continue
+            stim_frame_dir = frames_dir / stim_id
+            target_paths = [stim_frame_dir / f'{t+1:04d}.jpg'
+                            for t in range(n_TRs)]
+            existing = [p for p in target_paths if p.exists()]
+            if not existing:
+                continue
+            last_existing = existing[-1]
+            for p in target_paths:
+                if not p.exists():
+                    shutil.copy(last_existing, p)
+                    n_filled += 1
+        if n_filled > 0:
+            print(f'  filled {n_filled} trailing frames by '
+                  f'duplicating last-extracted')
+
         df = pd.DataFrame(rows)
         out_set = StimulusSet(df)
         out_set.identifier = (
             f'algonauts2025-{self._split}-sub{self._subject:02d}-frames')
-        out_set.stimulus_paths = dict(zip(df['frame_id'], df['image_file_name']))
+        out_set.stimulus_paths = dict(
+            zip(df['stimulus_id'], df['image_file_name']))
         return out_set
 
     def _stim_id_to_n_TRs(self) -> Dict[str, int]:
@@ -230,35 +279,51 @@ class _Algonauts2025Base(BenchmarkBase):
 
     # ── Feature extraction + alignment ────────────────────────────
 
+    # Per-frame feature cap. CLIP's encoder.layers.10.layer_norm2 emits
+    # (50_tokens × 768_hidden) = 38400 features per frame. With 162k TRs
+    # × 5 stimulus_window stacking, the design matrix would be 125 GB.
+    # TruncatedSVD compression to 1000 components keeps almost all
+    # variance and shrinks the design matrix ~38× (matches what BLIP-2
+    # / Lahner-multimodal do).
+    FEATURE_DIM_CAP = 1000
+
     def _extract_per_TR_features(self, candidate, frame_stim_set
                                  ) -> Tuple[np.ndarray, List[str]]:
         """Run candidate's vision tower on the frame stim_set.
 
+        Compresses features via TruncatedSVD to FEATURE_DIM_CAP — the
+        full token×hidden flatten from CLIP/BLIP-2/V-JEPA blows up the
+        downstream design matrix beyond practical memory.
+
         Returns:
-            features: (n_TRs, n_features) float32
-            frame_ids: list of frame_id strings (one per row),
-                preserving the order from the assembly walk so
-                downstream alignment is straightforward.
+            features: (n_TRs, FEATURE_DIM_CAP) float32
+            frame_ids: list of frame_id strings (one per row).
         """
-        # The candidate is expected to support 'vision' modality. For
-        # Phase 3 single-modality scoring we route through the model's
-        # own dispatch — same path Lahner-multimodal uses.
         candidate.start_recording('IT', time_bins=[(0, int(TR_SEC * 1000))])
         assembly = candidate.process(frame_stim_set)
-        # Flatten any time_bin axis (vision-tower-on-still-image returns
-        # (presentation, neuroid) typically, or (presentation, time_bin=1,
-        # neuroid)).
         if 'time_bin' in assembly.dims:
             assembly = assembly.mean(dim='time_bin')
         feats = assembly.values.astype(np.float32)
-        # Read frame_id ordering from the output assembly (must match
-        # frame_stim_set order, which the wrapper preserves).
-        if 'frame_id' in assembly.coords:
-            frame_ids = list(assembly['frame_id'].values)
-        elif 'stimulus_id' in assembly.coords:
-            frame_ids = list(assembly['stimulus_id'].values)
-        else:
-            frame_ids = [f'row_{i}' for i in range(len(assembly))]
+        if feats.shape[1] > self.FEATURE_DIM_CAP:
+            from sklearn.decomposition import TruncatedSVD
+            print(f'  SVD compress: {feats.shape[1]} → '
+                  f'{self.FEATURE_DIM_CAP} features...')
+            svd = TruncatedSVD(
+                n_components=self.FEATURE_DIM_CAP, random_state=0)
+            feats = svd.fit_transform(feats).astype(np.float32)
+        # Source of truth for frame ordering is the INPUT frame_stim_set,
+        # NOT the output assembly's coords. The brainscore_vision cache
+        # round-trip can strip custom stim_set columns, but it preserves
+        # row order 1:1 (paths feed in, activations come out in the same
+        # order). The output assembly's row count must match the input
+        # for this to hold.
+        n_in = len(frame_stim_set)
+        n_out = feats.shape[0]
+        if n_in != n_out:
+            raise ValueError(
+                f"frame_stim_set has {n_in} rows but candidate.process "
+                f"returned {n_out}; cannot trust input order.")
+        frame_ids = list(frame_stim_set['stimulus_id'])
         return feats, frame_ids
 
     def _align_features_to_assembly(
@@ -280,10 +345,13 @@ class _Algonauts2025Base(BenchmarkBase):
                             and not frame_ids[0].endswith('_t0000'))
 
         # The frame_stim_set's order may differ from the assembly's.
-        # Build (stim_id, t) → frame_id mapping from the stim_set.
+        # Build (clip_id, t) → frame_id mapping from the stim_set.
+        # NOTE: frame_stim_set's 'stimulus_id' column is the unique
+        # frame_id (PytorchWrapper requires this to be globally unique
+        # for path lookup); the per-clip identifier lives in 'clip_id'.
         sf = frame_stim_set
         stim_t_to_frame_id = {
-            (str(sf.iloc[i]['stimulus_id']),
+            (str(sf.iloc[i]['clip_id']),
              int(sf.iloc[i]['t_within_run'])):
             sf.iloc[i]['frame_id']
             for i in range(len(sf))
@@ -293,17 +361,33 @@ class _Algonauts2025Base(BenchmarkBase):
         X = np.full((n_TRs, features.shape[1]), np.nan, dtype=np.float32)
         a_stim = list(self.assembly['stimulus_id'].values)
         a_t = list(self.assembly['t_within_run'].values)
-        missing = 0
+        # Diagnostic: confirm dict + feat_idx coverage on the first TR
+        first_key = (str(a_stim[0]), int(a_t[0]))
+        first_fid = stim_t_to_frame_id.get(first_key)
+        first_row = feat_idx.get(first_fid) if first_fid else None
+        print(f'  diag: first TR key={first_key!r}, '
+              f'fid={first_fid!r}, row={first_row!r}', flush=True)
+        print(f'  diag: stim_t_to_frame_id size={len(stim_t_to_frame_id)}, '
+              f'feat_idx size={len(feat_idx)}', flush=True)
+        print(f'  diag: sample feat_idx keys: '
+              f'{list(feat_idx.keys())[:3]}', flush=True)
+        missing_fid = 0
+        missing_row = 0
         for i in range(n_TRs):
             fid = stim_t_to_frame_id.get((str(a_stim[i]), int(a_t[i])))
             if fid is None:
-                missing += 1
+                missing_fid += 1
                 continue
             row = feat_idx.get(fid)
             if row is None:
-                missing += 1
+                missing_row += 1
                 continue
             X[i] = features[row]
+        missing = missing_fid + missing_row
+        if missing > 0:
+            print(f'  diag: missing breakdown — '
+                  f'no frame_id in stim_t map: {missing_fid}, '
+                  f'no row in feat_idx: {missing_row}', flush=True)
         if missing > 0:
             # Some TRs may lack frames (e.g., assembly TRs past the
             # video's actual duration). Fill with the last valid feature
