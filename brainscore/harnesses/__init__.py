@@ -8,3 +8,4 @@ types and the helpers that pack them into ``EnvironmentStep.observation``. A
 human harness and other environment harnesses (Atari, browser) are reserved.
 """
 from . import robotics
+from . import human
