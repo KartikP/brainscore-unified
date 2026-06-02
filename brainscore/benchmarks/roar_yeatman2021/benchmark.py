@@ -38,6 +38,7 @@ Human assembly schema (verified April 2026):
   Accuracy is computed as (data == correct).
 """
 
+import os
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -73,7 +74,8 @@ BIBTEX = """@article{yeatman2021rapid,
 }"""
 
 
-DATA_DIR = Path('/Users/kartik/Brain-Score Unified/data/roar_yeatman2021')
+DATA_DIR = Path(os.environ.get(
+    'ROAR_DATA_DIR', '/Users/kartik/Brain-Score Unified/data/roar_yeatman2021'))
 
 # Paper protocol: 200/50 real, 200/50 pseudo
 TRAIN_PER_CLASS = 200
