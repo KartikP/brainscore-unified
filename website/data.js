@@ -1,5 +1,7 @@
 // Inlined results so the site opens from file:// without fetch/CORS issues.
-// Canonical copy lives in data/results.json (identical content).
+// THIS FILE is the canonical data the site renders. (data/results.json is an
+// earlier seed snapshot kept for reference; data/temporal_shift_null.json and
+// data/nocache_roar.json are the raw measured outputs behind the curves here.)
 window.BSU_DATA = {
   "meta": {
     "title": "Brain-Score · Unified Model Interface",
