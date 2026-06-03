@@ -34,12 +34,36 @@ INSTR_COT = ("The image shows a SAMPLE object on top and two options below (LEFT
              "Reason briefly, then end with a line: 'Answer: LEFT' or 'Answer: RIGHT'.")
 
 
+def select_demos(rows, k):
+    """Pick k balanced solved practice trials (correct side known), held out from
+    the test set. Returns (demo_list, held_out_image_ids). The VLM analog of human
+    practice trials; balanced LEFT/RIGHT also breaks any positional prior."""
+    left, right = [], []
+    seen = set()
+    for r in rows:
+        if r['image_id'] in seen:
+            continue
+        correct = 'LEFT' if r['sample_obj'] == r['left_obj'] else 'RIGHT'
+        bucket = left if correct == 'LEFT' else right
+        if len(bucket) < k // 2:
+            bucket.append({'image_path': r['image_path'], 'answer': correct})
+            seen.add(r['image_id'])
+        if len(left) >= k // 2 and len(right) >= k // 2:
+            break
+    demos = []
+    for a, b in zip(left, right):     # interleave so the demo order alternates sides
+        demos += [a, b]
+    return demos, seen
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--manifest', required=True)
     ap.add_argument('--out', required=True)
     ap.add_argument('--model', default='google/gemma-4-12B')
     ap.add_argument('--mode', default='direct', choices=['direct', 'cot'])
+    ap.add_argument('--n_shots', type=int, default=0,
+                    help='in-context practice trials prepended to each prompt (0 = zero-shot)')
     ap.add_argument('--limit', type=int, default=0, help='cap trials (smoke); 0 = all')
     args = ap.parse_args()
 
@@ -60,16 +84,31 @@ def main():
         args.model, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
     dev = next(model.parameters()).device
 
-    rows = list(csv.DictReader(open(args.manifest)))
+    all_rows = list(csv.DictReader(open(args.manifest)))
+    demos, demo_imgs = ([], set())
+    if args.n_shots:
+        demos, demo_imgs = select_demos(all_rows, args.n_shots)
+        demos = [{'img': Image.open(d['image_path']).convert('RGB'), 'answer': d['answer']} for d in demos]
+        print(f'{len(demos)} practice demos (held out): '
+              f"{[d['answer'] for d in demos]}", flush=True)
+    rows = [r for r in all_rows if r['image_id'] not in demo_imgs]   # no leakage
     if args.limit:
         rows = rows[:args.limit]
-    print(f'{len(rows)} trials, mode={args.mode}', flush=True)
+    print(f'{len(rows)} test trials, mode={args.mode}, n_shots={args.n_shots}', flush=True)
+
+    def demo_turns():
+        msgs = []
+        for d in demos:                                   # each practice trial: user(image+instr) -> assistant(answer)
+            msgs.append({'role': 'user', 'content': [{'type': 'image', 'image': d['img']},
+                                                     {'type': 'text', 'text': instr}]})
+            msgs.append({'role': 'assistant', 'content': [{'type': 'text', 'text': f'Answer: {d["answer"]}'}]})
+        return msgs
 
     out_rows, parse_miss = [], 0
     for i, r in enumerate(rows):
         img = Image.open(r['image_path']).convert('RGB')
-        messages = [{'role': 'user', 'content': [{'type': 'image', 'image': img},
-                                                 {'type': 'text', 'text': instr}]}]
+        messages = demo_turns() + [{'role': 'user', 'content': [{'type': 'image', 'image': img},
+                                                                {'type': 'text', 'text': instr}]}]
         kw = {}
         try:
             inputs = proc.apply_chat_template(messages, add_generation_prompt=True, tokenize=True,
@@ -98,7 +137,7 @@ def main():
         w.writeheader(); w.writerows(out_rows)
     acc = sum(r['correct'] == 'True' for r in out_rows) / len(out_rows)
     frac_left = sum(r['side'] == 'LEFT' for r in out_rows) / len(out_rows)
-    summary = {'model': args.model, 'mode': args.mode, 'n': len(out_rows),
+    summary = {'model': args.model, 'mode': args.mode, 'n_shots': args.n_shots, 'n': len(out_rows),
                'accuracy': round(acc, 4), 'frac_left': round(frac_left, 4),
                'parse_miss': parse_miss}
     json.dump(summary, open(os.path.join(args.out, 'summary.json'), 'w'), indent=2)

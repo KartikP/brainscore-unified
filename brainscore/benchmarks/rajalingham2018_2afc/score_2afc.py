@@ -139,7 +139,26 @@ def _parse_lr(text, rng):
     return 'LEFT' if iL > iR else 'RIGHT'
 
 
-def build_generation_chooser(model_id, prompt_mode='cot'):
+def select_demos(stim, k):
+    """k balanced solved practice trials (correct side known) from the stim set,
+    returned with the demo image_ids so they can be held out of the test set."""
+    from PIL import Image
+    left, right, seen = [], [], set()
+    for _, r in stim.iterrows():
+        if r['image_id'] in seen:
+            continue
+        correct = 'LEFT' if r['sample_obj'] == r['left_obj'] else 'RIGHT'
+        bucket = left if correct == 'LEFT' else right
+        if len(bucket) < k // 2:
+            bucket.append({'img': Image.open(r['image_path']).convert('RGB'), 'answer': correct})
+            seen.add(r['image_id'])
+        if len(left) >= k // 2 and len(right) >= k // 2:
+            break
+    demos = [x for pair in zip(left, right) for x in pair]   # alternate sides
+    return demos, seen
+
+
+def build_generation_chooser(model_id, prompt_mode='cot', demos=None):
     import torch
     from PIL import Image
     from transformers import AutoProcessor
@@ -152,16 +171,22 @@ def build_generation_chooser(model_id, prompt_mode='cot'):
     model = VLM.from_pretrained(model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
                                 device_map=device).eval()
     rng = np.random.RandomState(0)
-    stats = {'calls': 0, 'parse_miss': 0, 'prompt_mode': prompt_mode}
+    demos = demos or []
+    stats = {'calls': 0, 'parse_miss': 0, 'prompt_mode': prompt_mode, 'n_shots': len(demos)}
     instr = INSTRUCTION_DIRECT if prompt_mode == 'direct' else INSTRUCTION_COT
     max_new = 6 if prompt_mode == 'direct' else 200    # direct = first-glance percept; cot = room to reason
 
     def choose(row):
         stats['calls'] += 1
         img = Image.open(row['image_path']).convert('RGB')
-        messages = [{'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': instr}]}]
+        messages = []
+        for d in demos:                                  # in-context practice trials
+            messages.append({'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': instr}]})
+            messages.append({'role': 'assistant', 'content': f'Answer: {d["answer"]}'})
+        messages.append({'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': instr}]})
         text = proc.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = proc(text=[text], images=[img], return_tensors='pt').to(device)
+        images = [d['img'] for d in demos] + [img]
+        inputs = proc(text=[text], images=images, return_tensors='pt').to(device)
         with torch.no_grad():
             out = model.generate(**inputs, max_new_tokens=max_new, do_sample=False)
         ans = proc.decode(out[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
@@ -215,6 +240,8 @@ def main():
     ap.add_argument('--model', default='')
     ap.add_argument('--prompt_mode', default='cot', choices=['cot', 'direct'],
                     help='generation only: cot = reason-then-answer; direct = one-word first-glance answer')
+    ap.add_argument('--n_shots', type=int, default=0,
+                    help='generation only: in-context practice trials prepended per prompt (0 = zero-shot)')
     ap.add_argument('--n_images', type=int, default=240)
     ap.add_argument('--out', required=True)
     ap.add_argument('--montage_dir', default='')
@@ -231,13 +258,21 @@ def main():
     stim = compose_montages(trials, args.n_images, montage_dir)
     print(f'composed {len(stim)} montage trials', flush=True)
 
+    demos = []
+    if args.path == 'generation' and args.n_shots:
+        demos, demo_imgs = select_demos(stim, args.n_shots)
+        stim = stim[~stim['image_id'].isin(demo_imgs)].reset_index(drop=True)   # no leakage
+        print(f'{len(demos)} practice demos held out ({[d["answer"] for d in demos]}); '
+              f'{len(stim)} test trials', flush=True)
+
     if args.path == 'generation':
-        choose, stats, instr = build_generation_chooser(args.model, args.prompt_mode)
+        choose, stats, instr = build_generation_chooser(args.model, args.prompt_mode, demos=demos)
     elif args.path == 'similarity':
         choose, stats = build_similarity_chooser(args.model); instr = INSTRUCTION_DIRECT
     else:
         choose, stats = build_random_chooser(); instr = INSTRUCTION_DIRECT
-    tag = f'{args.path}:{args.model or "null"}' + (f':{args.prompt_mode}' if args.path == 'generation' else '')
+    tag = f'{args.path}:{args.model or "null"}' + (
+        f':{args.prompt_mode}:{args.n_shots}shot' if args.path == 'generation' else '')
     model = TwoAFCModel(tag, choose, mode=args.path, instruction=instr)
 
     with Witness(model, label=f'{args.model or args.path} · Rajalingham 2-AFC') as w:
@@ -260,6 +295,7 @@ def main():
     witness_out = w.save(os.path.join(args.out, 'witness'), max_panels=args.witness_panels)
     result = {'path': args.path, 'model': args.model,
               'prompt_mode': args.prompt_mode if args.path == 'generation' else None,
+              'n_shots': args.n_shots if args.path == 'generation' else 0,
               'n_trials': len(choices), 'accuracy': acc, 'frac_left': frac_left,
               'per_object_accuracy': per_obj_acc,
               'stats': stats, 'scores': scores, 'witness': witness_out['summary']}
