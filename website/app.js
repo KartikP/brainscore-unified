@@ -135,6 +135,13 @@
     $('selection-reading').textContent = s.reading;
   })();
 
+  // ---- limitations ----
+  if (D.limitations) {
+    $('lim-title').textContent = D.limitations.title;
+    $('lim-list').innerHTML = D.limitations.items
+      .map(t => `<li>${t}</li>`).join('');
+  }
+
   // ---- nulls table ----
   const nt = $('nulls-table');
   nt.innerHTML = '<tr><th>capability</th><th>matched null</th><th>what it catches</th></tr>' +

@@ -103,6 +103,11 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .nulls-table td:first-child{color:var(--ink); font-weight:600}
 .nulls-table td code{font-size:.82em}
 
+/* limitations */
+.lim-list{list-style:none; padding:0; margin:0; display:grid; gap:12px}
+.lim-list li{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--warn);
+  border-radius:10px; padding:14px 18px; color:#cdd7ee; font-size:.96rem}
+
 /* footer */
 .footer{padding:48px 28px; border-top:1px solid var(--line); max-width:1100px; margin:0 auto;
   display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; color:var(--muted)}

@@ -4,8 +4,8 @@ window.BSU_DATA = {
   "meta": {
     "title": "Brain-Score · Unified Model Interface",
     "subtitle": "Register a model once. Score it across vision, language, audio, video, multimodal, perturbation, and embodied benchmarks — through one process() interface.",
-    "note": "Every capability is reported against a matched null floor. A score that doesn't clear its null is reporting noise — and we say so.",
-    "provenance": "Neural/behavioral scores reproduced bit-for-bit on v1.5 from the v1 baselines; embodied scores from scripts/vlm_game; figures from brainscore.visualization."
+    "note": "Matched nulls are DEFINED for every capability; floors are MEASURED for neural encoding, behavior, and (on real BOLD) temporal alignment. Where a curve is non-monotonic, a result is contingent on a scoring choice, or a demo only proves plumbing, we say so — see each reading and the limitations panel.",
+    "provenance": "Neural/behavioral scores reproduced bit-for-bit on v1.5 from the v1 baselines; embodied scores from scripts/vlm_game; the temporal-shift null was run on real 162k-TR Algonauts BOLD; figures from brainscore.visualization. Numbers carried from v1 are labelled; synthetic illustrative values are labelled as such."
   },
   "scaling": {
     "language_encoding": {
@@ -20,14 +20,14 @@ window.BSU_DATA = {
       "models": ["random-vit", "Qwen-3B", "BLIP-2", "CLIP-B32"],
       "scores": [0.104, 0.315, 0.334, 0.374],
       "null_floor": 0.104,
-      "reading": "All models clear the random floor (3.6×). CLIP ViT-B/32 leads despite being smallest — contrastive image-text training beats scale for IT alignment."
+      "reading": "All models clear the random floor (3.6×). But note this curve is NON-MONOTONIC: the smallest model (CLIP ViT-B/32) leads. That is a validity FLAG, not a feature — IT alignment tracks training objective (contrastive image-text), not scale, so 'bigger = better' does not hold here. Point-estimate gaps (0.315 / 0.334 / 0.374) are not yet bootstrap-tested for significance."
     },
     "video_encoding": {
       "capability": "Neural encoding — video, visual ROI (Lahner2024, r)",
       "models": ["BLIP-2", "Qwen-3B", "VideoMAE", "V-JEPA2", "CLIP-B32", "V-JEPA1"],
       "scores": [0.180, 0.227, 0.321, 0.421, 0.456, 0.533],
       "null_floor": 0.05,
-      "reading": "Representation-reconstruction video models (V-JEPA) beat contrastive CLIP; pixel-reconstruction (VideoMAE) lags. The training objective matters more than the modality."
+      "reading": "Representation-reconstruction video models (V-JEPA) beat contrastive CLIP; pixel-reconstruction (VideoMAE) lags. CAVEAT: this ranking is contingent — V-JEPA only overtakes CLIP AFTER dropping StandardScaler from the ridge and remapping IT to the best per-voxel layer (16); pre-fix, CLIP led. The 'objective > modality' reading holds only under that scoring config. Scores are raw r without a per-voxel noise-ceiling normalization."
     },
     "behavior_roar": {
       "capability": "Behavior — lexical decision (ROAR Yeatman2021)",
@@ -41,18 +41,29 @@ window.BSU_DATA = {
       "models": ["random", "Qwen-VL-3B", "Qwen-VL-7B", "oracle"],
       "scores": [0.20, 0.0, 0.133, 1.0],
       "null_floor": 0.20,
-      "reading": "Visual VLMs struggle with abstract-grid perception (3B below the random floor; 7B's solves are optimal-efficiency). A thinking model with perfect ASCII perception isolates perception as the bottleneck. ~300 process(EnvironmentStep) calls, zero schema errors."
+      "reading": "HONEST FRAMING: this is a schema-robustness demonstration, not a competence result. Two of three learned agents (3B at 0.0, 7B at 0.13) sit BELOW the 0.20 random floor — on n=3 points, the 'perception is the bottleneck' story is an interpretation of a null failure, not a validated finding. What IS solid: ~300 process(EnvironmentStep) calls ran end-to-end with zero schema errors, and 7B's solves are optimal-efficiency (it perceives correctly sometimes, 3B never)."
     },
     "multimodal_algonauts": {
       "capability": "Multimodal — Algonauts2025 CNeuroMod (r)",
       "models": ["text-only", "video-only", "audio-only", "concat", "banded"],
       "scores": [0.120, 0.150, 0.157, 0.186, 0.213],
       "null_floor": 0.05,
-      "reading": "Banded ridge over video (CLIP) + audio (Wav2Vec2) + text (MiniLM) beats every single modality, replicating the Algonauts paper baseline (~0.20–0.25). MIRAGE's 0.319 uses a 30B gated encoder — the gap is backbone, not pipeline."
+      "reading": "Banded ridge over video (CLIP) + audio (Wav2Vec2) + text (MiniLM) beats every single modality, replicating the Algonauts paper baseline (~0.20–0.25). The MIRAGE 0.319 'gap is backbone not pipeline' claim is a HYPOTHESIS, not demonstrated — a controlled encoder-swap (our pipeline, MIRAGE's encoder) hasn't been run. What IS demonstrated: the earlier <0.01 figure was a NO-alignment demo; with proper HRF + stimulus-window alignment the pipeline reaches the paper's range."
     }
   },
+  "limitations": {
+    "title": "What we do NOT claim (yet)",
+    "items": [
+      "The IT encoding curve is non-monotonic — a benchmark-validity flag, not evidence of scaling.",
+      "V-JEPA > CLIP on video holds only after dropping StandardScaler + best-layer remap; it is a scoring-contingent ranking.",
+      "The embodied 'scaling curve' (n=3, 2 points below the random floor) demonstrates the interface plumbing, not model competence.",
+      "The topographic metric has only ever been validated on synthetic Gaussian fields — it has touched ZERO real fMRI and is wired into no benchmark.",
+      "The MIRAGE 'gap is backbone' attribution is an untested hypothesis (no controlled encoder swap).",
+      "Encoding scores are raw Pearson r without per-voxel noise-ceiling normalization; point-estimate gaps lack bootstrap CIs."
+    ]
+  },
   "nulls": {
-    "description": "Every capability is validated against a matched null that runs through the same pipeline with the signal destroyed in one specific way.",
+    "description": "Matched nulls are DEFINED for every capability and run through the same pipeline with the signal destroyed in one specific way. Floors are MEASURED for neural encoding and behavior; the temporal-shift null was run on real 162k-TR Algonauts BOLD (shuffle floor ≈ 0.012, score peaks at the true HRF delay and collapses when mis-timed).",
     "entries": [
       {"capability": "neural encoding", "null": "shuffle_rows / random-init model", "what_it_catches": "leakage, over-expressive readout"},
       {"capability": "behavioral", "null": "shuffle_labels / chance", "what_it_catches": "label imbalance, overfit readout"},
