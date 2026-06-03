@@ -22,6 +22,8 @@ import sys
 import time
 import traceback
 
+import numpy as np
+
 
 # (benchmark_identifier, [model identifiers, worse -> better], null_model)
 DEFAULT_LADDERS = {
@@ -44,15 +46,19 @@ DEFAULT_LADDERS = {
 
 
 def clear_caches():
-    """Remove result_caching + activation caches so nothing is reused."""
-    for path in [os.path.expanduser('~/.result_caching'),
-                 os.path.expanduser('~/.brainio')]:
-        # keep ~/.brainio data assemblies; only clear result_caching by default
-        pass
+    """Remove cached activations + scores so nothing is reused (true no-cache).
+
+    Clears ~/.result_caching (the @store_xarray activation + score cache). Leaves
+    ~/.brainio (downloaded stimulus sets + neural assemblies) intact — those are
+    inputs, not results, and re-downloading them wouldn't make the test more
+    'end-to-end', just slower.
+    """
     rc = os.path.expanduser('~/.result_caching')
     if os.path.isdir(rc):
         shutil.rmtree(rc, ignore_errors=True)
         print(f"cleared {rc}", flush=True)
+    else:
+        print(f"no cache at {rc} (already clean)", flush=True)
 
 
 def score_pair(model_id, benchmark_id):
@@ -61,13 +67,26 @@ def score_pair(model_id, benchmark_id):
     model = load_model(model_id)
     benchmark = load_benchmark(benchmark_id)
     score = benchmark(model)
-    # raw value: Brain-Score Score carries a 'raw' attr or is itself the value
+    return _score_to_float(score), time.time() - t0
+
+
+def _score_to_float(score):
+    """Extract the center value from a Brain-Score Score robustly.
+
+    A Score is an xarray DataAssembly; it may be a bare scalar, or carry an
+    'aggregation' dim with a 'center' coordinate. Try the most specific form
+    first, then fall back to the scalar value.
+    """
+    dims = getattr(score, 'dims', ())
+    if 'aggregation' in dims:
+        try:
+            return float(score.sel(aggregation='center'))
+        except Exception:
+            pass
     try:
-        raw = float(score.sel(aggregation='center')) if 'aggregation' in getattr(
-            score, 'dims', ()) else float(score)
-    except Exception:
-        raw = float(score.values) if hasattr(score, 'values') else float(score)
-    return raw, time.time() - t0
+        return float(score)
+    except (TypeError, ValueError):
+        return float(np.asarray(score.values).ravel()[0])
 
 
 def main():

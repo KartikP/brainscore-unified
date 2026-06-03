@@ -13,10 +13,31 @@ from brainscore.visualization import (
     composite_selection_map, units_per_layer_bar, selectivity_histogram,
     scaling_curve_single, scaling_curves_grid, normalized_scaling_overlay,
 )
+from brainscore.visualization.brain_map import parcels_to_vertices
 
 
 def _png_nonempty(path):
     return os.path.exists(path) and os.path.getsize(path) > 1000
+
+
+class TestParcelToVertexIndexing:
+    """The 1-indexed annot ↔ 0-indexed parcel mapping is the most error-prone
+    line in the surface path; test it without needing nilearn/network."""
+
+    def test_correct_one_off_mapping(self):
+        # annot labels: vertex 0 = medial wall (0), then parcels 1,2,3
+        labels = np.array([0, 1, 1, 2, 3, 3, 3])
+        values_h = np.array([10.0, 20.0, 30.0])   # parcels 0,1,2 -> labels 1,2,3
+        vtx = parcels_to_vertices(labels, values_h, per_hemi=3)
+        assert np.isnan(vtx[0])                    # medial wall stays NaN
+        assert vtx[1] == 10.0 and vtx[2] == 10.0   # label 1 -> parcel 0
+        assert vtx[3] == 20.0                      # label 2 -> parcel 1
+        assert vtx[4] == 30.0 and vtx[6] == 30.0   # label 3 -> parcel 2
+
+    def test_unlabeled_vertices_are_nan(self):
+        labels = np.array([0, 0, 1])
+        vtx = parcels_to_vertices(labels, np.array([5.0]), per_hemi=1)
+        assert np.isnan(vtx[0]) and np.isnan(vtx[1]) and vtx[2] == 5.0
 
 
 class TestNormalize:

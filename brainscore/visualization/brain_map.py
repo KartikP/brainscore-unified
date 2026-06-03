@@ -134,6 +134,23 @@ def network_strip(values: np.ndarray, parcel_names: Sequence[str], *,
 # Real cortical-surface rendering (nilearn + nibabel; assets fetched on demand).
 # ---------------------------------------------------------------------------
 
+def parcels_to_vertices(labels: np.ndarray, values_h: np.ndarray,
+                        per_hemi: int) -> np.ndarray:
+    """Scatter per-parcel values onto per-vertex values via a FreeSurfer annot.
+
+    The annot's per-vertex ``labels`` are 1-indexed (0 = medial wall), so parcel
+    ``j`` (0-based) corresponds to annot label ``j + 1``. This one-off-index is
+    the single most error-prone line in the surface path, so it lives in its own
+    pure, tested function. Vertices with no parcel (medial wall) stay ``NaN``.
+    """
+    labels = np.asarray(labels)
+    values_h = np.asarray(values_h, dtype=float)
+    vtx = np.full(labels.shape, np.nan)
+    for j in range(per_hemi):
+        vtx[labels == (j + 1)] = values_h[j]
+    return vtx
+
+
 def _safe_plot_surf(plotting, surf, vtx, *, hemi, view, bg_map, cmap,
                     threshold, vmin, vmax, title):
     """Call ``plot_surf_stat_map`` robustly across nilearn versions.
@@ -221,11 +238,7 @@ def cortical_surface_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
         labels, values_h, surf, bg = rh_labels, parcel_values[per_hemi:], \
             fsavg['infl_right'], fsavg['sulc_right']
 
-    # Map parcel value -> vertices. annot labels are 1-indexed (0 = medial wall);
-    # parcel j (0-based) corresponds to annot label j+1.
-    vtx = np.full(labels.shape, np.nan)
-    for j in range(per_hemi):
-        vtx[labels == (j + 1)] = values_h[j]
+    vtx = parcels_to_vertices(labels, values_h, per_hemi)
 
     fig = _safe_plot_surf(plotting, surf, vtx, hemi=hemi, view=view, bg_map=bg,
                           cmap=cmap, threshold=threshold, vmin=vmin, vmax=vmax,

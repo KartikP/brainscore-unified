@@ -17,6 +17,7 @@ from .brain_map import (
     network_strip,
     cortical_surface_map,
     voxel_surface_map,
+    parcels_to_vertices,
     fetch_schaefer_fsaverage_annot,
     SCHAEFER_7NETWORKS,
 )

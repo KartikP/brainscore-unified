@@ -24,15 +24,27 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
-# Direct dependencies. The model-extraction and scoring stack (torch,
-# transformers, scikit-learn, scipy, xarray, ...) is pinned by and pulled in
-# through the three domain packages below; pinning it again here would risk
-# conflicting with their carefully-resolved versions, so it is intentionally
-# left to them.
+# Direct dependencies. The three domain packages pull in the model-extraction
+# and scoring stack (torch, transformers, sklearn, ...). The version constraints
+# below are the HARD pins this codebase depends on — encoded here (not just in
+# tribal docs) so a clean clone reproduces. They are deliberately conservative
+# upper/lower bounds, not exact pins, to stay compatible with the domain repos'
+# own resolutions.
+#
+# NOTE ON scikit-learn: vision needs <1.6, language needs >=1.6. They cannot be
+# co-pinned. Install the one matching the domain you score; the env used for
+# development pins 1.5.x and skips the language tests that require >=1.6. This is
+# a known, documented conflict — see the repo notes.
 dependencies = [
     "brainscore_core",
     "brainscore_vision",
     "brainscore_language",
+    "numpy<2",
+    "xarray==2022.3.0",
+    "pandas<3",
+    "scipy",
+    "transformers<5",
+    "importlib-metadata<5",
 ]
 
 [project.optional-dependencies]

@@ -87,6 +87,7 @@ def build_visual_policy(model_id):
         model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
         device_map=device).eval()
     stats = {'parse_miss': 0, 'calls': 0}
+    rng = np.random.RandomState(0)
 
     def policy(observation, history):
         stats['calls'] += 1
@@ -102,8 +103,11 @@ def build_visual_policy(model_id):
         ans = processor.decode(gen, skip_special_tokens=True)
         a = _parse_action(ans)
         if a < 0:
+            # Unparseable output collapses to a RANDOM action (not a biased
+            # "always-right" walker) so a non-instruction-following model
+            # degrades to the random floor rather than masquerading as competent.
             stats['parse_miss'] += 1
-            return 3
+            return int(rng.randint(0, len(ACTIONS)))
         return a
 
     return policy, stats, (model, processor)
@@ -118,6 +122,7 @@ def build_thinking_policy(model_id):
         model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
         device_map=device).eval()
     stats = {'parse_miss': 0, 'calls': 0}
+    rng = np.random.RandomState(0)
 
     def policy(observation, history):
         stats['calls'] += 1
@@ -138,7 +143,7 @@ def build_thinking_policy(model_id):
         a = _parse_action(ans, prefer_last=True)
         if a < 0:
             stats['parse_miss'] += 1
-            return 3
+            return int(rng.randint(0, len(ACTIONS)))
         return a
 
     return policy, stats, (model, tok)
@@ -209,6 +214,11 @@ def main():
             res = run_policy(policy, **common)
             res['parse_miss'] = stats['parse_miss']
             res['calls'] = stats['calls']
+            miss_rate = stats['parse_miss'] / max(1, stats['calls'])
+            # >50% unparseable -> not instruction-following; its success rate is
+            # not a competence signal (its moves are mostly random fallbacks).
+            res['instruction_following'] = miss_rate < 0.5
+            res['parse_miss_rate'] = round(miss_rate, 3)
             res['mode'] = mode
             res['thinking'] = thinking
             results['models'][name] = res
