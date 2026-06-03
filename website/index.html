@@ -112,12 +112,12 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
 </section>
 
 <section id="ablation" class="section alt">
-  <h2>Lesion a population, measure the effect — and what scale it takes</h2>
+  <h2>Lesion a population, measure the effect — inducing dyslexia</h2>
   <p class="lead"><code>process(StateChange)</code> ablates a unit population, the
     benchmark re-scores by generation, and <code>reset()</code> restores
-    bit-for-bit. Replicating Honarmand et al.'s dyslexia induction shows the
-    selective deficit <em>emerging with model scale</em> — the honest result is
-    more interesting than a clean yes/no.</p>
+    bit-for-bit. Honarmand et al.'s selective dyslexia <em>reproduces at 32B</em>:
+    a word-form lesion drives reading below the dyslexia threshold while a
+    same-size random lesion doesn't — and the effect emerges with model scale.</p>
   <div class="two-col">
     <div id="ablation-plot" class="plot"></div>
     <div class="reading-box">

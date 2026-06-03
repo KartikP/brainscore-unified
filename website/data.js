@@ -62,7 +62,7 @@ window.BSU_DATA = {
       "The topographic metric has only ever been validated on synthetic Gaussian fields — it has touched ZERO real fMRI and is wired into no benchmark.",
       "The MIRAGE 'gap is backbone' attribution is an untested hypothesis (no controlled encoder swap).",
       "Encoding scores are raw Pearson r without per-voxel noise-ceiling normalization; point-estimate gaps lack bootstrap CIs.",
-      "Honarmand et al.'s selective dyslexia induction does NOT reproduce on Qwen2.5-VL-3B (3 seeds): VWF-selective ablation never impairs reading, while random ablation does — the opposite selectivity. Their clean result appears to need 72B scale; we have not run the 72B model."
+      "Honarmand's dyslexia induction is scale-dependent: it does NOT reproduce at 3B (wrong selectivity) and is sub-threshold at 7B; it reproduces at 32B but only at a large 25% mask (vs Honarmand's 6.9% on 72B). We have not run the 72B model itself."
     ]
   },
   "temporal_shift_validation": {
@@ -86,19 +86,19 @@ window.BSU_DATA = {
     ]
   },
   "ablation": {
-    "capability": "Inducing dyslexia (Honarmand et al. 2026) — Qwen2.5-VL-7B, multi-category localizer",
-    "protocol": "VWF localizer (word vs scrambled words + line-drawing objects) → ablate the top-K word-form-selective MLP gate_proj units vs an equal-size random set across all 28 decoder blocks → score ROAR by GENERATION (no readout refitting). 3 seeds, mean ± SD.",
-    "mask_pct": [0, 1, 6.9, 15],
-    "vwf_roar": [0.98, 0.98, 0.907, 0.933],
-    "vwf_roar_sd": [0.0, 0.0, 0.012, 0.031],
-    "random_roar": [0.98, 0.97, 0.957, 0.940],
-    "random_roar_sd": [0.0, 0.0, 0.009, 0.022],
-    "vwf_control": [0.87, 0.87, 0.87, 0.87],
-    "random_control": [0.93, 0.93, 0.87, 0.80],
+    "capability": "Inducing dyslexia (Honarmand et al. 2026) — REPRODUCED on Qwen2.5-VL-32B",
+    "protocol": "VWF localizer (word vs scrambled words + line-drawing objects) → ablate the top-K word-form-selective MLP gate_proj units vs an equal-size random set across all 64 decoder blocks → score ROAR by GENERATION (no readout refitting). 2 seeds, mean.",
+    "mask_pct": [0, 6.9, 15, 25],
+    "vwf_roar": [0.975, 0.963, 0.925, 0.537],
+    "vwf_roar_sd": [0.0, 0.0, 0.0, 0.0],
+    "random_roar": [0.975, 0.956, 0.938, 0.887],
+    "random_roar_sd": [0.0, 0.006, 0.037, 0.075],
+    "vwf_control": [0.87, 0.87, 0.87, 0.80],
+    "random_control": [0.87, 0.87, 0.80, 0.80],
     "threshold": 0.65,
     "brain_caption": "Where the lesion lands: the VWF-selective units align with the human Visual Word Form Area (VWFA — left ventral occipitotemporal cortex, MNI ≈ [-44,-58,-15]; Honarmand Fig 5). This quickbrain glass brain shows that cortical territory — the area effectively 'dropped' when the population is ablated.",
-    "scale_note": "Selectivity emerges with scale. 3B: VWF-selective ablation is LESS damaging than random (wrong direction). 7B (shown): at the 6.9% mask VWF (0.907) is now MORE damaging than random (0.957) — Honarmand's correct selectivity, with tight error bars — but too weak to cross the threshold. The full threshold-crossing deficit is a 72B phenomenon.",
-    "reading": "Honest, scale-dependent result. At 7B the VWF-selective ablation finally damages reading MORE than a random ablation of the same size (0.907 vs 0.957 at 6.9% mask) — the first time we see Honarmand's selectivity direction — but it never crosses the 0.65 dyslexia threshold. The earlier 'random ≈ baseline' artifact is fixed (corrected localizer + generation scoring); the V1 'crossed threshold' result was a different direction (ablating PSEUDO-selective units so the model calls everything 'real'), not Honarmand's word-form deficit. A faithful threshold-crossing reproduction needs Qwen2-VL-72B, Honarmand's actual model."
+    "scale_note": "The deficit is scale-dependent and emerges cleanly with size. 3B: VWF-selective ablation is LESS damaging than random (wrong direction). 7B: VWF becomes MORE damaging than random (correct direction) but too weak to cross the threshold. 32B (shown): VWF-selective ablation at a 25% mask drops reading to 0.537 — BELOW the 0.65 dyslexia threshold — while the same-size random ablation stays at 0.887. The selective dyslexia reproduces.",
+    "reading": "Honarmand's selective dyslexia REPRODUCES at 32B. At a 25% gate_proj mask, ablating the visual-word-form population drops lexical-decision reading to 0.537 — across the 0.65 dyslexia threshold — while an equal-size RANDOM ablation leaves reading at 0.887, and the non-reading control stays at 0.80. That is the selective reading deficit. The effect is scale-dependent: 3B showed the wrong direction, 7B the right direction but sub-threshold, and only at 32B does the VWF lesion cross the threshold selectively. (The earlier 'random ≈ baseline' artifact was a real/pseudo localizer + readout refitting; the V1 'crossed threshold' result was the opposite, pseudo-selective direction.) Honarmand used 72B, where the deficit appears at a smaller 6.9% mask — consistent with the trend that less ablation is needed as the model grows."
   },
   "selection": {
     "capability": "Composite selection — units across layers for one region",
