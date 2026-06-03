@@ -125,6 +125,11 @@ class Witness:
         if et == ENV_STEP:
             return 'action'
         m = self.model
+        # a model may declare its behavioral path explicitly (e.g. a bespoke
+        # 2-AFC driver model that isn't a BrainScoreModel)
+        hinted = getattr(m, '_witness_mode', None)
+        if hinted:
+            return hinted
         tc = getattr(m, '_task_context', None)
         if getattr(m, '_use_generation_for_task', False) and tc is not None:
             return 'generation'
