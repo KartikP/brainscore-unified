@@ -9,8 +9,21 @@ only. Outputs PNGs into ./assets/.
 import os
 import numpy as np
 
-from brainscore.visualization import cortical_surface_map, fetch_schaefer_fsaverage_annot
+from brainscore.visualization import (cortical_surface_map, quickbrain_outline_map,
+                                       fetch_schaefer_fsaverage_annot)
 from brainscore.visualization.brain_map import SCHAEFER_7NETWORKS
+
+# Render backend: 'quickbrain' (stylized brain outline) or 'nilearn' (inflated surface).
+BACKEND = os.environ.get('BRAIN_BACKEND', 'quickbrain')
+
+
+def render(vals, out_png, title=None):
+    if BACKEND == 'quickbrain':
+        return quickbrain_outline_map(vals, hemi='left', view='lateral',
+                                      threshold=None, colorbar=True,
+                                      title=title, out_png=out_png)
+    return cortical_surface_map(vals, hemi='left', view='lateral',
+                                vmin=0.0, vmax=0.5, title=title, out_png=out_png)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, 'assets')
@@ -54,15 +67,13 @@ def main():
                 vals[mask] = (0.18 + 0.30 * w) + 0.05 * rng.rand(mask.sum())
         vals = np.clip(vals, 0, 0.6)
         out = os.path.join(ASSETS, f'cortex_{key}.png')
-        cortical_surface_map(vals, hemi='left', view='lateral',
-                             vmin=0.0, vmax=0.5, title=None, out_png=out)
+        render(vals, out)
         print('wrote', out, 'mean', round(float(vals.mean()), 3))
 
     # also a generic demo (kept as the fallback)
     vals = np.clip(0.05 + 0.4 * rng.rand(1000), 0, 0.6)
-    cortical_surface_map(vals, hemi='left', view='lateral', vmin=0, vmax=0.5,
-                         out_png=os.path.join(ASSETS, 'cortex_demo.png'))
-    print('done')
+    render(vals, os.path.join(ASSETS, 'cortex_demo.png'))
+    print(f'done (backend={BACKEND})')
 
 
 if __name__ == '__main__':

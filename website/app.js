@@ -209,4 +209,21 @@
 
   function mean(a){ return a.reduce((x, y) => x + y, 0) / a.length; }
   function sem(a){ const m = mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length) / Math.sqrt(a.length); }
+
+  // ---- force all Plotly charts to fill their containers ----
+  // Plotly can compute a too-narrow width when it renders before CSS grid
+  // layout settles (charts ending up in the left half of the panel). Resize
+  // every plot after layout, again shortly after, and on window resize.
+  function resizeAllPlots() {
+    document.querySelectorAll('.plot').forEach(el => {
+      if (el && el.classList.contains('js-plotly-plot')) {
+        try { Plotly.Plots.resize(el); } catch (e) { /* not yet drawn */ }
+      }
+    });
+  }
+  window.addEventListener('resize', resizeAllPlots);
+  // run after the current layout pass, and again once fonts/CDN settle
+  requestAnimationFrame(resizeAllPlots);
+  setTimeout(resizeAllPlots, 150);
+  setTimeout(resizeAllPlots, 700);
 })();
