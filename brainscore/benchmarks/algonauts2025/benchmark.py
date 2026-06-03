@@ -287,7 +287,8 @@ class _Algonauts2025Base(BenchmarkBase):
     # / Lahner-multimodal do).
     FEATURE_DIM_CAP = 1000
 
-    def _extract_per_TR_features(self, candidate, frame_stim_set
+    def _extract_per_TR_features(self, candidate, frame_stim_set,
+                                 recording_target='IT'
                                  ) -> Tuple[np.ndarray, List[str]]:
         """Run candidate's vision tower on the frame stim_set.
 
@@ -299,7 +300,10 @@ class _Algonauts2025Base(BenchmarkBase):
             features: (n_TRs, FEATURE_DIM_CAP) float32
             frame_ids: list of frame_id strings (one per row).
         """
-        candidate.start_recording('IT', time_bins=[(0, int(TR_SEC * 1000))])
+        # recording_target selects the layer-mapping type: a single region name
+        # (standard, e.g. 'IT'), the string 'all' (whole-brain over every mapped
+        # layer), or a region backed by a CompositeSelector (units across layers).
+        candidate.start_recording(recording_target, time_bins=[(0, int(TR_SEC * 1000))])
         assembly = candidate.process(frame_stim_set)
         if 'time_bin' in assembly.dims:
             assembly = assembly.mean(dim='time_bin')

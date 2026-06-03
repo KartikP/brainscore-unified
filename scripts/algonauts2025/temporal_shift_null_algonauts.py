@@ -29,7 +29,10 @@ def stack(X, n_TRs, run_idx, W, D):
         shift = D + (W - 1 - offset)
         for i in range(n_TRs):
             src = i - shift
-            if src >= 0 and run_idx[src] == run_idx[i]:
+            # Negative HRF delays make shift negative -> src can exceed n_TRs, so
+            # bound BOTH ends (production code only uses positive delay and never
+            # hit the upper bound).
+            if 0 <= src < n_TRs and run_idx[src] == run_idx[i]:
                 Xst[i, offset * n_feat:(offset + 1) * n_feat] = X[src]
     return Xst
 
@@ -69,6 +72,10 @@ def main():
     ap.add_argument('--shifts', default='-12,-6,-3,0,3,6,9,12,18,24',
                     help='HRF-delay values to test (TRs). True delay should peak.')
     ap.add_argument('--alpha', type=float, default=1000.0)
+    ap.add_argument('--max_trs', type=int, default=0,
+                    help='If >0, use only the first N TRs (a contiguous span of '
+                         'the early runs) to keep the ridge fast. The shape of '
+                         'the shift curve is preserved; absolute r drops slightly.')
     ap.add_argument('--out', default='/tmp/algonauts_temporal_shift_null.json')
     args = ap.parse_args()
 
@@ -81,6 +88,11 @@ def main():
     n_TRs = Y.shape[0]
     X = np.load(args.video_cache)['X'].astype(np.float32)      # (n_TRs, 768)
     assert X.shape[0] == n_TRs, f'feature/BOLD mismatch {X.shape[0]} vs {n_TRs}'
+    if args.max_trs and args.max_trs < n_TRs:
+        Y = Y[:args.max_trs]; X = X[:args.max_trs]
+        a_run = a_run[:args.max_trs]; a_stim = a_stim[:args.max_trs]
+        n_TRs = Y.shape[0]
+        print(f'  subsampled to first {n_TRs} TRs', flush=True)
     print(f'  n_TRs={n_TRs}  X={X.shape}  Y={Y.shape}', flush=True)
 
     seen, run_idx = {}, np.empty(n_TRs, dtype=np.int64)
