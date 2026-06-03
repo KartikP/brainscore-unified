@@ -1,0 +1,44 @@
+{
+  "config": {
+    "episodes": 15,
+    "size": 5,
+    "max_steps": 20,
+    "base_seed": 500,
+    "out": "/tmp/vlm_game_cot.json",
+    "purge": true
+  },
+  "models": {
+    "Qwen2.5-VL-3B": {
+      "success_rate": 0.0,
+      "mean_efficiency": 0.0,
+      "n_episodes": 15,
+      "parse_miss": 0,
+      "calls": 300,
+      "instruction_following": true,
+      "parse_miss_rate": 0.0,
+      "mode": "visual",
+      "thinking": false
+    },
+    "Qwen2.5-VL-7B": {
+      "success_rate": 0.5333333333333333,
+      "mean_efficiency": 0.872625,
+      "n_episodes": 15,
+      "parse_miss": 0,
+      "calls": 174,
+      "instruction_following": true,
+      "parse_miss_rate": 0.0,
+      "mode": "visual",
+      "thinking": false
+    }
+  },
+  "oracle": {
+    "success_rate": 1.0,
+    "mean_efficiency": 1.0,
+    "n_episodes": 15
+  },
+  "random_null": {
+    "success_rate": 0.2,
+    "mean_efficiency": 0.2516666666666667,
+    "n_episodes": 15
+  }
+}

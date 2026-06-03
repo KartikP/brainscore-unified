@@ -125,12 +125,12 @@ window.BSU_DATA = {
   },
   "embodied_game": {
     "title": "A VLM plays a video game",
-    "subtitle": "Closed-loop process(EnvironmentStep) — the model sees a rendered frame, picks a move, the environment responds, repeat",
-    "models": ["random", "Qwen-VL-3B", "Qwen-VL-7B", "oracle"],
-    "success": [0.20, 0.0, 0.133, 1.0],
-    "colors": ["#9aa0a6", "#d8483b", "#e0a13b", "#3bb273"],
+    "subtitle": "Closed-loop process(EnvironmentStep) — the model sees a rendered frame, reasons, picks a move, the environment responds, repeat",
+    "models": ["random", "Qwen-VL-3B (CoT)", "Qwen-VL-7B (CoT)", "oracle"],
+    "success": [0.20, 0.0, 0.533, 1.0],
+    "colors": ["#9aa0a6", "#d8483b", "#e0a13b", "#1f9d57"],
     "null_floor": 0.20,
-    "reading": "The same interface that scores neural and behavioral benchmarks drives a closed-loop agent: a VLM is the policy, navigating a blue player to a green goal one move per process(EnvironmentStep). Across ~300 ticks there were zero schema errors. The honest read is a null result: a 3B VLM scores 0.0 — below the 0.20 random floor — because abstract-grid visual reasoning is hard; the 7B does better (0.13) and its solves are optimal-efficiency. The bottleneck is perception, not the interface."
+    "reading": "The same interface that scores neural and behavioral benchmarks drives a closed-loop agent: a VLM is the policy, navigating a blue player to a green goal one move per process(EnvironmentStep), zero schema errors across ~300 ticks. The instruction matters enormously: with only an 8-token answer (no reasoning) the 7B scored 0.13; given chain-of-thought (locate blue, locate green, reason, then act) it jumps to 0.53 — clearing the random floor and solving the majority of boards. The 3B stays at 0.0 even with reasoning, so for it the limit is genuine visual spatial perception, not the prompt. (A pure text reasoner reading the ASCII board — perfect perception — isolates reasoning from vision.)"
   },
   "layer_contribution": {
     "title": "Layer contribution per modality",

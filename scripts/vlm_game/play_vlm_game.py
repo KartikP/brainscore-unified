@@ -39,8 +39,7 @@ _WORD_TO_ACTION = {'up': 0, 'down': 1, 'left': 2, 'right': 3}
 # The ladder. (display_name, hf_id, mode, thinking). Ordered worse -> better
 # within each track; the driver runs them in this order.
 DEFAULT_LADDER = [
-    ('Qwen2.5-VL-3B', 'Qwen/Qwen2.5-VL-3B-Instruct', 'visual', False),
-    ('Qwen2.5-VL-7B', 'Qwen/Qwen2.5-VL-7B-Instruct', 'visual', False),
+    ('DeepSeek-R1-7B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B', 'ascii', True),
 ]
 
 _VISUAL_PROMPT = (
@@ -141,7 +140,8 @@ def build_thinking_policy(model_id):
                                            add_generation_prompt=True)
         inputs = tok([text], return_tensors='pt').to(device)
         with torch.no_grad():
-            out = model.generate(**inputs, max_new_tokens=512, do_sample=False)
+            # R1-style reasoners think at length before answering — give room.
+            out = model.generate(**inputs, max_new_tokens=1024, do_sample=False)
         gen = out[0][inputs['input_ids'].shape[1]:]
         ans = tok.decode(gen, skip_special_tokens=True)
         a = _parse_action(ans, prefer_last=True)
