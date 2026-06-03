@@ -4,10 +4,10 @@
 
   const LAYOUT = {
     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
-    font: { color: '#c6d0e6', family: 'Inter, sans-serif', size: 13 },
+    font: { color: '#1b2333', family: 'Inter, sans-serif', size: 13 },
     margin: { l: 56, r: 24, t: 18, b: 70 }, showlegend: false,
-    xaxis: { gridcolor: '#1d2740', zerolinecolor: '#1d2740' },
-    yaxis: { gridcolor: '#1d2740', zerolinecolor: '#1d2740' },
+    xaxis: { gridcolor: '#dde3ee', zerolinecolor: '#dde3ee' },
+    yaxis: { gridcolor: '#dde3ee', zerolinecolor: '#dde3ee' },
   };
   const CFG = { displayModeBar: false, responsive: true };
 
@@ -50,8 +50,8 @@
     $('resp-bench').textContent = inp.benchmark;
     $('resp-example').textContent = inp.example;
     const img = $('cortex-img');
-    const candidate = 'assets/cortex_' + slug(inp.type) + '.png';
-    img.onerror = () => { img.onerror = null; img.src = 'assets/cortex_demo.png'; };
+    const candidate = 'assets/cortex_' + slug(inp.type) + '.png?v=' + (window.ASSET_V || '3');
+    img.onerror = () => { img.onerror = null; img.src = 'assets/cortex_demo.png?v=' + (window.ASSET_V || '3'); };
     img.src = candidate;
   }
   selectInput(0, document.querySelector('.tog'));
@@ -71,13 +71,13 @@
     });
     const heat = {
       z: z, y: lc.labels, x: Array.from({ length: maxlen }, (_, i) => i),
-      type: 'heatmap', colorscale: 'Magma', colorbar: { title: 'rel.', thickness: 12 },
+      type: 'heatmap', colorscale: 'Turbo', colorbar: { title: 'rel.', thickness: 12 },
       hovertemplate: '%{y}, layer %{x}: %{z:.2f}<extra></extra>',
     };
     const lay = Object.assign({}, LAYOUT, {
       margin: { l: 110, r: 24, t: 12, b: 50 },
       xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'layer', dtick: 2 }),
-      yaxis: { gridcolor: '#1d2740', automargin: true },
+      yaxis: { gridcolor: '#dde3ee', automargin: true },
     });
     Plotly.react('lc-plot', [heat], lay, CFG);
   }

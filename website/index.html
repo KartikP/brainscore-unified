@@ -60,7 +60,7 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
     <div class="input-toggles" id="input-toggles"></div>
     <div class="response-panel">
       <figure>
-        <img id="cortex-img" src="assets/cortex_demo.png" alt="predicted cortical response" />
+        <img id="cortex-img" src="assets/cortex_demo.png?v=3" alt="predicted cortical response" />
         <figcaption id="cortex-cap">Illustrative: where this input's predicted responses concentrate across the inflated cortex (Schaefer-1000, fsaverage5), rendered by <code>brainscore.visualization</code>.</figcaption>
       </figure>
       <div class="response-text">
@@ -124,7 +124,7 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
   <h2 id="game-title"></h2>
   <p class="lead" id="game-sub"></p>
   <figure class="game-fig">
-    <img src="assets/game_rollout.png" alt="VLM grid-game rollout" />
+    <img src="assets/game_rollout.png?v=3" alt="VLM grid-game rollout" />
     <figcaption>One closed-loop rollout: the model sees each rendered frame and outputs a move (up/down/left/right) via <code>process(EnvironmentStep)</code>; the environment steps and returns the next frame.</figcaption>
   </figure>
   <div class="play-panel">
@@ -171,7 +171,7 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
     <div class="two-col-stack">
       <div id="ablation-plot" class="plot"></div>
       <figure class="lesion-brain">
-        <img id="lesion-brain-img" src="assets/vwfa_glass.png" alt="ablated population mapped to cortex" />
+        <img id="lesion-brain-img" src="assets/vwfa_glass.png?v=3" alt="ablated population mapped to cortex" />
         <figcaption id="lesion-brain-cap"></figcaption>
       </figure>
     </div>
@@ -189,7 +189,7 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
     spanning depth into one region. The population is defined by a functional
     localizer — so first, the stimuli that identify it.</p>
   <figure class="localizer-fig">
-    <img src="assets/localizer_stimuli.png" alt="localizer stimuli: word vs non-word" />
+    <img src="assets/localizer_stimuli.png?v=3" alt="localizer stimuli: word vs non-word" />
     <figcaption>Functional localizer: units are ranked by how much more they
       respond to <b>word</b> images than to <b>non-word</b> images (scrambled
       words + line-drawing objects) — a t-statistic per unit. The top-K become
