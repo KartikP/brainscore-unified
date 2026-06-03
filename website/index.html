@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Brain-Score · Unified Model Interface</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<nav class="nav">
+  <div class="brand">Brain-Score<span class="dot">·</span><span class="muted">Unified</span></div>
+  <div class="links">
+    <a href="#capabilities">Capabilities</a>
+    <a href="#response">Brain response</a>
+    <a href="#scaling">Scaling</a>
+    <a href="#ablation">Ablation</a>
+    <a href="#selection">Selection</a>
+    <a href="#nulls">Nulls</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="hero-inner">
+    <h1 id="hero-title">Brain-Score, unified.</h1>
+    <p id="hero-sub" class="sub"></p>
+    <div class="pill-row">
+      <span class="pill">vision</span><span class="pill">language</span>
+      <span class="pill">audio</span><span class="pill">video</span>
+      <span class="pill">multimodal</span><span class="pill">perturbation</span>
+      <span class="pill">embodied</span>
+    </div>
+    <pre class="code hero-code"><span class="k">from</span> brainscore <span class="k">import</span> load_model, load_benchmark
+model = load_model(<span class="s">"clip-vit-b-32"</span>)
+score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(model)
+<span class="c"># one model. every compatible benchmark. one process() interface.</span></pre>
+    <p id="hero-note" class="note"></p>
+  </div>
+</header>
+
+<section id="capabilities" class="section">
+  <h2>One interface, every capability</h2>
+  <p class="lead">A model is a <code>Subject</code>. The only evaluation method is
+    <code>process(input_event) → DataAssembly</code>. The input event decides the
+    capability — a stimulus set, a state change, or an environment step.</p>
+  <div class="cap-grid" id="cap-grid"></div>
+</section>
+
+<section id="response" class="section alt">
+  <h2>Stimulus in → brain response out</h2>
+  <p class="lead">Pick an input type. The model's predicted responses map onto the
+    cortex — the same figure style as a published encoding model.</p>
+  <div class="response-wrap">
+    <div class="input-toggles" id="input-toggles"></div>
+    <div class="response-panel">
+      <figure>
+        <img id="cortex-img" src="assets/cortex_demo.png" alt="predicted cortical response" />
+        <figcaption id="cortex-cap">Illustrative: where this input's predicted responses concentrate across the inflated cortex (Schaefer-1000, fsaverage5), rendered by <code>brainscore.visualization</code>.</figcaption>
+      </figure>
+      <div class="response-text">
+        <h3 id="resp-type"></h3>
+        <p id="resp-desc"></p>
+        <div class="kv"><span>benchmark</span><b id="resp-bench"></b></div>
+        <div class="kv"><span>example input</span><b id="resp-example"></b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="scaling" class="section">
+  <h2>Capabilities scale with model quality</h2>
+  <p class="lead">The headline validation: a benchmark worth running should climb
+    from a bad model to a good one and sit near its null floor for a random model.
+    Pick a capability.</p>
+  <div class="scaling-wrap">
+    <div class="scaling-tabs" id="scaling-tabs"></div>
+    <div id="scaling-plot" class="plot"></div>
+    <p class="reading" id="scaling-reading"></p>
+  </div>
+</section>
+
+<section id="ablation" class="section alt">
+  <h2>Lesion a population, measure the effect</h2>
+  <p class="lead"><code>process(StateChange)</code> ablates a unit population, the
+    benchmark re-scores, and <code>reset()</code> restores bit-for-bit. A random
+    same-size lesion is the control.</p>
+  <div class="two-col">
+    <div id="ablation-plot" class="plot"></div>
+    <div class="reading-box">
+      <h3>Induced dyslexia</h3>
+      <p id="ablation-reading"></p>
+      <div class="flow">
+        <span>input</span><span class="arrow">→</span>
+        <span>model response</span><span class="arrow">→</span>
+        <span>ablated response</span><span class="arrow">→</span>
+        <span>Δ benchmark</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="selection" class="section">
+  <h2>Which neurons, across which layers</h2>
+  <p class="lead">A <code>CompositeSelector</code> gathers a functional population
+    spanning depth into one region. Here is how a readout's units distribute
+    across layers.</p>
+  <div class="two-col">
+    <div id="selection-plot" class="plot"></div>
+    <div class="reading-box">
+      <h3>Composite selection</h3>
+      <p id="selection-reading"></p>
+      <p class="muted small">Standard mapping records one region from one layer;
+      <code>'all'</code> records every region in one pass; a
+      <code>CompositeSelector</code> pools units across layers into one region.</p>
+    </div>
+  </div>
+</section>
+
+<section id="nulls" class="section alt">
+  <h2>Nulls, everywhere</h2>
+  <p class="lead">No result is trusted without a matched null running through the
+    same pipeline. If the real score doesn't clear the floor, the signal is a
+    pipeline artifact — not the model.</p>
+  <table class="nulls-table" id="nulls-table"></table>
+</section>
+
+<footer class="footer">
+  <div>
+    <b>Try it.</b> The <code>unified/notebooks/</code> folder has one runnable
+    notebook per capability. The <code>brainscore.visualization</code> module
+    renders every figure here.
+  </div>
+  <div class="muted small" id="provenance"></div>
+</footer>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

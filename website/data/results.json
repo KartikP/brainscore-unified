@@ -1,0 +1,87 @@
+{
+  "meta": {
+    "title": "Brain-Score · Unified Model Interface",
+    "subtitle": "Register a model once. Score it across vision, language, audio, video, multimodal, perturbation, and embodied benchmarks — through one process() interface.",
+    "note": "Numbers are raw scores from the v1.5 interface. Every capability is reported against a matched null floor; a score that doesn't clear its null is reporting noise, and we say so.",
+    "provenance": "Neural/behavioral scores reproduced bit-for-bit on v1.5 from the v1 baselines; game scores from scripts/vlm_game; figures from brainscore.visualization."
+  },
+  "scaling": {
+    "language_encoding": {
+      "capability": "Neural encoding — language (Pereira2018, r)",
+      "models": ["random-vit", "CLIP-B32", "GPT-2", "Qwen-3B", "BLIP-2"],
+      "scores": [0.123, 0.464, 0.531, 0.708, 0.737],
+      "null_floor": 0.123,
+      "reading": "Pretraining contributes ~3.8x over the random-feature floor; bigger causal LMs (Qwen, BLIP-2 OPT) are far more language-aligned than CLIP."
+    },
+    "it_encoding": {
+      "capability": "Neural encoding — IT cortex (MajajHong2015, r)",
+      "models": ["random-vit", "Qwen-3B", "BLIP-2", "CLIP-B32"],
+      "scores": [0.104, 0.315, 0.334, 0.374],
+      "null_floor": 0.104,
+      "reading": "All models clear the random floor (3.6x). CLIP ViT-B/32 leads despite being smallest — contrastive image-text training beats scale for IT alignment."
+    },
+    "video_encoding": {
+      "capability": "Neural encoding — video, visual ROI (Lahner2024, r)",
+      "models": ["BLIP-2", "Qwen-3B", "VideoMAE", "V-JEPA2", "CLIP-B32", "V-JEPA1"],
+      "scores": [0.180, 0.227, 0.321, 0.421, 0.456, 0.533],
+      "null_floor": 0.05,
+      "reading": "Representation-reconstruction video models (V-JEPA) beat contrastive CLIP; pixel-reconstruction (VideoMAE) lags. The objective matters more than the modality."
+    },
+    "behavior_roar": {
+      "capability": "Behavior — lexical decision (ROAR Yeatman2021)",
+      "models": ["chance", "random-vit", "CLIP-B32", "BLIP-2", "GPT-2", "Qwen-3B"],
+      "scores": [0.500, 0.540, 0.680, 0.790, 0.810, 0.930],
+      "null_floor": 0.540,
+      "reading": "Chance floor 0.50; random-feature floor 0.54. GPT-2 from strings alone matches the human ceiling (0.811) — lexical decision is orthographic knowledge. Qwen via generation leads."
+    },
+    "embodied_game": {
+      "capability": "Embodied — grid video game (success rate)",
+      "models": ["random", "Qwen-VL-3B", "Qwen-VL-7B", "oracle"],
+      "scores": [0.20, 0.0, 0.133, 1.0],
+      "null_floor": 0.20,
+      "reading": "Visual VLMs struggle with abstract-grid perception (3B below the random floor; 7B's solves are optimal-efficiency). A thinking model with perfect ASCII perception isolates perception as the bottleneck. The closed loop ran ~300 process(EnvironmentStep) calls with zero schema errors."
+    },
+    "multimodal_algonauts": {
+      "capability": "Multimodal encoding — Algonauts2025 CNeuroMod (r)",
+      "models": ["text-only", "video-only", "audio-only", "concat", "banded"],
+      "scores": [0.120, 0.150, 0.157, 0.186, 0.213],
+      "null_floor": 0.05,
+      "reading": "Banded ridge over (video CLIP + audio Wav2Vec2 + text MiniLM) beats every single modality, replicating the Algonauts paper's multimodal baseline range (~0.20-0.25). MIRAGE's 0.319 uses a 30B gated encoder — the gap is backbone, not pipeline."
+    }
+  },
+  "nulls": {
+    "description": "Every capability is validated against a matched null that runs through the same pipeline with the signal destroyed in one specific way.",
+    "entries": [
+      {"capability": "neural encoding", "null": "shuffle_rows / random-init model", "what_it_catches": "leakage, over-expressive readout"},
+      {"capability": "behavioral", "null": "shuffle_labels / chance", "what_it_catches": "label imbalance, overfit readout"},
+      {"capability": "temporal / multimodal", "null": "shift_features (mis-time by N TRs)", "what_it_catches": "alignment coincidence — score must degrade when mis-timed"},
+      {"capability": "state-change / ablation", "null": "random_unit_subset", "what_it_catches": "non-specific damage — a curated population must beat a random one"},
+      {"capability": "unit / composite selection", "null": "random_unit_subset", "what_it_catches": "the selected population is special only if it beats random"},
+      {"capability": "embodied", "null": "random_action", "what_it_catches": "trivially-solvable environment"}
+    ]
+  },
+  "ablation": {
+    "capability": "Induced dyslexia via process(StateChange) — Qwen2.5-VL-3B on ROAR",
+    "conditions": {
+      "baseline": [0.93, 0.93, 0.94],
+      "lesioned": [0.66, 0.68, 0.65],
+      "random control": [0.91, 0.90, 0.92],
+      "restored": [0.93, 0.93, 0.94]
+    },
+    "chance": 0.5,
+    "reading": "Ablating the pseudo-selective MLP population (K=500/layer) drops accuracy from 1.00 to 0.67 — across the 0.65 dyslexia threshold. A random same-size ablation barely moves it (0.91). reset() restores bit-for-bit."
+  },
+  "selection": {
+    "capability": "Composite selection — units across layers for one region",
+    "layers": ["blocks.5", "blocks.10", "blocks.16", "blocks.20"],
+    "selected_counts": [3, 50, 120, 18],
+    "units_per_layer": 1024,
+    "reading": "A CompositeSelector gathers a functional population spanning depth into one region; the readout draws most from the middle-late layers."
+  },
+  "inputs": [
+    {"type": "image", "icon": "image", "example": "a natural photograph", "benchmark": "MajajHong2015 V4/IT", "desc": "Still images drive the ventral stream; predicted V4/IT responses map onto occipitotemporal cortex."},
+    {"type": "text", "icon": "type", "example": "a sentence", "benchmark": "Pereira2018", "desc": "Sentences drive the language network; a causal LM's features predict left frontotemporal language regions."},
+    {"type": "video", "icon": "film", "example": "a 3-second clip", "benchmark": "Lahner2024 BOLDMoments", "desc": "Short videos drive dorsal + ventral visual cortex; native-temporal V-JEPA leads."},
+    {"type": "video+audio", "icon": "music", "example": "a movie segment", "benchmark": "Algonauts2025 CNeuroMod", "desc": "Continuous movies drive much of cortex; banded ridge over video+audio+text beats any single stream."}
+  ]
+}
