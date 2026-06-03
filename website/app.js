@@ -79,6 +79,36 @@
     Plotly.react('mech-floors-plot', [bar], lay, CFG);
   }
 
+  // ---- all models, all paths (colored by path) ----
+  if (D.all_paths) {
+    const ap = D.all_paths;
+    $('allpaths-title').textContent = ap.title;
+    $('allpaths-sub').textContent = ap.subtitle;
+    $('allpaths-reading').textContent = ap.reading;
+    const readout = {
+      x: ap.models, y: ap.readout, type: 'scatter', mode: 'markers',
+      name: 'readout (logistic on features)',
+      marker: { color: '#3b7dd8', size: 15, symbol: 'circle' },
+      hovertemplate: '%{x} readout: %{y:.2f}<extra></extra>',
+    };
+    const generation = {
+      x: ap.models, y: ap.generation, type: 'scatter', mode: 'markers',
+      name: 'generation (parse the answer)',
+      marker: { color: '#e0a13b', size: 15, symbol: 'diamond' },
+      hovertemplate: '%{x} generation: %{y:.2f}<extra></extra>',
+    };
+    const lay = Object.assign({}, LAYOUT, {
+      showlegend: true,
+      legend: { x: 0.02, y: 0.98, font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR accuracy', range: [0.4, 1.0] }),
+      shapes: [{ type: 'line', x0: -0.4, x1: ap.models.length - 0.6, y0: ap.chance, y1: ap.chance,
+        line: { color: '#888', width: 1, dash: 'dot' } }],
+      annotations: [{ x: ap.models.length - 1, y: ap.chance, yanchor: 'bottom', xanchor: 'right',
+        text: 'chance', showarrow: false, font: { color: '#888', size: 10 } }],
+    });
+    Plotly.react('allpaths-plot', [readout, generation], lay, CFG);
+  }
+
   // ---- scaling curves ----
   const scKeys = Object.keys(D.scaling);
   const scTabs = $('scaling-tabs');

@@ -107,6 +107,15 @@ window.BSU_DATA = {
     "units_per_layer": 1024,
     "reading": "A CompositeSelector gathers a functional population spanning depth into one region; the readout draws most from the middle-late layers."
   },
+  "all_paths": {
+    "title": "Every model, every path it can run",
+    "subtitle": "ROAR lexical decision — readout vs generation, distinct colours",
+    "chance": 0.5,
+    "models": ["chance", "random-ViT", "CLIP-B32", "GPT-2", "BLIP-2", "Qwen-VL-3B"],
+    "readout": [0.50, 0.54, 0.69, 0.81, 0.80, 0.74],
+    "generation": [null, null, null, null, 0.50, 0.90],
+    "reading": "Each model is run through every output path it supports. The path matters as much as the model: Qwen's generation path (0.90) far exceeds its own readout (0.74), but BLIP-2's generation (0.50, chance) collapses below its readout (0.80) — it isn't instruction-tuned for lexical decision. GPT-2 has no generation path for this task; CLIP/random-ViT/chance are readout-only feature models. Colour encodes the path, not the model."
+  },
   "benchmark_mechanics": {
     "title": "What a benchmark actually does",
     "subtitle": "ROAR lexical decision — and why a readout-only model like CLIP scores on it",
