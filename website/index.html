@@ -120,8 +120,16 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
 <section id="selection" class="section">
   <h2>Which neurons, across which layers</h2>
   <p class="lead">A <code>CompositeSelector</code> gathers a functional population
-    spanning depth into one region. Here is how a readout's units distribute
-    across layers.</p>
+    spanning depth into one region. The population is defined by a functional
+    localizer — so first, the stimuli that identify it.</p>
+  <figure class="localizer-fig">
+    <img src="assets/localizer_stimuli.png" alt="localizer stimuli: word vs non-word" />
+    <figcaption>Functional localizer: units are ranked by how much more they
+      respond to <b>word</b> images than to <b>non-word</b> images (scrambled
+      words + line-drawing objects) — a t-statistic per unit. The top-K become
+      the visual-word-form (VWF) population. This is the same word-vs-non-word
+      contrast used in the lesion experiment below.</figcaption>
+  </figure>
   <div class="two-col">
     <div id="selection-plot" class="plot"></div>
     <div class="reading-box">
@@ -129,7 +137,8 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
       <p id="selection-reading"></p>
       <p class="muted small">Standard mapping records one region from one layer;
       <code>'all'</code> records every region in one pass; a
-      <code>CompositeSelector</code> pools units across layers into one region.</p>
+      <code>CompositeSelector</code> pools the localized units across layers into
+      one region.</p>
     </div>
   </div>
 </section>

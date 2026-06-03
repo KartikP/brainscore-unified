@@ -103,6 +103,12 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .nulls-table td:first-child{color:var(--ink); font-weight:600}
 .nulls-table td code{font-size:.82em}
 
+/* localizer figure */
+.localizer-fig{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:18px; margin:0 0 24px}
+.localizer-fig img{width:100%; max-width:760px; display:block; border-radius:8px}
+.localizer-fig figcaption{color:var(--muted); font-size:.88rem; margin-top:10px; max-width:820px}
+
 /* benchmark mechanics */
 .mech-wrap{display:grid; grid-template-columns:1.2fr 1fr; gap:24px; align-items:start}
 @media(max-width:760px){.mech-wrap{grid-template-columns:1fr}}
