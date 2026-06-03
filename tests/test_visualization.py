@@ -40,6 +40,29 @@ class TestParcelToVertexIndexing:
         assert np.isnan(vtx[0]) and np.isnan(vtx[1]) and vtx[2] == 5.0
 
 
+class TestQuickbrainOptional:
+    """quickbrain is optional — absence must raise a clear, actionable error
+    (with install instructions), never an opaque ImportError or AttributeError."""
+
+    def test_missing_quickbrain_raises_with_install_hint(self):
+        import builtins
+        import numpy as np
+        from brainscore.visualization import quickbrain_outline_map
+        real_import = builtins.__import__
+
+        def blocked(name, *a, **k):
+            if name == 'quickbrain':
+                raise ImportError("No module named 'quickbrain'")
+            return real_import(name, *a, **k)
+
+        builtins.__import__ = blocked
+        try:
+            with pytest.raises(ImportError, match="optional dependency"):
+                quickbrain_outline_map(np.zeros(1000))
+        finally:
+            builtins.__import__ = real_import
+
+
 class TestNormalize:
     def test_scales_to_unit_interval(self):
         out = normalize_values(np.array([0.0, 5.0, 10.0]))

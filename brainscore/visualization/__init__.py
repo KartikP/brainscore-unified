@@ -18,6 +18,8 @@ from .brain_map import (
     cortical_surface_map,
     voxel_surface_map,
     parcels_to_vertices,
+    parcels_to_nifti,
+    quickbrain_outline_map,
     fetch_schaefer_fsaverage_annot,
     SCHAEFER_7NETWORKS,
 )
@@ -40,6 +42,7 @@ from .scaling_curve import (
 __all__ = [
     'normalize_values', 'parcel_grid_heatmap', 'network_strip',
     'cortical_surface_map', 'voxel_surface_map', 'fetch_schaefer_fsaverage_annot',
+    'parcels_to_vertices', 'parcels_to_nifti', 'quickbrain_outline_map',
     'SCHAEFER_7NETWORKS',
     'ablation_effect_bar', 'response_heatmap', 'before_after_difference',
     'composite_selection_map', 'units_per_layer_bar', 'selectivity_histogram',

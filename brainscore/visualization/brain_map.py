@@ -284,3 +284,76 @@ def voxel_surface_map(voxel_values: np.ndarray, *, resolution: str = 'fsaverage5
         plt.close(fig)
         return out_png
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Optional quickbrain backend (pni-lab/quickbrain) — fast one-call brain outline.
+# ---------------------------------------------------------------------------
+
+QUICKBRAIN_INSTALL_HINT = (
+    'quickbrain is an optional dependency. Install it with:\n'
+    '  pip install "quickbrain @ git+https://github.com/pni-lab/quickbrain.git"\n'
+    'Or use cortical_surface_map() (nilearn surface) / parcel_grid_heatmap() '
+    '(no extra deps) instead.')
+
+
+def parcels_to_nifti(parcel_values: np.ndarray, *, n_parcels: int = 1000,
+                     networks: int = 7):
+    """Project per-parcel Schaefer values onto the volumetric atlas as a NIfTI.
+
+    quickbrain (and most volumetric viewers) want a NIfTI; our scores are
+    per-parcel. This maps parcel ``j`` -> every voxel labelled ``j+1`` in the
+    nilearn Schaefer 2018 volumetric atlas. Background voxels are ``NaN``.
+    Returns a ``nibabel.Nifti1Image``. nibabel + nilearn imported lazily.
+    """
+    import nibabel as nib
+    from nilearn import datasets
+
+    parcel_values = np.asarray(parcel_values, dtype=float)
+    atlas = datasets.fetch_atlas_schaefer_2018(n_rois=n_parcels,
+                                               yeo_networks=networks)
+    maps = atlas['maps']
+    atlas_img = nib.load(maps) if isinstance(maps, (str, bytes)) else maps
+    labels = np.asarray(atlas_img.get_fdata()).astype(int)   # voxel -> 1..N (0 bg)
+    vol = np.full(labels.shape, np.nan, dtype=float)
+    for j in range(n_parcels):
+        vol[labels == (j + 1)] = parcel_values[j]
+    return nib.Nifti1Image(vol, atlas_img.affine, atlas_img.header)
+
+
+def quickbrain_outline_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
+                           networks: int = 7, title: Optional[str] = None,
+                           out_png: Optional[str] = None, **quickbrain_kwargs):
+    """Render per-parcel values on quickbrain's fast brain outline (OPTIONAL).
+
+    Uses the optional ``quickbrain`` package for a stylized one-call brain
+    outline with the activation overlaid. Per-parcel Schaefer values are first
+    projected to a volumetric NIfTI (:func:`parcels_to_nifti`). Any extra
+    keyword arguments are forwarded to ``quickbrain.plot_brain`` (e.g. a colormap
+    or threshold, depending on the installed version). Raises a clear
+    ``ImportError`` with install instructions when quickbrain is absent — it is
+    never required; the nilearn surface and matplotlib fallbacks always work.
+    """
+    try:
+        import quickbrain
+    except ImportError as e:
+        raise ImportError(QUICKBRAIN_INSTALL_HINT) from e
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    img = parcels_to_nifti(parcel_values, n_parcels=n_parcels, networks=networks)
+    result = quickbrain.plot_brain(img, **quickbrain_kwargs)
+    # plot_brain renders to matplotlib; recover the figure whether it returns one
+    # or draws on the current figure.
+    fig = result if hasattr(result, 'savefig') else plt.gcf()
+    if title:
+        try:
+            fig.suptitle(title)
+        except Exception:
+            pass
+    if out_png:
+        fig.savefig(out_png, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        return out_png
+    return fig
