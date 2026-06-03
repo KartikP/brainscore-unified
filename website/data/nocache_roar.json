@@ -1,0 +1,15 @@
+{
+  "no_cache": true,
+  "benchmarks": {
+    "Yeatman2021-lexical_decision-image": {
+      "capability": "behavior (lexical decision)",
+      "null_model": "chance-baseline",
+      "scores": {
+        "chance-baseline": 0.6163961372508732,
+        "random-vit-b-32": 0.6657078282309431,
+        "clip-vit-b-32": 0.8506266694062049,
+        "qwen2.5-vl-3b": 1.1095130470515717
+      }
+    }
+  }
+}

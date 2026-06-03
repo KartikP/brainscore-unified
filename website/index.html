@@ -121,7 +121,15 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
   <p class="lead">No result is trusted without a matched null running through the
     same pipeline. If the real score doesn't clear the floor, the signal is a
     pipeline artifact — not the model.</p>
-  <table class="nulls-table" id="nulls-table"></table>
+  <div class="two-col">
+    <div id="shift-plot" class="plot"></div>
+    <div class="reading-box">
+      <h3 id="shift-title"></h3>
+      <p class="muted small" id="shift-sub"></p>
+      <p id="shift-reading"></p>
+    </div>
+  </div>
+  <table class="nulls-table" id="nulls-table" style="margin-top:24px"></table>
 </section>
 
 <section id="limitations" class="section">

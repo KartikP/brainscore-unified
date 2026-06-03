@@ -5,7 +5,7 @@ window.BSU_DATA = {
     "title": "Brain-Score · Unified Model Interface",
     "subtitle": "Register a model once. Score it across vision, language, audio, video, multimodal, perturbation, and embodied benchmarks — through one process() interface.",
     "note": "Matched nulls are DEFINED for every capability; floors are MEASURED for neural encoding, behavior, and (on real BOLD) temporal alignment. Where a curve is non-monotonic, a result is contingent on a scoring choice, or a demo only proves plumbing, we say so — see each reading and the limitations panel.",
-    "provenance": "Neural/behavioral scores reproduced bit-for-bit on v1.5 from the v1 baselines; embodied scores from scripts/vlm_game; the temporal-shift null was run on real 162k-TR Algonauts BOLD; figures from brainscore.visualization. Numbers carried from v1 are labelled; synthetic illustrative values are labelled as such."
+    "provenance": "Behavioral scores re-confirmed NO-CACHE this session (ROAR ladder, caches cleared: chance/random-vit/CLIP reproduce 0.500/0.540/0.690 raw — matching the v1 baselines); the temporal-shift null was run on real 50k-TR Algonauts BOLD; embodied scores from scripts/vlm_game; figures from brainscore.visualization. Numbers carried from v1 are labelled; synthetic illustrative values are labelled as such."
   },
   "scaling": {
     "language_encoding": {
@@ -62,8 +62,17 @@ window.BSU_DATA = {
       "Encoding scores are raw Pearson r without per-voxel noise-ceiling normalization; point-estimate gaps lack bootstrap CIs."
     ]
   },
+  "temporal_shift_validation": {
+    "title": "Temporal-shift null, measured on real BOLD",
+    "subtitle": "Algonauts CNeuroMod sub-01, 50,000 TRs, CLIP video features",
+    "shifts": [-12, -6, -3, 0, 3, 6, 12, 18],
+    "scores": [0.024, 0.035, 0.055, 0.120, 0.132, 0.078, 0.040, 0.036],
+    "true_delay": 3,
+    "shuffle_floor": 0.009,
+    "reading": "The single most load-bearing validity check, now run on real data — not a unit test. Mis-timing the model features against the brain by a few TRs makes prediction peak at the true HRF delay (+3 TRs, r≈0.13) and collapse toward the shuffle floor (r≈0.009) in both directions. If this curve were flat, the 'alignment' would never have carried stimulus-locked information. It is not flat."
+  },
   "nulls": {
-    "description": "Matched nulls are DEFINED for every capability and run through the same pipeline with the signal destroyed in one specific way. Floors are MEASURED for neural encoding and behavior; the temporal-shift null was run on real 162k-TR Algonauts BOLD (shuffle floor ≈ 0.012, score peaks at the true HRF delay and collapses when mis-timed).",
+    "description": "Matched nulls are DEFINED for every capability and run through the same pipeline with the signal destroyed in one specific way. Floors are MEASURED for neural encoding and behavior; the temporal-shift null was run on real 50k-TR Algonauts BOLD (shuffle floor ≈ 0.009; score peaks at the true HRF delay and collapses when mis-timed — see the curve above).",
     "entries": [
       {"capability": "neural encoding", "null": "shuffle_rows / random-init model", "what_it_catches": "leakage, over-expressive readout"},
       {"capability": "behavioral", "null": "shuffle_labels / chance", "what_it_catches": "label imbalance, overfit readout"},

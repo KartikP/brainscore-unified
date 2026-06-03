@@ -135,6 +135,36 @@
     $('selection-reading').textContent = s.reading;
   })();
 
+  // ---- temporal-shift validation (real BOLD) ----
+  if (D.temporal_shift_validation) {
+    const tv = D.temporal_shift_validation;
+    $('shift-title').textContent = tv.title;
+    $('shift-sub').textContent = tv.subtitle;
+    $('shift-reading').textContent = tv.reading;
+    const curve = {
+      x: tv.shifts, y: tv.scores, type: 'scatter', mode: 'lines+markers',
+      line: { color: '#3bb273', width: 3 }, marker: { size: 9, color: '#3bb273' },
+      hovertemplate: 'delay %{x} TRs: r=%{y:.3f}<extra></extra>',
+    };
+    const floor = {
+      x: tv.shifts, y: tv.shifts.map(() => tv.shuffle_floor), type: 'scatter',
+      mode: 'lines', line: { color: '#d8483b', width: 1.5, dash: 'dash' }, hoverinfo: 'skip',
+    };
+    const lay = Object.assign({}, LAYOUT, {
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'median per-parcel r', rangemode: 'tozero' }),
+      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'HRF delay applied (TRs) — true ≈ +3' }),
+      shapes: [{ type: 'line', x0: tv.true_delay, x1: tv.true_delay, y0: 0, y1: Math.max(...tv.scores),
+        line: { color: '#5b8cff', width: 1.5, dash: 'dot' } }],
+      annotations: [
+        { x: tv.true_delay, y: Math.max(...tv.scores), yanchor: 'bottom', text: 'true delay',
+          showarrow: false, font: { color: '#5b8cff', size: 11 } },
+        { x: tv.shifts[tv.shifts.length - 1], y: tv.shuffle_floor, yanchor: 'bottom', xanchor: 'right',
+          text: 'shuffle floor', showarrow: false, font: { color: '#d8483b', size: 11 } },
+      ],
+    });
+    Plotly.react('shift-plot', [floor, curve], lay, CFG);
+  }
+
   // ---- limitations ----
   if (D.limitations) {
     $('lim-title').textContent = D.limitations.title;
