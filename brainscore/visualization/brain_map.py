@@ -343,10 +343,10 @@ def quickbrain_outline_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
     import matplotlib.pyplot as plt
 
     img = parcels_to_nifti(parcel_values, n_parcels=n_parcels, networks=networks)
-    # White figure card + a bright warm sequential scale: the brain outline and
-    # low-activity cortex stay visible (a dark scale on the dark site did not),
-    # and dark axis/colorbar text is legible on white.
-    quickbrain_kwargs.setdefault('cmap', 'YlOrRd')
+    # White figure card + 'turbo': a single continuous spectrum (blue→…→red) that
+    # stays distinct across its whole range — unlike YlOrRd, which saturates to a
+    # near-uniform dark red at the top (0.4 vs 0.53 were indistinguishable).
+    quickbrain_kwargs.setdefault('cmap', 'turbo')
     quickbrain_kwargs.setdefault('background', 'white')
     result = quickbrain.plot_brain(img, **quickbrain_kwargs)
     fig = result if hasattr(result, 'savefig') else plt.gcf()

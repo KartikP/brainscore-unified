@@ -43,7 +43,7 @@ def main():
     # White figure card, warm 'hot' overlay on the grey curvature brain, dark
     # legible text. quickbrain only supports lateral/medial views.
     fig = quickbrain.plot_brain(blob, hemi='left', view='lateral', threshold=0.08,
-                                colorbar=True, cmap='hot', background='white',
+                                colorbar=True, cmap='turbo', background='white',
                                 title='ablated VWF population → VWFA')
     f = fig if hasattr(fig, 'savefig') else plt.gcf()
     f.savefig(out, dpi=150, bbox_inches='tight')
