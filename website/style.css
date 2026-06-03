@@ -103,6 +103,19 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .nulls-table td:first-child{color:var(--ink); font-weight:600}
 .nulls-table td code{font-size:.82em}
 
+/* benchmark mechanics */
+.mech-wrap{display:grid; grid-template-columns:1.2fr 1fr; gap:24px; align-items:start}
+@media(max-width:760px){.mech-wrap{grid-template-columns:1fr}}
+.mech-task{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:22px}
+.mech-task h3{margin:0 0 8px}
+.mech-task > p{color:var(--muted); margin:0 0 16px}
+.mech-paths{display:grid; gap:12px}
+.mech-path{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:14px}
+.mech-path-name{font-weight:600; color:var(--accent)}
+.mech-path-models{font-size:.8rem; color:var(--muted); margin:2px 0 6px}
+.mech-path-how{font-size:.92rem}
+.mech-side .reading{margin-top:14px; text-align:left}
+
 /* limitations */
 .lim-list{list-style:none; padding:0; margin:0; display:grid; gap:12px}
 .lim-list li{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--warn);

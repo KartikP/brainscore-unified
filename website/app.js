@@ -56,6 +56,29 @@
   }
   selectInput(0, document.querySelector('.tog'));
 
+  // ---- benchmark mechanics ----
+  if (D.benchmark_mechanics) {
+    const m = D.benchmark_mechanics;
+    $('mech-title').textContent = m.title;
+    $('mech-sub').textContent = m.subtitle;
+    $('mech-task').textContent = m.task;
+    $('mech-paths').innerHTML = m.paths.map(p =>
+      `<div class="mech-path"><div class="mech-path-name">${p.name}</div>
+       <div class="mech-path-models">${p.models}</div>
+       <div class="mech-path-how">${p.how}</div></div>`).join('');
+    $('mech-answer').textContent = m.answer;
+    const bar = {
+      x: m.floors.map(f => f.label), y: m.floors.map(f => f.value), type: 'bar',
+      marker: { color: ['#9aa0a6', '#9aa0a6', '#3b7dd8'] },
+      hovertemplate: '%{x}: %{y:.2f}<extra></extra>',
+    };
+    const lay = Object.assign({}, LAYOUT, {
+      margin: { l: 44, r: 16, t: 10, b: 70 },
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR (raw)', range: [0.45, 0.75] }),
+    });
+    Plotly.react('mech-floors-plot', [bar], lay, CFG);
+  }
+
   // ---- scaling curves ----
   const scKeys = Object.keys(D.scaling);
   const scTabs = $('scaling-tabs');

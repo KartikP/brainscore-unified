@@ -102,6 +102,21 @@ window.BSU_DATA = {
     "units_per_layer": 1024,
     "reading": "A CompositeSelector gathers a functional population spanning depth into one region; the readout draws most from the middle-late layers."
   },
+  "benchmark_mechanics": {
+    "title": "What a benchmark actually does",
+    "subtitle": "ROAR lexical decision — and why a readout-only model like CLIP scores on it",
+    "task": "Each trial shows an image of a letter string (e.g. 'animal' vs 'accastant'). The candidate must decide: real word or pseudo word? 400 train / 100 test stimuli; the dyslexia threshold is 65% (one SD below the human mean).",
+    "paths": [
+      {"name": "Readout path", "models": "CLIP, GPT-2, any feature model", "how": "Fit a logistic classifier on the model's features over the 400 train stimuli, then predict on test. The model never generates a word — its features only have to linearly separate real from pseudo letter-strings."},
+      {"name": "Generation path", "models": "Qwen-VL, BLIP-2, instruction-tuned VLMs", "how": "Show the image + 'is this a real word?' and parse the model's text answer. Needs instruction-following; this is the path Honarmand et al. use for the lesion experiments."}
+    ],
+    "floors": [
+      {"label": "chance", "value": 0.50},
+      {"label": "random-ViT readout", "value": 0.54},
+      {"label": "CLIP readout", "value": 0.68}
+    ],
+    "answer": "CLIP scores 0.68 via the READOUT path — its contrastive image-text pretraining gives it word-form sensitivity, so a logistic readout separates real from pseudo. The honest measure is the gap to the floor: CLIP 0.68 vs a random-ViT readout 0.54 vs chance 0.50, so +0.14 is real learned orthographic signal, not the readout overfitting. No generation required."
+  },
   "inputs": [
     {"type": "image", "example": "a natural photograph", "benchmark": "MajajHong2015 V4 / IT", "desc": "Still images drive the ventral stream; predicted V4/IT responses map onto occipitotemporal cortex."},
     {"type": "text", "example": "a sentence", "benchmark": "Pereira2018", "desc": "Sentences drive the language network; a causal LM's features predict left frontotemporal language regions."},
