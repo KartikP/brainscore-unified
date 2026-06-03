@@ -86,17 +86,19 @@ window.BSU_DATA = {
     ]
   },
   "ablation": {
-    "capability": "Inducing dyslexia (Honarmand et al. 2026) — replication attempt on Qwen2.5-VL-3B",
-    "protocol": "VWF localizer (word vs scrambled-word images) → ablate the top-K word-form-selective MLP gate_proj units vs an equal-size random set across all 36 decoder blocks → score ROAR by GENERATION (no readout refitting). 3 seeds, mean ± SD.",
+    "capability": "Inducing dyslexia (Honarmand et al. 2026) — Qwen2.5-VL-7B, multi-category localizer",
+    "protocol": "VWF localizer (word vs scrambled words + line-drawing objects) → ablate the top-K word-form-selective MLP gate_proj units vs an equal-size random set across all 28 decoder blocks → score ROAR by GENERATION (no readout refitting). 3 seeds, mean ± SD.",
     "mask_pct": [0, 1, 6.9, 15],
-    "vwf_roar": [0.93, 0.89, 0.87, 0.90],
-    "vwf_roar_sd": [0.0, 0.01, 0.02, 0.03],
-    "random_roar": [0.93, 0.90, 0.80, 0.50],
-    "random_roar_sd": [0.0, 0.04, 0.17, 0.01],
-    "vwf_control": [0.92, 0.83, 0.81, 0.81],
-    "random_control": [0.92, 0.92, 0.89, 0.86],
+    "vwf_roar": [0.98, 0.98, 0.907, 0.933],
+    "vwf_roar_sd": [0.0, 0.0, 0.012, 0.031],
+    "random_roar": [0.98, 0.97, 0.957, 0.940],
+    "random_roar_sd": [0.0, 0.0, 0.009, 0.022],
+    "vwf_control": [0.87, 0.87, 0.87, 0.87],
+    "random_control": [0.93, 0.93, 0.87, 0.80],
     "threshold": 0.65,
-    "reading": "Honest result: Qwen2.5-VL-3B does NOT reproduce Honarmand's selective dyslexia. VWF-selective ablation never impairs reading (ROAR stays 0.87–0.90, never crossing the 0.65 threshold), while RANDOM ablation at 15% collapses reading to chance (0.50) — the OPPOSITE selectivity. This matches our prior finding that real-word reading is broadly distributed and ablation-robust in the small model; Honarmand's clean selective deficit is a 72B-scale phenomenon. What this DID fix: the corrected protocol (proper VWF localizer + generation scoring + all-layer gate_proj site) makes the random control drop as Honarmand reports — the earlier 'random ≈ baseline' was an artifact of a real/pseudo localizer + a readout that refit around the lesion."
+    "brain_caption": "Where the lesion lands: the VWF-selective units align with the human Visual Word Form Area (VWFA — left ventral occipitotemporal cortex, MNI ≈ [-44,-58,-15]; Honarmand Fig 5). This quickbrain glass brain shows that cortical territory — the area effectively 'dropped' when the population is ablated.",
+    "scale_note": "Selectivity emerges with scale. 3B: VWF-selective ablation is LESS damaging than random (wrong direction). 7B (shown): at the 6.9% mask VWF (0.907) is now MORE damaging than random (0.957) — Honarmand's correct selectivity, with tight error bars — but too weak to cross the threshold. The full threshold-crossing deficit is a 72B phenomenon.",
+    "reading": "Honest, scale-dependent result. At 7B the VWF-selective ablation finally damages reading MORE than a random ablation of the same size (0.907 vs 0.957 at 6.9% mask) — the first time we see Honarmand's selectivity direction — but it never crosses the 0.65 dyslexia threshold. The earlier 'random ≈ baseline' artifact is fixed (corrected localizer + generation scoring); the V1 'crossed threshold' result was a different direction (ablating PSEUDO-selective units so the model calls everything 'real'), not Honarmand's word-form deficit. A faithful threshold-crossing reproduction needs Qwen2-VL-72B, Honarmand's actual model."
   },
   "selection": {
     "capability": "Composite selection — units across layers for one region",

@@ -103,6 +103,12 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .nulls-table td:first-child{color:var(--ink); font-weight:600}
 .nulls-table td code{font-size:.82em}
 
+/* lesion -> brain glass figure */
+.lesion-brain{margin:16px 0 0; background:var(--panel2); border:1px solid var(--line);
+  border-radius:10px; padding:10px}
+.lesion-brain img{width:100%; max-width:340px; display:block; margin:0 auto; border-radius:6px}
+.lesion-brain figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
+
 /* localizer figure */
 .localizer-fig{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
   padding:18px; margin:0 0 24px}

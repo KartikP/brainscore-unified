@@ -145,6 +145,8 @@
     if (a.protocol && document.getElementById('ablation-protocol'))
       $('ablation-protocol').textContent = a.protocol;
     $('ablation-reading').textContent = a.reading;
+    if (a.brain_caption && document.getElementById('lesion-brain-cap'))
+      $('lesion-brain-cap').textContent = a.brain_caption;
   })();
 
   // ---- selection ----
