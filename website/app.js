@@ -56,6 +56,32 @@
   }
   selectInput(0, document.querySelector('.tog'));
 
+  // ---- layer contribution per modality (MIRAGE Fig 4 analogue) ----
+  if (D.layer_contribution) {
+    const lc = D.layer_contribution;
+    $('lc-title').textContent = lc.title;
+    $('lc-sub').textContent = lc.subtitle;
+    $('lc-reading').textContent = lc.reading;
+    const maxlen = Math.max(...lc.order.map(m => lc.values[m].length));
+    const z = lc.order.map(m => {
+      const v = lc.values[m]; const mx = Math.max.apply(null, v);
+      const norm = v.map(x => x / mx);
+      while (norm.length < maxlen) norm.push(null);
+      return norm;
+    });
+    const heat = {
+      z: z, y: lc.labels, x: Array.from({ length: maxlen }, (_, i) => i),
+      type: 'heatmap', colorscale: 'Magma', colorbar: { title: 'rel.', thickness: 12 },
+      hovertemplate: '%{y}, layer %{x}: %{z:.2f}<extra></extra>',
+    };
+    const lay = Object.assign({}, LAYOUT, {
+      margin: { l: 110, r: 24, t: 12, b: 50 },
+      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'layer', dtick: 2 }),
+      yaxis: { gridcolor: '#1d2740', automargin: true },
+    });
+    Plotly.react('lc-plot', [heat], lay, CFG);
+  }
+
   // ---- benchmark mechanics ----
   if (D.benchmark_mechanics) {
     const m = D.benchmark_mechanics;

@@ -107,6 +107,18 @@ window.BSU_DATA = {
     "units_per_layer": 1024,
     "reading": "A CompositeSelector gathers a functional population spanning depth into one region; the readout draws most from the middle-late layers."
   },
+  "layer_contribution": {
+    "title": "Layer contribution per modality",
+    "subtitle": "Per-layer brain-prediction r on Algonauts CNeuroMod (sub-01), each tower row-normalized — the MIRAGE Fig 4 analogue",
+    "order": ["audio", "text", "video"],
+    "labels": ["audio (Wav2Vec2)", "text (MiniLM)", "video (CLIP)"],
+    "values": {
+      "audio": [0.129, 0.143, 0.148, 0.149, 0.148, 0.146, 0.149, 0.152, 0.152, 0.146, 0.137, 0.13, 0.119],
+      "text": [0.107, 0.124, 0.129, 0.129, 0.126, 0.124, 0.117],
+      "video": [0.041, 0.053, 0.056, 0.07, 0.094, 0.11, 0.117, 0.126, 0.131, 0.145, 0.161, 0.166, 0.168]
+    },
+    "reading": "Each tower's layers contribute to cortical prediction at a different depth: text (MiniLM) peaks early (layer 3), audio (Wav2Vec2) in the middle (layer 7), and video (CLIP) at the very last layer (12). Unlike MIRAGE — which reads cross-attention weights off a single trained Qwen3-Omni encoder — this is computed directly as each layer's ridge brain-prediction r, so the heatmap is grounded in encoding performance rather than learned gates. Cells are row-normalized to show each modality's depth profile."
+  },
   "all_paths": {
     "title": "Every model, every path it can run",
     "subtitle": "ROAR lexical decision — readout vs generation, distinct colours",
