@@ -114,30 +114,36 @@
   }
   drawScaling(scKeys[0], document.querySelector('#scaling-tabs .tog'));
 
-  // ---- ablation ----
+  // ---- ablation (Honarmand dissociation) ----
   (function () {
     const a = D.ablation;
-    const names = Object.keys(a.conditions);
-    const means = names.map(n => mean(a.conditions[n]));
-    const sems = names.map(n => sem(a.conditions[n]));
-    const colors = names.map(n => ({
-      'baseline': '#3b7dd8', 'lesioned': '#d8483b',
-      'random control': '#9aa0a6', 'restored': '#3bb273',
-    }[n] || '#6c6c6c'));
-    const bar = {
-      x: names, y: means, type: 'bar',
-      error_y: { type: 'data', array: sems, color: '#c6d0e6' },
-      marker: { color: colors },
-      hovertemplate: '%{x}: %{y:.3f}<extra></extra>',
+    const vwf = {
+      x: a.mask_pct, y: a.vwf_roar, type: 'scatter', mode: 'lines+markers',
+      name: 'VWF-selective ablation', line: { color: '#d8483b', width: 3 },
+      marker: { size: 8 },
+      error_y: { type: 'data', array: a.vwf_roar_sd, color: '#d8483b', thickness: 1 },
+      hovertemplate: 'VWF, %{x}%: ROAR %{y:.2f}<extra></extra>',
+    };
+    const rnd = {
+      x: a.mask_pct, y: a.random_roar, type: 'scatter', mode: 'lines+markers',
+      name: 'random ablation', line: { color: '#9aa0a6', width: 3, dash: 'dot' },
+      marker: { size: 8 },
+      error_y: { type: 'data', array: a.random_roar_sd, color: '#9aa0a6', thickness: 1 },
+      hovertemplate: 'random, %{x}%: ROAR %{y:.2f}<extra></extra>',
     };
     const lay = Object.assign({}, LAYOUT, {
-      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR score', rangemode: 'tozero' }),
-      shapes: [{ type: 'line', x0: -0.5, x1: names.length - 0.5, y0: a.chance, y1: a.chance,
-        line: { color: '#888', width: 1, dash: 'dot' } }],
-      annotations: [{ x: names.length - 1, y: a.chance, yanchor: 'bottom', xanchor: 'right',
-        text: 'chance', showarrow: false, font: { color: '#888', size: 11 } }],
+      showlegend: true,
+      legend: { x: 0.02, y: 0.12, font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR accuracy', range: [0.4, 1.0] }),
+      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'units ablated (% of MLP gate_proj)' }),
+      shapes: [{ type: 'line', x0: 0, x1: Math.max(...a.mask_pct), y0: a.threshold, y1: a.threshold,
+        line: { color: '#e0a13b', width: 1.5, dash: 'dash' } }],
+      annotations: [{ x: Math.max(...a.mask_pct), y: a.threshold, yanchor: 'bottom', xanchor: 'right',
+        text: 'dyslexia threshold (0.65)', showarrow: false, font: { color: '#e0a13b', size: 10 } }],
     });
-    Plotly.react('ablation-plot', [bar], lay, CFG);
+    Plotly.react('ablation-plot', [vwf, rnd], lay, CFG);
+    if (a.protocol && document.getElementById('ablation-protocol'))
+      $('ablation-protocol').textContent = a.protocol;
     $('ablation-reading').textContent = a.reading;
   })();
 

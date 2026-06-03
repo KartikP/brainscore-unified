@@ -1,0 +1,76 @@
+{
+  "total_units": 396288,
+  "units_per_layer": 11008,
+  "n_gate_layers": 36,
+  "dyslexia_threshold": 0.65,
+  "conditions": {
+    "0.01": {
+      "mask_size": 0.01,
+      "k": 3963,
+      "vwf_selective": {
+        "roar": {
+          "raw": 0.88,
+          "real": 1.0,
+          "pseudo": 0.76
+        },
+        "control": 0.8333333333333334
+      },
+      "random": {
+        "roar": {
+          "raw": 0.94,
+          "real": 1.0,
+          "pseudo": 0.88
+        },
+        "control": 0.9166666666666666
+      }
+    },
+    "0.0689": {
+      "mask_size": 0.0689,
+      "k": 27304,
+      "vwf_selective": {
+        "roar": {
+          "raw": 0.87,
+          "real": 1.0,
+          "pseudo": 0.74
+        },
+        "control": 0.75
+      },
+      "random": {
+        "roar": {
+          "raw": 0.57,
+          "real": 1.0,
+          "pseudo": 0.14
+        },
+        "control": 0.8333333333333334
+      }
+    },
+    "0.15": {
+      "mask_size": 0.15,
+      "k": 59443,
+      "vwf_selective": {
+        "roar": {
+          "raw": 0.9,
+          "real": 1.0,
+          "pseudo": 0.8
+        },
+        "control": 0.75
+      },
+      "random": {
+        "roar": {
+          "raw": 0.5,
+          "real": 1.0,
+          "pseudo": 0.0
+        },
+        "control": 0.9166666666666666
+      }
+    }
+  },
+  "baseline": {
+    "roar": {
+      "raw": 0.93,
+      "real": 1.0,
+      "pseudo": 0.86
+    },
+    "control": 0.9166666666666666
+  }
+}

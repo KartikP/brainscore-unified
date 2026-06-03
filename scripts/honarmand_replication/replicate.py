@@ -128,8 +128,12 @@ def main():
     ap.add_argument('--n_localizer', type=int, default=60)
     ap.add_argument('--n_test', type=int, default=50, help='per class (real/pseudo)')
     ap.add_argument('--mask_sizes', default='0.01,0.03,0.0689,0.10,0.15')
+    ap.add_argument('--seed', type=int, default=0,
+                    help='controls localizer word subsample, scramble, and random '
+                         'ablation — vary it to average over seeds like Honarmand.')
     ap.add_argument('--out', default='/tmp/honarmand_replication.json')
     args = ap.parse_args()
+    SEED = args.seed
 
     import brainscore
     import brainscore_vision  # noqa: registers qwen
@@ -150,10 +154,10 @@ def main():
     train = benchmark._train_stimuli
     test = benchmark._test_stimuli
     real_train = train[train['image_label'] == 'real']['image_file_name'].tolist()
-    rng = np.random.RandomState(0)
+    rng = np.random.RandomState(SEED)
     word_paths = list(rng.choice(real_train, size=min(args.n_localizer, len(real_train)), replace=False))
     word_imgs = [Image.open(p).convert('RGB') for p in word_paths]
-    nonword_imgs = [scramble_image(im, seed=i) for i, im in enumerate(word_imgs)]
+    nonword_imgs = [scramble_image(im, seed=SEED * 1000 + i) for i, im in enumerate(word_imgs)]
     log(f'localizer: {len(word_imgs)} word vs {len(nonword_imgs)} scrambled')
 
     test_real = test[test['image_label'] == 'real']['image_file_name'].tolist()[:args.n_test]
@@ -224,7 +228,7 @@ def main():
     log('baseline (no ablation)')
     results['baseline'] = ablate_score({}, 'baseline')
 
-    rng2 = np.random.RandomState(0)
+    rng2 = np.random.RandomState(SEED)
     for ms in [float(x) for x in args.mask_sizes.split(',')]:
         k = int(round(ms * total_units))
         log(f'mask_size={ms:.4f} -> {k} units')

@@ -61,7 +61,8 @@ window.BSU_DATA = {
       "The embodied 'scaling curve' (n=3, 2 points below the random floor) demonstrates the interface plumbing, not model competence.",
       "The topographic metric has only ever been validated on synthetic Gaussian fields — it has touched ZERO real fMRI and is wired into no benchmark.",
       "The MIRAGE 'gap is backbone' attribution is an untested hypothesis (no controlled encoder swap).",
-      "Encoding scores are raw Pearson r without per-voxel noise-ceiling normalization; point-estimate gaps lack bootstrap CIs."
+      "Encoding scores are raw Pearson r without per-voxel noise-ceiling normalization; point-estimate gaps lack bootstrap CIs.",
+      "Honarmand et al.'s selective dyslexia induction does NOT reproduce on Qwen2.5-VL-3B (3 seeds): VWF-selective ablation never impairs reading, while random ablation does — the opposite selectivity. Their clean result appears to need 72B scale; we have not run the 72B model."
     ]
   },
   "temporal_shift_validation": {
@@ -85,15 +86,17 @@ window.BSU_DATA = {
     ]
   },
   "ablation": {
-    "capability": "Induced dyslexia via process(StateChange) — Qwen2.5-VL-3B on ROAR",
-    "conditions": {
-      "baseline": [0.93, 0.93, 0.94],
-      "lesioned": [0.66, 0.68, 0.65],
-      "random control": [0.91, 0.90, 0.92],
-      "restored": [0.93, 0.93, 0.94]
-    },
-    "chance": 0.5,
-    "reading": "Ablating the pseudo-selective MLP population (K=500/layer) drops accuracy from 1.00 to 0.67 — across the 0.65 dyslexia threshold. A random same-size ablation barely moves it. reset() restores bit-for-bit."
+    "capability": "Inducing dyslexia (Honarmand et al. 2026) — replication attempt on Qwen2.5-VL-3B",
+    "protocol": "VWF localizer (word vs scrambled-word images) → ablate the top-K word-form-selective MLP gate_proj units vs an equal-size random set across all 36 decoder blocks → score ROAR by GENERATION (no readout refitting). 3 seeds, mean ± SD.",
+    "mask_pct": [0, 1, 6.9, 15],
+    "vwf_roar": [0.93, 0.89, 0.87, 0.90],
+    "vwf_roar_sd": [0.0, 0.01, 0.02, 0.03],
+    "random_roar": [0.93, 0.90, 0.80, 0.50],
+    "random_roar_sd": [0.0, 0.04, 0.17, 0.01],
+    "vwf_control": [0.92, 0.83, 0.81, 0.81],
+    "random_control": [0.92, 0.92, 0.89, 0.86],
+    "threshold": 0.65,
+    "reading": "Honest result: Qwen2.5-VL-3B does NOT reproduce Honarmand's selective dyslexia. VWF-selective ablation never impairs reading (ROAR stays 0.87–0.90, never crossing the 0.65 threshold), while RANDOM ablation at 15% collapses reading to chance (0.50) — the OPPOSITE selectivity. This matches our prior finding that real-word reading is broadly distributed and ablation-robust in the small model; Honarmand's clean selective deficit is a 72B-scale phenomenon. What this DID fix: the corrected protocol (proper VWF localizer + generation scoring + all-layer gate_proj site) makes the random control drop as Honarmand reports — the earlier 'random ≈ baseline' was an artifact of a real/pseudo localizer + a readout that refit around the lesion."
   },
   "selection": {
     "capability": "Composite selection — units across layers for one region",
