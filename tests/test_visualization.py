@@ -12,6 +12,7 @@ from brainscore.visualization import (
     ablation_effect_bar, response_heatmap, before_after_difference,
     composite_selection_map, units_per_layer_bar, selectivity_histogram,
     scaling_curve_single, scaling_curves_grid, normalized_scaling_overlay,
+    layer_modality_heatmap,
 )
 from brainscore.visualization.brain_map import parcels_to_vertices
 
@@ -166,6 +167,22 @@ class TestScalingCurves:
                                   title='Capabilities scale with model quality',
                                   out_png=str(tmp_path / 'grid.png'))
         assert _png_nonempty(out)
+
+    def test_layer_modality_heatmap_unequal_rows(self, tmp_path):
+        # towers of different depth must share one axis (NaN-padded)
+        contrib = {
+            'vision': list(np.linspace(0.2, 0.5, 12)),
+            'audio': list(np.linspace(0.1, 0.3, 12)),
+            'text': list(np.linspace(0.1, 0.25, 6)),
+        }
+        out = layer_modality_heatmap(contrib, normalize='row',
+                                     title='layer contribution per modality',
+                                     out_png=str(tmp_path / 'lc.png'))
+        assert _png_nonempty(out)
+
+
+class TestScalingOverlay:
+    MODELS = ['random-init', 'CLIP-B32', 'Qwen-3B', 'BLIP-2', 'Qwen-7B']
 
     def test_normalized_overlay(self, tmp_path):
         scores = {
