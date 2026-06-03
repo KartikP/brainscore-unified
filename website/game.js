@@ -1,17 +1,20 @@
 // Playable version of the exact grid game the VLM played. Boards are the real
-// (player, goal) layouts the model faced (GridGameEnv size=6, seeds 11/500/501/502),
-// so you navigate the identical game. Rendering matches the Python env.
+// (player, goal) layouts Qwen2.5-VL-7B faced (GridGameEnv size=5, eval seeds),
+// seeded from the recorded move data in model_moves.js so "play it yourself" and
+// "watch the model play" are the identical board. Rendering matches the Python env.
 (function () {
-  const SIZE = 6, CELL = 64, PAD = 6;
+  const SIZE = 5;
   const BG = '#ebebeb', GRID = '#c8c8c8', PLAYER = '#285adc', GOAL = '#28be46';
-  // [player[r,c], goal[r,c], label]
+  // Boards mirror window.MODEL_MOVES (model_moves.js): seed -> [player, goal].
+  // Mix of optimal solves (503/504/505) and imperfect-but-solved detours (509/511).
   const BOARDS = [
-    { seed: 11, player: [3, 3], goal: [5, 2], label: 'the rollout shown above (seed 11)' },
-    { seed: 500, player: [0, 0], goal: [0, 4], label: 'eval board #1 (seed 500)' },
-    { seed: 501, player: [1, 3], goal: [2, 0], label: 'eval board #2 (seed 501)' },
-    { seed: 502, player: [5, 3], goal: [1, 3], label: 'eval board #3 (seed 502)' },
+    { seed: 504, player: [1, 2], goal: [2, 4], label: 'eval board (seed 504) — the 7B solved this optimally' },
+    { seed: 503, player: [0, 0], goal: [2, 2], label: 'eval board (seed 503) — corner to centre, solved optimally' },
+    { seed: 505, player: [2, 2], goal: [1, 4], label: 'eval board (seed 505) — solved optimally' },
+    { seed: 509, player: [1, 1], goal: [2, 3], label: 'eval board (seed 509) — the 7B solved it but took a detour (5 vs 3)' },
+    { seed: 511, player: [0, 1], goal: [2, 3], label: 'eval board (seed 511) — solved with a detour (6 vs 4)' },
   ];
-  // action index -> [dRow, dCol] (matches grid_game ACTIONS/_DELTA)
+  // action index -> [dRow, dCol], matching grid_game _DELTA {0:up,1:down,2:left,3:right}
   const DIRS_BY_INDEX = [[-1, 0], [1, 0], [0, -1], [0, 1]];
   let bi = 0, player, goal, moves, optimal, solved;
 
@@ -19,6 +22,8 @@
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
   const status = document.getElementById('game-status');
+  const CELL = Math.floor(canvas.width / SIZE);   // derive cell size from canvas
+  const PAD = Math.round(CELL * 0.09);
 
   function manhattan(a, b) { return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]); }
 
@@ -59,7 +64,7 @@
       solved = true;
       const eff = (optimal / moves);
       setStatus(`Solved in ${moves} moves (optimal ${optimal}, efficiency ${eff.toFixed(2)}). ` +
-        `For reference: the oracle always plays optimally; Qwen-VL-3B scored 0.0 on boards like this, 7B 0.13.`);
+        `For reference: the oracle always plays optimally; Qwen-VL-3B scored 0.0 on boards like this, the 7B with chain-of-thought 0.53.`);
     } else {
       setStatus(`${moves} moves · ${manhattan(player, goal)} to go (optimal was ${optimal}).`);
     }
@@ -67,7 +72,7 @@
 
   const DIRS = { up: [-1, 0], down: [1, 0], left: [0, -1], right: [0, 1] };
   document.querySelectorAll('[data-dir]').forEach(btn =>
-    btn.addEventListener('click', () => { const d = DIRS[btn.dataset.dir]; move(d[0], d[1]); }));
+    btn.addEventListener('click', () => { stopReplay(); const d = DIRS[btn.dataset.dir]; move(d[0], d[1]); }));
   const nb = document.getElementById('game-new');
   if (nb) nb.addEventListener('click', () => { stopReplay(); bi = (bi + 1) % BOARDS.length; load(bi); });
 
@@ -88,9 +93,14 @@
     replayTimer = setInterval(() => {
       if (i >= rec.actions.length || solved) {
         stopReplay();
-        setStatus(rec.solved
-          ? `Qwen-VL-7B solved it in ${rec.steps} moves (optimal ${rec.optimal}).`
-          : `Qwen-VL-7B did NOT reach the goal (${rec.steps} moves) — watch where its spatial reasoning drifts.`);
+        if (rec.solved) {
+          const verdict = rec.steps === rec.optimal
+            ? `optimally (${rec.steps} = optimal ${rec.optimal})`
+            : `in ${rec.steps} moves (optimal ${rec.optimal}) — a detour, but it corrected course and reached the goal`;
+          setStatus(`Qwen-VL-7B solved it ${verdict}.`);
+        } else {
+          setStatus(`Qwen-VL-7B did NOT reach the goal (${rec.steps} moves) — watch where its spatial reasoning drifts.`);
+        }
         return;
       }
       const d = DIRS_BY_INDEX[rec.actions[i]]; i++;
@@ -100,12 +110,12 @@
   const wb = document.getElementById('game-watch');
   if (wb) wb.addEventListener('click', watchModel);
 
-  // arrow keys (only when the canvas region is in view / focused-ish)
+  // arrow keys (only when the canvas region is in view)
   window.addEventListener('keydown', (e) => {
     const map = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
     if (map[e.key]) {
       const rect = canvas.getBoundingClientRect();
-      if (rect.top < window.innerHeight && rect.bottom > 0) { e.preventDefault(); const d = DIRS[map[e.key]]; move(d[0], d[1]); }
+      if (rect.top < window.innerHeight && rect.bottom > 0) { e.preventDefault(); stopReplay(); const d = DIRS[map[e.key]]; move(d[0], d[1]); }
     }
   });
 
