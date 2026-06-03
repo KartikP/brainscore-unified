@@ -56,6 +56,17 @@ class TestEnvMechanics:
         env.step(0)  # try to move up into a wall
         assert env.agent_pos == (1, 1)
 
+    def test_ascii_board_has_player_and_goal(self):
+        env = GridGameEnv(size=4, seed=0)
+        env.agent_pos = (0, 0)
+        env.goal_pos = (3, 3)
+        board = env.ascii_board()
+        assert 'P' in board and 'G' in board
+        assert board.count('P') == 1 and board.count('G') == 1
+        assert len(board.splitlines()) == 4
+        # the observation exposes it for thinking text policies
+        assert env._observe()['ascii'] == board
+
 
 class TestClosedLoop:
     def test_oracle_solves_wall_free_optimally(self):

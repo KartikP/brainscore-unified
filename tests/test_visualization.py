@@ -11,6 +11,7 @@ from brainscore.visualization import (
     normalize_values, parcel_grid_heatmap, network_strip,
     ablation_effect_bar, response_heatmap, before_after_difference,
     composite_selection_map, units_per_layer_bar, selectivity_histogram,
+    scaling_curve_single, scaling_curves_grid, normalized_scaling_overlay,
 )
 
 
@@ -97,4 +98,36 @@ class TestSelectionFigures:
         selected = scores > 1.5
         out = selectivity_histogram(scores, selected,
                                     out_png=str(tmp_path / 'hist.png'))
+        assert _png_nonempty(out)
+
+
+class TestScalingCurves:
+    MODELS = ['random-init', 'CLIP-B32', 'Qwen-3B', 'BLIP-2', 'Qwen-7B']
+
+    def test_single_curve_with_floor(self, tmp_path):
+        out = scaling_curve_single(
+            self.MODELS, [0.10, 0.37, 0.21, 0.39, 0.45],
+            null_floor=0.10, capability='IT encoding (r)',
+            out_png=str(tmp_path / 'sc.png'))
+        assert _png_nonempty(out)
+
+    def test_grid_of_capabilities(self, tmp_path):
+        scores = {
+            'IT encoding': [0.10, 0.37, 0.21, 0.39, 0.45],
+            'ROAR behavior': [0.50, 0.68, 0.74, 0.79, 0.83],
+            'game success': [0.0, np.nan, 0.0, np.nan, 0.4],
+        }
+        floors = {'IT encoding': 0.10, 'ROAR behavior': 0.50, 'game success': 0.2}
+        out = scaling_curves_grid(self.MODELS, scores, null_floors=floors,
+                                  title='Capabilities scale with model quality',
+                                  out_png=str(tmp_path / 'grid.png'))
+        assert _png_nonempty(out)
+
+    def test_normalized_overlay(self, tmp_path):
+        scores = {
+            'IT encoding': [0.10, 0.37, 0.21, 0.39, 0.45],
+            'ROAR behavior': [0.50, 0.68, 0.74, 0.79, 0.83],
+        }
+        out = normalized_scaling_overlay(self.MODELS, scores,
+                                         out_png=str(tmp_path / 'ov.png'))
         assert _png_nonempty(out)

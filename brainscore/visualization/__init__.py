@@ -30,6 +30,11 @@ from .unit_selection_plot import (
     units_per_layer_bar,
     selectivity_histogram,
 )
+from .scaling_curve import (
+    scaling_curve_single,
+    scaling_curves_grid,
+    normalized_scaling_overlay,
+)
 
 __all__ = [
     'normalize_values', 'parcel_grid_heatmap', 'network_strip',
@@ -37,4 +42,5 @@ __all__ = [
     'SCHAEFER_7NETWORKS',
     'ablation_effect_bar', 'response_heatmap', 'before_after_difference',
     'composite_selection_map', 'units_per_layer_bar', 'selectivity_histogram',
+    'scaling_curve_single', 'scaling_curves_grid', 'normalized_scaling_overlay',
 ]

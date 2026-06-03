@@ -114,6 +114,26 @@ class GridGameEnv:
         fill(self.agent_pos, _AGENT)
         return img
 
+    def ascii_board(self) -> str:
+        """Text rendering of the board: ``P`` player, ``G`` goal, ``#`` wall,
+        ``.`` empty. Gives a *thinking* text model perfect perception so the
+        closed loop tests reasoning, not vision — the complement to ``render``.
+        """
+        rows = []
+        for r in range(self.size):
+            cells = []
+            for c in range(self.size):
+                if (r, c) == self.agent_pos:
+                    cells.append('P')
+                elif (r, c) == self.goal_pos:
+                    cells.append('G')
+                elif (r, c) in self.walls:
+                    cells.append('#')
+                else:
+                    cells.append('.')
+            rows.append(' '.join(cells))
+        return '\n'.join(rows)
+
     # -- helpers ---------------------------------------------------------
     def _manhattan(self) -> int:
         return (abs(self.agent_pos[0] - self.goal_pos[0])
@@ -122,6 +142,7 @@ class GridGameEnv:
     def _observe(self) -> Dict[str, Any]:
         return {
             'frame': self.render(),
+            'ascii': self.ascii_board(),
             'instruction': self.instruction,
             'legal_actions': dict(ACTIONS),
             # Privileged ground truth — oracle only; visual policies must ignore
