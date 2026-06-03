@@ -107,6 +107,15 @@ window.BSU_DATA = {
     "units_per_layer": 1024,
     "reading": "A CompositeSelector gathers a functional population spanning depth into one region; the readout draws most from the middle-late layers."
   },
+  "embodied_game": {
+    "title": "A VLM plays a video game",
+    "subtitle": "Closed-loop process(EnvironmentStep) — the model sees a rendered frame, picks a move, the environment responds, repeat",
+    "models": ["random", "Qwen-VL-3B", "Qwen-VL-7B", "oracle"],
+    "success": [0.20, 0.0, 0.133, 1.0],
+    "colors": ["#9aa0a6", "#d8483b", "#e0a13b", "#3bb273"],
+    "null_floor": 0.20,
+    "reading": "The same interface that scores neural and behavioral benchmarks drives a closed-loop agent: a VLM is the policy, navigating a blue player to a green goal one move per process(EnvironmentStep). Across ~300 ticks there were zero schema errors. The honest read is a null result: a 3B VLM scores 0.0 — below the 0.20 random floor — because abstract-grid visual reasoning is hard; the 7B does better (0.13) and its solves are optimal-efficiency. The bottleneck is perception, not the interface."
+  },
   "layer_contribution": {
     "title": "Layer contribution per modality",
     "subtitle": "Per-layer brain-prediction r on Algonauts CNeuroMod (sub-01), each tower row-normalized — the MIRAGE Fig 4 analogue",
@@ -120,13 +129,28 @@ window.BSU_DATA = {
     "reading": "Each tower's layers contribute to cortical prediction at a different depth: text (MiniLM) peaks early (layer 3), audio (Wav2Vec2) in the middle (layer 7), and video (CLIP) at the very last layer (12). Unlike MIRAGE — which reads cross-attention weights off a single trained Qwen3-Omni encoder — this is computed directly as each layer's ridge brain-prediction r, so the heatmap is grounded in encoding performance rather than learned gates. Cells are row-normalized to show each modality's depth profile."
   },
   "all_paths": {
-    "title": "Every model, every path it can run",
-    "subtitle": "ROAR lexical decision — readout vs generation, distinct colours",
+    "title": "Every model, stratified by input type × output path",
+    "subtitle": "ROAR lexical decision — three evaluation paths from one TaskContext: vision-tower readout, instruction-following generation, and readout on instruction-conditioned LM features",
     "chance": 0.5,
-    "models": ["chance", "random-ViT", "CLIP-B32", "GPT-2", "BLIP-2", "Qwen-VL-3B"],
-    "readout": [0.50, 0.54, 0.69, 0.81, 0.80, 0.74],
-    "generation": [null, null, null, null, 0.50, 0.90],
-    "reading": "Each model is run through every output path it supports. The path matters as much as the model: Qwen's generation path (0.90) far exceeds its own readout (0.74), but BLIP-2's generation (0.50, chance) collapses below its readout (0.80) — it isn't instruction-tuned for lexical decision. GPT-2 has no generation path for this task; CLIP/random-ViT/chance are readout-only feature models. Colour encodes the path, not the model."
+    "null_floor": 0.54,
+    "pathColors": {"readout": "#3b7dd8", "generation": "#e0a13b", "instr-readout": "#7c5bff"},
+    "models": ["CLIP", "BLIP-2", "Qwen", "GPT-2", "random-ViT", "chance"],
+    "rows": [
+      {"model": "CLIP", "input": "image", "path": "readout", "score": 0.680},
+      {"model": "BLIP-2", "input": "image", "path": "readout", "score": 0.790},
+      {"model": "BLIP-2", "input": "image", "path": "generation", "score": 0.500},
+      {"model": "BLIP-2", "input": "text", "path": "generation", "score": 0.480},
+      {"model": "BLIP-2", "input": "image + instruct", "path": "instr-readout", "score": 0.920},
+      {"model": "Qwen", "input": "image", "path": "readout", "score": 0.740},
+      {"model": "Qwen", "input": "image", "path": "generation", "score": 0.930},
+      {"model": "Qwen", "input": "text", "path": "generation", "score": 0.940},
+      {"model": "Qwen", "input": "image + instruct", "path": "instr-readout", "score": 0.980},
+      {"model": "GPT-2", "input": "text", "path": "readout", "score": 0.810},
+      {"model": "GPT-2", "input": "text", "path": "generation", "score": 0.760},
+      {"model": "random-ViT", "input": "image", "path": "readout", "score": 0.540},
+      {"model": "chance", "input": "—", "path": "readout", "score": 0.500}
+    ],
+    "reading": "The path matters as much as the model. Same Qwen weights, three numbers: vision-tower readout 0.74, generation 0.93, and readout on instruction-conditioned LM features 0.98 — the language pathway is where the reading happens. BLIP-2 generation collapses to chance (0.50, not instruction-tuned) yet its instruction-conditioned readout hits 0.92 — the answer is in its features, only its decoder head can't say it. GPT-2 from strings alone reaches the human ceiling via readout (0.81) and is sub-ceiling via likelihood-based generation (0.76). Colour = output path; the table gives input type × path × score."
   },
   "benchmark_mechanics": {
     "title": "What a benchmark actually does",

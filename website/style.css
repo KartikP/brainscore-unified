@@ -85,9 +85,11 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .plot{width:100%; height:430px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius)}
 
 /* two-col */
-.two-col{display:grid; grid-template-columns:1.4fr 1fr; gap:24px; align-items:center}
+.two-col{display:grid; grid-template-columns:1.4fr 1fr; gap:24px; align-items:stretch}
 @media(max-width:760px){.two-col{grid-template-columns:1fr}}
-.reading-box{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:22px}
+.two-col-stack{display:flex; flex-direction:column; gap:16px}
+.reading-box{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:22px; display:flex; flex-direction:column; justify-content:flex-start}
 .reading-box h3{margin:0 0 10px}
 .reading-box p{color:var(--muted)}
 .flow{display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:16px; font-size:.84rem}
@@ -104,10 +106,26 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .nulls-table td code{font-size:.82em}
 
 /* lesion -> brain glass figure */
-.lesion-brain{margin:16px 0 0; background:var(--panel2); border:1px solid var(--line);
-  border-radius:10px; padding:10px}
-.lesion-brain img{width:100%; max-width:340px; display:block; margin:0 auto; border-radius:6px}
+.lesion-brain{margin:0; background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--radius); padding:14px; flex:1; display:flex; flex-direction:column;
+  justify-content:center}
+.lesion-brain img{width:100%; max-width:460px; display:block; margin:0 auto; border-radius:6px}
 .lesion-brain figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
+
+/* paths table */
+.paths-table{width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line);
+  border-radius:var(--radius); overflow:hidden; align-self:stretch; font-size:.86rem}
+.paths-table th,.paths-table td{text-align:left; padding:8px 12px; border-bottom:1px solid var(--line)}
+.paths-table th{color:var(--accent); font-size:.72rem; text-transform:uppercase; letter-spacing:.05em}
+.paths-table td:first-child{font-weight:600}
+.path-chip{display:inline-block; padding:2px 8px; border-radius:999px; color:#fff; font-size:.74rem}
+
+/* game figure */
+.game-fig{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:18px; margin:0 0 24px}
+.game-fig img{width:100%; max-width:900px; display:block; margin:0 auto; border-radius:8px;
+  image-rendering:pixelated}
+.game-fig figcaption{color:var(--muted); font-size:.88rem; margin-top:10px}
 
 /* localizer figure */
 .localizer-fig{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);

@@ -95,7 +95,10 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
   </div>
   <h3 id="allpaths-title" style="margin:32px 0 4px"></h3>
   <p class="muted small" id="allpaths-sub"></p>
-  <div id="allpaths-plot" class="plot" style="height:360px"></div>
+  <div class="two-col">
+    <div id="allpaths-plot" class="plot"></div>
+    <table class="paths-table" id="allpaths-table"></table>
+  </div>
   <p class="reading" id="allpaths-reading"></p>
 </section>
 
@@ -111,6 +114,28 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
   </div>
 </section>
 
+<section id="game" class="section">
+  <h2 id="game-title"></h2>
+  <p class="lead" id="game-sub"></p>
+  <figure class="game-fig">
+    <img src="assets/game_rollout.png" alt="VLM grid-game rollout" />
+    <figcaption>One closed-loop rollout: the model sees each rendered frame and outputs a move (up/down/left/right) via <code>process(EnvironmentStep)</code>; the environment steps and returns the next frame.</figcaption>
+  </figure>
+  <div class="two-col">
+    <div id="game-plot" class="plot"></div>
+    <div class="reading-box">
+      <h3>Embodied, through the same interface</h3>
+      <p id="game-reading"></p>
+      <div class="flow">
+        <span>render frame</span><span class="arrow">→</span>
+        <span>process(EnvironmentStep)</span><span class="arrow">→</span>
+        <span>action</span><span class="arrow">→</span>
+        <span>step world</span>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section id="ablation" class="section alt">
   <h2>Lesion a population, measure the effect — inducing dyslexia</h2>
   <p class="lead"><code>process(StateChange)</code> ablates a unit population, the
@@ -119,15 +144,17 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
     a word-form lesion drives reading below the dyslexia threshold while a
     same-size random lesion doesn't — and the effect emerges with model scale.</p>
   <div class="two-col">
-    <div id="ablation-plot" class="plot"></div>
-    <div class="reading-box">
-      <h3>Inducing dyslexia — selectivity emerges with scale</h3>
-      <p class="muted small" id="ablation-protocol"></p>
-      <p id="ablation-reading"></p>
+    <div class="two-col-stack">
+      <div id="ablation-plot" class="plot"></div>
       <figure class="lesion-brain">
         <img id="lesion-brain-img" src="assets/vwfa_glass.png" alt="ablated population mapped to cortex" />
         <figcaption id="lesion-brain-cap"></figcaption>
       </figure>
+    </div>
+    <div class="reading-box">
+      <h3>Inducing dyslexia — selectivity emerges with scale</h3>
+      <p class="muted small" id="ablation-protocol"></p>
+      <p id="ablation-reading"></p>
     </div>
   </div>
 </section>

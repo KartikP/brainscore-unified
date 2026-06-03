@@ -105,34 +105,45 @@
     Plotly.react('mech-floors-plot', [bar], lay, CFG);
   }
 
-  // ---- all models, all paths (colored by path) ----
+  // ---- all models, stratified by input type x output path ----
   if (D.all_paths) {
     const ap = D.all_paths;
     $('allpaths-title').textContent = ap.title;
     $('allpaths-sub').textContent = ap.subtitle;
     $('allpaths-reading').textContent = ap.reading;
-    const readout = {
-      x: ap.models, y: ap.readout, type: 'scatter', mode: 'markers',
-      name: 'readout (logistic on features)',
-      marker: { color: '#3b7dd8', size: 15, symbol: 'circle' },
-      hovertemplate: '%{x} readout: %{y:.2f}<extra></extra>',
-    };
-    const generation = {
-      x: ap.models, y: ap.generation, type: 'scatter', mode: 'markers',
-      name: 'generation (parse the answer)',
-      marker: { color: '#e0a13b', size: 15, symbol: 'diamond' },
-      hovertemplate: '%{x} generation: %{y:.2f}<extra></extra>',
-    };
+    // one trace per path (colour = path), points at x=model, y=score
+    const traces = Object.keys(ap.pathColors).map(path => {
+      const rows = ap.rows.filter(r => r.path === path && r.score != null);
+      return {
+        x: rows.map(r => r.model), y: rows.map(r => r.score),
+        text: rows.map(r => r.input), type: 'scatter', mode: 'markers', name: path,
+        marker: { color: ap.pathColors[path], size: 15, line: { color: '#0a0e17', width: 1 } },
+        hovertemplate: '%{x} · %{text} · ' + path + ': %{y:.2f}<extra></extra>',
+      };
+    });
     const lay = Object.assign({}, LAYOUT, {
       showlegend: true,
-      legend: { x: 0.02, y: 0.98, font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
-      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR accuracy', range: [0.4, 1.0] }),
-      shapes: [{ type: 'line', x0: -0.4, x1: ap.models.length - 0.6, y0: ap.chance, y1: ap.chance,
-        line: { color: '#888', width: 1, dash: 'dot' } }],
-      annotations: [{ x: ap.models.length - 1, y: ap.chance, yanchor: 'bottom', xanchor: 'right',
-        text: 'chance', showarrow: false, font: { color: '#888', size: 10 } }],
+      legend: { orientation: 'h', x: 0, y: 1.12, font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR raw accuracy', range: [0.4, 1.05] }),
+      shapes: [
+        { type: 'line', x0: -0.5, x1: ap.models.length - 0.5, y0: ap.chance, y1: ap.chance,
+          line: { color: '#888', width: 1, dash: 'dot' } },
+        { type: 'line', x0: -0.5, x1: ap.models.length - 0.5, y0: ap.null_floor, y1: ap.null_floor,
+          line: { color: '#d8483b', width: 1, dash: 'dot' } }],
+      annotations: [
+        { x: ap.models.length - 1, y: ap.chance, yanchor: 'top', xanchor: 'right',
+          text: 'chance', showarrow: false, font: { color: '#888', size: 10 } },
+        { x: ap.models.length - 1, y: ap.null_floor, yanchor: 'bottom', xanchor: 'right',
+          text: 'random-feature floor', showarrow: false, font: { color: '#d8483b', size: 10 } }],
     });
-    Plotly.react('allpaths-plot', [readout, generation], lay, CFG);
+    Plotly.react('allpaths-plot', traces, lay, CFG);
+    // table
+    const fmt = (r) => `<tr><td>${r.model}</td><td>${r.input}</td>`
+      + `<td><span class="path-chip" style="background:${ap.pathColors[r.path] || '#666'}">${r.path}</span></td>`
+      + `<td>${r.score == null ? '—' : r.score.toFixed(3)}</td></tr>`;
+    $('allpaths-table').innerHTML =
+      '<tr><th>model</th><th>input</th><th>output path</th><th>raw</th></tr>'
+      + ap.rows.map(fmt).join('');
   }
 
   // ---- scaling curves ----
@@ -170,6 +181,26 @@
   }
   drawScaling(scKeys[0], document.querySelector('#scaling-tabs .tog'));
 
+  // ---- embodied VLM game ----
+  if (D.embodied_game) {
+    const g = D.embodied_game;
+    $('game-title').textContent = g.title;
+    $('game-sub').textContent = g.subtitle;
+    $('game-reading').textContent = g.reading;
+    const bar = {
+      x: g.models, y: g.success, type: 'bar', marker: { color: g.colors },
+      hovertemplate: '%{x}: %{y:.2f} success<extra></extra>',
+    };
+    const lay = Object.assign({}, LAYOUT, {
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'success rate', range: [0, 1.05] }),
+      shapes: [{ type: 'line', x0: -0.5, x1: g.models.length - 0.5, y0: g.null_floor, y1: g.null_floor,
+        line: { color: '#888', width: 1, dash: 'dot' } }],
+      annotations: [{ x: g.models.length - 1, y: g.null_floor, yanchor: 'bottom', xanchor: 'right',
+        text: 'random floor', showarrow: false, font: { color: '#888', size: 10 } }],
+    });
+    Plotly.react('game-plot', [bar], lay, CFG);
+  }
+
   // ---- ablation (Honarmand dissociation) ----
   (function () {
     const a = D.ablation;
@@ -191,8 +222,9 @@
       showlegend: true,
       legend: { x: 0.02, y: 0.12, font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
       yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR accuracy', range: [0.4, 1.0] }),
-      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'units ablated (% of MLP gate_proj)' }),
-      shapes: [{ type: 'line', x0: 0, x1: Math.max(...a.mask_pct), y0: a.threshold, y1: a.threshold,
+      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'units ablated (% of MLP gate_proj)',
+        range: [-1, Math.max(...a.mask_pct) + 2], autorange: false }),
+      shapes: [{ type: 'line', x0: -1, x1: Math.max(...a.mask_pct) + 2, y0: a.threshold, y1: a.threshold,
         line: { color: '#e0a13b', width: 1.5, dash: 'dash' } }],
       annotations: [{ x: Math.max(...a.mask_pct), y: a.threshold, yanchor: 'bottom', xanchor: 'right',
         text: 'dyslexia threshold (0.65)', showarrow: false, font: { color: '#e0a13b', size: 10 } }],
