@@ -44,9 +44,10 @@ INSTRUCTION = INSTRUCTION_COT       # default; overridden per run via --prompt_m
 # --------------------------------------------------------------------------- #
 # Montage composition (one inspectable image per trial)
 # --------------------------------------------------------------------------- #
-def compose_montages(trials, n_images, out_dir, seed=0):
+def compose_montages(trials, n_images, out_dir, seed=0, balance_sides=False):
     """Compose montages for a subsample of test images. Returns a stim DataFrame
-    with one row per trial: image_path (montage), plus the trial metadata."""
+    with one row per trial (or two per condition when balance_sides=True), each
+    with image_path (montage) + trial metadata."""
     from brainscore_vision import load_stimulus_set
     ss = load_stimulus_set('objectome.public')
     path_of = lambda iid: str(ss.get_stimulus(iid))
@@ -58,22 +59,29 @@ def compose_montages(trials, n_images, out_dir, seed=0):
         images = sorted(rng.choice(images, size=n_images, replace=False).tolist())
     sub = trials[trials['image_id'].isin(images)].reset_index(drop=True)
 
+    # balance_sides: emit BOTH arrangements (sample-left and sample-right) per
+    # condition. A pure positional bias then cancels to 0.5 per condition while a
+    # real perceiver stays high; the i2n metric averages the two trials automatically.
+    sides = [True, False] if balance_sides else None
+
     rows = []
     for i, t in sub.iterrows():
         sample_tok = path_of(t['token_sample_id'])
         dist_tok = path_of(t['token_dist_id'])
-        sample_left = bool(rng.rand() < 0.5)               # randomize side
-        left_path, right_path = (sample_tok, dist_tok) if sample_left else (dist_tok, sample_tok)
-        left_obj, right_obj = (t['sample_obj'], t['dist_obj']) if sample_left else (t['dist_obj'], t['sample_obj'])
-        montage_path = os.path.join(out_dir, f'trial_{i:05d}.png')
-        if not os.path.exists(montage_path):
-            compose_montage(path_of(t['image_id']), left_path, right_path).save(montage_path)
-        rows.append({
-            'stimulus_id': f'trial_{i:05d}', 'image_path': montage_path,
-            'image_id': t['image_id'], 'sample_obj': t['sample_obj'], 'dist_obj': t['dist_obj'],
-            'left_obj': left_obj, 'right_obj': right_obj,
-            'sample_path': path_of(t['image_id']), 'left_path': left_path, 'right_path': right_path,
-        })
+        these = sides if balance_sides else [bool(rng.rand() < 0.5)]
+        for s in these:
+            tag = f'{i:05d}' + ('L' if (balance_sides and s) else 'R' if balance_sides else '')
+            left_path, right_path = (sample_tok, dist_tok) if s else (dist_tok, sample_tok)
+            left_obj, right_obj = (t['sample_obj'], t['dist_obj']) if s else (t['dist_obj'], t['sample_obj'])
+            montage_path = os.path.join(out_dir, f'trial_{tag}.png')
+            if not os.path.exists(montage_path):
+                compose_montage(path_of(t['image_id']), left_path, right_path).save(montage_path)
+            rows.append({
+                'stimulus_id': f'trial_{tag}', 'image_path': montage_path,
+                'image_id': t['image_id'], 'sample_obj': t['sample_obj'], 'dist_obj': t['dist_obj'],
+                'left_obj': left_obj, 'right_obj': right_obj,
+                'sample_path': path_of(t['image_id']), 'left_path': left_path, 'right_path': right_path,
+            })
     stim = pd.DataFrame(rows)
     # persist a manifest so a standalone chooser (e.g. a model in a different
     # conda env, with no brainscore) can run on the identical trials + score later.
@@ -242,6 +250,8 @@ def main():
                     help='generation only: cot = reason-then-answer; direct = one-word first-glance answer')
     ap.add_argument('--n_shots', type=int, default=0,
                     help='generation only: in-context practice trials prepended per prompt (0 = zero-shot)')
+    ap.add_argument('--balance_sides', action='store_true',
+                    help='present each condition both ways (sample-left + sample-right) so positional bias cancels')
     ap.add_argument('--n_images', type=int, default=240)
     ap.add_argument('--out', required=True)
     ap.add_argument('--montage_dir', default='')
@@ -255,8 +265,8 @@ def main():
     montage_dir = args.montage_dir or os.path.join(args.out, 'montages')
 
     trials = B.load_trials()
-    stim = compose_montages(trials, args.n_images, montage_dir)
-    print(f'composed {len(stim)} montage trials', flush=True)
+    stim = compose_montages(trials, args.n_images, montage_dir, balance_sides=args.balance_sides)
+    print(f'composed {len(stim)} montage trials (balance_sides={args.balance_sides})', flush=True)
 
     demos = []
     if args.path == 'generation' and args.n_shots:
@@ -296,6 +306,7 @@ def main():
     result = {'path': args.path, 'model': args.model,
               'prompt_mode': args.prompt_mode if args.path == 'generation' else None,
               'n_shots': args.n_shots if args.path == 'generation' else 0,
+              'balance_sides': args.balance_sides,
               'n_trials': len(choices), 'accuracy': acc, 'frac_left': frac_left,
               'per_object_accuracy': per_obj_acc,
               'stats': stats, 'scores': scores, 'witness': witness_out['summary']}
