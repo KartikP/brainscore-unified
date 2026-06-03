@@ -1,0 +1,109 @@
+"""Standalone Gemma-4 2-AFC chooser — runs in an ISOLATED env (transformers 5.x,
+no brainscore, so no dependency-pin conflict). Reads the montage manifest written
+by score_2afc.compose_montages, asks Gemma-4 LEFT/RIGHT per montage, and writes
+gemma_choices.csv. The bsu env then scores that CSV via benchmark.score_choices,
+so the i2n is computed by the exact same pipeline as every other model.
+
+Gemma-4-12B is apache-2.0 (ungated). 12B/BF16 won't fit a 23 GB A10G, so we load
+4-bit nf4 (~7 GB). Two prompt modes mirror the Qwen runs: --mode direct (one-word
+first-glance answer) vs --mode cot (Gemma-4 thinking mode, reason-then-answer).
+
+    python gemma_chooser.py --manifest /tmp/raj2afc/montages/manifest.csv \\
+        --out /tmp/raj2afc/gemma12b_direct --mode direct
+"""
+import argparse
+import csv
+import json
+import os
+import re
+
+
+def parse_lr(text):
+    t = text.upper()
+    m = list(re.finditer(r'\b(LEFT|RIGHT)\b', t))
+    if not m:
+        return None
+    return m[-1].group(1)            # last explicit LEFT/RIGHT
+
+
+INSTR_DIRECT = ("The image shows a SAMPLE object on top and two options below (LEFT and RIGHT). "
+                "Which option is the SAME object as the sample? "
+                "Answer with exactly one word: LEFT or RIGHT.")
+INSTR_COT = ("The image shows a SAMPLE object on top and two options below (LEFT and RIGHT). "
+             "Exactly one option is the same object as the sample. "
+             "Reason briefly, then end with a line: 'Answer: LEFT' or 'Answer: RIGHT'.")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--manifest', required=True)
+    ap.add_argument('--out', required=True)
+    ap.add_argument('--model', default='google/gemma-4-12B')
+    ap.add_argument('--mode', default='direct', choices=['direct', 'cot'])
+    ap.add_argument('--limit', type=int, default=0, help='cap trials (smoke); 0 = all')
+    args = ap.parse_args()
+
+    import torch
+    from PIL import Image
+    from transformers import AutoProcessor, AutoModelForImageTextToText, BitsAndBytesConfig
+
+    os.makedirs(args.out, exist_ok=True)
+    instr = INSTR_DIRECT if args.mode == 'direct' else INSTR_COT
+    max_new = 8 if args.mode == 'direct' else 512
+    think = (args.mode == 'cot')
+
+    print(f'loading {args.model} (4-bit nf4)…', flush=True)
+    bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type='nf4',
+                             bnb_4bit_compute_dtype=torch.bfloat16)
+    proc = AutoProcessor.from_pretrained(args.model)
+    model = AutoModelForImageTextToText.from_pretrained(
+        args.model, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
+    dev = next(model.parameters()).device
+
+    rows = list(csv.DictReader(open(args.manifest)))
+    if args.limit:
+        rows = rows[:args.limit]
+    print(f'{len(rows)} trials, mode={args.mode}', flush=True)
+
+    out_rows, parse_miss = [], 0
+    for i, r in enumerate(rows):
+        img = Image.open(r['image_path']).convert('RGB')
+        messages = [{'role': 'user', 'content': [{'type': 'image', 'image': img},
+                                                 {'type': 'text', 'text': instr}]}]
+        kw = {}
+        try:
+            inputs = proc.apply_chat_template(messages, add_generation_prompt=True, tokenize=True,
+                                              return_dict=True, return_tensors='pt',
+                                              enable_thinking=think).to(dev)
+        except TypeError:        # processor may not accept enable_thinking
+            inputs = proc.apply_chat_template(messages, add_generation_prompt=True, tokenize=True,
+                                              return_dict=True, return_tensors='pt').to(dev)
+        ilen = inputs['input_ids'].shape[-1]
+        with torch.no_grad():
+            out = model.generate(**inputs, max_new_tokens=max_new, do_sample=False)
+        ans = proc.decode(out[0][ilen:], skip_special_tokens=True)
+        side = parse_lr(ans)
+        if side is None:
+            parse_miss += 1
+            side = 'LEFT' if (i % 2 == 0) else 'RIGHT'   # deterministic fallback
+        choice = r['left_obj'] if side == 'LEFT' else r['right_obj']
+        out_rows.append({'image_id': r['image_id'], 'sample_obj': r['sample_obj'],
+                         'dist_obj': r['dist_obj'], 'choice': choice, 'side': side,
+                         'correct': str(choice == r['sample_obj'])})
+        if (i + 1) % 200 == 0:
+            print(f'  {i+1}/{len(rows)}  parse_miss={parse_miss}', flush=True)
+
+    with open(os.path.join(args.out, 'gemma_choices.csv'), 'w', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=list(out_rows[0].keys()))
+        w.writeheader(); w.writerows(out_rows)
+    acc = sum(r['correct'] == 'True' for r in out_rows) / len(out_rows)
+    frac_left = sum(r['side'] == 'LEFT' for r in out_rows) / len(out_rows)
+    summary = {'model': args.model, 'mode': args.mode, 'n': len(out_rows),
+               'accuracy': round(acc, 4), 'frac_left': round(frac_left, 4),
+               'parse_miss': parse_miss}
+    json.dump(summary, open(os.path.join(args.out, 'summary.json'), 'w'), indent=2)
+    print(json.dumps(summary, indent=2), flush=True)
+
+
+if __name__ == '__main__':
+    main()

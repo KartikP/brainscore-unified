@@ -29,9 +29,16 @@ from brainscore_core.supported_data_standards.brainio.assemblies import Behavior
 from . import benchmark as B
 from .montage import compose_montage
 
-INSTRUCTION = ("The image shows a SAMPLE object on top and two options below (LEFT and RIGHT). "
-               "Exactly one option is the same object as the sample. "
-               "Reason briefly, then end with a line: 'Answer: LEFT' or 'Answer: RIGHT'.")
+# Two prompt modes, to separate perception from reasoning. Match-to-sample is a
+# perceptual task: chain-of-thought may HURT a small model (it talks itself away
+# from its first-glance percept), unlike the planning-heavy grid game where CoT helped.
+INSTRUCTION_COT = ("The image shows a SAMPLE object on top and two options below (LEFT and RIGHT). "
+                   "Exactly one option is the same object as the sample. "
+                   "Reason briefly, then end with a line: 'Answer: LEFT' or 'Answer: RIGHT'.")
+INSTRUCTION_DIRECT = ("The image shows a SAMPLE object on top and two options below (LEFT and RIGHT). "
+                      "Which option is the SAME object as the sample? "
+                      "Answer with exactly one word: LEFT or RIGHT.")
+INSTRUCTION = INSTRUCTION_COT       # default; overridden per run via --prompt_mode
 
 
 # --------------------------------------------------------------------------- #
@@ -67,7 +74,11 @@ def compose_montages(trials, n_images, out_dir, seed=0):
             'left_obj': left_obj, 'right_obj': right_obj,
             'sample_path': path_of(t['image_id']), 'left_path': left_path, 'right_path': right_path,
         })
-    return pd.DataFrame(rows)
+    stim = pd.DataFrame(rows)
+    # persist a manifest so a standalone chooser (e.g. a model in a different
+    # conda env, with no brainscore) can run on the identical trials + score later.
+    stim.to_csv(os.path.join(out_dir, 'manifest.csv'), index=False)
+    return stim
 
 
 # --------------------------------------------------------------------------- #
@@ -79,12 +90,12 @@ class TwoAFCModel(UnifiedModel):
 
     COLUMN_TO_MODALITY = {'image_path': 'vision'}   # so Witness renders the montage
 
-    def __init__(self, identifier, choose: Callable[[Any], str], mode='generation'):
+    def __init__(self, identifier, choose: Callable[[Any], str], mode='generation', instruction=INSTRUCTION_COT):
         self._identifier = identifier
         self._choose = choose
         self._witness_mode = mode      # how the Witness should label this run
         self._task_context = TaskContext(task_type='probabilities', label_set=['LEFT', 'RIGHT'],
-                                          instruction=INSTRUCTION)
+                                          instruction=instruction)
 
     @property
     def identifier(self): return self._identifier
@@ -128,7 +139,7 @@ def _parse_lr(text, rng):
     return 'LEFT' if iL > iR else 'RIGHT'
 
 
-def build_generation_chooser(model_id):
+def build_generation_chooser(model_id, prompt_mode='cot'):
     import torch
     from PIL import Image
     from transformers import AutoProcessor
@@ -141,42 +152,52 @@ def build_generation_chooser(model_id):
     model = VLM.from_pretrained(model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
                                 device_map=device).eval()
     rng = np.random.RandomState(0)
-    stats = {'calls': 0, 'parse_miss': 0}
+    stats = {'calls': 0, 'parse_miss': 0, 'prompt_mode': prompt_mode}
+    instr = INSTRUCTION_DIRECT if prompt_mode == 'direct' else INSTRUCTION_COT
+    max_new = 6 if prompt_mode == 'direct' else 200    # direct = first-glance percept; cot = room to reason
 
     def choose(row):
         stats['calls'] += 1
         img = Image.open(row['image_path']).convert('RGB')
-        messages = [{'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': INSTRUCTION}]}]
+        messages = [{'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': instr}]}]
         text = proc.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         inputs = proc(text=[text], images=[img], return_tensors='pt').to(device)
         with torch.no_grad():
-            out = model.generate(**inputs, max_new_tokens=200, do_sample=False)
+            out = model.generate(**inputs, max_new_tokens=max_new, do_sample=False)
         ans = proc.decode(out[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
         if 'LEFT' not in ans.upper() and 'RIGHT' not in ans.upper():
             stats['parse_miss'] += 1
         return _parse_lr(ans, rng)
 
-    return choose, stats
+    return choose, stats, instr
 
 
 def build_similarity_chooser(model_id):
-    """Vision-only 2-AFC: pick the token nearer the sample in feature space."""
+    """Vision-only 2-AFC: pick the token whose image embedding is nearest the
+    sample's, in a CLIP-family feature space (no trained classifier — pure
+    zero-shot feature matching). Uses HuggingFace CLIP."""
     import torch
     from PIL import Image
+    from transformers import CLIPModel, CLIPProcessor
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    import open_clip  # CLIP family
-    model, _, preprocess = open_clip.create_model_and_transforms(model_id)
-    model = model.to(device).eval()
+    mid = model_id or 'openai/clip-vit-base-patch32'
+    model = CLIPModel.from_pretrained(mid).to(device).eval()
+    proc = CLIPProcessor.from_pretrained(mid)
+    cache = {}
 
     def embed(path):
-        img = preprocess(Image.open(path).convert('RGB')).unsqueeze(0).to(device)
+        if path in cache:
+            return cache[path]
+        img = Image.open(path).convert('RGB')
+        inputs = proc(images=img, return_tensors='pt').to(device)
         with torch.no_grad():
-            f = model.encode_image(img)
-        f = f / f.norm(dim=-1, keepdim=True)
-        return f.cpu().numpy().ravel()
+            f = model.get_image_features(**inputs)
+        f = (f / f.norm(dim=-1, keepdim=True)).cpu().numpy().ravel()
+        cache[path] = f
+        return f
 
     def choose(row):
-        s = embed(row['sample_path']); l = embed(row['left_path']); r = embed(row['right_path'])
+        s, l, r = embed(row['sample_path']), embed(row['left_path']), embed(row['right_path'])
         return 'LEFT' if float(s @ l) >= float(s @ r) else 'RIGHT'
 
     return choose, {'calls': 0}
@@ -187,15 +208,13 @@ def build_random_chooser(seed=0):
     return (lambda row: 'LEFT' if rng.rand() < 0.5 else 'RIGHT'), {'calls': 0}
 
 
-CHOOSERS = {'generation': build_generation_chooser, 'similarity': build_similarity_chooser,
-            'random': lambda *_: build_random_chooser()}
-
-
 # --------------------------------------------------------------------------- #
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--path', required=True, choices=list(CHOOSERS))
+    ap.add_argument('--path', required=True, choices=['generation', 'similarity', 'random'])
     ap.add_argument('--model', default='')
+    ap.add_argument('--prompt_mode', default='cot', choices=['cot', 'direct'],
+                    help='generation only: cot = reason-then-answer; direct = one-word first-glance answer')
     ap.add_argument('--n_images', type=int, default=240)
     ap.add_argument('--out', required=True)
     ap.add_argument('--montage_dir', default='')
@@ -212,25 +231,42 @@ def main():
     stim = compose_montages(trials, args.n_images, montage_dir)
     print(f'composed {len(stim)} montage trials', flush=True)
 
-    choose, stats = (CHOOSERS[args.path](args.model) if args.path != 'random'
-                     else CHOOSERS[args.path]())
-    model = TwoAFCModel(f'{args.path}:{args.model or "null"}', choose, mode=args.path)
+    if args.path == 'generation':
+        choose, stats, instr = build_generation_chooser(args.model, args.prompt_mode)
+    elif args.path == 'similarity':
+        choose, stats = build_similarity_chooser(args.model); instr = INSTRUCTION_DIRECT
+    else:
+        choose, stats = build_random_chooser(); instr = INSTRUCTION_DIRECT
+    tag = f'{args.path}:{args.model or "null"}' + (f':{args.prompt_mode}' if args.path == 'generation' else '')
+    model = TwoAFCModel(tag, choose, mode=args.path, instruction=instr)
 
     with Witness(model, label=f'{args.model or args.path} · Rajalingham 2-AFC') as w:
         assembly = model.process(stim)
 
+    chosen = assembly.values
     choices = pd.DataFrame({
         'image_id': assembly['stimulus_id'].values, 'sample_obj': assembly['sample_obj'].values,
-        'dist_obj': assembly['dist_obj'].values, 'choice': assembly.values})
-    acc = float((choices['choice'] == choices['sample_obj']).mean())
-    scores = None if args.no_score else B.score_all(choices, metrics=('i1', 'i2n'))
+        'dist_obj': assembly['dist_obj'].values, 'choice': chosen,
+        'left_obj': stim['left_obj'].values, 'right_obj': stim['right_obj'].values})
+    choices['side'] = np.where(choices['choice'] == choices['left_obj'], 'LEFT', 'RIGHT')
+    choices['correct'] = choices['choice'] == choices['sample_obj']
+    choices.to_csv(os.path.join(args.out, 'choices.csv'), index=False)
+    acc = float(choices['correct'].mean())
+    frac_left = float((choices['side'] == 'LEFT').mean())          # side-bias diagnostic
+    per_obj_acc = choices.groupby('sample_obj')['correct'].mean().round(3).to_dict()
+    scores = None if args.no_score else B.score_all(choices[['image_id', 'sample_obj', 'dist_obj', 'choice']],
+                                                     metrics=('i1', 'i2n'))
 
     witness_out = w.save(os.path.join(args.out, 'witness'), max_panels=args.witness_panels)
-    result = {'path': args.path, 'model': args.model, 'n_trials': len(choices),
-              'accuracy': acc, 'stats': stats, 'scores': scores, 'witness': witness_out['summary']}
+    result = {'path': args.path, 'model': args.model,
+              'prompt_mode': args.prompt_mode if args.path == 'generation' else None,
+              'n_trials': len(choices), 'accuracy': acc, 'frac_left': frac_left,
+              'per_object_accuracy': per_obj_acc,
+              'stats': stats, 'scores': scores, 'witness': witness_out['summary']}
     with open(os.path.join(args.out, 'result.json'), 'w') as f:
         json.dump(result, f, indent=2, default=str)
-    summary = {'path': args.path, 'model': args.model, 'accuracy': round(acc, 3)}
+    summary = {'path': args.path, 'model': args.model, 'accuracy': round(acc, 3),
+               'frac_left': round(frac_left, 3)}
     if scores is not None:
         summary['i2n'], summary['i1'] = scores['i2n'], scores['i1']
     print(json.dumps(summary, indent=2, default=str), flush=True)
