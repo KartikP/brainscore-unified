@@ -41,15 +41,18 @@ _WORD_TO_ACTION = {'up': 0, 'down': 1, 'left': 2, 'right': 3}
 DEFAULT_LADDER = [
     ('Qwen2.5-VL-3B', 'Qwen/Qwen2.5-VL-3B-Instruct', 'visual', False),
     ('Qwen2.5-VL-7B', 'Qwen/Qwen2.5-VL-7B-Instruct', 'visual', False),
-    ('Qwen3-8B-think', 'Qwen/Qwen3-8B', 'ascii', True),
 ]
 
 _VISUAL_PROMPT = (
-    "This is a grid game. A BLUE square is the player and a GREEN square is the "
-    "goal. You move the BLUE square one cell at a time.\n"
-    "Choose the single move that brings the BLUE square closer to the GREEN "
-    "square:\n- 'up' toward the top\n- 'down' toward the bottom\n- 'left'\n- "
-    "'right'\nAnswer with exactly one word: up, down, left, or right."
+    "This is a grid game. The BLUE square is the player; the GREEN square is the "
+    "goal. Row 0 is the top row; column 0 is the left column.\n"
+    "Think step by step:\n"
+    "1. State the (row, column) of the BLUE square.\n"
+    "2. State the (row, column) of the GREEN square.\n"
+    "3. Decide the single move that reduces the distance: 'up' decreases the "
+    "row, 'down' increases the row, 'left' decreases the column, 'right' "
+    "increases the column.\n"
+    "End your reply with a line exactly: Action: <up|down|left|right>"
 )
 
 _ASCII_PROMPT = (
@@ -98,10 +101,11 @@ def build_visual_policy(model_id):
                                              add_generation_prompt=True)
         inputs = processor(text=[text], images=[img], return_tensors='pt').to(device)
         with torch.no_grad():
-            out = model.generate(**inputs, max_new_tokens=8, do_sample=False)
+            # room to reason (chain-of-thought) before the Action line
+            out = model.generate(**inputs, max_new_tokens=200, do_sample=False)
         gen = out[0][inputs['input_ids'].shape[1]:]
         ans = processor.decode(gen, skip_special_tokens=True)
-        a = _parse_action(ans)
+        a = _parse_action(ans, prefer_last=True)   # take the final 'Action: <dir>'
         if a < 0:
             # Unparseable output collapses to a RANDOM action (not a biased
             # "always-right" walker) so a non-instruction-following model

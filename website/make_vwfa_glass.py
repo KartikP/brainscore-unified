@@ -12,9 +12,6 @@ import os
 
 import numpy as np
 import nibabel as nib
-import matplotlib as mpl
-mpl.rcParams.update({'text.color': 'white', 'axes.labelcolor': 'white',
-                     'xtick.color': 'white', 'ytick.color': 'white'})
 import matplotlib.pyplot as plt
 from nilearn import datasets
 from scipy.ndimage import gaussian_filter
@@ -43,17 +40,13 @@ def main():
     blob = nib.Nifti1Image(vol, affine)
 
     out = os.path.join(ASSETS, 'vwfa_glass.png')
-    # sequential inferno (data is 0+), transparent canvas + light text for the
-    # dark site. quickbrain only supports lateral/medial views.
+    # White figure card, warm 'hot' overlay on the grey curvature brain, dark
+    # legible text. quickbrain only supports lateral/medial views.
     fig = quickbrain.plot_brain(blob, hemi='left', view='lateral', threshold=0.08,
-                                colorbar=True, cmap='inferno', background='transparent',
+                                colorbar=True, cmap='hot', background='white',
                                 title='ablated VWF population → VWFA')
     f = fig if hasattr(fig, 'savefig') else plt.gcf()
-    try:
-        f.suptitle('ablated VWF population → VWFA', color='white')
-    except Exception:
-        pass
-    f.savefig(out, dpi=150, bbox_inches='tight', transparent=True)
+    f.savefig(out, dpi=150, bbox_inches='tight')
     plt.close(f)
     print('wrote', out)
 
