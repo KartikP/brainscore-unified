@@ -134,6 +134,32 @@ def network_strip(values: np.ndarray, parcel_names: Sequence[str], *,
 # Real cortical-surface rendering (nilearn + nibabel; assets fetched on demand).
 # ---------------------------------------------------------------------------
 
+def _safe_plot_surf(plotting, surf, vtx, *, hemi, view, bg_map, cmap,
+                    threshold, vmin, vmax, title):
+    """Call ``plot_surf_stat_map`` robustly across nilearn versions.
+
+    nilearn's surface-plotting kwargs drift between releases (``darkness`` and
+    ``bg_on_data`` were removed in 0.13). Try the rich call, then progressively
+    drop optional kwargs on ``TypeError`` so the figure still renders.
+    """
+    attempts = [
+        dict(hemi=hemi, view=view, bg_map=bg_map, cmap=cmap, threshold=threshold,
+             vmin=vmin, vmax=vmax, colorbar=True, title=title, bg_on_data=True),
+        dict(hemi=hemi, view=view, bg_map=bg_map, cmap=cmap, threshold=threshold,
+             vmin=vmin, vmax=vmax, colorbar=True, title=title),
+        dict(hemi=hemi, view=view, bg_map=bg_map, cmap=cmap, colorbar=True,
+             title=title),
+        dict(hemi=hemi, view=view, cmap=cmap, colorbar=True),
+    ]
+    last = None
+    for kw in attempts:
+        try:
+            return plotting.plot_surf_stat_map(surf, vtx, **kw)
+        except TypeError as e:
+            last = e
+            continue
+    raise last
+
 def fetch_schaefer_fsaverage_annot(n_parcels: int = 1000, networks: int = 7,
                                    resolution: str = 'fsaverage5',
                                    cache_dir: str = '/tmp/schaefer_annot'):
@@ -201,10 +227,9 @@ def cortical_surface_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
     for j in range(per_hemi):
         vtx[labels == (j + 1)] = values_h[j]
 
-    fig = plotting.plot_surf_stat_map(
-        surf, vtx, hemi=hemi, view=view, bg_map=bg, cmap=cmap,
-        threshold=threshold, vmin=vmin, vmax=vmax, colorbar=True,
-        title=title, bg_on_data=True, darkness=0.5)
+    fig = _safe_plot_surf(plotting, surf, vtx, hemi=hemi, view=view, bg_map=bg,
+                          cmap=cmap, threshold=threshold, vmin=vmin, vmax=vmax,
+                          title=title)
     if out_png:
         fig.savefig(out_png, dpi=150, bbox_inches='tight')
         plt.close(fig)
@@ -238,10 +263,9 @@ def voxel_surface_map(voxel_values: np.ndarray, *, resolution: str = 'fsaverage5
     surf = fsavg['infl_left'] if hemi == 'left' else fsavg['infl_right']
     bg = fsavg['sulc_left'] if hemi == 'left' else fsavg['sulc_right']
 
-    fig = plotting.plot_surf_stat_map(
-        surf, vtx, hemi=hemi, view=view, bg_map=bg, cmap=cmap,
-        threshold=threshold, vmin=vmin, vmax=vmax, colorbar=True,
-        title=title, bg_on_data=True, darkness=0.5)
+    fig = _safe_plot_surf(plotting, surf, vtx, hemi=hemi, view=view, bg_map=bg,
+                          cmap=cmap, threshold=threshold, vmin=vmin, vmax=vmax,
+                          title=title)
     if out_png:
         fig.savefig(out_png, dpi=150, bbox_inches='tight')
         plt.close(fig)
