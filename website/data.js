@@ -186,7 +186,9 @@ window.BSU_DATA = {
   "inputs": [
     {"type": "image", "example": "a natural photograph", "benchmark": "MajajHong2015 V4 / IT", "desc": "Still images drive the ventral stream; predicted V4/IT responses map onto occipitotemporal cortex."},
     {"type": "text", "example": "a sentence", "benchmark": "Pereira2018", "desc": "Sentences drive the language network; a causal LM's features predict left frontotemporal language regions."},
+    {"type": "audio", "example": "a speech / environmental sound clip", "benchmark": "Lahner2024 auditory-ROI · Algonauts audio", "desc": "Sounds drive auditory cortex — Heschl's gyrus and superior temporal gyrus. A Wav2Vec2 tower predicts these temporal regions."},
     {"type": "video", "example": "a 3-second clip", "benchmark": "Lahner2024 BOLDMoments", "desc": "Short videos drive dorsal + ventral visual cortex; native-temporal V-JEPA leads."},
-    {"type": "video + audio", "example": "a movie segment", "benchmark": "Algonauts2025 CNeuroMod", "desc": "Continuous movies drive much of cortex; banded ridge over video+audio+text beats any single stream."}
+    {"type": "video + audio", "example": "a movie segment", "benchmark": "Algonauts2025 CNeuroMod", "desc": "Adding the audio tower extends prediction into temporal/auditory cortex alongside the visual response."},
+    {"type": "video + audio + text", "example": "a movie scene with dialogue + subtitles", "benchmark": "Algonauts2025 CNeuroMod (multimodal)", "desc": "The full naturalistic stream drives much of cortex; a banded ridge over all three towers (video + audio + text) gives the best whole-brain prediction — this is the actual Algonauts setup."}
   ]
 };

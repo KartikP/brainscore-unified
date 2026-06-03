@@ -30,11 +30,15 @@ ASSETS = os.path.join(HERE, 'assets')
 os.makedirs(ASSETS, exist_ok=True)
 
 # network emphasis per input type (network -> weight); others get a small base.
+# Slugs must match app.js slug(type): "video + audio + text" -> "videoaudiotext".
 EMPHASIS = {
-    'image':       {'Vis': 1.0, 'DorsAttn': 0.4},
-    'text':        {'Default': 1.0, 'Cont': 0.7, 'SalVentAttn': 0.3},
-    'video':       {'Vis': 0.9, 'DorsAttn': 0.7, 'SomMot': 0.5},
-    'videoaudio':  {'Vis': 0.7, 'SomMot': 0.9, 'DorsAttn': 0.5, 'Default': 0.4},
+    'image':           {'Vis': 1.0, 'DorsAttn': 0.4},
+    'text':            {'Default': 1.0, 'Cont': 0.7, 'SalVentAttn': 0.3},
+    'audio':           {'SomMot': 1.0, 'DorsAttn': 0.3},  # auditory ~ SomMot/temporal
+    'video':           {'Vis': 0.9, 'DorsAttn': 0.7, 'SomMot': 0.5},
+    'videoaudio':      {'Vis': 0.7, 'SomMot': 0.9, 'DorsAttn': 0.5, 'Default': 0.4},
+    'videoaudiotext':  {'Vis': 0.75, 'SomMot': 0.75, 'Default': 0.85, 'Cont': 0.6,
+                        'DorsAttn': 0.5, 'SalVentAttn': 0.4},  # broad, whole-cortex
 }
 
 
