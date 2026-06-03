@@ -85,7 +85,7 @@ def parcel_grid_heatmap(values: np.ndarray, *, ncols: int = 40,
     cb.set_label('value', fontsize=9)
     fig.tight_layout()
     if out_png:
-        fig.savefig(out_png, dpi=150, bbox_inches='tight')
+        fig.savefig(out_png, dpi=150, bbox_inches='tight', transparent=True)
         plt.close(fig)
         return out_png
     return fig
@@ -124,7 +124,7 @@ def network_strip(values: np.ndarray, parcel_names: Sequence[str], *,
     ax.spines[['top', 'right']].set_visible(False)
     fig.tight_layout()
     if out_png:
-        fig.savefig(out_png, dpi=150, bbox_inches='tight')
+        fig.savefig(out_png, dpi=150, bbox_inches='tight', transparent=True)
         plt.close(fig)
         return out_png
     return fig
@@ -244,7 +244,7 @@ def cortical_surface_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
                           cmap=cmap, threshold=threshold, vmin=vmin, vmax=vmax,
                           title=title)
     if out_png:
-        fig.savefig(out_png, dpi=150, bbox_inches='tight')
+        fig.savefig(out_png, dpi=150, bbox_inches='tight', transparent=True)
         plt.close(fig)
         return out_png
     return fig
@@ -280,7 +280,7 @@ def voxel_surface_map(voxel_values: np.ndarray, *, resolution: str = 'fsaverage5
                           cmap=cmap, threshold=threshold, vmin=vmin, vmax=vmax,
                           title=title)
     if out_png:
-        fig.savefig(out_png, dpi=150, bbox_inches='tight')
+        fig.savefig(out_png, dpi=150, bbox_inches='tight', transparent=True)
         plt.close(fig)
         return out_png
     return fig
@@ -343,17 +343,19 @@ def quickbrain_outline_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
     import matplotlib.pyplot as plt
 
     img = parcels_to_nifti(parcel_values, n_parcels=n_parcels, networks=networks)
+    quickbrain_kwargs.setdefault('cmap', 'inferno')   # sequential for 0+ data
+    quickbrain_kwargs.setdefault('background', 'transparent')  # transparent canvas
     result = quickbrain.plot_brain(img, **quickbrain_kwargs)
     # plot_brain renders to matplotlib; recover the figure whether it returns one
     # or draws on the current figure.
     fig = result if hasattr(result, 'savefig') else plt.gcf()
     if title:
         try:
-            fig.suptitle(title)
+            fig.suptitle(title, color='white')
         except Exception:
             pass
     if out_png:
-        fig.savefig(out_png, dpi=150, bbox_inches='tight')
+        fig.savefig(out_png, dpi=150, bbox_inches='tight', transparent=True)
         plt.close(fig)
         return out_png
     return fig

@@ -124,7 +124,9 @@
     const lay = Object.assign({}, LAYOUT, {
       showlegend: true,
       legend: { orientation: 'h', x: 0, y: 1.12, font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
-      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR raw accuracy', range: [0.4, 1.05] }),
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR raw accuracy', range: [0.42, 1.08] }),
+      xaxis: Object.assign({}, LAYOUT.xaxis, { categoryorder: 'array', categoryarray: ap.models,
+        title: 'model  (worst → best)' }),
       shapes: [
         { type: 'line', x0: -0.5, x1: ap.models.length - 0.5, y0: ap.chance, y1: ap.chance,
           line: { color: '#888', width: 1, dash: 'dot' } },
@@ -181,6 +183,16 @@
   }
   drawScaling(scKeys[0], document.querySelector('#scaling-tabs .tog'));
 
+  // ---- models glossary ----
+  if (D.models_glossary) {
+    const mg = D.models_glossary;
+    $('models-title').textContent = mg.title;
+    $('models-sub').textContent = mg.subtitle;
+    $('model-grid').innerHTML = mg.models.map(x =>
+      `<div class="model-card"><div class="model-kind">${x.kind}</div>`
+      + `<h3>${x.name}</h3><p>${x.desc}</p></div>`).join('');
+  }
+
   // ---- embodied VLM game ----
   if (D.embodied_game) {
     const g = D.embodied_game;
@@ -192,7 +204,7 @@
       hovertemplate: '%{x}: %{y:.2f} success<extra></extra>',
     };
     const lay = Object.assign({}, LAYOUT, {
-      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'success rate', range: [0, 1.05] }),
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'success rate', range: [0, 1.08] }),
       shapes: [{ type: 'line', x0: -0.5, x1: g.models.length - 0.5, y0: g.null_floor, y1: g.null_floor,
         line: { color: '#888', width: 1, dash: 'dot' } }],
       annotations: [{ x: g.models.length - 1, y: g.null_floor, yanchor: 'bottom', xanchor: 'right',
@@ -221,9 +233,9 @@
     const lay = Object.assign({}, LAYOUT, {
       showlegend: true,
       legend: { x: 0.02, y: 0.12, font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
-      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR accuracy', range: [0.4, 1.0] }),
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR accuracy', range: [0.45, 1.05] }),
       xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'units ablated (% of MLP gate_proj)',
-        range: [-1, Math.max(...a.mask_pct) + 2], autorange: false }),
+        range: [-1.5, Math.max(...a.mask_pct) + 2.5], autorange: false }),
       shapes: [{ type: 'line', x0: -1, x1: Math.max(...a.mask_pct) + 2, y0: a.threshold, y1: a.threshold,
         line: { color: '#e0a13b', width: 1.5, dash: 'dash' } }],
       annotations: [{ x: Math.max(...a.mask_pct), y: a.threshold, yanchor: 'bottom', xanchor: 'right',

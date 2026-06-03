@@ -46,7 +46,13 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
   <div class="cap-grid" id="cap-grid"></div>
 </section>
 
-<section id="response" class="section alt">
+<section id="models" class="section alt">
+  <h2 id="models-title"></h2>
+  <p class="lead" id="models-sub"></p>
+  <div class="model-grid" id="model-grid"></div>
+</section>
+
+<section id="response" class="section">
   <h2>Stimulus in → brain response out</h2>
   <p class="lead">Pick an input type. The model's predicted responses map onto the
     cortex — the same figure style as a published encoding model.</p>
@@ -121,6 +127,24 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
     <img src="assets/game_rollout.png" alt="VLM grid-game rollout" />
     <figcaption>One closed-loop rollout: the model sees each rendered frame and outputs a move (up/down/left/right) via <code>process(EnvironmentStep)</code>; the environment steps and returns the next frame.</figcaption>
   </figure>
+  <div class="play-panel">
+    <h3>Play the same board the model played</h3>
+    <div class="play-wrap">
+      <canvas id="game-canvas" width="384" height="384"></canvas>
+      <div class="play-side">
+        <div class="play-pad">
+          <button data-dir="up" aria-label="up">↑</button>
+          <div class="play-pad-row">
+            <button data-dir="left" aria-label="left">←</button>
+            <button data-dir="down" aria-label="down">↓</button>
+            <button data-dir="right" aria-label="right">→</button>
+          </div>
+        </div>
+        <button id="game-new" class="play-new">New board ↻</button>
+        <p class="muted small" id="game-status"></p>
+      </div>
+    </div>
+  </div>
   <div class="two-col">
     <div id="game-plot" class="plot"></div>
     <div class="reading-box">
@@ -220,5 +244,6 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
 
 <script src="data.js"></script>
 <script src="app.js"></script>
+<script src="game.js"></script>
 </body>
 </html>

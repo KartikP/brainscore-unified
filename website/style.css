@@ -88,6 +88,10 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .two-col{display:grid; grid-template-columns:1.4fr 1fr; gap:24px; align-items:stretch}
 @media(max-width:760px){.two-col{grid-template-columns:1fr}}
 .two-col-stack{display:flex; flex-direction:column; gap:16px}
+/* center a plot vertically when its sibling reading box is taller, so the two
+   columns read as balanced rather than top-aligned with a gap below */
+.two-col > .plot{align-self:center}
+.two-col > .paths-table{align-self:start}
 .reading-box{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
   padding:22px; display:flex; flex-direction:column; justify-content:flex-start}
 .reading-box h3{margin:0 0 10px}
@@ -119,6 +123,28 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .paths-table th{color:var(--accent); font-size:.72rem; text-transform:uppercase; letter-spacing:.05em}
 .paths-table td:first-child{font-weight:600}
 .path-chip{display:inline-block; padding:2px 8px; border-radius:999px; color:#fff; font-size:.74rem}
+
+/* models glossary */
+.model-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px}
+.model-card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px}
+.model-card .model-kind{font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; color:var(--accent)}
+.model-card h3{margin:6px 0 6px; font-size:1.02rem}
+.model-card p{color:var(--muted); font-size:.9rem; margin:0}
+
+/* playable game */
+.play-panel{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);
+  padding:22px; margin:0 0 24px}
+.play-panel h3{margin:0 0 14px}
+.play-wrap{display:flex; gap:24px; align-items:flex-start; flex-wrap:wrap}
+#game-canvas{border:1px solid var(--line); border-radius:8px; background:#ebebeb}
+.play-side{flex:1; min-width:220px}
+.play-pad{display:flex; flex-direction:column; align-items:center; gap:8px; margin-bottom:14px}
+.play-pad-row{display:flex; gap:8px}
+.play-pad button,.play-new{cursor:pointer; background:var(--panel2); border:1px solid var(--line);
+  color:var(--ink); border-radius:8px; font-size:1.1rem; width:52px; height:52px; transition:.12s}
+.play-pad button:hover{background:var(--accent); color:#fff; border-color:transparent}
+.play-new{width:auto; height:auto; padding:8px 16px; font-size:.9rem}
+.play-new:hover{background:var(--accent); color:#fff}
 
 /* game figure */
 .game-fig{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius);

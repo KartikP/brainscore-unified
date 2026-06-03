@@ -8,6 +8,11 @@ only. Outputs PNGs into ./assets/.
 """
 import os
 import numpy as np
+import matplotlib as mpl
+# Light text + ticks so transparent figures read on the dark website panels.
+mpl.rcParams.update({'text.color': 'white', 'axes.labelcolor': 'white',
+                     'xtick.color': 'white', 'ytick.color': 'white',
+                     'axes.edgecolor': 'white'})
 
 from brainscore.visualization import (cortical_surface_map, quickbrain_outline_map,
                                        fetch_schaefer_fsaverage_annot)

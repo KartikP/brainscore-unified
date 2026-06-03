@@ -12,6 +12,10 @@ import os
 
 import numpy as np
 import nibabel as nib
+import matplotlib as mpl
+mpl.rcParams.update({'text.color': 'white', 'axes.labelcolor': 'white',
+                     'xtick.color': 'white', 'ytick.color': 'white'})
+import matplotlib.pyplot as plt
 from nilearn import datasets
 from scipy.ndimage import gaussian_filter
 
@@ -39,17 +43,19 @@ def main():
     blob = nib.Nifti1Image(vol, affine)
 
     out = os.path.join(ASSETS, 'vwfa_glass.png')
-    # VWFA sits on the ventral surface — a ventral view shows it best; fall back
-    # to lateral if this quickbrain build doesn't accept the view.
-    for view in ('ventral', 'lateral'):
-        try:
-            quickbrain.plot_brain(blob, hemi='left', view=view, threshold=0.08,
-                                  colorbar=True, title='ablated VWF population → VWFA',
-                                  output_file=out)
-            print('wrote', out, 'view=', view)
-            return
-        except Exception as e:
-            print('view', view, 'failed:', e)
+    # sequential inferno (data is 0+), transparent canvas + light text for the
+    # dark site. quickbrain only supports lateral/medial views.
+    fig = quickbrain.plot_brain(blob, hemi='left', view='lateral', threshold=0.08,
+                                colorbar=True, cmap='inferno', background='transparent',
+                                title='ablated VWF population → VWFA')
+    f = fig if hasattr(fig, 'savefig') else plt.gcf()
+    try:
+        f.suptitle('ablated VWF population → VWFA', color='white')
+    except Exception:
+        pass
+    f.savefig(out, dpi=150, bbox_inches='tight', transparent=True)
+    plt.close(f)
+    print('wrote', out)
 
 
 if __name__ == '__main__':

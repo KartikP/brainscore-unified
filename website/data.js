@@ -107,6 +107,22 @@ window.BSU_DATA = {
     "units_per_layer": 1024,
     "reading": "A CompositeSelector gathers a functional population spanning depth into one region; the readout draws most from the middle-late layers."
   },
+  "models_glossary": {
+    "title": "The models, at a glance",
+    "subtitle": "What each model used across this site is, and what it's built for",
+    "models": [
+      {"name": "CLIP ViT-B/32", "kind": "vision–language · contrastive", "desc": "A small image encoder trained to match images with their text captions. Strong, fast general visual features — the lightweight baseline."},
+      {"name": "BLIP-2 OPT-2.7B", "kind": "vision–language · captioning", "desc": "A large ViT-G encoder + Q-Former feeding a 2.7B OPT language decoder, trained for image captioning — not instruction-following."},
+      {"name": "Qwen2.5-VL (3B/7B/32B)", "kind": "instruction-tuned VLM", "desc": "A vision encoder fused into an instruction-tuned language model. Answers questions about images; the strongest reader here, and the one that induces dyslexia at 32B."},
+      {"name": "GPT-2 (124M)", "kind": "text language model", "desc": "A small text-only causal LM. No vision — it reads word strings, and matches humans on lexical decision from strings alone."},
+      {"name": "V-JEPA / V-JEPA2 ViT-L", "kind": "self-supervised video", "desc": "Video models trained by predicting masked latent representations (not pixels). The best video→brain encoders we test."},
+      {"name": "VideoMAE base", "kind": "self-supervised video", "desc": "A video masked-autoencoder trained to reconstruct pixels. Native-temporal, but the pixel objective transfers less well to brain prediction."},
+      {"name": "Wav2Vec2 · MiniLM", "kind": "audio · sentence encoders", "desc": "The speech-audio tower and the sentence-embedding text tower used in the multimodal Algonauts setup."},
+      {"name": "random-ViT", "kind": "null control", "desc": "CLIP's architecture with random weights. The floor for what a logistic readout can overfit from random features (~0.54 on ROAR)."},
+      {"name": "chance", "kind": "null control", "desc": "Returns uniform probabilities regardless of input — the absolute floor (0.50 on a balanced binary task)."},
+      {"name": "oracle", "kind": "upper reference (grid game)", "desc": "A privileged policy that always steps toward the goal — the optimal player, defining the ceiling for the embodied game."}
+    ]
+  },
   "embodied_game": {
     "title": "A VLM plays a video game",
     "subtitle": "Closed-loop process(EnvironmentStep) — the model sees a rendered frame, picks a move, the environment responds, repeat",
@@ -134,7 +150,7 @@ window.BSU_DATA = {
     "chance": 0.5,
     "null_floor": 0.54,
     "pathColors": {"readout": "#3b7dd8", "generation": "#e0a13b", "instr-readout": "#7c5bff"},
-    "models": ["CLIP", "BLIP-2", "Qwen", "GPT-2", "random-ViT", "chance"],
+    "models": ["chance", "random-ViT", "CLIP", "GPT-2", "BLIP-2", "Qwen"],
     "rows": [
       {"model": "CLIP", "input": "image", "path": "readout", "score": 0.680},
       {"model": "BLIP-2", "input": "image", "path": "readout", "score": 0.790},
