@@ -146,11 +146,11 @@ window.BSU_DATA = {
       {"model": "Qwen", "input": "text", "path": "generation", "score": 0.940},
       {"model": "Qwen", "input": "image + instruct", "path": "instr-readout", "score": 0.980},
       {"model": "GPT-2", "input": "text", "path": "readout", "score": 0.810},
-      {"model": "GPT-2", "input": "text", "path": "generation", "score": 0.760},
+      {"model": "GPT-2", "input": "text", "path": "generation", "score": 0.850},
       {"model": "random-ViT", "input": "image", "path": "readout", "score": 0.540},
       {"model": "chance", "input": "—", "path": "readout", "score": 0.500}
     ],
-    "reading": "The path matters as much as the model. Same Qwen weights, three numbers: vision-tower readout 0.74, generation 0.93, and readout on instruction-conditioned LM features 0.98 — the language pathway is where the reading happens. BLIP-2 generation collapses to chance (0.50, not instruction-tuned) yet its instruction-conditioned readout hits 0.92 — the answer is in its features, only its decoder head can't say it. GPT-2 from strings alone reaches the human ceiling via readout (0.81) and is sub-ceiling via likelihood-based generation (0.76). Colour = output path; the table gives input type × path × score."
+    "reading": "The path matters as much as the model. Same Qwen weights, three numbers: vision-tower readout 0.74, generation 0.93, and readout on instruction-conditioned LM features 0.98 — the language pathway is where the reading happens. BLIP-2 generation collapses to chance (0.50, not instruction-tuned) yet its instruction-conditioned readout hits 0.92 — the answer is in its features, only its decoder head can't say it. GPT-2 does BOTH paths from strings alone: feature readout 0.81 (at the human ceiling) and likelihood-based generation 0.85 — it assigns far higher probability to real words (−4.33) than pseudo-words (−7.73). Colour = output path; the table gives input type × path × score."
   },
   "benchmark_mechanics": {
     "title": "What a benchmark actually does",
