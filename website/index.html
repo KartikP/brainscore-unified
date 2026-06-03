@@ -140,7 +140,10 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
             <button data-dir="right" aria-label="right">→</button>
           </div>
         </div>
-        <button id="game-new" class="play-new">New board ↻</button>
+        <div class="play-btns">
+          <button id="game-watch" class="play-new">▶ Watch the model play</button>
+          <button id="game-new" class="play-new">New board ↻</button>
+        </div>
         <p class="muted small" id="game-status"></p>
       </div>
     </div>
@@ -244,6 +247,7 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
 
 <script src="data.js"></script>
 <script src="app.js"></script>
+<script src="model_moves.js?v=1"></script>
 <script src="game.js"></script>
 </body>
 </html>

@@ -6,11 +6,13 @@
   const BG = '#ebebeb', GRID = '#c8c8c8', PLAYER = '#285adc', GOAL = '#28be46';
   // [player[r,c], goal[r,c], label]
   const BOARDS = [
-    { player: [3, 3], goal: [5, 2], label: 'the rollout shown above (seed 11)' },
-    { player: [0, 0], goal: [0, 4], label: 'eval board #1 (seed 500)' },
-    { player: [1, 3], goal: [2, 0], label: 'eval board #2 (seed 501)' },
-    { player: [5, 3], goal: [1, 3], label: 'eval board #3 (seed 502)' },
+    { seed: 11, player: [3, 3], goal: [5, 2], label: 'the rollout shown above (seed 11)' },
+    { seed: 500, player: [0, 0], goal: [0, 4], label: 'eval board #1 (seed 500)' },
+    { seed: 501, player: [1, 3], goal: [2, 0], label: 'eval board #2 (seed 501)' },
+    { seed: 502, player: [5, 3], goal: [1, 3], label: 'eval board #3 (seed 502)' },
   ];
+  // action index -> [dRow, dCol] (matches grid_game ACTIONS/_DELTA)
+  const DIRS_BY_INDEX = [[-1, 0], [1, 0], [0, -1], [0, 1]];
   let bi = 0, player, goal, moves, optimal, solved;
 
   const canvas = document.getElementById('game-canvas');
@@ -67,7 +69,36 @@
   document.querySelectorAll('[data-dir]').forEach(btn =>
     btn.addEventListener('click', () => { const d = DIRS[btn.dataset.dir]; move(d[0], d[1]); }));
   const nb = document.getElementById('game-new');
-  if (nb) nb.addEventListener('click', () => { bi = (bi + 1) % BOARDS.length; load(bi); });
+  if (nb) nb.addEventListener('click', () => { stopReplay(); bi = (bi + 1) % BOARDS.length; load(bi); });
+
+  // ---- replay the 7B model's recorded moves ----
+  let replayTimer = null;
+  function stopReplay() { if (replayTimer) { clearInterval(replayTimer); replayTimer = null; } }
+  function watchModel() {
+    stopReplay();
+    const b = BOARDS[bi];
+    const rec = (window.MODEL_MOVES || {})[String(b.seed)];
+    if (!rec || !rec.actions) {
+      setStatus('Model replay for this board has not been recorded yet.');
+      return;
+    }
+    load(bi);  // reset to the start
+    let i = 0;
+    setStatus(`Watching Qwen-VL-7B (chain-of-thought) play this board…`);
+    replayTimer = setInterval(() => {
+      if (i >= rec.actions.length || solved) {
+        stopReplay();
+        setStatus(rec.solved
+          ? `Qwen-VL-7B solved it in ${rec.steps} moves (optimal ${rec.optimal}).`
+          : `Qwen-VL-7B did NOT reach the goal (${rec.steps} moves) — watch where its spatial reasoning drifts.`);
+        return;
+      }
+      const d = DIRS_BY_INDEX[rec.actions[i]]; i++;
+      if (d) move(d[0], d[1]);
+    }, 650);
+  }
+  const wb = document.getElementById('game-watch');
+  if (wb) wb.addEventListener('click', watchModel);
 
   // arrow keys (only when the canvas region is in view / focused-ish)
   window.addEventListener('keydown', (e) => {
