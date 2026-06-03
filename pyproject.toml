@@ -1,0 +1,83 @@
+################################################################
+#### project metadata (PEP 621) ####
+################################################################
+
+[project]
+name = "brainscore"
+version = "0.2.0"
+description = "Unified Brain-Score model interface: register a model once and score it across vision, language, audio, video, multimodal, perturbation, and embodied benchmarks."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+authors = [{ name = "Kartik Pradeepan" }]
+keywords = [
+    "brain-score",
+    "neuroai",
+    "model-interface",
+    "benchmarking",
+    "computational-neuroscience",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Operating System :: OS Independent",
+]
+
+# Direct dependencies. The model-extraction and scoring stack (torch,
+# transformers, scikit-learn, scipy, xarray, ...) is pinned by and pulled in
+# through the three domain packages below; pinning it again here would risk
+# conflicting with their carefully-resolved versions, so it is intentionally
+# left to them.
+dependencies = [
+    "brainscore_core",
+    "brainscore_vision",
+    "brainscore_language",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-check",
+    "pytest-mock",
+]
+
+[project.urls]
+Homepage = "https://github.com/KartikP/brainscore-unified"
+Repository = "https://github.com/KartikP/brainscore-unified"
+
+################################################################
+#### build backend ####
+################################################################
+
+[build-system]
+requires = ["setuptools>=65,<69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+################################################################
+#### packaging: ship the package, not tests/scripts/notebooks ####
+################################################################
+
+[tool.setuptools.packages.find]
+include = ["brainscore*"]
+exclude = ["tests*", "scripts*", "notebooks*"]
+
+################################################################
+#### pytest config ####
+################################################################
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: marks tests as integration tests (slow, requires real components)",
+    "unit: marks tests as unit tests (fast, isolated)",
+    "slow: marks tests as slow running tests",
+]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+console_output_style = "progress"
+filterwarnings = [
+    "ignore::UserWarning",
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning:brainscore_core.metrics*",
+]
