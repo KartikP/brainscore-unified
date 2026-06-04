@@ -39,35 +39,35 @@ window.BSU_DATA = {
       "models": ["random-vit", "CLIP-B32", "GPT-2", "Qwen-3B", "BLIP-2"],
       "scores": [0.123, 0.464, 0.531, 0.708, 0.737],
       "null_floor": 0.123,
-      "reading": "Pretraining contributes ~3.8× over the random-feature floor; bigger causal LMs (Qwen, BLIP-2 OPT) are far more language-aligned than CLIP."
+      "reading": "Pretraining contributes ~3.8× over the random-feature floor (an untrained network); **bigger causal language models (Qwen, BLIP-2) predict the brain's language network far better than CLIP.**"
     },
     "it_encoding": {
       "capability": "Neural encoding — IT cortex (MajajHong2015, r)",
       "models": ["random-vit", "Qwen-3B", "BLIP-2", "CLIP-B32"],
       "scores": [0.104, 0.315, 0.334, 0.374],
       "null_floor": 0.104,
-      "reading": "All models clear the random floor (3.6×). But note this curve is NON-MONOTONIC: the smallest model (CLIP ViT-B/32) leads. That is a validity FLAG, not a feature — IT alignment tracks training objective (contrastive image-text), not scale, so 'bigger = better' does not hold here. Point-estimate gaps (0.315 / 0.334 / 0.374) are not yet bootstrap-tested for significance."
+      "reading": "Every model clears the random-feature floor (3.6×). But this curve does NOT climb with size — **the smallest model (CLIP) leads** — which is a validity flag, not a feature: **alignment to IT cortex (the brain's object-recognition area) tracks the training objective (image-text contrastive learning), not model size**, so 'bigger = better' does not hold here. The small gaps (0.315 / 0.334 / 0.374) are not yet tested for statistical significance."
     },
     "video_encoding": {
       "capability": "Neural encoding — video, visual ROI (Lahner2024, r)",
       "models": ["BLIP-2", "Qwen-3B", "VideoMAE", "V-JEPA2", "CLIP-B32", "V-JEPA1"],
       "scores": [0.180, 0.227, 0.321, 0.421, 0.456, 0.533],
       "null_floor": 0.05,
-      "reading": "Representation-reconstruction video models (V-JEPA) beat contrastive CLIP; pixel-reconstruction (VideoMAE) lags. CAVEAT: this ranking is contingent — V-JEPA only overtakes CLIP AFTER dropping StandardScaler from the ridge and remapping IT to the best per-voxel layer (16); pre-fix, CLIP led. The 'objective > modality' reading holds only under that scoring config. Scores are raw r without a per-voxel noise-ceiling normalization."
+      "reading": "**Video models trained to predict their own internal representations (V-JEPA) beat image-text CLIP; models trained to re-draw raw pixels (VideoMAE) lag** — the training goal matters more than whether the model was built for video. Caveat: this ranking is contingent on a scoring choice — V-JEPA only overtakes CLIP after removing a feature-rescaling step from the regression and mapping the brain region to the best-matching model layer; before that fix, CLIP led. Scores are raw correlation, not yet normalized by each voxel's noise ceiling (the most any model could explain)."
     },
     "behavior_roar": {
       "capability": "Behavior — lexical decision (ROAR Yeatman2021)",
       "models": ["chance", "random-vit", "CLIP-B32", "BLIP-2", "GPT-2", "Qwen-3B"],
       "scores": [0.500, 0.540, 0.680, 0.790, 0.810, 0.930],
       "null_floor": 0.540,
-      "reading": "Chance 0.50; random-feature floor 0.54. GPT-2 from strings alone matches the human ceiling (0.811) — lexical decision is orthographic knowledge. Qwen via generation leads."
+      "reading": "Chance is 0.50; a random untrained network floors at 0.54. **GPT-2, from the letter strings alone, matches the human ceiling (0.81) — judging whether a string is a real word is spelling (orthographic) knowledge, not vision.** Qwen, answering by writing out its choice, leads."
     },
     "embodied_game": {
       "capability": "Embodied — grid video game (success rate)",
-      "models": ["random", "Qwen-VL-3B", "Qwen-VL-7B", "oracle"],
-      "scores": [0.20, 0.0, 0.133, 1.0],
+      "models": ["random", "Qwen-VL-3B (CoT)", "Qwen-VL-7B (CoT)", "DeepSeek-R1 (ASCII)", "oracle"],
+      "scores": [0.20, 0.0, 0.53, 0.87, 1.0],
       "null_floor": 0.20,
-      "reading": "HONEST FRAMING: this is a schema-robustness demonstration, not a competence result. Two of three learned agents (3B at 0.0, 7B at 0.13) sit BELOW the 0.20 random floor — on n=3 points, the 'perception is the bottleneck' story is an interpretation of a null failure, not a validated finding. What IS solid: ~300 process(EnvironmentStep) calls ran end-to-end with zero schema errors, and 7B's solves are optimal-efficiency (it perceives correctly sometimes, 3B never)."
+      "reading": "The closed-loop grid game, at each model's best elicitation. The small vision model (3B) can't read the grid from pixels at all (0.0, below the random floor); the larger one (7B), given room to reason step by step, solves about half (0.53); and a strong text-only reasoner handed the SAME board as plain text instead of an image (DeepSeek-R1) nearly aces it (0.87). **Reasoning over the grid is easy — perceiving the abstract grid from pixels is what the vision models struggle with.** 'oracle' = perfect play (the ceiling). DeepSeek is the perception-removed control, so this curve isolates the bottleneck rather than tracking raw model size."
     },
     "multimodal_algonauts": {
       "capability": "Multimodal — Algonauts2025 CNeuroMod (r)",
@@ -82,7 +82,7 @@ window.BSU_DATA = {
     "items": [
       "The IT encoding curve is non-monotonic — a benchmark-validity flag, not evidence of scaling.",
       "V-JEPA > CLIP on video holds only after dropping StandardScaler + best-layer remap; it is a scoring-contingent ranking.",
-      "The embodied 'scaling curve' (n=3, 2 points below the random floor) demonstrates the interface plumbing, not model competence.",
+      "The embodied curve is not a pure model-size curve: its top point (DeepSeek-R1) is a perception-removed control that reads the board as text, not pixels. It isolates that perception — not reasoning — is the bottleneck; it does not claim a scaling law over vision models (n is small, and the small VLM sits below the random floor).",
       "The topographic metric has only ever been validated on synthetic Gaussian fields — it has touched ZERO real fMRI and is wired into no benchmark.",
       "The MIRAGE 'gap is backbone' attribution is an untested hypothesis (no controlled encoder swap).",
       "Encoding scores are raw Pearson r without per-voxel noise-ceiling normalization; point-estimate gaps lack bootstrap CIs.",
@@ -91,12 +91,12 @@ window.BSU_DATA = {
   },
   "temporal_shift_validation": {
     "title": "Temporal-shift null, measured on real BOLD",
-    "subtitle": "Algonauts CNeuroMod sub-01, 50,000 TRs, CLIP video features",
+    "subtitle": "Algonauts CNeuroMod, subject 1, 50,000 brain scans (1 scan ≈ 1.5 s), CLIP video features",
     "shifts": [-12, -6, -3, 0, 3, 6, 12, 18],
     "scores": [0.024, 0.035, 0.055, 0.120, 0.132, 0.078, 0.040, 0.036],
     "true_delay": 3,
     "shuffle_floor": 0.009,
-    "reading": "The single most load-bearing validity check, now run on real data — not a unit test. Mis-timing the model features against the brain by a few TRs makes prediction peak at the true HRF delay (+3 TRs, r≈0.13) and collapse toward the shuffle floor (r≈0.009) in both directions. If this curve were flat, the 'alignment' would never have carried stimulus-locked information. It is not flat."
+    "reading": "The single most load-bearing validity check, now run on real brain data — not a unit test. The brain's blood-flow signal (the BOLD response an fMRI scanner measures) lags the underlying neural activity by a few seconds — the hemodynamic lag — so the model's per-moment features only line up with the recorded scans if you shift them forward by that lag. Slide the features earlier or later in time and prediction **peaks exactly at the true lag (+3 scans ≈ 4.5 s) and collapses toward the shuffle floor (chance) when mis-timed** — in both directions. A flat curve would mean the 'alignment' never carried real stimulus-locked signal. It is not flat. ('true delay' = that hemodynamic lag; the dashed floor is what you get after shuffling the timing away entirely.)"
   },
   "nulls": {
     "description": "Matched nulls are DEFINED for every capability and run through the same pipeline with the signal destroyed in one specific way. Floors are MEASURED for neural encoding and behavior; the temporal-shift null was run on real 50k-TR Algonauts BOLD (shuffle floor ≈ 0.009; score peaks at the true HRF delay and collapses when mis-timed — see the curve above).",
@@ -111,7 +111,7 @@ window.BSU_DATA = {
   },
   "ablation": {
     "capability": "Inducing dyslexia (Honarmand et al. 2026) — REPRODUCED on Qwen2.5-VL-32B",
-    "protocol": "VWF localizer (word vs scrambled words + line-drawing objects) → ablate the top-K word-form-selective MLP gate_proj units vs an equal-size random set across all 64 decoder blocks → score ROAR by GENERATION (no readout refitting). 2 seeds, mean.",
+    "protocol": "Find the model's word-form units with a localizer (which internal units fire more for words than for scrambled words and line-drawn objects), switch off the most word-form-selective ones vs an equal-size random set (drawn across all 64 of the network's internal layers), then re-test reading by having the model generate its answer — no retraining. 2 random seeds, averaged.",
     "mask_pct": [0, 6.9, 15, 25],
     "vwf_roar": [0.975, 0.963, 0.925, 0.537],
     "vwf_roar_sd": [0.0, 0.0, 0.0, 0.0],
@@ -122,14 +122,14 @@ window.BSU_DATA = {
     "threshold": 0.65,
     "brain_caption": "Where the lesion lands: the VWF-selective units align with the human Visual Word Form Area (VWFA — left ventral occipitotemporal cortex, MNI ≈ [-44,-58,-15]; Honarmand Fig 5). This quickbrain glass brain shows that cortical territory — the area effectively 'dropped' when the population is ablated.",
     "scale_note": "The deficit is scale-dependent and emerges cleanly with size. 3B: VWF-selective ablation is LESS damaging than random (wrong direction). 7B: VWF becomes MORE damaging than random (correct direction) but too weak to cross the threshold. 32B (shown): VWF-selective ablation at a 25% mask drops reading to 0.537 — BELOW the 0.65 dyslexia threshold — while the same-size random ablation stays at 0.887. The selective dyslexia reproduces.",
-    "reading": "Honarmand's selective dyslexia REPRODUCES at 32B. At a 25% gate_proj mask, ablating the visual-word-form population drops lexical-decision reading to 0.537 — across the 0.65 dyslexia threshold — while an equal-size RANDOM ablation leaves reading at 0.887, and the non-reading control stays at 0.80. That is the selective reading deficit. The effect is scale-dependent: 3B showed the wrong direction, 7B the right direction but sub-threshold, and only at 32B does the VWF lesion cross the threshold selectively. (The earlier 'random ≈ baseline' artifact was a real/pseudo localizer + readout refitting; the V1 'crossed threshold' result was the opposite, pseudo-selective direction.) Honarmand used 72B, where the deficit appears at a smaller 6.9% mask — consistent with the trend that less ablation is needed as the model grows."
+    "reading": "Honarmand's selective dyslexia **reproduces at 32B**. Switching off the model's word-form units (the top ~25% of one internal layer's word-form filters) drops its reading score to 0.537 — **across the 0.65 dyslexia threshold** — while switching off the same NUMBER of random units leaves reading at 0.887, and a non-reading control task stays at 0.80. **That is a selective reading deficit — the damage is specific to reading, not general brain-rot.** It grows with model size: at 3B the targeted lesion ran the wrong way, at 7B the right direction but too weak, and only at 32B does the word-form lesion cross the threshold selectively. Honarmand used a 72B model, where the deficit appears with a much smaller lesion (~7%) — consistent with less damage being needed as the model grows."
   },
   "selection": {
     "capability": "Composite selection — units across layers for one region",
-    "layers": ["blocks.5", "blocks.10", "blocks.16", "blocks.20"],
+    "layers": ["layer 5", "layer 10", "layer 16", "layer 20"],
     "selected_counts": [3, 50, 120, 18],
     "units_per_layer": 1024,
-    "reading": "A CompositeSelector gathers a functional population spanning depth into one region; the readout draws most from the middle-late layers."
+    "reading": "A composite selector gathers a functional group of units that **spans several depths of the network** into a single 'region', instead of reading from one fixed layer. Here most of the word-form units live in the **middle-to-late layers** (peaking around layer 16)."
   },
   "models_glossary": {
     "title": "The models, at a glance",
@@ -154,7 +154,7 @@ window.BSU_DATA = {
     "success": [0.20, 0.0, 0.533, 0.867, 1.0],
     "colors": ["#9aa0a6", "#d8483b", "#e0a13b", "#7c4dff", "#1f9d57"],
     "null_floor": 0.20,
-    "reading": "The same interface drives a closed-loop agent — model sees a frame, reasons, acts, the world responds — zero schema errors across ~300 ticks. Two findings. (1) Instruction matters: with an 8-token answer the visual 7B scored 0.13; given chain-of-thought it jumps to 0.53. (2) The remaining gap is PERCEPTION, not reasoning. Give a strong reasoner the board as ASCII text (perfect perception) and DeepSeek-R1-Distill-7B solves 87% of boards at optimal efficiency. So reasoning over the grid is easy; perceiving the abstract grid from pixels is what the VLMs struggle with — the 3B can't do it at all (0.0), the 7B partially (0.53), and a text reasoner with the grid handed to it nearly aces it (0.87). The bottleneck is vision."
+    "reading": "The same interface drives a closed-loop agent — the model sees a frame, reasons, acts, and the world responds — with zero schema errors across ~300 ticks. Two findings. (1) **Instruction matters**: asked for a one-word answer the 7B vision-language model scored 0.13; given room to reason step-by-step (chain-of-thought) it jumps to 0.53. (2) The remaining gap is perception, not reasoning. Hand a strong text-only reasoner the same board as plain text (so seeing it is free) and DeepSeek-R1 solves 87% of boards. **So reasoning over the grid is easy; perceiving the abstract grid from pixels is what the vision models struggle with** — the 3B can't do it at all (0.0), the 7B partially (0.53), and a text reasoner handed the grid nearly aces it (0.87). The bottleneck is vision."
   },
   "layer_contribution": {
     "title": "Layer contribution per modality",
@@ -267,7 +267,7 @@ window.BSU_DATA = {
   },
   "rajalingham": {
     "title": "The same object-recognition behavior, several ways",
-    "subtitle": "Rajalingham 2018's image-level (i2) match-to-sample signature, reached the FAITHFUL way — the model sees the briefly-shown sample plus two object tokens and actually chooses, exactly as the human/monkey subjects did. The original Brain-Score benchmark instead reconstructs that 2-AFC from a trained classifier. Scoring both the same way (choices → i2n vs the human pool) turns one number into a map across model scale, how you elicit the choice, and how much task adaptation it gets.",
+    "subtitle": "Rajalingham 2018's match-to-sample signature, reached the FAITHFUL way — the model sees the briefly-shown sample plus two object choices and actually picks one, exactly as the human/monkey subjects did. The original Brain-Score benchmark instead reconstructs that 2-choice behaviour from a trained classifier. Scoring both the same way turns one number into a map across model size, how you ask for the choice, and how much practice the model gets. The metric, i2n, is a per-image score: for each image, how closely does the model's pattern of right-and-wrong choices match the humans' — so a model can be accurate yet still score low if it's hard on different images than people find hard. Ways of asking (the bar colours): direct = answer in one word from the first glance; CoT = 'chain of thought', reason step-by-step then answer; 4-shot = four already-solved example trials shown first as in-context practice. (A coin-flip-free single chooser tops out around i2n 0.33 — the published readout band — so every bar here sits well below that ceiling.)",
     "metric": "i2n raw (image-level, vs the human pool)",
     "binary_ceiling": 0.33,
     "readout_band": "~0.30-0.50",
@@ -313,7 +313,7 @@ window.BSU_DATA = {
         {"label": "simultaneous montage (current)", "i2n": 0.163, "kind": "sim"}
       ],
       "kindColors": {"null": "#9aa6b8", "seq": "#7c4dff", "sim": "#2f6bff"},
-      "reading": "Removing the sample is what costs — not sequential presentation. The only TRULY faithful condition (describe: sample gone, decision rides on the model's own words) drops i2n to 0.097, ~40% below the rest — the description discards visual detail the match needs (descriptions were fluent, e.g. 'a sculpture of a person in mid-air, diving or jumping'; parse-miss 5/2505). recall (0.170) ≈ simultaneous (0.163): when the sample stays attendable, splitting it into a separate turn is essentially free — so our montage isn't inflating the score by co-displaying.",
+      "reading": "**Removing the sample is what costs — not showing things one at a time.** The only truly faithful condition (describe: the sample is gone and the choice rides on the model's own words) drops the score to 0.097, ~40% below the rest — putting the sample into words throws away the visual detail the match needs (the descriptions were fluent, e.g. 'a sculpture of a person in mid-air, diving or jumping'; the model gave a clean LEFT/RIGHT answer on all but 5 of 2,505 trials). recall (0.170) ≈ simultaneous (0.163): when the sample is still in view, splitting it into a separate step is essentially free — so the all-at-once montage isn't inflating the score just by showing everything together.",
       "caveat": "The small recall>simultaneous edge is likely side-bias-inflated (recall ran frac-left 0.617 vs simultaneous's balanced 0.465) — read them as equal. recall isn't a true removal (sample stays in the KV cache), so describe is the load-bearing faithful condition. Raw i2n (human ceiling ≈ 0.449); a side-balanced re-run would tighten recall."
     }
   },

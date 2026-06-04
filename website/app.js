@@ -2,6 +2,13 @@
   const D = window.BSU_DATA;
   const $ = (id) => document.getElementById(id);
 
+  // Highlight take-homes: **text** in a reading becomes an accented <b>.
+  // HTML-escaped first so reading strings stay safe to inject.
+  const _esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const mark = s => _esc(s).replace(/\*\*(.+?)\*\*/g, '<b class="hl">$1</b>');
+  // Set a reading element from a string that may contain **highlights**.
+  const setReading = (id, s) => { const el = $(id); if (el) el.innerHTML = mark(s || ''); };
+
   const LAYOUT = {
     paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
     font: { color: '#1b2333', family: 'Inter, sans-serif', size: 13 },
@@ -118,7 +125,7 @@
     const lc = D.layer_contribution;
     $('lc-title').textContent = lc.title;
     $('lc-sub').textContent = lc.subtitle;
-    $('lc-reading').textContent = lc.reading;
+    setReading('lc-reading', lc.reading);
     const maxlen = Math.max(...lc.order.map(m => lc.values[m].length));
     const z = lc.order.map(m => {
       const v = lc.values[m]; const mx = Math.max.apply(null, v);
@@ -149,7 +156,7 @@
       `<div class="mech-path"><div class="mech-path-name">${p.name}</div>
        <div class="mech-path-models">${p.models}</div>
        <div class="mech-path-how">${p.how}</div></div>`).join('');
-    $('mech-answer').textContent = m.answer;
+    setReading('mech-answer', m.answer);
     const bar = {
       x: m.floors.map(f => f.label), y: m.floors.map(f => f.value), type: 'bar',
       marker: { color: ['#9aa0a6', '#9aa0a6', '#3b7dd8'] },
@@ -167,7 +174,7 @@
     const ap = D.all_paths;
     $('allpaths-title').textContent = ap.title;
     $('allpaths-sub').textContent = ap.subtitle;
-    $('allpaths-reading').textContent = ap.reading;
+    setReading('allpaths-reading', ap.reading);
     // one trace per path (colour = path), points at x=model, y=score
     const traces = Object.keys(ap.pathColors).map(path => {
       const rows = ap.rows.filter(r => r.path === path && r.score != null);
@@ -244,7 +251,7 @@
         font: { color: '#d8483b', size: 11 } }],
     });
     Plotly.react('scaling-plot', [floor, curve], lay, CFG);
-    $('scaling-reading').textContent = s.reading;
+    setReading('scaling-reading', s.reading);
   }
   drawScaling(scKeys[0], document.querySelector('#scaling-tabs .tog'));
 
@@ -263,7 +270,7 @@
     const g = D.embodied_game;
     $('game-title').textContent = g.title;
     $('game-sub').textContent = g.subtitle;
-    $('game-reading').textContent = g.reading;
+    setReading('game-reading', g.reading);
     const bar = {
       x: g.models, y: g.success, type: 'bar', marker: { color: g.colors },
       hovertemplate: '%{x}: %{y:.2f} success<extra></extra>',
@@ -314,7 +321,7 @@
     Plotly.react('ablation-plot', [vwf, rnd], lay, CFG);
     if (a.protocol && document.getElementById('ablation-protocol'))
       $('ablation-protocol').textContent = a.protocol;
-    $('ablation-reading').textContent = a.reading;
+    setReading('ablation-reading', a.reading);
     if (a.brain_caption && document.getElementById('lesion-brain-cap'))
       $('lesion-brain-cap').textContent = a.brain_caption;
   })();
@@ -333,7 +340,7 @@
       xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'layer' }),
     });
     Plotly.react('selection-plot', [bar], lay, CFG);
-    $('selection-reading').textContent = s.reading;
+    setReading('selection-reading', s.reading);
   })();
 
   // ---- temporal-shift validation (real BOLD) ----
@@ -341,7 +348,7 @@
     const tv = D.temporal_shift_validation;
     $('shift-title').textContent = tv.title;
     $('shift-sub').textContent = tv.subtitle;
-    $('shift-reading').textContent = tv.reading;
+    setReading('shift-reading', tv.reading);
     const curve = {
       x: tv.shifts, y: tv.scores, type: 'scatter', mode: 'lines+markers',
       line: { color: '#3bb273', width: 3 }, marker: { size: 9, color: '#3bb273' },
@@ -388,7 +395,7 @@
     const w = D.witness;
     $('witness-title').textContent = w.title;
     $('witness-sub').textContent = w.subtitle;
-    $('witness-reading').textContent = w.reading;
+    setReading('witness-reading', w.reading);
     $('witness-modes').innerHTML = w.modes.map(m => `<span class="wmode">${m}</span>`).join('');
     $('witness-grid').innerHTML = w.panels.map(p =>
       `<figure class="witness-card"><img src="${p.img}?v=1" alt="witness panel" />` +
@@ -425,7 +432,7 @@
           `<div class="percept-trip">${panels}</div>` +
           `<p class="percept-note">${r.note}</p></div>`;
       }).join('');
-      $('percept-reading').textContent = tab.reading;
+      setReading('percept-reading', tab.reading);
       $('percept-caveat').innerHTML = tab.caveat
         ? '<h3 class="caveat-h">What this does NOT show</h3>' + `<div class="raj-caveat">${tab.caveat}</div>`
         : '';
@@ -451,7 +458,7 @@
     const raj = D.rajalingham;
     $('raj-title').textContent = raj.title;
     $('raj-sub').textContent = raj.subtitle;
-    $('raj-reading').textContent = raj.reading;
+    setReading('raj-reading', raj.reading);
     $('raj-montage-imgs').innerHTML = raj.montages.map(m =>
       `<img src="${m}?v=1" alt="2-AFC montage" />`).join('');
     // Group by model family (modes kept adjacent), families ordered by scale with
@@ -491,7 +498,7 @@
       const g = D.gemma_scorecard;
       $('gsc-title').textContent = g.title;
       $('gsc-sub').textContent = g.subtitle;
-      $('gsc-reading').textContent = g.reading;
+      setReading('gsc-reading', g.reading);
       const badge = s => s === 'done'
         ? '<span style="color:#1f9d57">✓ done</span>'
         : '<span style="color:#c6810f">⏳ running</span>';
@@ -511,7 +518,7 @@
       const sq = raj.sequential;
       $('raj-seq-title').textContent = sq.title;
       $('raj-seq-sub').textContent = sq.subtitle;
-      $('raj-seq-reading').textContent = sq.reading;
+      setReading('raj-seq-reading', sq.reading);
       $('raj-seq-trace').innerHTML = sq.trace.map((s, i) => {
         const card = s.kind === 'text'
           ? `<div class="seq-card seq-textcard"><div class="pt">${s.text}</div><figcaption>${s.cap}</figcaption></div>`
