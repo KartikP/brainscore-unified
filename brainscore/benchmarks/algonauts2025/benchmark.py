@@ -40,6 +40,19 @@ TR_SEC = 1.49
 DEFAULT_ASSEMBLY_ROOT = Path('~/.brainio/algonauts2025').expanduser()
 
 
+def fit_predict_ridge(X_train, Y_train, X_pred, alpha=1.0):
+    """Fit a ridge encoder on (X_train → Y_train) and predict for X_pred.
+
+    The held-out prediction step: a linear encoding model maps stacked
+    stimulus features to per-parcel BOLD. Held out cleanly so the math is
+    unit-testable without the heavy feature extraction. Returns float32
+    predictions of shape ``(len(X_pred), Y_train.shape[1])``.
+    """
+    from sklearn.linear_model import Ridge
+    reg = Ridge(alpha=alpha).fit(X_train, Y_train)
+    return reg.predict(X_pred).astype(np.float32)
+
+
 def _ffmpeg_extract_one(args):
     """Worker for the frame-extraction Pool. Tuple-args because Pool.imap
     doesn't take starargs."""
@@ -439,11 +452,13 @@ class _Algonauts2025Base(BenchmarkBase):
 
     def __call__(self, candidate) -> Score:
         if self._split != 'friends':
-            raise NotImplementedError(
-                f"Held-out scoring (split={self._split!r}) not yet "
-                f"implemented. Use Algonauts2025Friends for in-distribution "
-                f"CV. Phase 3 first ships training-split scoring; held-out "
-                f"prediction generation comes next."
+            raise ValueError(
+                f"Held-out split {self._split!r} has no ground truth to score "
+                f"against — it is a Codabench prediction target. Call "
+                f"`generate_predictions(candidate, out_dir)` to produce the "
+                f"per-parcel prediction .npy, then bundle with "
+                f"`submit_codabench`. (Use Algonauts2025Friends for "
+                f"in-distribution CV scoring.)"
             )
         return self._score_friends_train(candidate)
 
@@ -547,6 +562,72 @@ class _Algonauts2025Base(BenchmarkBase):
         score.attrs['mode'] = self._mode
         score.attrs['pipeline'] = 'algonauts_video_only_frame_agg'
         return score
+
+    # ── Held-out prediction (Codabench submission) ────────────────
+
+    def _design_matrix(self, candidate, drop_excluded=True):
+        """Build the (X_stacked, Y, keep, run_idx) design matrix for this
+        split's stimuli. Mirrors the front half of ``_score_friends_train``
+        (extract → align → run-block index → stimulus-window/HRF stack), kept
+        separate so the validated training-score path is untouched.
+
+        ``drop_excluded`` trims the per-run start/end samples (as in scoring);
+        held-out prediction sets it False so every TR gets a prediction. ``Y``
+        is the recorded BOLD (training) or all-NaN (held-out stub).
+        """
+        frame_stim_set = self._expand_to_per_TR_frames()
+        features, frame_ids = self._extract_per_TR_features(
+            candidate, frame_stim_set)
+        X = self._align_features_to_assembly(features, frame_ids, frame_stim_set)
+
+        a_stim = list(self.assembly['stimulus_id'].values)
+        a_run = list(self.assembly['run'].values)
+        run_idx_per_obs = np.empty(len(a_stim), dtype=np.int64)
+        seen: Dict[Tuple[str, str], int] = {}
+        for i, (s, r) in enumerate(zip(a_stim, a_run)):
+            key = (str(s), str(r))
+            if key not in seen:
+                seen[key] = len(seen)
+            run_idx_per_obs[i] = seen[key]
+        n_runs = len(seen)
+
+        X_stacked = self._apply_stimulus_window_and_hrf(X, run_idx_per_obs)
+        keep = np.ones(len(X_stacked), dtype=bool)
+        if drop_excluded:
+            for ri in range(n_runs):
+                run_idxs = np.where(run_idx_per_obs == ri)[0]
+                for ki in range(self._excluded_samples_start):
+                    if ki < len(run_idxs):
+                        keep[run_idxs[ki]] = False
+                for ki in range(self._excluded_samples_end):
+                    if ki < len(run_idxs):
+                        keep[run_idxs[-1 - ki]] = False
+        Y = self.assembly.values[keep]
+        return X_stacked[keep], Y, keep, run_idx_per_obs[keep]
+
+    def generate_predictions(self, candidate, out_dir, train_benchmark=None,
+                             alpha=1.0):
+        """Produce held-out per-parcel BOLD predictions for the Codabench target.
+
+        Trains a ridge encoder on this subject's Friends-train (recorded) data
+        and predicts every TR of this held-out split. Writes
+        ``sub-<NN>_<split>.npy`` of shape ``(n_TRs, 1000)`` into ``out_dir``.
+        Real run is on EC2 (needs the downloaded stimuli + assembly).
+        """
+        import os
+        if self._split == 'friends':
+            raise ValueError(
+                "generate_predictions is for held-out splits; the friends "
+                "training split is scored via __call__.")
+        train = train_benchmark or Algonauts2025Friends(subject=self._subject)
+        X_train, Y_train, _, _ = train._design_matrix(candidate, drop_excluded=True)
+        X_pred, _, _, _ = self._design_matrix(candidate, drop_excluded=False)
+        preds = fit_predict_ridge(X_train, Y_train, X_pred, alpha=alpha)
+        os.makedirs(out_dir, exist_ok=True)
+        path = os.path.join(out_dir, f'sub-{self._subject:02d}_{self._split}.npy')
+        np.save(path, preds)
+        return {'path': path, 'predictions': preds, 'subject': self._subject,
+                'split': self._split, 'n_TRs': int(preds.shape[0])}
 
 
 class Algonauts2025Friends(_Algonauts2025Base):
