@@ -31,6 +31,64 @@ from result_caching import store_xarray
 logger = logging.getLogger(__name__)
 
 
+def align_word_times_to_tokens(word_ids, word_onsets_ms, word_durations_ms):
+    """Map per-token ``word_ids`` to per-token (start_ms, end_ms) windows.
+
+    The principled word→token timestamp alignment for a continuous transcript:
+    a fast tokenizer reports, for each token, which word it came from
+    (``word_ids``; ``None`` for special tokens). Each token inherits its source
+    word's ``[onset, onset+duration]`` window. When a word splits into several
+    subword tokens, they share the word's window (callers can sub-divide evenly
+    if needed — kept simple here). Tokens with ``word_id is None`` (BOS/EOS) get
+    ``NaN`` and are bridged from the nearest real word so the axis stays
+    monotonic.
+
+    :param word_ids: length-T list; token i → word index, or ``None``.
+    :param word_onsets_ms: length-W array of word onset times (ms).
+    :param word_durations_ms: length-W array of word durations (ms).
+    :returns: ``(start_ms, end_ms)`` float arrays of length T (NaN where a token
+        maps to no word and has no neighbour to borrow from).
+    """
+    onsets = np.asarray(word_onsets_ms, dtype=float)
+    durations = np.asarray(word_durations_ms, dtype=float)
+    if onsets.shape != durations.shape:
+        raise ValueError(
+            f"word_onsets_ms {onsets.shape} and word_durations_ms "
+            f"{durations.shape} must have the same length")
+    T = len(word_ids)
+    start = np.full(T, np.nan)
+    end = np.full(T, np.nan)
+    n_words = len(onsets)
+    for i, wid in enumerate(word_ids):
+        if wid is None or wid < 0 or wid >= n_words:
+            continue
+        start[i] = onsets[wid]
+        end[i] = onsets[wid] + durations[wid]
+    # bridge special-token NaNs so the timeline has no interior gaps. start:
+    # forward-fill (carry the previous word's start) then back-fill (leading
+    # specials borrow the first real start). end: back-fill then forward-fill
+    # (trailing specials borrow the last real end).
+    def _ffill(a):
+        last = np.nan
+        for i in range(T):
+            if np.isnan(a[i]):
+                a[i] = last
+            else:
+                last = a[i]
+
+    def _bfill(a):
+        nxt = np.nan
+        for i in range(T - 1, -1, -1):
+            if np.isnan(a[i]):
+                a[i] = nxt
+            else:
+                nxt = a[i]
+
+    _ffill(start); _bfill(start)
+    _bfill(end); _ffill(end)
+    return start, end
+
+
 class TextWrapper:
     """Text model wrapper symmetric with PytorchWrapper.
 
@@ -196,12 +254,14 @@ class TextWrapper:
         """
         per_input_layer_arrays = OrderedDict((layer, []) for layer in layers)
         token_lengths = np.empty(len(texts), dtype=np.int64)
+        word_ids_per_text = []
 
         for i, text in enumerate(tqdm(
                 texts, desc="text per-token", unit="text")):
-            per_layer = self._extract_one_text_per_token(text, layers)
+            per_layer, word_ids = self._extract_one_text_per_token(text, layers)
             sample_layer = next(iter(per_layer.values()))
             token_lengths[i] = sample_layer.shape[0]
+            word_ids_per_text.append(word_ids)
             for layer_name, arr in per_layer.items():
                 per_input_layer_arrays[layer_name].append(arr)
 
@@ -220,8 +280,9 @@ class TextWrapper:
 
         # Stash per-input token counts so _package can attach as a
         # presentation-axis coord for benchmark code that needs to mask
-        # NaN padding.
+        # NaN padding, and per-input token→word alignment for timestamps.
         layer_outputs['_token_lengths'] = token_lengths
+        layer_outputs['_word_ids'] = word_ids_per_text
         return layer_outputs
 
     def _extract_one_text_per_token(self, text, layers):
@@ -238,7 +299,7 @@ class TextWrapper:
         n_tokens = int(input_ids.shape[0])
 
         if n_tokens <= self._max_length:
-            return self._run_per_token_chunks([text], layers)
+            return self._run_per_token_chunks([text], layers, want_word_ids=True)
 
         # Chunk: re-encode each chunk as a string so the regular forward
         # path (with the model's expected special tokens) is reused. The
@@ -251,36 +312,43 @@ class TextWrapper:
             chunk_text = self._tokenizer.decode(input_ids[start:end])
             chunk_texts.append(chunk_text)
 
-        # Run chunks in batches and concat their per-token outputs.
+        # Run chunks in batches and concat their per-token outputs. Chunking
+        # re-encodes via decode(), which breaks token→word alignment, so
+        # word_ids are unavailable for chunked (very long) inputs.
         chunk_layer_arrays = OrderedDict((layer, []) for layer in layers)
         for batch_start in range(0, len(chunk_texts), self._batch_size):
             batch_end = min(batch_start + self._batch_size, len(chunk_texts))
             batch = chunk_texts[batch_start:batch_end]
-            per_layer = self._run_per_token_chunks(batch, layers)
+            per_layer, _ = self._run_per_token_chunks(batch, layers)
             for layer_name, arr in per_layer.items():
                 chunk_layer_arrays[layer_name].append(arr)
 
         out = OrderedDict()
         for layer_name, arrs in chunk_layer_arrays.items():
             out[layer_name] = np.concatenate(arrs, axis=0)
-        return out
+        return out, None
 
-    def _run_per_token_chunks(self, batch_texts, layer_names):
+    def _run_per_token_chunks(self, batch_texts, layer_names, want_word_ids=False):
         """Single forward pass returning per-token activations concatenated
         across the input batch (so multi-chunk inputs reduce to one (T_total,
         H) array per layer regardless of how chunks were grouped into the
         forward call).
+
+        Returns ``(out, word_ids)``. ``word_ids`` is the token→word index list
+        for the single-text case (``len(batch_texts) == 1`` and a fast
+        tokenizer that exposes ``word_ids``), trimmed to the real token count;
+        otherwise ``None``.
         """
         import torch
 
-        tokens = self._tokenizer(
+        encoding = self._tokenizer(
             batch_texts,
             padding=True,
             truncation=True,
             max_length=self._max_length,
             return_tensors='pt',
         )
-        tokens = {k: v.to(self._device) for k, v in tokens.items()}
+        tokens = {k: v.to(self._device) for k, v in encoding.items()}
 
         layer_results: OrderedDict = OrderedDict()
         hooks = []
@@ -312,7 +380,21 @@ class TextWrapper:
             else:
                 rows = [act[i] for i in range(act.shape[0])]
             out[layer_name] = np.concatenate(rows, axis=0)
-        return out
+
+        # Capture token→word alignment for the single-text path (the timestamp
+        # source). Only fast tokenizers expose word_ids(); degrade to None.
+        word_ids = None
+        if want_word_ids and len(batch_texts) == 1:
+            try:
+                wid = encoding.word_ids(0)
+            except (ValueError, AttributeError, TypeError):
+                wid = None
+            if wid is not None:
+                if attention_mask is not None:
+                    real = int(attention_mask[0].sum().item())
+                    wid = list(wid)[:real]
+                word_ids = list(wid)
+        return out, word_ids
 
     def get_activations(self, texts, layer_names):
         """Run forward pass on a batch of texts, extract layer activations.
@@ -403,11 +485,12 @@ class TextWrapper:
             presentation coord is attached so callers can mask.
         """
         token_lengths = layer_activations.pop('_token_lengths', None)
+        word_ids = layer_activations.pop('_word_ids', None)
         layer_assemblies = []
         for layer_name, activations in layer_activations.items():
             if activations.ndim == 3:
                 layer_assemblies.append(self._pack_3d(
-                    activations, layer_name, len(texts), token_lengths))
+                    activations, layer_name, len(texts), token_lengths, word_ids))
                 continue
             # 2D legacy path
             n_texts, n_features = activations.shape
@@ -457,25 +540,26 @@ class TextWrapper:
             dims=layer_assemblies[0].dims,
         )
 
-    def _pack_3d(self, activations, layer_name, n_texts, token_lengths):
+    def _pack_3d(self, activations, layer_name, n_texts, token_lengths,
+                 word_ids=None):
         """Package per-token (n_texts, t_max, hidden) into a
         (presentation, time_bin, neuroid) NeuroidAssembly.
 
-        The wrapper's native time grid is token positions (no absolute
-        ms). Benchmark code that needs ms timestamps attaches them via
-        word-onset alignment as a separate coord.
+        Attaches an ordinal ``token_position`` time grid (always) so the output
+        is unambiguously time-resolved, and — when a fast tokenizer reported
+        token→word alignment — a ``word_id`` coord (presentation × time_bin) plus
+        the raw per-text ``word_ids`` in ``attrs`` so :meth:`attach_timestamps`
+        can convert word onsets into per-token ``time_bin_start_ms`` /
+        ``time_bin_end_ms``.
         """
         _, t_max, n_features = activations.shape
         neuroid_id = [f"{self._identifier}.{layer_name}.{i}"
                       for i in range(n_features)]
-        # Note: no time_bin_id coord. The wrapper's native time grid is
-        # token positions (ordinal). Absolute ms are dataset-specific
-        # (word-onset alignments) and the benchmark attaches them later.
         # Construction-time presentation coord is ONLY stimulus_id —
         # multiple presentation coords here would build a MultiIndex via
         # gather_indexes that conflicts with downstream assign_coords on
-        # stimulus_id (e.g., from _attach_stimulus_set_meta). We attach
-        # token_length AFTER construction as a non-indexed coord.
+        # stimulus_id (e.g., from _attach_stimulus_set_meta). Extra coords are
+        # attached AFTER construction as non-indexed coords.
         coords = {
             'stimulus_id': ('presentation', list(range(n_texts))),
             'neuroid_id': ('neuroid', neuroid_id),
@@ -491,7 +575,69 @@ class TextWrapper:
         if token_lengths is not None:
             assembly = assembly.assign_coords(
                 token_length=('presentation', list(map(int, token_lengths))))
+        # explicit ordinal time grid (token positions)
+        assembly = assembly.assign_coords(
+            token_position=('time_bin', list(range(t_max))))
+        # token→word alignment, when a fast tokenizer provided it. Stored as a
+        # (presentation, time_bin) int coord (-1 = special token or padding) so
+        # it survives netCDF caching; attach_timestamps reconstructs from it.
+        if word_ids is not None and any(w is not None for w in word_ids):
+            wid_arr = np.full((n_texts, t_max), -1, dtype=int)
+            for i, w in enumerate(word_ids):
+                if w is None:
+                    continue
+                for j, v in enumerate(w[:t_max]):
+                    wid_arr[i, j] = -1 if v is None else int(v)
+            assembly = assembly.assign_coords(
+                word_id=(('presentation', 'time_bin'), wid_arr))
         return assembly
+
+    @staticmethod
+    def attach_timestamps(assembly, word_onsets_ms, word_durations_ms):
+        """Add per-token ``time_bin_start_ms`` / ``time_bin_end_ms`` coords to a
+        per-token assembly by aligning word onsets to tokens via the captured
+        ``word_id`` coord (see :func:`align_word_times_to_tokens`).
+
+        For a single-presentation assembly pass flat per-word arrays; for several
+        presentations pass a list of per-word arrays (one per presentation). The
+        assembly must come from a ``per_token`` extraction with a fast tokenizer
+        on a non-chunked input (so the ``word_id`` coord is present).
+        """
+        if 'word_id' not in assembly.coords:
+            raise ValueError(
+                "assembly carries no word_id coord; per-token timestamps require "
+                "a per_token extraction with a fast tokenizer on a non-chunked "
+                "input. (Raise max_length so the transcript isn't chunked, or "
+                "use a fast tokenizer.)")
+        n_pres = assembly.sizes['presentation']
+        t_max = assembly.sizes['time_bin']
+        wid = np.asarray(assembly['word_id'].values).reshape(n_pres, t_max)
+        token_length = (np.asarray(assembly['token_length'].values)
+                        if 'token_length' in assembly.coords
+                        else np.full(n_pres, t_max, dtype=int))
+
+        def _per_text(x):
+            # single flat 1-D numeric array for a 1-presentation assembly
+            if n_pres == 1 and np.ndim(np.asarray(x)[0] if len(x) else 0) == 0:
+                return [np.asarray(x, dtype=float)]
+            return [np.asarray(xi, dtype=float) for xi in x]
+
+        onsets = _per_text(word_onsets_ms)
+        durations = _per_text(word_durations_ms)
+        start = np.full((n_pres, t_max), np.nan)
+        end = np.full((n_pres, t_max), np.nan)
+        for i in range(n_pres):
+            L = int(token_length[i])
+            # reconstruct per-token word_ids (-1 → None for special tokens)
+            w = [None if v < 0 else int(v) for v in wid[i, :L]]
+            if not any(v is not None for v in w):
+                continue
+            s, e = align_word_times_to_tokens(w, onsets[i], durations[i])
+            start[i, :len(s)] = s
+            end[i, :len(e)] = e
+        return assembly.assign_coords(
+            time_bin_start_ms=(('presentation', 'time_bin'), start),
+            time_bin_end_ms=(('presentation', 'time_bin'), end))
 
     def _attach_stimulus_set_meta(self, assembly, stimulus_set):
         """Attach stimulus set metadata as coordinates on the presentation dim.
