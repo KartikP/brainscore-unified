@@ -155,13 +155,18 @@ class TestCompositeLocalize:
             def __init__(s):
                 s._state_change_fn = lambda sc: (None, lambda: None)
                 s.region_layer_selectors = {'VWFA': _CompositeSel(['L1', 'L2'])}
+                s.resets = 0
             def start_recording(s, target): pass
             def process(s, stim): return asm
-            def reset(s): pass
+            def reset(s): s.resets += 1
 
+        cand = CompCand()
         bench = InducedDyslexia(localizer_region='VWFA', n_units=1,
                                 reading_benchmark=_Reader({}), localizer_stimuli=None)
-        sels = bench._localize(CompCand(), ['L1', 'L2'])
+        sels = bench._localize(cand, ['L1', 'L2'])
+        # _localize must reset first so a prior reading's behavioral task doesn't
+        # make process() return choices instead of neuroids (the bug the EC2 run caught)
+        assert cand.resets >= 1
         assert len(sels) == 2
         by_layer = {s.layer: s.indices for s in sels}
         # within-layer index 0 is the real-selective neuroid in both layers
