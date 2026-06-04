@@ -76,3 +76,45 @@ def compose_montage(sample_path, left_path, right_path,
         _centered(d, "LEFT", lx + _CELL / 2, cy + _CELL + 4, lab)
         _centered(d, "RIGHT", rx + _CELL / 2, cy + _CELL + 4, lab)
     return img
+
+
+# --------------------------------------------------------------------------- #
+# Sequential (faithful-MTS) presentation: the sample and the choices are
+# rendered as TWO separate images so they can be shown in sequence (sample
+# briefly, then removed, then the choices) instead of all on one screen.
+# These are additive; compose_montage() above (the simultaneous version) is
+# untouched.
+# --------------------------------------------------------------------------- #
+def render_sample(sample_path, label="SAMPLE"):
+    """Step 1 of the sequential MTS: the brief test image, shown ALONE."""
+    w = _CELL + 2 * _PAD
+    h = _PAD + _LABEL_H + _CELL + _PAD
+    img = Image.new("RGB", (w, h), _BG)
+    d = ImageDraw.Draw(img)
+    _centered(d, label, w / 2, _PAD, _font(20))
+    sx, sy = _PAD, _PAD + _LABEL_H
+    img.paste(_load_square(sample_path), (sx, sy))
+    d.rectangle([sx, sy, sx + _CELL, sy + _CELL], outline=_LINE, width=2)
+    return img
+
+
+def compose_choice_array(left_path, right_path, show_choice_labels=True,
+                         prompt="which option matches the object you just saw?"):
+    """Step 2 of the sequential MTS: the two choice tokens side by side, with the
+    SAMPLE ABSENT (it was shown and removed in step 1)."""
+    w = 2 * _CELL + 3 * _PAD
+    h = _PAD + _LABEL_H + _CELL + (_LABEL_H if show_choice_labels else 0) + _PAD
+    img = Image.new("RGB", (w, h), _BG)
+    d = ImageDraw.Draw(img)
+    lab = _font(18)
+    _centered(d, prompt, w / 2, _PAD, lab, fill=(110, 120, 140))
+    cy = _PAD + _LABEL_H
+    lx, rx = _PAD, _PAD + _CELL + _PAD
+    img.paste(_load_square(left_path), (lx, cy))
+    img.paste(_load_square(right_path), (rx, cy))
+    d.rectangle([lx, cy, lx + _CELL, cy + _CELL], outline=_LINE, width=2)
+    d.rectangle([rx, cy, rx + _CELL, cy + _CELL], outline=_LINE, width=2)
+    if show_choice_labels:
+        _centered(d, "LEFT", lx + _CELL / 2, cy + _CELL + 4, lab)
+        _centered(d, "RIGHT", rx + _CELL / 2, cy + _CELL + 4, lab)
+    return img
