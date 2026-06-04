@@ -190,5 +190,42 @@ window.BSU_DATA = {
     {"type": "video", "example": "a 3-second clip", "benchmark": "Lahner2024 BOLDMoments", "desc": "Short videos drive dorsal + ventral visual cortex; native-temporal V-JEPA leads."},
     {"type": "video + audio", "example": "a movie segment", "benchmark": "Algonauts2025 CNeuroMod", "desc": "Adding the audio tower extends prediction into temporal/auditory cortex alongside the visual response."},
     {"type": "video + audio + text", "example": "a movie scene with dialogue + subtitles", "benchmark": "Algonauts2025 CNeuroMod (multimodal)", "desc": "The full naturalistic stream drives much of cortex; a banded ridge over all three towers (video + audio + text) gives the best whole-brain prediction — this is the actual Algonauts setup."}
-  ]
+  ],
+  "witness": {
+    "title": "Watch Brain-Score evaluate a model",
+    "subtitle": "Every capability funnels through one method — process(input_event). Instrument that single chokepoint once and you can witness ANY benchmark run: what the model saw (rendered per modality), what it did (activations, probabilities, a generated answer, an action), and in what mode. These are real recorded process() calls — no benchmark-specific code.",
+    "modes": ["neural", "readout", "generation", "action", "state_change"],
+    "panels": [
+      {"img": "assets/witness_game_0.png", "caption": "Embodied · process(EnvironmentStep): the policy sees the rendered frame and the Witness logs what it DID — action → down. Recorded straight off the grid-game rollout, no benchmark-specific code."},
+      {"img": "assets/witness_game_2.png", "caption": "A later tick of the same rollout. One recorder, one trace format, for every process() call across vision, language, audio, embodied, and perturbation."}
+    ],
+    "reading": "The Witness wraps process() non-invasively for the duration of a benchmark and logs one event per call. Because the unified interface routes neural recording, behavioral generation/readout, embodied action, and perturbation all through the same process() entry point, one recorder covers every capability — the same trace structure whether the model is looking at images, reading sentences, playing a game, or being lesioned."
+  },
+  "rajalingham": {
+    "title": "The same object-recognition behavior, several ways",
+    "subtitle": "Rajalingham 2018's image-level (i2) match-to-sample signature, reached the FAITHFUL way — the model sees the briefly-shown sample plus two object tokens and actually chooses, exactly as the human/monkey subjects did. The original Brain-Score benchmark instead reconstructs that 2-AFC from a trained classifier. Scoring both the same way (choices → i2n vs the human pool) turns one number into a map across model scale, how you elicit the choice, and how much task adaptation it gets.",
+    "metric": "i2n raw (image-level, vs the human pool)",
+    "binary_ceiling": 0.33,
+    "readout_band": "~0.30-0.50",
+    "rows": [
+      {"model": "random null", "mode": "—", "acc": 0.510, "frac_left": null, "i2n": -0.028, "kind": "null"},
+      {"model": "CLIP", "mode": "similarity", "acc": 0.662, "frac_left": 0.49, "i2n": 0.061, "kind": "feature"},
+      {"model": "Qwen-VL-3B", "mode": "CoT", "acc": 0.497, "frac_left": null, "i2n": 0.006, "kind": "cot"},
+      {"model": "Qwen-VL-3B", "mode": "direct", "acc": 0.634, "frac_left": 0.85, "i2n": 0.064, "kind": "direct"},
+      {"model": "Qwen-VL-3B", "mode": "direct + 4-shot", "acc": 0.506, "frac_left": 0.99, "i2n": 0.010, "kind": "fewshot"},
+      {"model": "Qwen-VL-7B", "mode": "CoT", "acc": 0.562, "frac_left": 0.89, "i2n": 0.031, "kind": "cot"},
+      {"model": "Qwen-VL-7B", "mode": "direct", "acc": 0.859, "frac_left": 0.47, "i2n": 0.163, "kind": "direct"},
+      {"model": "Gemma-4-12B", "mode": "direct", "acc": 0.846, "frac_left": 0.45, "i2n": 0.146, "kind": "direct"},
+      {"model": "Gemma-4-12B", "mode": "direct + 4-shot", "acc": 0.853, "frac_left": 0.43, "i2n": 0.100, "kind": "fewshot"}
+    ],
+    "montages": ["assets/raj2afc_montage_0.png", "assets/raj2afc_montage_2.png"],
+    "kindColors": {"null": "#9aa0a6", "feature": "#1f9d57", "cot": "#d8483b", "direct": "#2f6bff", "fewshot": "#c6810f"},
+    "findings": [
+      "Elicitation dominates the model. Direct ≫ chain-of-thought: CoT corrupts the percept (Qwen-7B 0.163 → 0.031) and induces a heavy LEFT bias (frac-left 0.47 → 0.89). The OPPOSITE of the embodied game, where chain-of-thought was essential — reasoning helps planning but hurts perception.",
+      "Scale within direct mode: 3B stays biased and weak (0.064, 85% LEFT), while 7B (0.163) and Gemma-4-12B (0.146) are unbiased and genuinely good. A capable VLM does the faithful zero-shot 2-AFC.",
+      "In-context 'practice' HURTS — overturning the human-practice intuition. Four balanced demos dropped Qwen-3B to chance (0.010, 99% LEFT) and Gemma 0.146 → 0.100. Visual match-to-sample doesn't learn from few-shot demos the way text tasks do.",
+      "The task adaptation that wins is the original READOUT — a logistic decoder learned on frozen features (~0.30-0.50), still above the best zero-shot generation (0.16). A trained task-head beats prompting; matching it from generation would take weight-level fine-tuning, not a few demos."
+    ],
+    "reading": "Same phenomenon, scored identically, three orthogonal axes: model scale (3B→7B→12B), elicitation (CoT vs direct), and task adaptation (zero-shot → few-shot → trained readout). Dashed lines mark the bias-free ceiling a single binary chooser can reach (0.33) and the trained-readout band. Side bias was caught by logging frac-left per run and removed with a side-balanced re-run."
+  }
 };

@@ -12,10 +12,11 @@
   <div class="brand">Brain-Score<span class="dot">·</span><span class="muted">Unified</span></div>
   <div class="links">
     <a href="#capabilities">Capabilities</a>
+    <a href="#witness">Witness</a>
     <a href="#response">Brain response</a>
+    <a href="#rajalingham">2-AFC</a>
     <a href="#scaling">Scaling</a>
     <a href="#ablation">Ablation</a>
-    <a href="#selection">Selection</a>
     <a href="#nulls">Nulls</a>
   </div>
 </nav>
@@ -46,7 +47,15 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
   <div class="cap-grid" id="cap-grid"></div>
 </section>
 
-<section id="models" class="section alt">
+<section id="witness" class="section alt">
+  <h2 id="witness-title"></h2>
+  <p class="lead" id="witness-sub"></p>
+  <div class="witness-modes" id="witness-modes"></div>
+  <div class="witness-grid" id="witness-grid"></div>
+  <p class="reading" id="witness-reading"></p>
+</section>
+
+<section id="models" class="section">
   <h2 id="models-title"></h2>
   <p class="lead" id="models-sub"></p>
   <div class="model-grid" id="model-grid"></div>
@@ -106,6 +115,23 @@ score = load_benchmark(<span class="s">"MajajHong2015public.IT-pls"</span>)(mode
     <table class="paths-table" id="allpaths-table"></table>
   </div>
   <p class="reading" id="allpaths-reading"></p>
+</section>
+
+<section id="rajalingham" class="section alt">
+  <h2 id="raj-title"></h2>
+  <p class="lead" id="raj-sub"></p>
+  <figure class="raj-montages">
+    <div id="raj-montage-imgs"></div>
+    <figcaption>What the model actually saw: the briefly-shown <b>SAMPLE</b> on top, two
+      object <b>choice tokens</b> (LEFT / RIGHT) below. It must pick which token is the
+      same object as the sample — the literal human match-to-sample screen.</figcaption>
+  </figure>
+  <div class="two-col">
+    <div id="raj-plot" class="plot"></div>
+    <table class="paths-table" id="raj-table"></table>
+  </div>
+  <div class="raj-findings" id="raj-findings"></div>
+  <p class="reading" id="raj-reading"></p>
 </section>
 
 <section id="scaling" class="section">

@@ -309,6 +309,52 @@
     D.nulls.entries.map(e =>
       `<tr><td>${e.capability}</td><td><code>${e.null}</code></td><td>${e.what_it_catches}</td></tr>`).join('');
 
+  // ---- Witness: watch any benchmark run ----
+  if (D.witness) {
+    const w = D.witness;
+    $('witness-title').textContent = w.title;
+    $('witness-sub').textContent = w.subtitle;
+    $('witness-reading').textContent = w.reading;
+    $('witness-modes').innerHTML = w.modes.map(m => `<span class="wmode">${m}</span>`).join('');
+    $('witness-grid').innerHTML = w.panels.map(p =>
+      `<figure class="witness-card"><img src="${p.img}?v=1" alt="witness panel" />` +
+      `<figcaption>${p.caption}</figcaption></figure>`).join('');
+  }
+
+  // ---- Rajalingham 2-AFC: same behavior, several ways ----
+  if (D.rajalingham) {
+    const raj = D.rajalingham;
+    $('raj-title').textContent = raj.title;
+    $('raj-sub').textContent = raj.subtitle;
+    $('raj-reading').textContent = raj.reading;
+    $('raj-montage-imgs').innerHTML = raj.montages.map(m =>
+      `<img src="${m}?v=1" alt="2-AFC montage" />`).join('');
+    const rr = raj.rows.slice().sort((a, b) => a.i2n - b.i2n);
+    const labels = rr.map(r => `${r.model} · ${r.mode}`);
+    const bar = {
+      type: 'bar', orientation: 'h', y: labels, x: rr.map(r => r.i2n),
+      marker: { color: rr.map(r => raj.kindColors[r.kind] || '#888') },
+      hovertemplate: '%{y}: i2n %{x:.3f}<extra></extra>',
+    };
+    const lay = Object.assign({}, LAYOUT, {
+      height: 430, margin: { l: 195, r: 24, t: 16, b: 44 }, showlegend: false,
+      yaxis: Object.assign({}, LAYOUT.yaxis, { automargin: true }),
+      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw, vs human pool)', range: [-0.05, 0.36] }),
+      shapes: [{ type: 'line', x0: raj.binary_ceiling, x1: raj.binary_ceiling, y0: -0.5, y1: labels.length - 0.5,
+        line: { color: '#1f9d57', width: 1, dash: 'dot' } }],
+      annotations: [{ x: raj.binary_ceiling, y: labels.length - 0.5, text: 'binary-chooser ceiling',
+        showarrow: false, font: { size: 10, color: '#1f9d57' }, xanchor: 'right', yanchor: 'bottom' }],
+    });
+    Plotly.react('raj-plot', [bar], lay, CFG);
+    $('raj-table').innerHTML =
+      '<tr><th>model</th><th>mode</th><th>acc</th><th>frac-L</th><th>i2n</th></tr>' +
+      raj.rows.map(r => `<tr><td>${r.model}</td>`
+        + `<td><span class="path-chip" style="background:${raj.kindColors[r.kind] || '#888'}">${r.mode}</span></td>`
+        + `<td>${r.acc.toFixed(3)}</td><td>${r.frac_left == null ? '—' : r.frac_left.toFixed(2)}</td>`
+        + `<td><b>${r.i2n.toFixed(3)}</b></td></tr>`).join('');
+    $('raj-findings').innerHTML = raj.findings.map(f => `<div class="raj-finding">${f}</div>`).join('');
+  }
+
   function mean(a){ return a.reduce((x, y) => x + y, 0) / a.length; }
   function sem(a){ const m = mean(a); return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / a.length) / Math.sqrt(a.length); }
 

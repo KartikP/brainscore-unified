@@ -178,6 +178,25 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .lim-list li{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--warn);
   border-radius:10px; padding:14px 18px; color:var(--ink); font-size:.96rem}
 
+/* witness gallery */
+.witness-modes{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px}
+.wmode{font-size:.78rem; font-family:"SF Mono",ui-monospace,Menlo,monospace; color:#2f5bd0;
+  background:rgba(47,107,255,.10); border:1px solid rgba(47,107,255,.28); padding:3px 10px; border-radius:999px}
+.witness-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:18px}
+.witness-card{margin:0; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:14px}
+.witness-card img{width:100%; border-radius:8px; background:#fff; border:1px solid var(--line)}
+.witness-card figcaption{color:var(--muted); font-size:.85rem; margin-top:10px}
+
+/* rajalingham 2-AFC */
+.raj-montages{margin:0 0 26px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px}
+#raj-montage-imgs{display:flex; gap:16px; flex-wrap:wrap; justify-content:center}
+#raj-montage-imgs img{height:300px; border-radius:8px; border:1px solid var(--line); background:#fff}
+.raj-montages figcaption{color:var(--muted); font-size:.86rem; margin-top:12px; max-width:860px; margin-left:auto; margin-right:auto; text-align:center}
+.raj-findings{display:grid; gap:10px; margin-top:24px}
+.raj-finding{background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent);
+  border-radius:10px; padding:13px 16px; color:var(--ink); font-size:.94rem}
+@media(max-width:760px){#raj-montage-imgs img{height:auto; width:100%}}
+
 /* footer */
 .footer{padding:48px 28px; border-top:1px solid var(--line); max-width:1100px; margin:0 auto;
   display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; color:var(--muted)}
