@@ -175,6 +175,19 @@ def main():
         pc = np.array([np.corrcoef(pred[:, j], gt[:, j])[0, 1] for j in range(pred.shape[1])])
         log(f'window pred-vs-recorded median per-parcel r = {np.nanmedian(pc):.3f}')
 
+    # per-TR voxel-wise Pearson r ACROSS all parcels (human vs model) — animates
+    # with the clip. One number per scan: how well the model's whole-brain pattern
+    # matches the recorded whole-brain pattern at that moment.
+    per_tr_r = []
+    for t in range(pred.shape[0]):
+        a, b = pred[t], gt[t]
+        ok = np.isfinite(a) & np.isfinite(b)
+        if ok.sum() > 2 and np.std(a[ok]) > 0 and np.std(b[ok]) > 0:
+            per_tr_r.append(round(float(np.corrcoef(a[ok], b[ok])[0, 1]), 4))
+        else:
+            per_tr_r.append(None)
+    log(f'per-TR voxel-wise r: {per_tr_r}')
+
     times = [round(float(t * args.tr_sec), 1) for t in tw[sel]]
     pred_r, gt_r = pred, gt
     if args.per_stream_scale:
@@ -228,6 +241,7 @@ def main():
                'tw': [int(x) for x in tw[sel]], 'times': times,
                'renderer': args.renderer,
                'video_features': os.path.basename(args.video_features),
+               'per_tr_voxelwise_r': per_tr_r,
                'transcript': transcript,
                'clip_start_sec': round(float(tw[sel][0] * args.tr_sec), 2),
                'clip_dur_sec': round(float(len(sel) * args.tr_sec), 2)},

@@ -226,6 +226,12 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .mb-left{display:flex; flex-direction:column; gap:14px}
 .mb-brain-col{display:flex; flex-direction:column; gap:16px}
 .mb-note-full{margin-top:14px}
+.mb-rnow{margin-top:6px; text-align:center}
+.mb-rnow-lab{font-size:.85rem; color:var(--muted)}
+.mb-rnow-sub{font-size:.76rem; opacity:.8}
+.mb-rnow-bar{height:10px; border-radius:6px; background:var(--line); margin:6px auto 4px; max-width:360px; overflow:hidden}
+.mb-rnow-bar span{display:block; height:100%; background:linear-gradient(90deg,#1aa67a,var(--accent)); transition:width .25s ease}
+.mb-rnow-val{font-size:1.02rem; font-weight:700; color:var(--ink)}
 .mb-fig{margin:0}
 .mb-fig img, .mb-fig video{width:100%; border-radius:10px; border:1px solid var(--line); background:#000; display:block}
 .mb-brain-fig img{background:#fff}

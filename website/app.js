@@ -388,12 +388,24 @@
       '<h3 class="caveat-h">How to read this</h3><div class="raj-caveat">' + mb.caption + '</div>';
     const pad = i => String(i).padStart(3, '0');
     const bust = '?v=' + (mb.cachebust || '1');
+    const rEl = $('mb-rnow');
     function setFrame(i) {
       i = Math.max(0, Math.min(mb.n - 1, i));
       $('mb-human').src = mb.human + pad(i) + '.png' + bust;
       $('mb-model').src = mb.model + pad(i) + '.png' + bust;
       $('mb-transcript').innerHTML = mb.transcript.map((w, j) =>
         `<span class="${j === i ? 'mb-word-on' : ''}">${w}</span>`).join(' ');
+      if (rEl && mb.per_tr_r) {
+        const r = mb.per_tr_r[i];
+        const pct = Math.max(0, Math.min(100, (r / 0.5) * 100));   // bar scaled to r∈[0,0.5]
+        rEl.innerHTML =
+          `<div class="mb-rnow-lab">human ↔ model match this scan ` +
+          `<span class="mb-rnow-sub">(Pearson r across all 1000 parcels)</span></div>` +
+          `<div class="mb-rnow-bar"><span style="width:${pct}%"></span></div>` +
+          `<div class="mb-rnow-val">r = ${r.toFixed(2)}` +
+          (mb.mean_r ? ` <span class="mb-rnow-sub">· clip mean ${mb.mean_r.toFixed(2)}</span>` : '') +
+          `</div>`;
+      }
     }
     setFrame(0);
     // Both brain montages + transcript follow the video's playhead (1 frame per TR).

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Brain-Score · Unified Model Interface</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<link rel="stylesheet" href="style.css?v=12" />
+<link rel="stylesheet" href="style.css?v=14" />
 </head>
 <body>
 <nav class="nav">
@@ -110,6 +110,7 @@
         <figcaption class="mb-brainlabel mb-model-lbl">Model — <b>predicted</b> fMRI (held-out, never trained on this clip)</figcaption>
         <img id="mb-model" alt="predicted fMRI response, glass brain (3 views)" />
       </figure>
+      <div class="mb-rnow" id="mb-rnow"></div>
     </div>
   </div>
   <p class="muted small mb-note-full" id="mb-note"></p>
@@ -325,8 +326,8 @@
   <div class="muted small" id="provenance"></div>
 </footer>
 
-<script src="data.js?v=13"></script>
-<script src="app.js?v=10"></script>
+<script src="data.js?v=14"></script>
+<script src="app.js?v=14"></script>
 <script src="model_moves.js?v=2"></script>
 <script src="game.js?v=2"></script>
 </body>
