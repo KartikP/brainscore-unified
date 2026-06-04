@@ -17,25 +17,41 @@
   $('provenance').textContent = D.meta.provenance;
 
   // ---- hero: swipe through registrations to show the call is invariant ----
+  // Most entries share one skeleton (only the model/benchmark/comment change);
+  // the embodied and perturbation entries carry their own `lines` because they
+  // run through a different process() variant — that contrast IS the point.
   (function () {
     const rot = D.hero_rotation;
-    const mEl = $('hero-model'), bEl = $('hero-bench'), cEl = $('hero-comment');
-    if (!rot || !rot.length || !mEl || !bEl || !cEl) return;
-    const els = [mEl, bEl, cEl];
-    const apply = r => { mEl.textContent = '"' + r.model + '"'; bEl.textContent = '"' + r.benchmark + '"'; cEl.textContent = r.comment; };
-    apply(rot[0]);
+    const body = $('hero-code-body');
+    if (!rot || !rot.length || !body) return;
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const hl = line => {
+      let s = esc(line);
+      s = s.replace(/("[^"]*")/g, '<span class="s">$1</span>');     // strings
+      s = s.replace(/\b(from|import)\b/g, '<span class="k">$1</span>'); // keywords
+      s = s.replace(/(#.*)$/, '<span class="c">$1</span>');         // trailing comment
+      return s;
+    };
+    const linesFor = e => e.lines || [
+      'from brainscore import load_model, load_benchmark',
+      'model = load_model("' + e.model + '")',
+      'score = load_benchmark("' + e.benchmark + '")(model)',
+      e.comment,
+    ];
+    const render = e => { body.innerHTML = linesFor(e).map(hl).join('\n'); };
+    render(rot[0]);
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce || rot.length < 2) return;          // respect reduced-motion: no cycling
     let i = 0;
     setInterval(() => {
       i = (i + 1) % rot.length;
-      els.forEach(e => e.classList.add('swap-out'));
+      body.classList.add('swap-out');
       setTimeout(() => {
-        apply(rot[i]);
-        els.forEach(e => { e.classList.remove('swap-out'); e.classList.add('swap-in'); });
-        setTimeout(() => els.forEach(e => e.classList.remove('swap-in')), 440);
+        render(rot[i]);
+        body.classList.remove('swap-out'); body.classList.add('swap-in');
+        setTimeout(() => body.classList.remove('swap-in'), 440);
       }, 300);
-    }, 3000);
+    }, 3200);
   })();
 
   // ---- capability cards ----

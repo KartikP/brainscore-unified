@@ -41,7 +41,8 @@ h1,h2,h3{line-height:1.15; letter-spacing:-.02em}
 .code{background:#f1f4f9; border:1px solid var(--line); border-radius:var(--radius);
   padding:18px 20px; overflow:auto; font-family:"SF Mono",ui-monospace,Menlo,monospace;
   font-size:.92rem; color:#2a3346; margin:0}
-.hero-code{max-width:760px; overflow-x:auto}
+.hero-code{max-width:760px; overflow-x:auto; min-height:8.4em; line-height:1.5}
+#hero-code-body{display:block; white-space:pre}
 .code .k{color:#7c4dff} .code .s{color:#1f9d57} .code .c{color:var(--muted)}
 /* hero swipe: the dynamic model/benchmark/comment slide out left, in from right,
    while the surrounding call skeleton stays fixed — the API is invariant */

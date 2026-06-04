@@ -17,6 +17,20 @@ window.BSU_DATA = {
     {"model": "blip2-opt-2.7b", "benchmark": "MajajHong2015public.V4-pls", "comment": "# different model, different size — same three lines"},
     {"model": "vjepa1-vitl", "benchmark": "Lahner2024-fMRI-naturalistic-visualROI", "comment": "# video · naturalistic fMRI encoding"},
     {"model": "vjepa1-wav2vec2", "benchmark": "Lahner2024-fMRI-naturalistic-multimodal-visualROI", "comment": "# two towers (video + audio), one model object"},
+    {"lines": [
+      "from brainscore import load_model",
+      "from brainscore.harnesses.gymnasium_harness import play_gym_episode",
+      "model  = load_model(\"qwen2.5-vl-7b\")",
+      "result = play_gym_episode(model, \"MiniGrid-DoorKey-6x6\")",
+      "# embodied — the model emits an action from process(EnvironmentStep) each tick"
+    ]},
+    {"lines": [
+      "from brainscore import load_model, load_benchmark",
+      "model = load_model(\"qwen2.5-vl-3b\")",
+      "model.process(StateChange(target=vwf_units, perturbation=\"zero\"))  # lesion",
+      "score = load_benchmark(\"Yeatman2021-lexical_decision-image\")(model)",
+      "# perturbation — score the lesioned model; model.reset() restores it"
+    ]},
     {"model": "random-vit-b-32", "benchmark": "MajajHong2015public.IT-pls", "comment": "# even the null floor registers the same way"}
   ],
   "scaling": {
