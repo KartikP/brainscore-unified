@@ -215,6 +215,7 @@ window.BSU_DATA = {
       {"model": "Qwen-VL-3B", "mode": "direct + 4-shot", "acc": 0.506, "frac_left": 0.99, "i2n": 0.010, "kind": "fewshot"},
       {"model": "Qwen-VL-7B", "mode": "CoT", "acc": 0.562, "frac_left": 0.89, "i2n": 0.031, "kind": "cot"},
       {"model": "Qwen-VL-7B", "mode": "direct", "acc": 0.859, "frac_left": 0.47, "i2n": 0.163, "kind": "direct"},
+      {"model": "Qwen-VL-7B", "mode": "direct + 4-shot", "acc": 0.785, "frac_left": 0.63, "i2n": 0.154, "kind": "fewshot"},
       {"model": "Gemma-4-12B", "mode": "direct", "acc": 0.846, "frac_left": 0.45, "i2n": 0.146, "kind": "direct"},
       {"model": "Gemma-4-12B", "mode": "direct + 4-shot", "acc": 0.853, "frac_left": 0.43, "i2n": 0.100, "kind": "fewshot"}
     ],
