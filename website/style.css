@@ -187,6 +187,19 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .witness-card img{width:100%; border-radius:8px; background:#fff; border:1px solid var(--line)}
 .witness-card figcaption{color:var(--muted); font-size:.85rem; margin-top:10px}
 
+/* PerceptWindow — what the model actually saw */
+.percept-grid{display:grid; gap:20px}
+.percept-row{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px}
+.percept-rowlabel{font-size:.78rem; text-transform:uppercase; letter-spacing:.07em; color:var(--accent); margin-bottom:12px}
+.percept-trip{display:flex; align-items:center; gap:14px; flex-wrap:wrap}
+.percept-trip figure{margin:0; text-align:center}
+.percept-trip img{height:168px; width:auto; border-radius:8px; border:1px solid var(--line); background:#0e1422; image-rendering:pixelated}
+.percept-trip figcaption{color:var(--muted); font-size:.78rem; margin-top:7px}
+.percept-final img{border-color:var(--accent); box-shadow:0 0 0 2px rgba(47,107,255,.18)}
+.percept-arrow{color:var(--accent); font-size:1.4rem; flex:0 0 auto}
+.percept-note{color:var(--muted); font-size:.9rem; margin:13px 0 0}
+@media(max-width:760px){.percept-trip img{height:auto; width:46%} .percept-arrow{display:none}}
+
 /* rajalingham 2-AFC */
 .raj-montages{margin:0 0 26px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px}
 #raj-montage-imgs{display:flex; gap:16px; flex-wrap:wrap; justify-content:center}

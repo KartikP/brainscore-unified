@@ -321,6 +321,31 @@
       `<figcaption>${p.caption}</figcaption></figure>`).join('');
   }
 
+  // ---- PerceptWindow: what the model actually saw ----
+  if (D.percept) {
+    const p = D.percept;
+    $('percept-title').textContent = p.title;
+    $('percept-sub').textContent = p.subtitle;
+    $('percept-reading').textContent = p.reading;
+    const cols = p.columns;
+    $('percept-grid').innerHTML = p.rows.map(r =>
+      `<div class="percept-row">` +
+      `<div class="percept-rowlabel">${r.label}</div>` +
+      `<div class="percept-trip">` +
+      `<figure><img src="${r.presented}?v=1" alt="presented"/><figcaption>${cols[0]}</figcaption></figure>` +
+      `<span class="percept-arrow">→</span>` +
+      `<figure><img src="${r.tensor}?v=1" alt="raw tensor"/><figcaption>${cols[1]}</figcaption></figure>` +
+      `<span class="percept-arrow">→</span>` +
+      `<figure class="percept-final"><img src="${r.percept}?v=1" alt="reconstructed percept"/><figcaption>${cols[2]}</figcaption></figure>` +
+      `</div>` +
+      `<p class="percept-note">${r.note}</p>` +
+      `</div>`).join('');
+    if (p.caveat) {
+      $('percept-caveat').innerHTML = '<h3 class="caveat-h">What this does NOT show</h3>' +
+        `<div class="raj-caveat">${p.caveat}</div>`;
+    }
+  }
+
   // ---- Rajalingham 2-AFC: same behavior, several ways ----
   if (D.rajalingham) {
     const raj = D.rajalingham;

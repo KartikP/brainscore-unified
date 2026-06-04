@@ -201,6 +201,18 @@ window.BSU_DATA = {
     ],
     "reading": "The Witness wraps process() non-invasively for the duration of a benchmark and logs one event per call. Because the unified interface routes neural recording, behavioral generation/readout, embodied action, and perturbation all through the same process() entry point, one recorder covers every capability — the same trace structure whether the model is looking at images, reading sentences, playing a game, or being lesioned."
   },
+  "percept": {
+    "title": "PerceptWindow — what the model ACTUALLY saw",
+    "subtitle": "The Witness records what was presented (a file path). But preprocessing — resize, center-crop, normalize — happens one layer deeper, right before the network's forward(). PerceptWindow taps THAT point with a forward pre-hook (zero extra forward passes), then inverts the normalization to reconstruct the model's literal percept. The reconstruction is determined entirely by the preprocessing pipeline, not the weights, so these are exactly the tensors a CLIP-preprocessed model ingests.",
+    "columns": ["presented", "raw tensor (clipped)", "percept (reconstructed)"],
+    "rows": [
+      {"label": "Wide 640×360", "presented": "assets/percept/0_presented.png", "tensor": "assets/percept/0_tensor.png", "percept": "assets/percept/0_percept.png", "note": "Center-crop discards the green L and gold R edge bands entirely — the model never saw them. TOP/BOTTOM survive."},
+      {"label": "Tall 360×640", "presented": "assets/percept/1_presented.png", "tensor": "assets/percept/1_tensor.png", "percept": "assets/percept/1_percept.png", "note": "Now TOP and BOTTOM are cropped away and the L/R bands survive — the crop axis flips with aspect ratio."},
+      {"label": "Square 360×360", "presented": "assets/percept/2_presented.png", "tensor": "assets/percept/2_tensor.png", "percept": "assets/percept/2_percept.png", "note": "Square needs no crop — all four edges survive; only the resize to 224 happens. Colors come back faithfully after de-normalization."}
+    ],
+    "reading": "Middle column = the raw normalized tensor clipped to [0,1]: false color, NOT directly viewable — that is why reconstruction is needed. Right column = PerceptWindow inverting x·std+mean to recover the true percept. The point of the demo is the gap between the left and right columns: the center-crop literally removes content (the labeled edge bands), so 'what the benchmark presented' and 'what the model saw' are not the same image. On a real model the identical forward pre-hook captures whatever the wrapper produced — text detokenizes, audio comes back as a waveform — through one mechanism.",
+    "caveat": "This demo uses CLIP's exact preprocessing constants over a trivial identity module (no weights) because the percept is a function of preprocessing, not the model. PerceptWindow captures the same tensor on a real CLIP/ViT; it does NOT capture post-embedding internal activations — only the input that entered forward()."
+  },
   "rajalingham": {
     "title": "The same object-recognition behavior, several ways",
     "subtitle": "Rajalingham 2018's image-level (i2) match-to-sample signature, reached the FAITHFUL way — the model sees the briefly-shown sample plus two object tokens and actually chooses, exactly as the human/monkey subjects did. The original Brain-Score benchmark instead reconstructs that 2-AFC from a trained classifier. Scoring both the same way (choices → i2n vs the human pool) turns one number into a map across model scale, how you elicit the choice, and how much task adaptation it gets.",
