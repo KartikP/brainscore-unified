@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Brain-Score · Unified Model Interface</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<link rel="stylesheet" href="style.css?v=11" />
+<link rel="stylesheet" href="style.css?v=12" />
 </head>
 <body>
 <nav class="nav">
@@ -93,13 +93,15 @@
 <section id="moviebrain" class="section alt">
   <h2 id="mb-title"></h2>
   <p class="lead" id="mb-sub"></p>
-  <div class="mb-stack">
-    <figure class="mb-fig mb-video-fig">
-      <video id="mb-video" controls playsinline preload="metadata"></video>
-      <figcaption>the real Algonauts clip — picture + sound + dialogue (what goes in)</figcaption>
-    </figure>
-    <div class="mb-transcript" id="mb-transcript"></div>
-    <div class="mb-brain-row">
+  <div class="mb-grid">
+    <div class="mb-left">
+      <figure class="mb-fig mb-video-fig">
+        <video id="mb-video" controls playsinline preload="metadata"></video>
+        <figcaption>the real Algonauts clip — picture + sound + dialogue (what goes in)</figcaption>
+      </figure>
+      <div class="mb-transcript" id="mb-transcript"></div>
+    </div>
+    <div class="mb-brain-col">
       <figure class="mb-fig mb-brain-fig">
         <figcaption class="mb-brainlabel mb-human-lbl">Human — subject&nbsp;1's <b>recorded</b> fMRI (ground truth)</figcaption>
         <img id="mb-human" alt="recorded fMRI response, glass brain (3 views)" />
@@ -109,8 +111,8 @@
         <img id="mb-model" alt="predicted fMRI response, glass brain (3 views)" />
       </figure>
     </div>
-    <p class="muted small" id="mb-note"></p>
   </div>
+  <p class="muted small mb-note-full" id="mb-note"></p>
   <p class="reading" id="mb-reading"></p>
   <div class="raj-caveats" id="mb-caption"></div>
 </section>
