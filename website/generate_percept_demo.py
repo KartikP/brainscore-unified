@@ -110,7 +110,52 @@ def main():
         reconstruct(src, f'raj{j}', model)
         print(f'  {name}: presented {src.size[0]}x{src.size[1]} -> ingested '
               f'{SIZE}x{SIZE} (CLIP front-end: resize + center-crop)', flush=True)
+
+    # Tab 3: multimodal — a dual-tower (CLIP) model ingests an IMAGE + a CAPTION.
+    # PerceptWindow hooks BOTH towers: pixel tensor -> reconstructed image, and
+    # token ids -> detokenized string. One mechanism, two modalities.
+    multimodal(assets, model)
     print(f'wrote demo triplets to {OUT}', flush=True)
+
+
+def multimodal(assets, vis_model):
+    caption = 'a photo of a wrench on a mountainside'
+    # vision tower: the LEFT objectome token from montage 0 IS a wrench on a
+    # mountainside, so the caption genuinely describes the image.
+    montage = os.path.join(assets, 'raj2afc_montage_0.png')
+    if os.path.exists(montage):
+        crop = Image.open(montage).convert('RGB').crop((12, 310, 248, 528))
+        crop.save(os.path.join(OUT, 'mm_vision_presented.png'))
+        reconstruct(crop, 'mm_vision', vis_model)
+        print(f'  multimodal vision: {crop.size} -> {SIZE}x{SIZE}', flush=True)
+    # text tower: tokenize the caption with CLIP's real tokenizer, then capture
+    # the token-id tensor through the SAME PerceptWindow hook and detokenize.
+    try:
+        from transformers import CLIPTokenizer
+        tok = CLIPTokenizer.from_pretrained('openai/clip-vit-base-patch32')
+        ids = tok(caption, padding='max_length', max_length=77,
+                  truncation=True)['input_ids']
+
+        class IdEmbed(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.emb = nn.Embedding(49408, 8)
+
+            def forward(self, x):
+                return self.emb(x)
+
+        text_model = IdEmbed()
+        with PerceptWindow(text_model, modality='text') as eye:
+            text_model(torch.tensor(ids)[None])
+        decoded = eye.reconstruct(tokenizer=tok)[0]['data'][0]
+        nonpad = [i for i in ids if i != 49407]
+        print('  multimodal text:', flush=True)
+        print(f'    caption : {caption!r}', flush=True)
+        print(f'    ids[:12]: {ids[:12]}  (77-token context)', flush=True)
+        print(f'    decoded : {decoded!r}', flush=True)
+        print(f'    note    : non-pad ids = {nonpad}', flush=True)
+    except Exception as e:
+        print(f'  (multimodal text skipped: {type(e).__name__}: {e})', flush=True)
 
 
 if __name__ == '__main__':

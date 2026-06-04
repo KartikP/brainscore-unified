@@ -327,34 +327,44 @@
     $('percept-title').textContent = p.title;
     $('percept-sub').textContent = p.subtitle;
     const tabsEl = $('percept-tabs');
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    function imgPanel(src, cap, cls) {
+      return `<figure class="${cls || ''}"><img src="${src}?v=2" alt="${cap}"/><figcaption>${cap}</figcaption></figure>`;
+    }
+    function textPanel(txt, cap, cls) {
+      return `<div class="percept-textcard mono ${cls || ''}"><div class="pt">${esc(txt)}</div>` +
+        `<figcaption>${cap}</figcaption></div>`;
+    }
     function drawPercept(tab, btn) {
       document.querySelectorAll('#percept-tabs .tog').forEach(t => t.classList.remove('active'));
       btn.classList.add('active');
-      const cols = tab.columns;
-      $('percept-grid').innerHTML = tab.rows.map(r =>
-        `<div class="percept-row">` +
-        `<div class="percept-rowlabel">${r.label}</div>` +
-        `<div class="percept-trip">` +
-        `<figure><img src="${r.presented}?v=2" alt="presented"/><figcaption>${cols[0]}</figcaption></figure>` +
-        `<span class="percept-arrow">→</span>` +
-        `<figure><img src="${r.tensor}?v=2" alt="raw tensor"/><figcaption>${cols[1]}</figcaption></figure>` +
-        `<span class="percept-arrow">→</span>` +
-        `<figure class="percept-final"><img src="${r.percept}?v=2" alt="reconstructed percept"/><figcaption>${cols[2]}</figcaption></figure>` +
-        `</div>` +
-        `<p class="percept-note">${r.note}</p>` +
-        `</div>`).join('');
+      const c = tab.columns;
+      $('percept-grid').innerHTML = tab.rows.map(r => {
+        const panels = r.kind === 'text'
+          ? textPanel(r.presented, c[0]) + `<span class="percept-arrow">→</span>` +
+            textPanel(r.tensor, c[1]) + `<span class="percept-arrow">→</span>` +
+            textPanel(r.percept, c[2], 'percept-final')
+          : imgPanel(r.presented, c[0]) + `<span class="percept-arrow">→</span>` +
+            imgPanel(r.tensor, c[1]) + `<span class="percept-arrow">→</span>` +
+            imgPanel(r.percept, c[2], 'percept-final');
+        return `<div class="percept-row"><div class="percept-rowlabel">${r.label}</div>` +
+          `<div class="percept-trip">${panels}</div>` +
+          `<p class="percept-note">${r.note}</p></div>`;
+      }).join('');
       $('percept-reading').textContent = tab.reading;
       $('percept-caveat').innerHTML = tab.caveat
         ? '<h3 class="caveat-h">What this does NOT show</h3>' + `<div class="raj-caveat">${tab.caveat}</div>`
         : '';
     }
+    const want = (location.hash.match(/ptab=([\w-]+)/) || [])[1];
     p.tabs.forEach((tab, i) => {
       const b = document.createElement('button');
-      b.className = 'tog' + (i === 0 ? ' active' : '');
+      b.className = 'tog';
       b.textContent = tab.label;
       b.onclick = () => drawPercept(tab, b);
       tabsEl.appendChild(b);
-      if (i === 0) drawPercept(tab, b);
+      const isDefault = want ? tab.id === want : i === 0;
+      if (isDefault) drawPercept(tab, b);
     });
   }
 

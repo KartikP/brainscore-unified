@@ -199,6 +199,14 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .percept-final img{border-color:var(--accent); box-shadow:0 0 0 2px rgba(47,107,255,.18)}
 .percept-arrow{color:var(--accent); font-size:1.4rem; flex:0 0 auto}
 .percept-note{color:var(--muted); font-size:.9rem; margin:13px 0 0}
+/* text-modality panels (token ids / detokenized strings) */
+.percept-textcard{margin:0; flex:1 1 230px; min-width:200px; max-width:300px; background:#0e1422;
+  border:1px solid var(--line); border-radius:8px; padding:12px 13px; align-self:stretch}
+.percept-textcard .pt{color:#dbe3f2; font-size:.82rem; line-height:1.55; word-break:break-word;
+  max-height:160px; overflow:auto}
+.percept-textcard.mono .pt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:.74rem}
+.percept-textcard figcaption{color:var(--muted); font-size:.78rem; margin-top:9px}
+.percept-textcard.percept-final{border-color:var(--accent); box-shadow:0 0 0 2px rgba(47,107,255,.18)}
 @media(max-width:760px){.percept-trip img{height:auto; width:46%} .percept-arrow{display:none}}
 
 /* rajalingham 2-AFC */

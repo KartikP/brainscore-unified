@@ -227,6 +227,17 @@ window.BSU_DATA = {
         ],
         "reading": "This is CLIP ViT-B/32's front-end — the 2-AFC similarity chooser. Resize-shortest-side + center-crop trims the montage's top and bottom (the SAMPLE / LEFT / RIGHT text labels) while the sample image and both choice tokens survive. So the similarity model decided from the images, not the printed labels — a detail you only see by reconstructing what it actually ingested.",
         "caveat": "This reconstruction is specifically CLIP's view. The generation VLMs (Qwen, Gemma) do NOT center-crop — they resize preserving aspect and saw the full montage including every label. PerceptWindow on those models (run on EC2) would show the un-cropped montage; this tab does not represent what the instruction-following models ingested."
+      },
+      {
+        "id": "multimodal",
+        "label": "Multimodal (image + text)",
+        "columns": ["presented", "ingested form", "percept (reconstructed)"],
+        "rows": [
+          {"kind": "image", "label": "Vision tower · pixel tensor", "presented": "assets/percept/mm_vision_presented.png", "tensor": "assets/percept/mm_vision_tensor.png", "percept": "assets/percept/mm_vision_percept.png", "note": "The image branch: resize + normalize, then de-normalized back. This objectome token — a wrench on a mountainside — is exactly what the vision encoder ingested."},
+          {"kind": "text", "label": "Text tower · token ids", "presented": "\"a photo of a wrench on a mountainside\"", "tensor": "[49406, 320, 1125, 539, 320, 30980, 525, 320, 14547, 1145, 49407, … ]  ·  padded to the 77-token context", "percept": "<|startoftext|> a photo of a wrench on a mountainside <|endoftext|>  … ×67 more <|endoftext|> (padding)", "note": "BPE splits 'mountainside' into TWO subwords — 14547 ('mountain') + 1145 ('side') — while 'wrench' is one token (30980). The <|startoftext|> / <|endoftext|> markers and the EOS-padding to 77 are exactly what the text encoder read."}
+        ],
+        "reading": "A dual-tower model (here CLIP ViT-B/32) ingests an image AND a caption. PerceptWindow registers a forward pre-hook on BOTH towers — capturing the vision tower's pixel tensor and the text tower's token-id tensor in the same run — then reconstructs each per its modality: de-normalize for the image, detokenize for the text. One mechanism, every modality; on a video+audio model the same hooks would return sampled frames and a waveform.",
+        "caveat": "The text 'percept' is the detokenized input ids — faithful to what the encoder read (special tokens, subword splits, 77-token padding), but it is the ids round-tripped through the tokenizer, not a pixel image. Audio percepts come back as a waveform/spectrogram, which for spectrogram models is not losslessly invertible to sound."
       }
     ]
   },
