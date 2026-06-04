@@ -227,6 +227,12 @@ window.BSU_DATA = {
       "In-context 'practice' HURTS — overturning the human-practice intuition. Four balanced demos dropped Qwen-3B to chance (0.010, 99% LEFT) and Gemma 0.146 → 0.100. Visual match-to-sample doesn't learn from few-shot demos the way text tasks do.",
       "The task adaptation that wins is the original READOUT — a logistic decoder learned on frozen features (~0.30-0.50), still above the best zero-shot generation (0.16). A trained task-head beats prompting; matching it from generation would take weight-level fine-tuning, not a few demos."
     ],
-    "reading": "Same phenomenon, scored identically, three orthogonal axes: model scale (3B→7B→12B), elicitation (CoT vs direct), and task adaptation (zero-shot → few-shot → trained readout). Dashed lines mark the bias-free ceiling a single binary chooser can reach (0.33) and the trained-readout band. Side bias was caught by logging frac-left per run and removed with a side-balanced re-run."
+    "reading": "Same phenomenon, scored identically, three orthogonal axes: model scale (3B→7B→12B), elicitation (CoT vs direct), and task adaptation (zero-shot → few-shot → trained readout). Dashed lines mark the bias-free ceiling a single binary chooser can reach (0.33) and the trained-readout band. Side bias was caught by logging frac-left per run and removed with a side-balanced re-run.",
+    "caveats": [
+      "Token mismatch (the load-bearing caveat): the original humans/monkeys chose between CLEAN canonical object tokens; our choice tokens are other high-variation objectome renders (cluttered, grayscale, silhouette-like). The model therefore does a HARDER task than the humans we score it against, so a low i2n conflates 'can't perceive' with 'faced worse stimuli'. The absolute numbers are lower bounds; the RELATIVE comparisons (direct vs CoT, scale, few-shot) — same tokens throughout — are the trustworthy part.",
+      "The readout band (~0.30–0.50) is the original benchmark's published range, NOT re-run on this 120-image subset with this scoring — it anchors the axis but isn't apples-to-apples.",
+      "No bootstrap CIs yet: with 120 images, the Gemma-12B (0.146) vs Qwen-7B (0.163) gap may not be significant — read the tiers, not the decimals.",
+      "Few-shot-hurts may be partly an implementation artifact of multi-image prompting (the 3B collapsed to 99% LEFT under demos); it needs an answer-line-only control before it's a fact about visual in-context learning."
+    ]
   }
 };

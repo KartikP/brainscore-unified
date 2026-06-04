@@ -353,6 +353,10 @@
         + `<td>${r.acc.toFixed(3)}</td><td>${r.frac_left == null ? '—' : r.frac_left.toFixed(2)}</td>`
         + `<td><b>${r.i2n.toFixed(3)}</b></td></tr>`).join('');
     $('raj-findings').innerHTML = raj.findings.map(f => `<div class="raj-finding">${f}</div>`).join('');
+    if (raj.caveats) {
+      $('raj-caveats').innerHTML = '<h3 class="caveat-h">What this does NOT yet establish</h3>' +
+        raj.caveats.map(c => `<div class="raj-caveat">${c}</div>`).join('');
+    }
   }
 
   function mean(a){ return a.reduce((x, y) => x + y, 0) / a.length; }
