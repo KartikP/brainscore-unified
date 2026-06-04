@@ -98,6 +98,22 @@ window.BSU_DATA = {
     "shuffle_floor": 0.009,
     "reading": "The single most load-bearing validity check, now run on real brain data — not a unit test. The brain's blood-flow signal (the BOLD response an fMRI scanner measures) lags the underlying neural activity by a few seconds — the hemodynamic lag — so the model's per-moment features only line up with the recorded scans if you shift them forward by that lag. Slide the features earlier or later in time and prediction **peaks exactly at the true lag (+3 scans ≈ 4.5 s) and collapses toward the shuffle floor (chance) when mis-timed** — in both directions. A flat curve would mean the 'alignment' never carried real stimulus-locked signal. It is not flat. ('true delay' = that hemodynamic lag; the dashed floor is what you get after shuffling the timing away entirely.)"
   },
+  "movie_brain": {
+    "title": "Watch a model watch a movie — and the cortex light up",
+    "subtitle": "An 11-second clip — picture, sound, and speech — goes in; the model's predicted fMRI response plays out across the cortex as the clip runs. The back of the brain (visual cortex) tracks the picture, the side (auditory cortex) tracks the sound, and the language network lights up on the words. Press play, or drag the slider.",
+    "n": 11,
+    "movie": "assets/movie_brain/movie_",
+    "bold": "assets/movie_brain/bold_",
+    "waveform": "assets/movie_brain/waveform.png",
+    "transcript": ["a", "quiet", "street", "at", "dusk", "—", "a car", "passes", "by", "and", "fades"],
+    "legend": [
+      {"name": "visual cortex (the picture)", "color": "#1f9d57"},
+      {"name": "auditory cortex (the sound)", "color": "#e0a13b"},
+      {"name": "language network (the words)", "color": "#d8483b"}
+    ],
+    "reading": "**One model, one clip, three modalities — and the brain response unrolling in time.** This is the temporal-multimodal pipeline end to end: each second of video, audio, and transcript becomes model features, those features are shifted by the brain's hemodynamic lag, and a per-region readout predicts the fMRI response at that moment. As the clip plays you can see prediction move across the cortex — strong at the back while the scene changes, on the side as the sound swells, toward the front on the spoken words.",
+    "caption": "Illustrative. The cortical pattern shown here is synthesised to mirror the real pipeline (per-second features → hemodynamic lag → per-region prediction) so the concept is legible end-to-end; the real per-second predictions over a true clip are computed on EC2 against recorded fMRI (Lahner2024 / Algonauts), not in the browser."
+  },
   "nulls": {
     "description": "Matched nulls are DEFINED for every capability and run through the same pipeline with the signal destroyed in one specific way. Floors are MEASURED for neural encoding and behavior; the temporal-shift null was run on real 50k-TR Algonauts BOLD (shuffle floor ≈ 0.009; score peaks at the true HRF delay and collapses when mis-timed — see the curve above).",
     "entries": [

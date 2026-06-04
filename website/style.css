@@ -220,6 +220,23 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .percept-textcard.percept-final{border-color:var(--accent); box-shadow:0 0 0 2px rgba(47,107,255,.18)}
 @media(max-width:760px){.percept-trip img{height:auto; width:46%} .percept-arrow{display:none}}
 
+/* movie + audio + text -> evolving fMRI BOLD */
+.mb-wrap{display:grid; grid-template-columns:1fr 1fr; gap:24px; align-items:start; margin-top:8px}
+.mb-fig{margin:0}
+.mb-fig img{width:100%; border-radius:10px; border:1px solid var(--line); background:#0e1422}
+.mb-fig figcaption{color:var(--muted); font-size:.82rem; margin-top:8px; text-align:center}
+.mb-wave{position:relative; margin:16px 0 8px}
+.mb-wave img{width:100%; height:46px; display:block; opacity:.85}
+#mb-playhead{position:absolute; top:0; bottom:0; left:0; width:2px; background:var(--accent); transition:left .25s linear}
+.mb-transcript{font-size:1.05rem; color:var(--muted); line-height:1.7; min-height:1.7em; font-family:ui-monospace,Menlo,monospace}
+.mb-transcript .mb-word-on{color:var(--ink); font-weight:700; background:rgba(124,77,255,.20); border-radius:4px; padding:0 4px}
+.mb-controls{display:flex; align-items:center; gap:12px; margin-top:14px}
+.mb-controls input[type=range]{flex:1; accent-color:var(--accent)}
+.mb-legend{display:flex; flex-direction:column; gap:9px; margin-top:14px}
+.mb-leg{display:flex; align-items:center; gap:9px; color:var(--muted); font-size:.92rem}
+.mb-leg i{width:15px; height:15px; border-radius:3px; display:inline-block; flex:0 0 auto}
+@media(max-width:760px){.mb-wrap{grid-template-columns:1fr}}
+
 /* sequential 2-AFC — Witness-style step trace */
 .seq-trace{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:14px 0 26px}
 .seq-card{margin:0; text-align:center; flex:0 1 260px}
