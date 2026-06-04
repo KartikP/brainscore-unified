@@ -188,6 +188,7 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .witness-card figcaption{color:var(--muted); font-size:.85rem; margin-top:10px}
 
 /* PerceptWindow — what the model actually saw */
+.percept-tabs{display:flex; gap:10px; flex-wrap:wrap; margin:0 0 22px}
 .percept-grid{display:grid; gap:20px}
 .percept-row{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px}
 .percept-rowlabel{font-size:.78rem; text-transform:uppercase; letter-spacing:.07em; color:var(--accent); margin-bottom:12px}

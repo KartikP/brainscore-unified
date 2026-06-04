@@ -321,29 +321,41 @@
       `<figcaption>${p.caption}</figcaption></figure>`).join('');
   }
 
-  // ---- PerceptWindow: what the model actually saw ----
-  if (D.percept) {
+  // ---- PerceptWindow: what the model actually saw (tabbed) ----
+  if (D.percept && D.percept.tabs) {
     const p = D.percept;
     $('percept-title').textContent = p.title;
     $('percept-sub').textContent = p.subtitle;
-    $('percept-reading').textContent = p.reading;
-    const cols = p.columns;
-    $('percept-grid').innerHTML = p.rows.map(r =>
-      `<div class="percept-row">` +
-      `<div class="percept-rowlabel">${r.label}</div>` +
-      `<div class="percept-trip">` +
-      `<figure><img src="${r.presented}?v=1" alt="presented"/><figcaption>${cols[0]}</figcaption></figure>` +
-      `<span class="percept-arrow">→</span>` +
-      `<figure><img src="${r.tensor}?v=1" alt="raw tensor"/><figcaption>${cols[1]}</figcaption></figure>` +
-      `<span class="percept-arrow">→</span>` +
-      `<figure class="percept-final"><img src="${r.percept}?v=1" alt="reconstructed percept"/><figcaption>${cols[2]}</figcaption></figure>` +
-      `</div>` +
-      `<p class="percept-note">${r.note}</p>` +
-      `</div>`).join('');
-    if (p.caveat) {
-      $('percept-caveat').innerHTML = '<h3 class="caveat-h">What this does NOT show</h3>' +
-        `<div class="raj-caveat">${p.caveat}</div>`;
+    const tabsEl = $('percept-tabs');
+    function drawPercept(tab, btn) {
+      document.querySelectorAll('#percept-tabs .tog').forEach(t => t.classList.remove('active'));
+      btn.classList.add('active');
+      const cols = tab.columns;
+      $('percept-grid').innerHTML = tab.rows.map(r =>
+        `<div class="percept-row">` +
+        `<div class="percept-rowlabel">${r.label}</div>` +
+        `<div class="percept-trip">` +
+        `<figure><img src="${r.presented}?v=2" alt="presented"/><figcaption>${cols[0]}</figcaption></figure>` +
+        `<span class="percept-arrow">→</span>` +
+        `<figure><img src="${r.tensor}?v=2" alt="raw tensor"/><figcaption>${cols[1]}</figcaption></figure>` +
+        `<span class="percept-arrow">→</span>` +
+        `<figure class="percept-final"><img src="${r.percept}?v=2" alt="reconstructed percept"/><figcaption>${cols[2]}</figcaption></figure>` +
+        `</div>` +
+        `<p class="percept-note">${r.note}</p>` +
+        `</div>`).join('');
+      $('percept-reading').textContent = tab.reading;
+      $('percept-caveat').innerHTML = tab.caveat
+        ? '<h3 class="caveat-h">What this does NOT show</h3>' + `<div class="raj-caveat">${tab.caveat}</div>`
+        : '';
     }
+    p.tabs.forEach((tab, i) => {
+      const b = document.createElement('button');
+      b.className = 'tog' + (i === 0 ? ' active' : '');
+      b.textContent = tab.label;
+      b.onclick = () => drawPercept(tab, b);
+      tabsEl.appendChild(b);
+      if (i === 0) drawPercept(tab, b);
+    });
   }
 
   // ---- Rajalingham 2-AFC: same behavior, several ways ----

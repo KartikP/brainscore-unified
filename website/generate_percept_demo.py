@@ -73,29 +73,44 @@ class Identity(nn.Module):
         return x
 
 
+def reconstruct(src, prefix, model):
+    """Save <prefix>_tensor.png (raw normalized, clipped — false color) and
+    <prefix>_percept.png (PerceptWindow reconstruction) for a source PIL image."""
+    tensor = clip_preprocess(src)
+    with PerceptWindow(model, modality='vision', denorm=(MEAN, STD)) as eye:
+        model(tensor[None])                                     # REAL hook capture
+    percept = eye.reconstruct()[0]['data'][0]                   # (224, 224, 3) uint8
+    Image.fromarray(percept).save(os.path.join(OUT, f'{prefix}_percept.png'))
+    raw = np.clip(tensor.numpy(), 0, 1)
+    raw = (np.transpose(raw, (1, 2, 0)) * 255).astype(np.uint8)
+    Image.fromarray(raw).save(os.path.join(OUT, f'{prefix}_tensor.png'))
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
-    specs = [('WIDE', 640, 360), ('TALL', 360, 640), ('SQUARE', 360, 360)]
-    manifest = []
     model = Identity()
+
+    # Tab 1: synthetic aspect-ratio demo (crop axis depends on aspect)
+    specs = [('WIDE', 640, 360), ('TALL', 360, 640), ('SQUARE', 360, 360)]
     for i, (kind, w, h) in enumerate(specs):
         src = make_source(kind, w, h)
         src.save(os.path.join(OUT, f'{i}_presented.png'))
-        tensor = clip_preprocess(src)
-        # capture the ingested tensor through the REAL PerceptWindow hook
-        with PerceptWindow(model, modality='vision', denorm=(MEAN, STD)) as eye:
-            model(tensor[None])
-        percept = eye.reconstruct()[0]['data'][0]               # (224, 224, 3) uint8
-        Image.fromarray(percept).save(os.path.join(OUT, f'{i}_percept.png'))
-        # the raw normalized tensor, naively clipped to [0,1]: false color, the
-        # "you can't just view the array" panel
-        raw = np.clip(tensor.numpy(), 0, 1)
-        raw = (np.transpose(raw, (1, 2, 0)) * 255).astype(np.uint8)
-        Image.fromarray(raw).save(os.path.join(OUT, f'{i}_tensor.png'))
-        manifest.append({'kind': kind, 'src_size': [w, h]})
+        reconstruct(src, str(i), model)
         print(f'  {kind}: presented {w}x{h} -> ingested {SIZE}x{SIZE} '
               f'(shortest-side resize + center-crop)', flush=True)
-    print(f'wrote {len(specs)} triplets to {OUT}', flush=True)
+
+    # Tab 2: the real Rajalingham 2-AFC montages, through CLIP's front-end
+    assets = os.path.join(os.path.dirname(__file__), 'assets')
+    for j, name in enumerate(['raj2afc_montage_0.png', 'raj2afc_montage_2.png']):
+        path = os.path.join(assets, name)
+        if not os.path.exists(path):
+            print(f'  (skip {name}: not found)', flush=True)
+            continue
+        src = Image.open(path).convert('RGB')
+        reconstruct(src, f'raj{j}', model)
+        print(f'  {name}: presented {src.size[0]}x{src.size[1]} -> ingested '
+              f'{SIZE}x{SIZE} (CLIP front-end: resize + center-crop)', flush=True)
+    print(f'wrote demo triplets to {OUT}', flush=True)
 
 
 if __name__ == '__main__':

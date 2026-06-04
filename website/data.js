@@ -203,15 +203,32 @@ window.BSU_DATA = {
   },
   "percept": {
     "title": "PerceptWindow — what the model ACTUALLY saw",
-    "subtitle": "The Witness records what was presented (a file path). But preprocessing — resize, center-crop, normalize — happens one layer deeper, right before the network's forward(). PerceptWindow taps THAT point with a forward pre-hook (zero extra forward passes), then inverts the normalization to reconstruct the model's literal percept. The reconstruction is determined entirely by the preprocessing pipeline, not the weights, so these are exactly the tensors a CLIP-preprocessed model ingests.",
-    "columns": ["presented", "raw tensor (clipped)", "percept (reconstructed)"],
-    "rows": [
-      {"label": "Wide 640×360", "presented": "assets/percept/0_presented.png", "tensor": "assets/percept/0_tensor.png", "percept": "assets/percept/0_percept.png", "note": "Center-crop discards the green L and gold R edge bands entirely — the model never saw them. TOP/BOTTOM survive."},
-      {"label": "Tall 360×640", "presented": "assets/percept/1_presented.png", "tensor": "assets/percept/1_tensor.png", "percept": "assets/percept/1_percept.png", "note": "Now TOP and BOTTOM are cropped away and the L/R bands survive — the crop axis flips with aspect ratio."},
-      {"label": "Square 360×360", "presented": "assets/percept/2_presented.png", "tensor": "assets/percept/2_tensor.png", "percept": "assets/percept/2_percept.png", "note": "Square needs no crop — all four edges survive; only the resize to 224 happens. Colors come back faithfully after de-normalization."}
-    ],
-    "reading": "Middle column = the raw normalized tensor clipped to [0,1]: false color, NOT directly viewable — that is why reconstruction is needed. Right column = PerceptWindow inverting x·std+mean to recover the true percept. The point of the demo is the gap between the left and right columns: the center-crop literally removes content (the labeled edge bands), so 'what the benchmark presented' and 'what the model saw' are not the same image. On a real model the identical forward pre-hook captures whatever the wrapper produced — text detokenizes, audio comes back as a waveform — through one mechanism.",
-    "caveat": "This demo uses CLIP's exact preprocessing constants over a trivial identity module (no weights) because the percept is a function of preprocessing, not the model. PerceptWindow captures the same tensor on a real CLIP/ViT; it does NOT capture post-embedding internal activations — only the input that entered forward()."
+    "subtitle": "The Witness records what was presented (a file path). But preprocessing — resize, center-crop, normalize — happens one layer deeper, right before the network's forward(). PerceptWindow taps THAT point with a forward pre-hook (zero extra forward passes), then inverts the normalization to reconstruct the model's literal percept — determined entirely by the preprocessing pipeline, not the weights, so these are exactly the tensors a CLIP-preprocessed model ingests.",
+    "tabs": [
+      {
+        "id": "crop",
+        "label": "Resize & crop",
+        "columns": ["presented", "raw tensor (clipped)", "percept (reconstructed)"],
+        "rows": [
+          {"label": "Wide 640×360", "presented": "assets/percept/0_presented.png", "tensor": "assets/percept/0_tensor.png", "percept": "assets/percept/0_percept.png", "note": "Center-crop discards the green L and gold R edge bands entirely — the model never saw them. TOP/BOTTOM survive."},
+          {"label": "Tall 360×640", "presented": "assets/percept/1_presented.png", "tensor": "assets/percept/1_tensor.png", "percept": "assets/percept/1_percept.png", "note": "Now TOP and BOTTOM are cropped away and the L/R bands survive — the crop axis flips with aspect ratio."},
+          {"label": "Square 360×360", "presented": "assets/percept/2_presented.png", "tensor": "assets/percept/2_tensor.png", "percept": "assets/percept/2_percept.png", "note": "Square needs no crop — all four edges survive; only the resize to 224 happens. Colors come back faithfully after de-normalization."}
+        ],
+        "reading": "Middle column = the raw normalized tensor clipped to [0,1]: false color, NOT directly viewable — that is why reconstruction is needed. Right column = PerceptWindow inverting x·std+mean. The point is the gap between left and right: the center-crop literally removes content (the labeled edge bands), so 'what the benchmark presented' and 'what the model saw' are not the same image.",
+        "caveat": "This tab uses CLIP's exact preprocessing constants over a trivial identity module (no weights), because the percept is a function of preprocessing, not the model. PerceptWindow captures the same tensor on a real CLIP/ViT; it does NOT capture post-embedding internal activations — only the input that entered forward()."
+      },
+      {
+        "id": "rajalingham",
+        "label": "Rajalingham 2-AFC",
+        "columns": ["presented montage", "raw tensor (clipped)", "percept (reconstructed)"],
+        "rows": [
+          {"label": "Trial 0 (502×586)", "presented": "assets/raj2afc_montage_0.png", "tensor": "assets/percept/raj0_tensor.png", "percept": "assets/percept/raj0_percept.png", "note": "CLIP's center-crop trims the top SAMPLE label and the bottom LEFT/RIGHT labels — but the sample image and both choice tokens survive intact."},
+          {"label": "Trial 2 (502×586)", "presented": "assets/raj2afc_montage_2.png", "tensor": "assets/percept/raj1_tensor.png", "percept": "assets/percept/raj1_percept.png", "note": "Same near-square montage, same trim. The decision content (sample + two tokens) is preserved; only the text labels at the extremes are clipped."}
+        ],
+        "reading": "This is CLIP ViT-B/32's front-end — the 2-AFC similarity chooser. Resize-shortest-side + center-crop trims the montage's top and bottom (the SAMPLE / LEFT / RIGHT text labels) while the sample image and both choice tokens survive. So the similarity model decided from the images, not the printed labels — a detail you only see by reconstructing what it actually ingested.",
+        "caveat": "This reconstruction is specifically CLIP's view. The generation VLMs (Qwen, Gemma) do NOT center-crop — they resize preserving aspect and saw the full montage including every label. PerceptWindow on those models (run on EC2) would show the un-cropped montage; this tab does not represent what the instruction-following models ingested."
+      }
+    ]
   },
   "rajalingham": {
     "title": "The same object-recognition behavior, several ways",
