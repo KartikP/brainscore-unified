@@ -241,3 +241,124 @@ class TestCorticalSurfaceMovie:
             bm.cortical_surface_movie(np.zeros(1000), out_dir=str(tmp_path))
         with pytest.raises(ValueError, match='parcels'):
             bm.cortical_surface_movie(np.zeros((3, 17)), out_dir=str(tmp_path))
+
+
+class TestQuickbrainOutlineMovie:
+    """Orchestration of the glass-brain temporal renderer — verified WITHOUT
+    quickbrain by mocking the per-frame quickbrain_outline_map (the real
+    glass-brain render is exercised separately on a machine with quickbrain)."""
+
+    def _patch(self, monkeypatch):
+        import brainscore.visualization.brain_map as bm
+        calls = []
+
+        def fake(parcel_values, *, out_png=None, vmin=None, vmax=None,
+                 cmap=None, title=None, **kw):
+            calls.append({'vmin': vmin, 'vmax': vmax, 'cmap': cmap,
+                          'title': title, 'out_png': out_png})
+            if out_png:
+                with open(out_png, 'w') as f:
+                    f.write('x')
+            return out_png if out_png else 'fig'
+        monkeypatch.setattr(bm, 'quickbrain_outline_map', fake)
+        return bm, calls
+
+    def test_one_frame_per_timepoint_with_paths(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        vals = np.random.RandomState(0).randn(7, 1000)
+        out = bm.quickbrain_outline_movie(vals, out_dir=str(tmp_path), prefix='gt')
+        assert len(out) == 7 and len(calls) == 7
+        assert out[0].endswith('gt_000.png') and out[6].endswith('gt_006.png')
+        assert all(os.path.exists(p) for p in out)
+
+    def test_symmetric_shared_scale_centres_on_zero(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        vals = np.random.RandomState(1).randn(5, 1000) * np.arange(1, 6)[:, None]
+        bm.quickbrain_outline_movie(vals, out_dir=str(tmp_path))  # symmetric default
+        vmins = {c['vmin'] for c in calls}; vmaxs = {c['vmax'] for c in calls}
+        assert len(vmins) == 1 and len(vmaxs) == 1               # one fixed scale
+        vmin, vmax = next(iter(vmins)), next(iter(vmaxs))
+        assert vmax > 0 and abs(vmin + vmax) < 1e-9              # vmin == -vmax
+
+    def test_nonsymmetric_uses_percentile_bounds(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        vals = np.random.RandomState(2).rand(4, 1000)            # all positive
+        bm.quickbrain_outline_movie(vals, out_dir=str(tmp_path), symmetric=False)
+        vmin = next(iter({c['vmin'] for c in calls}))
+        assert vmin >= 0                                         # not forced negative
+
+    def test_default_cmap_is_diverging(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        bm.quickbrain_outline_movie(np.zeros((2, 1000)), out_dir=str(tmp_path))
+        assert all(c['cmap'] == 'RdBu_r' for c in calls)
+
+    def test_times_drive_titles(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        bm.quickbrain_outline_movie(np.zeros((3, 1000)), times=[0.0, 1.5, 3.0],
+                                    out_dir=str(tmp_path), title_fmt='t = {t:.1f}s')
+        assert [c['title'] for c in calls] == ['t = 0.0s', 't = 1.5s', 't = 3.0s']
+
+    def test_bad_shape_raises(self, monkeypatch, tmp_path):
+        bm, _ = self._patch(monkeypatch)
+        with pytest.raises(ValueError, match='2-D'):
+            bm.quickbrain_outline_movie(np.zeros(1000), out_dir=str(tmp_path))
+        with pytest.raises(ValueError, match='parcels'):
+            bm.quickbrain_outline_movie(np.zeros((3, 17)), out_dir=str(tmp_path))
+
+
+class TestGlassBrainMovie:
+    """Orchestration of the nilearn glass-brain temporal renderer — verified
+    WITHOUT nilearn by mocking the per-frame glass_brain_map (the real MIP
+    montage is exercised separately on a machine with nilearn + the atlas)."""
+
+    def _patch(self, monkeypatch):
+        import brainscore.visualization.brain_map as bm
+        calls = []
+
+        def fake(parcel_values, *, out_png=None, vmin=None, vmax=None,
+                 cmap=None, display_mode=None, title=None, **kw):
+            calls.append({'vmin': vmin, 'vmax': vmax, 'cmap': cmap,
+                          'display_mode': display_mode, 'title': title,
+                          'out_png': out_png})
+            if out_png:
+                with open(out_png, 'w') as f:
+                    f.write('x')
+            return out_png if out_png else 'disp'
+        monkeypatch.setattr(bm, 'glass_brain_map', fake)
+        return bm, calls
+
+    def test_one_frame_per_timepoint_with_paths(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        vals = np.random.RandomState(0).randn(7, 1000)
+        out = bm.glass_brain_movie(vals, out_dir=str(tmp_path), prefix='human')
+        assert len(out) == 7 and len(calls) == 7
+        assert out[0].endswith('human_000.png') and out[6].endswith('human_006.png')
+        assert all(os.path.exists(p) for p in out)
+
+    def test_symmetric_shared_scale_centres_on_zero(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        vals = np.random.RandomState(1).randn(5, 1000) * np.arange(1, 6)[:, None]
+        bm.glass_brain_movie(vals, out_dir=str(tmp_path))
+        vmins = {c['vmin'] for c in calls}; vmaxs = {c['vmax'] for c in calls}
+        assert len(vmins) == 1 and len(vmaxs) == 1
+        vmin, vmax = next(iter(vmins)), next(iter(vmaxs))
+        assert vmax > 0 and abs(vmin + vmax) < 1e-9
+
+    def test_default_is_ortho_diverging(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        bm.glass_brain_movie(np.zeros((2, 1000)), out_dir=str(tmp_path))
+        assert all(c['display_mode'] == 'ortho' for c in calls)
+        assert all(c['cmap'] == 'RdBu_r' for c in calls)
+
+    def test_times_drive_titles(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        bm.glass_brain_movie(np.zeros((3, 1000)), times=[0.0, 1.5, 3.0],
+                             out_dir=str(tmp_path), title_fmt='t = {t:.1f}s')
+        assert [c['title'] for c in calls] == ['t = 0.0s', 't = 1.5s', 't = 3.0s']
+
+    def test_bad_shape_raises(self, monkeypatch, tmp_path):
+        bm, _ = self._patch(monkeypatch)
+        with pytest.raises(ValueError, match='2-D'):
+            bm.glass_brain_movie(np.zeros(1000), out_dir=str(tmp_path))
+        with pytest.raises(ValueError, match='parcels'):
+            bm.glass_brain_movie(np.zeros((3, 17)), out_dir=str(tmp_path))

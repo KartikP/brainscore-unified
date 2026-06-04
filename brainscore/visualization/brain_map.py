@@ -369,18 +369,50 @@ def parcels_to_nifti(parcel_values: np.ndarray, *, n_parcels: int = 1000,
     return nib.Nifti1Image(vol, atlas_img.affine, atlas_img.header)
 
 
+def _safe_plot_brain(quickbrain, img, *, cmap, vmin, vmax, background,
+                     extra_kwargs):
+    """Call ``quickbrain.plot_brain`` robustly across quickbrain versions.
+
+    quickbrain's signature drifts between releases (``vmin``/``vmax`` and
+    ``background`` are not in every version). Try the rich call, then drop the
+    optional kwargs progressively on ``TypeError`` so the glass brain still
+    renders — mirrors :func:`_safe_plot_surf` for the surface path.
+    """
+    attempts = [
+        dict(cmap=cmap, vmin=vmin, vmax=vmax, background=background, **extra_kwargs),
+        dict(cmap=cmap, vmin=vmin, vmax=vmax, **extra_kwargs),
+        dict(cmap=cmap, background=background, **extra_kwargs),
+        dict(cmap=cmap, **extra_kwargs),
+        dict(**extra_kwargs),
+    ]
+    last = None
+    for kw in attempts:
+        # Drop any None-valued optional kwargs so they don't shadow defaults.
+        kw = {k: v for k, v in kw.items() if v is not None}
+        try:
+            return quickbrain.plot_brain(img, **kw)
+        except TypeError as e:
+            last = e
+            continue
+    raise last
+
+
 def quickbrain_outline_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
                            networks: int = 7, title: Optional[str] = None,
+                           cmap: str = 'turbo', vmin: Optional[float] = None,
+                           vmax: Optional[float] = None,
                            out_png: Optional[str] = None, **quickbrain_kwargs):
     """Render per-parcel values on quickbrain's fast brain outline (OPTIONAL).
 
-    Uses the optional ``quickbrain`` package for a stylized one-call brain
-    outline with the activation overlaid. Per-parcel Schaefer values are first
-    projected to a volumetric NIfTI (:func:`parcels_to_nifti`). Any extra
-    keyword arguments are forwarded to ``quickbrain.plot_brain`` (e.g. a colormap
-    or threshold, depending on the installed version). Raises a clear
-    ``ImportError`` with install instructions when quickbrain is absent — it is
-    never required; the nilearn surface and matplotlib fallbacks always work.
+    Uses the optional ``quickbrain`` package for a stylized one-call glass-brain
+    montage (lateral / posterior / dorsal views) with the activation overlaid.
+    Per-parcel Schaefer values are first projected to a volumetric NIfTI
+    (:func:`parcels_to_nifti`). ``cmap``/``vmin``/``vmax`` pin the colour scale —
+    pass a diverging cmap (``'RdBu_r'``) with symmetric limits for signed data
+    like BOLD. Any extra keyword arguments are forwarded to
+    ``quickbrain.plot_brain``; unsupported ones are dropped gracefully. Raises a
+    clear ``ImportError`` with install instructions when quickbrain is absent —
+    it is never required; the nilearn surface and matplotlib fallbacks work.
     """
     try:
         import quickbrain
@@ -391,12 +423,9 @@ def quickbrain_outline_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
     import matplotlib.pyplot as plt
 
     img = parcels_to_nifti(parcel_values, n_parcels=n_parcels, networks=networks)
-    # White figure card + 'turbo': a single continuous spectrum (blue→…→red) that
-    # stays distinct across its whole range — unlike YlOrRd, which saturates to a
-    # near-uniform dark red at the top (0.4 vs 0.53 were indistinguishable).
-    quickbrain_kwargs.setdefault('cmap', 'turbo')
-    quickbrain_kwargs.setdefault('background', 'white')
-    result = quickbrain.plot_brain(img, **quickbrain_kwargs)
+    background = quickbrain_kwargs.pop('background', 'white')
+    result = _safe_plot_brain(quickbrain, img, cmap=cmap, vmin=vmin, vmax=vmax,
+                              background=background, extra_kwargs=quickbrain_kwargs)
     fig = result if hasattr(result, 'savefig') else plt.gcf()
     if title:
         try:
@@ -408,3 +437,186 @@ def quickbrain_outline_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
         plt.close(fig)
         return out_png
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Glass-brain rendering (nilearn plot_glass_brain — MIP montage). No optional
+# dependency: nilearn is already used by the surface path, and the volumetric
+# NIfTI comes from parcels_to_nifti. This is the transparent-brain montage
+# (lateral / posterior / dorsal projections with L/R labels + cerebellum).
+# ---------------------------------------------------------------------------
+
+def _safe_plot_glass_brain(plotting, img, *, display_mode, cmap, vmin, vmax,
+                           plot_abs, threshold, title):
+    """Call ``plot_glass_brain`` robustly across nilearn versions.
+
+    ``vmin``/``plot_abs`` were added at different releases; drop the optional
+    kwargs progressively on ``TypeError`` so the montage still renders. Mirrors
+    :func:`_safe_plot_surf`.
+    """
+    attempts = [
+        dict(display_mode=display_mode, colorbar=True, cmap=cmap, plot_abs=plot_abs,
+             vmin=vmin, vmax=vmax, threshold=threshold, title=title),
+        dict(display_mode=display_mode, colorbar=True, cmap=cmap, plot_abs=plot_abs,
+             vmax=vmax, threshold=threshold, title=title),
+        dict(display_mode=display_mode, colorbar=True, cmap=cmap, plot_abs=plot_abs,
+             title=title),
+        dict(display_mode=display_mode, colorbar=True, cmap=cmap, title=title),
+    ]
+    last = None
+    for kw in attempts:
+        kw = {k: v for k, v in kw.items() if v is not None}
+        try:
+            return plotting.plot_glass_brain(img, **kw)
+        except TypeError as e:
+            last = e
+            continue
+    raise last
+
+
+def glass_brain_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
+                    networks: int = 7, display_mode: str = 'ortho',
+                    cmap: str = 'RdBu_r', vmin: Optional[float] = None,
+                    vmax: Optional[float] = None, plot_abs: bool = False,
+                    threshold: Optional[float] = None, title: Optional[str] = None,
+                    out_png: Optional[str] = None):
+    """Render per-parcel values as a nilearn glass-brain MIP montage.
+
+    The transparent-brain projection figure: ``display_mode='ortho'`` gives the
+    three views (sagittal / coronal / axial ≈ lateral / posterior / dorsal) with
+    L/R labels and the cerebellum outline; ``'lyrz'`` adds a second lateral view.
+    Per-parcel Schaefer values are projected to a volumetric NIfTI
+    (:func:`parcels_to_nifti`). For signed data like BOLD pass a diverging
+    ``cmap`` with ``plot_abs=False`` and symmetric ``vmin=-vmax``. nilearn
+    imported lazily. Returns the PNG path (if ``out_png``) or the nilearn display.
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    from nilearn import plotting
+
+    img = parcels_to_nifti(parcel_values, n_parcels=n_parcels, networks=networks)
+    disp = _safe_plot_glass_brain(plotting, img, display_mode=display_mode,
+                                  cmap=cmap, vmin=vmin, vmax=vmax, plot_abs=plot_abs,
+                                  threshold=threshold, title=title)
+    if out_png:
+        disp.savefig(out_png, dpi=150)
+        disp.close()
+        return out_png
+    return disp
+
+
+def glass_brain_movie(parcel_values_t: np.ndarray, *,
+                      times: Optional[Sequence[float]] = None,
+                      n_parcels: int = 1000, networks: int = 7,
+                      display_mode: str = 'ortho', cmap: str = 'RdBu_r',
+                      vmin: Optional[float] = None, vmax: Optional[float] = None,
+                      plot_abs: bool = False, symmetric: bool = True,
+                      share_scale: bool = True, out_dir: Optional[str] = None,
+                      prefix: str = 'frame',
+                      title_fmt: Optional[str] = 't = {t:.1f}s'):
+    """Render an EVOLVING glass-brain MIP montage — one multi-view frame per
+    timepoint — for a sequence of per-parcel maps (e.g. measured or predicted
+    BOLD across a movie clip).
+
+    The glass-brain analogue of :func:`cortical_surface_movie`, reusing
+    :func:`glass_brain_map` per frame. ``parcel_values_t`` is ``(T, n_parcels)``
+    in canonical LH-then-RH parcel order. For signed BOLD the default
+    ``cmap='RdBu_r'`` + ``symmetric=True`` centre the diverging scale on zero;
+    with ``share_scale`` (default) one fixed scale spans the whole clip
+    (``vmax`` = 98th percentile of ``|values|`` over ALL frames, ``vmin=-vmax``)
+    so the montage shows real change over time, not per-frame renormalisation.
+    ``times`` labels each frame; ``title_fmt`` formats it. Returns the list of
+    PNG paths (when ``out_dir`` is given) or the list of nilearn displays.
+    """
+    import os
+    arr = np.asarray(parcel_values_t, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"parcel_values_t must be 2-D (T, n_parcels); got {arr.shape}")
+    if arr.shape[1] != n_parcels:
+        raise ValueError(f"expected {n_parcels} parcels per frame; got {arr.shape[1]}")
+    T = arr.shape[0]
+    if share_scale:
+        finite = arr[np.isfinite(arr)]
+        if finite.size:
+            if symmetric:
+                if vmax is None:
+                    vmax = float(np.nanpercentile(np.abs(finite), 98))
+                if vmin is None:
+                    vmin = -vmax
+            else:
+                if vmin is None:
+                    vmin = float(np.nanpercentile(finite, 2))
+                if vmax is None:
+                    vmax = float(np.nanpercentile(finite, 98))
+    times = list(times) if times is not None else list(range(T))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    frames = []
+    for i in range(T):
+        title = title_fmt.format(t=times[i]) if title_fmt else None
+        png = os.path.join(out_dir, f'{prefix}_{i:03d}.png') if out_dir else None
+        frames.append(glass_brain_map(
+            arr[i], n_parcels=n_parcels, networks=networks, display_mode=display_mode,
+            cmap=cmap, vmin=vmin, vmax=vmax, plot_abs=plot_abs, title=title,
+            out_png=png))
+    return frames
+
+
+def quickbrain_outline_movie(parcel_values_t: np.ndarray, *,
+                             times: Optional[Sequence[float]] = None,
+                             n_parcels: int = 1000, networks: int = 7,
+                             cmap: str = 'RdBu_r', vmin: Optional[float] = None,
+                             vmax: Optional[float] = None, symmetric: bool = True,
+                             share_scale: bool = True, out_dir: Optional[str] = None,
+                             prefix: str = 'frame',
+                             title_fmt: Optional[str] = 't = {t:.1f}s',
+                             **quickbrain_kwargs):
+    """Render an EVOLVING quickbrain glass-brain montage — one 3-view frame per
+    timepoint — for a sequence of per-parcel maps (e.g. measured or predicted
+    BOLD across a movie clip).
+
+    The glass-brain analogue of :func:`cortical_surface_movie`, reusing
+    :func:`quickbrain_outline_map` per frame. ``parcel_values_t`` is
+    ``(T, n_parcels)`` in canonical LH-then-RH parcel order.
+
+    For signed data like BOLD, the default ``cmap='RdBu_r'`` + ``symmetric=True``
+    centre the diverging scale on zero so warm = above-mean and cool =
+    below-mean response. With ``share_scale`` (default) a single scale is held
+    fixed across the whole clip so the montage reflects real change over time
+    rather than per-frame renormalisation: ``vmax`` is the 98th percentile of
+    ``|values|`` over ALL frames and ``vmin = -vmax`` (symmetric), or the 2nd/98th
+    percentile of the raw values (non-symmetric). ``times`` labels each frame
+    (seconds); ``title_fmt`` formats it. Returns the list of PNG paths (when
+    ``out_dir`` is given) or the list of quickbrain Figures.
+    """
+    import os
+    arr = np.asarray(parcel_values_t, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"parcel_values_t must be 2-D (T, n_parcels); got {arr.shape}")
+    if arr.shape[1] != n_parcels:
+        raise ValueError(f"expected {n_parcels} parcels per frame; got {arr.shape[1]}")
+    T = arr.shape[0]
+    if share_scale:
+        finite = arr[np.isfinite(arr)]
+        if finite.size:
+            if symmetric:
+                if vmax is None:
+                    vmax = float(np.nanpercentile(np.abs(finite), 98))
+                if vmin is None:
+                    vmin = -vmax
+            else:
+                if vmin is None:
+                    vmin = float(np.nanpercentile(finite, 2))
+                if vmax is None:
+                    vmax = float(np.nanpercentile(finite, 98))
+    times = list(times) if times is not None else list(range(T))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    frames = []
+    for i in range(T):
+        title = title_fmt.format(t=times[i]) if title_fmt else None
+        png = os.path.join(out_dir, f'{prefix}_{i:03d}.png') if out_dir else None
+        frames.append(quickbrain_outline_map(
+            arr[i], n_parcels=n_parcels, networks=networks, cmap=cmap,
+            vmin=vmin, vmax=vmax, title=title, out_png=png, **quickbrain_kwargs))
+    return frames
