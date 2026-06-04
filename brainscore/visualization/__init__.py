@@ -16,6 +16,7 @@ from .brain_map import (
     parcel_grid_heatmap,
     network_strip,
     cortical_surface_map,
+    cortical_surface_movie,
     voxel_surface_map,
     parcels_to_vertices,
     parcels_to_nifti,

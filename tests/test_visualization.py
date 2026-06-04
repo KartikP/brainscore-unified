@@ -192,3 +192,52 @@ class TestScalingOverlay:
         out = normalized_scaling_overlay(self.MODELS, scores,
                                          out_png=str(tmp_path / 'ov.png'))
         assert _png_nonempty(out)
+
+
+class TestCorticalSurfaceMovie:
+    """Orchestration of the temporal renderer — verified WITHOUT nilearn by
+    mocking the per-frame cortical_surface_map (the heavy surface render itself
+    is exercised separately on a machine with the fsaverage assets)."""
+
+    def _patch(self, monkeypatch):
+        import brainscore.visualization.brain_map as bm
+        calls = []
+
+        def fake(parcel_values, *, out_png=None, vmin=None, vmax=None, title=None, **kw):
+            calls.append({'vmin': vmin, 'vmax': vmax, 'title': title,
+                          'out_png': out_png, 'mean': float(np.nanmean(parcel_values))})
+            if out_png:
+                with open(out_png, 'w') as f:
+                    f.write('x')
+            return out_png if out_png else 'fig'
+        monkeypatch.setattr(bm, 'cortical_surface_map', fake)
+        return bm, calls
+
+    def test_one_frame_per_timepoint_with_paths(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        vals = np.random.RandomState(0).rand(7, 1000)
+        out = bm.cortical_surface_movie(vals, out_dir=str(tmp_path), prefix='bold')
+        assert len(out) == 7 and len(calls) == 7
+        assert out[0].endswith('bold_000.png') and out[6].endswith('bold_006.png')
+        assert all(os.path.exists(p) for p in out)
+
+    def test_shared_scale_is_constant_across_frames(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        vals = np.random.RandomState(1).rand(5, 1000) * np.arange(1, 6)[:, None]
+        bm.cortical_surface_movie(vals, out_dir=str(tmp_path))
+        vmins = {c['vmin'] for c in calls}; vmaxs = {c['vmax'] for c in calls}
+        assert len(vmins) == 1 and len(vmaxs) == 1          # one fixed scale for the whole clip
+        assert next(iter(vmaxs)) > next(iter(vmins))
+
+    def test_times_drive_titles(self, monkeypatch, tmp_path):
+        bm, calls = self._patch(monkeypatch)
+        bm.cortical_surface_movie(np.zeros((3, 1000)), times=[0.0, 1.5, 3.0],
+                                  out_dir=str(tmp_path), title_fmt='t = {t:.1f}s')
+        assert [c['title'] for c in calls] == ['t = 0.0s', 't = 1.5s', 't = 3.0s']
+
+    def test_bad_shape_raises(self, monkeypatch, tmp_path):
+        bm, _ = self._patch(monkeypatch)
+        with pytest.raises(ValueError, match='2-D'):
+            bm.cortical_surface_movie(np.zeros(1000), out_dir=str(tmp_path))
+        with pytest.raises(ValueError, match='parcels'):
+            bm.cortical_surface_movie(np.zeros((3, 17)), out_dir=str(tmp_path))

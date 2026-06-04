@@ -250,6 +250,54 @@ def cortical_surface_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
     return fig
 
 
+def cortical_surface_movie(parcel_values_t: np.ndarray, *, times: Optional[Sequence[float]] = None,
+                           n_parcels: int = 1000, networks: int = 7,
+                           resolution: str = 'fsaverage5', hemi: str = 'left',
+                           view: str = 'lateral', cmap: str = 'inferno',
+                           threshold: Optional[float] = None,
+                           vmin: Optional[float] = None, vmax: Optional[float] = None,
+                           share_scale: bool = True, out_dir: Optional[str] = None,
+                           prefix: str = 'frame', title_fmt: Optional[str] = 't = {t:.1f}s'):
+    """Render an EVOLVING cortical surface — one frame per timepoint — for a
+    sequence of per-parcel maps (e.g. a model's predicted BOLD across a movie
+    clip, or measured BOLD across TRs).
+
+    Reuses :func:`cortical_surface_map` for each frame. ``parcel_values_t`` is
+    ``(T, n_parcels)`` in canonical LH-then-RH parcel order. With
+    ``share_scale`` (default), a single ``vmin``/``vmax`` (2nd/98th percentile
+    over ALL frames) is held fixed across the sequence, so the animation reflects
+    real change over time rather than per-frame renormalization. ``times`` labels
+    each frame (seconds); ``title_fmt`` formats it. Returns the list of PNG paths
+    (when ``out_dir`` is given) or the list of matplotlib Figures.
+    """
+    import os
+    arr = np.asarray(parcel_values_t, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"parcel_values_t must be 2-D (T, n_parcels); got {arr.shape}")
+    if arr.shape[1] != n_parcels:
+        raise ValueError(f"expected {n_parcels} parcels per frame; got {arr.shape[1]}")
+    T = arr.shape[0]
+    if share_scale:
+        finite = arr[np.isfinite(arr)]
+        if finite.size:
+            if vmin is None:
+                vmin = float(np.nanpercentile(finite, 2))
+            if vmax is None:
+                vmax = float(np.nanpercentile(finite, 98))
+    times = list(times) if times is not None else list(range(T))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    frames = []
+    for i in range(T):
+        title = title_fmt.format(t=times[i]) if title_fmt else None
+        png = os.path.join(out_dir, f'{prefix}_{i:03d}.png') if out_dir else None
+        frames.append(cortical_surface_map(
+            arr[i], n_parcels=n_parcels, networks=networks, resolution=resolution,
+            hemi=hemi, view=view, cmap=cmap, threshold=threshold,
+            vmin=vmin, vmax=vmax, title=title, out_png=png))
+    return frames
+
+
 def voxel_surface_map(voxel_values: np.ndarray, *, resolution: str = 'fsaverage5',
                       hemi: str = 'left', view: str = 'lateral',
                       cmap: str = 'inferno', threshold: Optional[float] = None,
