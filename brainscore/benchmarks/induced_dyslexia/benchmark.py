@@ -34,6 +34,8 @@ drawings / scrambled). Our ROAR corpus has only real/pseudo *words*, so the
 contrast here is real-vs-pseudo — the discriminator-unit variant documented in
 the project's K-sweep finding. Different localizer, same API.
 """
+import dataclasses
+import os
 from typing import List, Optional
 
 import numpy as np
@@ -107,6 +109,10 @@ class InducedDyslexia(BenchmarkBase):
         region → record once and compute the same Cohen's d per layer (the core
         FunctionalSelection is single-layer only).
         """
+        # Clear any behavioral task left active by a prior reading call — otherwise
+        # process() takes the behavioral path and the localizer records choices,
+        # not neuroids. (No perturbation is active yet at localization time.)
+        candidate.reset()
         if len(layers) == 1:
             fs = FunctionalSelection(
                 recording_target=self.localizer_region,
@@ -116,6 +122,13 @@ class InducedDyslexia(BenchmarkBase):
                 n_units=self.n_units, sign='positive')
             sel = fs.resolve(candidate)
             candidate.reset()
+            # FunctionalSelection labels Selection.layer from the recorded 'layer'
+            # coord; when the assembly carries no such coord it falls back to the
+            # region name. The ablation needs the actual module path, so remap via
+            # the candidate's region_layer_map.
+            actual = candidate.region_layer_map.get(self.localizer_region)
+            if actual and sel.layer != actual:
+                sel = dataclasses.replace(sel, layer=actual)
             return [sel]
         # composite: record the whole region, split by the 'layer' coord
         candidate.start_recording(self.localizer_region)
@@ -159,6 +172,22 @@ class InducedDyslexia(BenchmarkBase):
             raise ValueError(
                 "induced-dyslexia requires a candidate with a state_change_fn "
                 "(e.g. brainscore.perturbation.build_pytorch_ablation_fn).")
+        # Disable activation caching for the whole run. Ablation changes the
+        # extracted activations but NOT the @store_xarray cache key (which is
+        # keyed by model+stimuli+layer only) — so a cached lesioned reading would
+        # poison every later read, including the baseline. Live extraction makes
+        # each condition's reading respect the perturbation state actually active.
+        _prev_cache = os.environ.get('RESULTCACHING_DISABLE')
+        os.environ['RESULTCACHING_DISABLE'] = '1'
+        try:
+            return self._score(candidate)
+        finally:
+            if _prev_cache is None:
+                os.environ.pop('RESULTCACHING_DISABLE', None)
+            else:
+                os.environ['RESULTCACHING_DISABLE'] = _prev_cache
+
+    def _score(self, candidate) -> Score:
         layers = self._region_layers(candidate)
 
         baseline_acc = self._reading_accuracy(candidate)
