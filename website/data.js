@@ -297,7 +297,25 @@ window.BSU_DATA = {
       "The readout band (~0.30–0.50) is the original benchmark's published range, NOT re-run on this 120-image subset with this scoring — it anchors the axis but isn't apples-to-apples.",
       "No bootstrap CIs yet: with 120 images, the Gemma-12B (0.146) vs Qwen-7B (0.163) gap may not be significant — read the tiers, not the decimals.",
       "Few-shot-hurts may be partly an implementation artifact of multi-image prompting (the 3B collapsed to 99% LEFT under demos); it needs an answer-line-only control before it's a fact about visual in-context learning."
-    ]
+    ],
+    "sequential": {
+      "title": "Faithful match-to-sample: what happens when the sample is actually removed",
+      "subtitle": "The montage above shows all three at once. The real human task is sequential — the sample is flashed, removed, THEN the choices appear. The Witness records that interaction step-by-step, which is the right lens here: the finding is about the sample→memory→language bottleneck, not the pixels. Qwen2.5-VL-7B, identical 2,505 trials.",
+      "trace": [
+        {"img": "assets/raj_seq_sample.png", "cap": "1 · SAMPLE shown, then removed", "kind": "img"},
+        {"text": "the model writes a description in its own words — then the sample is gone", "cap": "2 · the bottleneck (describe mode)", "kind": "text"},
+        {"img": "assets/raj_seq_choices.png", "cap": "3 · choices appear; sample is GONE → it must match from memory", "kind": "img"}
+      ],
+      "conditions": [
+        {"label": "random null", "i2n": -0.028, "kind": "null"},
+        {"label": "describe — sample removed, choose from own words", "i2n": 0.097, "kind": "seq"},
+        {"label": "recall — sample retained in context", "i2n": 0.170, "kind": "seq"},
+        {"label": "simultaneous montage (current)", "i2n": 0.163, "kind": "sim"}
+      ],
+      "kindColors": {"null": "#9aa6b8", "seq": "#7c4dff", "sim": "#2f6bff"},
+      "reading": "Removing the sample is what costs — not sequential presentation. The only TRULY faithful condition (describe: sample gone, decision rides on the model's own words) drops i2n to 0.097, ~40% below the rest — the description discards visual detail the match needs (descriptions were fluent, e.g. 'a sculpture of a person in mid-air, diving or jumping'; parse-miss 5/2505). recall (0.170) ≈ simultaneous (0.163): when the sample stays attendable, splitting it into a separate turn is essentially free — so our montage isn't inflating the score by co-displaying.",
+      "caveat": "The small recall>simultaneous edge is likely side-bias-inflated (recall ran frac-left 0.617 vs simultaneous's balanced 0.465) — read them as equal. recall isn't a true removal (sample stays in the KV cache), so describe is the load-bearing faithful condition. Raw i2n (human ceiling ≈ 0.449); a side-balanced re-run would tighten recall."
+    }
   },
   "gemma_scorecard": {
     "title": "Gemma-4-12B across the capabilities — one model, one interface",

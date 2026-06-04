@@ -456,6 +456,35 @@
       $('raj-caveats').innerHTML = '<h3 class="caveat-h">What this does NOT yet establish</h3>' +
         raj.caveats.map(c => `<div class="raj-caveat">${c}</div>`).join('');
     }
+
+    // ---- sequential vs simultaneous (Witness-style trace + score bars) ----
+    if (raj.sequential) {
+      const sq = raj.sequential;
+      $('raj-seq-title').textContent = sq.title;
+      $('raj-seq-sub').textContent = sq.subtitle;
+      $('raj-seq-reading').textContent = sq.reading;
+      $('raj-seq-trace').innerHTML = sq.trace.map((s, i) => {
+        const card = s.kind === 'text'
+          ? `<div class="seq-card seq-textcard"><div class="pt">${s.text}</div><figcaption>${s.cap}</figcaption></div>`
+          : `<figure class="seq-card"><img src="${s.img}?v=1" alt="${s.cap}"/><figcaption>${s.cap}</figcaption></figure>`;
+        return (i ? '<span class="percept-arrow">→</span>' : '') + card;
+      }).join('');
+      const sc = sq.conditions.slice().sort((a, b) => a.i2n - b.i2n);
+      const bar = {
+        type: 'bar', orientation: 'h', y: sc.map(c => c.label), x: sc.map(c => c.i2n),
+        marker: { color: sc.map(c => sq.kindColors[c.kind] || '#888') },
+        hovertemplate: '%{y}: i2n %{x:.3f}<extra></extra>',
+      };
+      const lay = Object.assign({}, LAYOUT, {
+        height: 300, margin: { l: 230, r: 24, t: 14, b: 40 }, showlegend: false,
+        yaxis: Object.assign({}, LAYOUT.yaxis, { automargin: true }),
+        xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw)', range: [-0.06, 0.22] }),
+      });
+      Plotly.react('raj-seq-plot', [bar], lay, CFG);
+      if (sq.caveat) {
+        $('raj-seq-caveat').innerHTML = '<div class="raj-caveat">' + sq.caveat + '</div>';
+      }
+    }
   }
 
   function mean(a){ return a.reduce((x, y) => x + y, 0) / a.length; }

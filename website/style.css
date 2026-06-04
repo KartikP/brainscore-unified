@@ -217,6 +217,16 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .percept-textcard.percept-final{border-color:var(--accent); box-shadow:0 0 0 2px rgba(47,107,255,.18)}
 @media(max-width:760px){.percept-trip img{height:auto; width:46%} .percept-arrow{display:none}}
 
+/* sequential 2-AFC — Witness-style step trace */
+.seq-trace{display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin:14px 0 26px}
+.seq-card{margin:0; text-align:center; flex:0 1 260px}
+.seq-card img{width:100%; max-width:260px; border-radius:8px; border:1px solid var(--line); background:#fff}
+.seq-card figcaption{color:var(--muted); font-size:.8rem; margin-top:8px}
+.seq-textcard{background:#0e1422; border:1px solid var(--accent); border-radius:8px; padding:16px 14px;
+  align-self:stretch; display:flex; flex-direction:column; justify-content:center}
+.seq-textcard .pt{color:#dbe3f2; font-size:.92rem; line-height:1.5; font-style:italic}
+@media(max-width:760px){.seq-trace .percept-arrow{display:none} .seq-card{flex-basis:46%}}
+
 /* rajalingham 2-AFC */
 .raj-montages{margin:0 0 26px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:18px}
 #raj-montage-imgs{display:flex; gap:16px; flex-wrap:wrap; justify-content:center}
