@@ -377,37 +377,33 @@
     Plotly.react('shift-plot', [curve], lay, CFG);
   }
 
-  // ---- movie + audio + text -> evolving fMRI BOLD ----
+  // ---- real Algonauts clip -> model-predicted fMRI, evolving on the cortex ----
   if (D.movie_brain) {
     const mb = D.movie_brain;
     $('mb-title').textContent = mb.title;
     $('mb-sub').textContent = mb.subtitle;
     setReading('mb-reading', mb.reading);
-    $('mb-wave').src = mb.waveform + '?v=1';
-    $('mb-legend').innerHTML = mb.legend.map(l =>
-      `<span class="mb-leg"><i style="background:${l.color}"></i>${l.name}</span>`).join('');
+    if (mb.note) $('mb-note').innerHTML = mb.note;
     if (mb.caption) $('mb-caption').innerHTML =
       '<h3 class="caveat-h">How to read this</h3><div class="raj-caveat">' + mb.caption + '</div>';
-    const scrub = $('mb-scrub'); scrub.max = mb.n - 1;
-    const pad = i => String(i).padStart(2, '0');
+    const pad = i => String(i).padStart(3, '0');
+    const bust = '?v=' + (mb.cachebust || '1');
     function setFrame(i) {
       i = Math.max(0, Math.min(mb.n - 1, i));
-      $('mb-movie').src = mb.movie + pad(i) + '.png?v=1';
-      $('mb-bold').src = mb.bold + pad(i) + '.png?v=1';
+      $('mb-human').src = mb.human + pad(i) + '.png' + bust;
+      $('mb-model').src = mb.model + pad(i) + '.png' + bust;
       $('mb-transcript').innerHTML = mb.transcript.map((w, j) =>
         `<span class="${j === i ? 'mb-word-on' : ''}">${w}</span>`).join(' ');
-      $('mb-playhead').style.left = (100 * i / (mb.n - 1)) + '%';
-      $('mb-time').textContent = i + 's / ' + (mb.n - 1) + 's';
-      scrub.value = i;
     }
-    let mi = 0, mtimer = null;
-    const mstop = () => { if (mtimer) { clearInterval(mtimer); mtimer = null; $('mb-play').textContent = '▶ play'; } };
-    const mplay = () => { mtimer = setInterval(() => { mi = (mi + 1) % mb.n; setFrame(mi); }, 850); $('mb-play').textContent = '❚❚ pause'; };
     setFrame(0);
-    $('mb-play').onclick = () => { mtimer ? mstop() : mplay(); };
-    scrub.oninput = () => { mstop(); mi = +scrub.value; setFrame(mi); };
-    const mbReduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (!mbReduce) mplay();      // autostart the loop
+    // Both brain montages + transcript follow the video's playhead (1 frame per TR).
+    const vid = $('mb-video');
+    if (vid) {
+      vid.src = mb.video + bust;
+      const sync = () => setFrame(Math.floor(vid.currentTime / mb.tr_sec));
+      vid.addEventListener('timeupdate', sync);
+      vid.addEventListener('seeked', sync);
+    }
   }
 
   // ---- limitations ----

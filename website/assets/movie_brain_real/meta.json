@@ -1,0 +1,29 @@
+{
+  "segment": "friends_s01e02a",
+  "tr_sec": 1.49,
+  "win_start": 20,
+  "win_n": 7,
+  "tw": [
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26
+  ],
+  "times": [
+    29.8,
+    31.3,
+    32.8,
+    34.3,
+    35.8,
+    37.2,
+    38.7
+  ],
+  "renderer": "glass",
+  "video_features": "video_features_vjepa2.npz",
+  "transcript": null,
+  "clip_start_sec": 29.8,
+  "clip_dur_sec": 10.43
+}

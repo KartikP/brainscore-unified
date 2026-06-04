@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Brain-Score · Unified Model Interface</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<link rel="stylesheet" href="style.css?v=7" />
+<link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
 <nav class="nav">
@@ -93,23 +93,21 @@
 <section id="moviebrain" class="section alt">
   <h2 id="mb-title"></h2>
   <p class="lead" id="mb-sub"></p>
-  <div class="mb-wrap">
-    <div class="mb-col">
-      <figure class="mb-fig"><img id="mb-movie" alt="movie frame" />
-        <figcaption>the clip — picture + sound + speech (what goes in)</figcaption></figure>
-      <div class="mb-wave"><img id="mb-wave" alt="audio waveform" /><div id="mb-playhead"></div></div>
-      <div class="mb-transcript" id="mb-transcript"></div>
-      <div class="mb-controls">
-        <button id="mb-play" class="play-new">▶ play</button>
-        <input type="range" id="mb-scrub" min="0" max="10" value="0" />
-        <span class="muted small" id="mb-time"></span>
-      </div>
-    </div>
-    <div class="mb-col">
-      <figure class="mb-fig"><img id="mb-bold" alt="predicted fMRI BOLD" />
-        <figcaption>predicted fMRI response, evolving across the cortex (what comes out)</figcaption></figure>
-      <div class="mb-legend" id="mb-legend"></div>
-    </div>
+  <div class="mb-stack">
+    <figure class="mb-fig mb-video-fig">
+      <video id="mb-video" controls playsinline preload="metadata"></video>
+      <figcaption>the real Algonauts clip — picture + sound + dialogue (what goes in)</figcaption>
+    </figure>
+    <div class="mb-transcript" id="mb-transcript"></div>
+    <figure class="mb-fig mb-brain-fig">
+      <figcaption class="mb-brainlabel mb-human-lbl">Human — subject&nbsp;1's <b>recorded</b> fMRI (ground truth)</figcaption>
+      <img id="mb-human" alt="recorded fMRI response, glass brain (3 views)" />
+    </figure>
+    <figure class="mb-fig mb-brain-fig">
+      <figcaption class="mb-brainlabel mb-model-lbl">Model — <b>predicted</b> fMRI (held-out, never trained on this clip)</figcaption>
+      <img id="mb-model" alt="predicted fMRI response, glass brain (3 views)" />
+    </figure>
+    <p class="muted small" id="mb-note"></p>
   </div>
   <p class="reading" id="mb-reading"></p>
   <div class="raj-caveats" id="mb-caption"></div>
@@ -323,8 +321,8 @@
   <div class="muted small" id="provenance"></div>
 </footer>
 
-<script src="data.js?v=7"></script>
-<script src="app.js?v=7"></script>
+<script src="data.js?v=10"></script>
+<script src="app.js?v=10"></script>
 <script src="model_moves.js?v=2"></script>
 <script src="game.js?v=2"></script>
 </body>

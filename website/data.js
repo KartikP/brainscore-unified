@@ -99,20 +99,19 @@ window.BSU_DATA = {
     "reading": "The single most load-bearing validity check, now run on real brain data — not a unit test. The brain's blood-flow signal (the BOLD response an fMRI scanner measures) lags the underlying neural activity by a few seconds — the hemodynamic lag — so the model's per-moment features only line up with the recorded scans if you shift them forward by that lag. Slide the features earlier or later in time and prediction **peaks exactly at the true lag (+3 scans ≈ 4.5 s) and collapses toward the shuffle floor (chance) when mis-timed** — in both directions. A flat curve would mean the 'alignment' never carried real stimulus-locked signal. It is not flat. ('true delay' = that hemodynamic lag; the dashed floor is what you get after shuffling the timing away entirely.)"
   },
   "movie_brain": {
-    "title": "Watch a model watch a movie — and the cortex light up",
-    "subtitle": "An 11-second clip — picture, sound, and speech — goes in; the model's predicted fMRI response plays out across the cortex as the clip runs. The back of the brain (visual cortex) tracks the picture, the side (auditory cortex) tracks the sound, and the language network lights up on the words. Press play, or drag the slider.",
-    "n": 11,
-    "movie": "assets/movie_brain/movie_",
-    "bold": "assets/movie_brain/bold_",
-    "waveform": "assets/movie_brain/waveform.png",
-    "transcript": ["a", "quiet", "street", "at", "dusk", "—", "a car", "passes", "by", "and", "fades"],
-    "legend": [
-      {"name": "visual cortex (the picture)", "color": "#1f9d57"},
-      {"name": "auditory cortex (the sound)", "color": "#e0a13b"},
-      {"name": "language network (the words)", "color": "#d8483b"}
-    ],
-    "reading": "**One model, one clip, three modalities — and the brain response unrolling in time.** This is the temporal-multimodal pipeline end to end: each second of video, audio, and transcript becomes model features, those features are shifted by the brain's hemodynamic lag, and a per-region readout predicts the fMRI response at that moment. As the clip plays you can see prediction move across the cortex — strong at the back while the scene changes, on the side as the sound swells, toward the front on the spoken words.",
-    "caption": "Illustrative. The cortical pattern shown here is synthesised to mirror the real pipeline (per-second features → hemodynamic lag → per-region prediction) so the concept is legible end-to-end; the real per-second predictions over a true clip are computed on EC2 against recorded fMRI (Lahner2024 / Algonauts), not in the browser."
+    "title": "Watch a model watch a movie — next to the real brain that watched it",
+    "subtitle": "A real 10-second clip from the Algonauts 2025 dataset (Friends, s01e02) — picture, sound, and dialogue — goes in. A model-to-brain encoding model predicts subject 1's fMRI response (the bottom brain), shown next to that same subject's actually-recorded response (the top brain). Both play back on a nilearn glass brain (three views — lateral, posterior, dorsal; 1000 cortical parcels) as the clip runs. Press play — both brains update with the video.",
+    "video": "assets/movie_brain_real/clip.mp4",
+    "human": "assets/movie_brain_real/human/bold_",
+    "model": "assets/movie_brain_real/model/bold_",
+    "n": 7,
+    "tr_sec": 1.49,
+    "cachebust": "10",
+    "transcript": ["Yeah, and it's not that we", "don't like the", "comedian. It's just that", "that's", "not why we bought the", "ticket.", "You see,"],
+    "times": [29.8, 31.3, 32.8, 34.3, 35.8, 37.2, 38.7],
+    "note": "Warm (red) = activity above this clip's baseline, cool (blue) = below. <b>Each brain carries its own scale bar</b> — the model's predicted response is regularized, so its magnitudes are smaller than the recorded response; the comparison to make is the <b>spatial pattern</b>, not the absolute color. <b>The two brains share a clock; both lag the movie by the brain's ~4.5 s hemodynamic delay</b> (see below).",
+    "reading": "**A real movie clip in; one subject's recorded brain response and the model's held-out prediction out, side by side, unrolling in time.** This is the temporal-multimodal pipeline end to end on real data: each moment of video → **V-JEPA-2** features (the video backbone family that won Algonauts 2025), sound → Wav2Vec2, dialogue → MiniLM; a banded-ridge encoding model (fit on the *other* Friends episodes) shifts them by the brain's hemodynamic lag and predicts subject 1's response in all 1000 cortical parcels per scan; and the new `glass_brain_movie` Brain-Score tool renders each scan. **Do the model and the brain need lining up in time? No — they already share a clock.** The recorded BOLD carries the ~4.5 s hemodynamic lag physiologically, and the encoding model builds that *same* lag into its design matrix, so they are directly comparable at each scan. Both lag the *movie* by that delay — so each brain map is the response to what was on screen a few seconds earlier.",
+    "caption": "Real human vs. model. The clip is one <b>held-out</b> Friends segment — the encoding model was fit on the other segments, so the bottom brain is a genuine prediction, never trained on this clip; the top brain is subject 1's recorded fMRI for the exact same scans. <b>Neither is time-shifted relative to the other</b> (both already include the hemodynamic lag); to see the brain respond to the precise frame on screen you would advance the movie ~3 scans (~4.5 s) ahead of the brains. The Friends footage is from the Algonauts 2025 / Courtois NeuroMod dataset — internal research demo only, not for redistribution. (TR = 1.49 s; 7 scans ≈ 10.4 s.)"
   },
   "nulls": {
     "description": "Matched nulls are DEFINED for every capability and run through the same pipeline with the signal destroyed in one specific way. Floors are MEASURED for neural encoding and behavior; the temporal-shift null was run on real 50k-TR Algonauts BOLD (shuffle floor ≈ 0.009; score peaks at the true HRF delay and collapses when mis-timed — see the curve above).",
