@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Brain-Score · Unified Model Interface</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<link rel="stylesheet" href="style.css?v=10" />
+<link rel="stylesheet" href="style.css?v=11" />
 </head>
 <body>
 <nav class="nav">
@@ -99,14 +99,16 @@
       <figcaption>the real Algonauts clip — picture + sound + dialogue (what goes in)</figcaption>
     </figure>
     <div class="mb-transcript" id="mb-transcript"></div>
-    <figure class="mb-fig mb-brain-fig">
-      <figcaption class="mb-brainlabel mb-human-lbl">Human — subject&nbsp;1's <b>recorded</b> fMRI (ground truth)</figcaption>
-      <img id="mb-human" alt="recorded fMRI response, glass brain (3 views)" />
-    </figure>
-    <figure class="mb-fig mb-brain-fig">
-      <figcaption class="mb-brainlabel mb-model-lbl">Model — <b>predicted</b> fMRI (held-out, never trained on this clip)</figcaption>
-      <img id="mb-model" alt="predicted fMRI response, glass brain (3 views)" />
-    </figure>
+    <div class="mb-brain-row">
+      <figure class="mb-fig mb-brain-fig">
+        <figcaption class="mb-brainlabel mb-human-lbl">Human — subject&nbsp;1's <b>recorded</b> fMRI (ground truth)</figcaption>
+        <img id="mb-human" alt="recorded fMRI response, glass brain (3 views)" />
+      </figure>
+      <figure class="mb-fig mb-brain-fig">
+        <figcaption class="mb-brainlabel mb-model-lbl">Model — <b>predicted</b> fMRI (held-out, never trained on this clip)</figcaption>
+        <img id="mb-model" alt="predicted fMRI response, glass brain (3 views)" />
+      </figure>
+    </div>
     <p class="muted small" id="mb-note"></p>
   </div>
   <p class="reading" id="mb-reading"></p>

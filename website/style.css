@@ -225,7 +225,8 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .mb-stack{display:flex; flex-direction:column; align-items:center; gap:18px; margin-top:8px}
 .mb-stack .mb-video-fig{width:100%; max-width:520px}
 .mb-stack .mb-transcript{width:100%; max-width:520px; text-align:center}
-.mb-stack .mb-brain-fig{width:100%; max-width:760px}
+.mb-brain-row{display:flex; flex-wrap:wrap; gap:18px; justify-content:center; width:100%; max-width:920px}
+.mb-brain-row .mb-brain-fig{flex:1 1 0; min-width:280px; max-width:440px}
 .mb-fig{margin:0}
 .mb-fig img, .mb-fig video{width:100%; border-radius:10px; border:1px solid var(--line); background:#000; display:block}
 .mb-brain-fig img{background:#fff}
