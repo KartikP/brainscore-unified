@@ -189,10 +189,18 @@
   // ---- scaling curves ----
   const scKeys = Object.keys(D.scaling);
   const scTabs = $('scaling-tabs');
+  // Distinct tab labels — several capabilities are "Neural encoding"; show the
+  // specific target (IT cortex / language / video) so the buttons aren't identical.
+  function scTabLabel(cap) {
+    const parts = cap.split('—').map(s => s.trim());
+    if (parts.length < 2) return parts[0];
+    const spec = parts[1].split('(')[0].split(',')[0].trim();
+    return parts[0].startsWith('Neural') ? 'Neural · ' + spec : parts[0];
+  }
   scKeys.forEach((k, i) => {
     const b = document.createElement('button');
     b.className = 'tog' + (i === 0 ? ' active' : '');
-    b.textContent = D.scaling[k].capability.split('—')[0].trim();
+    b.textContent = scTabLabel(D.scaling[k].capability);
     b.onclick = () => drawScaling(k, b);
     scTabs.appendChild(b);
   });
@@ -271,12 +279,17 @@
     const lay = Object.assign({}, LAYOUT, {
       showlegend: true,
       legend: { x: 0.02, y: 0.12, font: { size: 10 }, bgcolor: 'rgba(0,0,0,0)' },
-      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'ROAR accuracy', range: [0.45, 1.05] }),
-      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'units ablated (% of MLP gate_proj)',
-        range: [-1.5, Math.max(...a.mask_pct) + 2.5], autorange: false }),
-      shapes: [{ type: 'line', x0: -1, x1: Math.max(...a.mask_pct) + 2, y0: a.threshold, y1: a.threshold,
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'reading accuracy (ROAR test)', range: [0.45, 1.05] }),
+      // autorange so the points fill the width (the explicit range was squeezing
+      // them into the left third); de-jargoned axis title.
+      xaxis: Object.assign({}, LAYOUT.xaxis, {
+        title: "word-recognition units switched off (% of the layer's filters)",
+        type: 'linear', nticks: 7, autorange: true }),
+      // threshold is a horizontal reference — span the FULL width via paper coords
+      // so it never depends on the data range.
+      shapes: [{ type: 'line', xref: 'paper', x0: 0, x1: 1, y0: a.threshold, y1: a.threshold,
         line: { color: '#e0a13b', width: 1.5, dash: 'dash' } }],
-      annotations: [{ x: Math.max(...a.mask_pct), y: a.threshold, yanchor: 'bottom', xanchor: 'right',
+      annotations: [{ xref: 'paper', x: 0.98, y: a.threshold, yanchor: 'bottom', xanchor: 'right',
         text: 'dyslexia threshold (0.65)', showarrow: false, font: { color: '#e0a13b', size: 10 } }],
     });
     Plotly.react('ablation-plot', [vwf, rnd], lay, CFG);
@@ -315,23 +328,27 @@
       line: { color: '#3bb273', width: 3 }, marker: { size: 9, color: '#3bb273' },
       hovertemplate: 'delay %{x} TRs: r=%{y:.3f}<extra></extra>',
     };
-    const floor = {
-      x: tv.shifts, y: tv.shifts.map(() => tv.shuffle_floor), type: 'scatter',
-      mode: 'lines', line: { color: '#d8483b', width: 1.5, dash: 'dash' }, hoverinfo: 'skip',
-    };
     const lay = Object.assign({}, LAYOUT, {
-      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'median per-parcel r', rangemode: 'tozero' }),
-      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'HRF delay applied (TRs) — true ≈ +3' }),
-      shapes: [{ type: 'line', x0: tv.true_delay, x1: tv.true_delay, y0: 0, y1: Math.max(...tv.scores),
-        line: { color: '#5b8cff', width: 1.5, dash: 'dot' } }],
+      yaxis: Object.assign({}, LAYOUT.yaxis, { title: 'brain-prediction accuracy (median r)', rangemode: 'tozero' }),
+      // linear axis so the delays sit at their true spacing and span the full width
+      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'time-shift applied to the model features (brain scans; 1 scan ≈ 1.5 s)',
+        type: 'linear', nticks: 9 }),
+      shapes: [
+        // shuffle floor: horizontal reference spanning the FULL width (paper coords)
+        { type: 'line', xref: 'paper', x0: 0, x1: 1, y0: tv.shuffle_floor, y1: tv.shuffle_floor,
+          line: { color: '#d8483b', width: 1.5, dash: 'dash' } },
+        // true delay: vertical line at the real brain lag (lands on the peak)
+        { type: 'line', x0: tv.true_delay, x1: tv.true_delay, y0: 0, y1: Math.max(...tv.scores),
+          line: { color: '#5b8cff', width: 1.5, dash: 'dot' } },
+      ],
       annotations: [
-        { x: tv.true_delay, y: Math.max(...tv.scores), yanchor: 'bottom', text: 'true delay',
+        { x: tv.true_delay, y: Math.max(...tv.scores), yanchor: 'bottom', text: 'true brain lag (+3)',
           showarrow: false, font: { color: '#5b8cff', size: 11 } },
-        { x: tv.shifts[tv.shifts.length - 1], y: tv.shuffle_floor, yanchor: 'bottom', xanchor: 'right',
+        { xref: 'paper', x: 0.98, y: tv.shuffle_floor, yanchor: 'bottom', xanchor: 'right',
           text: 'shuffle floor', showarrow: false, font: { color: '#d8483b', size: 11 } },
       ],
     });
-    Plotly.react('shift-plot', [floor, curve], lay, CFG);
+    Plotly.react('shift-plot', [curve], lay, CFG);
   }
 
   // ---- limitations ----
@@ -395,7 +412,11 @@
         : '';
     }
     const want = (location.hash.match(/ptab=([\w-]+)/) || [])[1];
-    p.tabs.forEach((tab, i) => {
+    // Display order: Rajalingham 2-AFC first, then multimodal, then resize & crop.
+    const tabOrder = ['rajalingham', 'multimodal', 'crop'];
+    const tabs = p.tabs.slice().sort(
+      (a, b) => tabOrder.indexOf(a.id) - tabOrder.indexOf(b.id));
+    tabs.forEach((tab, i) => {
       const b = document.createElement('button');
       b.className = 'tog';
       b.textContent = tab.label;
@@ -430,14 +451,14 @@
       hovertemplate: '%{y}: i2n %{x:.3f}<extra></extra>',
     };
     const lay = Object.assign({}, LAYOUT, {
-      height: 430, margin: { l: 195, r: 24, t: 16, b: 44 }, showlegend: false,
+      height: 430, margin: { l: 195, r: 28, t: 16, b: 44 }, showlegend: false,
       yaxis: Object.assign({}, LAYOUT.yaxis, { automargin: true }),
-      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw, vs human pool)', range: [-0.05, 0.36],
-        tickmode: 'array', tickvals: [0, 0.1, 0.2, 0.3], ticktext: ['0', '0.1', '0.2', '0.3'], tickangle: 0 }),
-      shapes: [{ type: 'line', x0: raj.binary_ceiling, x1: raj.binary_ceiling, y0: -0.5, y1: labels.length - 0.5,
-        line: { color: '#1f9d57', width: 1, dash: 'dot' } }],
-      annotations: [{ x: raj.binary_ceiling, y: labels.length - 0.5, text: 'binary-chooser ceiling',
-        showarrow: false, font: { size: 10, color: '#1f9d57' }, xanchor: 'right', yanchor: 'bottom' }],
+      // autorange to fit the bars (max ~0.16) so they fill the width; ~8 clean
+      // auto-ticks. The 0.33 binary-chooser ceiling lives in the caption instead
+      // of a plot line — drawing it forced the axis out to 0.33 and squeezed the
+      // bars into the left third.
+      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw, vs human pool)',
+        type: 'linear', nticks: 8, tickformat: '.2f', zeroline: true, zerolinecolor: '#c2cadb' }),
     });
     Plotly.react('raj-plot', [bar], lay, CFG);
     $('raj-table').innerHTML =
@@ -488,10 +509,10 @@
         hovertemplate: '%{y}: i2n %{x:.3f}<extra></extra>',
       };
       const lay = Object.assign({}, LAYOUT, {
-        height: 300, margin: { l: 230, r: 24, t: 14, b: 40 }, showlegend: false,
+        height: 300, margin: { l: 230, r: 28, t: 14, b: 40 }, showlegend: false,
         yaxis: Object.assign({}, LAYOUT.yaxis, { automargin: true }),
-        xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw)', range: [-0.06, 0.22],
-          tickmode: 'array', tickvals: [0, 0.1, 0.2], ticktext: ['0', '0.1', '0.2'], tickangle: 0 }),
+        xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw)',
+          type: 'linear', nticks: 7, tickformat: '.2f', zeroline: true, zerolinecolor: '#c2cadb' }),
       });
       Plotly.react('raj-seq-plot', [bar], lay, CFG);
       if (sq.caveat) {
