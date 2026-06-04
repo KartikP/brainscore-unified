@@ -106,10 +106,10 @@ window.BSU_DATA = {
     "model": "assets/movie_brain_real/model/bold_",
     "n": 7,
     "tr_sec": 1.49,
-    "cachebust": "10",
+    "cachebust": "13",
     "transcript": ["Yeah, and it's not that we", "don't like the", "comedian. It's just that", "that's", "not why we bought the", "ticket.", "You see,"],
     "times": [29.8, 31.3, 32.8, 34.3, 35.8, 37.2, 38.7],
-    "note": "Warm (red) = activity above this clip's baseline, cool (blue) = below. <b>Each brain carries its own scale bar</b> — the model's predicted response is regularized, so its magnitudes are smaller than the recorded response; the comparison to make is the <b>spatial pattern</b>, not the absolute color. <b>The two brains share a clock; both lag the movie by the brain's ~4.5 s hemodynamic delay</b> (see below).",
+    "note": "Warm (red) = activity above this clip's baseline, cool (blue) = below. <b>Both brains share one color scale, in standard-deviation units</b> (each stream normalized to its own variance), so the <b>spatial pattern</b> compares directly. In raw units the model's predicted response is ~5× smaller — the ridge prediction is regularized — so the honest magnitude gap lives in the held-out correlation (r ≈ 0.25), not in the color. <b>The two brains also share a clock; both lag the movie by the brain's ~4.5 s hemodynamic delay</b> (see below).",
     "reading": "**A real movie clip in; one subject's recorded brain response and the model's held-out prediction out, side by side, unrolling in time.** This is the temporal-multimodal pipeline end to end on real data: each moment of video → **V-JEPA-2** features (the video backbone family that won Algonauts 2025), sound → Wav2Vec2, dialogue → MiniLM; a banded-ridge encoding model (fit on the *other* Friends episodes) shifts them by the brain's hemodynamic lag and predicts subject 1's response in all 1000 cortical parcels per scan; and the new `glass_brain_movie` Brain-Score tool renders each scan. **Do the model and the brain need lining up in time? No — they already share a clock.** The recorded BOLD carries the ~4.5 s hemodynamic lag physiologically, and the encoding model builds that *same* lag into its design matrix, so they are directly comparable at each scan. Both lag the *movie* by that delay — so each brain map is the response to what was on screen a few seconds earlier.",
     "caption": "Real human vs. model. The clip is one <b>held-out</b> Friends segment — the encoding model was fit on the other segments, so the bottom brain is a genuine prediction, never trained on this clip; the top brain is subject 1's recorded fMRI for the exact same scans. <b>Neither is time-shifted relative to the other</b> (both already include the hemodynamic lag); to see the brain respond to the precise frame on screen you would advance the movie ~3 scans (~4.5 s) ahead of the brains. The Friends footage is from the Algonauts 2025 / Courtois NeuroMod dataset — internal research demo only, not for redistribution. (TR = 1.49 s; 7 scans ≈ 10.4 s.)"
   },
@@ -232,7 +232,7 @@ window.BSU_DATA = {
   ],
   "witness": {
     "title": "Watch Brain-Score evaluate a model",
-    "subtitle": "Every capability funnels through one method — process(input_event). Instrument that single chokepoint once and you can witness ANY benchmark run: what the model saw (rendered per modality), what it did (activations, probabilities, a generated answer, an action), and in what mode. These are real recorded process() calls — no benchmark-specific code.",
+    "subtitle": "Every capability funnels through one method — process(input_event). Because every benchmark passes through that one method, watching it is enough to see ANY of them run: what the model saw (rendered per modality), what it did (activations, probabilities, a generated answer, an action), and in what mode. These are real recorded process() calls — no benchmark-specific code.",
     "modes": ["neural", "readout", "generation", "action", "state_change"],
     "panels": [
       {"img": "assets/witness_game_0.png", "caption": "Embodied · process(EnvironmentStep): the policy sees the rendered frame and the Witness logs what it DID — action → down. Recorded straight off the grid-game rollout, no benchmark-specific code."},

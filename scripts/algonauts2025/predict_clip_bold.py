@@ -55,6 +55,13 @@ def main():
     ap.add_argument('--video_features', default=f'{BR}/video_features_vjepa2.npz')
     ap.add_argument('--renderer', default='glass',
                     choices=['glass', 'quickbrain', 'surface'])
+    ap.add_argument('--per_stream_scale', action='store_true',
+                    help='give human and model each its own color scale '
+                         '(default: one shared scale across both)')
+    ap.add_argument('--no_standardize', action='store_true',
+                    help='shared scale in RAW BOLD units (model renders faint). '
+                         'Default: z-score each stream to its own variance so the '
+                         'shared scale is in SD units and both patterns stay vivid.')
     ap.add_argument('--out', default='/tmp/clipdemo')
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -169,20 +176,46 @@ def main():
         log(f'window pred-vs-recorded median per-parcel r = {np.nanmedian(pc):.3f}')
 
     times = [round(float(t * args.tr_sec), 1) for t in tw[sel]]
-    log(f'render human + model ({args.renderer})...')
+    pred_r, gt_r = pred, gt
+    if args.per_stream_scale:
+        shared, unit = {}, 'per-stream'
+    else:
+        # Default: standardize each stream to its OWN variance, then a single
+        # shared symmetric scale in SD units. This is a genuine common scale
+        # (identical colorbar for both) that keeps BOTH spatial patterns vivid —
+        # the model's ridge predictions are ~5x smaller in raw units, so a shared
+        # RAW scale washes the model out. The magnitude gap stays honest via the
+        # reported r and the note; the maps compare PATTERN. --no_standardize
+        # falls back to a shared RAW scale.
+        if not args.no_standardize:
+            def _z(a):
+                f = a[np.isfinite(a)]
+                m = float(np.nanmean(f)) if f.size else 0.0
+                s = float(np.nanstd(f)) if f.size else 1.0
+                return (a - m) / (s if s > 1e-8 else 1.0)
+            pred_r, gt_r = _z(pred), _z(gt)
+            unit = 'SD'
+        else:
+            unit = 'raw'
+        both = np.concatenate([pred_r, gt_r], axis=0)
+        finite = both[np.isfinite(both)]
+        M = float(np.nanpercentile(np.abs(finite), 98)) if finite.size else 1.0
+        shared = dict(vmin=-M, vmax=M)
+        log(f'  shared {unit} scale: ±{M:.3f}')
+    log(f'render human + model ({args.renderer}, scale={unit})...')
     if args.renderer == 'glass':
         from brainscore.visualization import glass_brain_movie as render
         kw = dict(cmap='RdBu_r', display_mode='ortho', symmetric=True,
-                  share_scale=True, n_parcels=1000)
+                  share_scale=True, n_parcels=1000, **shared)
     elif args.renderer == 'quickbrain':
         from brainscore.visualization import quickbrain_outline_movie as render
-        kw = dict(cmap='RdBu_r', symmetric=True, share_scale=True, n_parcels=1000)
+        kw = dict(cmap='RdBu_r', symmetric=True, share_scale=True, n_parcels=1000, **shared)
     else:
         from brainscore.visualization import cortical_surface_movie as render
-        kw = dict(cmap='turbo', n_parcels=1000, hemi='left', view='lateral')
-    render(pred, times=times, out_dir=f'{args.out}/model', prefix='bold',
+        kw = dict(cmap='turbo', n_parcels=1000, hemi='left', view='lateral', **shared)
+    render(pred_r, times=times, out_dir=f'{args.out}/model', prefix='bold',
            title_fmt='model  ·  t = {t:.1f}s', **kw)
-    render(gt, times=times, out_dir=f'{args.out}/human', prefix='bold',
+    render(gt_r, times=times, out_dir=f'{args.out}/human', prefix='bold',
            title_fmt='human  ·  t = {t:.1f}s', **kw)
 
     transcript = None
