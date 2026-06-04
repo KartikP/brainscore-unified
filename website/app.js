@@ -414,7 +414,15 @@
     $('raj-reading').textContent = raj.reading;
     $('raj-montage-imgs').innerHTML = raj.montages.map(m =>
       `<img src="${m}?v=1" alt="2-AFC montage" />`).join('');
-    const rr = raj.rows.slice().sort((a, b) => a.i2n - b.i2n);
+    // Group by model family (modes kept adjacent), families ordered by scale with
+    // the null floor at the bottom — so within-model elicitation effects (direct vs
+    // CoT vs few-shot) AND the cross-scale trend are both readable. Colour still
+    // encodes the paradigm (kind), so 'all direct bars' etc. remain scannable.
+    const famOrder = ['random null', 'CLIP', 'Qwen-VL-3B', 'Qwen-VL-7B', 'Gemma-4-12B'];
+    const modeRank = { null: 0, feature: 0, direct: 1, cot: 2, fewshot: 3 };
+    const fam = m => { const i = famOrder.indexOf(m); return i < 0 ? 99 : i; };
+    const rr = raj.rows.slice().sort((a, b) =>
+      fam(a.model) - fam(b.model) || (modeRank[a.kind] ?? 9) - (modeRank[b.kind] ?? 9));
     const labels = rr.map(r => `${r.model} · ${r.mode}`);
     const bar = {
       type: 'bar', orientation: 'h', y: labels, x: rr.map(r => r.i2n),
@@ -424,7 +432,8 @@
     const lay = Object.assign({}, LAYOUT, {
       height: 430, margin: { l: 195, r: 24, t: 16, b: 44 }, showlegend: false,
       yaxis: Object.assign({}, LAYOUT.yaxis, { automargin: true }),
-      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw, vs human pool)', range: [-0.05, 0.36] }),
+      xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw, vs human pool)', range: [-0.05, 0.36],
+        tickmode: 'array', tickvals: [0, 0.1, 0.2, 0.3], ticktext: ['0', '0.1', '0.2', '0.3'], tickangle: 0 }),
       shapes: [{ type: 'line', x0: raj.binary_ceiling, x1: raj.binary_ceiling, y0: -0.5, y1: labels.length - 0.5,
         line: { color: '#1f9d57', width: 1, dash: 'dot' } }],
       annotations: [{ x: raj.binary_ceiling, y: labels.length - 0.5, text: 'binary-chooser ceiling',
@@ -469,7 +478,10 @@
           : `<figure class="seq-card"><img src="${s.img}?v=1" alt="${s.cap}"/><figcaption>${s.cap}</figcaption></figure>`;
         return (i ? '<span class="percept-arrow">→</span>' : '') + card;
       }).join('');
-      const sc = sq.conditions.slice().sort((a, b) => a.i2n - b.i2n);
+      // Declared semantic order (null floor → by sample-availability: describe,
+      // then recall ≈ simultaneous), NOT value-sorted — groups the two
+      // "sample-available" conditions together so `describe` visibly stands apart.
+      const sc = sq.conditions.slice();
       const bar = {
         type: 'bar', orientation: 'h', y: sc.map(c => c.label), x: sc.map(c => c.i2n),
         marker: { color: sc.map(c => sq.kindColors[c.kind] || '#888') },
@@ -478,7 +490,8 @@
       const lay = Object.assign({}, LAYOUT, {
         height: 300, margin: { l: 230, r: 24, t: 14, b: 40 }, showlegend: false,
         yaxis: Object.assign({}, LAYOUT.yaxis, { automargin: true }),
-        xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw)', range: [-0.06, 0.22] }),
+        xaxis: Object.assign({}, LAYOUT.xaxis, { title: 'i2n (raw)', range: [-0.06, 0.22],
+          tickmode: 'array', tickvals: [0, 0.1, 0.2], ticktext: ['0', '0.1', '0.2'], tickangle: 0 }),
       });
       Plotly.react('raj-seq-plot', [bar], lay, CFG);
       if (sq.caveat) {
