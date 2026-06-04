@@ -70,9 +70,10 @@ def build_gemma_policy(model_id):
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type='nf4',
                              bnb_4bit_compute_dtype=torch.bfloat16,
                              llm_int8_skip_modules=['patch_dense', 'embedding_projection', 'lm_head'])
-    proc = AutoProcessor.from_pretrained(model_id)
+    rev = 'e18f459f54832f4ae2ab6686b935a2268668a9e9' if model_id == 'google/gemma-4-12B-it' else None
+    proc = AutoProcessor.from_pretrained(model_id, revision=rev)
     model = AutoModelForImageTextToText.from_pretrained(
-        model_id, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
+        model_id, revision=rev, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
     dev = next(model.parameters()).device
     rng = np.random.RandomState(0)
 

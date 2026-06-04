@@ -15,6 +15,9 @@ import argparse, csv, json, os, re
 INSTR = ("The image shows a letter string. Is it a real English word "
          "(not a made-up/pseudo-word)? Answer with exactly one word: yes or no.")
 THRESHOLD = 0.65   # Honarmand 2026 dyslexia threshold (raw accuracy)
+# Pin the original revision: a newer repo commit (66bc78a) breaks offline processor
+# loading; e18f459 (the one that first worked) loads cleanly offline.
+GEMMA_REV = 'e18f459f54832f4ae2ab6686b935a2268668a9e9'
 
 
 def parse_yesno(text):
@@ -41,9 +44,9 @@ def main():
                              bnb_4bit_compute_dtype=torch.bfloat16,
                              llm_int8_skip_modules=['patch_dense', 'embedding_projection', 'lm_head'])
     print(f'loading {args.model} (4-bit)…', flush=True)
-    proc = AutoProcessor.from_pretrained(args.model)
+    proc = AutoProcessor.from_pretrained(args.model, revision=GEMMA_REV)
     model = AutoModelForImageTextToText.from_pretrained(
-        args.model, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
+        args.model, revision=GEMMA_REV, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
     dev = next(model.parameters()).device
 
     rows = list(csv.DictReader(open(args.manifest)))

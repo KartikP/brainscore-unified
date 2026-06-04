@@ -60,7 +60,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--manifest', required=True)
     ap.add_argument('--out', required=True)
-    ap.add_argument('--model', default='google/gemma-4-12B')
+    ap.add_argument('--model', default='google/gemma-4-12B-it')
     ap.add_argument('--mode', default='direct', choices=['direct', 'cot'])
     ap.add_argument('--n_shots', type=int, default=0,
                     help='in-context practice trials prepended to each prompt (0 = zero-shot)')
@@ -77,11 +77,19 @@ def main():
     think = (args.mode == 'cot')
 
     print(f'loading {args.model} (4-bit nf4)…', flush=True)
+    # Keep the encoder-free vision-embedding (patch_ln1/patch_dense) and lm_head in
+    # bf16: Gemma-4 casts pixel_values to patch_dense.weight.dtype, which under 4-bit
+    # is Byte -> layernorm crashes. These layers are tiny, so skipping them is cheap.
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type='nf4',
-                             bnb_4bit_compute_dtype=torch.bfloat16)
-    proc = AutoProcessor.from_pretrained(args.model)
+                             bnb_4bit_compute_dtype=torch.bfloat16,
+                             # bnb matches LEAF module names: skip the vision-embedder
+                             # Linear layers (patch_dense casts pixels to its weight dtype,
+                             # which under 4-bit is Byte -> layernorm crash) + lm_head.
+                             llm_int8_skip_modules=['patch_dense', 'embedding_projection', 'lm_head'])
+    rev = 'e18f459f54832f4ae2ab6686b935a2268668a9e9' if args.model == 'google/gemma-4-12B-it' else None
+    proc = AutoProcessor.from_pretrained(args.model, revision=rev)
     model = AutoModelForImageTextToText.from_pretrained(
-        args.model, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
+        args.model, revision=rev, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
     dev = next(model.parameters()).device
 
     all_rows = list(csv.DictReader(open(args.manifest)))

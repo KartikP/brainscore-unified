@@ -34,9 +34,10 @@ def main():
     bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type='nf4',
                              bnb_4bit_compute_dtype=torch.bfloat16,
                              llm_int8_skip_modules=['patch_dense', 'embedding_projection', 'lm_head'])
-    proc = AutoProcessor.from_pretrained(args.model)
+    rev = 'e18f459f54832f4ae2ab6686b935a2268668a9e9' if args.model == 'google/gemma-4-12B-it' else None
+    proc = AutoProcessor.from_pretrained(args.model, revision=rev)
     model = AutoModelForImageTextToText.from_pretrained(
-        args.model, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
+        args.model, revision=rev, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
     dev = next(model.parameters()).device
 
     # --- locate the image token id + decoder ---
