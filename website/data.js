@@ -81,7 +81,7 @@ window.BSU_DATA = {
     "title": "What we do NOT claim (yet)",
     "items": [
       "The IT encoding curve is non-monotonic — a benchmark-validity flag, not evidence of scaling.",
-      "V-JEPA > CLIP on video holds only after dropping StandardScaler + best-layer remap; it is a scoring-contingent ranking.",
+      "V-JEPA > CLIP on video holds only after dropping a feature-rescaling step + picking the best layer; it is a scoring-contingent ranking.",
       "The embodied curve mixes a vision-language scaling ladder (3B / 7B / 12B, all reading pixels with chain-of-thought) with a perception-removed control (DeepSeek-R1 reads the board as text). The 3B→7B→12B rise (0.0 → 0.53 → 1.0) is a real same-game, same-elicitation comparison, but n is small (15 episodes on an easy size-5 board) — read it as a tiers demonstration, not a precise scaling law. The harder MiniGrid-DoorKey is a separate, much tougher game (Gemma-4 scores 0.00 there); the two are not interchangeable.",
       "The topographic metric has only ever been validated on synthetic Gaussian fields — it has touched ZERO real fMRI and is wired into no benchmark.",
       "The MIRAGE 'gap is backbone' attribution is an untested hypothesis (no controlled encoder swap).",
@@ -320,18 +320,18 @@ window.BSU_DATA = {
       "subtitle": "The montage above shows all three at once. The real human task is sequential — the sample is flashed, removed, THEN the choices appear. The Witness records that interaction step-by-step, which is the right lens here: the finding is about the sample→memory→language bottleneck, not the pixels. Qwen2.5-VL-7B, identical 2,505 trials.",
       "trace": [
         {"img": "assets/raj_seq_sample.png", "cap": "1 · SAMPLE shown, then removed", "kind": "img"},
-        {"text": "the model writes a description in its own words — then the sample is gone", "cap": "2 · the bottleneck (describe mode)", "kind": "text"},
+        {"text": "the model writes a description in its own words — then the sample is gone", "cap": "2 · the bottleneck (match from memory)", "kind": "text"},
         {"img": "assets/raj_seq_choices.png", "cap": "3 · choices appear; sample is GONE → it must match from memory", "kind": "img"}
       ],
       "conditions": [
         {"label": "random null", "i2n": -0.028, "kind": "null"},
-        {"label": "describe — sample removed, choose from own words", "i2n": 0.097, "kind": "seq"},
-        {"label": "recall — sample retained in context", "i2n": 0.170, "kind": "seq"},
-        {"label": "simultaneous montage (current)", "i2n": 0.163, "kind": "sim"}
+        {"label": "match from memory — sample removed, match from its own description", "i2n": 0.097, "kind": "seq"},
+        {"label": "sample kept in view — choose with the sample still shown", "i2n": 0.170, "kind": "seq"},
+        {"label": "all shown at once — the montage (current)", "i2n": 0.163, "kind": "sim"}
       ],
       "kindColors": {"null": "#9aa6b8", "seq": "#7c4dff", "sim": "#2f6bff"},
-      "reading": "**Removing the sample is what costs — not showing things one at a time.** The only truly faithful condition (describe: the sample is gone and the choice rides on the model's own words) drops the score to 0.097, ~40% below the rest — putting the sample into words throws away the visual detail the match needs (the descriptions were fluent, e.g. 'a sculpture of a person in mid-air, diving or jumping'; the model gave a clean LEFT/RIGHT answer on all but 5 of 2,505 trials). recall (0.170) ≈ simultaneous (0.163): when the sample is still in view, splitting it into a separate step is essentially free — so the all-at-once montage isn't inflating the score just by showing everything together.",
-      "caveat": "The small recall>simultaneous edge is likely side-bias-inflated (recall ran frac-left 0.617 vs simultaneous's balanced 0.465) — read them as equal. recall isn't a true removal (sample stays in the KV cache), so describe is the load-bearing faithful condition. Raw i2n (human ceiling ≈ 0.449); a side-balanced re-run would tighten recall."
+      "reading": "**Removing the sample is what costs — not showing things one at a time.** The only truly faithful condition (match from memory: the sample is gone and the choice rides on the model's own words) drops the score to 0.097, ~40% below the rest — putting the sample into words throws away the visual detail the match needs (the descriptions were fluent, e.g. 'a sculpture of a person in mid-air, diving or jumping'; the model gave a clean LEFT/RIGHT answer on all but 5 of 2,505 trials). Keeping the sample in view (0.170) ≈ all-at-once (0.163): when the sample is still available, splitting it into a separate step is essentially free — so the all-at-once montage isn't inflating the score just by showing everything together.",
+      "caveat": "The small kept-in-view > all-at-once edge is likely side-bias-inflated (kept-in-view ran frac-left 0.617 vs all-at-once's balanced 0.465) — read them as equal. Keeping the sample in view isn't a true removal (the sample is still available to the model), so match-from-memory is the load-bearing faithful condition. Raw i2n (human ceiling ≈ 0.449); a side-balanced re-run would tighten the kept-in-view number."
     }
   },
   "gemma_scorecard": {
@@ -341,7 +341,7 @@ window.BSU_DATA = {
       {"capability": "Vision · behavioral", "benchmark": "Rajalingham 2-AFC", "metric": "i2n raw", "score": "0.146", "status": "done", "note": "direct mode, unbiased (frac-L 0.45) — on par with Qwen-7B (0.163)"},
       {"capability": "Reading · behavioral", "benchmark": "ROAR lexical decision", "metric": "accuracy", "score": "0.86", "status": "done", "note": "ceiled 1.06 (above human mean); not dyslexic; real 0.72 / pseudo 1.00"},
       {"capability": "Embodied · grid game", "benchmark": "toy grid game (CoT)", "metric": "success", "score": "1.00", "status": "done", "note": "solved 15/15 at optimal efficiency with chain-of-thought — the scaling-curve game, same elicitation as Qwen-7B (0.53). On the much harder MiniGrid-DoorKey it scores 0.00 (a different, tougher game); the two are not interchangeable."},
-      {"capability": "Vision · neural", "benchmark": "MajajHong V4 / IT", "metric": "median r (raw, PLS-CV)", "score": "V4 0.40 · IT 0.53", "status": "done", "note": "encoder-free: 256 image-patch tokens → mean-pooled 3840-d decoder features at layer 20 over 3200 stimuli. Raw 5-fold PLS-CV median r (NOT ceiled — not directly comparable to the leaderboard's pls metric); IT 0.53 is in CLIP's league."}
+      {"capability": "Vision · neural", "benchmark": "MajajHong V4 / IT", "metric": "median r (raw, cross-validated)", "score": "V4 0.40 · IT 0.53", "status": "done", "note": "encoder-free: 256 image-patch tokens → mean-pooled 3840-d decoder features at layer 20 over 3200 stimuli. Raw 5-fold cross-validated median correlation (NOT ceiled — not directly comparable to the leaderboard's neural-fit metric); IT 0.53 is in CLIP's league."}
     ],
     "reading": "Gemma-4 is encoder-free — image patches project straight into the decoder — so the neural path needed a NEW activations wrapper (decoder hidden states at the image-patch positions), built and validated this session. All four legs now run from one integration: behavioral (2-AFC, ROAR), embodied (the grid game — 15/15 with chain-of-thought, topping the VLM scaling ladder), and neural (V4 0.40 / IT 0.53). The scorecard is the literal expression of the interface's promise: register once, evaluate everywhere — including a model architecture that's days old."
   }
