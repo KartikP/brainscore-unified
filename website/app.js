@@ -16,6 +16,28 @@
   $('hero-note').textContent = D.meta.note;
   $('provenance').textContent = D.meta.provenance;
 
+  // ---- hero: swipe through registrations to show the call is invariant ----
+  (function () {
+    const rot = D.hero_rotation;
+    const mEl = $('hero-model'), bEl = $('hero-bench'), cEl = $('hero-comment');
+    if (!rot || !rot.length || !mEl || !bEl || !cEl) return;
+    const els = [mEl, bEl, cEl];
+    const apply = r => { mEl.textContent = '"' + r.model + '"'; bEl.textContent = '"' + r.benchmark + '"'; cEl.textContent = r.comment; };
+    apply(rot[0]);
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || rot.length < 2) return;          // respect reduced-motion: no cycling
+    let i = 0;
+    setInterval(() => {
+      i = (i + 1) % rot.length;
+      els.forEach(e => e.classList.add('swap-out'));
+      setTimeout(() => {
+        apply(rot[i]);
+        els.forEach(e => { e.classList.remove('swap-out'); e.classList.add('swap-in'); });
+        setTimeout(() => els.forEach(e => e.classList.remove('swap-in')), 440);
+      }, 300);
+    }, 3000);
+  })();
+
   // ---- capability cards ----
   const CAPS = [
     ['Neural encoding', 'process(StimulusSet)', 'Predict V4/IT, language, or whole-cortex responses from model features.'],

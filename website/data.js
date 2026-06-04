@@ -9,6 +9,16 @@ window.BSU_DATA = {
     "note": "Matched nulls are DEFINED for every capability; floors are MEASURED for neural encoding, behavior, and (on real BOLD) temporal alignment. Where a curve is non-monotonic, a result is contingent on a scoring choice, or a demo only proves plumbing, we say so — see each reading and the limitations panel.",
     "provenance": "Behavioral scores re-confirmed NO-CACHE this session (ROAR ladder, caches cleared: chance/random-vit/CLIP reproduce 0.500/0.540/0.690 raw — matching the v1 baselines); the temporal-shift null was run on real 50k-TR Algonauts BOLD; embodied scores from scripts/vlm_game; figures from brainscore.visualization. Numbers carried from v1 are labelled; synthetic illustrative values are labelled as such."
   },
+  "hero_rotation": [
+    {"model": "clip-vit-b-32", "benchmark": "MajajHong2015public.IT-pls", "comment": "# vision · neural — predict IT from image features"},
+    {"model": "clip-vit-b-32", "benchmark": "Pereira2018.243sentences-linear", "comment": "# the SAME model — now a language benchmark"},
+    {"model": "qwen2.5-vl-3b", "benchmark": "MajajHong2015public.IT-pls", "comment": "# a 3B VLM instead — identical call"},
+    {"model": "gpt2", "benchmark": "Yeatman2021-lexical_decision-text", "comment": "# reading behavior, from strings alone"},
+    {"model": "blip2-opt-2.7b", "benchmark": "MajajHong2015public.V4-pls", "comment": "# different model, different size — same three lines"},
+    {"model": "vjepa1-vitl", "benchmark": "Lahner2024-fMRI-naturalistic-visualROI", "comment": "# video · naturalistic fMRI encoding"},
+    {"model": "vjepa1-wav2vec2", "benchmark": "Lahner2024-fMRI-naturalistic-multimodal-visualROI", "comment": "# two towers (video + audio), one model object"},
+    {"model": "random-vit-b-32", "benchmark": "MajajHong2015public.IT-pls", "comment": "# even the null floor registers the same way"}
+  ],
   "scaling": {
     "language_encoding": {
       "capability": "Neural encoding — language (Pereira2018, r)",
