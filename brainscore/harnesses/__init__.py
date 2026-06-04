@@ -12,3 +12,4 @@ reserved.
 from . import robotics
 from . import human
 from . import grid_game
+from . import multi_agent
