@@ -46,11 +46,12 @@ h1,h2,h3{line-height:1.15; letter-spacing:-.02em}
 .code .k{color:#7c4dff} .code .s{color:#1f9d57} .code .c{color:var(--muted)}
 /* hero swipe: the dynamic model/benchmark/comment slide out left, in from right,
    while the surrounding call skeleton stays fixed — the API is invariant */
-.hero-swap{display:inline-block; transition:transform .3s ease, opacity .3s ease; will-change:transform,opacity}
-.hero-swap.swap-out{opacity:0; transform:translateX(-14px)}
-.hero-swap.swap-in{animation:heroIn .44s ease}
+.hero-swap, .hero-tok{transition:transform .3s ease, opacity .3s ease; will-change:transform,opacity}
+.hero-tok{display:inline-block}
+.swap-out{opacity:0; transform:translateX(-14px)}
+.swap-in{animation:heroIn .44s ease}
 @keyframes heroIn{from{opacity:0; transform:translateX(16px)} to{opacity:1; transform:translateX(0)}}
-@media (prefers-reduced-motion: reduce){.hero-swap{transition:none; animation:none}}
+@media (prefers-reduced-motion: reduce){.hero-swap,.hero-tok{transition:none; animation:none}}
 .note{color:var(--muted); font-size:.88rem; margin-top:16px; max-width:760px}
 
 /* sections */

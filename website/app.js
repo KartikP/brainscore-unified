@@ -32,25 +32,44 @@
       s = s.replace(/(#.*)$/, '<span class="c">$1</span>');         // trailing comment
       return s;
     };
-    const linesFor = e => e.lines || [
-      'from brainscore import load_model, load_benchmark',
-      'model = load_model("' + e.model + '")',
-      'score = load_benchmark("' + e.benchmark + '")(model)',
-      e.comment,
-    ];
-    const render = e => { body.innerHTML = linesFor(e).map(hl).join('\n'); };
-    render(rot[0]);
+    // Standard entries share ONE fixed skeleton; only the model/benchmark/comment
+    // tokens change, so we animate just those (the surrounding call stays put).
+    const skeleton = e =>
+      '<span class="k">from</span> brainscore <span class="k">import</span> load_model, load_benchmark\n' +
+      'model = load_model(<span class="s hero-tok" id="hero-model">"' + esc(e.model) + '"</span>)\n' +
+      'score = load_benchmark(<span class="s hero-tok" id="hero-bench">"' + esc(e.benchmark) + '"</span>)(model)\n' +
+      '<span class="c hero-tok" id="hero-comment">' + esc(e.comment) + '</span>';
+    // Custom entries (embodied / perturbation) have a different call shape, so
+    // the whole block changes — those swipe as one.
+    const renderFull = e => { body.innerHTML = e.lines ? e.lines.map(hl).join('\n') : skeleton(e); };
+    renderFull(rot[0]);
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce || rot.length < 2) return;          // respect reduced-motion: no cycling
     let i = 0;
     setInterval(() => {
+      const prev = rot[i];
       i = (i + 1) % rot.length;
-      body.classList.add('swap-out');
-      setTimeout(() => {
-        render(rot[i]);
-        body.classList.remove('swap-out'); body.classList.add('swap-in');
-        setTimeout(() => body.classList.remove('swap-in'), 440);
-      }, 300);
+      const e = rot[i];
+      const toks = [$('hero-model'), $('hero-bench'), $('hero-comment')];
+      if (!e.lines && !prev.lines && toks.every(Boolean)) {
+        // standard → standard: animate ONLY the changed tokens
+        toks.forEach(t => t.classList.add('swap-out'));
+        setTimeout(() => {
+          $('hero-model').textContent = '"' + e.model + '"';
+          $('hero-bench').textContent = '"' + e.benchmark + '"';
+          $('hero-comment').textContent = e.comment;
+          toks.forEach(t => { t.classList.remove('swap-out'); t.classList.add('swap-in'); });
+          setTimeout(() => toks.forEach(t => t.classList.remove('swap-in')), 440);
+        }, 300);
+      } else {
+        // to/from a custom-shape entry: swipe the whole block
+        body.classList.add('swap-out');
+        setTimeout(() => {
+          renderFull(e);
+          body.classList.remove('swap-out'); body.classList.add('swap-in');
+          setTimeout(() => body.classList.remove('swap-in'), 440);
+        }, 300);
+      }
     }, 3200);
   })();
 
