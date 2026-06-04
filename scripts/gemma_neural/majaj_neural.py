@@ -46,6 +46,9 @@ def score(out, features_dir):
     fmap = {sid: feats[i] for i, sid in enumerate(fids)}
     # align: average neural over presentations per (stimulus, neuroid)
     sids = nd['stimulus_id']; resp = nd['responses']; region = nd['region']
+    # MajajHong assembly is (neuroid, presentation); orient to (presentation, neuroid)
+    if resp.shape[0] != len(sids) and resp.shape[1] == len(sids):
+        resp = resp.T
     import pandas as pd
     df = pd.DataFrame(resp); df['sid'] = sids
     avg = df.groupby('sid').mean()                      # (n_unique_stim, n_neuroid)
