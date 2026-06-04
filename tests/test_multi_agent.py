@@ -147,3 +147,34 @@ def test_first_tensor_out_handles_tuple_and_hf_object():
     class HF:
         last_hidden_state = torch.zeros(1, 5)
     assert _first_tensor_out(HF()).shape == (1, 5)
+
+
+# ── typed Message path: first-class agent-to-agent messaging ─────────
+
+from brainscore_core.model_interface import BrainScoreModel, Message
+from brainscore.harnesses.multi_agent import MessageMediator, MessageEchoAgent
+
+
+def test_message_mediator_routes_typed_messages():
+    """Each agent emits a Message; the peer consumes that same Message next turn."""
+    alice, bob = MessageEchoAgent('alice'), MessageEchoAgent('bob')
+    med = MessageMediator(task='greet')
+    transcript = multi_agent_rollout([alice, bob], med, n_turns=2)
+    # every recorded action is a typed Message, and history is typed Messages
+    assert all(isinstance(e['action'], Message) for e in transcript)
+    assert all(isinstance(m, Message) for m in med.history)
+    # bob heard alice's utterance (routing through the typed channel)
+    bob_first = next(e for e in transcript if e['agent'] == 'bob')
+    assert 'alice: heard<greet>' in bob_first['action'].content
+
+
+def test_rollout_drives_brainscoremodel_via_process_message():
+    """A real BrainScoreModel agent (action_fn) is driven through process(Message)."""
+    def responder(step):
+        msg = step.observation              # process(Message) wraps it here
+        return Message(content=f'ack<{msg.content}>', sender='bsm')
+    agent = BrainScoreModel('bsm', None, {}, {}, None, action_fn=responder)
+    med = MessageMediator(task='hi')
+    transcript = multi_agent_rollout([agent], med, n_turns=1)
+    assert transcript[0]['action'].content == 'ack<hi>'
+    assert isinstance(med.history[0], Message)
