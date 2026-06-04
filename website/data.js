@@ -234,5 +234,16 @@ window.BSU_DATA = {
       "No bootstrap CIs yet: with 120 images, the Gemma-12B (0.146) vs Qwen-7B (0.163) gap may not be significant — read the tiers, not the decimals.",
       "Few-shot-hurts may be partly an implementation artifact of multi-image prompting (the 3B collapsed to 99% LEFT under demos); it needs an answer-line-only control before it's a fact about visual in-context learning."
     ]
+  },
+  "gemma_scorecard": {
+    "title": "Gemma-4-12B across the capabilities — one model, one interface",
+    "subtitle": "Gemma-4-12B (apache-2.0, encoder-free multimodal, released this week) run through every leg of the unified interface from a single integration — behavioral, embodied, and neural — in 4-bit on one A10G. The point isn't the leaderboard position; it's that one model touches every capability through the same process() path.",
+    "rows": [
+      {"capability": "Vision · behavioral", "benchmark": "Rajalingham 2-AFC", "metric": "i2n raw", "score": "0.146", "status": "done", "note": "direct mode, unbiased (frac-L 0.45) — on par with Qwen-7B (0.163)"},
+      {"capability": "Reading · behavioral", "benchmark": "ROAR lexical decision", "metric": "accuracy", "score": "0.86", "status": "done", "note": "ceiled 1.06 (above human mean); not dyslexic; real 0.72 / pseudo 1.00"},
+      {"capability": "Embodied", "benchmark": "MiniGrid DoorKey-6×6", "metric": "success", "score": "0.00", "status": "done", "note": "harness validated end-to-end (zero schema errors); DoorKey is beyond current VLMs — the random null is also 0.00, so no differentiation here"},
+      {"capability": "Vision · neural", "benchmark": "MajajHong V4 / IT", "metric": "median r", "score": "running", "status": "running", "note": "encoder-free extractor validated (256 image-patch tokens → 3840-d decoder features at layer 20); full PLS run in flight"}
+    ],
+    "reading": "Gemma-4 is encoder-free — image patches project straight into the decoder — so the neural path needed a new activations wrapper (decoder hidden states at the image-patch positions), which validated on the probe. Behavioral capabilities (2-AFC, ROAR) and the embodied harness work today; MiniGrid-DoorKey is honest-but-flat (the task outruns the models); the neural number backfills when the PLS run completes. The scorecard is the literal expression of the interface's promise: register once, evaluate everywhere."
   }
 };

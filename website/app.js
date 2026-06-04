@@ -353,6 +353,20 @@
         + `<td>${r.acc.toFixed(3)}</td><td>${r.frac_left == null ? '—' : r.frac_left.toFixed(2)}</td>`
         + `<td><b>${r.i2n.toFixed(3)}</b></td></tr>`).join('');
     $('raj-findings').innerHTML = raj.findings.map(f => `<div class="raj-finding">${f}</div>`).join('');
+    if (D.gemma_scorecard) {
+      const g = D.gemma_scorecard;
+      $('gsc-title').textContent = g.title;
+      $('gsc-sub').textContent = g.subtitle;
+      $('gsc-reading').textContent = g.reading;
+      const badge = s => s === 'done'
+        ? '<span style="color:#1f9d57">✓ done</span>'
+        : '<span style="color:#c6810f">⏳ running</span>';
+      $('gsc-table').innerHTML =
+        '<tr><th>capability</th><th>benchmark</th><th>metric</th><th>score</th><th>status</th><th>note</th></tr>'
+        + g.rows.map(r => `<tr><td>${r.capability}</td><td>${r.benchmark}</td><td>${r.metric}</td>`
+          + `<td><b>${r.score}</b></td><td>${badge(r.status)}</td>`
+          + `<td style="font-size:.85em;color:var(--muted)">${r.note}</td></tr>`).join('');
+    }
     if (raj.caveats) {
       $('raj-caveats').innerHTML = '<h3 class="caveat-h">What this does NOT yet establish</h3>' +
         raj.caveats.map(c => `<div class="raj-caveat">${c}</div>`).join('');
