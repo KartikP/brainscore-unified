@@ -64,10 +64,10 @@ window.BSU_DATA = {
     },
     "embodied_game": {
       "capability": "Embodied — grid video game (success rate)",
-      "models": ["random", "Qwen-VL-3B (CoT)", "Qwen-VL-7B (CoT)", "DeepSeek-R1 (ASCII)", "oracle"],
-      "scores": [0.20, 0.0, 0.53, 0.87, 1.0],
+      "models": ["random", "Qwen-VL-3B (CoT)", "Qwen-VL-7B (CoT)", "Gemma-4-12B (CoT)", "DeepSeek-R1 (ASCII)", "oracle"],
+      "scores": [0.20, 0.0, 0.53, 1.0, 0.87, 1.0],
       "null_floor": 0.20,
-      "reading": "The closed-loop grid game, at each model's best elicitation. The small vision model (3B) can't read the grid from pixels at all (0.0, below the random floor); the larger one (7B), given room to reason step by step, solves about half (0.53); and a strong text-only reasoner handed the SAME board as plain text instead of an image (DeepSeek-R1) nearly aces it (0.87). **Reasoning over the grid is easy — perceiving the abstract grid from pixels is what the vision models struggle with.** 'oracle' = perfect play (the ceiling). DeepSeek is the perception-removed control, so this curve isolates the bottleneck rather than tracking raw model size."
+      "reading": "The closed-loop grid game, every model at its best elicitation, all three vision-language models reading the same rendered board. The 3B can't read the grid from pixels at all (0.0, below the random floor); the 7B, given room to reason step by step, solves about half (0.53); and the larger 12B (Gemma-4) perceives and reasons well enough to solve **every** board (1.0, optimal path). A strong text-only reasoner handed the SAME board as plain text instead of an image (DeepSeek-R1, perception removed) gets 0.87. **The bottleneck for the smaller vision models is perceiving the abstract grid from pixels — and it lifts with scale: 0.0 → 0.53 → 1.0.** 'oracle' = perfect play (the ceiling); DeepSeek is the perception-removed control."
     },
     "multimodal_algonauts": {
       "capability": "Multimodal — Algonauts2025 CNeuroMod (r)",
@@ -82,7 +82,7 @@ window.BSU_DATA = {
     "items": [
       "The IT encoding curve is non-monotonic — a benchmark-validity flag, not evidence of scaling.",
       "V-JEPA > CLIP on video holds only after dropping StandardScaler + best-layer remap; it is a scoring-contingent ranking.",
-      "The embodied curve is not a pure model-size curve: its top point (DeepSeek-R1) is a perception-removed control that reads the board as text, not pixels. It isolates that perception — not reasoning — is the bottleneck; it does not claim a scaling law over vision models (n is small, and the small VLM sits below the random floor).",
+      "The embodied curve mixes a vision-language scaling ladder (3B / 7B / 12B, all reading pixels with chain-of-thought) with a perception-removed control (DeepSeek-R1 reads the board as text). The 3B→7B→12B rise (0.0 → 0.53 → 1.0) is a real same-game, same-elicitation comparison, but n is small (15 episodes on an easy size-5 board) — read it as a tiers demonstration, not a precise scaling law. The harder MiniGrid-DoorKey is a separate, much tougher game (Gemma-4 scores 0.00 there); the two are not interchangeable.",
       "The topographic metric has only ever been validated on synthetic Gaussian fields — it has touched ZERO real fMRI and is wired into no benchmark.",
       "The MIRAGE 'gap is backbone' attribution is an untested hypothesis (no controlled encoder swap).",
       "Encoding scores are raw Pearson r without per-voxel noise-ceiling normalization; point-estimate gaps lack bootstrap CIs.",
@@ -167,11 +167,11 @@ window.BSU_DATA = {
   "embodied_game": {
     "title": "A VLM plays a video game",
     "subtitle": "Closed-loop process(EnvironmentStep) — the model sees a rendered frame, reasons, picks a move, the environment responds, repeat",
-    "models": ["random", "Qwen-VL-3B (CoT)", "Qwen-VL-7B (CoT)", "DeepSeek-R1 (ASCII)", "oracle"],
-    "success": [0.20, 0.0, 0.533, 0.867, 1.0],
-    "colors": ["#9aa0a6", "#d8483b", "#e0a13b", "#7c4dff", "#1f9d57"],
+    "models": ["random", "Qwen-VL-3B (CoT)", "Qwen-VL-7B (CoT)", "Gemma-4-12B (CoT)", "DeepSeek-R1 (ASCII)", "oracle"],
+    "success": [0.20, 0.0, 0.533, 1.0, 0.867, 1.0],
+    "colors": ["#9aa0a6", "#d8483b", "#e0a13b", "#2a8c6a", "#7c4dff", "#1f9d57"],
     "null_floor": 0.20,
-    "reading": "The same interface drives a closed-loop agent — the model sees a frame, reasons, acts, and the world responds — with zero schema errors across ~300 ticks. Two findings. (1) **Instruction matters**: asked for a one-word answer the 7B vision-language model scored 0.13; given room to reason step-by-step (chain-of-thought) it jumps to 0.53. (2) The remaining gap is perception, not reasoning. Hand a strong text-only reasoner the same board as plain text (so seeing it is free) and DeepSeek-R1 solves 87% of boards. **So reasoning over the grid is easy; perceiving the abstract grid from pixels is what the vision models struggle with** — the 3B can't do it at all (0.0), the 7B partially (0.53), and a text reasoner handed the grid nearly aces it (0.87). The bottleneck is vision."
+    "reading": "The same interface drives a closed-loop agent — the model sees a frame, reasons, acts, and the world responds — with zero schema errors across hundreds of ticks. Two findings. (1) **Instruction matters**: asked for a one-word answer the 7B vision-language model scored 0.13; given room to reason step-by-step (chain-of-thought) it jumps to 0.53. (2) **Perception lifts with scale.** All three vision-language models read the same rendered board with chain-of-thought: the 3B can't perceive the grid at all (0.0), the 7B partially (0.53), and the 12B (Gemma-4) perceives and reasons well enough to solve **every** board (1.0). Hand a strong text-only reasoner the same board as plain text (so seeing it is free) and DeepSeek-R1 solves 87% — confirming that for the smaller vision models the bottleneck is perceiving the abstract grid from pixels, a bottleneck that scale clears."
   },
   "layer_contribution": {
     "title": "Layer contribution per modality",
@@ -340,9 +340,9 @@ window.BSU_DATA = {
     "rows": [
       {"capability": "Vision · behavioral", "benchmark": "Rajalingham 2-AFC", "metric": "i2n raw", "score": "0.146", "status": "done", "note": "direct mode, unbiased (frac-L 0.45) — on par with Qwen-7B (0.163)"},
       {"capability": "Reading · behavioral", "benchmark": "ROAR lexical decision", "metric": "accuracy", "score": "0.86", "status": "done", "note": "ceiled 1.06 (above human mean); not dyslexic; real 0.72 / pseudo 1.00"},
-      {"capability": "Embodied", "benchmark": "MiniGrid DoorKey-6×6", "metric": "success", "score": "0.00", "status": "done", "note": "harness validated end-to-end (zero schema errors); DoorKey is beyond current VLMs — the random null is also 0.00, so no differentiation here"},
+      {"capability": "Embodied · grid game", "benchmark": "toy grid game (CoT)", "metric": "success", "score": "1.00", "status": "done", "note": "solved 15/15 at optimal efficiency with chain-of-thought — the scaling-curve game, same elicitation as Qwen-7B (0.53). On the much harder MiniGrid-DoorKey it scores 0.00 (a different, tougher game); the two are not interchangeable."},
       {"capability": "Vision · neural", "benchmark": "MajajHong V4 / IT", "metric": "median r (raw, PLS-CV)", "score": "V4 0.40 · IT 0.53", "status": "done", "note": "encoder-free: 256 image-patch tokens → mean-pooled 3840-d decoder features at layer 20 over 3200 stimuli. Raw 5-fold PLS-CV median r (NOT ceiled — not directly comparable to the leaderboard's pls metric); IT 0.53 is in CLIP's league."}
     ],
-    "reading": "Gemma-4 is encoder-free — image patches project straight into the decoder — so the neural path needed a NEW activations wrapper (decoder hidden states at the image-patch positions), built and validated this session. All four legs now run from one integration: behavioral (2-AFC, ROAR), embodied (MiniGrid harness — DoorKey outruns the models, honestly flat), and neural (V4 0.40 / IT 0.53). The scorecard is the literal expression of the interface's promise: register once, evaluate everywhere — including a model architecture that's days old."
+    "reading": "Gemma-4 is encoder-free — image patches project straight into the decoder — so the neural path needed a NEW activations wrapper (decoder hidden states at the image-patch positions), built and validated this session. All four legs now run from one integration: behavioral (2-AFC, ROAR), embodied (the grid game — 15/15 with chain-of-thought, topping the VLM scaling ladder), and neural (V4 0.40 / IT 0.53). The scorecard is the literal expression of the interface's promise: register once, evaluate everywhere — including a model architecture that's days old."
   }
 };
