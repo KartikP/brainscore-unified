@@ -23,9 +23,27 @@ KFold over clips, α-grid CV, median per-parcel Pearson r on held-out clips.
 | Wav2Vec-Bert audio only | unimodal | 1024 | 0.0876 | ~1.6 min |
 | Llama-3.2-3B text only | unimodal | 3072 | 0.0790 | ~1.2 min |
 
-**Native fusion edges out post-hoc (+0.004) at 2.5× fewer features** — directionally
-consistent with MIRAGE — but the margin is within single-subject/subset noise and
-the cross-architecture bars are confounded by backbone identity.
+**First pass (fixed layers):** native 0.150 vs post-hoc 0.146 (+0.004). **This was a
+layer-selection artifact** — see the best-layer sweep below.
+
+### Fair best-layer comparison (every arm swept) — overturns the native edge
+
+`extract_tribe_{video,audio,text}_alllayers.py` + `ridge_tower_sweep.py`
+(`tower_sweep_results.json`) sweep each tower's layers independently:
+
+| tower | best layer | r | (fixed-layer used in first pass) |
+|---|---|---|---|
+| video (V-JEPA-2) | 14 | 0.127 | 0.126 (L16) — ~same |
+| **audio (Wav2Vec-Bert)** | **12** | **0.124** | **0.088 (last layer) — +0.036** |
+| text (Llama) | 14 | 0.079 | 0.079 — same |
+| **post-hoc concat (best layers)** | — | **0.1564** | 0.1459 |
+
+With both arms at best layer: **post-hoc 0.156 ≈ native (Qwen L42) 0.155 — a wash**
+(post-hoc marginally ahead, within noise). The first-pass +0.004 native edge was
+entirely the audio tower scored at Wav2Vec-Bert's *final* layer (0.088) instead of
+its brain-optimal **layer 12** (0.124) — its early-to-middle layers are far more
+aligned. **A properly-tuned specialist stack ties a 30B native-fusion omni model**,
+at ~30 min commodity-GPU extraction vs ~68 min on 4×L40S.
 
 ### Within-Qwen fusion ablation (the confound-free result)
 
