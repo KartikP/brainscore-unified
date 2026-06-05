@@ -108,13 +108,16 @@ def layer_unit_heatmap(unit_predictivity, *, layer_labels=None,
     ax.set_ylabel('layer', fontsize=10)
     if top_k is not None and sort_units:
         ax.axvline(top_k - 0.5, color='#39d0c8', lw=1.6, ls='--')
-        ax.text(top_k, -0.7, f'top-{top_k} selected', color='#1aa67a',
-                fontsize=8, ha='left', va='bottom')
+        # label inside the top row, just right of the line (a white box keeps it
+        # readable over the heatmap, and it never collides with the title)
+        ax.text(top_k + 6, 0.0, f'top-{top_k} selected', color='#0b3b2e',
+                fontsize=8, ha='left', va='top',
+                bbox=dict(boxstyle='round,pad=0.18', fc='white', ec='none', alpha=0.78))
     if best_layer_index is not None:
         ax.add_patch(Rectangle((-0.5, best_layer_index - 0.5), n_units, 1,
                                fill=False, edgecolor='#7c4dff', lw=2.2))
     if title:
-        ax.set_title(title, fontsize=12)
+        ax.set_title(title, fontsize=12, pad=20)
     cb = fig.colorbar(im, ax=ax, fraction=0.02, pad=0.02)
     cb.set_label(cbar_label, fontsize=9)
     fig.tight_layout()
