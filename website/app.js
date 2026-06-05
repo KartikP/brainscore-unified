@@ -84,8 +84,9 @@
   const CAPS = [
     ['Neural encoding', 'process(StimulusSet)', 'Predict V4/IT, language, or whole-cortex responses from model features.'],
     ['Behavior', 'start_task(...)', 'Logistic readout or instruction-following generation, scored against human accuracy.'],
-    ['State change', 'process(StateChange)', 'Lesion a unit population, observe the effect, restore bit-for-bit.'],
-    ['Embodied', 'process(EnvironmentStep)', 'Close the loop: the model acts, the environment responds, repeat.'],
+    ['State change', 'process(StateChange)', 'Lesion a unit population, observe the effect, restore bit-for-bit — a registered benchmark (induced dyslexia).'],
+    ['Embodied', 'process(EnvironmentStep)', 'Close the loop: the model acts, the environment responds, repeat — a registered benchmark (grid game).'],
+    ['Multi-agent', 'process(Message)', 'One agent’s typed Message output is the next agent’s input — valid on both sides, no bespoke protocol.'],
     ['Temporal · multimodal', 'synchronize_modalities(...)', 'Align per-frame / per-token / per-sample features onto the brain’s TR grid.'],
     ['Layer mapping', "start_recording('all')", 'Standard region→layer, whole-brain, or a CompositeSelector across layers.'],
     ['Topographic metric', 'TopographicMetric()', 'Score a model’s spatial unit layout against cortical topography (TDANN / TopoLM).'],
