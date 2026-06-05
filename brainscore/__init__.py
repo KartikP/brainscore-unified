@@ -103,9 +103,12 @@ def score(model_identifier: str, benchmark_identifier: str) -> Score:
     Loads both from the unified registry (with domain fallbacks),
     then runs the benchmark on the model.
     """
+    import time as _time
     model = load_model(model_identifier)
     benchmark = load_benchmark(benchmark_identifier)
+    _t0 = _time.time()
     result = benchmark(model)
+    result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_identifier
     result.attrs['benchmark_identifier'] = benchmark_identifier
     return result
