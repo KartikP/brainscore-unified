@@ -71,15 +71,15 @@ def test_valid_modes_construct():
 # ── Scaffold contract ─────────────────────────────────────────────
 
 
-def test_held_out_splits_raise_not_implemented():
-    """Held-out (S7, OOD) prediction generation isn't built yet —
-    Phase 3 ships training-split scoring first."""
+def test_held_out_splits_raise_when_scored_directly():
+    """Held-out (S7, OOD) splits have no ground truth — scoring them directly
+    raises a clear error pointing at the Codabench prediction path
+    (generate_predictions -> submit_codabench), rather than silently scoring."""
     from brainscore.benchmarks.algonauts2025.benchmark import (
         Algonauts2025FriendsS7, Algonauts2025OOD)
     for cls in (Algonauts2025FriendsS7, Algonauts2025OOD):
         b = cls(subject=1)
-        with pytest.raises(NotImplementedError,
-                           match="Held-out scoring"):
+        with pytest.raises(ValueError, match="no ground truth|Codabench"):
             b(candidate=None)
 
 

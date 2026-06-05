@@ -15,6 +15,8 @@ import warnings
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.slow  # loads CLIP + the ROAR benchmark data — run on demand
+
 
 class TestRoarYeatman2021:
     @pytest.fixture(scope='class')
