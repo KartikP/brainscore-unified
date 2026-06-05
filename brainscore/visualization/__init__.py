@@ -42,7 +42,7 @@ from .scaling_curve import (
     scaling_curves_grid,
     normalized_scaling_overlay,
 )
-from .layer_contribution import layer_modality_heatmap
+from .layer_contribution import layer_modality_heatmap, layer_unit_heatmap
 
 __all__ = [
     'normalize_values', 'parcel_grid_heatmap', 'network_strip',
@@ -54,5 +54,5 @@ __all__ = [
     'ablation_effect_bar', 'response_heatmap', 'before_after_difference',
     'composite_selection_map', 'units_per_layer_bar', 'selectivity_histogram',
     'scaling_curve_single', 'scaling_curves_grid', 'normalized_scaling_overlay',
-    'layer_modality_heatmap',
+    'layer_modality_heatmap', 'layer_unit_heatmap',
 ]

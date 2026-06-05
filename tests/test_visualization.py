@@ -362,3 +362,21 @@ class TestGlassBrainMovie:
             bm.glass_brain_movie(np.zeros(1000), out_dir=str(tmp_path))
         with pytest.raises(ValueError, match='parcels'):
             bm.glass_brain_movie(np.zeros((3, 17)), out_dir=str(tmp_path))
+
+
+class TestLayerUnitHeatmap:
+    def test_writes_png(self, tmp_path):
+        from brainscore.visualization import layer_unit_heatmap
+        rng = np.random.RandomState(0)
+        pred = np.abs(rng.randn(24, 1024)) * 0.1
+        pred[16, :100] += 0.5            # layer 16 has strong top units
+        out = layer_unit_heatmap(pred, best_layer_index=16, top_k=100,
+                                 layer_labels=[f'L{i}' for i in range(24)],
+                                 out_png=str(tmp_path / 'h.png'))
+        assert _png_nonempty(out)
+
+    def test_no_topk_no_best_ok(self, tmp_path):
+        from brainscore.visualization import layer_unit_heatmap
+        out = layer_unit_heatmap(np.random.RandomState(1).rand(6, 50),
+                                 out_png=str(tmp_path / 'h2.png'))
+        assert _png_nonempty(out)
