@@ -1,0 +1,52 @@
+{
+  "subset_clips": [
+    "friends_s01e01a",
+    "friends_s01e01b",
+    "friends_s01e02a",
+    "friends_s01e02b",
+    "friends_s01e03a",
+    "friends_s01e03b",
+    "friends_s01e04a",
+    "friends_s01e04b",
+    "friends_s01e05a",
+    "friends_s01e05b",
+    "friends_s01e06a",
+    "friends_s01e06b"
+  ],
+  "n_TRs": 6010,
+  "n_parcels": 1000,
+  "stimulus_window": 5,
+  "hrf_delay": 3,
+  "results": {
+    "native_qwen": {
+      "r": 0.14992891252040863,
+      "alpha": 1000.0,
+      "scoring_sec": 21.8,
+      "feature_dim": 2048
+    },
+    "video_only": {
+      "r": 0.1258038431406021,
+      "alpha": 10000.0,
+      "scoring_sec": 16.7,
+      "feature_dim": 1024
+    },
+    "audio_only": {
+      "r": 0.08760843425989151,
+      "alpha": 100.0,
+      "scoring_sec": 16.7,
+      "feature_dim": 1024
+    },
+    "text_only": {
+      "r": 0.07900934666395187,
+      "alpha": 10000.0,
+      "scoring_sec": 25.7,
+      "feature_dim": 3072
+    },
+    "posthoc_concat": {
+      "r": 0.14586247503757477,
+      "alpha": 10000.0,
+      "scoring_sec": 33.2,
+      "feature_dim": 5120
+    }
+  }
+}
