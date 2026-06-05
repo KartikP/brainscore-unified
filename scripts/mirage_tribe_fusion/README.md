@@ -25,8 +25,21 @@ KFold over clips, α-grid CV, median per-parcel Pearson r on held-out clips.
 
 **Native fusion edges out post-hoc (+0.004) at 2.5× fewer features** — directionally
 consistent with MIRAGE — but the margin is within single-subject/subset noise and
-**confounded by backbone identity** (we did NOT run MIRAGE's within-Qwen
-tower-vs-post-fusion ablation that isolates fusion). Absolute r (~0.15) is below
+the cross-architecture bars are confounded by backbone identity.
+
+### Within-Qwen fusion ablation (the confound-free result)
+
+To isolate fusion from backbone identity, read the SAME Qwen3-Omni at every thinker
+layer (all 49 hidden states extracted in one pass), same 2048-d readout, same CV
+(`extract_qwen_alllayers.py` + `ridge_fusion_curve.py`, `qwen_fusion_curve.json`):
+
+- **fusion OFF** (layer 0, modality tower streams before any cross-modal attention): **r = 0.1233**
+- **fusion ON** (peak layer 42, fully cross-attended): **r = 0.1546**
+- **fusion gain: +0.0313** (+25% relative), monotonic rise L0→L42, then a drop at L48
+  (final layer specializes for next-token prediction).
+
+Same model throughout → **the gain is fusion, with no backbone confound**. This is the
+decisive evidence; the cross-architecture bars above are only suggestive. Absolute r (~0.15) is below
 MIRAGE's full-set ~0.21–0.32 because of the subset, one subject, a single fixed layer
 per tower (no learned layer aggregation), and a plain ridge (not a trained encoder).
 Both arms share these simplifications, so the comparison is controlled; the numbers
