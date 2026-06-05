@@ -62,6 +62,25 @@ class TestApproaches:
         for a in approaches:
             assert -1.0 <= a['r'] <= 1.0 and a['n_features'] > 0
 
+    def test_each_approach_has_a_random_null(self):
+        layers, Y, _ = _synthetic()
+        res = explore_layer_mapping(layers, Y, alpha=1.0)
+        approaches = score_approaches(layers, Y, res, top_n_layers=2, top_k=8, n_null_seeds=4)
+        for a in approaches:
+            assert 'random_null' in a and 'random_null_sd' in a
+            assert -1.0 <= a['random_null'] <= 1.0 and a['random_null_sd'] >= 0.0
+
+    def test_unit_selection_beats_its_random_null(self):
+        # the signal units (top-8 by predictivity) must beat 8 RANDOM units of
+        # the same layer — the whole point of selection.
+        layers, Y, _ = _synthetic()
+        res = explore_layer_mapping(layers, Y, alpha=1.0)
+        a = {x['name']: x for x in score_approaches(layers, Y, res, top_n_layers=2, top_k=8)}
+        unit = a['unit selection within a layer']
+        comp = a['CompositeSelector']
+        assert unit['r'] > unit['random_null'] + 0.1     # selected ≫ random units
+        assert comp['r'] > comp['random_null']
+
     def test_unit_selection_recovers_most_of_full_layer(self):
         # selecting the 8 signal units should score close to the full 40-unit layer
         layers, Y, _ = _synthetic()

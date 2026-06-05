@@ -144,36 +144,64 @@ def explore_layer_mapping(features_by_layer: Dict[str, np.ndarray], target: np.n
 
 def score_approaches(features_by_layer: Dict[str, np.ndarray], target: np.ndarray,
                      result: LayerMappingResult, top_n_layers: int = 3,
-                     top_k: int = 100, alpha: float = 1.0) -> List[dict]:
-    """Score the four mapping approaches on the held-out TEST split.
+                     top_k: int = 100, alpha: float = 1.0,
+                     n_null_seeds: int = 5) -> List[dict]:
+    """Score the four mapping approaches on the held-out TEST split, each paired
+    with a matched **random-selection null**.
 
     Unit/layer choices come from the localizer (via ``result``); each approach's
-    readout is fit on the localizer and scored on the test split.
+    readout is fit on the localizer and scored on the test split. For every
+    approach a null is computed with the SAME feature budget but the selection
+    randomized (random units / random layers), averaged over ``n_null_seeds``
+    seeds and scored identically — so a selection only "counts" if it beats the
+    random draw of the same size. Each result carries ``random_null`` (mean) and
+    ``random_null_sd``.
     """
     Y = np.asarray(target, np.float64)
     L, T = result.localizer_idx, result.test_idx
+    layer_order = result.layer_order
+    n_units = features_by_layer[result.best_layer].shape[1]
 
     def score(X_full):
         X = np.asarray(X_full, np.float64)
         return float(np.nanmedian(per_voxel_train_test(X[L], Y[L], X[T], Y[T], alpha)))
 
+    def null_over_seeds(make_X):
+        vals = [score(make_X(np.random.RandomState(s))) for s in range(n_null_seeds)]
+        return float(np.mean(vals)), float(np.std(vals))
+
     best = result.best_layer
     top = result.top_layers(top_n_layers)
-    n_units = features_by_layer[best].shape[1]
+
+    # selected (signal) scores
     standard = result.best_r
     unit_within = score(features_by_layer[best][:, result.top_units(best, top_k)])
     multi_full = score(np.concatenate([features_by_layer[l] for l in top], axis=1))
     composite = score(np.concatenate(
         [features_by_layer[l][:, result.top_units(l, top_k)] for l in top], axis=1))
+
+    # matched random-selection nulls (same feature budget, selection randomized)
+    rand_units = lambda rng, layer, k: features_by_layer[layer][:, rng.choice(n_units, k, replace=False)]
+    std_null = null_over_seeds(
+        lambda rng: features_by_layer[layer_order[rng.randint(len(layer_order))]])   # random full layer
+    unit_null = null_over_seeds(
+        lambda rng: rand_units(rng, best, top_k))                                    # random K units, best layer
+    multi_null = null_over_seeds(lambda rng: np.concatenate(
+        [features_by_layer[layer_order[i]] for i in
+         rng.choice(len(layer_order), len(top), replace=False)], axis=1))            # random N full layers
+    comp_null = null_over_seeds(lambda rng: np.concatenate(
+        [rand_units(rng, l, top_k) for l in top], axis=1))                           # random K units / top-N layers
+
+    def row(name, detail, nf, r, null):
+        return {'name': name, 'detail': detail, 'n_features': nf, 'r': round(r, 4),
+                'random_null': round(null[0], 4), 'random_null_sd': round(null[1], 4)}
+
     return [
-        {'name': 'standard layer mapping', 'detail': f'single best full layer ({best})',
-         'n_features': n_units, 'r': round(standard, 4)},
-        {'name': 'unit selection within a layer', 'detail': f'top-{top_k} units of {best}',
-         'n_features': top_k, 'r': round(unit_within, 4)},
-        {'name': 'multiple full layers', 'detail': f'concat of {top}',
-         'n_features': n_units * len(top), 'r': round(multi_full, 4)},
-        {'name': 'CompositeSelector', 'detail': f'top-{top_k} units from each of {top}',
-         'n_features': top_k * len(top), 'r': round(composite, 4)},
+        row('standard layer mapping', f'single best full layer ({best})', n_units, standard, std_null),
+        row('unit selection within a layer', f'top-{top_k} units of {best}', top_k, unit_within, unit_null),
+        row('multiple full layers', f'concat of {top}', n_units * len(top), multi_full, multi_null),
+        row('CompositeSelector', f'top-{top_k} units from each of {top}',
+            top_k * len(top), composite, comp_null),
     ]
 
 

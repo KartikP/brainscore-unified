@@ -55,6 +55,17 @@ def main():
     res = explore_layer_mapping(feats, Yc, localizer_frac=0.5, alpha=1.0, seed=0)
     appr = score_approaches(feats, Yc, res, top_n_layers=3, top_k=100, alpha=1.0)
     comp = res.composite_selector(n_layers=3, k=100)
+    best_idx = res.best_index
+
+    # Benchmark-protocol score (5-fold CV over the full set, no localizer split),
+    # so the best-layer number is directly comparable to the video_encoding curve
+    # (which is benchmark 5-fold median-r, not localizer/test-split r).
+    from brainscore.tools.layer_mapping import per_voxel_cv_ridge
+    log('benchmark-protocol (5-fold CV) score at best layer + current layer 16...')
+    best_layer_path = res.best_layer
+    cv5_best = float(np.nanmedian(per_voxel_cv_ridge(feats[best_layer_path], Yc, alpha=1.0)))
+    cv5_cur = float(np.nanmedian(per_voxel_cv_ridge(feats[f'encoder.layer.{CURRENT}'], Yc, alpha=1.0)))
+    log(f'  cv5 best(layer {best_idx})={cv5_best:.4f}  cv5 current(16)={cv5_cur:.4f}')
 
     out = {
         'model': 'vjepa2-vitl', 'benchmark': 'Lahner2024-fMRI-naturalistic-visualROI',
@@ -67,6 +78,11 @@ def main():
         'top_layers': res.top_layers(3),
         'approaches': appr,
         'composite_selector': {lp: list(idx) for lp, idx in comp.layers},
+        'benchmark_protocol_5fold_cv': {
+            'best_layer_r': round(cv5_best, 4),
+            'current_layer_16_r': round(cv5_cur, 4),
+            'note': 'full-set 5-fold KFold ridge, no scaler — comparable to the video_encoding curve',
+        },
     }
     np.save('/tmp/vjepa2_sweep/unit_predictivity.npy', res.unit_predictivity)
     json.dump(out, open('/tmp/vjepa2_sweep/sweep_honest.json', 'w'), indent=2)
