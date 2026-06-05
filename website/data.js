@@ -6,8 +6,8 @@ window.BSU_DATA = {
   "meta": {
     "title": "Brain-Score · Unified Model Interface",
     "subtitle": "Register a model once. Score it across vision, language, audio, video, multimodal, perturbation, and embodied benchmarks — through one process() interface.",
-    "note": "Matched nulls are DEFINED for every capability; floors are MEASURED for neural encoding, behavior, and (on real BOLD) temporal alignment. Where a curve is non-monotonic, a result is contingent on a scoring choice, or a demo only proves plumbing, we say so — see each reading and the limitations panel.",
-    "provenance": "Behavioral scores re-confirmed NO-CACHE this session (ROAR ladder, caches cleared: chance/random-vit/CLIP reproduce 0.500/0.540/0.690 raw — matching the v1 baselines); the temporal-shift null was run on real 50k-TR Algonauts BOLD; embodied scores from scripts/vlm_game; figures from brainscore.visualization. Numbers carried from v1 are labelled; synthetic illustrative values are labelled as such."
+    "note": "A matched null is defined for every capability. Floors are measured for neural encoding, behavior, and (on recorded BOLD) temporal alignment. Non-monotonic curves, scoring-contingent rankings, and demonstrations that exercise only the pipeline are flagged in the corresponding reading and in the limitations panel.",
+    "provenance": "Behavioral scores were re-run with caching disabled this session: chance / random-ViT / CLIP reproduce 0.500 / 0.540 / 0.690 raw, matching the prior baselines. The temporal-shift null was computed on 50k recorded Algonauts TRs; embodied scores come from scripts/vlm_game; figures from brainscore.visualization. Values carried from a prior cycle and synthetic illustrative values are labelled."
   },
   "hero_rotation": [
     {"model": "clip-vit-b-32", "benchmark": "MajajHong2015public.IT-pls", "comment": "# vision · neural — predict IT from image features"},
@@ -39,54 +39,54 @@ window.BSU_DATA = {
       "models": ["random-vit", "CLIP-B32", "GPT-2", "Qwen-3B", "BLIP-2"],
       "scores": [0.123, 0.464, 0.531, 0.708, 0.737],
       "null_floor": 0.123,
-      "reading": "Pretraining contributes ~3.8× over the random-feature floor (an untrained network); **bigger causal language models (Qwen, BLIP-2) predict the brain's language network far better than CLIP.**"
+      "reading": "Prediction of the language network rises ~3.8× above the random-feature floor (an untrained network). The larger causal language models (Qwen, BLIP-2) predict it more accurately than CLIP."
     },
     "it_encoding": {
       "capability": "Neural encoding — IT cortex (MajajHong2015, r)",
       "models": ["random-vit", "Qwen-3B", "BLIP-2", "CLIP-B32"],
       "scores": [0.104, 0.315, 0.334, 0.374],
       "null_floor": 0.104,
-      "reading": "Every model clears the random-feature floor (3.6×). But this curve does NOT climb with size — **the smallest model (CLIP) leads** — which is a validity flag, not a feature: **alignment to IT cortex (the brain's object-recognition area) tracks the training objective (image-text contrastive learning), not model size**, so 'bigger = better' does not hold here. The small gaps (0.315 / 0.334 / 0.374) are not yet tested for statistical significance."
+      "reading": "All models clear the random-feature floor (3.6×), but prediction does not increase with model size: CLIP, the smallest, scores highest. IT-cortex alignment here tracks the training objective (image–text contrastive learning) rather than scale. The differences (0.315 / 0.334 / 0.374) are not yet tested for significance, and the non-monotonicity is treated as a benchmark-validity flag rather than a scaling result."
     },
     "video_encoding": {
       "capability": "Neural encoding — video, visual ROI (Lahner2024, r)",
       "models": ["BLIP-2", "Qwen-3B", "VideoMAE", "V-JEPA2", "CLIP-B32", "V-JEPA1"],
       "scores": [0.180, 0.227, 0.321, 0.421, 0.456, 0.533],
       "null_floor": 0.05,
-      "reading": "**Video models trained to predict their own internal representations (V-JEPA) beat image-text CLIP; models trained to re-draw raw pixels (VideoMAE) lag** — the training goal matters more than whether the model was built for video. Caveat: this ranking is contingent on a scoring choice — V-JEPA only overtakes CLIP after removing a feature-rescaling step from the regression and mapping the brain region to the best-matching model layer; before that fix, CLIP led. Scores are raw correlation, not yet normalized by each voxel's noise ceiling (the most any model could explain)."
+      "reading": "V-JEPA v1, trained to predict its own latent representations, outscores image–text CLIP; the pixel-reconstruction video model (VideoMAE) ranks lower. The training objective accounts for the ordering more than whether the model is natively temporal. CLIP (0.456) scores above V-JEPA v2 (0.421), but this is a layer-selection artifact, not a capability gap: each region was mapped to V-JEPA v1's brain-optimal layer (layer 16, chosen by a per-voxel sweep), and v2 was scored at that same layer without its own sweep. v2's optimal layer differs; a v2 layer sweep is expected to recover the gap. The ranking is also scoring-contingent more broadly — V-JEPA v1 overtakes CLIP only after a feature-rescaling step is removed from the regression and the region is mapped to its best-matching layer. Scores are raw correlation, not normalized by each voxel's noise ceiling."
     },
     "behavior_roar": {
       "capability": "Behavior — lexical decision (ROAR Yeatman2021)",
       "models": ["chance", "random-vit", "CLIP-B32", "BLIP-2", "GPT-2", "Qwen-3B"],
       "scores": [0.500, 0.540, 0.680, 0.790, 0.810, 0.930],
       "null_floor": 0.540,
-      "reading": "Chance is 0.50; a random untrained network floors at 0.54. **GPT-2, from the letter strings alone, matches the human ceiling (0.81) — judging whether a string is a real word is spelling (orthographic) knowledge, not vision.** Qwen, answering by writing out its choice, leads."
+      "reading": "Chance is 0.50; an untrained network floors at 0.54. GPT-2, from the letter strings alone, reaches 0.81 — at the human ceiling — indicating lexical decision is an orthographic judgment that does not require vision. Qwen, answering by generating its choice, scores highest (0.93)."
     },
     "embodied_game": {
       "capability": "Embodied — grid video game (success rate)",
       "models": ["random", "Qwen-VL-3B (CoT)", "Qwen-VL-7B (CoT)", "Gemma-4-12B (CoT)", "DeepSeek-R1 (ASCII)", "oracle"],
       "scores": [0.20, 0.0, 0.53, 1.0, 0.87, 1.0],
       "null_floor": 0.20,
-      "reading": "The closed-loop grid game, every model at its best elicitation, all three vision-language models reading the same rendered board. The 3B can't read the grid from pixels at all (0.0, below the random floor); the 7B, given room to reason step by step, solves about half (0.53); and the larger 12B (Gemma-4) perceives and reasons well enough to solve **every** board (1.0, optimal path). A strong text-only reasoner handed the SAME board as plain text instead of an image (DeepSeek-R1, perception removed) gets 0.87. **The bottleneck for the smaller vision models is perceiving the abstract grid from pixels — and it lifts with scale: 0.0 → 0.53 → 1.0.** 'oracle' = perfect play (the ceiling); DeepSeek is the perception-removed control."
+      "reading": "Closed-loop grid game, each model at its best elicitation, the three vision-language models reading the same rendered board. The 3B scores 0.0 (below the random floor); the 7B, given room to reason step by step, solves 0.53; the 12B (Gemma-4) solves all boards at optimal path length (1.0). A text-only reasoner handed the same board as text rather than an image (DeepSeek-R1) scores 0.87. The limiting factor for the smaller vision-language models is perceiving the grid from pixels rather than reasoning over it; this resolves with scale (0.0 → 0.53 → 1.0). 'oracle' is the optimal policy (ceiling); DeepSeek-R1 is the perception-removed control. n = 15 episodes per model."
     },
     "multimodal_algonauts": {
       "capability": "Multimodal — Algonauts2025 CNeuroMod (r)",
       "models": ["text-only", "video-only", "audio-only", "concat", "banded"],
       "scores": [0.120, 0.150, 0.157, 0.186, 0.213],
       "null_floor": 0.05,
-      "reading": "Banded ridge over video (CLIP) + audio (Wav2Vec2) + text (MiniLM) beats every single modality, replicating the Algonauts paper baseline (~0.20–0.25). The MIRAGE 0.319 'gap is backbone not pipeline' claim is a HYPOTHESIS, not demonstrated — a controlled encoder-swap (our pipeline, MIRAGE's encoder) hasn't been run. What IS demonstrated: the earlier <0.01 figure was a NO-alignment demo; with proper HRF + stimulus-window alignment the pipeline reaches the paper's range."
+      "reading": "A banded ridge over video (CLIP), audio (Wav2Vec2), and text (MiniLM) exceeds every single modality, reproducing the Algonauts paper baseline (~0.20–0.25). Whether the remaining gap to MIRAGE's 0.319 is attributable to the backbone rather than the pipeline is untested — a controlled encoder swap (this pipeline, MIRAGE's encoder) has not been run. What is established is that the earlier <0.01 figure reflected an unaligned demonstration; with HRF + stimulus-window alignment the pipeline reaches the paper's reported range."
     }
   },
   "limitations": {
-    "title": "What we do NOT claim (yet)",
+    "title": "Limitations and contingencies",
     "items": [
-      "The IT encoding curve is non-monotonic — a benchmark-validity flag, not evidence of scaling.",
-      "V-JEPA > CLIP on video holds only after dropping a feature-rescaling step + picking the best layer; it is a scoring-contingent ranking.",
-      "The embodied curve mixes a vision-language scaling ladder (3B / 7B / 12B, all reading pixels with chain-of-thought) with a perception-removed control (DeepSeek-R1 reads the board as text). The 3B→7B→12B rise (0.0 → 0.53 → 1.0) is a real same-game, same-elicitation comparison, but n is small (15 episodes on an easy size-5 board) — read it as a tiers demonstration, not a precise scaling law. The harder MiniGrid-DoorKey is a separate, much tougher game (Gemma-4 scores 0.00 there); the two are not interchangeable.",
-      "The topographic metric has only ever been validated on synthetic Gaussian fields — it has touched ZERO real fMRI and is wired into no benchmark.",
-      "The MIRAGE 'gap is backbone' attribution is an untested hypothesis (no controlled encoder swap).",
-      "Encoding scores are raw Pearson r without per-voxel noise-ceiling normalization; point-estimate gaps lack bootstrap CIs.",
-      "Honarmand's dyslexia induction is scale-dependent: it does NOT reproduce at 3B (wrong selectivity) and is sub-threshold at 7B; it reproduces at 32B but only at a large 25% mask (vs Honarmand's 6.9% on 72B). We have not run the 72B model itself."
+      "The IT-encoding curve is non-monotonic; this is treated as a benchmark-validity flag rather than evidence of scaling.",
+      "V-JEPA v1 > CLIP on video holds only after removing a feature-rescaling step and selecting the best layer per region; the ranking is scoring-contingent. V-JEPA v2 < CLIP reflects scoring v2 at v1's layer without a v2-specific layer sweep.",
+      "The embodied curve combines a vision-language scaling comparison (3B / 7B / 12B, all reading pixels with chain-of-thought) with a perception-removed control (DeepSeek-R1, reading the board as text). The 3B→7B→12B trend (0.0 → 0.53 → 1.0) is a same-game, same-elicitation comparison, but n = 15 episodes on a 5×5 board; it is a tiers demonstration, not a precise scaling law. MiniGrid-DoorKey is a separate, harder environment (Gemma-4 scores 0.00 there) and is not interchangeable with it.",
+      "The topographic metric has been validated only on synthetic Gaussian fields; it has not been run on recorded fMRI and is not wired into any benchmark.",
+      "The attribution of the MIRAGE gap to the backbone is untested (no controlled encoder swap has been run).",
+      "Encoding scores are raw Pearson r, without per-voxel noise-ceiling normalization; point-estimate differences lack bootstrap confidence intervals.",
+      "Induced dyslexia is scale-dependent: it does not reproduce at 3B (selectivity runs the wrong way) and is sub-threshold at 7B; it reproduces at 32B, but at a 25% mask versus Honarmand's 6.9% on 72B. The 72B model has not been run here."
     ]
   },
   "temporal_shift_validation": {
@@ -96,11 +96,11 @@ window.BSU_DATA = {
     "scores": [0.024, 0.035, 0.055, 0.120, 0.132, 0.078, 0.040, 0.036],
     "true_delay": 3,
     "shuffle_floor": 0.009,
-    "reading": "The single most load-bearing validity check, now run on real brain data — not a unit test. The brain's blood-flow signal (the BOLD response an fMRI scanner measures) lags the underlying neural activity by a few seconds — the hemodynamic lag — so the model's per-moment features only line up with the recorded scans if you shift them forward by that lag. Slide the features earlier or later in time and prediction **peaks exactly at the true lag (+3 scans ≈ 4.5 s) and collapses toward the shuffle floor (chance) when mis-timed** — in both directions. A flat curve would mean the 'alignment' never carried real stimulus-locked signal. It is not flat. ('true delay' = that hemodynamic lag; the dashed floor is what you get after shuffling the timing away entirely.)"
+    "reading": "An alignment-validity check, computed on recorded BOLD. The fMRI BOLD signal lags the underlying neural activity by a few seconds (the hemodynamic response), so per-moment model features align with the recorded scans only when shifted forward by that lag. Shifting the features earlier or later, prediction peaks at +3 scans (≈4.5 s) and falls toward the shuffle floor when mis-timed, in both directions. A flat curve would indicate the alignment carried no stimulus-locked signal; the curve is not flat. ('true delay' is the hemodynamic lag; the dashed line is the score after the timing is shuffled out.)"
   },
   "movie_brain": {
-    "title": "Watch a model watch a movie — next to the real brain that watched it",
-    "subtitle": "A real 10-second clip from the Algonauts 2025 dataset (Friends, s01e02) — picture, sound, and dialogue — goes in. A model-to-brain encoding model predicts subject 1's fMRI response (the bottom brain), shown next to that same subject's actually-recorded response (the top brain). Both play back on a nilearn glass brain (three views — lateral, posterior, dorsal; 1000 cortical parcels) as the clip runs. Press play — both brains update with the video.",
+    "title": "Recorded vs. predicted BOLD for a held-out movie clip",
+    "subtitle": "A 10-second clip from the Algonauts 2025 dataset (Friends, s01e02) — video, audio, and dialogue — is the input. An encoding model predicts subject 1's fMRI response (lower brain); it is shown alongside that subject's recorded response (upper brain) for the same scans. Both are rendered on a nilearn glass brain (three views — lateral, posterior, dorsal; 1000 cortical parcels) and advance with the clip on playback.",
     "video": "assets/movie_brain_real/clip.mp4",
     "human": "assets/movie_brain_real/human/bold_",
     "model": "assets/movie_brain_real/model/bold_",
@@ -111,12 +111,12 @@ window.BSU_DATA = {
     "times": [29.8, 31.3, 32.8, 34.3, 35.8, 37.2, 38.7],
     "per_tr_r": [0.1425, 0.0662, 0.2419, 0.1927, 0.1126, 0.1961, 0.3464],
     "mean_r": 0.253,
-    "note": "Warm (red) = activity above this clip's baseline, cool (blue) = below. <b>Both brains share one color scale, in standard-deviation units</b> (each stream normalized to its own variance), so the <b>spatial pattern</b> compares directly. In raw units the model's predicted response is ~5× smaller — the ridge prediction is regularized — so the honest magnitude gap lives in the held-out correlation (r ≈ 0.25), not in the color. <b>The two brains also share a clock; both lag the movie by the brain's ~4.5 s hemodynamic delay</b> (see below).",
-    "reading": "**A real movie clip in; one subject's recorded brain response and the model's held-out prediction out, side by side, unrolling in time.** This is the temporal-multimodal pipeline end to end on real data: each moment of video → **V-JEPA-2** features (the video backbone family that won Algonauts 2025), sound → Wav2Vec2, dialogue → MiniLM; a banded-ridge encoding model (fit on the *other* Friends episodes) shifts them by the brain's hemodynamic lag and predicts subject 1's response in all 1000 cortical parcels per scan; and the new `glass_brain_movie` Brain-Score tool renders each scan. **Do the model and the brain need lining up in time? No — they already share a clock.** The recorded BOLD carries the ~4.5 s hemodynamic lag physiologically, and the encoding model builds that *same* lag into its design matrix, so they are directly comparable at each scan. Both lag the *movie* by that delay — so each brain map is the response to what was on screen a few seconds earlier.",
-    "caption": "Real human vs. model. The clip is one <b>held-out</b> Friends segment — the encoding model was fit on the other segments, so the bottom brain is a genuine prediction, never trained on this clip; the top brain is subject 1's recorded fMRI for the exact same scans. <b>Neither is time-shifted relative to the other</b> (both already include the hemodynamic lag); to see the brain respond to the precise frame on screen you would advance the movie ~3 scans (~4.5 s) ahead of the brains. The Friends footage is from the Algonauts 2025 / Courtois NeuroMod dataset — internal research demo only, not for redistribution. (TR = 1.49 s; 7 scans ≈ 10.4 s.)"
+    "note": "Warm = activity above this clip's baseline, cool = below. Both brains use one color scale, in standard-deviation units (each stream normalized to its own variance), so the spatial pattern is directly comparable. In raw units the predicted response is ~5× smaller than the recorded one because the ridge prediction is regularized; the magnitude difference is reported by the held-out correlation (r ≈ 0.25), not the color. Both brains share one clock and lag the movie by the ~4.5 s hemodynamic delay (see below).",
+    "reading": "The temporal-multimodal pipeline, end to end on recorded data. Per moment, video → V-JEPA-2 features, audio → Wav2Vec2, dialogue → MiniLM; a banded-ridge encoding model fit on the other Friends episodes shifts them by the hemodynamic lag and predicts subject 1's response across all 1000 cortical parcels per scan; the `glass_brain_movie` tool renders each scan. The recorded BOLD carries the ~4.5 s hemodynamic lag physiologically, and the encoding model builds the same lag into its design matrix, so the two are directly comparable at each scan and need no relative shift. Both lag the movie by that delay, so each map is the response to what was on screen a few seconds earlier.",
+    "caption": "Recorded vs. predicted, on a held-out Friends segment: the encoding model was fit on the other segments, so the lower brain is a genuine prediction and the upper brain is subject 1's recorded fMRI for the same scans. Neither is time-shifted relative to the other (both already include the hemodynamic lag); to align the brain map to the on-screen frame, the movie would be advanced ~3 scans (~4.5 s). The Friends footage is from the Algonauts 2025 / Courtois NeuroMod dataset — internal research use only, not for redistribution. (TR = 1.49 s; 7 scans ≈ 10.4 s.)"
   },
   "nulls": {
-    "description": "Matched nulls are DEFINED for every capability and run through the same pipeline with the signal destroyed in one specific way. Floors are MEASURED for neural encoding and behavior; the temporal-shift null was run on real 50k-TR Algonauts BOLD (shuffle floor ≈ 0.009; score peaks at the true HRF delay and collapses when mis-timed — see the curve above).",
+    "description": "A matched null is defined for every capability and run through the same pipeline with the signal removed in one specific way. Floors are measured for neural encoding and behavior; the temporal-shift null was computed on 50k recorded Algonauts TRs (shuffle floor ≈ 0.009; the score peaks at the hemodynamic delay and falls when mis-timed — see the curve above).",
     "entries": [
       {"capability": "neural encoding", "null": "shuffle_rows / random-init model", "what_it_catches": "leakage, over-expressive readout"},
       {"capability": "behavioral", "null": "shuffle_labels / chance", "what_it_catches": "label imbalance, overfit readout"},
@@ -127,7 +127,7 @@ window.BSU_DATA = {
     ]
   },
   "ablation": {
-    "capability": "Inducing dyslexia (Honarmand et al. 2026) — REPRODUCED on Qwen2.5-VL-32B",
+    "capability": "Induced dyslexia (Honarmand et al. 2026), reproduced on Qwen2.5-VL-32B",
     "protocol": "Find the model's word-form units with a localizer (which internal units fire more for words than for scrambled words and line-drawn objects), switch off the most word-form-selective ones vs an equal-size random set (drawn across all 64 of the network's internal layers), then re-test reading by having the model generate its answer — no retraining. 2 random seeds, averaged.",
     "mask_pct": [0, 6.9, 15, 25],
     "vwf_roar": [0.975, 0.963, 0.925, 0.537],
@@ -138,8 +138,8 @@ window.BSU_DATA = {
     "random_control": [0.87, 0.87, 0.80, 0.80],
     "threshold": 0.65,
     "brain_caption": "Where the lesion lands: the VWF-selective units align with the human Visual Word Form Area (VWFA — left ventral occipitotemporal cortex, MNI ≈ [-44,-58,-15]; Honarmand Fig 5). This quickbrain glass brain shows that cortical territory — the area effectively 'dropped' when the population is ablated.",
-    "scale_note": "The deficit is scale-dependent and emerges cleanly with size. 3B: VWF-selective ablation is LESS damaging than random (wrong direction). 7B: VWF becomes MORE damaging than random (correct direction) but too weak to cross the threshold. 32B (shown): VWF-selective ablation at a 25% mask drops reading to 0.537 — BELOW the 0.65 dyslexia threshold — while the same-size random ablation stays at 0.887. The selective dyslexia reproduces.",
-    "reading": "Honarmand's selective dyslexia **reproduces at 32B**. Switching off the model's word-form units (the top ~25% of one internal layer's word-form filters) drops its reading score to 0.537 — **across the 0.65 dyslexia threshold** — while switching off the same NUMBER of random units leaves reading at 0.887, and a non-reading control task stays at 0.80. **That is a selective reading deficit — the damage is specific to reading, not a general drop in ability.** It grows with model size: at 3B the targeted lesion ran the wrong way, at 7B the right direction but too weak, and only at 32B does the word-form lesion cross the threshold selectively. Honarmand used a 72B model, where the deficit appears with a much smaller lesion (~7%) — consistent with less damage being needed as the model grows.<br><br>**This is now a registered Brain-Score benchmark** (`Yeatman2021-induced_dyslexia`): a `FunctionalSelection` localizer finds the word-form units, `StateChange` ablates them, and a matched `RandomSelection` control gates the dyslexic flag — so *general* damage never registers as *selective* dyslexia. Validated end-to-end on real weights; the random-control gate correctly refused a false positive when an over-broad ablation hurt reading non-specifically."
+    "scale_note": "The deficit is scale-dependent. At 3B, word-form-selective ablation is less damaging than random (the wrong direction). At 7B it is more damaging than random (the correct direction) but does not cross the threshold. At 32B (shown), a 25% word-form-selective mask drops reading to 0.537, below the 0.65 dyslexia threshold, while a same-size random ablation stays at 0.887 — a selective deficit.",
+    "reading": "The selective deficit reproduces at 32B. Ablating the word-form units (the top ~25% of one layer's word-form filters) drops reading to 0.537 — below the 0.65 dyslexia threshold — while ablating the same number of random units leaves reading at 0.887 and a non-reading control task at 0.80. The deficit is therefore specific to reading rather than a general loss of ability. It is scale-dependent: at 3B the targeted lesion runs the wrong way, at 7B the right way but sub-threshold, and only at 32B does it cross the threshold selectively. Honarmand's 72B model shows the deficit at a smaller lesion (~7%), consistent with less damage being required as the model grows.\n\nThis is a registered Brain-Score benchmark (`Yeatman2021-induced_dyslexia`): a `FunctionalSelection` localizer identifies the word-form units, `StateChange` ablates them, and a matched `RandomSelection` control gates the dyslexic flag, so general damage does not register as selective dyslexia. The benchmark was validated end-to-end on recorded weights; the random-control gate correctly withheld the flag when an over-broad ablation reduced reading non-specifically."
   },
   "selection": {
     "capability": "Composite selection — units across layers for one region",

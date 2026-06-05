@@ -2,10 +2,15 @@
   const D = window.BSU_DATA;
   const $ = (id) => document.getElementById(id);
 
-  // Highlight take-homes: **text** in a reading becomes an accented <b>.
-  // HTML-escaped first so reading strings stay safe to inject.
+  // Reading markup (HTML-escaped first, so reading strings stay safe to inject):
+  //   **text**  → accented <b>   (use sparingly)
+  //   `code`    → <code>          (identifiers, method names)
+  //   blank line → paragraph break
   const _esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const mark = s => _esc(s).replace(/\*\*(.+?)\*\*/g, '<b class="hl">$1</b>');
+  const mark = s => _esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<b class="hl">$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\n\n/g, '<br><br>');
   // Set a reading element from a string that may contain **highlights**.
   const setReading = (id, s) => { const el = $(id); if (el) el.innerHTML = mark(s || ''); };
 
