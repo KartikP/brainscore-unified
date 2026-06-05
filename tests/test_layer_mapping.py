@@ -75,6 +75,16 @@ class TestApproaches:
 
 def test_result_dataclass_accessors():
     res = LayerMappingResult(['a', 'b', 'c'], [0.1, 0.5, 0.3],
-                             np.zeros((3, 4)), alpha=1.0)
+                             np.zeros((3, 4)), localizer_idx=np.arange(5),
+                             test_idx=np.arange(5, 10), alpha=1.0)
     assert res.best_layer == 'b' and res.best_r == 0.5
     assert res.top_layers(2) == ['b', 'c']
+
+
+def test_localizer_test_split_is_disjoint():
+    layers, Y, _ = _synthetic(n_stim=120)
+    res = explore_layer_mapping(layers, Y, localizer_frac=0.5, seed=0)
+    L, T = set(res.localizer_idx.tolist()), set(res.test_idx.tolist())
+    assert not (L & T)                 # disjoint: no stimulus selects AND scores
+    assert L | T == set(range(120))    # together they cover all stimuli
+    assert abs(len(L) - len(T)) <= 1   # ~50/50
