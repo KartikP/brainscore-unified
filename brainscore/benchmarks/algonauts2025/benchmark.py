@@ -581,7 +581,10 @@ class _Algonauts2025Base(BenchmarkBase):
         X = self._align_features_to_assembly(features, frame_ids, frame_stim_set)
 
         a_stim = list(self.assembly['stimulus_id'].values)
-        a_run = list(self.assembly['run'].values)
+        # Held-out stubs (S7 / OOD) carry no 'run' coord — each clip is its own
+        # block, so group on stimulus_id alone there.
+        a_run = (list(self.assembly['run'].values)
+                 if 'run' in self.assembly.coords else a_stim)
         run_idx_per_obs = np.empty(len(a_stim), dtype=np.int64)
         seen: Dict[Tuple[str, str], int] = {}
         for i, (s, r) in enumerate(zip(a_stim, a_run)):
