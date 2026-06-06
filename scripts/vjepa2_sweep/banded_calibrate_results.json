@@ -1,0 +1,15 @@
+{
+  "single_ridgecv": 0.7765,
+  "single_via_himalaya": 0.7762,
+  "banded_24_niter500": 0.7846,
+  "banded_top6_niter300": 0.7863,
+  "best_layer": "encoder.layer.16",
+  "top6": [
+    "encoder.layer.16",
+    "encoder.layer.15",
+    "encoder.layer.14",
+    "encoder.layer.17",
+    "encoder.layer.18",
+    "encoder.layer.19"
+  ]
+}

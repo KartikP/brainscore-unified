@@ -1,0 +1,41 @@
+{
+  "best_layer": "encoder.layer.16",
+  "n_voxels": 4042,
+  "n_stimuli": 1026,
+  "control1_shuffle": {
+    "real": 0.7765,
+    "shuffled_labels": 0.0104
+  },
+  "control2_brain_dim": {
+    "participation_ratio": 13.97,
+    "pcs_for_50pct_var": 4,
+    "pcs_for_90pct_var": 158,
+    "pcs_for_95pct_var": 268
+  },
+  "control3_per_pc": {
+    "pc_test_r_first20": [
+      0.7779,
+      0.8608,
+      0.8413,
+      0.7921,
+      0.7057,
+      0.5996,
+      0.7274,
+      0.7429,
+      0.6128,
+      0.5329,
+      0.675,
+      0.6083,
+      0.5448,
+      0.6296,
+      0.641,
+      0.3164,
+      0.2852,
+      0.5288,
+      0.4403,
+      0.4843
+    ],
+    "n_pcs_predicted_above_0.2": 35,
+    "n_pcs_tested": 60
+  }
+}
