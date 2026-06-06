@@ -3,6 +3,7 @@ from .layer_mapping import (
     explore_layer_mapping,
     score_approaches,
     score_budget_curve,
+    effective_dimensionality,
     normalize_by_ceiling,
     sweep_model,
     extract_features_by_layer,
@@ -23,7 +24,8 @@ from .auto_register import (
 
 __all__ = [
     'explore_layer_mapping', 'score_approaches', 'score_budget_curve',
-    'normalize_by_ceiling', 'per_voxel_train_test', 'sweep_model',
+    'effective_dimensionality', 'normalize_by_ceiling', 'per_voxel_train_test',
+    'sweep_model',
     'extract_features_by_layer', 'per_voxel_cv_ridge', 'LayerMappingResult',
     'inspect_model', 'auto_register', 'scaffold_registration',
     'find_block_groups', 'space_layers', 'ModelProfile',

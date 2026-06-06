@@ -10,7 +10,8 @@ import pytest
 from brainscore_core.model_interface import CompositeSelector
 from brainscore.tools.layer_mapping import (
     explore_layer_mapping, score_approaches, score_budget_curve,
-    normalize_by_ceiling, per_voxel_train_test, LayerMappingResult)
+    effective_dimensionality, normalize_by_ceiling, per_voxel_train_test,
+    LayerMappingResult)
 
 
 def _synthetic(n_stim=200, n_units=40, n_voxels=15, seed=0):
@@ -172,6 +173,19 @@ class TestRigorousScoring:
         assert raw['normalized'] is False and norm['normalized'] is True
         # dividing by 0.9 inflates the score by ~1/0.9
         assert norm['within_layer'][0]['r'] > raw['within_layer'][0]['r']
+
+    def test_effective_dimensionality_bounds(self):
+        rng = np.random.RandomState(0)
+        # rank-1 data → participation ratio ≈ 1
+        v = rng.randn(200, 1); load = rng.randn(1, 30)
+        rank1 = v @ load
+        assert effective_dimensionality(rank1) < 2.0
+        # isotropic 30-dim noise → PR close to 30
+        iso = rng.randn(200, 30)
+        assert effective_dimensionality(iso) > 20.0
+        # a low-rank signal embedded in 40 dims → PR well below 40
+        signal = rng.randn(200, 5) @ rng.randn(5, 40)
+        assert effective_dimensionality(signal) < 10.0
 
     def test_budget_curve_respects_max_budget(self):
         """Budgets above the layer size are skipped for within-layer; pooled

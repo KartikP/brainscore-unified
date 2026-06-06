@@ -64,6 +64,25 @@ def per_voxel_train_test(X_tr, Y_tr, X_te, Y_te,
     return _per_voxel_pearson(Y_te, reg.predict(X_te))
 
 
+def effective_dimensionality(X: np.ndarray) -> float:
+    """Participation ratio of a feature matrix — the *effective* number of
+    dimensions its variance occupies.
+
+    ``PR = (Σλ)² / Σλ²`` over the covariance eigenvalues ``λ``. PR = 1 when all
+    variance is in one direction; PR = p when variance is spread evenly over all
+    ``p`` features. A low PR relative to the feature count means the signal is
+    low-dimensional (and therefore recoverable from a small random subset of
+    neurons) — the structural explanation for why random unit-subsets score high
+    on distributed naturalistic signal.
+    """
+    X = np.asarray(X, np.float64)
+    Xc = X - X.mean(0, keepdims=True)
+    s = np.linalg.svd(Xc, compute_uv=False)
+    lam = s ** 2
+    denom = float((lam ** 2).sum())
+    return float((lam.sum() ** 2) / denom) if denom > 0 else 0.0
+
+
 def normalize_by_ceiling(r: np.ndarray, ceiling: np.ndarray,
                          min_ceiling: float = 0.1) -> np.ndarray:
     """Divide per-voxel r by each voxel's noise ceiling (split-half reliability).
