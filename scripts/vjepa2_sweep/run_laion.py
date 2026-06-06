@@ -68,14 +68,16 @@ def main():
     log('load LAION-fMRI persubject sub-01 assembly...')
     da = load_assembly()
     log(f'  dims={da.dims} sizes={dict(da.sizes)}')
-    neuro_coords = [c for c in da.coords if 'neuroid' in str(da[c].dims)]
-    pres_coords = [c for c in da.coords if 'presentation' in str(da[c].dims)]
-    log(f'  neuroid coords: {neuro_coords}')
-    log(f'  presentation coords: {pres_coords}')
+    # region / nc / stimulus_id live as MultiIndex LEVELS, not top-level coords
+    neuro_levels = list(da.indexes['neuroid'].names) if 'neuroid' in da.indexes else []
+    pres_levels = list(da.indexes['presentation'].names) if 'presentation' in da.indexes else []
+    log(f'  neuroid levels: {neuro_levels}')
+    log(f'  presentation levels: {pres_levels}')
     region = np.asarray(da['region'].values)
     region_counts = {r: int((region == r).sum()) for r in sorted(set(region.tolist()))}
     log(f'  region voxel counts: {region_counts}')
-    nc_name = next((c for c in neuro_coords if 'nc' in c.lower()), None)
+    nc_name = 'nc_12rep' if 'nc_12rep' in neuro_levels else \
+        next((c for c in neuro_levels if 'nc' in c.lower()), None)
     log(f'  NC coord = {nc_name}')
 
     ex = fetch_stimuli()
