@@ -1,0 +1,634 @@
+{
+  "benchmark": "Allen2022_fmri",
+  "n_stimuli": 515,
+  "regions": [
+    "V1",
+    "V2",
+    "V4",
+    "IT"
+  ],
+  "models": {
+    "clip": {
+      "V1": {
+        "regression": {
+          "per_layer_r": {
+            "encoder.layers.0": 0.3174,
+            "encoder.layers.1": 0.3202,
+            "encoder.layers.2": 0.3279,
+            "encoder.layers.3": 0.3499,
+            "encoder.layers.4": 0.3634,
+            "encoder.layers.5": 0.3505,
+            "encoder.layers.6": 0.3372,
+            "encoder.layers.7": 0.3045,
+            "encoder.layers.8": 0.2603,
+            "encoder.layers.9": 0.2026,
+            "encoder.layers.10": 0.1988,
+            "encoder.layers.11": 0.1846
+          },
+          "best_layer": "encoder.layers.4",
+          "best_r": 0.3634,
+          "best_layer_depth_frac": 0.36,
+          "whole_layer_r": 0.3781,
+          "within_layer": [
+            {
+              "k": 16,
+              "r": 0.3388,
+              "random_null": 0.2287,
+              "random_null_sd": 0.028
+            },
+            {
+              "k": 32,
+              "r": 0.3432,
+              "random_null": 0.2472,
+              "random_null_sd": 0.0234
+            },
+            {
+              "k": 64,
+              "r": 0.3659,
+              "random_null": 0.2824,
+              "random_null_sd": 0.0152
+            },
+            {
+              "k": 128,
+              "r": 0.3714,
+              "random_null": 0.3268,
+              "random_null_sd": 0.0134
+            },
+            {
+              "k": 256,
+              "r": 0.3735,
+              "random_null": 0.3533,
+              "random_null_sd": 0.0151
+            },
+            {
+              "k": 512,
+              "r": 0.3777,
+              "random_null": 0.3681,
+              "random_null_sd": 0.0079
+            }
+          ],
+          "eff_dim_brain": 24.91,
+          "eff_dim_best_layer": 22.57
+        },
+        "rsa": {
+          "per_layer": {
+            "encoder.layers.0": 0.0654,
+            "encoder.layers.1": 0.0915,
+            "encoder.layers.2": 0.102,
+            "encoder.layers.3": 0.1153,
+            "encoder.layers.4": 0.1243,
+            "encoder.layers.5": 0.122,
+            "encoder.layers.6": 0.1083,
+            "encoder.layers.7": 0.1052,
+            "encoder.layers.8": 0.076,
+            "encoder.layers.9": 0.0554,
+            "encoder.layers.10": 0.0525,
+            "encoder.layers.11": 0.0584
+          },
+          "best_layer": "encoder.layers.4",
+          "best_r": 0.1243,
+          "best_layer_depth_frac": 0.36,
+          "unit_selection_at_best": {
+            "full": 0.1243,
+            "top_256": 0.1349,
+            "random_256": 0.1057
+          }
+        }
+      },
+      "V2": {
+        "regression": {
+          "per_layer_r": {
+            "encoder.layers.0": 0.2494,
+            "encoder.layers.1": 0.2626,
+            "encoder.layers.2": 0.2793,
+            "encoder.layers.3": 0.3085,
+            "encoder.layers.4": 0.3311,
+            "encoder.layers.5": 0.3257,
+            "encoder.layers.6": 0.314,
+            "encoder.layers.7": 0.2843,
+            "encoder.layers.8": 0.2424,
+            "encoder.layers.9": 0.1948,
+            "encoder.layers.10": 0.1882,
+            "encoder.layers.11": 0.178
+          },
+          "best_layer": "encoder.layers.4",
+          "best_r": 0.3311,
+          "best_layer_depth_frac": 0.36,
+          "whole_layer_r": 0.3394,
+          "within_layer": [
+            {
+              "k": 16,
+              "r": 0.2902,
+              "random_null": 0.2107,
+              "random_null_sd": 0.0237
+            },
+            {
+              "k": 32,
+              "r": 0.3185,
+              "random_null": 0.2313,
+              "random_null_sd": 0.0134
+            },
+            {
+              "k": 64,
+              "r": 0.324,
+              "random_null": 0.2638,
+              "random_null_sd": 0.0132
+            },
+            {
+              "k": 128,
+              "r": 0.3273,
+              "random_null": 0.2977,
+              "random_null_sd": 0.0134
+            },
+            {
+              "k": 256,
+              "r": 0.3299,
+              "random_null": 0.3189,
+              "random_null_sd": 0.0127
+            },
+            {
+              "k": 512,
+              "r": 0.3374,
+              "random_null": 0.3322,
+              "random_null_sd": 0.0056
+            }
+          ],
+          "eff_dim_brain": 29.81,
+          "eff_dim_best_layer": 22.57
+        },
+        "rsa": {
+          "per_layer": {
+            "encoder.layers.0": 0.0572,
+            "encoder.layers.1": 0.0818,
+            "encoder.layers.2": 0.0958,
+            "encoder.layers.3": 0.1111,
+            "encoder.layers.4": 0.1207,
+            "encoder.layers.5": 0.1196,
+            "encoder.layers.6": 0.1089,
+            "encoder.layers.7": 0.1071,
+            "encoder.layers.8": 0.081,
+            "encoder.layers.9": 0.0624,
+            "encoder.layers.10": 0.0584,
+            "encoder.layers.11": 0.065
+          },
+          "best_layer": "encoder.layers.4",
+          "best_r": 0.1207,
+          "best_layer_depth_frac": 0.36,
+          "unit_selection_at_best": {
+            "full": 0.1207,
+            "top_256": 0.127,
+            "random_256": 0.098
+          }
+        }
+      },
+      "V4": {
+        "regression": {
+          "per_layer_r": {
+            "encoder.layers.0": 0.2043,
+            "encoder.layers.1": 0.2236,
+            "encoder.layers.2": 0.2546,
+            "encoder.layers.3": 0.2966,
+            "encoder.layers.4": 0.3315,
+            "encoder.layers.5": 0.3362,
+            "encoder.layers.6": 0.3248,
+            "encoder.layers.7": 0.3041,
+            "encoder.layers.8": 0.2605,
+            "encoder.layers.9": 0.2195,
+            "encoder.layers.10": 0.2118,
+            "encoder.layers.11": 0.1916
+          },
+          "best_layer": "encoder.layers.5",
+          "best_r": 0.3362,
+          "best_layer_depth_frac": 0.45,
+          "whole_layer_r": 0.3503,
+          "within_layer": [
+            {
+              "k": 16,
+              "r": 0.3076,
+              "random_null": 0.2005,
+              "random_null_sd": 0.0313
+            },
+            {
+              "k": 32,
+              "r": 0.3284,
+              "random_null": 0.2434,
+              "random_null_sd": 0.0161
+            },
+            {
+              "k": 64,
+              "r": 0.3432,
+              "random_null": 0.2697,
+              "random_null_sd": 0.0118
+            },
+            {
+              "k": 128,
+              "r": 0.3456,
+              "random_null": 0.3015,
+              "random_null_sd": 0.0138
+            },
+            {
+              "k": 256,
+              "r": 0.353,
+              "random_null": 0.3233,
+              "random_null_sd": 0.0113
+            },
+            {
+              "k": 512,
+              "r": 0.3511,
+              "random_null": 0.3404,
+              "random_null_sd": 0.007
+            }
+          ],
+          "eff_dim_brain": 24.95,
+          "eff_dim_best_layer": 30.16
+        },
+        "rsa": {
+          "per_layer": {
+            "encoder.layers.0": 0.0597,
+            "encoder.layers.1": 0.0718,
+            "encoder.layers.2": 0.0916,
+            "encoder.layers.3": 0.1086,
+            "encoder.layers.4": 0.1274,
+            "encoder.layers.5": 0.138,
+            "encoder.layers.6": 0.1364,
+            "encoder.layers.7": 0.1381,
+            "encoder.layers.8": 0.1022,
+            "encoder.layers.9": 0.0787,
+            "encoder.layers.10": 0.077,
+            "encoder.layers.11": 0.0884
+          },
+          "best_layer": "encoder.layers.7",
+          "best_r": 0.1381,
+          "best_layer_depth_frac": 0.64,
+          "unit_selection_at_best": {
+            "full": 0.1381,
+            "top_256": 0.1532,
+            "random_256": 0.1172
+          }
+        }
+      },
+      "IT": {
+        "regression": {
+          "per_layer_r": {
+            "encoder.layers.0": 0.2044,
+            "encoder.layers.1": 0.2402,
+            "encoder.layers.2": 0.2975,
+            "encoder.layers.3": 0.361,
+            "encoder.layers.4": 0.4065,
+            "encoder.layers.5": 0.4197,
+            "encoder.layers.6": 0.4228,
+            "encoder.layers.7": 0.4173,
+            "encoder.layers.8": 0.3713,
+            "encoder.layers.9": 0.3228,
+            "encoder.layers.10": 0.3123,
+            "encoder.layers.11": 0.2978
+          },
+          "best_layer": "encoder.layers.6",
+          "best_r": 0.4228,
+          "best_layer_depth_frac": 0.55,
+          "whole_layer_r": 0.4678,
+          "within_layer": [
+            {
+              "k": 16,
+              "r": 0.4487,
+              "random_null": 0.2728,
+              "random_null_sd": 0.0262
+            },
+            {
+              "k": 32,
+              "r": 0.4536,
+              "random_null": 0.3302,
+              "random_null_sd": 0.0409
+            },
+            {
+              "k": 64,
+              "r": 0.4588,
+              "random_null": 0.3738,
+              "random_null_sd": 0.019
+            },
+            {
+              "k": 128,
+              "r": 0.4647,
+              "random_null": 0.4102,
+              "random_null_sd": 0.0162
+            },
+            {
+              "k": 256,
+              "r": 0.4672,
+              "random_null": 0.4332,
+              "random_null_sd": 0.019
+            },
+            {
+              "k": 512,
+              "r": 0.4701,
+              "random_null": 0.4569,
+              "random_null_sd": 0.0096
+            }
+          ],
+          "eff_dim_brain": 20.12,
+          "eff_dim_best_layer": 32.66
+        },
+        "rsa": {
+          "per_layer": {
+            "encoder.layers.0": 0.0552,
+            "encoder.layers.1": 0.0872,
+            "encoder.layers.2": 0.1195,
+            "encoder.layers.3": 0.1635,
+            "encoder.layers.4": 0.2152,
+            "encoder.layers.5": 0.271,
+            "encoder.layers.6": 0.2861,
+            "encoder.layers.7": 0.3031,
+            "encoder.layers.8": 0.2318,
+            "encoder.layers.9": 0.1876,
+            "encoder.layers.10": 0.1825,
+            "encoder.layers.11": 0.1821
+          },
+          "best_layer": "encoder.layers.7",
+          "best_r": 0.3031,
+          "best_layer_depth_frac": 0.64,
+          "unit_selection_at_best": {
+            "full": 0.3031,
+            "top_256": 0.3625,
+            "random_256": 0.2434
+          }
+        }
+      }
+    },
+    "resnet50": {
+      "V1": {
+        "regression": {
+          "per_layer_r": {
+            "layer1": 0.268,
+            "layer2": 0.2368,
+            "layer3": 0.2613,
+            "layer4": 0.1941
+          },
+          "best_layer": "layer1",
+          "best_r": 0.268,
+          "best_layer_depth_frac": 0.0,
+          "whole_layer_r": 0.3466,
+          "within_layer": [
+            {
+              "k": 16,
+              "r": 0.3387,
+              "random_null": 0.3224,
+              "random_null_sd": 0.0138
+            },
+            {
+              "k": 32,
+              "r": 0.3453,
+              "random_null": 0.3233,
+              "random_null_sd": 0.0133
+            },
+            {
+              "k": 64,
+              "r": 0.3491,
+              "random_null": 0.3359,
+              "random_null_sd": 0.0039
+            },
+            {
+              "k": 128,
+              "r": 0.355,
+              "random_null": 0.3412,
+              "random_null_sd": 0.0039
+            },
+            {
+              "k": 256,
+              "r": 0.3466,
+              "random_null": 0.3466,
+              "random_null_sd": 0.0
+            }
+          ],
+          "eff_dim_brain": 24.91,
+          "eff_dim_best_layer": 9.55
+        },
+        "rsa": {
+          "per_layer": {
+            "layer1": 0.0927,
+            "layer2": 0.1102,
+            "layer3": 0.1066,
+            "layer4": 0.1024
+          },
+          "best_layer": "layer2",
+          "best_r": 0.1102,
+          "best_layer_depth_frac": 0.33,
+          "unit_selection_at_best": {
+            "full": 0.1102,
+            "top_256": 0.1342,
+            "random_256": 0.1073
+          }
+        }
+      },
+      "V2": {
+        "regression": {
+          "per_layer_r": {
+            "layer1": 0.2143,
+            "layer2": 0.2063,
+            "layer3": 0.2442,
+            "layer4": 0.1738
+          },
+          "best_layer": "layer3",
+          "best_r": 0.2442,
+          "best_layer_depth_frac": 0.67,
+          "whole_layer_r": 0.3543,
+          "within_layer": [
+            {
+              "k": 16,
+              "r": 0.316,
+              "random_null": 0.1893,
+              "random_null_sd": 0.0344
+            },
+            {
+              "k": 32,
+              "r": 0.345,
+              "random_null": 0.2251,
+              "random_null_sd": 0.0233
+            },
+            {
+              "k": 64,
+              "r": 0.366,
+              "random_null": 0.2655,
+              "random_null_sd": 0.0075
+            },
+            {
+              "k": 128,
+              "r": 0.3673,
+              "random_null": 0.3066,
+              "random_null_sd": 0.0076
+            },
+            {
+              "k": 256,
+              "r": 0.3733,
+              "random_null": 0.3352,
+              "random_null_sd": 0.0041
+            },
+            {
+              "k": 512,
+              "r": 0.3733,
+              "random_null": 0.3518,
+              "random_null_sd": 0.0044
+            }
+          ],
+          "eff_dim_brain": 29.81,
+          "eff_dim_best_layer": 49.83
+        },
+        "rsa": {
+          "per_layer": {
+            "layer1": 0.0888,
+            "layer2": 0.1081,
+            "layer3": 0.1132,
+            "layer4": 0.1166
+          },
+          "best_layer": "layer4",
+          "best_r": 0.1166,
+          "best_layer_depth_frac": 1.0,
+          "unit_selection_at_best": {
+            "full": 0.1166,
+            "top_256": 0.1381,
+            "random_256": 0.087
+          }
+        }
+      },
+      "V4": {
+        "regression": {
+          "per_layer_r": {
+            "layer1": 0.2072,
+            "layer2": 0.2129,
+            "layer3": 0.2508,
+            "layer4": 0.1934
+          },
+          "best_layer": "layer3",
+          "best_r": 0.2508,
+          "best_layer_depth_frac": 0.67,
+          "whole_layer_r": 0.3666,
+          "within_layer": [
+            {
+              "k": 16,
+              "r": 0.334,
+              "random_null": 0.2032,
+              "random_null_sd": 0.041
+            },
+            {
+              "k": 32,
+              "r": 0.3611,
+              "random_null": 0.2414,
+              "random_null_sd": 0.0262
+            },
+            {
+              "k": 64,
+              "r": 0.3796,
+              "random_null": 0.2805,
+              "random_null_sd": 0.0097
+            },
+            {
+              "k": 128,
+              "r": 0.3879,
+              "random_null": 0.3137,
+              "random_null_sd": 0.0049
+            },
+            {
+              "k": 256,
+              "r": 0.3904,
+              "random_null": 0.346,
+              "random_null_sd": 0.0042
+            },
+            {
+              "k": 512,
+              "r": 0.3869,
+              "random_null": 0.3632,
+              "random_null_sd": 0.0034
+            }
+          ],
+          "eff_dim_brain": 24.95,
+          "eff_dim_best_layer": 49.83
+        },
+        "rsa": {
+          "per_layer": {
+            "layer1": 0.0792,
+            "layer2": 0.1075,
+            "layer3": 0.1298,
+            "layer4": 0.1501
+          },
+          "best_layer": "layer4",
+          "best_r": 0.1501,
+          "best_layer_depth_frac": 1.0,
+          "unit_selection_at_best": {
+            "full": 0.1501,
+            "top_256": 0.1639,
+            "random_256": 0.1098
+          }
+        }
+      },
+      "IT": {
+        "regression": {
+          "per_layer_r": {
+            "layer1": 0.2403,
+            "layer2": 0.2553,
+            "layer3": 0.309,
+            "layer4": 0.3158
+          },
+          "best_layer": "layer4",
+          "best_r": 0.3158,
+          "best_layer_depth_frac": 1.0,
+          "whole_layer_r": 0.4386,
+          "within_layer": [
+            {
+              "k": 16,
+              "r": 0.3089,
+              "random_null": 0.1701,
+              "random_null_sd": 0.0382
+            },
+            {
+              "k": 32,
+              "r": 0.3407,
+              "random_null": 0.2128,
+              "random_null_sd": 0.0357
+            },
+            {
+              "k": 64,
+              "r": 0.3808,
+              "random_null": 0.2753,
+              "random_null_sd": 0.0274
+            },
+            {
+              "k": 128,
+              "r": 0.3968,
+              "random_null": 0.3247,
+              "random_null_sd": 0.0151
+            },
+            {
+              "k": 256,
+              "r": 0.4089,
+              "random_null": 0.3745,
+              "random_null_sd": 0.0042
+            },
+            {
+              "k": 512,
+              "r": 0.426,
+              "random_null": 0.4077,
+              "random_null_sd": 0.0063
+            }
+          ],
+          "eff_dim_brain": 20.12,
+          "eff_dim_best_layer": 81.93
+        },
+        "rsa": {
+          "per_layer": {
+            "layer1": 0.0797,
+            "layer2": 0.1741,
+            "layer3": 0.2745,
+            "layer4": 0.322
+          },
+          "best_layer": "layer4",
+          "best_r": 0.322,
+          "best_layer_depth_frac": 1.0,
+          "unit_selection_at_best": {
+            "full": 0.322,
+            "top_256": 0.3564,
+            "random_256": 0.2316
+          }
+        }
+      }
+    }
+  }
+}
