@@ -64,6 +64,60 @@ def per_voxel_train_test(X_tr, Y_tr, X_te, Y_te,
     return _per_voxel_pearson(Y_te, reg.predict(X_te))
 
 
+def compute_rdm(X: np.ndarray, metric: str = 'correlation') -> np.ndarray:
+    """Representational dissimilarity matrix (condensed upper triangle).
+
+    The geometry of a representation: pairwise dissimilarity between the
+    response vectors to each stimulus. ``'correlation'`` = ``1 - Pearson`` (scale-
+    and offset-invariant, the RSA default); ``'euclidean'`` = raw distance.
+    Returns the ``n*(n-1)/2`` upper-triangle vector for use with :func:`rsa_score`.
+    """
+    X = np.asarray(X, np.float64)
+    if metric == 'correlation':
+        Xc = X - X.mean(1, keepdims=True)
+        norm = np.sqrt((Xc ** 2).sum(1)); norm[norm == 0] = 1e-12
+        C = (Xc @ Xc.T) / np.outer(norm, norm)
+        D = 1.0 - C
+    elif metric == 'euclidean':
+        sq = (X ** 2).sum(1)
+        D = np.sqrt(np.maximum(sq[:, None] + sq[None, :] - 2 * (X @ X.T), 0.0))
+    else:
+        raise ValueError(f"metric must be 'correlation' or 'euclidean', got {metric!r}")
+    iu = np.triu_indices(X.shape[0], k=1)
+    return D[iu]
+
+
+def rsa_score(rdm_a: np.ndarray, rdm_b: np.ndarray, method: str = 'spearman') -> float:
+    """Correlate two RDMs (the RSA metric). Spearman by default (rank-based, the
+    Kriegeskorte convention); ``'pearson'`` for the linear variant.
+
+    Unlike regression predictivity, RSA fits no readout — it compares the full
+    representational *geometry*, so it cannot reweight or rotate away a layer's
+    dominant (possibly brain-irrelevant) variance. That makes it the natural
+    control for whether a regression-based conclusion is metric-specific.
+    """
+    a = np.asarray(rdm_a, np.float64); b = np.asarray(rdm_b, np.float64)
+    if method == 'spearman':
+        from scipy.stats import rankdata
+        a = rankdata(a); b = rankdata(b)
+    elif method != 'pearson':
+        raise ValueError(f"method must be 'spearman' or 'pearson', got {method!r}")
+    ac = a - a.mean(); bc = b - b.mean()
+    den = np.sqrt((ac ** 2).sum() * (bc ** 2).sum())
+    return float((ac * bc).sum() / den) if den > 0 else 0.0
+
+
+def rsa_layer_sweep(features_by_layer: Dict[str, np.ndarray], target: np.ndarray,
+                    metric: str = 'correlation', method: str = 'spearman') -> Dict[str, float]:
+    """Per-layer RSA score: correlate each layer's RDM with the brain RDM.
+
+    No train/test split is needed (nothing is fit). Returns ``{layer: rsa}``.
+    """
+    brain_rdm = compute_rdm(np.asarray(target), metric=metric)
+    return {layer: rsa_score(compute_rdm(np.asarray(X), metric=metric), brain_rdm, method=method)
+            for layer, X in features_by_layer.items()}
+
+
 def effective_dimensionality(X: np.ndarray) -> float:
     """Participation ratio of a feature matrix — the *effective* number of
     dimensions its variance occupies.

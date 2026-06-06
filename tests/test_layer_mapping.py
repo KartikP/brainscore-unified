@@ -11,7 +11,7 @@ from brainscore_core.model_interface import CompositeSelector
 from brainscore.tools.layer_mapping import (
     explore_layer_mapping, score_approaches, score_budget_curve,
     effective_dimensionality, normalize_by_ceiling, per_voxel_train_test,
-    LayerMappingResult)
+    compute_rdm, rsa_score, rsa_layer_sweep, LayerMappingResult)
 
 
 def _synthetic(n_stim=200, n_units=40, n_voxels=15, seed=0):
@@ -198,6 +198,52 @@ class TestRigorousScoring:
         pooled_ks = [e['k'] for e in curve['pooled_layers']]
         assert 60 not in within_ks                  # 60 > 40 units in one layer
         assert 60 in pooled_ks                       # 60 <= 80 pooled across 2 layers
+
+
+class TestRSA:
+    """Geometry-based (RSA) scoring — the metric-type control for the
+    regression conclusions."""
+
+    def test_rdm_shape_and_self_identity(self):
+        rng = np.random.RandomState(0)
+        X = rng.randn(20, 8)
+        rdm = compute_rdm(X)
+        assert rdm.shape == (20 * 19 // 2,)        # condensed upper triangle
+        assert rsa_score(rdm, rdm) == pytest.approx(1.0, abs=1e-9)
+
+    def test_rsa_identical_geometry_scores_high(self):
+        # a model layer that IS the brain target → RDMs match → rsa ≈ 1
+        rng = np.random.RandomState(1)
+        Y = rng.randn(40, 12)
+        assert rsa_score(compute_rdm(Y), compute_rdm(Y)) > 0.999
+
+    def test_rsa_unrelated_scores_near_zero(self):
+        rng = np.random.RandomState(2)
+        A = rng.randn(40, 10); B = rng.randn(40, 10)
+        assert abs(rsa_score(compute_rdm(A), compute_rdm(B))) < 0.2
+
+    def test_rsa_layer_sweep_finds_driving_layer(self):
+        # brain target is generated from L1 → L1's geometry should match best.
+        # Note the score is modest (~0.34, not the >0.8 regression gets): RSA can't
+        # downweight L1's 32 noise units, illustrating exactly why it's a distinct
+        # metric. The driving layer must still rank first and score clearly positive.
+        layers, Y, _ = _synthetic()
+        sweep = rsa_layer_sweep(layers, Y)
+        assert max(sweep, key=sweep.get) == 'L1'
+        assert sweep['L1'] > 0.2
+        others = [v for l, v in sweep.items() if l != 'L1']
+        assert sweep['L1'] > max(others) + 0.1
+
+    def test_euclidean_metric_runs(self):
+        rng = np.random.RandomState(3)
+        X = rng.randn(15, 6)
+        assert compute_rdm(X, metric='euclidean').shape == (15 * 14 // 2,)
+
+    def test_invalid_metric_and_method_raise(self):
+        with pytest.raises(ValueError, match="metric"):
+            compute_rdm(np.zeros((4, 3)), metric='cosine')
+        with pytest.raises(ValueError, match="method"):
+            rsa_score(np.zeros(6), np.zeros(6), method='kendall')
 
 
 def test_result_dataclass_accessors():
