@@ -175,7 +175,10 @@ class LayerMappingResult:
     """
     layer_order: List[str]
     per_layer_r: List[float]
-    unit_predictivity: np.ndarray   # (n_layers, n_units): per-unit |corr| on the LOCALIZER
+    unit_predictivity: Sequence[np.ndarray]   # per layer: per-unit |corr| on the LOCALIZER.
+    # A list of 1-D arrays (one per layer), so layers may have DIFFERENT widths
+    # (CNN stages: 256/512/1024/2048). A uniform 2-D array also works (indexing
+    # [li] yields the row), keeping older callers valid.
     localizer_idx: np.ndarray
     test_idx: np.ndarray
     alpha: float = 1.0
@@ -209,8 +212,9 @@ class LayerMappingResult:
         cand = []
         for layer in layers:
             li = self.layer_order.index(layer)
-            for u in range(self.unit_predictivity.shape[1]):
-                cand.append((float(self.unit_predictivity[li, u]), layer, int(u)))
+            preds = self.unit_predictivity[li]
+            for u in range(len(preds)):
+                cand.append((float(preds[u]), layer, int(u)))
         cand.sort(key=lambda t: -t[0])
         return [(layer, u) for _, layer, u in cand[:k]]
 
@@ -244,9 +248,8 @@ def explore_layer_mapping(features_by_layer: Dict[str, np.ndarray], target: np.n
     Y_loc = Y[L]
     Yz = (Y_loc - Y_loc.mean(0)) / (Y_loc.std(0) + 1e-8)
     layer_order = list(features_by_layer.keys())
-    n_units = next(iter(features_by_layer.values())).shape[1]
     per_layer_r: List[float] = []
-    unit_pred = np.zeros((len(layer_order), n_units), dtype=np.float64)
+    unit_pred: List[np.ndarray] = []   # per layer; layers may have different widths
     for li, layer in enumerate(layer_order):
         X = np.asarray(features_by_layer[layer], np.float64)
         # layer score: readout fit on localizer, evaluated on held-out test
@@ -255,7 +258,7 @@ def explore_layer_mapping(features_by_layer: Dict[str, np.ndarray], target: np.n
         # unit predictivity on the LOCALIZER only (selection sees no test data)
         Xl = X[L]
         Xz = (Xl - Xl.mean(0)) / (Xl.std(0) + 1e-8)
-        unit_pred[li] = np.abs((Xz.T @ Yz) / Xl.shape[0]).max(1)
+        unit_pred.append(np.abs((Xz.T @ Yz) / Xl.shape[0]).max(1))
     return LayerMappingResult(layer_order, per_layer_r, unit_pred, L, T, alpha)
 
 
@@ -378,8 +381,10 @@ def score_budget_curve(features_by_layer: Dict[str, np.ndarray], target: np.ndar
     L, T = result.localizer_idx, result.test_idx
     best = result.best_layer
     top = result.top_layers(top_n_layers)
-    n_units = features_by_layer[best].shape[1]
-    all_pairs = [(layer, u) for layer in top for u in range(n_units)]
+    n_units = features_by_layer[best].shape[1]   # best layer width (within-layer budget)
+    # pooled draws from each layer's OWN width (layers may differ — CNN stages)
+    all_pairs = [(layer, u) for layer in top
+                 for u in range(features_by_layer[layer].shape[1])]
 
     def score(cols) -> float:
         cols = np.asarray(cols, np.float64)

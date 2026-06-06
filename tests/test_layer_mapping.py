@@ -200,6 +200,45 @@ class TestRigorousScoring:
         assert 60 in pooled_ks                       # 60 <= 80 pooled across 2 layers
 
 
+class TestVariableWidthLayers:
+    """CNN stages have different widths (256/512/1024/2048) — the tool must not
+    assume a uniform unit count per layer."""
+
+    def _varwidth(self, n_stim=200, n_voxels=12, seed=0):
+        rng = np.random.RandomState(seed)
+        widths = {'s1': 16, 's2': 32, 's3': 64}      # different widths per layer
+        layers = {k: rng.randn(n_stim, w).astype(np.float32) for k, w in widths.items()}
+        # signal lives in s2's first 6 units
+        W = rng.randn(6, n_voxels)
+        Y = layers['s2'][:, :6] @ W + 0.05 * rng.randn(n_stim, n_voxels)
+        return layers, Y
+
+    def test_explore_handles_variable_widths(self):
+        layers, Y = self._varwidth()
+        res = explore_layer_mapping(layers, Y, alpha=1.0)
+        assert res.best_layer == 's2'
+        # unit_predictivity is per-layer with each layer's own width
+        assert len(res.unit_predictivity) == 3
+        assert [len(p) for p in res.unit_predictivity] == [16, 32, 64]
+
+    def test_top_units_pooled_variable_widths(self):
+        layers, Y = self._varwidth()
+        res = explore_layer_mapping(layers, Y, alpha=1.0)
+        pairs = res.top_units_pooled(['s2', 's3'], k=6)
+        assert len(pairs) == 6
+        # all picked indices valid within each layer's width
+        for layer, u in pairs:
+            assert u < layers[layer].shape[1]
+
+    def test_budget_curve_variable_widths(self):
+        layers, Y = self._varwidth()
+        res = explore_layer_mapping(layers, Y, alpha=1.0)
+        curve = score_budget_curve(layers, Y, res, budgets=[4, 8, 16], top_n_layers=3,
+                                   alpha_grid=(1., 10.), n_null_seeds=2)
+        assert len(curve['within_layer']) == 3
+        assert 'whole_layer_r' in curve
+
+
 class TestRSA:
     """Geometry-based (RSA) scoring — the metric-type control for the
     regression conclusions."""
