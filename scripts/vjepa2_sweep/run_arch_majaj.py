@@ -174,6 +174,7 @@ def main():
     ap.add_argument('--models', default='clip,resnet50,dinov2')
     ap.add_argument('--dataset', default='MajajHong2015.public')
     ap.add_argument('--out', default='arch_majaj_results.json')
+    ap.add_argument('--stim_id', default='')
     args = ap.parse_args()
     import warnings; warnings.filterwarnings('ignore')
     os.makedirs(OUT_DIR, exist_ok=True)
@@ -190,7 +191,10 @@ def main():
     df = pd.DataFrame(vals); df['sid'] = sids
     avg = df.groupby('sid').mean(); stim_order = list(avg.index)
     Y_all = avg.values
-    ss = asm.stimulus_set
+    ss = getattr(asm, 'stimulus_set', None)
+    if ss is None:
+        from brainscore_vision import load_stimulus_set
+        ss = load_stimulus_set(args.stim_id)
     paths = [str(ss.get_stimulus(s)) for s in stim_order]
     log(f'  {len(stim_order)} stimuli, regions {sorted(set(region))}')
 
