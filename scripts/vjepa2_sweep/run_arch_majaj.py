@@ -172,14 +172,16 @@ def analyze(feats, Y, layers):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--models', default='clip,resnet50,dinov2')
+    ap.add_argument('--dataset', default='MajajHong2015.public')
+    ap.add_argument('--out', default='arch_majaj_results.json')
     args = ap.parse_args()
     import warnings; warnings.filterwarnings('ignore')
     os.makedirs(OUT_DIR, exist_ok=True)
     import pandas as pd
     from brainscore_vision import load_dataset
 
-    log('load MajajHong2015.public...')
-    asm = load_dataset('MajajHong2015.public').squeeze()
+    log(f'load {args.dataset}...')
+    asm = load_dataset(args.dataset).squeeze()
     if 'time_bin' in asm.dims: asm = asm.mean('time_bin')
     region = np.asarray(asm['region'].values)
     sids = [str(s) for s in asm['stimulus_id'].values]
@@ -192,10 +194,11 @@ def main():
     paths = [str(ss.get_stimulus(s)) for s in stim_order]
     log(f'  {len(stim_order)} stimuli, regions {sorted(set(region))}')
 
-    out = {'benchmark': 'MajajHong2015.public', 'n_stimuli': len(stim_order), 'models': {}}
+    tag = args.dataset.replace('.', '_')
+    out = {'benchmark': args.dataset, 'n_stimuli': len(stim_order), 'models': {}}
     for mname in args.models.split(','):
         log(f'### model {mname}: extract features ###')
-        cache = f'/tmp/feats_{mname}_majaj.npz'
+        cache = f'/tmp/feats_{mname}_{tag}.npz'
         if os.path.exists(cache):
             d = np.load(cache); feats = {k: d[k] for k in d.files}
         else:
@@ -212,7 +215,7 @@ def main():
                 f"(depth {rg['best_layer_depth_frac']}, r={rg['best_r']}) "
                 f"| eff-dim-brain={rg['eff_dim_brain']} "
                 f"| rsa-best={rs['best_layer']} sel={rs['unit_selection_at_best']}")
-        json.dump(out, open(f'{OUT_DIR}/arch_majaj_results.json', 'w'), indent=2)
+        json.dump(out, open(f'{OUT_DIR}/{args.out}', 'w'), indent=2)
     log('DONE.')
 
 
