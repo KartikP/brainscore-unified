@@ -21,7 +21,7 @@ Scoring is decoupled from extraction (``explore_layer_mapping`` takes features +
 target), so it is testable offline; :func:`sweep_model` extracts then maps.
 """
 import dataclasses
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -37,17 +37,47 @@ def _per_voxel_pearson(Y_true: np.ndarray, Y_pred: np.ndarray) -> np.ndarray:
         return np.where(den > 0, num / den, np.nan)
 
 
-def per_voxel_train_test(X_tr, Y_tr, X_te, Y_te, alpha: float = 1.0) -> np.ndarray:
+def per_voxel_train_test(X_tr, Y_tr, X_te, Y_te,
+                         alpha: Union[float, Sequence[float]] = 1.0) -> np.ndarray:
     """Fit ridge on the localizer rows, score per-voxel Pearson r on the test rows.
 
     No feature scaler: Ridge auto-centers via its intercept; an explicit
     StandardScaler over-rescales heterogeneous-variance features and depresses
     the fit (established in the Lahner scoring work).
+
+    :param alpha: a single ridge penalty (``Ridge``), OR a sequence of
+        candidate penalties, in which case ``RidgeCV(alpha_per_target=True)``
+        selects the best penalty *per voxel* by efficient leave-one-out — the
+        scientifically correct choice when feature sets differ in size, since a
+        fixed penalty otherwise flatters smaller feature sets (the layer-mapping
+        feature-count confound).
     """
-    from sklearn.linear_model import Ridge
-    reg = Ridge(alpha=alpha).fit(np.asarray(X_tr, np.float64), np.asarray(Y_tr, np.float64))
-    pred = reg.predict(np.asarray(X_te, np.float64))
-    return _per_voxel_pearson(np.asarray(Y_te, np.float64), pred)
+    X_tr = np.asarray(X_tr, np.float64); Y_tr = np.asarray(Y_tr, np.float64)
+    X_te = np.asarray(X_te, np.float64); Y_te = np.asarray(Y_te, np.float64)
+    if np.ndim(alpha) == 0:
+        from sklearn.linear_model import Ridge
+        reg = Ridge(alpha=float(alpha)).fit(X_tr, Y_tr)
+    else:
+        from sklearn.linear_model import RidgeCV
+        reg = RidgeCV(alphas=np.asarray(alpha, np.float64),
+                      alpha_per_target=True).fit(X_tr, Y_tr)
+    return _per_voxel_pearson(Y_te, reg.predict(X_te))
+
+
+def normalize_by_ceiling(r: np.ndarray, ceiling: np.ndarray,
+                         min_ceiling: float = 0.1) -> np.ndarray:
+    """Divide per-voxel r by each voxel's noise ceiling (split-half reliability).
+
+    Puts the score on a 'fraction of explainable signal' scale. Voxels whose
+    ceiling is below ``min_ceiling`` are dropped (set to NaN) because their
+    normalized score is dominated by measurement noise — standard practice in
+    encoding-model evaluation. Aggregate with ``nanmedian`` afterwards.
+    """
+    r = np.asarray(r, np.float64); c = np.asarray(ceiling, np.float64)
+    out = np.full(r.shape, np.nan)
+    ok = c > min_ceiling
+    out[ok] = r[ok] / c[ok]
+    return out
 
 
 def per_voxel_cv_ridge(X, Y, alpha: float = 1.0, n_splits: int = 5,
@@ -96,6 +126,20 @@ class LayerMappingResult:
     def top_units(self, layer: str, k: int) -> List[int]:
         li = self.layer_order.index(layer)
         return sorted(int(u) for u in np.argsort(self.unit_predictivity[li])[::-1][:k])
+
+    def top_units_pooled(self, layers: Sequence[str], k: int) -> List[Tuple[str, int]]:
+        """Top-``k`` units ranked by localizer predictivity across ``layers``
+        pooled together — returns ``(layer, unit)`` pairs. The across-layers
+        analogue of :meth:`top_units`, used for the budget-matched comparison
+        of within-one-layer vs across-layers selection at equal feature count.
+        """
+        cand = []
+        for layer in layers:
+            li = self.layer_order.index(layer)
+            for u in range(self.unit_predictivity.shape[1]):
+                cand.append((float(self.unit_predictivity[li, u]), layer, int(u)))
+        cand.sort(key=lambda t: -t[0])
+        return [(layer, u) for _, layer, u in cand[:k]]
 
     def composite_selector(self, n_layers: int = 3, k: int = 100) -> CompositeSelector:
         """top-``k`` localizer-selected units from each of the top-``n_layers``."""
@@ -224,6 +268,84 @@ def extract_features_by_layer(wrapper, stimulus_set, layers: List[str],
         layer: vals[:, np.where(layer_coord == layer)[0]] for layer in layers}
     out['_stimulus_id'] = np.array([str(s) for s in asm['stimulus_id'].values])
     return out
+
+
+def _gather_units(features_by_layer: Dict[str, np.ndarray],
+                  pairs: Sequence[Tuple[str, int]]) -> np.ndarray:
+    """Stack the named ``(layer, unit)`` columns into one ``(n_stim, len)`` matrix."""
+    return np.column_stack([features_by_layer[layer][:, u] for layer, u in pairs])
+
+
+def score_budget_curve(features_by_layer: Dict[str, np.ndarray], target: np.ndarray,
+                       result: LayerMappingResult, budgets: Sequence[int],
+                       top_n_layers: int = 3,
+                       alpha_grid: Sequence[float] = (1., 10., 100., 1000., 10000.),
+                       n_null_seeds: int = 5,
+                       noise_ceiling: Optional[np.ndarray] = None) -> dict:
+    """The scientifically valid strategy comparison: a *budget-matched* curve.
+
+    For each feature budget ``K`` it scores two selection strategies at exactly
+    ``K`` features each — **within one layer** (top-K units of the best layer)
+    and **pooled across the top-N layers** (top-K units ranked over all of them)
+    — so the comparison isolates the *selection strategy* from the feature count.
+    Every fit uses ``RidgeCV(alpha_per_target=True)`` (per-voxel penalty tuning),
+    removing the fixed-α confound, and divides by the noise ceiling when given.
+    Each strategy is paired with a matched random-selection null at the same K.
+
+    Two full-budget **reference points** (the whole best layer; all top-N layers
+    concatenated) are scored the same way, so the curve shows whether a compact
+    selection matches the full layer (efficiency) and which option peaks highest.
+
+    :returns: dict with ``within_layer`` and ``pooled_layers`` (each a list of
+        ``{k, r, random_null, random_null_sd}``), ``whole_layer_r``,
+        ``several_layers_r``, plus metadata. Scores are ceiling-normalized iff
+        ``noise_ceiling`` is provided (``normalized`` flag records which).
+    """
+    Y = np.asarray(target, np.float64)
+    L, T = result.localizer_idx, result.test_idx
+    best = result.best_layer
+    top = result.top_layers(top_n_layers)
+    n_units = features_by_layer[best].shape[1]
+    all_pairs = [(layer, u) for layer in top for u in range(n_units)]
+
+    def score(cols) -> float:
+        cols = np.asarray(cols, np.float64)
+        r = per_voxel_train_test(cols[L], Y[L], cols[T], Y[T], alpha=alpha_grid)
+        if noise_ceiling is not None:
+            r = normalize_by_ceiling(r, noise_ceiling)
+        return float(np.nanmedian(r))
+
+    def null_over_seeds(make_cols):
+        vals = [score(make_cols(np.random.RandomState(s))) for s in range(n_null_seeds)]
+        return round(float(np.mean(vals)), 4), round(float(np.std(vals)), 4)
+
+    within, pooled = [], []
+    for K in budgets:
+        K = int(K)
+        if K <= n_units:
+            wr = score(features_by_layer[best][:, result.top_units(best, K)])
+            wn = null_over_seeds(
+                lambda rng, K=K: features_by_layer[best][:, rng.choice(n_units, K, replace=False)])
+            within.append({'k': K, 'r': round(wr, 4),
+                           'random_null': wn[0], 'random_null_sd': wn[1]})
+        if K <= len(all_pairs):
+            pr = score(_gather_units(features_by_layer, result.top_units_pooled(top, K)))
+            pn = null_over_seeds(lambda rng, K=K: _gather_units(
+                features_by_layer,
+                [all_pairs[i] for i in rng.choice(len(all_pairs), K, replace=False)]))
+            pooled.append({'k': K, 'r': round(pr, 4),
+                           'random_null': pn[0], 'random_null_sd': pn[1]})
+
+    return {
+        'budgets': [int(b) for b in budgets],
+        'within_layer': within,        # top-K units of the best layer (+ random null)
+        'pooled_layers': pooled,       # top-K units across the top-N layers (+ random null)
+        'whole_layer_r': round(score(features_by_layer[best]), 4),
+        'several_layers_r': round(
+            score(np.concatenate([features_by_layer[l] for l in top], axis=1)), 4),
+        'best_layer': best, 'top_layers': list(top),
+        'alpha_grid': list(alpha_grid), 'normalized': noise_ceiling is not None,
+    }
 
 
 def sweep_model(wrapper, stimulus_set, target, target_stimulus_ids, layers,
