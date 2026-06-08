@@ -183,6 +183,32 @@ class TestVideoWrapperBasics:
             result.indexes['neuroid'].get_level_values('layer'))
         assert set(layer_labels) == {'main_block'}
 
+    def test_time_bin_start_end_populated(self, video_stimulus_set):
+        """VideoWrapper emits the canonical time_bin_start_ms / time_bin_end_ms
+        coords (matching Text/Audio wrappers), bracketing each center."""
+        from brainscore.model_helpers.video_wrapper import VideoWrapper
+        model = _make_mock_video_model(n_features=8)
+        wrapper = VideoWrapper(
+            model=model,
+            preprocessing=_mock_preprocess,
+            identifier='mock-vid',
+            num_frames=4,
+        )
+        result = wrapper(video_stimulus_set, layers=['main_block'])
+        idx = result.indexes['time_bin']
+        centers = list(idx.get_level_values('time_bin_center_ms'))
+        starts = list(idx.get_level_values('time_bin_start_ms'))
+        ends = list(idx.get_level_values('time_bin_end_ms'))
+        assert len(starts) == len(ends) == len(centers)
+        # Each bin brackets its center, is non-empty, starts at/after 0,
+        # and bins are contiguous (end[i] == start[i+1] under midpoints).
+        assert starts[0] >= 0.0
+        for i in range(len(centers)):
+            assert starts[i] <= centers[i] <= ends[i]
+            assert ends[i] > starts[i]
+        for i in range(len(centers) - 1):
+            assert ends[i] == pytest.approx(starts[i + 1])
+
 
 class TestVideoWrapperTemporalInvariance:
     def test_different_frame_orders_give_different_activations(
@@ -243,3 +269,40 @@ class TestVideoWrapperBatching:
         r1 = w1(video_stimulus_set, layers=['main_block'])
         r3 = w3(video_stimulus_set, layers=['main_block'])
         np.testing.assert_allclose(r1.values, r3.values, atol=1e-5)
+
+
+class TestEdgesFromCenters:
+    """Unit tests for the bin-center → (start, end) edge derivation."""
+
+    def test_uniform_grid_is_exact(self):
+        """For the uniform default grid, midpoint edges recover the true
+        bin boundaries exactly: centers [0.5, 1.5, 2.5, 3.5]*step →
+        edges [0,1],[1,2],[2,3],[3,4]*step."""
+        from brainscore.model_helpers.video_wrapper import _edges_from_centers
+        centers = [250.0, 750.0, 1250.0, 1750.0]  # step=500, n=4
+        starts, ends = _edges_from_centers(centers)
+        assert starts == pytest.approx([0.0, 500.0, 1000.0, 1500.0])
+        assert ends == pytest.approx([500.0, 1000.0, 1500.0, 2000.0])
+
+    def test_single_bin_spans_full_clip(self):
+        from brainscore.model_helpers.video_wrapper import _edges_from_centers
+        starts, ends = _edges_from_centers([1000.0])  # center = duration/2
+        assert starts == [0.0]
+        assert ends == pytest.approx([2000.0])
+
+    def test_empty(self):
+        from brainscore.model_helpers.video_wrapper import _edges_from_centers
+        assert _edges_from_centers([]) == ([], [])
+
+    def test_non_uniform_is_monotonic_and_contiguous(self):
+        from brainscore.model_helpers.video_wrapper import _edges_from_centers
+        centers = [100.0, 200.0, 500.0]  # widening gaps
+        starts, ends = _edges_from_centers(centers)
+        # contiguous: end[i] == start[i+1]
+        for i in range(len(centers) - 1):
+            assert ends[i] == pytest.approx(starts[i + 1])
+        # each bin brackets its center, non-empty, start clamped at 0
+        assert starts[0] >= 0.0
+        for i in range(len(centers)):
+            assert starts[i] <= centers[i] <= ends[i]
+            assert ends[i] > starts[i]

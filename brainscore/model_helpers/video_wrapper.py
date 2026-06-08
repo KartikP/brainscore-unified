@@ -439,10 +439,17 @@ class VideoWrapper:
         # Secondary time_bin coord so gather_indexes produces a MultiIndex
         # (single coord → plain Index named after the dim, and the coord
         # name gets lost).
+        # Canonical time-bin edges (ms), matching the coord names emitted by
+        # TextWrapper / AudioWrapper so naturalistic benchmarks align any
+        # wrapper's output uniformly (no per-wrapper special cases). Keep
+        # time_bin_center_ms too — existing video benchmarks read it.
+        time_starts, time_ends = _edges_from_centers(time_ms)
         coords = {
             'stimulus_id': ('presentation', stimulus_ids),
             'video_path': ('presentation', paths),
             'time_bin_center_ms': ('time_bin', time_ms),
+            'time_bin_start_ms': ('time_bin', time_starts),
+            'time_bin_end_ms': ('time_bin', time_ends),
             'time_bin_idx': ('time_bin', list(range(len(time_ms)))),
             'neuroid_id': ('neuroid', neuroid_ids),
             'neuroid_num': ('neuroid', list(range(len(neuroid_ids)))),
@@ -498,6 +505,38 @@ class VideoWrapper:
             except Exception:
                 pass
         return assembly
+
+
+def _edges_from_centers(centers: List[float]) -> Tuple[List[float], List[float]]:
+    """Derive per-bin ``(start, end)`` edges in ms from bin centers.
+
+    Uses the midpoint convention: each interior bin spans from the midpoint
+    to its previous neighbor to the midpoint to its next neighbor; boundary
+    bins extrapolate by half the adjacent gap. Exact for the uniform default
+    grid (``_default_time_mapping``) and graceful for any custom non-uniform
+    ``t_to_time_ms_fn``. A single bin spans ``[0, 2*center]`` (the full clip
+    under the default centering). Starts are clamped at 0.
+    """
+    n = len(centers)
+    if n == 0:
+        return [], []
+    c = [float(x) for x in centers]
+    if n == 1:
+        return [0.0], [2.0 * c[0]]
+    starts: List[float] = []
+    ends: List[float] = []
+    for i in range(n):
+        if i == 0:
+            start = c[0] - (c[1] - c[0]) / 2.0
+        else:
+            start = (c[i - 1] + c[i]) / 2.0
+        if i == n - 1:
+            end = c[-1] + (c[-1] - c[-2]) / 2.0
+        else:
+            end = (c[i] + c[i + 1]) / 2.0
+        starts.append(max(0.0, start))
+        ends.append(end)
+    return starts, ends
 
 
 def _default_time_mapping(n_time_steps_out: int, video_duration_ms: float) -> List[float]:
