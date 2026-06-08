@@ -1,83 +1,127 @@
-"""Format Algonauts predictions for Codabench submission.
+"""Format Algonauts 2025 predictions for the Codabench submission.
 
-Codabench expects, per subject, one prediction array per movie split with shape
-``(n_TRs, 1000_parcels)``. A submission .zip bundles all subjects' predictions
-under a documented layout: ``sub-<NN>/<split>.npy`` plus a ``manifest.json``.
+The Codabench scorer expects a single pickled ``.npy`` holding a NESTED dict::
 
-Usage on EC2 (after running ``Algonauts2025FriendsS7.generate_predictions`` per
-subject, which writes ``sub-<NN>_<split>.npy`` into a predictions dir):
+    { 'sub-01': { '<episode>': np.ndarray(n_TRs, 1000) float32, ... },
+      'sub-02': {...}, 'sub-03': {...}, 'sub-05': {...} }
+
+zipped with the ``.npy`` stored by basename. Episode keys are the per-episode
+names from ``target_sample_number/sub-0X_{friends-s7,ood}_fmri_samples.npy``
+(e.g. ``friends_s07e01a`` for S7, ``chaplin1`` / ``mononoke`` for OOD), and each
+array's row count must equal that episode's recorded fMRI sample count. This
+matches the official dev-kit notebook (cells 117 / 132); verified 2026-06-08.
+
+Per-subject prediction files (written by ``generate_predictions``) are
+``sub-0X_<split>.npy``, each a pickled per-subject episode dict
+``{episode: (n_TRs, 1000) float32}``. ``build_submission`` assembles the four
+subjects into the nested-dict zip.
+
+Usage::
 
     python -m brainscore.benchmarks.algonauts2025.submit_codabench \
         --predictions-dir ~/algonauts_predictions/ \
-        --output ~/algonauts_friends_s7_submission.zip \
+        --output ~/fmri_predictions_friends_s7.zip \
         --split friends_s7
-
-The directory layout follows the challenge's documented per-subject .npy
-convention; verify the exact manifest keys against the live Codabench bundle
-before the first real submission.
 """
 import argparse
-import json
 import zipfile
 from pathlib import Path
 
 import numpy as np
 
 SCHAEFER_N_PARCELS = 1000
+SUBJECTS = (1, 2, 3, 5)
+
+# Codabench expects these exact .npy basenames inside the submission zip.
+SPLIT_NPY_NAME = {
+    'friends_s7': 'fmri_predictions_friends_s7.npy',
+    'ood': 'fmri_predictions_ood.npy',
+}
 
 
-def build_submission(predictions_dir, output, split, subjects=(1, 2, 3, 5)):
-    """Bundle per-subject ``sub-<NN>_<split>.npy`` files into a Codabench .zip.
-
-    Each input array must be ``(n_TRs, 1000)``. Returns the manifest dict that
-    is also written into the zip as ``manifest.json``. Raises
-    ``FileNotFoundError`` for a missing subject file and ``ValueError`` for a
-    wrong parcel count.
-    """
-    predictions_dir = Path(predictions_dir)
-    output = Path(output)
-    manifest = {'split': split, 'n_parcels': SCHAEFER_N_PARCELS, 'subjects': {}}
-    arrays = {}
-    for sub in subjects:
-        npy = predictions_dir / f'sub-{sub:02d}_{split}.npy'
-        if not npy.exists():
-            raise FileNotFoundError(
-                f"missing prediction for subject {sub}: {npy}")
-        arr = np.load(npy)
+def _validate_episode_dict(sub_label, episode_dict):
+    if not isinstance(episode_dict, dict):
+        raise ValueError(
+            f"{sub_label}: expected a {{episode: array}} dict, got "
+            f"{type(episode_dict).__name__}")
+    if not episode_dict:
+        raise ValueError(f"{sub_label}: episode dict is empty")
+    for epi, arr in episode_dict.items():
+        arr = np.asarray(arr)
         if arr.ndim != 2 or arr.shape[1] != SCHAEFER_N_PARCELS:
             raise ValueError(
-                f"sub-{sub:02d} prediction must be (n_TRs, {SCHAEFER_N_PARCELS}); "
-                f"got {arr.shape}")
-        arrays[sub] = arr.astype(np.float32)
-        manifest['subjects'][f'sub-{sub:02d}'] = {
-            'n_TRs': int(arr.shape[0]), 'path': f'sub-{sub:02d}/{split}.npy'}
+                f"{sub_label}/{epi}: prediction must be (n_TRs, "
+                f"{SCHAEFER_N_PARCELS}); got {arr.shape}")
 
+
+def write_submission_zip(nested_predictions, output, split):
+    """Write a Codabench submission zip from an in-memory nested dict
+    ``{sub_label: {episode: (n_TRs, 1000)}}``.
+
+    Validates parcel count per episode, coerces arrays to float32, pickles the
+    nested dict via ``np.save`` and zips it under the Codabench-expected
+    basename. Returns the zip ``Path``.
+    """
+    if split not in SPLIT_NPY_NAME:
+        raise ValueError(
+            f"split must be one of {list(SPLIT_NPY_NAME)}; got {split!r}")
+    coerced = {}
+    for sub_label, episode_dict in nested_predictions.items():
+        _validate_episode_dict(sub_label, episode_dict)
+        coerced[sub_label] = {
+            epi: np.asarray(a, dtype=np.float32)
+            for epi, a in episode_dict.items()}
+    output = Path(output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for sub, arr in arrays.items():
-            tmp = output.parent / f'_sub-{sub:02d}_{split}.npy'
-            np.save(tmp, arr)
-            zf.write(tmp, arcname=f'sub-{sub:02d}/{split}.npy')
-            tmp.unlink()
-        zf.writestr('manifest.json', json.dumps(manifest, indent=2))
-    return manifest
+    npy_name = SPLIT_NPY_NAME[split]
+    tmp_npy = output.parent / npy_name
+    np.save(tmp_npy, coerced, allow_pickle=True)
+    try:
+        with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as zf:
+            zf.write(tmp_npy, arcname=npy_name)
+    finally:
+        tmp_npy.unlink()
+    return output
+
+
+def build_submission(predictions_dir, output, split, subjects=SUBJECTS):
+    """Assemble per-subject ``sub-0X_<split>.npy`` episode-dict files into the
+    nested-dict Codabench zip.
+
+    Each per-subject file is a pickled ``{episode: (n_TRs, 1000)}`` dict.
+    Returns the assembled nested prediction dict. Raises ``FileNotFoundError``
+    for a missing subject file and ``ValueError`` for a wrong parcel count.
+    """
+    predictions_dir = Path(predictions_dir)
+    nested = {}
+    for sub in subjects:
+        sub_label = f'sub-{sub:02d}'
+        npy = predictions_dir / f'{sub_label}_{split}.npy'
+        if not npy.exists():
+            raise FileNotFoundError(
+                f"missing prediction for {sub_label}: {npy}")
+        nested[sub_label] = np.load(npy, allow_pickle=True).item()
+    write_submission_zip(nested, output, split)
+    return nested
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--predictions-dir', type=Path, required=True,
-                        help='Directory containing per-(subject, split) '
-                             'prediction .npy files')
+                        help='Directory containing per-subject '
+                             'sub-0X_<split>.npy episode-dict files')
     parser.add_argument('--output', type=Path, required=True,
                         help='Path to write the submission .zip')
-    parser.add_argument('--split', choices=('friends_s7', 'ood'),
+    parser.add_argument('--split', choices=tuple(SPLIT_NPY_NAME),
                         required=True)
     parser.add_argument('--subjects', type=int, nargs='+',
-                        default=[1, 2, 3, 5])
+                        default=list(SUBJECTS))
     args = parser.parse_args()
-    manifest = build_submission(args.predictions_dir, args.output,
-                                args.split, tuple(args.subjects))
-    print(json.dumps(manifest, indent=2))
+    nested = build_submission(args.predictions_dir, args.output,
+                              args.split, tuple(args.subjects))
+    for sub_label, episodes in nested.items():
+        print(f'{sub_label}: {len(episodes)} episodes, '
+              f'shapes {[tuple(np.asarray(a).shape) for a in episodes.values()][:3]}...')
     print(f'wrote {args.output}')
 
 

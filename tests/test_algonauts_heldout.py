@@ -4,7 +4,6 @@ The heavy feature extraction + real ridge fit run on EC2 (need the downloaded
 stimuli/assembly). These cover the two data-free pieces: the ridge encoder math
 and the submission .zip layout.
 """
-import json
 import zipfile
 
 import numpy as np
@@ -12,7 +11,8 @@ import pytest
 
 from brainscore.benchmarks.algonauts2025.benchmark import fit_predict_ridge
 from brainscore.benchmarks.algonauts2025.submit_codabench import (
-    build_submission, SCHAEFER_N_PARCELS)
+    build_submission, write_submission_zip, SCHAEFER_N_PARCELS,
+    SPLIT_NPY_NAME)
 
 
 class TestFitPredictRidge:
@@ -39,33 +39,89 @@ class TestFitPredictRidge:
         assert np.var(big) < np.var(Y)
 
 
-class TestBuildSubmission:
-    def _write(self, d, split, subs, n_tr=8):
-        for s in subs:
-            np.save(d / f'sub-{s:02d}_{split}.npy',
-                    np.random.RandomState(s).randn(n_tr, SCHAEFER_N_PARCELS).astype('float32'))
+class TestWriteSubmissionZip:
+    """Core formatter: in-memory nested dict -> Codabench zip (nested .npy)."""
 
-    def test_bundles_zip_with_layout_and_manifest(self, tmp_path):
-        self._write(tmp_path, 'friends_s7', [1, 2])
-        out = tmp_path / 'sub.zip'
-        manifest = build_submission(tmp_path, out, 'friends_s7', subjects=(1, 2))
+    def _nested(self, subs, episodes, n_tr=8):
+        return {
+            f'sub-{s:02d}': {
+                epi: np.random.RandomState(s * 10 + i).randn(
+                    n_tr + i, SCHAEFER_N_PARCELS).astype('float32')
+                for i, epi in enumerate(episodes)}
+            for s in subs}
+
+    def test_zip_contains_single_nested_npy(self, tmp_path):
+        nested = self._nested([1, 2, 3, 5],
+                              ['friends_s07e01a', 'friends_s07e01b'])
+        out = tmp_path / 'submission.zip'
+        write_submission_zip(nested, out, 'friends_s7')
         assert out.exists()
         with zipfile.ZipFile(out) as zf:
-            names = set(zf.namelist())
-            assert 'sub-01/friends_s7.npy' in names
-            assert 'sub-02/friends_s7.npy' in names
-            assert 'manifest.json' in names
-            m = json.loads(zf.read('manifest.json'))
-        assert m['split'] == 'friends_s7'
-        assert m['n_parcels'] == SCHAEFER_N_PARCELS
-        assert m['subjects']['sub-01']['n_TRs'] == 8
+            names = zf.namelist()
+            assert names == [SPLIT_NPY_NAME['friends_s7']]  # exactly one .npy
+            zf.extractall(tmp_path / 'x')
+        loaded = np.load(
+            tmp_path / 'x' / SPLIT_NPY_NAME['friends_s7'],
+            allow_pickle=True).item()
+        # round-trips the nested structure: {sub: {episode: (n_TRs, 1000)}}
+        assert set(loaded) == {'sub-01', 'sub-02', 'sub-03', 'sub-05'}
+        assert set(loaded['sub-01']) == {'friends_s07e01a', 'friends_s07e01b'}
+        arr = loaded['sub-01']['friends_s07e01a']
+        assert arr.shape == (8, SCHAEFER_N_PARCELS)
+        assert arr.dtype == np.float32
+
+    def test_ood_split_uses_ood_npy_name(self, tmp_path):
+        nested = self._nested([1], ['chaplin1', 'mononoke'])
+        out = tmp_path / 'ood.zip'
+        write_submission_zip(nested, out, 'ood')
+        with zipfile.ZipFile(out) as zf:
+            assert zf.namelist() == [SPLIT_NPY_NAME['ood']]
+
+    def test_unknown_split_raises(self, tmp_path):
+        with pytest.raises(ValueError, match='split must be one of'):
+            write_submission_zip(self._nested([1], ['e1']),
+                                 tmp_path / 'x.zip', 'friends_s99')
+
+    def test_wrong_parcel_count_raises(self, tmp_path):
+        bad = {'sub-01': {'e1': np.zeros((5, 999), dtype='float32')}}
+        with pytest.raises(ValueError, match='1000'):
+            write_submission_zip(bad, tmp_path / 'x.zip', 'ood')
+
+    def test_empty_episode_dict_raises(self, tmp_path):
+        with pytest.raises(ValueError, match='empty'):
+            write_submission_zip({'sub-01': {}}, tmp_path / 'x.zip', 'ood')
+
+
+class TestBuildSubmission:
+    """Assembles per-subject episode-dict .npy files into the nested zip."""
+
+    def _write_subject(self, d, split, sub, episodes, n_tr=8):
+        episode_dict = {
+            epi: np.random.RandomState(sub * 10 + i).randn(
+                n_tr, SCHAEFER_N_PARCELS).astype('float32')
+            for i, epi in enumerate(episodes)}
+        np.save(d / f'sub-{sub:02d}_{split}.npy', episode_dict,
+                allow_pickle=True)
+
+    def test_assembles_subjects_into_nested_zip(self, tmp_path):
+        for s in (1, 2):
+            self._write_subject(tmp_path, 'friends_s7', s,
+                                ['friends_s07e01a', 'friends_s07e02a'])
+        out = tmp_path / 'sub.zip'
+        nested = build_submission(tmp_path, out, 'friends_s7', subjects=(1, 2))
+        assert set(nested) == {'sub-01', 'sub-02'}
+        assert set(nested['sub-01']) == {'friends_s07e01a', 'friends_s07e02a'}
+        with zipfile.ZipFile(out) as zf:
+            assert zf.namelist() == [SPLIT_NPY_NAME['friends_s7']]
 
     def test_missing_subject_raises(self, tmp_path):
-        self._write(tmp_path, 'ood', [1])
-        with pytest.raises(FileNotFoundError, match='subject 2'):
+        self._write_subject(tmp_path, 'ood', 1, ['chaplin1'])
+        with pytest.raises(FileNotFoundError, match='sub-02'):
             build_submission(tmp_path, tmp_path / 'o.zip', 'ood', subjects=(1, 2))
 
     def test_wrong_parcel_count_raises(self, tmp_path):
-        np.save(tmp_path / 'sub-01_ood.npy', np.zeros((5, 999), dtype='float32'))
+        np.save(tmp_path / 'sub-01_ood.npy',
+                {'chaplin1': np.zeros((5, 999), dtype='float32')},
+                allow_pickle=True)
         with pytest.raises(ValueError, match='1000'):
             build_submission(tmp_path, tmp_path / 'o.zip', 'ood', subjects=(1,))
