@@ -71,7 +71,11 @@ def main():
             n_skipped += 1
             continue
 
-        tsv_path = Path(srow['transcript_path'])
+        tp = srow['transcript_path']
+        if not isinstance(tp, str):  # NaN / missing transcript (e.g. OOD chaplin, no dialogue)
+            n_missing_tsv += 1
+            continue
+        tsv_path = Path(tp)
         if not tsv_path.exists():
             n_missing_tsv += 1
             continue
