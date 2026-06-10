@@ -136,8 +136,23 @@ def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY',
         if system:
             messages.append({'role': 'system', 'content': system})
         messages.append({'role': 'user', 'content': content})
-        resp = client.chat.completions.create(
-            model=model, max_tokens=max_tokens, temperature=0, messages=messages)
+        try:
+            resp = client.chat.completions.create(
+                model=model, max_tokens=max_tokens, temperature=0, messages=messages)
+        except Exception as e:
+            # A text-only model (e.g. DeepSeek-V3, Llama-3.3) sent an image gets
+            # a cryptic provider 404 ("no endpoints found that support image
+            # input"). Re-raise with the actual fix instead.
+            if image is not None and 'image' in str(e).lower():
+                raise RuntimeError(
+                    f"{label} model '{model}' has no image-input endpoint — it is "
+                    f"text-only, so it can't take the rendered frame. Use a text "
+                    f"observation instead: obs_mode='ascii' on GridGameEnv (which "
+                    f"has a text board), or switch to a vision-capable model "
+                    f"(e.g. anthropic/claude-3.5-sonnet, openai/gpt-4o, "
+                    f"google/gemini-2.0-flash-001). Note: MiniGrid is frame-only "
+                    f"(no ASCII board) so it requires a vision model.") from e
+            raise
         return (resp.choices[0].message.content or '').strip()
     call.__name__ = f'_call_{label}'
     return call

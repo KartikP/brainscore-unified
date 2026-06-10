@@ -244,6 +244,31 @@ class TestRegistration:
         assert 'deepseek' in PROVIDERS
         assert PROVIDERS['deepseek'].__name__ == '_call_deepseek'
 
+    def test_text_only_model_sent_image_gives_actionable_error(self, monkeypatch):
+        # A text-only OpenAI-compatible model (DeepSeek-V3, Llama) sent an image
+        # returns a provider 404; the adapter must re-raise with the real fix.
+        from brainscore.model_helpers import api_behavioral as ab
+
+        class _FakeNotFound(Exception):
+            pass
+
+        class _FakeClient:
+            def __init__(self, *a, **k):
+                self.chat = self
+                self.completions = self
+
+            def create(self, **kwargs):
+                raise _FakeNotFound(
+                    "Error code: 404 - No endpoints found that support image input")
+
+        import sys, types
+        fake_openai = types.SimpleNamespace(OpenAI=_FakeClient)
+        monkeypatch.setitem(sys.modules, 'openai', fake_openai)
+        call = ab._make_openai_compatible(
+            base_url='https://api.deepseek.com', label='deepseek')
+        with pytest.raises(RuntimeError, match="has no image-input endpoint"):
+            call('deepseek-chat', None, 'hi', ('image/png', 'Zm9v'), 16)
+
     def test_openrouter_provider_and_registration(self):
         # OpenRouter is the same OpenAI-compatible gateway, pointed at hundreds
         # of models. The provider exists and example models register.
