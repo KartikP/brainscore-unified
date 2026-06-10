@@ -297,21 +297,29 @@ def build_api_action_fn(
     provider: Union[str, Callable],
     model: str,
     *,
+    obs_mode: str = 'vision',
     max_tokens: int = 512,
     system_prompt: Optional[str] = None,
     cache_dir: Optional[Union[str, Path]] = None,
     frame_resize: int = 384,
     fallback_seed: int = 0,
 ) -> Callable:
-    """Build an ``action_fn(env_step) -> EnvironmentResponse`` that plays a
-    Gymnasium/MiniGrid episode via a closed-weight API model. The model sees the
-    rendered frame + the legal-action menu and returns an action index.
+    """Build an ``action_fn(env_step) -> EnvironmentResponse`` that plays a grid
+    episode (GridGameEnv or Gymnasium/MiniGrid) via a closed-weight API model.
+
+    :param obs_mode: ``'vision'`` (default) sends the rendered RGB frame as an
+        image; ``'ascii'`` sends the text board (``observation['ascii']``) — text
+        models can play, and even vision models reason better on the ASCII grid
+        (DeepSeek-R1 reading ASCII beat the VLMs in the original game). Either way
+        the env still renders frames you can animate to watch.
 
     Reuses the same provider adapters and response cache as the behavioral
     generation path. On an unparseable reply the action collapses to a random
     legal move (the embodied null), deterministically seeded so cached re-runs
     reproduce. No GPU / weights — laptop-runnable with the provider key in env.
     """
+    if obs_mode not in ('vision', 'ascii'):
+        raise ValueError(f"obs_mode must be 'vision' or 'ascii'; got {obs_mode!r}")
     from brainscore_core.model_interface import EnvironmentResponse
     import numpy as np
 
@@ -322,35 +330,47 @@ def build_api_action_fn(
 
     def act(env_step) -> 'EnvironmentResponse':
         obs = env_step.observation or {}
-        frame = obs.get('frame')
-        if frame is None:
-            raise ValueError(
-                "build_api_action_fn: EnvironmentStep.observation has no "
-                "'frame'. This action_fn expects a rendered RGB observation "
-                "(e.g. from play_gym_episode).")
         instruction = obs.get('instruction') or getattr(env_step, 'instruction', '') or ''
         legal = obs.get('legal_actions') or {}
         n = len(legal) or 7
         menu = ('\n'.join(f"  {i}: {d}" for i, d in sorted(legal.items()))
                 if legal else '\n'.join(f"  {i}: action {i}" for i in range(n)))
-        prompt = (
-            "You control an agent in a grid world. Look at the image and choose "
-            "the single best next action.\n"
-            f"Mission: {instruction}\n\n"
-            f"Available actions (reply with the NUMBER):\n{menu}\n\n"
-            "Reason briefly, then end your reply with a line exactly:\n"
-            "Action: <number>")
-        media, b64 = _encode_frame(frame, frame_resize)
+        tail = ("Reason briefly, then end your reply with a line exactly:\n"
+                "Action: <number>")
+
+        if obs_mode == 'ascii':
+            board = obs.get('ascii')
+            if board is None:
+                raise ValueError("build_api_action_fn(obs_mode='ascii'): "
+                                 "EnvironmentStep.observation has no 'ascii'.")
+            image = None
+            prompt = (
+                "You control an agent on a grid (text view below).\n"
+                f"Mission: {instruction}\n\n{board}\n\n"
+                f"Available actions (reply with the NUMBER):\n{menu}\n\n{tail}")
+            payload = hashlib.sha256(str(board).encode('utf-8')).hexdigest()[:16]
+        else:  # vision
+            frame = obs.get('frame')
+            if frame is None:
+                raise ValueError("build_api_action_fn(obs_mode='vision'): "
+                                 "EnvironmentStep.observation has no 'frame'.")
+            media, b64 = _encode_frame(frame, frame_resize)
+            image = (media, b64)
+            prompt = (
+                "You control an agent in a grid world. Look at the image and "
+                "choose the single best next action.\n"
+                f"Mission: {instruction}\n\n"
+                f"Available actions (reply with the NUMBER):\n{menu}\n\n{tail}")
+            payload = hashlib.sha256(b64.encode('utf-8')).hexdigest()[:16]
 
         response = None
         key = None
         if cache is not None:
-            # Include step_num so a stuck state (unchanged frame) at different
-            # ticks does NOT collapse to one cached action — that would freeze
-            # the agent in a no-op loop. Same (seed-deterministic) trajectory
-            # still reproduces on re-run. Caching a closed loop is inherently
-            # fraught; prefer leaving cache_dir=None for fresh per-tick decisions.
-            payload = hashlib.sha256(b64.encode('utf-8')).hexdigest()[:16]
+            # Include step_num so a stuck state (unchanged observation) at
+            # different ticks does NOT collapse to one cached action — that
+            # would freeze the agent in a no-op loop. Same (seed-deterministic)
+            # trajectory still reproduces on re-run. Caching a closed loop is
+            # inherently fraught; prefer cache_dir=None for fresh per-tick calls.
             step_num = getattr(env_step, 'step_num', '')
             key = hashlib.sha256(
                 '|'.join([provider_name, model, prompt, payload,
@@ -358,7 +378,7 @@ def build_api_action_fn(
             ).hexdigest()
             response = cache.get(key)
         if response is None:
-            response = call(model, system_prompt, prompt, (media, b64), max_tokens)
+            response = call(model, system_prompt, prompt, image, max_tokens)
             if cache is not None:
                 cache.set(key, response)
 

@@ -45,6 +45,9 @@ def main():
     ap.add_argument('--env', default='MiniGrid-DoorKey-6x6-v0')
     ap.add_argument('--games', type=int, default=15)
     ap.add_argument('--max_steps', type=int, default=60)
+    ap.add_argument('--obs_mode', choices=('vision', 'ascii'), default='vision',
+                    help="'vision' sends the rendered frame; 'ascii' sends the "
+                         "text board (works for GridGameEnv; text models can play)")
     ap.add_argument('--max_tokens', type=int, default=512)
     ap.add_argument('--frame_resize', type=int, default=384)
     # Cache OFF by default: caching a closed agentic loop can freeze a stuck
@@ -56,8 +59,9 @@ def main():
     cache_dir = (f"{args.cache_dir}/{args.provider}_{args.model.replace('/', '_')}"
                  if args.cache_dir else None)
     action_fn = build_api_action_fn(
-        args.provider, args.model, max_tokens=args.max_tokens,
-        cache_dir=cache_dir, frame_resize=args.frame_resize)
+        args.provider, args.model, obs_mode=args.obs_mode,
+        max_tokens=args.max_tokens, cache_dir=cache_dir,
+        frame_resize=args.frame_resize)
     model = BrainScoreModel(
         identifier=f'{args.provider}:{args.model}', model=None,
         region_layer_map={}, preprocessors={}, action_fn=action_fn)

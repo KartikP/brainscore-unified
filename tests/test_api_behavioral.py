@@ -123,16 +123,19 @@ class TestGenerationClosure:
 class TestGameActionFn:
     """build_api_action_fn drives the embodied game via process(EnvironmentStep)."""
 
-    def _env_step(self, n_actions=3):
+    def _env_step(self, n_actions=3, ascii_board=None):
         import numpy as np
         from brainscore_core.model_interface import EnvironmentStep
+        obs = {
+            'frame': np.zeros((8, 8, 3), dtype='uint8'),
+            'instruction': 'reach the goal',
+            'legal_actions': {i: f'move {i}' for i in range(n_actions)},
+        }
+        if ascii_board is not None:
+            obs['ascii'] = ascii_board
         return EnvironmentStep(
-            observation={
-                'frame': np.zeros((8, 8, 3), dtype='uint8'),
-                'instruction': 'reach the goal',
-                'legal_actions': {i: f'move {i}' for i in range(n_actions)},
-            },
-            instruction='reach the goal', is_first=True, step_num=0)
+            observation=obs, instruction='reach the goal',
+            is_first=True, step_num=0)
 
     def _mock(self, response='Action: 2', counter=None):
         def call(model, system, user_text, image, max_tokens):
@@ -180,6 +183,23 @@ class TestGameActionFn:
         act = build_api_action_fn(self._mock(), 'mock')
         with pytest.raises(ValueError, match="no 'frame'"):
             act(EnvironmentStep(observation={'instruction': 'x'}, step_num=0))
+
+    def test_ascii_mode_sends_board_no_image(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        calls = []
+        act = build_api_action_fn(self._mock('Action: 1', counter=calls), 'mock',
+                                  obs_mode='ascii')
+        resp = act(self._env_step(n_actions=3, ascii_board='P . .\n. . G'))
+        user_text, image = calls[0]
+        assert image is None                  # ascii mode -> no image payload
+        assert 'P . .' in user_text           # the text board is in the prompt
+        assert int(resp.action) == 1
+
+    def test_ascii_mode_missing_board_raises(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        act = build_api_action_fn(self._mock(), 'mock', obs_mode='ascii')
+        with pytest.raises(ValueError, match="no 'ascii'"):
+            act(self._env_step(n_actions=3))   # frame-only step, no ascii
 
 
 class TestRegistration:
