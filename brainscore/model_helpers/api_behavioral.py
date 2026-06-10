@@ -152,6 +152,14 @@ PROVIDERS = {
     'deepseek': _make_openai_compatible(
         base_url='https://api.deepseek.com',
         api_key_env='DEEPSEEK_API_KEY', label='deepseek'),
+    # OpenRouter: one OpenAI-compatible gateway to hundreds of models (OpenAI,
+    # Anthropic, Google, Llama, Mistral, DeepSeek, ...). Model ids are
+    # namespaced, e.g. 'meta-llama/llama-3.3-70b-instruct',
+    # 'anthropic/claude-3.5-sonnet'. Vision passes through for multimodal
+    # models. Needs OPENROUTER_API_KEY. Catalog: https://openrouter.ai/models
+    'openrouter': _make_openai_compatible(
+        base_url='https://openrouter.ai/api/v1',
+        api_key_env='OPENROUTER_API_KEY', label='openrouter'),
 }
 
 

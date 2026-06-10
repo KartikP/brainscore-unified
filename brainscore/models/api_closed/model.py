@@ -32,6 +32,15 @@ REGISTRY = {
     'deepseek-r1-behavioral': dict(
         provider='deepseek', model='deepseek-reasoner',
         modalities=('text',)),
+    # OpenRouter gateway — any model in https://openrouter.ai/models registers
+    # by adding a line here with its namespaced id. Declare modalities to match
+    # the underlying model (vision only if it's multimodal). Needs OPENROUTER_API_KEY.
+    'llama-3.3-70b-behavioral': dict(
+        provider='openrouter', model='meta-llama/llama-3.3-70b-instruct',
+        modalities=('text',)),
+    'or-claude-sonnet-behavioral': dict(
+        provider='openrouter', model='anthropic/claude-3.5-sonnet',
+        modalities=('vision', 'text')),
 }
 
 # Cache lives on disk so re-scoring a benchmark doesn't re-bill the API and the

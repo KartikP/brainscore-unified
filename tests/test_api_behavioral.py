@@ -143,6 +143,20 @@ class TestRegistration:
         assert 'deepseek' in PROVIDERS
         assert PROVIDERS['deepseek'].__name__ == '_call_deepseek'
 
+    def test_openrouter_provider_and_registration(self):
+        # OpenRouter is the same OpenAI-compatible gateway, pointed at hundreds
+        # of models. The provider exists and example models register.
+        import brainscore
+        from brainscore.model_helpers.api_behavioral import PROVIDERS
+        from brainscore.models.api_closed.model import get_model
+        assert PROVIDERS['openrouter'].__name__ == '_call_openrouter'
+        assert 'llama-3.3-70b-behavioral' in brainscore.model_registry
+        # an OpenRouter model that IS multimodal can declare vision
+        m = get_model('or-claude-sonnet-behavioral')
+        assert m.supported_modalities == {'vision', 'text'}
+        # a text-only OpenRouter model declares text only
+        assert get_model('llama-3.3-70b-behavioral').supported_modalities == {'text'}
+
     def test_get_model_wiring_no_api_call(self):
         # Building the model must NOT require an API key — the closure is lazy.
         from brainscore.models.api_closed.model import get_model
