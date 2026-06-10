@@ -120,6 +120,68 @@ class TestGenerationClosure:
         assert media == 'image/png' and len(b64) > 0
 
 
+class TestGameActionFn:
+    """build_api_action_fn drives the embodied game via process(EnvironmentStep)."""
+
+    def _env_step(self, n_actions=3):
+        import numpy as np
+        from brainscore_core.model_interface import EnvironmentStep
+        return EnvironmentStep(
+            observation={
+                'frame': np.zeros((8, 8, 3), dtype='uint8'),
+                'instruction': 'reach the goal',
+                'legal_actions': {i: f'move {i}' for i in range(n_actions)},
+            },
+            instruction='reach the goal', is_first=True, step_num=0)
+
+    def _mock(self, response='Action: 2', counter=None):
+        def call(model, system, user_text, image, max_tokens):
+            if counter is not None:
+                counter.append((user_text, image))
+            return response
+        return call
+
+    def test_parses_action_index(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore_core.model_interface import EnvironmentResponse
+        act = build_api_action_fn(self._mock('Let me think... Action: 2'), 'mock')
+        resp = act(self._env_step(n_actions=3))
+        assert isinstance(resp, EnvironmentResponse)
+        assert int(resp.action) == 2
+
+    def test_frame_sent_as_image(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        calls = []
+        act = build_api_action_fn(self._mock('Action: 1', counter=calls), 'mock')
+        act(self._env_step())
+        user_text, image = calls[0]
+        assert image is not None and image[0] == 'image/png'   # frame -> PNG
+        assert 'reach the goal' in user_text                   # mission in prompt
+
+    def test_unparseable_falls_back_to_legal_random(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        act = build_api_action_fn(self._mock('no idea'), 'mock', fallback_seed=0)
+        resp = act(self._env_step(n_actions=3))
+        assert 0 <= int(resp.action) < 3                       # random but legal
+
+    def test_action_cache(self, tmp_path):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        calls = []
+        act = build_api_action_fn(self._mock('Action: 0', counter=calls), 'mock',
+                                  cache_dir=str(tmp_path))
+        s = self._env_step()
+        a, b = act(s), act(s)
+        assert int(a.action) == int(b.action) == 0
+        assert len(calls) == 1                                 # identical frame -> cached
+
+    def test_missing_frame_raises(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore_core.model_interface import EnvironmentStep
+        act = build_api_action_fn(self._mock(), 'mock')
+        with pytest.raises(ValueError, match="no 'frame'"):
+            act(EnvironmentStep(observation={'instruction': 'x'}, step_num=0))
+
+
 class TestRegistration:
     def test_models_registered(self):
         import brainscore
