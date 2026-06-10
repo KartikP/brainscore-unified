@@ -317,6 +317,12 @@ def build_api_action_fn(
     generation path. On an unparseable reply the action collapses to a random
     legal move (the embodied null), deterministically seeded so cached re-runs
     reproduce. No GPU / weights — laptop-runnable with the provider key in env.
+
+    The returned closure carries a ``.trace`` list: one dict per tick
+    ``{'step', 'response', 'action', 'fallback'}`` where ``response`` is the
+    model's full raw reply (the reasoning text it wrote before the ``Action:``
+    line). Read it to watch *why* the model moved; ``.trace.clear()`` to reset
+    between rollouts.
     """
     if obs_mode not in ('vision', 'ascii'):
         raise ValueError(f"obs_mode must be 'vision' or 'ascii'; got {obs_mode!r}")
@@ -327,6 +333,7 @@ def build_api_action_fn(
     provider_name = getattr(provider, '__name__', str(provider))
     cache = _ResponseCache(cache_dir) if cache_dir is not None else None
     rng = np.random.RandomState(fallback_seed)
+    trace: list = []
 
     def act(env_step) -> 'EnvironmentResponse':
         obs = env_step.observation or {}
@@ -382,9 +389,12 @@ def build_api_action_fn(
             if cache is not None:
                 cache.set(key, response)
 
-        idx = _parse_action_index(response, n)
-        if idx is None:
-            idx = int(rng.randint(0, n))
+        parsed = _parse_action_index(response, n)
+        fallback = parsed is None
+        idx = int(rng.randint(0, n)) if fallback else parsed
+        trace.append({'step': getattr(env_step, 'step_num', len(trace)),
+                      'response': response, 'action': idx, 'fallback': fallback})
         return EnvironmentResponse(action=idx)
 
+    act.trace = trace
     return act

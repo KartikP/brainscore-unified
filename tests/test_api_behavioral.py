@@ -201,6 +201,25 @@ class TestGameActionFn:
         with pytest.raises(ValueError, match="no 'ascii'"):
             act(self._env_step(n_actions=3))   # frame-only step, no ascii
 
+    def test_trace_captures_reasoning(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        act = build_api_action_fn(
+            self._mock('The goal is below me. Action: 1'), 'mock')
+        assert act.trace == []                          # empty before any tick
+        act(self._env_step(n_actions=3))
+        assert len(act.trace) == 1
+        rec = act.trace[0]
+        assert rec['action'] == 1 and rec['fallback'] is False
+        assert 'The goal is below me' in rec['response']  # reasoning preserved
+        assert rec['step'] == 0
+
+    def test_trace_flags_fallback_moves(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        act = build_api_action_fn(self._mock('no idea'), 'mock', fallback_seed=0)
+        act(self._env_step(n_actions=3))
+        assert act.trace[0]['fallback'] is True          # unparseable -> random
+        assert 0 <= act.trace[0]['action'] < 3
+
 
 class TestRegistration:
     def test_models_registered(self):
