@@ -220,6 +220,44 @@ class TestGameActionFn:
         assert act.trace[0]['fallback'] is True          # unparseable -> random
         assert 0 <= act.trace[0]['action'] < 3
 
+    def test_history_window_zero_omits_history(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        calls = []
+        act = build_api_action_fn(self._mock('Action: 2', counter=calls), 'mock')
+        act(self._env_step(n_actions=3)); act(self._env_step(n_actions=3))
+        assert 'recent moves' not in calls[1][0].lower()   # memoryless by default
+
+    def test_history_window_includes_recent_moves(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        calls = []
+        act = build_api_action_fn(self._mock('Action: 2', counter=calls), 'mock',
+                                  history_window=8)
+        act(self._env_step(n_actions=3))                   # tick 0: no history yet
+        assert 'recent moves' not in calls[0][0].lower()
+        act(self._env_step(n_actions=3))                   # tick 1: history present
+        assert 'recent moves' in calls[1][0].lower()
+        assert 'move 2' in calls[1][0]                     # the prior action's label
+
+    def test_history_flags_noop_when_view_unchanged(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        calls = []
+        act = build_api_action_fn(self._mock('Action: 2', counter=calls), 'mock',
+                                  obs_mode='ascii', history_window=8)
+        board = 'P . .\n. . G'
+        act(self._env_step(n_actions=3, ascii_board=board))
+        act(self._env_step(n_actions=3, ascii_board=board))   # identical board
+        assert 'did NOT change' in calls[1][0]                # blocked/no-op flagged
+
+    def test_history_flags_repeated_action(self):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        calls = []
+        act = build_api_action_fn(self._mock('Action: 2', counter=calls), 'mock',
+                                  obs_mode='ascii', history_window=8)
+        # three identical ticks -> 4th prompt warns about the repeated action
+        for board in ('a', 'b', 'c', 'd'):
+            act(self._env_step(n_actions=3, ascii_board=board))
+        assert 'times in a row' in calls[3][0]
+
 
 class TestRegistration:
     def test_models_registered(self):

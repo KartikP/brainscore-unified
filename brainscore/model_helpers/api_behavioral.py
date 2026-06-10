@@ -318,6 +318,7 @@ def build_api_action_fn(
     cache_dir: Optional[Union[str, Path]] = None,
     frame_resize: int = 384,
     fallback_seed: int = 0,
+    history_window: int = 0,
 ) -> Callable:
     """Build an ``action_fn(env_step) -> EnvironmentResponse`` that plays a grid
     episode (GridGameEnv or Gymnasium/MiniGrid) via a closed-weight API model.
@@ -327,6 +328,15 @@ def build_api_action_fn(
         models can play, and even vision models reason better on the ASCII grid
         (DeepSeek-R1 reading ASCII beat the VLMs in the original game). Either way
         the env still renders frames you can animate to watch.
+    :param history_window: if > 0, the prompt includes the model's last
+        ``history_window`` actions plus two derived signals: a no-op flag when the
+        most recent action left the observation unchanged (blocked), and a
+        repeated-action warning when the same action was chosen 3+ times running.
+        Default 0 keeps each tick memoryless. **Strongly recommended (e.g. 8) for
+        multi-step planning envs (MiniGrid):** without it a model re-plans from
+        scratch every tick, executes only the first step, and loops forever ("move
+        forward, then I'll turn" — but it never turns). The history is what lets it
+        notice it's stuck and break the loop.
 
     Reuses the same provider adapters and response cache as the behavioral
     generation path. On an unparseable reply the action collapses to a random
@@ -334,10 +344,11 @@ def build_api_action_fn(
     reproduce. No GPU / weights — laptop-runnable with the provider key in env.
 
     The returned closure carries a ``.trace`` list: one dict per tick
-    ``{'step', 'response', 'action', 'fallback'}`` where ``response`` is the
-    model's full raw reply (the reasoning text it wrote before the ``Action:``
-    line). Read it to watch *why* the model moved; ``.trace.clear()`` to reset
-    between rollouts.
+    ``{'step', 'response', 'action', 'fallback', 'payload'}`` where ``response``
+    is the model's full raw reply (the reasoning text it wrote before the
+    ``Action:`` line) and ``payload`` is a hash of the observation it saw (used
+    for no-op detection). Read it to watch *why* the model moved;
+    ``.trace.clear()`` to reset between rollouts.
     """
     if obs_mode not in ('vision', 'ascii'):
         raise ValueError(f"obs_mode must be 'vision' or 'ascii'; got {obs_mode!r}")
@@ -349,6 +360,33 @@ def build_api_action_fn(
     cache = _ResponseCache(cache_dir) if cache_dir is not None else None
     rng = np.random.RandomState(fallback_seed)
     trace: list = []
+
+    def _history_block(legal, payload) -> str:
+        """Short-term memory: the last ``history_window`` actions + derived
+        'you are blocked' / 'you are repeating yourself' signals. Empty unless
+        history_window > 0 and at least one tick has happened."""
+        if not history_window or not trace:
+            return ''
+        recent = trace[-history_window:]
+        lines = [f"  step {h['step']}: {legal.get(h['action'], 'action %s' % h['action'])}"
+                 for h in recent]
+        warn = ''
+        # no-op: did the most recent action leave the observation unchanged?
+        if recent[-1].get('payload') == payload:
+            warn += ("\nNOTE: your last action did NOT change the view — you are "
+                     "blocked or it had no effect. Choose a DIFFERENT action.")
+        # consecutive run of the same action with no escape
+        run_act, run = trace[-1]['action'], 0
+        for h in reversed(trace):
+            if h['action'] == run_act:
+                run += 1
+            else:
+                break
+        if run >= 3:
+            lbl = legal.get(run_act, f'action {run_act}')
+            warn += (f"\nNOTE: you have chosen '{lbl}' {run} times in a row with no "
+                     f"progress. Break the loop — try turning or another action.")
+        return "\n\nYour recent moves (in order):\n" + '\n'.join(lines) + warn
 
     def act(env_step) -> 'EnvironmentResponse':
         obs = env_step.observation or {}
@@ -366,11 +404,12 @@ def build_api_action_fn(
                 raise ValueError("build_api_action_fn(obs_mode='ascii'): "
                                  "EnvironmentStep.observation has no 'ascii'.")
             image = None
+            payload = hashlib.sha256(str(board).encode('utf-8')).hexdigest()[:16]
             prompt = (
                 "You control an agent on a grid (text view below).\n"
                 f"Mission: {instruction}\n\n{board}\n\n"
-                f"Available actions (reply with the NUMBER):\n{menu}\n\n{tail}")
-            payload = hashlib.sha256(str(board).encode('utf-8')).hexdigest()[:16]
+                f"Available actions (reply with the NUMBER):\n{menu}"
+                f"{_history_block(legal, payload)}\n\n{tail}")
         else:  # vision
             frame = obs.get('frame')
             if frame is None:
@@ -378,12 +417,13 @@ def build_api_action_fn(
                                  "EnvironmentStep.observation has no 'frame'.")
             media, b64 = _encode_frame(frame, frame_resize)
             image = (media, b64)
+            payload = hashlib.sha256(b64.encode('utf-8')).hexdigest()[:16]
             prompt = (
                 "You control an agent in a grid world. Look at the image and "
                 "choose the single best next action.\n"
                 f"Mission: {instruction}\n\n"
-                f"Available actions (reply with the NUMBER):\n{menu}\n\n{tail}")
-            payload = hashlib.sha256(b64.encode('utf-8')).hexdigest()[:16]
+                f"Available actions (reply with the NUMBER):\n{menu}"
+                f"{_history_block(legal, payload)}\n\n{tail}")
 
         response = None
         key = None
@@ -408,7 +448,8 @@ def build_api_action_fn(
         fallback = parsed is None
         idx = int(rng.randint(0, n)) if fallback else parsed
         trace.append({'step': getattr(env_step, 'step_num', len(trace)),
-                      'response': response, 'action': idx, 'fallback': fallback})
+                      'response': response, 'action': idx, 'fallback': fallback,
+                      'payload': payload})
         return EnvironmentResponse(action=idx)
 
     act.trace = trace
