@@ -114,29 +114,45 @@ def _call_anthropic(model, system, user_text, image, max_tokens) -> str:
     return ''.join(b.text for b in resp.content if b.type == 'text').strip()
 
 
-def _call_openai(model, system, user_text, image, max_tokens) -> str:
-    try:
-        from openai import OpenAI
-    except ImportError as e:
-        raise RuntimeError(
-            "openai SDK not installed — `pip install openai` to score "
-            "GPT models behaviorally.") from e
-    client = OpenAI()  # reads OPENAI_API_KEY from env
-    content = [{'type': 'text', 'text': user_text}]
-    if image is not None:
-        media, b64 = image
-        content.append({'type': 'image_url', 'image_url': {
-            'url': f'data:{media};base64,{b64}'}})
-    messages = []
-    if system:
-        messages.append({'role': 'system', 'content': system})
-    messages.append({'role': 'user', 'content': content})
-    resp = client.chat.completions.create(
-        model=model, max_tokens=max_tokens, temperature=0, messages=messages)
-    return (resp.choices[0].message.content or '').strip()
+def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY',
+                            label='openai') -> Callable:
+    """Adapter for any OpenAI-compatible chat-completions endpoint. DeepSeek,
+    Together, Fireworks, vLLM, etc. all speak this protocol — only the base_url
+    and key env var differ. ``base_url=None`` is OpenAI itself."""
+    def call(model, system, user_text, image, max_tokens) -> str:
+        try:
+            from openai import OpenAI
+        except ImportError as e:
+            raise RuntimeError(
+                f"openai SDK not installed — `pip install openai` to score "
+                f"{label} models behaviorally.") from e
+        client = OpenAI(api_key=os.getenv(api_key_env), base_url=base_url)
+        content = [{'type': 'text', 'text': user_text}]
+        if image is not None:
+            media, b64 = image
+            content.append({'type': 'image_url', 'image_url': {
+                'url': f'data:{media};base64,{b64}'}})
+        messages = []
+        if system:
+            messages.append({'role': 'system', 'content': system})
+        messages.append({'role': 'user', 'content': content})
+        resp = client.chat.completions.create(
+            model=model, max_tokens=max_tokens, temperature=0, messages=messages)
+        return (resp.choices[0].message.content or '').strip()
+    call.__name__ = f'_call_{label}'
+    return call
 
 
-PROVIDERS = {'anthropic': _call_anthropic, 'openai': _call_openai}
+PROVIDERS = {
+    'anthropic': _call_anthropic,
+    'openai': _make_openai_compatible(),
+    # DeepSeek's API is OpenAI-compatible. Text-only (no vision): register
+    # DeepSeek models with modalities=('text',). deepseek-chat = V3,
+    # deepseek-reasoner = R1.
+    'deepseek': _make_openai_compatible(
+        base_url='https://api.deepseek.com',
+        api_key_env='DEEPSEEK_API_KEY', label='deepseek'),
+}
 
 
 class _ResponseCache:

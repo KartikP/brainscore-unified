@@ -124,8 +124,24 @@ class TestRegistration:
     def test_models_registered(self):
         import brainscore
         for ident in ('claude-opus-behavioral', 'claude-haiku-behavioral',
-                      'gpt-4o-behavioral'):
+                      'gpt-4o-behavioral', 'deepseek-chat-behavioral',
+                      'deepseek-r1-behavioral'):
             assert ident in brainscore.model_registry
+
+    def test_deepseek_is_text_only(self):
+        # DeepSeek's API has no vision; it must declare text only so a vision
+        # benchmark doesn't route to it at the compatibility check.
+        from brainscore.models.api_closed.model import get_model
+        m = get_model('deepseek-r1-behavioral')
+        assert m.supported_modalities == {'text'}
+        assert callable(m._generation_fn)
+
+    def test_deepseek_provider_is_openai_compatible(self):
+        # The DeepSeek provider is the OpenAI-compatible adapter pointed at a
+        # different base_url — same wire protocol.
+        from brainscore.model_helpers.api_behavioral import PROVIDERS
+        assert 'deepseek' in PROVIDERS
+        assert PROVIDERS['deepseek'].__name__ == '_call_deepseek'
 
     def test_get_model_wiring_no_api_call(self):
         # Building the model must NOT require an API key — the closure is lazy.

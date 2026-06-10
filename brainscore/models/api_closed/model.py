@@ -23,6 +23,15 @@ REGISTRY = {
     'gpt-4o-behavioral': dict(
         provider='openai', model='gpt-4o-2024-08-06',
         modalities=('vision', 'text')),
+    # DeepSeek's API is text-only (no vision) — register text modality only, so
+    # the pre-flight check routes only text behavioral benchmarks here.
+    # deepseek-chat = V3, deepseek-reasoner = R1. Needs DEEPSEEK_API_KEY.
+    'deepseek-chat-behavioral': dict(
+        provider='deepseek', model='deepseek-chat',
+        modalities=('text',)),
+    'deepseek-r1-behavioral': dict(
+        provider='deepseek', model='deepseek-reasoner',
+        modalities=('text',)),
 }
 
 # Cache lives on disk so re-scoring a benchmark doesn't re-bill the API and the
