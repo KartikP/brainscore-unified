@@ -47,12 +47,14 @@ def main():
     ap.add_argument('--max_steps', type=int, default=60)
     ap.add_argument('--max_tokens', type=int, default=512)
     ap.add_argument('--frame_resize', type=int, default=384)
-    ap.add_argument('--cache_dir',
-                    default=os.path.expanduser('~/.brainscore/api_game_cache'))
+    # Cache OFF by default: caching a closed agentic loop can freeze a stuck
+    # state into a no-op loop. Pass --cache_dir only for reproducible re-runs.
+    ap.add_argument('--cache_dir', default=None)
     ap.add_argument('--out', default='/tmp/api_game_result.json')
     args = ap.parse_args()
 
-    cache_dir = f"{args.cache_dir}/{args.provider}_{args.model.replace('/', '_')}"
+    cache_dir = (f"{args.cache_dir}/{args.provider}_{args.model.replace('/', '_')}"
+                 if args.cache_dir else None)
     action_fn = build_api_action_fn(
         args.provider, args.model, max_tokens=args.max_tokens,
         cache_dir=cache_dir, frame_resize=args.frame_resize)

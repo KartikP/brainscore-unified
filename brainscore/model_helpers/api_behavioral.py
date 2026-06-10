@@ -345,9 +345,16 @@ def build_api_action_fn(
         response = None
         key = None
         if cache is not None:
+            # Include step_num so a stuck state (unchanged frame) at different
+            # ticks does NOT collapse to one cached action — that would freeze
+            # the agent in a no-op loop. Same (seed-deterministic) trajectory
+            # still reproduces on re-run. Caching a closed loop is inherently
+            # fraught; prefer leaving cache_dir=None for fresh per-tick decisions.
             payload = hashlib.sha256(b64.encode('utf-8')).hexdigest()[:16]
+            step_num = getattr(env_step, 'step_num', '')
             key = hashlib.sha256(
-                '|'.join([provider_name, model, prompt, payload]).encode()
+                '|'.join([provider_name, model, prompt, payload,
+                          str(step_num)]).encode()
             ).hexdigest()
             response = cache.get(key)
         if response is None:
