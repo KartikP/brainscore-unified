@@ -11,9 +11,16 @@ Person-free + ops-only, so it lives in the repo. Rates are us-east-2 on-demand.
 import argparse, csv, json, os
 from collections import defaultdict
 
-# us-east-2 on-demand (USD/hr). g5.4xlarge = 1x A10G 24GB.
-RATES = {'g5.4xlarge': 1.624, 'g5.12xlarge': 5.672, 'g5.2xlarge': 1.212}
+# us-east-2 on-demand (USD/hr). g5.4xlarge = 1x A10G 24GB; g6e.* = L40S.
+RATES = {'g5.4xlarge': 1.624, 'g5.12xlarge': 5.672, 'g5.2xlarge': 1.212,
+         'g6e.2xlarge': 2.42, 'g6e.12xlarge': 10.6}
 EBS_GP3_PER_GB_MONTH = 0.08
+
+# Durable, repo-tracked marker log. Run-chains on EC2 still append to a local
+# /tmp/cost_log.csv (fast, no repo on the instance); on instance STOP, append
+# that file's rows here so the markers survive the session — see COST_LEDGER.md.
+DURABLE_COST_LOG = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                'cost_log.csv')
 
 
 def parse_cost_log(path):
@@ -39,7 +46,8 @@ def parse_cost_log(path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--cost_log', default='/tmp/cost_log.csv')
+    ap.add_argument('--cost_log', default=DURABLE_COST_LOG,
+                    help='marker CSV; defaults to the repo-tracked durable log')
     ap.add_argument('--instance', default='g5.4xlarge')
     ap.add_argument('--uptime_hours', type=float, required=True,
                     help='billed continuous running hours for the session')
