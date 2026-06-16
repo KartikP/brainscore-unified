@@ -1,0 +1,14 @@
+{
+  "_note": "First real-fMRI run of the topographic-alignment axis. EC2 g5.4xlarge, 2026-06-16. Clean single-hemisphere (LH) run; see RESULTS.md.",
+  "region": "IT",
+  "subject": "subj01",
+  "hemisphere": "lh",
+  "n_vertices": 6128,
+  "brain_rd_centers": [0.0417, 0.125, 0.2083, 0.2917, 0.375, 0.4583, 0.5417, 0.625, 0.7083, 0.7917, 0.875, 0.9583],
+  "brain_rd_corr": [0.3775, 0.2075, 0.1318, 0.0914, 0.0715, 0.0639, 0.0418, 0.0137, 0.0170, 0.0539, 0.0461, 0.0551],
+  "brain_rd_decays": true,
+  "model": "clip-vit-b-32",
+  "raw": 0.2953,
+  "null": 0.4506,
+  "signal": -0.1553
+}
