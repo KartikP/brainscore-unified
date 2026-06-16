@@ -28,7 +28,8 @@ deliverables ledger (Obsidian): `unified-model-interface-deliverables/COMPUTE-CO
 | 2026-06-05 | V-JEPA2 layer + unit-selection sweep (Lahner ROI) | g5.4xlarge | 1.30 h measured | ~$2 |
 | 2026-06-05 | MIRAGE vs TRIBEv2 native-vs-post-hoc fusion arc (sessions 2–5) | g5/g6e.12xlarge | measured | **~$51** |
 | 2026-06-10/11 | closed-API behavioral + KeyCorridor game notebook | **local laptop** | OpenRouter API only | ~$0.20 API |
-| | **GRAND TOTAL (EC2)** | | | **≈ $91** |
+| 2026-06-16 | topographic-alignment axis first real-fMRI run (NSD-surface, CLIP) | g5.4xlarge | ~0.6 h measured | ~$1 |
+| | **GRAND TOTAL (EC2)** | | | **≈ $92** |
 
 > The MIRAGE/TRIBEv2 arc (sessions 2–5) is the single biggest line — it used the 4× L40S
 > `g6e.12xlarge` at $10.6/hr for the 30B Qwen3-Omni extraction. Everything else is A10G at $1.62/hr.
