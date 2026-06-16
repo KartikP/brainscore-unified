@@ -37,6 +37,10 @@ def _populate_unified_registries() -> None:
         from . import models  # noqa: F401
     except ImportError as e:
         _logger.warning(f"failed to import unified models: {e}")
+    try:
+        from . import metrics  # noqa: F401
+    except ImportError as e:
+        _logger.warning(f"failed to import unified metrics: {e}")
 
 
 def load_model(identifier: str) -> UnifiedModel:
@@ -94,6 +98,27 @@ def load_benchmark(identifier: str) -> Benchmark:
 
     raise KeyError(
         f"Benchmark '{identifier}' not found in unified, vision, or language registries."
+    )
+
+
+def load_metric(identifier: str, *args, **kwargs) -> Metric:
+    """Load a metric by identifier.
+
+    Checks the unified registry first, then falls back to the brainscore_vision
+    registry. Metric factories may take arguments (e.g. a region or n_components),
+    forwarded here.
+    """
+    if identifier in metric_registry:
+        return metric_registry[identifier](*args, **kwargs)
+
+    try:
+        from brainscore_vision import load_metric as load_vision_metric
+        return load_vision_metric(identifier, *args, **kwargs)
+    except (KeyError, ImportError, AssertionError):
+        pass
+
+    raise KeyError(
+        f"Metric '{identifier}' not found in unified or vision registries."
     )
 
 

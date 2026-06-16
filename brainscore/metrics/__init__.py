@@ -16,3 +16,9 @@ __all__ = [
     'TopographicMetric', 'correlation_distance_profile', 'spatial_smoothness',
     'topographic_alignment',
 ]
+
+# Register metrics as first-class, loadable plugins: brainscore.load_metric('topographic-alignment').
+# Each entry is a factory; any args are forwarded by load_metric. See EXTENDING.md (Seam 3).
+from brainscore import metric_registry  # noqa: E402
+
+metric_registry['topographic-alignment'] = lambda n_bins=15: TopographicMetric(n_bins)
