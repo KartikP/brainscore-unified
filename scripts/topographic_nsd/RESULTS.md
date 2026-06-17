@@ -87,14 +87,31 @@ the brain's decaying profile gives ~0 (0.088), while the shuffle null landed spu
 so raw−null came out positive. **My sheet extraction does not capture Topo-Omni's topographic
 organization** (the paper clearly has it — Fig 13 Island Moran's I ≈ 0.5).
 
-**Why (likely) + the fix for next session:** the paper measures topography via **selectivity maps**
-(category-contrast t-values per unit) + **Island Moran's I** (spatial autocorrelation of selectivity),
-NOT the raw response-correlation r(d) that worked for TDANN. The unified-sheet per-position scalar's
-*raw* across-stimulus correlation appears spatially unstructured as I read it (74% of units "responsive"
-but pairwise-uncorrelated). Next: either (a) replicate their `src/eval/run/run_selectivity.py` →
-selectivity → Moran's I as a second topographic metric, or (b) determine why the raw-sheet r(d) is flat
-(inspect what `unified_sheet[r,c]` actually represents; try the per-layer sheet tuple or a selectivity
-contrast instead of raw responses). This is a focused next-session debug, not a model/infra problem.
+**ROOT CAUSE (diagnosed 2026-06-17, from the model source — NOT a bug, a structural metric mismatch):**
+Topo-Omni's spatial-smoothness loss is computed as
+`spatial_loss_fn(activations=unified_sheet.reshape(num_time_steps, -1), positions=self.positions)`
+(`src/models/qwen2_5_omni.py`). The functional similarity it smooths is the correlation **across
+`num_time_steps`** — i.e. the 2-second video/audio chunks and text tokens **within a single training
+sample** — NOT across distinct stimuli. (A single image has `num_time_steps = 1`, so images contribute
+nothing to the smoothness; it was driven by Koala-36M *video* chunks + caption tokens.)
+
+The topographic-alignment benchmark, by contrast, measures **across-stimulus** response correlation —
+nearby units correlated across the 412 different NSD images — to match the **NSD brain target**, whose
+r(d) is the across-image voxel-response correlation. TDANN's spatial loss IS across-stimulus (standard
+topographic-DNN setup), so its across-image r(d) decays (+0.838). Topo-Omni's is across-time/token, so
+its across-image r(d) is genuinely flat. **The metric and the model's topography axis don't match** — and
+no extraction tweak fixes that, because the structure simply isn't on the across-stimulus axis.
+
+This is consistent with the paper itself measuring Topo-Omni's topography via **selectivity maps**
+(category-contrast t-values per unit) + **Island Moran's I** (spatial autocorrelation of *selectivity*),
+never raw across-stimulus response correlation.
+
+**Implication / proper Topo-Omni evaluation (a distinct future benchmark, not a quick fix):** a
+*selectivity-based* topographic metric — per-unit category-contrast selectivity, spatial autocorrelation,
+aligned to a category-selectivity brain target (NSD has COCO category labels) — would be needed to score
+Topo-Omni fairly. That is a separate axis variant ("selectivity-topography") from the response-correlation
+axis TDANN validated, and reproduces the paper's own measure. The `+0.417` from the response-correlation
+run is a numerical artifact and is NOT reported as a Topo-Omni result.
 
 ## Headline so far
 
@@ -110,5 +127,10 @@ works but its sheet extraction is unresolved.
 
 ## Next
 
-- **Fix Topo-Omni extraction** (selectivity-map + Moran's I, per the paper) — the open Phase 2 item.
+- **Topo-Omni needs a selectivity-topography benchmark variant**, not an extraction fix — its smoothness
+  is on the temporal/token axis, so the across-stimulus response-correlation axis can't see it. Building
+  that (category-contrast selectivity + spatial autocorrelation on both model sheet and a category-
+  selectivity brain target) is a distinct piece of work that reproduces the paper's own measure.
+- The response-correlation topographic axis is **validated and complete** via TDANN (+0.838) vs CLIP
+  (−0.155). It cleanly captures TDANN-style (across-stimulus-smoothed) topographic models.
 - Optional refinements: geodesic distance; per-region (V1→IT) profiles; multiple subjects.
