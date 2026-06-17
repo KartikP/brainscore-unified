@@ -30,7 +30,8 @@ deliverables ledger (Obsidian): `unified-model-interface-deliverables/COMPUTE-CO
 | 2026-06-10/11 | closed-API behavioral + KeyCorridor game notebook | **local laptop** | OpenRouter API only | ~$0.20 API |
 | 2026-06-16 | topographic-alignment axis first real-fMRI run (NSD-surface, CLIP) | g5.4xlarge | ~0.6 h measured | ~$1 |
 | 2026-06-16 | TDANN Phase 1 groundwork (clone, OSF mapping, env discovery) | g5.4xlarge | ~0.8 h measured | ~$1.3 |
-| | **GRAND TOTAL (EC2)** | | | **≈ $93** |
+| 2026-06-17 | TDANN score (+0.838) + Topo-Omni load/extract/score (5B, multiple runs) | g5.4xlarge | ~2 h measured | ~$3.3 |
+| | **GRAND TOTAL (EC2)** | | | **≈ $96** |
 
 > The MIRAGE/TRIBEv2 arc (sessions 2–5) is the single biggest line — it used the 4× L40S
 > `g6e.12xlarge` at $10.6/hr for the 30B Qwen3-Omni extraction. Everything else is A10G at $1.62/hr.

@@ -72,9 +72,43 @@ score at the null), so the checkpoint↔positions pairing is confirmed correct b
 The axis now cleanly distinguishes topographic from non-topographic models, with the shuffle null as
 the discriminator — exactly what predictivity cannot do (it is permutation-invariant over units).
 
+## Phase 2 — Topo-Omni: infrastructure works, extraction NOT yet valid (2026-06-17)
+
+The 5B custom Topo-Omni model (`epfl-neuroai/topo-omni`, Qwen2.5-Omni-3B + `CorticalAdaptor`) loads
+end-to-end **VISSL-free** (mirroring their `src/eval/extract/extract_nsd.py`: custom
+`Qwen2_5OmniThinkerForConditionalGeneration` + `Qwen2_5OmniProcessor`, bf16, one A10G), produces
+`out.unified_sheet` (304×512), and runs through the `TopographicBenchmark` — so the *pipeline* is proven
+for a 2026 multimodal model. Script: `topo_omni_phase2.py`.
+
+**But the result is NOT a trustworthy positive and is reported as such.** Headline signal was +0.417
+(raw 0.088, null −0.329), yet **Topo-Omni's own r(d) profile is flat (~0.002, no decay)** — nothing like
+TDANN's genuine 0.506→0 decay. The +0.417 is a **numerical artifact**: a flat raw profile correlated with
+the brain's decaying profile gives ~0 (0.088), while the shuffle null landed spuriously negative (−0.329),
+so raw−null came out positive. **My sheet extraction does not capture Topo-Omni's topographic
+organization** (the paper clearly has it — Fig 13 Island Moran's I ≈ 0.5).
+
+**Why (likely) + the fix for next session:** the paper measures topography via **selectivity maps**
+(category-contrast t-values per unit) + **Island Moran's I** (spatial autocorrelation of selectivity),
+NOT the raw response-correlation r(d) that worked for TDANN. The unified-sheet per-position scalar's
+*raw* across-stimulus correlation appears spatially unstructured as I read it (74% of units "responsive"
+but pairwise-uncorrelated). Next: either (a) replicate their `src/eval/run/run_selectivity.py` →
+selectivity → Moran's I as a second topographic metric, or (b) determine why the raw-sheet r(d) is flat
+(inspect what `unified_sheet[r,c]` actually represents; try the per-layer sheet tuple or a selectivity
+contrast instead of raw responses). This is a focused next-session debug, not a model/infra problem.
+
+## Headline so far
+
+| model | r(d) genuinely decays? | signal | trustworthy? |
+|---|---|---|---|
+| CLIP ViT-B/32 (non-topographic) | no | −0.155 | yes — correct negative control |
+| **TDANN (topographic ResNet-18)** | **yes (0.506→0)** | **+0.838** | **yes — the validated positive** |
+| Topo-Omni (topographic VLM) | **no (flat ~0.002)** | +0.417 | **NO — artifact; extraction needs fixing** |
+
+**TDANN is the validated end-to-end result.** The pipeline + metric + null are proven; the axis cleanly
+separates a genuinely-topographic model (TDANN) from a non-topographic one (CLIP). Topo-Omni's *infra*
+works but its sheet extraction is unresolved.
+
 ## Next
 
-- **Phase 2: Topo-Omni** — vendor the `CorticalAdaptor` custom modeling, record the 304×512 vision-band
-  sheet (rows 0–159 / cols 0–255) with tissue coords = sheet (row,col), score the same benchmark.
-  The flagship 2026-multimodal positive result.
+- **Fix Topo-Omni extraction** (selectivity-map + Moran's I, per the paper) — the open Phase 2 item.
 - Optional refinements: geodesic distance; per-region (V1→IT) profiles; multiple subjects.
