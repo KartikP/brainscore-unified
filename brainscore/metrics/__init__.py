@@ -13,11 +13,13 @@ from .topographic import (
     topographic_alignment,
     selectivity_topographic_alignment,
 )
+from .direct_comparison import DirectComparisonMetric, per_unit_pearson
 
 __all__ = [
     'TopographicMetric', 'SelectivityTopographicMetric',
     'correlation_distance_profile', 'spatial_smoothness',
     'topographic_alignment', 'selectivity_topographic_alignment',
+    'DirectComparisonMetric', 'per_unit_pearson',
 ]
 
 # Register metrics as first-class, loadable plugins: brainscore.load_metric('topographic-alignment').
@@ -29,3 +31,6 @@ metric_registry['topographic-alignment'] = lambda n_bins=15: TopographicMetric(n
 # response-correlation axis can't see (see topographic-selectivity-axis-plan).
 metric_registry['selectivity-topographic-alignment'] = \
     lambda label_coord='category', top_k_frac=0.1: SelectivityTopographicMetric(label_coord, top_k_frac)
+# Direct per-unit comparison for whole-model→whole-brain encoders (e.g. TRIBEv2):
+# no fitted readout — correlate predicted vs measured responses per unit.
+metric_registry['direct-comparison'] = lambda shuffle_seed=0: DirectComparisonMetric(shuffle_seed)
