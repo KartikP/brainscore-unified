@@ -3,154 +3,35 @@ a scaling curve: bad model -> good model on the same grid video game.
 
 Two tracks, both driven one tick at a time through ``process(EnvironmentStep)``:
 
-  * visual VLMs read the rendered frame (perception + spatial reasoning):
-      Qwen2.5-VL-3B  ->  Qwen2.5-VL-7B
+  * visual VLMs read the rendered frame (perception + spatial reasoning).
   * a thinking text model reads the ASCII board (perfect perception; isolates
-    reasoning): Qwen3-8B with thinking enabled.
+    reasoning).
 
-References on the same boards:
-    oracle  : privileged-state upper bound (optimal on wall-free grids)
-    random  : the null floor — every model must clear this to mean anything.
+References on the same boards: oracle (privileged-state upper bound) and random
+(the null floor every model must clear to mean anything).
 
-Models are loaded, run, and freed one at a time so the whole ladder fits a
-single 24 GB GPU. Honest by construction: if a model is below the random floor,
-we report it (the 3B VLM is — abstract-grid vision is hard for small VLMs).
-
-Run on EC2 (GPU). Writes a scaling-curve-ready JSON to --out.
+Policy builders + the episode runner now live in
+``brainscore.model_helpers.local_vlm_policy`` — this file is just the ladder
+driver. Models are loaded, run, and freed one at a time so the ladder fits a
+single 24 GB GPU. Run on EC2 (GPU). Writes a scaling-curve-ready JSON to --out.
 """
 import argparse
 import gc
 import json
-import re
 import sys
 import traceback
 
-import numpy as np
-from PIL import Image
-
-from brainscore_core.model_interface import BrainScoreModel
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.grid_game import (
-    GridGameEnv, ACTIONS, greedy_oracle_policy, random_action_policy, play_game,
+    greedy_oracle_policy, random_action_policy,
+)
+from brainscore.model_helpers.local_vlm_policy import (
+    build_visual_policy, build_thinking_policy, run_grid_episodes,
 )
 
-_WORD_TO_ACTION = {'up': 0, 'down': 1, 'left': 2, 'right': 3}
-
-# The ladder. (display_name, hf_id, mode, thinking). Ordered worse -> better
-# within each track; the driver runs them in this order.
+# The ladder. (display_name, hf_id, mode, thinking). Ordered worse -> better.
 DEFAULT_LADDER = [
     ('DeepSeek-R1-7B', 'deepseek-ai/DeepSeek-R1-Distill-Qwen-7B', 'ascii', True),
 ]
-
-_VISUAL_PROMPT = (
-    "This is a grid game. The BLUE square is the player; the GREEN square is the "
-    "goal. Row 0 is the top row; column 0 is the left column.\n"
-    "Think step by step:\n"
-    "1. State the (row, column) of the BLUE square.\n"
-    "2. State the (row, column) of the GREEN square.\n"
-    "3. Decide the single move that reduces the distance: 'up' decreases the "
-    "row, 'down' increases the row, 'left' decreases the column, 'right' "
-    "increases the column.\n"
-    "End your reply with a line exactly: Action: <up|down|left|right>"
-)
-
-_ASCII_PROMPT = (
-    "You are playing a grid game. The board uses: P = player, G = goal, "
-    "# = wall, . = empty. Row 0 is the top. 'up' decreases the row, 'down' "
-    "increases it, 'left' decreases the column, 'right' increases it.\n\n"
-    "Board:\n{board}\n\n"
-    "Think step by step about which single move brings P closer to G, then end "
-    "your reply with a line exactly like:\nAction: <up|down|left|right>"
-)
-
-
-def _parse_action(text: str, prefer_last: bool = False) -> int:
-    """Extract an action from model output. Prefer an explicit 'Action: word';
-    else first (or last) direction word. Returns -1 if none found."""
-    m = re.search(r'action\s*[:\-]\s*(up|down|left|right)', text, re.IGNORECASE)
-    if m:
-        return _WORD_TO_ACTION[m.group(1).lower()]
-    words = re.findall(r'\b(up|down|left|right)\b', text, re.IGNORECASE)
-    if words:
-        return _WORD_TO_ACTION[(words[-1] if prefer_last else words[0]).lower()]
-    return -1
-
-
-def build_visual_policy(model_id):
-    import torch
-    from transformers import AutoProcessor
-    try:
-        from transformers import Qwen2_5_VLForConditionalGeneration as VLM
-    except Exception:
-        from transformers import AutoModelForVision2Seq as VLM
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    processor = AutoProcessor.from_pretrained(model_id)
-    model = VLM.from_pretrained(
-        model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
-        device_map=device).eval()
-    stats = {'parse_miss': 0, 'calls': 0}
-    rng = np.random.RandomState(0)
-
-    def policy(observation, history):
-        stats['calls'] += 1
-        img = Image.fromarray(observation['frame']).resize((320, 320), Image.NEAREST)
-        messages = [{'role': 'user', 'content': [
-            {'type': 'image'}, {'type': 'text', 'text': _VISUAL_PROMPT}]}]
-        text = processor.apply_chat_template(messages, tokenize=False,
-                                             add_generation_prompt=True)
-        inputs = processor(text=[text], images=[img], return_tensors='pt').to(device)
-        with torch.no_grad():
-            # room to reason (chain-of-thought) before the Action line
-            out = model.generate(**inputs, max_new_tokens=200, do_sample=False)
-        gen = out[0][inputs['input_ids'].shape[1]:]
-        ans = processor.decode(gen, skip_special_tokens=True)
-        a = _parse_action(ans, prefer_last=True)   # take the final 'Action: <dir>'
-        if a < 0:
-            # Unparseable output collapses to a RANDOM action (not a biased
-            # "always-right" walker) so a non-instruction-following model
-            # degrades to the random floor rather than masquerading as competent.
-            stats['parse_miss'] += 1
-            return int(rng.randint(0, len(ACTIONS)))
-        return a
-
-    return policy, stats, (model, processor)
-
-
-def build_thinking_policy(model_id):
-    import torch
-    from transformers import AutoTokenizer, AutoModelForCausalLM
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    tok = AutoTokenizer.from_pretrained(model_id)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
-        device_map=device).eval()
-    stats = {'parse_miss': 0, 'calls': 0}
-    rng = np.random.RandomState(0)
-
-    def policy(observation, history):
-        stats['calls'] += 1
-        prompt = _ASCII_PROMPT.format(board=observation['ascii'])
-        messages = [{'role': 'user', 'content': prompt}]
-        try:
-            text = tok.apply_chat_template(messages, tokenize=False,
-                                           add_generation_prompt=True,
-                                           enable_thinking=True)
-        except TypeError:
-            text = tok.apply_chat_template(messages, tokenize=False,
-                                           add_generation_prompt=True)
-        inputs = tok([text], return_tensors='pt').to(device)
-        with torch.no_grad():
-            # R1-style reasoners think at length before answering — give room.
-            out = model.generate(**inputs, max_new_tokens=1024, do_sample=False)
-        gen = out[0][inputs['input_ids'].shape[1]:]
-        ans = tok.decode(gen, skip_special_tokens=True)
-        a = _parse_action(ans, prefer_last=True)
-        if a < 0:
-            stats['parse_miss'] += 1
-            return int(rng.randint(0, len(ACTIONS)))
-        return a
-
-    return policy, stats, (model, tok)
 
 
 def _purge_hf_cache(hf_id):
@@ -166,26 +47,6 @@ def _purge_hf_cache(hf_id):
         print(f"  purged cache {path}", flush=True)
 
 
-def make_model(policy):
-    return BrainScoreModel(
-        identifier='grid-player', model=None, region_layer_map={},
-        preprocessors={}, activations_model=None,
-        action_fn=PolicyWrapper(policy, max_history=4))
-
-
-def run_policy(policy, n_episodes, size, max_steps, base_seed):
-    solves, effs = [], []
-    for i in range(n_episodes):
-        env = GridGameEnv(size=size, seed=base_seed + i, max_steps=max_steps)
-        res = play_game(make_model(policy), env)
-        solves.append(1.0 if res['solved'] else 0.0)
-        if res['solved']:
-            effs.append(res['efficiency'])
-    return {'success_rate': float(np.mean(solves)),
-            'mean_efficiency': float(np.mean(effs)) if effs else 0.0,
-            'n_episodes': n_episodes}
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--episodes', type=int, default=15)
@@ -194,7 +55,7 @@ def main():
     ap.add_argument('--base-seed', type=int, default=500)
     ap.add_argument('--out', default='/tmp/vlm_game_scaling.json')
     ap.add_argument('--purge', action='store_true',
-                    help='remove each large model from disk after running (bounds disk use)')
+                    help='remove each large model from disk after running')
     args = ap.parse_args()
     common = dict(n_episodes=args.episodes, size=args.size,
                   max_steps=args.max_steps, base_seed=args.base_seed)
@@ -202,33 +63,32 @@ def main():
     results = {'config': vars(args), 'models': {}}
 
     print("[oracle]", flush=True)
-    results['oracle'] = run_policy(greedy_oracle_policy, **common)
+    results['oracle'] = run_grid_episodes(greedy_oracle_policy, **common)
     print(f"  {results['oracle']}", flush=True)
     print("[random null]", flush=True)
-    results['random_null'] = run_policy(random_action_policy(seed=0), **common)
+    results['random_null'] = run_grid_episodes(random_action_policy(seed=0), **common)
     print(f"  {results['random_null']}", flush=True)
 
     for name, hf_id, mode, thinking in DEFAULT_LADDER:
         print(f"\n[{name}] mode={mode} thinking={thinking} loading ...", flush=True)
         try:
             if mode == 'visual':
-                policy, stats, handles = build_visual_policy(hf_id)
+                policy, stats = build_visual_policy(hf_id)
             else:
-                policy, stats, handles = build_thinking_policy(hf_id)
-            res = run_policy(policy, **common)
+                policy, stats = build_thinking_policy(hf_id)
+            res = run_grid_episodes(policy, **common)
             res['parse_miss'] = stats['parse_miss']
             res['calls'] = stats['calls']
             miss_rate = stats['parse_miss'] / max(1, stats['calls'])
             # >50% unparseable -> not instruction-following; its success rate is
-            # not a competence signal (its moves are mostly random fallbacks).
+            # not a competence signal (moves are mostly random fallbacks).
             res['instruction_following'] = miss_rate < 0.5
             res['parse_miss_rate'] = round(miss_rate, 3)
             res['mode'] = mode
             res['thinking'] = thinking
             results['models'][name] = res
             print(f"  {name}: {res}", flush=True)
-            # free GPU before the next model
-            del policy, handles
+            del policy  # drops the only ref to the loaded model
         except Exception as e:
             results['models'][name] = {'error': str(e)}
             print(f"  {name} FAILED: {e}", flush=True)

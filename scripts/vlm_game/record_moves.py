@@ -14,7 +14,7 @@ import json
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.grid_game import GridGameEnv, play_game
-from play_vlm_game import build_visual_policy  # same dir
+from brainscore.model_helpers.local_vlm_policy import build_visual_policy
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
     ap.add_argument('--out', default='/tmp/model_moves.js')
     args = ap.parse_args()
 
-    policy, stats, handles = build_visual_policy(args.model_id)
+    policy, stats = build_visual_policy(args.model_id)
 
     def make_model(p):
         return BrainScoreModel('grid-player', None, {}, {}, None,

@@ -5,91 +5,21 @@ now on a standard, harder environment (key → door → goal, orientation-aware)
 The VLM looks at the rendered frame, reads the mission + the legal-action menu, reasons
 (chain-of-thought helps here — MiniGrid is planning, not perception), and returns an
 action index. Backends: Qwen2.5-VL (fp16, bsu env) or Gemma-4-12B (4-bit, gemma4 env).
+Policy builders live in ``brainscore.model_helpers.local_vlm_policy``.
 
     python minigrid_vlm.py --backend qwen --model Qwen/Qwen2.5-VL-7B-Instruct \
         --env MiniGrid-DoorKey-6x6-v0 --episodes 10 --max_steps 60 --out /tmp/minigrid_qwen7b
 """
-import argparse, json, os, re
+import argparse, json, os
 
 import numpy as np
 
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-from brainscore.harnesses.gymnasium_harness import play_gym_episode, MINIGRID_ACTIONS, random_gym_policy
-
-PROMPT_TMPL = (
-    "You control the red triangle agent in a grid world. The triangle POINTS in the "
-    "direction the agent currently faces; 'move forward' goes that way. "
-    "Mission: {mission}.\n"
-    "Legend: yellow key = pick it up to unlock the door; a colored bar set into a wall "
-    "= a door (locked until opened while carrying the key); green square = the goal.\n"
-    "Actions: {menu}.\n"
-    "Reason briefly about which way the agent faces and the next best step, then end with "
-    "a line EXACTLY: 'Action: <number>'."
+from brainscore.harnesses.gymnasium_harness import play_gym_episode, random_gym_policy
+from brainscore.model_helpers.local_vlm_policy import (
+    build_minigrid_qwen_policy, build_minigrid_gemma_policy,
 )
-
-
-def _parse_action(text, n, rng):
-    m = list(re.finditer(r'action\s*[:=]?\s*(\d+)', text.lower()))
-    if not m:
-        m = list(re.finditer(r'\b(\d)\b', text))
-    if not m:
-        return int(rng.randint(0, n))
-    return int(m[-1].group(1)) % n
-
-
-def build_qwen_policy(model_id):
-    import torch
-    from PIL import Image
-    from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration as VLM
-    dev = 'cuda' if torch.cuda.is_available() else 'cpu'
-    proc = AutoProcessor.from_pretrained(model_id)
-    model = VLM.from_pretrained(model_id, torch_dtype=torch.float16 if dev == 'cuda' else torch.float32,
-                               device_map=dev).eval()
-    rng = np.random.RandomState(0)
-
-    def policy(obs, history):
-        n = len(obs['legal_actions'])
-        menu = '; '.join(f'{k}={v}' for k, v in obs['legal_actions'].items())
-        prompt = PROMPT_TMPL.format(mission=obs['instruction'], menu=menu)
-        img = Image.fromarray(obs['frame']).resize((336, 336), Image.NEAREST)
-        msgs = [{'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': prompt}]}]
-        text = proc.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
-        inp = proc(text=[text], images=[img], return_tensors='pt').to(dev)
-        with torch.no_grad():
-            out = model.generate(**inp, max_new_tokens=220, do_sample=False)
-        ans = proc.decode(out[0][inp['input_ids'].shape[1]:], skip_special_tokens=True)
-        return _parse_action(ans, n, rng)
-    return policy
-
-
-def build_gemma_policy(model_id):
-    import torch
-    from PIL import Image
-    from transformers import AutoProcessor, AutoModelForImageTextToText, BitsAndBytesConfig
-    bnb = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type='nf4',
-                             bnb_4bit_compute_dtype=torch.bfloat16,
-                             llm_int8_skip_modules=['patch_dense', 'embedding_projection', 'lm_head'])
-    rev = 'e18f459f54832f4ae2ab6686b935a2268668a9e9' if model_id == 'google/gemma-4-12B-it' else None
-    proc = AutoProcessor.from_pretrained(model_id, revision=rev)
-    model = AutoModelForImageTextToText.from_pretrained(
-        model_id, revision=rev, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
-    dev = next(model.parameters()).device
-    rng = np.random.RandomState(0)
-
-    def policy(obs, history):
-        n = len(obs['legal_actions'])
-        menu = '; '.join(f'{k}={v}' for k, v in obs['legal_actions'].items())
-        prompt = PROMPT_TMPL.format(mission=obs['instruction'], menu=menu)
-        img = Image.fromarray(obs['frame']).resize((336, 336), Image.NEAREST)
-        msgs = [{'role': 'user', 'content': [{'type': 'image', 'image': img}, {'type': 'text', 'text': prompt}]}]
-        inp = proc.apply_chat_template(msgs, add_generation_prompt=True, tokenize=True,
-                                       return_dict=True, return_tensors='pt').to(dev)
-        with torch.no_grad():
-            out = model.generate(**inp, max_new_tokens=256, do_sample=False)
-        ans = proc.decode(out[0][inp['input_ids'].shape[1]:], skip_special_tokens=True)
-        return _parse_action(ans, n, rng)
-    return policy
 
 
 def main():
@@ -104,9 +34,9 @@ def main():
     os.makedirs(args.out, exist_ok=True)
 
     if args.backend == 'qwen':
-        policy = build_qwen_policy(args.model)
+        policy, _ = build_minigrid_qwen_policy(args.model)
     elif args.backend == 'gemma':
-        policy = build_gemma_policy(args.model)
+        policy, _ = build_minigrid_gemma_policy(args.model)
     else:
         policy = random_gym_policy(0)
 
