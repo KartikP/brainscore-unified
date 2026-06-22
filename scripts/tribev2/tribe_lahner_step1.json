@@ -1,0 +1,6 @@
+{
+  "llama_mirror_load_ok": true,
+  "llama_params_B": 3.21,
+  "n_clips_predicted": 120,
+  "pred_dim": 20484
+}
