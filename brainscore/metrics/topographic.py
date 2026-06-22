@@ -152,6 +152,90 @@ def _extract(assembly):
     return responses, np.asarray(pos, dtype=float)
 
 
+def selectivity_maps(responses: np.ndarray, labels) -> Tuple[list, np.ndarray]:
+    """Per-unit one-vs-rest selectivity (Cohen's d) for each category.
+
+    :param responses: ``(n_stimuli, n_units)``.
+    :param labels: length-``n_stimuli`` category label per stimulus.
+    :returns: ``(categories, selectivity)`` where selectivity is
+        ``(n_categories, n_units)`` — d = (mean_in - mean_out) / pooled_sd.
+    """
+    responses = np.asarray(responses, dtype=float)
+    labels = np.asarray(labels)
+    cats = sorted(set(labels.tolist()))
+    out = []
+    for c in cats:
+        m = labels == c
+        a, b = responses[m], responses[~m]
+        if a.shape[0] < 2 or b.shape[0] < 2:
+            out.append(np.zeros(responses.shape[1]))
+            continue
+        pooled = np.sqrt((a.var(0, ddof=1) + b.var(0, ddof=1)) / 2)
+        pooled[pooled < 1e-9] = 1e-9
+        out.append((a.mean(0) - b.mean(0)) / pooled)
+    return cats, np.stack(out)
+
+
+def selectivity_centroids(selectivity: np.ndarray, positions: np.ndarray,
+                          top_k_frac: float = 0.1) -> np.ndarray:
+    """``(n_categories, n_dims)`` — centroid of each category's top-k most
+    selective units' tissue positions (the localized selective cluster)."""
+    n_units = selectivity.shape[1]
+    k = max(1, int(round(n_units * top_k_frac)))
+    cents = [positions[np.argsort(selectivity[c])[-k:]].mean(0)
+             for c in range(selectivity.shape[0])]
+    return np.stack(cents)
+
+
+def selectivity_topographic_alignment(m_resp, m_pos, m_lab, b_resp, b_pos, b_lab, *,
+                                      top_k_frac: float = 0.1) -> Tuple[float, dict]:
+    """Spearman correlation of the off-diagonal category-centroid distance
+    matrices on the model sheet vs the cortex — "is FFA-near-EBA-far-from-V1"
+    layout preserved." Uses the categories common to both sides (needs >=3 for
+    a non-trivial RSA). Permutation-sensitive over units."""
+    from scipy.spatial.distance import pdist
+    from scipy.stats import spearmanr
+    m_cats, m_sel = selectivity_maps(m_resp, m_lab)
+    b_cats, b_sel = selectivity_maps(b_resp, b_lab)
+    common = [c for c in m_cats if c in set(b_cats)]
+    detail = {'categories': common}
+    if len(common) < 3:
+        return float('nan'), detail
+    mi = [m_cats.index(c) for c in common]
+    bi = [b_cats.index(c) for c in common]
+    m_cent = selectivity_centroids(m_sel[mi], np.asarray(m_pos, float), top_k_frac)
+    b_cent = selectivity_centroids(b_sel[bi], np.asarray(b_pos, float), top_k_frac)
+    rho, _ = spearmanr(pdist(m_cent), pdist(b_cent))
+    detail.update({'model_centroids': m_cent, 'brain_centroids': b_cent})
+    return (float(rho) if np.isfinite(rho) else 0.0), detail
+
+
+class SelectivityTopographicMetric(Metric):
+    """Second topographic axis: does the model's spatial arrangement of
+    *category selectivity* match cortex's category-selective layout (FFA/PPA/
+    EBA/VWFA adjacency)? Distinct from :class:`TopographicMetric`'s
+    across-stimulus response-correlation axis — a model can be topographic on
+    one and flat on the other (e.g. Topo-Omni). Both assemblies need per-unit
+    tissue positions and a per-presentation category coord (``label_coord``)."""
+
+    def __init__(self, label_coord: str = 'category', top_k_frac: float = 0.1):
+        self.label_coord = label_coord
+        self.top_k_frac = top_k_frac
+
+    def __call__(self, model_assembly, brain_assembly) -> Score:
+        mr, mp = _extract(model_assembly)
+        br, bp = _extract(brain_assembly)
+        ml = np.asarray(model_assembly[self.label_coord].values)
+        bl = np.asarray(brain_assembly[self.label_coord].values)
+        value, detail = selectivity_topographic_alignment(
+            mr, mp, ml, br, bp, bl, top_k_frac=self.top_k_frac)
+        score = Score(value)
+        score.attrs['categories'] = detail.get('categories')
+        score.attrs['model_centroids'] = detail.get('model_centroids')
+        score.attrs['brain_centroids'] = detail.get('brain_centroids')
+        return score
+
+
 class TopographicMetric(Metric):
     """Score a model's spatial organization against cortical topography.
 

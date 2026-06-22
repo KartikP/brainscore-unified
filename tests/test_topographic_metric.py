@@ -110,3 +110,72 @@ class TestMetric:
             dims=['presentation', 'neuroid'])
         with pytest.raises(ValueError, match="tissue_x"):
             TopographicMetric()(bad, _assembly(*make_topographic(seed=1)))
+
+
+# ---- selectivity-topography (second axis) ----
+from brainscore.metrics.topographic import (  # noqa: E402
+    selectivity_maps, selectivity_topographic_alignment, SelectivityTopographicMetric,
+)
+
+
+def make_selectivity(grid=16, n_per_cat=15, seed=0, jitter=0.15):
+    """Synthetic sheet: 6 category 'home' regions; a unit's selectivity to a
+    category decays with sheet-distance from that category's home, so each
+    category's selective cluster sits at a known location. Responses to a
+    stimulus of category c are driven by the units selective to c."""
+    rng = np.random.RandomState(seed)
+    pos = _grid_positions(grid)
+    homes = {'face': [0, 0], 'place': [0, 1], 'body': [1, 0],
+             'object': [1, 1], 'word': [0.5, 0], 'scene': [0.5, 1]}
+    w = 0.25
+    pref = {c: np.exp(-((pos - np.array(h)) ** 2).sum(1) / (2 * w * w))
+            for c, h in homes.items()}
+    resp, labels = [], []
+    for c in homes:
+        for _ in range(n_per_cat):
+            resp.append(pref[c] + jitter * rng.randn(pos.shape[0]))
+            labels.append(c)
+    return np.array(resp), pos, np.array(labels)
+
+
+def test_selectivity_maps_recover_clusters():
+    resp, pos, lab = make_selectivity(seed=0)
+    cats, sel = selectivity_maps(resp, lab)
+    # the most face-selective unit should sit near the face home (0,0)
+    face = sel[cats.index('face')]
+    assert np.linalg.norm(pos[np.argmax(face)] - np.array([0, 0])) < 0.3
+
+
+def test_selectivity_alignment_layout_preserved():
+    mr, mp, ml = make_selectivity(seed=0)
+    br, bp, bl = make_selectivity(seed=1)          # same homes, different noise
+    val, detail = selectivity_topographic_alignment(mr, mp, ml, br, bp, bl)
+    assert len(detail['categories']) == 6
+    assert val > 0.7                                # same category layout -> high RSA
+
+
+def test_selectivity_alignment_shuffle_drops():
+    mr, mp, ml = make_selectivity(seed=0)
+    br, bp, bl = make_selectivity(seed=1)
+    good, _ = selectivity_topographic_alignment(mr, mp, ml, br, bp, bl)
+    shuf = np.random.RandomState(0).permutation(len(mp))
+    bad, _ = selectivity_topographic_alignment(mr, mp[shuf], ml, br, bp, bl)
+    assert good - bad > 0.3                         # scrambling the model layout hurts
+
+
+def test_selectivity_metric_class():
+    mr, mp, ml = make_selectivity(seed=0)
+    br, bp, bl = make_selectivity(seed=2)
+
+    def _asm(resp, pos, lab):
+        n_stim, n_units = resp.shape
+        return NeuroidAssembly(
+            resp, dims=['presentation', 'neuroid'],
+            coords={'stimulus_id': ('presentation', np.arange(n_stim)),
+                    'category': ('presentation', lab),
+                    'neuroid_id': ('neuroid', np.arange(n_units)),
+                    'tissue_x': ('neuroid', pos[:, 0]),
+                    'tissue_y': ('neuroid', pos[:, 1])})
+    score = SelectivityTopographicMetric()(_asm(mr, mp, ml), _asm(br, bp, bl))
+    assert float(score) > 0.7
+    assert len(score.attrs['categories']) == 6
