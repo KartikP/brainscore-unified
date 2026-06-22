@@ -78,3 +78,67 @@ def shuffle_tissue_coords(assembly, seed: int = 0):
     perm = rng.permutation(a.sizes['neuroid'])
     shuffled = np.stack([a['tissue_x'].values[perm], a['tissue_y'].values[perm]], axis=1)
     return attach_tissue_coords(a, shuffled)   # attach_tissue_coords flattens the index
+
+
+# ── NSD fsaverage-surface target staging ───────────────────────────
+
+def fsaverage_xyz(vertex_index, hemisphere, surf='infl', rh_offset=200.0):
+    """Per-vertex (x,y,z) from the fsaverage template, keyed by
+    ``(hemisphere, vertex_index)``. The right hemisphere is offset along x by
+    ``rh_offset`` so the two hemispheres don't overlap (mixing them otherwise
+    drops cross-hemisphere homology pairs into the far-distance bins). The
+    inflated surface ('infl') is used so Euclidean distance approximates
+    geodesic cortical distance better than the folded pial surface would.
+    """
+    from nilearn import surface, datasets
+    fs = datasets.fetch_surf_fsaverage('fsaverage')   # fsaverage7, 163842 verts/hemi
+    lh = np.asarray(surface.load_surf_mesh(fs[f'{surf}_left'])[0], dtype=float)
+    rh = np.asarray(surface.load_surf_mesh(fs[f'{surf}_right'])[0], dtype=float)
+    rh = rh + np.array([rh_offset, 0.0, 0.0])
+    vidx = np.asarray(vertex_index, dtype=int)
+    hemi = np.asarray(hemisphere)
+    out = np.zeros((len(vidx), 3), dtype=float)
+    lh_m = hemi == 'lh'
+    out[lh_m] = lh[vidx[lh_m]]
+    out[~lh_m] = rh[vidx[~lh_m]]
+    return out
+
+
+def stage_nsd_surface_target(assembly, *, subject, region, hemisphere='lh',
+                             nc_threshold=10.0, surf='infl', rh_offset=200.0,
+                             vertex_xyz_fn=fsaverage_xyz):
+    """Build an NSD fsaverage-surface topographic brain target from a loaded
+    surface assembly (``Allen2022_fmri_surface_*``).
+
+    Steps: restrict to ONE subject + region (all subjects share fsaverage
+    vertex indices, so stacking subjects would create duplicate positions —
+    a single subject is required); optionally one hemisphere; filter to
+    reliable vertices (``nc_testset`` > ``nc_threshold``); attach per-vertex
+    ``tissue_x``/``tissue_y`` from ``vertex_xyz_fn``. Returns the staged
+    ``(presentation, neuroid)`` assembly ready for ``TopographicBenchmark``.
+
+    ``vertex_xyz_fn(vertex_index, hemisphere, surf=, rh_offset=) -> (n, 3)``
+    defaults to :func:`fsaverage_xyz`; inject a stub to stage without nilearn.
+    """
+    a = assembly
+    if 'time_bin' in a.dims:
+        a = a.squeeze('time_bin', drop=True)
+    mask = ((np.asarray(a['subject'].values) == subject)
+            & (np.asarray(a['region'].values) == region))
+    if hemisphere != 'both':
+        mask = mask & (np.asarray(a['hemisphere'].values) == hemisphere)
+    a = a.isel(neuroid=np.where(mask)[0])
+    if a.sizes['neuroid'] == 0:
+        raise ValueError(
+            f"no vertices for subject={subject!r} region={region!r} "
+            f"hemisphere={hemisphere!r} — check the assembly's coords.")
+
+    keep = np.where(np.asarray(a['nc_testset'].values) > nc_threshold)[0]
+    a = a.isel(neuroid=keep)
+    if a.sizes['neuroid'] == 0:
+        raise ValueError(
+            f"no vertices survive nc_testset > {nc_threshold}; lower the threshold.")
+
+    xyz = vertex_xyz_fn(a['vertex_index'].values, a['hemisphere'].values,
+                        surf=surf, rh_offset=rh_offset)
+    return attach_tissue_coords(a, xyz)   # stores tissue_x/tissue_y (first 2 cols)
