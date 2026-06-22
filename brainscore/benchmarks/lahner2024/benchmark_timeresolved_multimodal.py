@@ -44,6 +44,8 @@ import pandas as pd
 
 from brainscore_core.metrics import Score
 
+from brainscore.tools.banded_ridge import banded_ridge_fit_predict
+
 from .benchmark_timeresolved import (
     Lahner2024BOLDMoments_timeresolved,
     FEATURE_DIM_CAP,
@@ -425,66 +427,15 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         return per_voxel_r
 
     def _banded_fit_predict(self, feature_groups, tr_mask, te_mask, Y_tr):
-        rng = np.random.default_rng(0)
-        n_tr = int(tr_mask.sum())
-        n_val = max(1, int(round(n_tr * 0.2)))
-        perm = rng.permutation(n_tr)
-        val_idx = perm[:n_val]
-        inner_tr_idx = perm[n_val:]
-        sizes = [g.shape[1] for g in feature_groups]
-
-        def _stack(groups, mask, sub_idx=None):
-            X = np.concatenate([g[mask] for g in groups], axis=1)
-            if sub_idx is not None:
-                X = X[sub_idx]
-            return X
-
-        X_inner_tr = _stack(feature_groups, tr_mask, inner_tr_idx)
-        X_val = _stack(feature_groups, tr_mask, val_idx)
-        Y_inner_tr = Y_tr[inner_tr_idx]
-        Y_val = Y_tr[val_idx]
-
-        # Hoist the expensive (n_obs × n_feat × n_feat) matmul outside the
-        # α-grid loop — only the diag(λ) penalty changes per (α_v, α_a).
-        # On a 100k-obs × 1024-feat problem this drops banded runtime
-        # ~25× (one matmul + n_grid solves vs n_grid matmuls).
-        XtX_inner = X_inner_tr.T @ X_inner_tr
-        XtY_inner = X_inner_tr.T @ Y_inner_tr
-        Y_val_centered = Y_val - Y_val.mean(axis=0)
-        Y_val_var = (Y_val_centered ** 2).sum(axis=0)
-
-        best_score = -np.inf
-        best_alpha = (1.0, 1.0)
-        for av in self.BANDED_ALPHA_GRID:
-            for aa in self.BANDED_ALPHA_GRID:
-                lam = np.concatenate([
-                    np.full(sizes[0], av),
-                    np.full(sizes[1], aa),
-                ])
-                W = np.linalg.solve(XtX_inner + np.diag(lam), XtY_inner)
-                Y_val_pred = X_val @ W
-                yp = Y_val_pred - Y_val_pred.mean(axis=0)
-                num = (Y_val_centered * yp).sum(axis=0)
-                den = np.sqrt(Y_val_var * (yp ** 2).sum(axis=0))
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    r = np.where(den > 0, num / den, 0.0)
-                s = float(np.mean(r))
-                if s > best_score:
-                    best_score = s
-                    best_alpha = (av, aa)
-
-        # Refit on full training fold with chosen α (one matmul, one solve).
-        av, aa = best_alpha
-        lam = np.concatenate([
-            np.full(sizes[0], av),
-            np.full(sizes[1], aa),
-        ])
-        X_full_tr = _stack(feature_groups, tr_mask)
-        X_te = _stack(feature_groups, te_mask)
-        XtX = X_full_tr.T @ X_full_tr
-        XtY = X_full_tr.T @ Y_tr
-        W = np.linalg.solve(XtX + np.diag(lam), XtY)
-        return X_te @ W
+        """Banded ridge over (video, audio) feature groups — see
+        ``tools.banded_ridge``. Masks are applied here; row-indexing
+        commutes with the column-concat done inside the shared helper, so
+        this is equivalent to stacking-then-masking."""
+        train_groups = [g[tr_mask] for g in feature_groups]
+        test_groups = [g[te_mask] for g in feature_groups]
+        preds, _ = banded_ridge_fit_predict(
+            train_groups, test_groups, Y_tr, self.BANDED_ALPHA_GRID)
+        return preds
 
 
 # ── Factory functions for the registered variants ─────────────────

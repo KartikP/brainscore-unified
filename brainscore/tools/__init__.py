@@ -24,8 +24,10 @@ from .auto_register import (
     WrapperRecommendation,
     BlockGroup,
 )
+from .banded_ridge import ridge_fit_predict, banded_ridge_fit_predict
 
 __all__ = [
+    'ridge_fit_predict', 'banded_ridge_fit_predict',
     'explore_layer_mapping', 'score_approaches', 'score_budget_curve',
     'effective_dimensionality', 'compute_rdm', 'rsa_score', 'rsa_layer_sweep',
     'normalize_by_ceiling', 'per_voxel_train_test', 'sweep_model',
