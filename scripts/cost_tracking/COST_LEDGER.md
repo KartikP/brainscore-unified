@@ -32,7 +32,8 @@ deliverables ledger (Obsidian): `unified-model-interface-deliverables/COMPUTE-CO
 | 2026-06-16 | TDANN Phase 1 groundwork (clone, OSF mapping, env discovery) | g5.4xlarge | ~0.8 h measured | ~$1.3 |
 | 2026-06-17 | TDANN score (+0.838) + Topo-Omni load/extract/score (5B, multiple runs) | g5.4xlarge | ~2 h measured | ~$3.3 |
 | 2026-06-22 | TRIBEv2 Llama-gate unblock (unsloth mirror) + end-to-end predict smoke | g5.4xlarge | ~0.7 h measured | ~$1.1 |
-| | **GRAND TOTAL (EC2)** | | | **≈ $97** |
+| 2026-06-22 | TRIBEv2 #69 score: Llama direct-load confirm + 120-clip Lahner predict + per-voxel score | g5.4xlarge | ~1.3 h measured | ~$2.1 |
+| | **GRAND TOTAL (EC2)** | | | **≈ $99** |
 
 > The MIRAGE/TRIBEv2 arc (sessions 2–5) is the single biggest line — it used the 4× L40S
 > `g6e.12xlarge` at $10.6/hr for the 30B Qwen3-Omni extraction. Everything else is A10G at $1.62/hr.
