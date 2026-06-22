@@ -1,0 +1,96 @@
+/* Architecture explorer — page-specific styles. Reuses the :root tokens from style.css. */
+
+/* no TOC sidebar on this page → cancel the overview's left offset */
+body.arch-body { padding-left: 0 !important; }
+.arch-hero { padding: 84px 28px 48px; }
+.arch-main { max-width: 1180px; margin: 0 auto; padding: 0 28px 60px; }
+.arch-section { padding: 40px 0; border-top: 1px solid var(--line); }
+.arch-section.alt { background: linear-gradient(180deg, var(--bg2), transparent 70%); margin: 0 -28px; padding: 40px 28px; }
+.arch-section h2 { font-size: 1.7rem; margin: 0 0 8px; }
+.arch-section h3 { font-size: 1.08rem; margin: 30px 0 8px; }
+.arch-section .lead { color: var(--muted); max-width: 760px; margin: 0 0 22px; }
+
+/* ---- explorer layout ---- */
+.arch-explorer-grid { display: grid; grid-template-columns: minmax(300px, 0.9fr) 1.1fr; gap: 28px; align-items: start; }
+@media (max-width: 900px) { .arch-explorer-grid { grid-template-columns: 1fr; } }
+
+.ctrl-group { margin-bottom: 22px; }
+.ctrl-label { font-size: .72rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 9px; }
+.ctrl-label .muted { text-transform: none; letter-spacing: 0; font-weight: 500; }
+
+.arch-chips { display: flex; flex-direction: column; gap: 6px; }
+.arch-chip { text-align: left; font: inherit; cursor: pointer; padding: 9px 13px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); transition: all .14s;
+  display: flex; flex-direction: column; gap: 1px; }
+.arch-chip b { font-size: .9rem; font-weight: 600; }
+.arch-chip span { font-size: .76rem; color: var(--muted); }
+.arch-chip:hover { border-color: var(--accent); }
+.arch-chip.on { border-color: var(--accent); background: rgba(47,107,255,.07); box-shadow: inset 3px 0 0 var(--accent); }
+.arch-chip.on b { color: var(--accent); }
+
+.arch-tasks { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.arch-task { text-align: left; font: inherit; cursor: pointer; padding: 8px 12px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: .86rem;
+  font-weight: 600; transition: all .14s; display: flex; flex-direction: column; }
+.arch-task small { font-weight: 400; color: var(--muted); font-size: .74rem; }
+.arch-task:hover { border-color: var(--accent2); }
+.arch-task.on { border-color: var(--accent2); background: rgba(124,77,255,.08); color: var(--accent2); }
+.arch-task.on small { color: var(--accent2); }
+.arch-multi { display: inline-flex; align-items: center; gap: 8px; font-size: .8rem; color: var(--muted);
+  cursor: pointer; padding: 6px 2px; }
+.arch-multi input { accent-color: var(--accent); }
+
+/* ---- output panel ---- */
+.arch-output { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+.arch-verdict { border-radius: 10px; padding: 11px 14px; font-size: .9rem; margin-bottom: 18px; line-height: 1.4; }
+.arch-verdict.ok { background: rgba(31,157,87,.09); border: 1px solid rgba(31,157,87,.35); color: #15703f; }
+.arch-verdict.bad { background: rgba(216,72,59,.07); border: 1px solid rgba(216,72,59,.32); color: #a3372c; }
+.arch-verdict .vbadge { font-weight: 700; margin-right: 6px; }
+.arch-verdict code { background: rgba(255,255,255,.6); }
+
+.arch-flow { display: flex; flex-direction: column; align-items: stretch; gap: 0; }
+.flow-box { border-radius: 10px; padding: 10px 13px; border: 1px solid var(--line); background: var(--panel2); }
+.flow-box .fb-label { font-weight: 600; font-size: .9rem; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+.flow-box .fb-sub { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+.flow-box .fb-contract { font-size: .68rem; color: var(--accent); margin-top: 4px; font-family: "SF Mono", ui-monospace, Menlo, monospace; }
+.flow-arrow { text-align: center; color: var(--muted); font-size: .95rem; line-height: 1; padding: 4px 0; }
+/* kind colors */
+.flow-box.event   { background: rgba(47,107,255,.08); border-color: rgba(47,107,255,.3); }
+.flow-box.check   { background: rgba(198,129,15,.08); border-color: rgba(198,129,15,.32); }
+.flow-box.decision{ border-style: dashed; }
+.flow-box.fn      { background: rgba(124,77,255,.07); border-color: rgba(124,77,255,.3); }
+.flow-box.wrapper { background: rgba(124,77,255,.04); border-color: rgba(124,77,255,.22); }
+.flow-box.output  { background: rgba(31,157,87,.09); border-color: rgba(31,157,87,.35); }
+.flow-box.output .fb-label { color: #15703f; }
+.flow-box.error   { background: rgba(216,72,59,.08); border-color: rgba(216,72,59,.34); }
+.flow-box.error .fb-label { color: #a3372c; }
+
+.arch-metabox { margin: 18px 0 0; display: flex; flex-direction: column; gap: 6px; }
+.arch-metabox .kv { display: flex; gap: 10px; font-size: .82rem; align-items: baseline; }
+.arch-metabox .kv span { color: var(--muted); min-width: 92px; text-transform: uppercase; font-size: .66rem;
+  letter-spacing: .06em; font-weight: 700; padding-top: 2px; }
+.arch-metabox .kv b { font-weight: 500; color: var(--ink); }
+
+.arch-codebox { margin-top: 18px; }
+.codebox-head { font-size: .66rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 6px; }
+.arch-codebox .code { font-size: .82rem; white-space: pre; }
+
+/* ---- routing matrix ---- */
+.arch-matrix-wrap { overflow-x: auto; }
+.arch-mtx { border-collapse: collapse; font-size: .76rem; width: 100%; }
+.arch-mtx th, .arch-mtx td { border: 1px solid var(--line); padding: 7px 9px; text-align: center; }
+.arch-mtx thead th { background: var(--panel2); font-weight: 600; color: var(--ink); font-size: .72rem; }
+.arch-mtx tbody th { text-align: left; background: var(--panel2); font-weight: 600; white-space: nowrap; }
+.arch-mtx td { cursor: pointer; font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: .68rem; transition: filter .12s; }
+.arch-mtx td:hover { filter: brightness(.95); outline: 2px solid var(--accent); outline-offset: -2px; }
+.cm-ok { background: rgba(31,157,87,.12); color: #15703f; }
+.cm-incompat { background: rgba(198,129,15,.13); color: #8a5a08; }
+.cm-na { background: rgba(91,102,120,.1); color: var(--muted); }
+
+/* ---- reference tables ---- */
+.arch-ref-table { width: 100%; font-size: .82rem; }
+.arch-ref-table th { text-align: left; }
+.arch-ref-table td code, .arch-ref-table th code { font-size: .82em; }
+.arch-section .code { font-size: .84rem; }

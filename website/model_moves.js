@@ -1,6 +1,6 @@
 // Recorded Qwen2.5-VL-7B (chain-of-thought) move sequences, captured on EC2 by
 // scripts/vlm_game/record_moves.py at the validated config (GridGameEnv size=5,
-// max_steps=20 — the same setting under which the 7B scored 0.53 success).
+// max_steps=20, the same setting under which the 7B scored 0.53 success).
 //
 // Each entry's (player, goal) is captured at play_game's own env.reset(), so the
 // board here is EXACTLY the board the model navigated; game.js seeds its playable

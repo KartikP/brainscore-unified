@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Architecture · Brain-Score Unified Model Interface</title>
+<link rel="stylesheet" href="style.css?v=17" />
+<link rel="stylesheet" href="architecture.css?v=1" />
+</head>
+<body class="arch-body">
+<nav class="nav">
+  <div class="brand">Brain-Score<span class="dot">·</span><span class="muted">Unified</span></div>
+  <div class="aud-bar">
+    <a class="aud-btn" href="index.html">← Overview</a>
+    <span class="aud-btn active">Architecture</span>
+  </div>
+</nav>
+
+<header class="hero arch-hero">
+  <div class="hero-inner">
+    <h1>The architecture, end to end.</h1>
+    <p class="sub">Every model registers once and is evaluated through a single method —
+      <code>process(input_event) -&gt; OutputEvent</code>. This page draws out the full set of
+      contracts and the exact internal routing. Pick a model and an input below and watch
+      Brain-Score resolve the call flow, the output type, and any pre-flight failure.</p>
+  </div>
+</header>
+
+<main class="arch-main">
+
+  <!-- ============ interactive explorer ============ -->
+  <section id="arch-explorer" class="arch-section">
+    <h2>Interactive router</h2>
+    <p class="lead">Choose a <b>model archetype</b> and an <b>input event</b>. For perceptual
+      inputs, also choose what's being asked of it. The flow on the right is the real dispatch in
+      <code>BrainScoreModel.process()</code> — including the combinations that are deliberately
+      incompatible.</p>
+
+    <div class="arch-explorer-grid">
+      <div class="arch-controls">
+        <div class="ctrl-group">
+          <div class="ctrl-label">1 · Model archetype</div>
+          <div class="arch-chips" id="arch-models"></div>
+        </div>
+        <div class="ctrl-group">
+          <div class="ctrl-label">2 · Input event <span class="muted">(what you pass to process)</span></div>
+          <div class="arch-chips" id="arch-inputs"></div>
+        </div>
+        <div class="ctrl-group" id="arch-taskrow">
+          <div class="ctrl-label">3 · What's being asked</div>
+          <div class="arch-tasks" id="arch-tasks"></div>
+          <label class="arch-multi" id="arch-multi">
+            <input type="checkbox" id="arch-multi-cb" />
+            <span><code>multi_modality=True</code> — fan out to every supported tower</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="arch-output">
+        <div class="arch-verdict" id="arch-verdict"></div>
+        <div class="arch-flow" id="arch-flow"></div>
+        <div class="arch-metabox" id="arch-meta"></div>
+        <div class="arch-codebox">
+          <div class="codebox-head">how you'd write it</div>
+          <pre class="code"><code id="arch-code"></code></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ routing matrix ============ -->
+  <section class="arch-section alt">
+    <h2>Routing matrix</h2>
+    <p class="lead">Every model archetype against every input (perceptual inputs shown in their
+      neural-encoding mode). Green routes to an output; amber is a pre-flight
+      <code>CompatibilityError</code>; grey is an unsupported dispatch (no such <code>_fn</code>).
+      Click any cell to load it into the router above.</p>
+    <div class="arch-matrix-wrap" id="arch-matrix"></div>
+    <p class="muted small">The incompatible cells aren't bugs — they're the contract doing its job:
+      a text-only model fails fast on images, and an output-only API model can't run neural encoding.
+      The pre-flight check catches these before any compute.</p>
+  </section>
+
+  <!-- ============ static contract reference ============ -->
+  <section class="arch-section">
+    <h2>The contracts</h2>
+    <p class="lead">The full surface. These are the only things a model author touches; everything
+      else (dispatch, caching, compatibility, memory) is handled by the framework.</p>
+
+    <h3>1 · The <code>UnifiedModel</code> ABC</h3>
+    <p>The minimal interface every model satisfies. No capability-named methods
+      (<code>look_at</code>, <code>digest_text</code>) — capability is <i>derived</i> from the
+      preprocessors present.</p>
+    <pre class="code"><code>class UnifiedModel(ABC):
+    def process(self, input_event: InputEvent,
+                multi_modality: bool = False) -> OutputEvent: ...
+    def start_recording(self, recording_target: str | list[str],
+                        time_bins=None, recording_type=None) -> None: ...
+    def start_task(self, task_context: TaskContext) -> None: ...
+    def reset(self) -> None: ...
+
+    @property
+    def supported_modalities(self) -> set[str]:   # derived from preprocessors.keys()
+        ...</code></pre>
+
+    <h3>2 · The <code>BrainScoreModel</code> registration</h3>
+    <p>The concrete class. A registration is one constructor call; the optional slots are what
+      decide which dispatch branches the model can take.</p>
+    <pre class="code"><code>BrainScoreModel(
+    identifier: str,
+    model,                              # the nn.Module / backbone (None for output-only)
+    region_layer_map: dict,             # brain region -> layer path
+    preprocessors: dict[str, Callable], # modality -> transform  (THIS defines supported_modalities)
+    activations_model=None,             # wrapper(s): PytorchWrapper / Text / VLMVision / Video / Audio
+    generation_fn=None,                 # behavioral: (row, instruction, label_set) -> str
+    action_fn=None,                     # embodied:   (EnvironmentStep) -> EnvironmentResponse
+    state_change_fn=None,               # lesion:     (StateChange) -> (PerturbationApplied, cleanup)
+    behavioral_readout_layer=None,      # fit a logistic head on this layer
+    region_modality_map=None,           # multimodal: region -> which tower extracts it
+    backbone_id=None,                   # share a feature cache across registrations
+)</code></pre>
+
+    <h3>3 · Input events <span class="muted">— the <code>InputEvent</code> union</span></h3>
+    <table class="paths-table arch-ref-table">
+      <tr><th>Event</th><th>Carries</th><th>Dispatches to</th></tr>
+      <tr><td><code>StimulusSet</code></td><td>columns for one modality (image / text / audio / video)</td><td>preprocessor → activations_model (or behavioral path)</td></tr>
+      <tr><td><code>MultimodalStimulusSet</code></td><td>columns for several modalities + per-modality sampling rates</td><td>one or every supported tower</td></tr>
+      <tr><td><code>StateChange</code></td><td><code>Selection</code> (which units) + <code>Perturbation</code> (zero/scale/replace), or a reset handle</td><td><code>state_change_fn</code></td></tr>
+      <tr><td><code>EnvironmentStep</code></td><td>cameras + proprioception + instruction (DROID-shaped), or a generic observation</td><td><code>action_fn</code></td></tr>
+      <tr><td><code>Message</code></td><td>an inter-agent message (multi-agent rollout)</td><td><code>action_fn</code> (responder)</td></tr>
+    </table>
+    <p class="muted small">These differ along <b>two axes</b>, not one. <i>Content:</i> they all present
+      perceptual/linguistic input — an <code>EnvironmentStep</code> doesn't sit beside
+      <code>StimulusSet</code>, its <code>observation</code> <i>is</i> a (Multimodal)StimulusSet, and a
+      <code>Message</code> is wrapped to <code>EnvironmentStep(observation=message)</code> at dispatch.
+      <i>Interaction:</i> <code>StimulusSet</code> is a <b>batched, open-loop, stateless</b> set (N
+      presentations → one assembly), while <code>EnvironmentStep</code> / <code>Message</code> are
+      <b>single-step, closed-loop, stateful</b> (the output feeds the next input → a response). You can't
+      batch a closed loop — step <i>t+1</i> doesn't exist until the model acts at <i>t</i> — so the split is
+      that interaction axis, not the content (which is already shared).</p>
+
+    <h3>4 · Output events <span class="muted">— the <code>OutputEvent</code> union</span></h3>
+    <table class="paths-table arch-ref-table">
+      <tr><th>Output</th><th>Produced by</th><th>Shape</th></tr>
+      <tr><td><code>NeuroidAssembly</code></td><td>neural encoding</td><td>(presentation, neuroid[, time_bin]) with layer/region/modality coords</td></tr>
+      <tr><td><code>BehavioralAssembly</code></td><td>generation or readout</td><td>(presentation, choice) probabilities / one-hot over label_set</td></tr>
+      <tr><td><code>EnvironmentResponse</code></td><td>embodied action_fn</td><td>action: (7,) + optional action_dict / metadata</td></tr>
+      <tr><td><code>PerturbationApplied</code></td><td>state_change_fn</td><td>handle_id for selective restore</td></tr>
+    </table>
+
+    <h3>5 · The activations-model wrappers</h3>
+    <table class="paths-table arch-ref-table">
+      <tr><th>Wrapper</th><th>For</th><th>Input shape</th><th>Time-resolved</th></tr>
+      <tr><td><code>PytorchWrapper</code></td><td>CNN / ViT vision</td><td>(B, C, H, W)</td><td>via add_time_bin_axis</td></tr>
+      <tr><td><code>TextWrapper</code></td><td>causal / masked LMs</td><td>token ids</td><td>per-token</td></tr>
+      <tr><td><code>VLMVisionWrapper</code></td><td>flattened-patch VLM vision</td><td>(total_patches, dim) + grid_thw</td><td>via add_time_bin_axis</td></tr>
+      <tr><td><code>VideoWrapper</code></td><td>native-temporal video</td><td>(B, T, C, H, W)</td><td>native</td></tr>
+      <tr><td><code>AudioWrapper</code></td><td>HF audio encoders</td><td>waveform</td><td>mean-time / time-series</td></tr>
+    </table>
+    <p class="muted small">All share <code>@store_xarray</code> caching keyed by
+      <code>(backbone_id, stimuli_identifier, layers)</code> — extract every layer in one forward
+      pass; later benchmarks for any region are cache hits.</p>
+
+    <h3>5b · Time <span class="muted">— the <code>time_bin</code> axis + the temporal kit</span></h3>
+    <p>Naturalistic benchmarks need <i>when</i>, not just <i>what</i>. Every time-aware wrapper emits a
+      <code>time_bin</code> dim with canonical coords (<code>time_bin_start_ms</code> /
+      <code>time_bin_end_ms</code> / <code>time_bin_center_ms</code>), so a benchmark aligns any wrapper's
+      output uniformly — no per-wrapper special case. <code>core/brainscore_core/temporal.py</code> is the
+      shared kit:</p>
+    <table class="paths-table arch-ref-table">
+      <tr><th>Helper</th><th>Does</th></tr>
+      <tr><td><code>temporal_bin</code></td><td>aggregate per-frame/token features into requested time windows</td></tr>
+      <tr><td><code>hrf_convolve</code></td><td>BOLD-aware: convolve model features with the hemodynamic response before fitting fMRI</td></tr>
+      <tr><td><code>contiguous_block_cv</code></td><td>block cross-validation for autocorrelated time series</td></tr>
+      <tr><td><code>window_plan</code></td><td>tile a clip longer than a model's native window into block/causal windows</td></tr>
+      <tr><td><code>add_time_bin_axis</code></td><td>promote a still-image wrapper's output to a single <code>time_bin</code></td></tr>
+    </table>
+    <p class="muted small">A clip longer than a video model's native temporal window does <b>not</b> silently
+      downsample: <code>VideoWrapper(context_window_ms=…)</code> uses <code>window_plan</code> to chunk it,
+      forwards each window, and stitches the per-window time-resolved features into one clip-time sequence
+      with absolute timestamps (<code>max_clip_ms</code> gives a fail-fast). Model→brain time alignment lives
+      in the benchmark (<code>temporal_bin</code> + <code>hrf_convolve</code>), not a commitment layer —
+      the same reason regions map to layers freely rather than through a fixed hierarchy.</p>
+
+    <h3>6 · The dispatch order <span class="muted">— inside <code>process()</code></span></h3>
+    <pre class="code"><code>def process(input_event, multi_modality=False):
+    if isinstance(input_event, StateChange):     return state_change_fn(...)      # PerturbationApplied
+    if isinstance(input_event, EnvironmentStep): return action_fn(...)            # EnvironmentResponse
+    if isinstance(input_event, Message):         return action_fn(...)            # Message | EnvironmentResponse
+
+    # --- perceptual (StimulusSet) ---
+    if generation_viable_for_task():             return _generate_predictions()   # BehavioralAssembly
+    if readout_viable_for_task():                return _predict_probabilities()  # BehavioralAssembly
+
+    detected = _detect_modalities(stimuli)        # by column name
+    layers   = recording_layers or [recording_layer]
+    if multi_modality and len(detected) > 1:      # fan out, concat w/ modality coord
+        ...
+    else:                                         # MODALITY_PRIORITY = (vision, text, audio, video)
+        modality = pick_by_priority(detected)
+    return activations_model(preprocessors[modality](stimuli), layers)            # NeuroidAssembly</code></pre>
+
+    <h3>7 · The compatibility contract</h3>
+    <p>Run as a pre-flight check (then a memory probe) <i>before</i> any benchmark, so mismatches
+      fail in milliseconds instead of mid-extraction:</p>
+    <pre class="code"><code>benchmark.required ⊆ model.available     # the model can take what the benchmark gives
+model.required    ⊆ benchmark.required   # the benchmark provides what the model demands</code></pre>
+    <p class="muted small">A benchmark declares exactly one input format via
+      <code>required_modalities</code>; a model declares <code>required ⊆ available</code>. GPT-2's
+      <code>required={text}</code> is what makes it fail fast on a V4 image benchmark.
+      <code>check_memory()</code> then runs one stimulus through <code>process()</code>, measures
+      peak memory (CUDA / MPS / CPU), and extrapolates to the full benchmark.</p>
+  </section>
+
+  <!-- ============ how you extend it ============ -->
+  <section class="arch-section alt">
+    <h2>Extending it — five inherited seams + one new</h2>
+    <p class="lead">The interface is a <b>backbone</b>: a small, stable core you extend along well-defined
+      seams. Model / Benchmark / Metric / Data / Stimulus-set <b>are Brain-Score's existing plugin
+      registries</b>, reused unchanged; <b>Capability</b> is the only seam the unified interface adds.
+      We ship the seams + a few reference integrations; you bring the breadth. None of this touches the core.</p>
+
+    <h3>One mechanism: registries</h3>
+    <p>Everything is a factory registered under a string identifier. A plugin is a subpackage whose
+      <code>__init__.py</code> adds a factory to the matching registry; you then load by id.</p>
+    <pre class="code"><code>import brainscore
+data      = brainscore.load_dataset('your-data')          # vision/language registry
+stimuli   = brainscore.load_stimulus_set('your-stimuli')  # reused across benchmarks
+metric    = brainscore.load_metric('your-metric')         # the metric seam, now first-class
+benchmark = brainscore.load_benchmark('your-benchmark')
+score     = brainscore.score('your-model', 'your-benchmark')</code></pre>
+    <p class="muted small"><code>load_*</code> checks the unified registry first, then falls back to
+      the vision / language registries, so legacy plugins keep working. Five registries —
+      <code>data</code>, <code>stimulus_set</code>, <code>metric</code>, <code>benchmark</code>,
+      <code>model</code> — are Brain-Score's; the unified interface adds the <code>Capability</code> slots.</p>
+
+    <table class="paths-table arch-ref-table">
+      <tr><th>Seam</th><th>You implement</th><th>Contract</th><th>Template</th></tr>
+      <tr><td><b>Model</b></td><td><code>get_model() -&gt; BrainScoreModel</code></td><td><code>process(input_event) -&gt; OutputEvent</code></td><td><code>templates/new_model/</code></td></tr>
+      <tr><td><b>Benchmark</b></td><td>a <code>BenchmarkBase</code> subclass</td><td><code>__call__(candidate) -&gt; Score</code></td><td><code>templates/new_benchmark/</code></td></tr>
+      <tr><td><b>Metric</b></td><td>a <code>Metric</code> subclass</td><td><code>__call__(assembly1, assembly2) -&gt; Score</code></td><td><code>templates/new_metric/</code></td></tr>
+      <tr><td><b>Data / Stimulus&nbsp;set</b></td><td>a loader in <code>data_registry</code> / <code>stimulus_set_registry</code></td><td>returns a <code>DataAssembly</code> / <code>StimulusSet</code>, reused by many benchmarks</td><td>domain-repo pattern</td></tr>
+      <tr><td><b>Capability</b> <span class="muted">(new)</span></td><td>a <code>generation_fn</code> / <code>action_fn</code> / <code>state_change_fn</code> closure</td><td>wired into a model constructor slot</td><td><code>templates/new_capability/</code></td></tr>
+    </table>
+
+    <p>The <b>Metric</b> seam is where the field is moving — beyond linear predictivity toward
+      representational, <b>topographic</b>, behavioral, and causal alignment. Each distinct axis is a
+      distinct metric (e.g. <code>load_metric('topographic-alignment')</code> scores a model's spatial
+      unit layout against cortical topography, which predictivity is blind to — it is permutation-invariant
+      over units). Filling an existing <b>Capability</b> slot needs no core change at all; only a genuinely
+      new input/output <i>type</i> touches the core dispatch.</p>
+
+    <div class="callout" style="border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:14px 16px;margin:14px 0;background:var(--panel2)">
+      <p style="margin:0 0 6px"><b>The topographic axis, validated on real fMRI.</b> Scored on an NSD
+      fsaverage-surface target through this exact seam:</p>
+      <table class="paths-table arch-ref-table" style="margin:0">
+        <tr><th>model</th><th>topographic alignment (signal vs. shuffle null)</th></tr>
+        <tr><td>CLIP ViT-B/32 (non-topographic)</td><td>−0.155 — sits below the null (correct negative control)</td></tr>
+        <tr><td><b>TDANN</b> (topographic ResNet-18)</td><td><b>+0.838</b> — its unit layout matches the cortical sheet</td></tr>
+      </table>
+      <p class="muted small" style="margin:8px 0 0">Predictivity cannot tell these apart; the topographic
+      metric + a position-shuffle null can. There are <i>two</i> topographic axes: this one
+      (units correlated <i>across stimuli</i>, which TDANN is organized on) and a <i>selectivity</i> axis
+      (units sharing <i>category preference</i>, which a model like Topo-Omni is organized on) — distinct
+      metrics, because the metric must match the axis the model was smoothed on.</p>
+    </div>
+
+    <p class="muted small"><b>What the backbone deliberately leaves to you:</b> discovery / analysis
+      pipelines (they consume <code>process()</code> output — ship them as scripts, not core
+      primitives), model-internal descriptors that don't compare to the brain, model training, and
+      catalog breadth. Full guide: <code>EXTENDING.md</code> + <code>templates/</code> in the repo.</p>
+  </section>
+
+  <footer class="footer">
+    <div><b>One method, every capability.</b> The routing above is generated from the same
+      dispatch logic the framework actually runs; the contracts are the complete author-facing
+      surface.</div>
+    <div class="muted small"><a href="index.html">← back to the overview</a></div>
+  </footer>
+</main>
+
+<script src="architecture.js?v=1"></script>
+</body>
+</html>

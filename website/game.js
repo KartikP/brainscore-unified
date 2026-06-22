@@ -8,11 +8,11 @@
   // Boards mirror window.MODEL_MOVES (model_moves.js): seed -> [player, goal].
   // Mix of optimal solves (503/504/505) and imperfect-but-solved detours (509/511).
   const BOARDS = [
-    { seed: 504, player: [1, 2], goal: [2, 4], label: 'eval board (seed 504) — the 7B solved this optimally' },
-    { seed: 503, player: [0, 0], goal: [2, 2], label: 'eval board (seed 503) — corner to centre, solved optimally' },
-    { seed: 505, player: [2, 2], goal: [1, 4], label: 'eval board (seed 505) — solved optimally' },
-    { seed: 509, player: [1, 1], goal: [2, 3], label: 'eval board (seed 509) — the 7B solved it but took a detour (5 vs 3)' },
-    { seed: 511, player: [0, 1], goal: [2, 3], label: 'eval board (seed 511) — solved with a detour (6 vs 4)' },
+    { seed: 504, player: [1, 2], goal: [2, 4], label: 'eval board (seed 504): the 7B solved this optimally' },
+    { seed: 503, player: [0, 0], goal: [2, 2], label: 'eval board (seed 503): corner to centre, solved optimally' },
+    { seed: 505, player: [2, 2], goal: [1, 4], label: 'eval board (seed 505): solved optimally' },
+    { seed: 509, player: [1, 1], goal: [2, 3], label: 'eval board (seed 509): the 7B solved it but took a detour (5 vs 3)' },
+    { seed: 511, player: [0, 1], goal: [2, 3], label: 'eval board (seed 511): solved with a detour (6 vs 4)' },
   ];
   // action index -> [dRow, dCol], matching grid_game _DELTA {0:up,1:down,2:left,3:right}
   const DIRS_BY_INDEX = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -96,10 +96,10 @@
         if (rec.solved) {
           const verdict = rec.steps === rec.optimal
             ? `optimally (${rec.steps} = optimal ${rec.optimal})`
-            : `in ${rec.steps} moves (optimal ${rec.optimal}) — a detour, but it corrected course and reached the goal`;
+            : `in ${rec.steps} moves (optimal ${rec.optimal}): a detour, but it corrected course and reached the goal`;
           setStatus(`Qwen-VL-7B solved it ${verdict}.`);
         } else {
-          setStatus(`Qwen-VL-7B did NOT reach the goal (${rec.steps} moves) — watch where its spatial reasoning drifts.`);
+          setStatus(`Qwen-VL-7B did NOT reach the goal (${rec.steps} moves). Watch where its spatial reasoning drifts.`);
         }
         return;
       }

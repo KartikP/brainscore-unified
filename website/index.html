@@ -5,88 +5,90 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Brain-Score · Unified Model Interface</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<link rel="stylesheet" href="style.css?v=14" />
+<link rel="stylesheet" href="style.css?v=17" />
 </head>
 <body>
 <nav class="nav">
   <div class="brand">Brain-Score<span class="dot">·</span><span class="muted">Unified</span></div>
-  <div class="links">
-    <a href="#capabilities">Capabilities</a>
-    <a href="#response">Brain response</a>
-    <a href="#moviebrain">Movie→brain</a>
-    <a href="#rajalingham">2-AFC</a>
-    <a href="#game">Embodied</a>
-    <a href="#ablation">Ablation</a>
-    <a href="#scaling">Scaling</a>
-    <a href="#witness">Witness</a>
-    <a href="#percept">Percept</a>
-    <a href="#nulls">Nulls</a>
+  <div class="aud-bar" id="aud-bar">
+    <span class="aud-label">View for:</span>
+    <button class="aud-btn" data-aud="executive">Executive</button>
+    <button class="aud-btn" data-aud="board">Advisory Board</button>
+    <button class="aud-btn" data-aud="technical">Technical</button>
+    <a class="aud-btn arch-link" href="architecture.html" style="margin-left:10px">Architecture →</a>
   </div>
 </nav>
+
+<aside class="toc" id="toc">
+  <div class="toc-head">On this page</div>
+  <div class="links" id="nav-links"></div>
+</aside>
 
 <header class="hero">
   <div class="hero-inner">
     <h1 id="hero-title">Brain-Score, unified.</h1>
     <p id="hero-sub" class="sub"></p>
     <div class="pill-row">
-      <span class="pill">vision</span><span class="pill">language</span>
-      <span class="pill">audio</span><span class="pill">video</span>
-      <span class="pill">multimodal</span><span class="pill">perturbation</span>
-      <span class="pill">embodied</span>
+      <span class="pill">seeing</span><span class="pill">reading</span>
+      <span class="pill">hearing</span><span class="pill">video</span>
+      <span class="pill">mixed senses</span><span class="pill">lesioning</span>
+      <span class="pill">acting</span>
     </div>
     <pre class="code hero-code"><code id="hero-code-body" class="hero-swap"></code></pre>
     <p id="hero-note" class="note"></p>
   </div>
 </header>
 
-<section id="capabilities" class="section">
-  <h2>One interface, every capability</h2>
-  <p class="lead">A model is a <code>Subject</code>. The only evaluation method is
-    <code>process(input_event) → DataAssembly</code>. The input event decides the
-    capability — a stimulus set, a state change, or an environment step.</p>
+<section id="capabilities" data-toc="The hand-off" data-order="10" data-tier="headline" class="section">
+  <h2>One simple hand-off, every kind of test</h2>
+  <p class="lead">Every model is treated the same way: you hand it an input (a set of
+    images, a sentence, a sound, a video, or a moment in a game) and it hands back its
+    response. The kind of input you give it decides what's being tested. That single,
+    shared hand-off is what lets one model run on every test below.</p>
   <div class="cap-grid" id="cap-grid"></div>
 </section>
 
-<section id="response" class="section">
-  <h2>Stimulus in → brain response out</h2>
-  <p class="lead">Pick an input type. The model's predicted responses map onto the
-    cortex — the same figure style as a published encoding model.</p>
+<section id="response" data-toc="Brain response" data-order="20" data-tier="showcase" class="section">
+  <h2>Show it something, see where the brain lights up</h2>
+  <p class="lead">Pick a kind of input below. The map shows roughly where in the brain
+    that kind of input drives activity: the part of the brain a model is then asked to predict.</p>
   <div class="response-wrap">
     <div class="input-toggles" id="input-toggles"></div>
     <div class="response-panel">
       <figure>
         <img id="cortex-img" src="assets/cortex_demo.png?v=3" alt="predicted cortical response" />
-        <figcaption id="cortex-cap">Illustrative: where this input's predicted responses concentrate across the inflated cortex (Schaefer-1000, fsaverage5), rendered by <code>brainscore.visualization</code>.</figcaption>
+        <figcaption id="cortex-cap">Illustrative: roughly where in the brain this kind of input is predicted to drive activity, drawn on a standard brain surface by our own visualization tools.</figcaption>
       </figure>
       <div class="response-text">
         <h3 id="resp-type"></h3>
         <p id="resp-desc"></p>
-        <div class="kv"><span>benchmark</span><b id="resp-bench"></b></div>
+        <div class="kv"><span>test</span><b id="resp-bench"></b></div>
         <div class="kv"><span>example input</span><b id="resp-example"></b></div>
       </div>
     </div>
   </div>
 </section>
 
-<section id="moviebrain" class="section alt">
+<section id="moviebrain" data-toc="Movie → brain" data-order="30" data-tier="headline" class="section alt">
   <h2 id="mb-title"></h2>
   <p class="lead" id="mb-sub"></p>
   <div class="mb-grid">
     <div class="mb-left">
       <figure class="mb-fig mb-video-fig">
         <video id="mb-video" controls playsinline preload="metadata"></video>
-        <figcaption>the real Algonauts clip — picture + sound + dialogue (what goes in)</figcaption>
+        <figcaption>the real Algonauts clip: picture + sound + dialogue (what goes in)</figcaption>
       </figure>
       <div class="mb-transcript" id="mb-transcript"></div>
     </div>
     <div class="mb-brain-col">
       <figure class="mb-fig mb-brain-fig">
-        <figcaption class="mb-brainlabel mb-human-lbl">Human — subject&nbsp;1's <b>recorded</b> fMRI (ground truth)</figcaption>
-        <img id="mb-human" alt="recorded fMRI response, glass brain (3 views)" />
+        <figcaption class="mb-brainlabel mb-human-lbl">Human: the person's <b>actual</b> recorded brain (the real answer)</figcaption>
+        <img id="mb-human" alt="recorded brain response, three views" />
       </figure>
+      <div class="mb-tabs" id="mb-tabs"></div>
       <figure class="mb-fig mb-brain-fig">
-        <figcaption class="mb-brainlabel mb-model-lbl">Model — <b>predicted</b> fMRI (held-out, never trained on this clip)</figcaption>
-        <img id="mb-model" alt="predicted fMRI response, glass brain (3 views)" />
+        <figcaption class="mb-brainlabel mb-model-lbl">Model: the AI's <b>prediction</b> (for a clip it never trained on)</figcaption>
+        <img id="mb-model" alt="predicted brain response, three views" />
       </figure>
       <div class="mb-rnow" id="mb-rnow"></div>
     </div>
@@ -96,14 +98,33 @@
   <div class="raj-caveats" id="mb-caption"></div>
 </section>
 
-<section id="rajalingham" class="section alt">
+<section id="leaderboard" data-toc="Public leaderboard" data-order="35" data-tier="headline" class="section">
+  <h2 id="lb-title"></h2>
+  <p class="lead" id="lb-sub"></p>
+  <div class="two-col">
+    <figure class="lm-sweep-fig">
+      <p class="small" id="lb-indist-title" style="margin:0 0 4px;font-weight:600;color:var(--ink)"></p>
+      <div id="lb-indist-plot" class="plot" style="height:300px"></div>
+      <figcaption class="muted small" id="lb-indist-note"></figcaption>
+    </figure>
+    <figure class="lm-sweep-fig">
+      <p class="small" id="lb-ood-title" style="margin:0 0 4px;font-weight:600;color:var(--ink)"></p>
+      <div id="lb-ood-plot" class="plot" style="height:300px"></div>
+      <figcaption class="muted small" id="lb-ood-note"></figcaption>
+    </figure>
+  </div>
+  <p class="reading" id="lb-reading"></p>
+  <div class="raj-caveats" id="lb-caption"></div>
+</section>
+
+<section id="rajalingham" data-toc="Object matching" data-order="40" data-tier="showcase" class="section alt">
   <h2 id="raj-title"></h2>
   <p class="lead" id="raj-sub"></p>
   <figure class="raj-montages">
     <div id="raj-montage-imgs"></div>
-    <figcaption>What the model actually saw: the briefly-shown <b>SAMPLE</b> on top, two
-      object <b>choice tokens</b> (LEFT / RIGHT) below. It must pick which token is the
-      same object as the sample — the literal human match-to-sample screen.</figcaption>
+    <figcaption>What the model actually saw: the briefly-shown <b>target</b> on top, two
+      object <b>choices</b> (left / right) below. It has to pick which choice is the
+      same object as the target. This is exactly the screen the human subjects saw.</figcaption>
   </figure>
   <div class="two-col">
     <div id="raj-plot" class="plot"></div>
@@ -125,12 +146,12 @@
   </div>
 </section>
 
-<section id="game" class="section">
+<section id="game" data-toc="Playing a game" data-order="50" data-tier="headline" class="section">
   <h2 id="game-title"></h2>
   <p class="lead" id="game-sub"></p>
   <figure class="game-fig">
     <img src="assets/game_rollout.png?v=4" alt="VLM grid-game rollout" />
-    <figcaption>One closed-loop rollout: the model sees each rendered frame and outputs a move (up/down/left/right) via <code>process(EnvironmentStep)</code>; the environment steps and returns the next frame.</figcaption>
+    <figcaption>One full playthrough: the model sees each frame, picks a move (up/down/left/right), the game updates and shows the next frame, round and round until it wins or runs out of moves.</figcaption>
   </figure>
   <div class="play-panel">
     <h3>Play the same board the model played</h3>
@@ -156,80 +177,186 @@
   <div class="two-col">
     <div id="game-plot" class="plot"></div>
     <div class="reading-box">
-      <h3>Embodied, through the same interface</h3>
+      <h3>Playing a game, through the same hand-off</h3>
       <p id="game-reading"></p>
       <div class="flow">
-        <span>render frame</span><span class="arrow">→</span>
-        <span>process(EnvironmentStep)</span><span class="arrow">→</span>
-        <span>action</span><span class="arrow">→</span>
-        <span>step world</span>
+        <span>show the board</span><span class="arrow">→</span>
+        <span>model picks a move</span><span class="arrow">→</span>
+        <span>game updates</span><span class="arrow">→</span>
+        <span>repeat</span>
       </div>
     </div>
   </div>
 </section>
 
-<section id="selection" class="section">
-  <h2>Which neurons, across which layers</h2>
-  <p class="lead">A <code>CompositeSelector</code> gathers a functional population
-    spanning depth into one region. The population is defined by a functional
-    localizer — so first, the stimuli that identify it.</p>
+<section id="selection" data-toc="Word-form units" data-order="110" data-tier="deepdive" class="section">
+  <h2>Finding a model's word-selective units</h2>
+  <p class="lead">To study reading, we first have to find the model's word-selective units.
+    We do it the way brain scientists do: show the model words and non-words, and
+    keep the neurons that fire much harder for real words.</p>
   <figure class="localizer-fig">
-    <img src="assets/localizer_stimuli.png?v=3" alt="localizer stimuli: word vs non-word" />
-    <figcaption>Functional localizer: units are ranked by how much more they
-      respond to <b>word</b> images than to <b>non-word</b> images (scrambled
-      words + line-drawing objects) — a t-statistic per unit. The top-K become
-      the visual-word-form (VWF) population. This is the same word-vs-non-word
-      contrast used in the lesion experiment below.</figcaption>
+    <img src="assets/localizer_stimuli.png?v=3" alt="word vs non-word images" />
+    <figcaption>How we find them: we score every neuron by how much more it responds
+      to <b>real words</b> than to <b>non-words</b> (scrambled letters and simple
+      drawings), and keep the strongest responders as the model's word-selective units.
+      This is the same word-vs-non-word comparison used in the dyslexia experiment below.</figcaption>
   </figure>
   <div class="two-col">
     <div id="selection-plot" class="plot"></div>
     <div class="reading-box">
-      <h3>Composite selection</h3>
+      <h3>Gathering them from wherever they live</h3>
       <p id="selection-reading"></p>
-      <p class="muted small">Standard mapping records one region from one layer;
-      <code>'all'</code> records every region in one pass; a
-      <code>CompositeSelector</code> pools the localized units across layers into
-      one region.</p>
+      <p class="muted small">The usual approach reads from a single layer of the model;
+      here, instead, we collect the word-selective units from across several layers and treat
+      them as one group, because that's where they naturally turn out to be.</p>
     </div>
   </div>
 </section>
 
-<section id="ablation" class="section alt">
-  <h2>Lesion a population, measure the effect — inducing dyslexia</h2>
-  <p class="lead"><code>process(StateChange)</code> ablates a unit population, the
-    benchmark re-scores by generation, and <code>reset()</code> restores
-    bit-for-bit. Honarmand et al.'s selective dyslexia <em>reproduces at 32B</em>:
-    a word-form lesion drives reading below the dyslexia threshold while a
-    same-size random lesion doesn't — and the effect emerges with model scale.</p>
+<section id="tools" data-toc="The tools" data-order="120" data-tier="deepdive" class="section">
+  <h2 id="tools-title"></h2>
+  <p class="lead" id="tools-sub"></p>
+
+  <div class="tool-feature">
+    <div class="tool-head">
+      <span class="tool-eyebrow" id="tools-ar-tag"></span>
+      <h3 id="tools-ar-name"></h3>
+    </div>
+    <div class="schematic">
+      <svg viewBox="0 0 920 260" role="img" aria-label="Auto-setup flow: a model goes in, the setup is worked out, the model comes out ready to test">
+        <defs>
+          <marker id="ah" markerWidth="10" markerHeight="8" refX="7" refY="3.2" orient="auto">
+            <path d="M0,0 L7,3.2 L0,6.4 Z" class="sc-arrowhead"/>
+          </marker>
+        </defs>
+        <rect class="sc-box" x="20" y="44" width="208" height="116" rx="12"/>
+        <text class="sc-title" x="124" y="82" text-anchor="middle">Your model</text>
+        <text class="sc-sub" x="124" y="106" text-anchor="middle">any model:</text>
+        <text class="sc-sub" x="124" y="124" text-anchor="middle">sees, reads, hears,</text>
+        <text class="sc-sub" x="124" y="142" text-anchor="middle">watches, or a mix</text>
+        <line class="sc-line" x1="228" y1="102" x2="282" y2="102" marker-end="url(#ah)"/>
+        <rect class="sc-box accent" x="288" y="26" width="290" height="152" rx="12"/>
+        <text class="sc-title" x="433" y="56" text-anchor="middle">Auto-setup</text>
+        <circle class="sc-dot" cx="312" cy="85" r="3"/>
+        <text class="sc-sub" x="324" y="89">recognises what kind it is</text>
+        <circle class="sc-dot" cx="312" cy="113" r="3"/>
+        <text class="sc-sub" x="324" y="117">finds the layers worth reading</text>
+        <circle class="sc-dot" cx="312" cy="141" r="3"/>
+        <text class="sc-sub" x="324" y="145">picks how to read them</text>
+        <line class="sc-line" x1="578" y1="102" x2="632" y2="102" marker-end="url(#ah)"/>
+        <rect class="sc-box good" x="638" y="44" width="262" height="116" rx="12"/>
+        <text class="sc-title" x="769" y="82" text-anchor="middle">Ready to test</text>
+        <text class="sc-sub" x="769" y="106" text-anchor="middle">the same one command</text>
+        <text class="sc-sub" x="769" y="124" text-anchor="middle">runs it on every benchmark</text>
+        <text class="sc-sub" x="769" y="142" text-anchor="middle">it's eligible for</text>
+        <path class="sc-line dashed" d="M433,178 L433,206" marker-end="url(#ah)"/>
+        <rect class="sc-box ghost" x="245" y="210" width="376" height="40" rx="10"/>
+        <text class="sc-sub" x="433" y="234" text-anchor="middle">a starting point; Tool 2 (below) fine-tunes it</text>
+      </svg>
+    </div>
+    <p class="tool-caption" id="tools-ar-cap"></p>
+  </div>
+
+  <div class="tool-feature">
+    <div class="tool-head">
+      <span class="tool-eyebrow" id="tools-lm-tag"></span>
+      <h3 id="tools-lm-name"></h3>
+    </div>
+    <div class="schematic">
+      <svg viewBox="0 0 940 280" role="img" aria-label="Layer-mapping flow: score every layer against the brain area, keep the best, confirm on a separate set">
+        <defs>
+          <marker id="ah2" markerWidth="10" markerHeight="8" refX="7" refY="3.2" orient="auto">
+            <path d="M0,0 L7,3.2 L0,6.4 Z" class="sc-arrowhead"/>
+          </marker>
+        </defs>
+        <rect class="sc-box" x="14" y="40" width="150" height="176" rx="12"/>
+        <text class="sc-title" x="89" y="64" text-anchor="middle">Inner layers</text>
+        <rect class="sc-chip" x="34" y="78"  width="110" height="20" rx="5"/>
+        <text class="sc-chiptext" x="89" y="92" text-anchor="middle">layer 1</text>
+        <rect class="sc-chip" x="34" y="104" width="110" height="20" rx="5"/>
+        <text class="sc-chiptext" x="89" y="118" text-anchor="middle">layer 2</text>
+        <rect class="sc-chip hot" x="34" y="130" width="110" height="20" rx="5"/>
+        <text class="sc-chiptext" x="89" y="144" text-anchor="middle">layer 3</text>
+        <rect class="sc-chip" x="34" y="156" width="110" height="20" rx="5"/>
+        <text class="sc-chiptext" x="89" y="170" text-anchor="middle">layer 4</text>
+        <rect class="sc-chip" x="34" y="182" width="110" height="20" rx="5"/>
+        <text class="sc-chiptext" x="89" y="197" text-anchor="middle">…</text>
+        <line class="sc-line" x1="164" y1="128" x2="200" y2="128" marker-end="url(#ah2)"/>
+        <rect class="sc-box accent" x="206" y="64" width="224" height="128" rx="12"/>
+        <text class="sc-title" x="318" y="106" text-anchor="middle">Score every layer</text>
+        <text class="sc-sub" x="318" y="128" text-anchor="middle">against the brain area</text>
+        <text class="sc-accent-txt" x="318" y="158" text-anchor="middle">on a STUDY set of clips</text>
+        <line class="sc-line" x1="430" y1="128" x2="466" y2="128" marker-end="url(#ah2)"/>
+        <rect class="sc-box" x="472" y="64" width="160" height="128" rx="12"/>
+        <text class="sc-title" x="552" y="122" text-anchor="middle">Keep the best-</text>
+        <text class="sc-title" x="552" y="142" text-anchor="middle">scoring layer</text>
+        <line class="sc-line" x1="632" y1="128" x2="668" y2="128" marker-end="url(#ah2)"/>
+        <rect class="sc-box good" x="674" y="64" width="252" height="128" rx="12"/>
+        <text class="sc-title" x="800" y="102" text-anchor="middle">Double-check it</text>
+        <text class="sc-sub" x="800" y="124" text-anchor="middle">on a SEPARATE set of clips</text>
+        <text class="sc-good-txt" x="800" y="152" text-anchor="middle">never graded on what picked it</text>
+        <path class="sc-line" d="M800,192 L800,222" marker-end="url(#ah2)"/>
+        <rect class="sc-box ghost" x="566" y="226" width="360" height="40" rx="10"/>
+        <text class="sc-sub" x="746" y="250" text-anchor="middle">result: this brain area ↔ its best-matching layer</text>
+      </svg>
+    </div>
+    <p class="tool-caption" id="tools-lm-cap"></p>
+  </div>
+</section>
+
+<section id="layermapping" data-toc="Layer mapping" data-order="130" data-tier="deepdive" class="section alt">
+  <p class="tool-eyebrow-row"><span class="tool-eyebrow">Tool 2 · Layer mapping, in action</span></p>
+  <h2 id="lm-title"></h2>
+  <p class="lead" id="lm-sub"></p>
   <div class="two-col">
-    <div class="two-col-stack">
-      <div id="ablation-plot" class="plot"></div>
-      <figure class="lesion-brain">
-        <img id="lesion-brain-img" src="assets/vwfa_glass.png?v=3" alt="ablated population mapped to cortex" />
-        <figcaption id="lesion-brain-cap"></figcaption>
-      </figure>
-    </div>
-    <div class="reading-box">
-      <h3>Inducing dyslexia — selectivity emerges with scale</h3>
-      <p class="muted small" id="ablation-protocol"></p>
-      <p id="ablation-reading"></p>
+    <figure class="lm-sweep-fig">
+      <div id="lm-sweep-plot" class="plot" style="height:320px"></div>
+      <figcaption class="muted small">Reading the best single layer, swept across all 24. There's a clear sweet spot in the middle.</figcaption>
+    </figure>
+    <figure class="lesion-brain">
+      <img id="lm-heatmap-img" alt="V-JEPA2 per-layer per-unit predictivity heatmap" />
+      <figcaption id="lm-heatmap-cap"></figcaption>
+    </figure>
+  </div>
+  <div class="lm-approaches">
+    <h3 id="lm-appr-title"></h3>
+    <p class="muted small lm-narrow" id="lm-metric-note"></p>
+    <div id="lm-budget-plot" class="plot" style="height:340px"></div>
+    <p class="small" id="lm-table-title" style="margin:24px 0 6px;font-weight:600;color:var(--ink)"></p>
+    <table class="paths-table" id="lm-appr-table"></table>
+    <p class="muted small lm-narrow" id="lm-table-caveat"></p>
+    <p id="lm-reading"></p>
+    <div class="lm-deepdive" id="lm-deepdive">
+      <h3 id="dd-title"></h3>
+      <p class="muted small lm-narrow" id="dd-lead"></p>
+      <div class="dd-cards" id="dd-cards"></div>
+      <p class="small" id="dd-pc-title" style="margin:20px 0 4px;font-weight:600;color:var(--ink)"></p>
+      <div id="dd-pc-plot" class="plot" style="height:260px"></div>
+      <p class="muted small lm-narrow" id="dd-pc-cap"></p>
     </div>
   </div>
 </section>
 
-<section id="scaling" class="section alt">
-  <h2>Capabilities scale with model quality</h2>
-  <p class="lead">The headline validation: a benchmark worth running should climb
-    from a bad model to a good one and sit near its null floor for a random model.
-    Pick a capability.</p>
-  <div class="scaling-wrap">
-    <div class="scaling-tabs" id="scaling-tabs"></div>
-    <div id="scaling-plot" class="plot"></div>
-    <p class="reading" id="scaling-reading"></p>
+<section id="generalize" data-toc="Does it generalize?" data-order="80" data-tier="showcase" class="section">
+  <h2 id="gen-title"></h2>
+  <p class="lead" id="gen-sub"></p>
+  <div class="two-col">
+    <figure class="lm-sweep-fig">
+      <p class="small" id="gen-dim-title" style="margin:0 0 4px;font-weight:600;color:var(--ink)"></p>
+      <div id="gen-dim-plot" class="plot" style="height:300px"></div>
+      <figcaption class="muted small" id="gen-dim-note"></figcaption>
+    </figure>
+    <figure class="lm-sweep-fig">
+      <p class="small" id="gen-hier-title" style="margin:0 0 4px;font-weight:600;color:var(--ink)"></p>
+      <div id="gen-hier-plot" class="plot" style="height:300px"></div>
+      <figcaption class="muted small" id="gen-hier-note"></figcaption>
+    </figure>
   </div>
+  <p class="reading" id="gen-reading"></p>
 </section>
 
-<section id="witness" class="section alt">
+<section id="witness" data-toc="Watch it run" data-order="150" data-tier="deepdive" class="section alt">
+  <p class="tool-eyebrow-row"><span class="tool-eyebrow">Tool 3 · Watch it run</span></p>
   <h2 id="witness-title"></h2>
   <p class="lead" id="witness-sub"></p>
   <div class="witness-modes" id="witness-modes"></div>
@@ -237,7 +364,8 @@
   <p class="reading" id="witness-reading"></p>
 </section>
 
-<section id="percept" class="section">
+<section id="percept" data-toc="What it saw" data-order="160" data-tier="deepdive" class="section">
+  <p class="tool-eyebrow-row"><span class="tool-eyebrow">Tool 4 · See what it saw</span></p>
   <h2 id="percept-title"></h2>
   <p class="lead" id="percept-sub"></p>
   <div class="percept-tabs" id="percept-tabs"></div>
@@ -246,26 +374,80 @@
   <div class="raj-caveats" id="percept-caveat"></div>
 </section>
 
-<section id="gemma-scorecard" class="section">
+<section id="fusion" data-toc="Fusing the senses" data-order="140" data-tier="deepdive" class="section">
+  <h2 id="fusion-title"></h2>
+  <p class="lead" id="fusion-sub"></p>
+  <div class="two-col">
+    <div class="two-col-stack">
+      <div id="fusion-plot" class="plot"></div>
+      <div id="fusion-curve-plot" class="plot" style="height:280px"></div>
+      <p class="muted small" id="fusion-curve-cap"></p>
+    </div>
+    <div class="reading-box">
+      <h3 id="fusion-appr-title"></h3>
+      <table class="paths-table" id="fusion-table"></table>
+      <p id="fusion-reading"></p>
+      <h3 class="caveat-h">Caveats</h3>
+      <div class="raj-caveat" id="fusion-caveat"></div>
+    </div>
+  </div>
+</section>
+
+<section id="ablation" data-toc="Dyslexia" data-order="60" data-tier="headline" class="section alt">
+  <h2>Switching off a model's word-selective units: giving it "dyslexia"</h2>
+  <p class="lead">We switch off the model's word-selective units, re-test its reading, then
+    switch them back on (it restores perfectly). The result reproduces a 2026 study:
+    in a large enough model, switching off the word-selective units pushes its reading below
+    the dyslexia line, while switching off the same number of random neurons barely
+    matters. And the effect only appears once the model is big enough.</p>
+  <div class="two-col">
+    <div class="two-col-stack">
+      <div id="ablation-plot" class="plot"></div>
+      <figure class="lesion-brain">
+        <img id="lesion-brain-img" src="assets/vwfa_glass.png?v=3" alt="the brain's reading area, highlighted" />
+        <figcaption id="lesion-brain-cap"></figcaption>
+      </figure>
+    </div>
+    <div class="reading-box">
+      <h3>Making it dyslexic, and only when it's big enough</h3>
+      <p class="muted small" id="ablation-protocol"></p>
+      <p id="ablation-reading"></p>
+    </div>
+  </div>
+</section>
+
+<section id="scaling" data-toc="Bigger models" data-order="70" data-tier="headline" class="section alt">
+  <h2>Better models, better scores</h2>
+  <p class="lead">A test worth running should reward better models and sit near its
+    "knows-nothing" floor for an untrained one. That's the basic sanity check: pick a
+    capability and see whether the scores climb the way they should.</p>
+  <div class="scaling-wrap">
+    <div class="scaling-tabs" id="scaling-tabs"></div>
+    <div id="scaling-plot" class="plot"></div>
+    <p class="reading" id="scaling-reading"></p>
+  </div>
+</section>
+
+<section id="gemma-scorecard" data-toc="Gemma scorecard" data-order="170" data-tier="deepdive" class="section">
   <h2 id="gsc-title"></h2>
   <p class="lead" id="gsc-sub"></p>
   <table class="nulls-table" id="gsc-table"></table>
   <p class="reading" id="gsc-reading"></p>
 </section>
 
-<section id="layercontrib" class="section alt">
+<section id="layercontrib" data-toc="Where signal lives" data-order="190" data-tier="deepdive" class="section alt">
   <h2 id="lc-title"></h2>
   <p class="lead" id="lc-sub"></p>
   <div class="two-col">
     <div id="lc-plot" class="plot" style="height:320px"></div>
     <div class="reading-box">
-      <h3>Where each modality lives</h3>
+      <h3>Where the brain-like signal lives in each model</h3>
       <p id="lc-reading"></p>
     </div>
   </div>
 </section>
 
-<section id="mechanics" class="section">
+<section id="mechanics" data-toc="Inside one test" data-order="200" data-tier="deepdive" class="section">
   <h2 id="mech-title"></h2>
   <p class="lead" id="mech-sub"></p>
   <div class="mech-wrap">
@@ -288,17 +470,17 @@
   <p class="reading" id="allpaths-reading"></p>
 </section>
 
-<section id="models" class="section">
+<section id="models" data-toc="The models" data-order="210" data-tier="deepdive" class="section">
   <h2 id="models-title"></h2>
   <p class="lead" id="models-sub"></p>
   <div class="model-grid" id="model-grid"></div>
 </section>
 
-<section id="nulls" class="section alt">
-  <h2>Nulls, everywhere</h2>
-  <p class="lead">No result is trusted without a matched null running through the
-    same pipeline. If the real score doesn't clear the floor, the signal is a
-    pipeline artifact — not the model.</p>
+<section id="nulls" data-toc="Null baselines" data-order="180" data-tier="deepdive" class="section alt">
+  <h2>A null baseline, for every test</h2>
+  <p class="lead">No result counts here until it clearly beats a deliberately broken
+    version of the same test: the same machinery, with the real signal stripped out.
+    If a score doesn't clear that floor, it's coming from the setup, not the model.</p>
   <div class="two-col">
     <div id="shift-plot" class="plot"></div>
     <div class="reading-box">
@@ -310,26 +492,27 @@
   <table class="nulls-table" id="nulls-table" style="margin-top:24px"></table>
 </section>
 
-<section id="limitations" class="section">
-  <h2 id="lim-title">What we do not claim (yet)</h2>
-  <p class="lead">Honesty is the product. The same rigor that validates a result
-    has to name where a result is contingent, under-controlled, or only proves
-    plumbing. These are ours.</p>
+<section id="limitations" data-toc="What to keep in mind" data-order="300" data-tier="always" class="section">
+  <h2 id="lim-title">What to keep in mind</h2>
+  <p class="lead">Honesty is the point. The same care that earns a result also has to
+    say where it's shaky, not fully controlled, or only proves the machinery runs.
+    Here's that list, in plain terms.</p>
   <ul class="lim-list" id="lim-list"></ul>
 </section>
 
 <footer class="footer">
   <div>
-    <b>Try it.</b> The <code>unified/notebooks/</code> folder has one runnable
-    notebook per capability. The <code>brainscore.visualization</code> module
-    renders every figure here.
+    <b>Try it.</b> Everything here runs from one short, repeatable recipe. There's a
+    ready-to-run example for each capability shown on this page, and the same toolkit
+    draws every figure above.
   </div>
   <div class="muted small" id="provenance"></div>
 </footer>
 
-<script src="data.js?v=17"></script>
-<script src="app.js?v=15"></script>
+<script src="data.js?v=22"></script>
+<script src="app.js?v=19"></script>
 <script src="model_moves.js?v=2"></script>
 <script src="game.js?v=2"></script>
+<script src="audience.js?v=3"></script>
 </body>
 </html>
