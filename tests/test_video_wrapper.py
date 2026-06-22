@@ -306,3 +306,54 @@ class TestEdgesFromCenters:
         for i in range(len(centers)):
             assert starts[i] <= centers[i] <= ends[i]
             assert ends[i] > starts[i]
+
+
+# ---- long-clip temporal-context chunking ----
+
+def _long_video_stim(tmp_path, n_frames=60, fps=5.0):
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    p = tmp_path / 'long.mp4'
+    _make_tiny_video(p, n_frames=n_frames, fps=fps)
+    df = pd.DataFrame({'stimulus_id': ['L0'], 'video_path': [str(p)]})
+    stim = StimulusSet(df)
+    stim.identifier = 'long_set'
+    stim.stimulus_paths = {'L0': str(p)}
+    return stim
+
+
+def _chunk_wrapper(**kw):
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    return VideoWrapper(model=_make_mock_video_model(8), preprocessing=_mock_preprocess,
+                        identifier='mock-vid', num_frames=4, **kw)
+
+
+class TestVideoWrapperChunking:
+    def test_block_chunking_stitches_clip_time(self, tmp_path):
+        stim = _long_video_stim(tmp_path)  # 60 frames @ 5fps = 12000 ms
+        r = _chunk_wrapper(context_window_ms=4000)(stim, layers=['main_block'])
+        assert r.shape == (1, 12, 8)  # 3 block windows * 4 frames
+        assert r['time_bin_start_ms'].values.min() >= 0
+        assert float(r['time_bin_end_ms'].values.max()) == pytest.approx(12000, abs=1500)
+        assert (np.diff(r['time_bin_center_ms'].values) > 0).all()  # monotone clip time
+
+    def test_fail_fast_on_long_clip_when_unconfigured(self, tmp_path):
+        stim = _long_video_stim(tmp_path)  # 12000 ms, no context_window_ms
+        with pytest.raises(ValueError, match='max_clip_ms'):
+            _chunk_wrapper(max_clip_ms=5000)(stim, layers=['main_block'])
+
+    def test_causal_one_feature_per_stride(self, tmp_path):
+        stim = _long_video_stim(tmp_path)
+        r = _chunk_wrapper(context_window_ms=4000, context_strategy='causal')(
+            stim, layers=['main_block'])
+        assert r.shape == (1, 3, 8)  # output times 4000, 8000, 12000
+
+
+def test_pad_out_of_bound_strategies():
+    from brainscore.model_helpers.video_wrapper import pad_out_of_bound
+    f = [np.full((2, 2, 3), 10, np.uint8), None, None]
+    oob = [False, True, True]
+    assert (pad_out_of_bound(f, oob, 'repeat')[2] == 10).all()   # nearest valid
+    assert (pad_out_of_bound(f, oob, 'black')[1] == 0).all()
+    assert (pad_out_of_bound(f, oob, 'gray')[1] == 128).all()
+    with pytest.raises(ValueError):
+        pad_out_of_bound([None], [True], 'repeat')               # no valid frame

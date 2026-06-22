@@ -61,10 +61,35 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuroidAssembly, walk_coords,
 )
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from brainscore_core.temporal import window_plan
 from result_caching import store_xarray
 
 
 logger = logging.getLogger(__name__)
+
+
+def pad_out_of_bound(frames: List[Optional[np.ndarray]], oob_mask: List[bool],
+                     strategy: str = 'repeat') -> List[np.ndarray]:
+    """Fill out-of-bound frames (``oob_mask[i]`` True; ``frames[i]`` may be None)
+    for a window that extends past the clip. ``repeat`` = nearest in-bound frame,
+    ``black`` = zeros, ``gray`` = mid-grey. Raises if no in-bound frame exists."""
+    valid = [i for i, m in enumerate(oob_mask) if not m]
+    if not valid:
+        raise ValueError("window has no in-bound frames")
+    ref = frames[valid[0]]
+    out = list(frames)
+    for i, oob in enumerate(oob_mask):
+        if not oob:
+            continue
+        if strategy == 'repeat':
+            out[i] = frames[min(valid, key=lambda k: abs(k - i))]
+        elif strategy == 'black':
+            out[i] = np.zeros_like(ref)
+        elif strategy == 'gray':
+            out[i] = np.full_like(ref, 128)
+        else:
+            raise ValueError(f"unknown out_of_bound {strategy!r}; use repeat/black/gray")
+    return out
 
 
 def default_uniform_frame_sampler(
@@ -163,6 +188,11 @@ class VideoWrapper:
         post_hook_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         t_to_time_ms_fn: Optional[Callable[[int, float], List[float]]] = None,
         batch_size: int = 1,
+        context_window_ms: Optional[float] = None,
+        context_stride_ms: Optional[float] = None,
+        context_strategy: str = 'block',
+        out_of_bound: str = 'repeat',
+        max_clip_ms: Optional[float] = None,
     ):
         import torch
         self._model = model
@@ -175,6 +205,12 @@ class VideoWrapper:
         self._post_hook_fn = post_hook_fn
         self._t_to_time_ms_fn = t_to_time_ms_fn or _default_time_mapping
         self._batch_size = batch_size
+        # Long-clip temporal context (additive; None = current whole-clip path).
+        self._context_window_ms = context_window_ms
+        self._context_stride_ms = context_stride_ms
+        self._context_strategy = context_strategy
+        self._out_of_bound = out_of_bound
+        self._max_clip_ms = max_clip_ms
 
         if torch.cuda.is_available():
             self._device = torch.device("cuda")
@@ -189,6 +225,14 @@ class VideoWrapper:
         # configurations; set a shared backbone_id so cached activations
         # are reused across registrations. Defaults to identifier.
         self._backbone_id = backbone_id or self._identifier
+        # Chunking changes the activations, but @store_xarray keys only on
+        # (backbone_id, stimuli_identifier, layers) — fold the chunk config in
+        # so different windowings don't collide in the cache.
+        if context_window_ms is not None:
+            sig = (f"-ctx{int(context_window_ms)}-{context_strategy}"
+                   f"-s{int(context_stride_ms or context_window_ms)}")
+            self._identifier += sig
+            self._backbone_id += sig
 
     @property
     def identifier(self) -> str:
@@ -265,8 +309,22 @@ class VideoWrapper:
             raise ValueError("VideoWrapper requires a layers argument")
 
         logger.info(f"Running {len(paths)} videos through video model")
-        per_video_activations: OrderedDict = OrderedDict()
+        per_video_activations: OrderedDict = OrderedDict((ln, []) for ln in layers)
         per_video_time_ms: List[List[float]] = []
+
+        if self._context_window_ms is not None:
+            # Chunked path: tile each clip into native-window pieces and stitch the
+            # per-window time-resolved features into one clip-time sequence (the
+            # M12-full continuous-movie case). ponytail: clips must share T_total
+            # for _package's np.stack — fine for uniform-duration clips (Lahner /
+            # fixed segments); variable lengths raise there, per-clip processing
+            # is the upgrade path.
+            for path in tqdm(paths, desc='video activations (chunked)'):
+                feats, times = self._extract_video_windowed(path, layers)
+                for layer_name in layers:
+                    per_video_activations[layer_name].append(feats[layer_name])
+                per_video_time_ms.append(times)
+            return self._package(per_video_activations, per_video_time_ms, paths)
 
         for batch_start in tqdm(range(0, len(paths), self._batch_size),
                                 unit_scale=self._batch_size,
@@ -274,12 +332,6 @@ class VideoWrapper:
             batch_end = min(batch_start + self._batch_size, len(paths))
             batch_paths = paths[batch_start:batch_end]
             batch_outputs, batch_time_ms = self._extract_batch(batch_paths, layers)
-
-            # batch_outputs[layer_name] has shape (B, T_out, features_flat)
-            # Append per-video slices.
-            if not per_video_activations:
-                for layer_name in layers:
-                    per_video_activations[layer_name] = []
             for i in range(len(batch_paths)):
                 for layer_name in layers:
                     per_video_activations[layer_name].append(
@@ -289,70 +341,119 @@ class VideoWrapper:
         return self._package(
             per_video_activations, per_video_time_ms, paths)
 
+    def _run_model(self, per_video_frames: List[List[np.ndarray]], layers: List[str]
+                   ) -> Dict[str, np.ndarray]:
+        """Preprocess + stack + forward + hook + flatten → {layer: (B, T, F)}.
+        Shared by the whole-clip and chunked paths."""
+        import torch
+        tensors = []
+        for frames in per_video_frames:
+            tensor = self._preprocessing(frames)
+            if tensor.ndim == 4:  # (T, C, H, W) → add batch dim
+                tensor = tensor.unsqueeze(0)
+            tensors.append(tensor)
+        video_batch = torch.cat(tensors, dim=0).to(self._device)
+        model_dtype = next(self._model.parameters()).dtype
+        if video_batch.dtype != model_dtype and video_batch.is_floating_point():
+            video_batch = video_batch.to(model_dtype)
+
+        layer_outputs: OrderedDict = OrderedDict()
+        hooks = [self._register_hook(self._get_layer(ln), ln, layer_outputs)
+                 for ln in layers]
+        self._model.eval()
+        with torch.no_grad():
+            self._model(video_batch, **self._forward_kwargs)
+        for hook in hooks:
+            hook.remove()
+        return {ln: self._flatten_layer_output(arr) for ln, arr in layer_outputs.items()}
+
+    def _clip_duration_ms(self, path) -> Tuple[float, int, float]:
+        import cv2
+        cap = cv2.VideoCapture(str(path))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+        return (total / fps) * 1000.0, total, fps
+
     def _extract_batch(self, batch_paths: List[str], layers: List[str]
                        ) -> Tuple[Dict[str, np.ndarray], List[List[float]]]:
-        """Run one batch of videos through the model with hooks."""
-        import torch
-
-        # Sample and preprocess each video individually, then stack.
-        per_video_tensors = []
-        per_video_time_ms: List[List[float]] = []
+        """Whole-clip path: sample num_frames across each clip, one forward."""
+        per_video_frames = []
+        duration_ms = 0.0
         for path in batch_paths:
-            # Sample frames (list of HxWx3 numpy arrays, length T)
             if self._num_frames is not None:
                 frames = self._frame_sampler(path, num_frames=self._num_frames)
             else:
                 frames = self._frame_sampler(path, num_frames=0,
                                              target_fps=self._target_fps)
-            # Record per-frame timestamps (ms) for later remapping
-            # to output time steps if hook downsamples.
-            import cv2
-            cap = cv2.VideoCapture(str(path))
-            fps_real = cap.get(cv2.CAP_PROP_FPS) or 30.0
-            duration_ms = (cap.get(cv2.CAP_PROP_FRAME_COUNT) / fps_real) * 1000
-            cap.release()
-            per_video_time_ms.append([0.0])  # placeholder, overridden after hook
+            duration_ms, _, _ = self._clip_duration_ms(path)
+            if self._max_clip_ms is not None and duration_ms > self._max_clip_ms:
+                raise ValueError(
+                    f"clip {path} is {duration_ms:.0f}ms > max_clip_ms="
+                    f"{self._max_clip_ms}; set context_window_ms to chunk it "
+                    f"(no silent downsampling).")
+            per_video_frames.append(frames)
 
-            tensor = self._preprocessing(frames)
-            if tensor.ndim == 4:  # (T, C, H, W) → add batch dim
-                tensor = tensor.unsqueeze(0)
-            per_video_tensors.append(tensor)
+        processed = self._run_model(per_video_frames, layers)
+        T_out = processed[layers[0]].shape[1]
+        times = self._t_to_time_ms_fn(T_out, duration_ms)  # last clip's duration
+        return processed, [list(times) for _ in batch_paths]
 
-        # Stack: (B, T, C, H, W) — assumes all videos sampled to same T
-        video_batch = torch.cat(per_video_tensors, dim=0).to(self._device)
-        # Match model dtype (FP16 models)
-        model_dtype = next(self._model.parameters()).dtype
-        if video_batch.dtype != model_dtype and video_batch.is_floating_point():
-            video_batch = video_batch.to(model_dtype)
+    def _extract_video_windowed(self, path, layers: List[str]
+                                ) -> Tuple[Dict[str, np.ndarray], List[float]]:
+        """Chunked path: window the clip, forward each window, stitch to clip time."""
+        duration_ms, total, fps = self._clip_duration_ms(path)
+        windows = window_plan(duration_ms, self._context_window_ms,
+                              stride_ms=self._context_stride_ms,
+                              strategy=self._context_strategy)
+        nf = self._num_frames or max(
+            1, int(round(self._context_window_ms / 1000.0 * self._target_fps)))
+        per_layer: OrderedDict = OrderedDict((ln, []) for ln in layers)
+        times: List[float] = []
+        for win in windows:
+            frames, oob = self._sample_window(path, win, nf, total, fps)
+            frames = pad_out_of_bound(frames, oob, self._out_of_bound)
+            out = self._run_model([frames], layers)  # {ln: (1, T_win, F)}
+            T_win = out[layers[0]].shape[1]
+            if win.is_causal:  # one feature at window end (trailing context)
+                for ln in layers:
+                    per_layer[ln].append(out[ln][0].mean(axis=0, keepdims=True))
+                times.append(win.end_ms)
+            else:
+                for ln in layers:
+                    per_layer[ln].append(out[ln][0])
+                sub = self._t_to_time_ms_fn(T_win, win.end_ms - win.start_ms)
+                times.extend(win.start_ms + s for s in sub)
+        feats = {ln: np.concatenate(per_layer[ln], axis=0) for ln in layers}
+        return feats, times
 
-        # Register hooks
-        layer_outputs: OrderedDict = OrderedDict()
-        hooks = []
-        for layer_name in layers:
-            layer = self._get_layer(layer_name)
-            hook = self._register_hook(layer, layer_name, layer_outputs)
-            hooks.append(hook)
-
-        self._model.eval()
-        with torch.no_grad():
-            self._model(video_batch, **self._forward_kwargs)
-
-        for hook in hooks:
-            hook.remove()
-
-        # Convert each layer output to (B, T_out, features_flat)
-        processed: Dict[str, np.ndarray] = {}
-        for layer_name, arr in layer_outputs.items():
-            processed[layer_name] = self._flatten_layer_output(arr)
-
-        # Now that we know T_out, compute the per-video time_ms mapping
-        # for the first layer (all layers assumed to share time axis size).
-        first_layer = layers[0]
-        T_out = processed[first_layer].shape[1]
-        for i in range(len(batch_paths)):
-            per_video_time_ms[i] = self._t_to_time_ms_fn(T_out, duration_ms)
-
-        return processed, per_video_time_ms
+    def _sample_window(self, path, win, nf: int, total: int, fps: float):
+        """Sample nf frames evenly within [win.start, win.end]; frames whose
+        timestamp falls outside the real clip are None + flagged out-of-bound."""
+        import cv2
+        if nf == 1:
+            ts = [(win.start_ms + win.end_ms) / 2.0]
+        else:
+            span = win.end_ms - win.start_ms
+            ts = [win.start_ms + i * span / (nf - 1) for i in range(nf)]
+        cap = cv2.VideoCapture(str(path))
+        frames: List = []
+        oob: List[bool] = []
+        for t_ms in ts:
+            idx = int(round(t_ms / 1000.0 * fps))
+            read_ok = False
+            if 0 <= idx < total:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+                ok, fr = cap.read()
+                if ok:
+                    frames.append(cv2.cvtColor(fr, cv2.COLOR_BGR2RGB))
+                    oob.append(False)
+                    read_ok = True
+            if not read_ok:
+                frames.append(None)
+                oob.append(True)
+        cap.release()
+        return frames, oob
 
     def _flatten_layer_output(self, arr: np.ndarray) -> np.ndarray:
         """Return (B, T, features) from arbitrary hook output.

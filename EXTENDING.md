@@ -101,7 +101,10 @@ benchmark_registry['your-benchmark'] = lambda: YourBenchmark()
 
 Then add `from . import your_name` to `brainscore/benchmarks/__init__.py`. For naturalistic /
 temporal data, reuse `core/brainscore_core/temporal.py` (`temporal_bin`, `hrf_convolve`,
-`contiguous_block_cv`) — see `benchmarks/lahner2024` and `benchmarks/algonauts2025` as worked examples.
+`contiguous_block_cv`, `window_plan`) — see `benchmarks/lahner2024` and `benchmarks/algonauts2025`
+as worked examples. A clip longer than a video model's native temporal window won't silently
+downsample: set `VideoWrapper(..., context_window_ms=...)` to tile it into windows and stitch the
+per-window time-resolved features into one clip-time sequence (set `max_clip_ms` for a fail-fast).
 
 ### Seam 3 — a new metric  *(now first-class)*
 
