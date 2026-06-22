@@ -5,8 +5,8 @@ well-defined seams. We ship the seams + a few reference integrations; you bring 
 (your model, your dataset, your alignment metric). Nothing below requires touching the core.
 
 > Companion: the interactive contract map at `website/architecture.html`, and the reproduction
-> case study in the Obsidian note `topo-omni-reproduction-feasibility.md` (which exercises all
-> four seams at once).
+> case study in the Obsidian note `topo-omni-reproduction-feasibility.md` (which exercises
+> several seams at once).
 
 ## The one mechanism: registries
 
@@ -14,20 +14,24 @@ Everything is a factory registered under a string identifier. Three registries l
 `brainscore/__init__.py`:
 
 ```python
-model_registry:     Dict[str, Callable[[], UnifiedModel]]
-benchmark_registry: Dict[str, Callable[[], Benchmark]]
-metric_registry:    Dict[str, Callable[[], Metric]]
+data_registry:         Dict[str, Callable[[], DataAssembly]]   # in brainscore_vision/_language
+stimulus_set_registry: Dict[str, Callable[[], StimulusSet]]    # in brainscore_vision/_language
+metric_registry:       Dict[str, Callable[[], Metric]]
+benchmark_registry:    Dict[str, Callable[[], Benchmark]]
+model_registry:        Dict[str, Callable[[], UnifiedModel]]
 ```
 
-A plugin is a subpackage under `brainscore/{models,benchmarks,metrics}/<your_name>/` whose
-`__init__.py` adds a factory to the matching registry. The parent package's `__init__.py` imports
-your subpackage so the registration runs on load. You then load by identifier:
+This **is** Brain-Score's existing plugin system — five registries (`data`, `stimulus_set`, `metric`,
+`benchmark`, `model`). The unified interface reuses it unchanged and adds **one** new seam, *Capability*
+(the `process()` dispatch slots). A plugin is a subpackage whose `__init__.py` adds a factory to the
+matching registry; the parent package imports it so registration runs on load. You then load by id:
 
 ```python
 import brainscore
-model     = brainscore.load_model('your-model')
-benchmark = brainscore.load_benchmark('your-benchmark')
+data      = brainscore.load_dataset('your-data')          # via vision/language registry
+stimuli   = brainscore.load_stimulus_set('your-stimuli')  #   "
 metric    = brainscore.load_metric('your-metric')
+benchmark = brainscore.load_benchmark('your-benchmark')
 score     = brainscore.score('your-model', 'your-benchmark')
 ```
 
@@ -36,14 +40,23 @@ score     = brainscore.score('your-model', 'your-benchmark')
 
 ---
 
-## The four seams
+## The seams — five inherited + one new
+
+Model / Benchmark / Metric / **Data** / **Stimulus set** are Brain-Score's existing plugin registries,
+reused as-is. **Capability** is the only seam the unified interface adds.
 
 | Seam | Lives in | You implement | Contract | Template |
 |------|----------|---------------|----------|----------|
 | **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `process(input_event) -> OutputEvent` | `templates/new_model/` |
 | **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(candidate) -> Score` | `templates/new_benchmark/` |
 | **Metric** | `brainscore/metrics/<name>/` | a `Metric` subclass | `__call__(assembly1, assembly2) -> Score` | `templates/new_metric/` |
-| **Capability** | constructor slots on `BrainScoreModel` | a callable (`generation_fn` / `action_fn` / `state_change_fn`) | see below | `templates/new_capability/` |
+| **Data / Stimulus set** | `brainscore_vision/_language` `data/<name>/` | a loader registered in `data_registry` / `stimulus_set_registry` | returns a `DataAssembly` / `StimulusSet` | (domain-repo pattern) |
+| **Capability** *(new)* | constructor slots on `BrainScoreModel` | a callable (`generation_fn` / `action_fn` / `state_change_fn`) | see below | `templates/new_capability/` |
+
+**Data / stimulus_set are separate seams on purpose: reuse.** A stimulus set or assembly is registered
+once and referenced by *many* benchmarks (e.g. `Allen2022_fmri_stim_train` feeds the Allen2022 ridge/RDM/
+region variants; MajajHong and Rajalingham share stimulus sets). A benchmark *references* registered data
+via `load_dataset` / `load_stimulus_set` rather than owning it.
 
 ### Seam 1 — a new model
 
@@ -161,5 +174,5 @@ The backbone stays small on purpose. These are **out of scope for the core** —
 - **Breadth.** We ship a few reference models/benchmarks/metrics that prove each seam; the catalog
   is meant to grow from the community, not from us.
 
-If a research goal doesn't fit one of the four seams, that's a signal — open an issue describing
+If a research goal doesn't fit one of these seams, that's a signal — open an issue describing
 the seam you wish existed rather than forking the core.
