@@ -8,11 +8,15 @@ Three subclasses share most logic:
 - Algonauts2025OOD: held-out 2 h of OOD movies — same as S7 but
   different stim_set.
 
-Phase 3 (current): video-only frame-aggregation. Extract one frame per
-TR midpoint, run candidate's vision tower, stack stimulus_window TRs
-of context per fMRI sample, HRF-shift, ridge-regress per subject,
-per-parcel Pearson median. Multimodal (audio + transcript) and
-banded-ridge α tuning come in later phases.
+Default mode is video-only frame-aggregation: extract one frame per TR
+midpoint, run the candidate's vision tower, stack stimulus_window TRs of
+context per fMRI sample, HRF-shift, ridge-regress per subject, per-parcel
+Pearson median. ``mode`` (see scoring.py) selects the combination; concat /
+per_modality / banded need audio and/or language blocks from the
+candidate's other towers, and raise a clear error until that multi-tower
+extraction (EC2-verified) supplies them. The published fixed-encoder
+(Wav2Vec2 + MiniLM) baseline reproduction lives in the reproduction script,
+not in the maintained benchmark.
 """
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -21,6 +25,8 @@ import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
+
+from .scoring import score_encoding_modes
 
 
 BIBTEX = """@article{gifford2025algonauts,
@@ -89,7 +95,7 @@ class _Algonauts2025Base(BenchmarkBase):
         hrf_delay: int = 3,
         excluded_samples_start: int = 5,
         excluded_samples_end: int = 5,
-        mode: str = 'banded',
+        mode: str = 'video_only',
         assembly_root: Optional[Path] = None,
     ):
         if subject not in (1, 2, 3, 5):
@@ -463,9 +469,6 @@ class _Algonauts2025Base(BenchmarkBase):
         return self._score_friends_train(candidate)
 
     def _score_friends_train(self, candidate) -> Score:
-        from sklearn.linear_model import Ridge
-        from sklearn.model_selection import KFold
-
         print(f'  expanding stim_set to per-TR frames...')
         frame_stim_set = self._expand_to_per_TR_frames()
         print(f'  {len(frame_stim_set)} frames to extract')
@@ -518,36 +521,18 @@ class _Algonauts2025Base(BenchmarkBase):
         run_idx_kept = run_idx_per_obs[keep]
         print(f'  after exclusions: X={X_stacked.shape} Y={Y.shape}')
 
-        # Ridge with 5-fold CV over runs (not over individual TRs —
-        # avoid temporal leakage). Each run goes entirely to either
-        # train or test in any given fold.
-        print(f'  ridge fit (5-fold over runs, per-parcel Pearson)...')
-        unique_runs = np.unique(run_idx_kept)
-        kf = KFold(n_splits=5, shuffle=True, random_state=0)
-        held_out_preds = np.full_like(Y, np.nan, dtype=np.float32)
-        for fold_i, (tr_run_pos, te_run_pos) in enumerate(
-                kf.split(unique_runs)):
-            tr_runs = unique_runs[tr_run_pos]
-            te_runs = unique_runs[te_run_pos]
-            tr = np.isin(run_idx_kept, tr_runs)
-            te = np.isin(run_idx_kept, te_runs)
-            reg = Ridge(alpha=1.0).fit(X_stacked[tr], Y[tr])
-            held_out_preds[te] = reg.predict(X_stacked[te]).astype(
-                np.float32)
-            print(f'    fold {fold_i+1}/5: train={tr.sum()} '
-                  f'test={te.sum()}')
+        # Honor self._mode. The candidate's vision tower supplies the
+        # 'video' block; audio / language blocks (needed by concat,
+        # per_modality, banded) come from the candidate's other towers —
+        # supplied by multi-tower extraction (EC2-verified). Modes that
+        # need an absent modality raise a clear error in the scorer.
+        per_modality_stacked = {'video': X_stacked}
+        print(f'  scoring mode={self._mode!r} over bands '
+              f'{list(per_modality_stacked)} (run-held-out 5-fold)...')
+        per_voxel_r, info = score_encoding_modes(
+            per_modality_stacked, Y, run_idx_kept, self._mode,
+            banded_alpha_grid=self.BANDED_ALPHA_GRID)
 
-        # Per-parcel Pearson on held-out predictions
-        valid = ~np.isnan(held_out_preds[:, 0])
-        Yt = Y[valid]
-        Yp = held_out_preds[valid]
-        Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
-        Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
-        num = (Yt_c * Yp_c).sum(axis=0)
-        den = np.sqrt((Yt_c ** 2).sum(axis=0)
-                      * (Yp_c ** 2).sum(axis=0))
-        with np.errstate(divide='ignore', invalid='ignore'):
-            per_voxel_r = np.where(den > 0, num / den, np.nan)
         per_voxel_r_finite = per_voxel_r[~np.isnan(per_voxel_r)]
         median_r = float(np.median(per_voxel_r_finite))
         mean_r = float(np.mean(per_voxel_r_finite))
@@ -556,11 +541,12 @@ class _Algonauts2025Base(BenchmarkBase):
         score.attrs['raw'] = Score(median_r)
         score.attrs['mean_r'] = mean_r
         score.attrs['n_parcels_scored'] = int(len(per_voxel_r_finite))
-        score.attrs['n_TRs'] = int(valid.sum())
+        score.attrs['n_TRs'] = int(len(Y))
         score.attrs['stimulus_window'] = self._stimulus_window
         score.attrs['hrf_delay'] = self._hrf_delay
         score.attrs['mode'] = self._mode
-        score.attrs['pipeline'] = 'algonauts_video_only_frame_agg'
+        score.attrs['bands'] = info.get('bands')
+        score.attrs['pipeline'] = f"algonauts_{self._mode}_frame_agg"
         return score
 
     # ── Held-out prediction (Codabench submission) ────────────────
