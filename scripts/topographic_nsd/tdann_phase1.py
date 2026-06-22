@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 
 import numpy as np
 
@@ -28,7 +29,10 @@ def osf_fetch(project, remote, local):
         return local
     os.makedirs(os.path.dirname(local), exist_ok=True)
     print(f'    fetching {remote} -> {local}', flush=True)
-    subprocess.run(['osf', '-p', project, 'fetch', remote, local], check=True)
+    osf_bin = os.path.join(os.path.dirname(sys.executable), 'osf')
+    if not os.path.exists(osf_bin):
+        osf_bin = 'osf'
+    subprocess.run([osf_bin, '-p', project, 'fetch', remote, local], check=True)
     return local
 
 
@@ -44,17 +48,17 @@ def load_tdann_resnet18(ckpt_path):
     model.fc = nn.Identity()
     ckpt = torch.load(ckpt_path, map_location='cpu', weights_only=False)
     trunk = ckpt['classy_state_dict']['base_model']['model']['trunk']
-    # strip VISSL prefixes (e.g. '_feature_blocks.')
-    sd = {}
-    for k, v in trunk.items():
-        nk = k.replace('_feature_blocks.', '')
-        sd[nk] = v
-    missing, unexpected = model.load_state_dict(sd, strict=False)
-    print(f'    loaded TDANN: {len(sd)} keys; missing={len(missing)} unexpected={len(unexpected)}',
-          flush=True)
-    if len(missing) > 5:
-        print(f'    MISSING sample: {missing[:8]}', flush=True)
-        print(f'    ckpt key sample: {list(trunk.keys())[:5]}', flush=True)
+    # exactly TDANN demo's src/model.load_model_from_checkpoint: strip the
+    # 'base_model.' prefix; trunk keys then match torchvision ResNet-18 names.
+    sd = {k.split('base_model.')[-1]: v for k, v in trunk.items()
+          if k.startswith('base_model') and 'fc.' not in k}
+    try:
+        model.load_state_dict(sd)                       # strict — must match
+        print(f'    loaded TDANN trunk: {len(sd)} keys (strict)', flush=True)
+    except RuntimeError as e:
+        missing, unexpected = model.load_state_dict(sd, strict=False)
+        print(f'    strict failed ({e}); strict=False -> missing={len(missing)} '
+              f'unexpected={len(unexpected)}; ckpt key sample={list(trunk.keys())[:4]}', flush=True)
     model.eval()
     return model
 

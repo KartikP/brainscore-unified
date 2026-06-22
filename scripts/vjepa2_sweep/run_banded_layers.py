@@ -96,15 +96,26 @@ def main():
                                            Yc[T], alpha=ALPHA_GRID))
     log(f'1. single best layer:          {single:.4f}')
 
-    # 2. best-per-voxel layer (select on localizer, score on test) -------------
+    # 2. best-per-voxel layer (select on HELD-OUT localizer CV, score on test) --
+    # Selection must use held-out data: training-fit r is optimistic and biases
+    # the per-voxel pick toward high-capacity late layers that generalize worse.
+    from sklearn.model_selection import KFold
+
+    def cv_r_per_voxel(X, Yv, n_splits=5):
+        preds = np.full_like(Yv, np.nan)
+        for tr, va in KFold(n_splits, shuffle=True, random_state=0).split(X):
+            reg = RidgeCV(alphas=np.asarray(ALPHA_GRID), alpha_per_target=True).fit(X[tr], Yv[tr])
+            preds[va] = reg.predict(X[va])
+        return _per_voxel_pearson(Yv, preds)
+
     n_vox = Yc.shape[1]
-    r_loc = np.zeros((N_LAYERS, n_vox)); r_test = np.zeros((N_LAYERS, n_vox))
+    r_sel = np.zeros((N_LAYERS, n_vox)); r_test = np.zeros((N_LAYERS, n_vox))
     for i, l in enumerate(layers):
         X = feats[l]
+        r_sel[i] = cv_r_per_voxel(X[L], Yc[L])                    # unbiased selection
         reg = RidgeCV(alphas=np.asarray(ALPHA_GRID), alpha_per_target=True).fit(X[L], Yc[L])
-        r_loc[i] = _per_voxel_pearson(Yc[L], reg.predict(X[L]))   # selection only
         r_test[i] = _per_voxel_pearson(Yc[T], reg.predict(X[T]))  # honest score
-    pick = np.nanargmax(r_loc, axis=0)
+    pick = np.nanargmax(r_sel, axis=0)
     bpv_test = r_test[pick, np.arange(n_vox)]
     best_per_voxel = float(np.nanmedian(normalize_by_ceiling(bpv_test, ceiling)))
     layer_hist = {int(k): int(v) for k, v in zip(*np.unique(pick, return_counts=True))}
@@ -112,10 +123,11 @@ def main():
 
     # 5+6. dimensionality of the best layer ------------------------------------
     eff_dim = effective_dimensionality(feats[best])
-    pca = PCA(n_components=min(1024, feats[best].shape[1])).fit(feats[best][L])
+    n_comp = min(feats[best].shape[1], len(L) - 1)  # PCA full solver: ≤ n_samples
+    pca = PCA(n_components=n_comp).fit(feats[best][L])
     Zl = pca.transform(feats[best][L]); Zt = pca.transform(feats[best][T])
     pca_curve = []
-    for d in PCA_DIMS:
+    for d in [d for d in PCA_DIMS if d <= n_comp]:
         s = med_norm(per_voxel_train_test(Zl[:, :d], Yc[L], Zt[:, :d], Yc[T], alpha=ALPHA_GRID))
         pca_curve.append({'d': d, 'r': round(s, 4)})
     target95 = 0.95 * single
