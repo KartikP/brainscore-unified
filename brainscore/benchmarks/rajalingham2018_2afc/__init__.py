@@ -10,5 +10,11 @@ Public surface:
   - ``benchmark.score_choices`` / ``benchmark.score_all`` — score a choices DataFrame
   - ``benchmark.load_trials`` / ``benchmark.load_tokens`` / ``benchmark.human_trials_subset``
   - ``montage.compose_montage`` — render one trial (what the model sees)
+
+NOTE: this is intentionally a scoring *library*, not a ``load_benchmark`` target.
+The model makes its own per-trial choices (it isn't driven by a single
+``benchmark(candidate)`` call), so this subpackage deliberately registers
+nothing in ``benchmark_registry`` and is not imported by ``benchmarks/__init__``.
+Score via the functions above.
 """
 from . import benchmark, montage  # noqa: F401
