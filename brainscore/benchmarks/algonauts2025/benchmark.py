@@ -112,6 +112,9 @@ class _Algonauts2025Base(BenchmarkBase):
             ceiling=Score(1.0),
             bibtex=BIBTEX,
         )
+        # Vision-frames benchmark: per-TR frames run through the candidate's
+        # vision tower. (Becomes multimodal when audio/text towers land, #78.)
+        self.required_modalities = {'vision'}
 
     @property
     def assembly(self):

@@ -215,6 +215,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),
             bibtex=BIBTEX,
         )
+        # Accepts native-video AND still-image models (the frame-aggregation
+        # fallback in __call__) — any-of gate, see compatibility Check 1b.
+        self.accepted_modalities = {'video', 'vision'}
 
     def _get_voxel_mask(self) -> Optional[np.ndarray]:
         """Return a boolean mask over voxels if reliability filtering is on.

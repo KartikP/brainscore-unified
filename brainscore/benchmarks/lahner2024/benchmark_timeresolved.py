@@ -225,6 +225,8 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),
             bibtex=BIBTEX,
         )
+        # Accepts native-video AND still-image models (frame-aggregation).
+        self.accepted_modalities = {'video', 'vision'}
 
     @property
     def assembly(self) -> NeuronRecordingAssembly:

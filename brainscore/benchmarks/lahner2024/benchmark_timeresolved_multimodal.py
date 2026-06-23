@@ -89,6 +89,9 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
             cv_mode=cv_mode,
             within_subject_n_held_out=within_subject_n_held_out,
         )
+        # Multimodal A+V: audio hard-required; visual tower accepts video OR
+        # vision (accepted_modalities inherited from the timeresolved base).
+        self.required_modalities = {'audio'}
         from pathlib import Path
         self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
         self._mode = mode
