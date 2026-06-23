@@ -125,6 +125,44 @@ def load_metric(identifier: str, *args, **kwargs) -> Metric:
     )
 
 
+def load_dataset(identifier: str):
+    """Load a dataset (DataAssembly) by identifier.
+
+    Datasets live in the domain repos, not the unified package — this is a
+    convenience passthrough so ``brainscore.load_dataset`` is the single entry
+    point alongside load_model/load_benchmark/load_metric. Tries vision then
+    language. The heavy import is deferred to call time (import hygiene).
+    """
+    try:
+        from brainscore_vision import load_dataset as _vision
+        return _vision(identifier)
+    except (KeyError, ImportError, AssertionError):
+        pass
+    try:
+        from brainscore_language import load_dataset as _language
+        return _language(identifier)
+    except (KeyError, ImportError, AssertionError):
+        pass
+    raise KeyError(
+        f"Dataset '{identifier}' not found in vision or language registries.")
+
+
+def load_stimulus_set(identifier: str):
+    """Load a StimulusSet by identifier (domain-repo passthrough; see load_dataset)."""
+    try:
+        from brainscore_vision import load_stimulus_set as _vision
+        return _vision(identifier)
+    except (KeyError, ImportError, AssertionError):
+        pass
+    try:
+        from brainscore_language import load_stimulus_set as _language
+        return _language(identifier)
+    except (KeyError, ImportError, AssertionError):
+        pass
+    raise KeyError(
+        f"StimulusSet '{identifier}' not found in vision or language registries.")
+
+
 def score(model_identifier: str, benchmark_identifier: str) -> Score:
     """Score a model on a benchmark.
 

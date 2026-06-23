@@ -10,8 +10,9 @@ well-defined seams. We ship the seams + a few reference integrations; you bring 
 
 ## The one mechanism: registries
 
-Everything is a factory registered under a string identifier. Three registries live in
-`brainscore/__init__.py`:
+Everything is a factory registered under a string identifier. Five registries —
+`model`/`benchmark`/`metric` live in `brainscore/__init__.py`; `data`/`stimulus_set`
+live in the domain repos (`brainscore_vision`/`_language`):
 
 ```python
 data_registry:         Dict[str, Callable[[], DataAssembly]]   # in brainscore_vision/_language

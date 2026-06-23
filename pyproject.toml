@@ -87,6 +87,9 @@ markers = [
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+# templates/ holds fill-me-in scaffolds (Ellipsis/TODO placeholders), not real
+# tests — they can't pass until copied + completed, so keep them out of the suite.
+norecursedirs = ["templates"]
 console_output_style = "progress"
 filterwarnings = [
     "ignore::UserWarning",
