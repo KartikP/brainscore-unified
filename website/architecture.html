@@ -271,6 +271,76 @@ score     = brainscore.score('your-model', 'your-benchmark')</code></pre>
       catalog breadth. Full guide: <code>EXTENDING.md</code> + <code>templates/</code> in the repo.</p>
   </section>
 
+  <!-- ============ repository layout (collapsed by default) ============ -->
+  <section class="arch-section">
+    <h2>Repository layout</h2>
+    <p class="lead">Where each piece lives. The core spine is dependency-light and stable; everything
+      else is built on top of it along the seams above. The full file-by-file breakdown is tucked away
+      below — expand it only if you want the developer's-eye view.</p>
+
+    <details class="arch-files">
+      <summary style="cursor:pointer;font-weight:600;padding:12px 14px;color:var(--accent);border:1px solid var(--line);border-radius:10px;background:var(--panel2);list-style:revert">
+        Show the file-by-file breakdown
+      </summary>
+
+      <div style="margin-top:16px">
+      <pre class="code arch-tree"><code>core/brainscore_core/                 # the interface spine — no heavy ML deps
+├── model_interface.py                # Subject/UnifiedModel ABC · BrainScoreModel · process() dispatch · event types
+├── compatibility.py                  # pre-flight modality/region check (fail fast)
+├── memory.py                         # cross-platform CUDA/MPS/CPU memory probe
+├── temporal.py                       # temporal_bin · hrf_convolve · contiguous_block_cv · window_plan
+├── multimodal.py                     # MultimodalStimulusSet
+├── behavior.py                       # ProbabilitiesClassifier (logistic readout head)
+├── io_catalog.py                     # queryable catalog of allowable I/O contracts
+├── nulls.py                          # null-control baselines (the score floor)
+└── metrics/                          # Score · Metric bases + canonical per-unit Pearson (numeric.py)
+
+unified/brainscore/                   # everything built on the interface
+├── __init__.py                       # load_model / load_benchmark / load_metric / load_dataset + registries
+├── model_helpers/                    # the activations-model wrappers:
+│   ├── text_wrapper.py               # language models
+│   ├── vlm_vision_wrapper.py         # flattened-patch VLM vision (Qwen, LLaVA)
+│   ├── video_wrapper.py              # native-temporal video + long-clip windowing
+│   ├── audio_wrapper.py              # HF audio encoders (Wav2Vec2, Whisper)
+│   ├── _device.py                    # shared CUDA→MPS→CPU selection
+│   ├── api_behavioral.py             # closed API (Claude/GPT) → generation_fn
+│   ├── local_vlm_policy.py           # local VLM/LM → game policy
+│   └── policy_wrapper.py             # PolicyWrapper → embodied action_fn
+├── benchmarks/
+│   ├── lahner2024/                   # naturalistic video fMRI (GLM-beta · TR-resolved · A+V)
+│   ├── algonauts2025/                # continuous movie fMRI (audio + video + text)
+│   ├── roar_yeatman2021/             # lexical-decision reading test
+│   ├── induced_dyslexia/             # causal ablation of word-form units
+│   ├── grid_game/                    # embodied closed-loop game
+│   ├── topographic/                  # spatial layout vs cortical topography
+│   └── rajalingham2018_2afc/         # faithful 2-AFC match-to-sample
+├── metrics/
+│   ├── topographic.py                # two topographic-alignment metrics
+│   └── direct_comparison.py          # per-unit r for whole-model→whole-brain encoders
+├── tools/
+│   ├── layer_mapping.py              # which layer best predicts which region
+│   ├── auto_register.py              # inspect a model, scaffold a registration
+│   └── banded_ridge.py               # shared ridge / banded-ridge (one α per modality)
+├── harnesses/
+│   ├── grid_game.py · gymnasium_harness.py  # closed-loop game drivers
+│   ├── robotics.py                   # DROID-shaped EnvironmentStep builders
+│   ├── multi_agent.py                # multi-agent rollout
+│   └── human.py                      # human-as-subject
+├── models/                           # one folder per registration: CLIP · Qwen2.5-VL · BLIP-2 · GPT-2 ·
+│                                     # V-JEPA · VideoMAE · A+V combos · API + null-control baselines
+├── visualization/                    # brain maps · ablation · scaling-curve · unit-selection plots
+├── perturbation.py                   # builds the state_change_fn ablation closure
+├── percept_window.py                 # reconstruct what the model ingested (&quot;what it saw&quot;)
+├── activation_window.py              # capture activations during any loop
+├── witness.py · witness_render.py    # record + render a process() call for replay
+├── topographic_support.py            # tissue-coord contract + NSD-surface staging
+├── templates/                        # copy-to-start: new_model / benchmark / metric / capability
+└── scripts/ · experiments/           # maintained drivers vs one-off research runs</code></pre>
+      <p class="muted small">The core spine carries no heavy ML dependencies, so <code>import brainscore</code> stays light — torch / transformers / cv2 load only when a model is actually loaded. <code>PytorchWrapper</code> (CNN/ViT vision) is reused unchanged from the vision domain repo.</p>
+      </div>
+    </details>
+  </section>
+
   <footer class="footer">
     <div><b>One method, every capability.</b> The routing above is generated from the same
       dispatch logic the framework actually runs; the contracts are the complete author-facing
