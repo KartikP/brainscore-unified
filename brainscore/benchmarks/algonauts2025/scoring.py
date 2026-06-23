@@ -26,6 +26,8 @@ from itertools import product
 
 import numpy as np
 
+from brainscore_core.metrics import per_unit_pearson
+
 MODALITY_FOR_MODE = {
     'video_only': 'video',
     'audio_only': 'audio',
@@ -34,19 +36,11 @@ MODALITY_FOR_MODE = {
 
 
 def per_voxel_pearson(Y_true, Y_pred):
-    """Per-column Pearson r between recorded and predicted BOLD.
-
-    NaN columns (zero variance or unpredicted) propagate as NaN.
-    """
+    """Per-column Pearson r between recorded and predicted BOLD, dropping the
+    rows the model never predicted (NaN). The centered correlation itself is
+    the canonical ``brainscore_core.metrics.per_unit_pearson``."""
     valid = ~np.isnan(Y_pred[:, 0])
-    Yt = Y_true[valid]
-    Yp = Y_pred[valid]
-    Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
-    Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
-    num = (Yt_c * Yp_c).sum(axis=0)
-    den = np.sqrt((Yt_c ** 2).sum(axis=0) * (Yp_c ** 2).sum(axis=0))
-    with np.errstate(divide='ignore', invalid='ignore'):
-        return np.where(den > 0, num / den, np.nan)
+    return per_unit_pearson(Y_true[valid], Y_pred[valid])
 
 
 def _run_kfold(run_idx_kept, n_splits, random_state):

@@ -16,17 +16,7 @@ vertices in canonical order); the metric checks the counts match.
 """
 import numpy as np
 
-from brainscore_core.metrics import Metric, Score
-
-
-def per_unit_pearson(A: np.ndarray, B: np.ndarray) -> np.ndarray:
-    """Per-column Pearson r between two ``(n_stimuli, n_units)`` matrices.
-    Zero-variance columns yield NaN."""
-    Ac = A - A.mean(axis=0)
-    Bc = B - B.mean(axis=0)
-    den = np.sqrt((Ac ** 2).sum(axis=0) * (Bc ** 2).sum(axis=0))
-    with np.errstate(divide='ignore', invalid='ignore'):
-        return (Ac * Bc).sum(axis=0) / np.where(den == 0, np.nan, den)
+from brainscore_core.metrics import Metric, Score, per_unit_pearson
 
 
 def _stimulus_ids(a):
