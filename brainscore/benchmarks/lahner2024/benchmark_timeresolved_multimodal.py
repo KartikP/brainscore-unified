@@ -341,6 +341,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
         score = Score(median_r / float(self.ceiling))
         score.attrs['raw'] = Score(median_r)
+        score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
         self._tag_score(score, candidate)
