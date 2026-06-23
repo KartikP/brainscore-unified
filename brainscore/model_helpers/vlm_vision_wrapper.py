@@ -73,12 +73,8 @@ class VLMVisionWrapper:
         self._patch_count_fn = patch_count_fn
         self._layer_aggregation = layer_aggregation
         self._batch_size = batch_size
-        if torch.cuda.is_available():
-            self._device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            self._device = torch.device("mps")
-        else:
-            self._device = torch.device("cpu")
+        from brainscore.model_helpers._device import select_device
+        self._device = select_device()
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__

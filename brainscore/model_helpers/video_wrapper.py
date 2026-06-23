@@ -212,12 +212,8 @@ class VideoWrapper:
         self._out_of_bound = out_of_bound
         self._max_clip_ms = max_clip_ms
 
-        if torch.cuda.is_available():
-            self._device = torch.device("cuda")
-        elif torch.backends.mps.is_available():
-            self._device = torch.device("mps")
-        else:
-            self._device = torch.device("cpu")
+        from brainscore.model_helpers._device import select_device
+        self._device = select_device()
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
