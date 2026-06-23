@@ -45,6 +45,7 @@ from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 from brainscore.tools.banded_ridge import banded_ridge_fit_predict
+from ._util import read_stimulus_ids
 
 from .benchmark import (
     BIBTEX,
@@ -180,32 +181,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         return banded_ridge_fit_predict(
             X_train_groups, X_test_groups, Y_train, self.BANDED_ALPHA_GRID)
 
-    @staticmethod
-    def _read_stimulus_ids(assembly):
-        """Read stimulus_id from the presentation axis whether it's a
-        MultiIndex level or a plain coord, and whether the assembly came
-        from native-video extraction (uses 'stimulus_id') or
-        frame-aggregation via temporal_bin (uses 'clip_id').
-
-        Three sources are tried in order:
-        1. MultiIndex level 'stimulus_id'
-        2. MultiIndex level 'clip_id' (frame-aggregation path)
-        3. Top-level coord 'stimulus_id' or 'clip_id'
-        """
-        if 'presentation' in assembly.indexes:
-            idx = assembly.indexes['presentation']
-            if hasattr(idx, 'get_level_values'):
-                names = list(idx.names) if hasattr(idx, 'names') else []
-                if 'stimulus_id' in names:
-                    return list(idx.get_level_values('stimulus_id'))
-                if 'clip_id' in names:
-                    return list(idx.get_level_values('clip_id'))
-        for col in ('stimulus_id', 'clip_id'):
-            if col in assembly.coords:
-                return list(assembly[col].values)
-        raise KeyError(
-            f"assembly has neither 'stimulus_id' nor 'clip_id' on its "
-            f"presentation axis; coords={list(assembly.coords)}")
+    _read_stimulus_ids = staticmethod(read_stimulus_ids)
 
     @staticmethod
     def _to_2d(assembly):
