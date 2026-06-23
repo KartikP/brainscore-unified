@@ -26,12 +26,7 @@ from PIL import Image
 from brainscore_core.model_interface import BrainScoreModel
 
 
-SUPPORTED_IDENTIFIERS = (
-    'clip-wav2vec2',
-    'random-clip-wav2vec2',
-    'clip-random-wav2vec2',
-    'random-clip-random-wav2vec2',
-)
+from ._ids import SUPPORTED_IDENTIFIERS
 
 REGION_LAYER_MAP = {
     # Vision tower (CLIP ViT-B/32 vision_model — paths relative to

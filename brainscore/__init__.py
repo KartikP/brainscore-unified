@@ -25,9 +25,12 @@ metric_registry: Dict[str, Callable[[], Metric]] = {}
 def _populate_unified_registries() -> None:
     """Import benchmark + model subpackages so they register factories.
 
-    Kept internal and called once at import time. Imports are cheap (each
-    subpackage just registers a factory; heavy data loading happens at
-    factory call time).
+    Kept internal and called once at import time. Imports are cheap by
+    contract: each plugin __init__ registers a factory that defers
+    ``from .model import get_model`` to call time, so heavy deps
+    (torch/transformers/cv2/sklearn) load only when a model is actually
+    loaded — not on ``import brainscore``. Guarded by
+    ``tests/test_import_hygiene.py``.
     """
     try:
         from . import benchmarks  # noqa: F401

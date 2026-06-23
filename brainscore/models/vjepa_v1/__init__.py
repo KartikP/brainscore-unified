@@ -1,4 +1,9 @@
 from brainscore import model_registry
-from .model import get_model
 
-model_registry['vjepa1-vitl'] = lambda: get_model('vjepa1-vitl')
+
+def _load():  # defer heavy imports to load time (keep `import brainscore` light)
+    from .model import get_model
+    return get_model('vjepa1-vitl')
+
+
+model_registry['vjepa1-vitl'] = _load

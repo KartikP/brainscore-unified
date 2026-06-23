@@ -1,4 +1,9 @@
 from brainscore import model_registry
-from .model import get_model
 
-model_registry['random-wav2vec2-base'] = lambda: get_model('random-wav2vec2-base')
+
+def _load():  # defer heavy imports to load time (keep `import brainscore` light)
+    from .model import get_model
+    return get_model('random-wav2vec2-base')
+
+
+model_registry['random-wav2vec2-base'] = _load

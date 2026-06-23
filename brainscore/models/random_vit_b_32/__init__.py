@@ -1,4 +1,9 @@
 from brainscore import model_registry
-from .model import get_model
 
-model_registry['random-vit-b-32'] = lambda: get_model('random-vit-b-32')
+
+def _load():  # defer heavy imports to load time (keep `import brainscore` light)
+    from .model import get_model
+    return get_model('random-vit-b-32')
+
+
+model_registry['random-vit-b-32'] = _load

@@ -153,12 +153,7 @@ def _build_audio_wrapper(identifier: str, random_init: bool = False):
     return wrapper, model
 
 
-SUPPORTED_IDENTIFIERS = (
-    'vjepa1-wav2vec2',                  # signal video + signal audio
-    'random-vjepa1-wav2vec2',           # null   video + signal audio
-    'vjepa1-random-wav2vec2',           # signal video + null   audio
-    'random-vjepa1-random-wav2vec2',    # null   video + null   audio
-)
+from ._ids import SUPPORTED_IDENTIFIERS
 
 
 def get_model(identifier: str) -> BrainScoreModel:

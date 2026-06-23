@@ -1,4 +1,9 @@
 from brainscore import model_registry
-from .model import get_model
 
-model_registry['videomae-base'] = lambda: get_model('videomae-base')
+
+def _load():  # defer heavy imports to load time (keep `import brainscore` light)
+    from .model import get_model
+    return get_model('videomae-base')
+
+
+model_registry['videomae-base'] = _load
