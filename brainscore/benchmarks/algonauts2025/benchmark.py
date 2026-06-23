@@ -46,19 +46,6 @@ TR_SEC = 1.49
 DEFAULT_ASSEMBLY_ROOT = Path('~/.brainio/algonauts2025').expanduser()
 
 
-def fit_predict_ridge(X_train, Y_train, X_pred, alpha=1.0):
-    """Fit a ridge encoder on (X_train → Y_train) and predict for X_pred.
-
-    The held-out prediction step: a linear encoding model maps stacked
-    stimulus features to per-parcel BOLD. Held out cleanly so the math is
-    unit-testable without the heavy feature extraction. Returns float32
-    predictions of shape ``(len(X_pred), Y_train.shape[1])``.
-    """
-    from sklearn.linear_model import Ridge
-    reg = Ridge(alpha=alpha).fit(X_train, Y_train)
-    return reg.predict(X_pred).astype(np.float32)
-
-
 def _ffmpeg_extract_one(args):
     """Worker for the frame-extraction Pool. Tuple-args because Pool.imap
     doesn't take starargs."""
@@ -611,7 +598,8 @@ class _Algonauts2025Base(BenchmarkBase):
         train = train_benchmark or Algonauts2025Friends(subject=self._subject)
         X_train, Y_train, _, _ = train._design_matrix(candidate, drop_excluded=True)
         X_pred, _, _, _ = self._design_matrix(candidate, drop_excluded=False)
-        preds = fit_predict_ridge(X_train, Y_train, X_pred, alpha=alpha)
+        from brainscore.tools.banded_ridge import ridge_fit_predict
+        preds = ridge_fit_predict(X_train, Y_train, X_pred, alpha=alpha)
         os.makedirs(out_dir, exist_ok=True)
         path = os.path.join(out_dir, f'sub-{self._subject:02d}_{self._split}.npy')
         np.save(path, preds)

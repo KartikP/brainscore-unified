@@ -9,7 +9,7 @@ import zipfile
 import numpy as np
 import pytest
 
-from brainscore.benchmarks.algonauts2025.benchmark import fit_predict_ridge
+from brainscore.tools.banded_ridge import ridge_fit_predict
 from brainscore.benchmarks.algonauts2025.submit_codabench import (
     build_submission, write_submission_zip, SCHAEFER_N_PARCELS,
     SPLIT_NPY_NAME)
@@ -22,7 +22,7 @@ class TestFitPredictRidge:
         W = rng.randn(12, 5)
         Y = X @ W + 0.01 * rng.randn(300, 5)
         Xp = rng.randn(50, 12)
-        preds = fit_predict_ridge(X, Y, Xp, alpha=1e-3)
+        preds = ridge_fit_predict(X, Y, Xp, alpha=1e-3)
         truth = Xp @ W
         # near-perfect recovery with low ridge + low noise
         r = np.corrcoef(preds.ravel(), truth.ravel())[0, 1]
@@ -34,7 +34,7 @@ class TestFitPredictRidge:
         rng = np.random.RandomState(1)
         X = rng.randn(80, 6)
         Y = rng.randn(80, 3)
-        big = fit_predict_ridge(X, Y, X, alpha=1e6)
+        big = ridge_fit_predict(X, Y, X, alpha=1e6)
         # heavy ridge → predictions shrink toward the mean (near-zero variance)
         assert np.var(big) < np.var(Y)
 
