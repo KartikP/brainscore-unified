@@ -2,16 +2,16 @@
  * deep-dives. Runs AFTER app.js has rendered every section (charts already sized
  * while visible), so we only reorder + show/hide + collapse here.
  *
- * Section tiers (data-tier on each <section>):
- *   always    : shown in every audience, never collapsed (hero handled separately)
- *   headline  : the promise + the most compelling demos (shown to everyone)
- *   showcase  : compelling results shown to Board + Technical
- *   deepdive  : methodology; Board shows it COLLAPSED, Technical EXPANDED, Executive hides it
+ * Section tiers (data-tier on each <section>) — NESTED, cumulative:
+ *   always : shown in every audience (e.g. caveats)
+ *   act1   : "What can you ask a model?" — capabilities + scores (shown to everyone)
+ *   act2   : "+ the science" — score-method comparisons, nulls, introspection (Board + Technical)
+ *   api    : the API / contract band (Technical only; ordered first)
  *
- * Audiences:
- *   executive  : headline + always only
- *   board      : headline + showcase visible; deepdive collapsed   (default)
- *   technical  : everything visible; deepdive expanded
+ * Audiences (each higher one sees everything the lower one sees, plus more):
+ *   executive : act1 (+ always)
+ *   board     : act1 + act2 (+ always)               (default — scientific advisory board)
+ *   technical : api + act1 + act2 (+ always)
  */
 (function () {
   var AUD_KEY = 'bsu-audience';
@@ -75,12 +75,12 @@
     document.body.setAttribute('data-aud', aud);
     sections().forEach(function (s) {
       var tier = s.dataset.tier;
-      var show = true, collapse = false;
-      if (aud === 'executive') { show = (tier === 'headline' || tier === 'always'); }
-      else if (aud === 'board') { show = true; collapse = (tier === 'deepdive'); }
-      else { show = true; collapse = false; }            // technical: all expanded
+      // Nested audiences: each higher tier sees everything the lower one sees, plus more.
+      var show;
+      if (aud === 'executive') show = (tier === 'act1' || tier === 'always');
+      else if (aud === 'board') show = (tier === 'act1' || tier === 'act2' || tier === 'always');
+      else show = true;                                  // technical: api + act1 + act2 + always
       s.style.display = show ? '' : 'none';
-      if (tier === 'deepdive' && show) setCollapsed(s, collapse);
       if (show) setTimeout(function () { resizePlots(s); }, 80);
     });
     // active button

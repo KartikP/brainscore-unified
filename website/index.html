@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Brain-Score · Unified Model Interface</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<link rel="stylesheet" href="style.css?v=17" />
+<link rel="stylesheet" href="style.css?v=18" />
 </head>
 <body>
 <nav class="nav">
@@ -39,16 +39,47 @@
   </div>
 </header>
 
-<section id="capabilities" data-toc="The hand-off" data-order="10" data-tier="headline" class="section">
+<section id="api" data-toc="The API" data-order="5" data-tier="api" class="section api-band">
+  <p class="act-eyebrow">For builders · the contract</p>
+  <h2>One method, every plugin</h2>
+  <p class="lead">Every model is one registration, evaluated through a single call:
+    <code>process(input) → output</code>. The input you hand it decides the test; the output
+    type follows from it. Five plugin seams (model, benchmark, metric, data, stimulus-set) plus
+    one new capability seam are all you ever extend.</p>
+  <div class="api-cols">
+    <div><b>Inputs</b><br>image · text · audio · video · mixed senses · a step in a game · a lesion</div>
+    <div><b>Outputs</b><br>a brain response · a behavioral choice · an action · a generated answer</div>
+  </div>
+  <p class="muted small">Full routing, the input/output unions, the wrappers, and the file
+    layout: <a href="architecture.html">the Architecture page →</a></p>
+</section>
+
+<section id="act-ask" data-toc="What you can ask" data-order="8" data-tier="act1" class="act-band">
+  <p class="act-eyebrow">Act 1 · for everyone</p>
+  <h2 class="act-h">What can you ask a model?</h2>
+  <p class="act-lead">One hand-off, an escalating set of questions: predict the brain, match a
+    behavior, act in a world, and intervene on the model itself — each shown with its score.</p>
+</section>
+
+<section id="act-science" data-toc="The science" data-order="100" data-tier="act2" class="act-band">
+  <p class="act-eyebrow">Act 2 · for the scientific reader</p>
+  <h2 class="act-h">Are the scores meaningful — and what's interesting?</h2>
+  <p class="act-lead">The same capabilities, examined: scores compared across methods, every
+    result checked against a deliberately-broken baseline, and tools to watch a model think.</p>
+</section>
+
+<section id="capabilities" data-toc="The hand-off" data-order="10" data-tier="act1" class="section">
   <h2>One simple hand-off, every kind of test</h2>
   <p class="lead">Every model is treated the same way: you hand it an input (a set of
-    images, a sentence, a sound, a video, or a moment in a game) and it hands back its
-    response. The kind of input you give it decides what's being tested. That single,
-    shared hand-off is what lets one model run on every test below.</p>
+    images, a sentence, a sound, a video, a moment in a game, even a switched-off part
+    of the model) and it hands back a response (where the brain lights up, a choice, an
+    action, or a written answer). The kind of input decides what's being tested; the kind
+    of response tells you how it did. That single, shared hand-off is what lets one model
+    run on every test below.</p>
   <div class="cap-grid" id="cap-grid"></div>
 </section>
 
-<section id="response" data-toc="Brain response" data-order="20" data-tier="showcase" class="section">
+<section id="response" data-toc="Brain response" data-order="20" data-tier="act1" class="section">
   <h2>Show it something, see where the brain lights up</h2>
   <p class="lead">Pick a kind of input below. The map shows roughly where in the brain
     that kind of input drives activity: the part of the brain a model is then asked to predict.</p>
@@ -69,7 +100,7 @@
   </div>
 </section>
 
-<section id="moviebrain" data-toc="Movie → brain" data-order="30" data-tier="headline" class="section alt">
+<section id="moviebrain" data-toc="Movie → brain" data-order="30" data-tier="act1" class="section alt">
   <h2 id="mb-title"></h2>
   <p class="lead" id="mb-sub"></p>
   <div class="mb-grid">
@@ -98,7 +129,7 @@
   <div class="raj-caveats" id="mb-caption"></div>
 </section>
 
-<section id="leaderboard" data-toc="Public leaderboard" data-order="35" data-tier="headline" class="section">
+<section id="leaderboard" data-toc="Public leaderboard" data-order="35" data-tier="act1" class="section">
   <h2 id="lb-title"></h2>
   <p class="lead" id="lb-sub"></p>
   <div class="two-col">
@@ -117,25 +148,11 @@
   <div class="raj-caveats" id="lb-caption"></div>
 </section>
 
-<section id="rajalingham" data-toc="Object matching" data-order="40" data-tier="showcase" class="section alt">
+<section id="rajalingham" data-toc="Object matching" data-order="40" data-tier="act1" class="section alt">
   <h2 id="raj-title"></h2>
   <p class="lead" id="raj-sub"></p>
-  <figure class="raj-montages">
-    <div id="raj-montage-imgs"></div>
-    <figcaption>What the model actually saw: the briefly-shown <b>target</b> on top, two
-      object <b>choices</b> (left / right) below. It has to pick which choice is the
-      same object as the target. This is exactly the screen the human subjects saw.</figcaption>
-  </figure>
-  <div class="two-col">
-    <div id="raj-plot" class="plot"></div>
-    <table class="paths-table" id="raj-table"></table>
-  </div>
-  <div class="raj-findings" id="raj-findings"></div>
-  <p class="reading" id="raj-reading"></p>
-  <div class="raj-caveats" id="raj-caveats"></div>
-
   <div id="raj-seq">
-    <h3 id="raj-seq-title" style="margin:40px 0 4px"></h3>
+    <h3 id="raj-seq-title" style="margin:8px 0 6px"></h3>
     <p class="muted small" id="raj-seq-sub"></p>
     <div class="seq-trace" id="raj-seq-trace"></div>
     <div class="two-col">
@@ -144,9 +161,17 @@
     </div>
     <div class="raj-caveats" id="raj-seq-caveat"></div>
   </div>
+  <div class="two-col">
+    <div id="raj-plot" class="plot"></div>
+    <table class="paths-table" id="raj-table"></table>
+  </div>
+  <div class="raj-findings" id="raj-findings"></div>
+  <p class="reading" id="raj-reading"></p>
+  <div class="raj-caveats" id="raj-caveats"></div>
+
 </section>
 
-<section id="game" data-toc="Playing a game" data-order="50" data-tier="headline" class="section">
+<section id="game" data-toc="Playing a game" data-order="50" data-tier="act1" class="section">
   <h2 id="game-title"></h2>
   <p class="lead" id="game-sub"></p>
   <figure class="game-fig">
@@ -189,7 +214,7 @@
   </div>
 </section>
 
-<section id="selection" data-toc="Word-form units" data-order="110" data-tier="deepdive" class="section">
+<section id="selection" data-toc="Word-form units" data-order="110" data-tier="act2" class="section">
   <h2>Finding a model's word-selective units</h2>
   <p class="lead">To study reading, we first have to find the model's word-selective units.
     We do it the way brain scientists do: show the model words and non-words, and
@@ -213,7 +238,7 @@
   </div>
 </section>
 
-<section id="tools" data-toc="The tools" data-order="120" data-tier="deepdive" class="section">
+<section id="tools" data-toc="The tools" data-order="120" data-tier="act2" class="section">
   <h2 id="tools-title"></h2>
   <p class="lead" id="tools-sub"></p>
 
@@ -304,7 +329,7 @@
   </div>
 </section>
 
-<section id="layermapping" data-toc="Layer mapping" data-order="130" data-tier="deepdive" class="section alt">
+<section id="layermapping" data-toc="Layer mapping" data-order="130" data-tier="act2" class="section alt">
   <p class="tool-eyebrow-row"><span class="tool-eyebrow">Tool 2 · Layer mapping, in action</span></p>
   <h2 id="lm-title"></h2>
   <p class="lead" id="lm-sub"></p>
@@ -337,7 +362,7 @@
   </div>
 </section>
 
-<section id="generalize" data-toc="Does it generalize?" data-order="80" data-tier="showcase" class="section">
+<section id="generalize" data-toc="Does it generalize?" data-order="108" data-tier="act2" class="section">
   <h2 id="gen-title"></h2>
   <p class="lead" id="gen-sub"></p>
   <div class="two-col">
@@ -355,7 +380,7 @@
   <p class="reading" id="gen-reading"></p>
 </section>
 
-<section id="witness" data-toc="Watch it run" data-order="150" data-tier="deepdive" class="section alt">
+<section id="witness" data-toc="Watch it run" data-order="150" data-tier="act2" class="section alt">
   <p class="tool-eyebrow-row"><span class="tool-eyebrow">Tool 3 · Watch it run</span></p>
   <h2 id="witness-title"></h2>
   <p class="lead" id="witness-sub"></p>
@@ -364,7 +389,7 @@
   <p class="reading" id="witness-reading"></p>
 </section>
 
-<section id="percept" data-toc="What it saw" data-order="160" data-tier="deepdive" class="section">
+<section id="percept" data-toc="What it saw" data-order="160" data-tier="act2" class="section">
   <p class="tool-eyebrow-row"><span class="tool-eyebrow">Tool 4 · See what it saw</span></p>
   <h2 id="percept-title"></h2>
   <p class="lead" id="percept-sub"></p>
@@ -374,7 +399,7 @@
   <div class="raj-caveats" id="percept-caveat"></div>
 </section>
 
-<section id="fusion" data-toc="Fusing the senses" data-order="140" data-tier="deepdive" class="section">
+<section id="fusion" data-toc="Fusing the senses" data-order="140" data-tier="act2" class="section">
   <h2 id="fusion-title"></h2>
   <p class="lead" id="fusion-sub"></p>
   <div class="two-col">
@@ -393,7 +418,7 @@
   </div>
 </section>
 
-<section id="ablation" data-toc="Dyslexia" data-order="60" data-tier="headline" class="section alt">
+<section id="ablation" data-toc="Dyslexia" data-order="60" data-tier="act1" class="section alt">
   <h2>Switching off a model's word-selective units: giving it "dyslexia"</h2>
   <p class="lead">We switch off the model's word-selective units, re-test its reading, then
     switch them back on (it restores perfectly). The result reproduces a 2026 study:
@@ -416,7 +441,7 @@
   </div>
 </section>
 
-<section id="scaling" data-toc="Bigger models" data-order="70" data-tier="headline" class="section alt">
+<section id="scaling" data-toc="Bigger models" data-order="70" data-tier="act1" class="section alt">
   <h2>Better models, better scores</h2>
   <p class="lead">A test worth running should reward better models and sit near its
     "knows-nothing" floor for an untrained one. That's the basic sanity check: pick a
@@ -428,14 +453,14 @@
   </div>
 </section>
 
-<section id="gemma-scorecard" data-toc="Gemma scorecard" data-order="170" data-tier="deepdive" class="section">
+<section id="gemma-scorecard" data-toc="Gemma scorecard" data-order="170" data-tier="act2" class="section">
   <h2 id="gsc-title"></h2>
   <p class="lead" id="gsc-sub"></p>
   <table class="nulls-table" id="gsc-table"></table>
   <p class="reading" id="gsc-reading"></p>
 </section>
 
-<section id="layercontrib" data-toc="Where signal lives" data-order="190" data-tier="deepdive" class="section alt">
+<section id="layercontrib" data-toc="Where signal lives" data-order="190" data-tier="act2" class="section alt">
   <h2 id="lc-title"></h2>
   <p class="lead" id="lc-sub"></p>
   <div class="two-col">
@@ -447,7 +472,7 @@
   </div>
 </section>
 
-<section id="mechanics" data-toc="Inside one test" data-order="200" data-tier="deepdive" class="section">
+<section id="mechanics" data-toc="Inside one test" data-order="200" data-tier="act2" class="section">
   <h2 id="mech-title"></h2>
   <p class="lead" id="mech-sub"></p>
   <div class="mech-wrap">
@@ -470,13 +495,13 @@
   <p class="reading" id="allpaths-reading"></p>
 </section>
 
-<section id="models" data-toc="The models" data-order="210" data-tier="deepdive" class="section">
+<section id="models" data-toc="The models" data-order="210" data-tier="act2" class="section">
   <h2 id="models-title"></h2>
   <p class="lead" id="models-sub"></p>
   <div class="model-grid" id="model-grid"></div>
 </section>
 
-<section id="nulls" data-toc="Null baselines" data-order="180" data-tier="deepdive" class="section alt">
+<section id="nulls" data-toc="Null baselines" data-order="180" data-tier="act2" class="section alt">
   <h2>A null baseline, for every test</h2>
   <p class="lead">No result counts here until it clearly beats a deliberately broken
     version of the same test: the same machinery, with the real signal stripped out.
@@ -513,6 +538,6 @@
 <script src="app.js?v=19"></script>
 <script src="model_moves.js?v=2"></script>
 <script src="game.js?v=2"></script>
-<script src="audience.js?v=3"></script>
+<script src="audience.js?v=4"></script>
 </body>
 </html>

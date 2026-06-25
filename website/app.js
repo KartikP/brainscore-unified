@@ -822,8 +822,6 @@
     $('raj-title').textContent = raj.title;
     $('raj-sub').textContent = raj.subtitle;
     setReading('raj-reading', raj.reading);
-    $('raj-montage-imgs').innerHTML = raj.montages.map(m =>
-      `<img src="${m}?v=1" alt="2-AFC montage" />`).join('');
     // Group by model family (modes kept adjacent), families ordered by scale with
     // the null floor at the bottom, so within-model elicitation effects (direct vs
     // CoT vs few-shot) AND the cross-scale trend are both readable. Colour still

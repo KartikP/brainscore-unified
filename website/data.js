@@ -448,8 +448,8 @@ window.BSU_DATA = {
       "The 'practice hurts' result might partly be a quirk of how we showed multiple images at once (the small model just kept saying 'left'); it needs one more control before we'd call it a fact."
     ],
     "sequential": {
-      "title": "What happens when the target is taken away before the model chooses",
-      "subtitle": "Above, all three pictures are on screen together. The real human task is one-at-a-time: the target is shown, then hidden, and only THEN do the choices appear, so you have to hold it in memory. We trace that step by step, because the interesting question here is what the model loses when it has to remember the target rather than stare at it. Same model, same 2,505 trials.",
+      "title": "The task, the way the people and monkeys actually saw it",
+      "subtitle": "The real task is one-at-a-time: a brief look at the target, then it is hidden, and only THEN do the two choices appear, so you have to hold the target in memory and pick the match. That is the exact sequence the people and monkeys saw. We trace it step by step, because the interesting question is what the model loses when it has to remember the target rather than stare at it. Same model, same 2,505 trials.",
       "trace": [
         {"img": "assets/raj_seq_sample.png", "cap": "1 · target shown, then hidden", "kind": "img"},
         {"text": "the model describes it in its own words, then the target is gone", "cap": "2 · the bottleneck: remember it", "kind": "text"},
@@ -459,7 +459,7 @@ window.BSU_DATA = {
         {"label": "guessing (floor)", "i2n": -0.028, "kind": "null"},
         {"label": "from memory: target hidden, match from its own description", "i2n": 0.097, "kind": "seq"},
         {"label": "target still on screen: choose with it in view", "i2n": 0.170, "kind": "seq"},
-        {"label": "all three at once: the layout above", "i2n": 0.163, "kind": "sim"}
+        {"label": "all three on screen at once (a simplification)", "i2n": 0.163, "kind": "sim"}
       ],
       "kindColors": {"null": "#9aa6b8", "seq": "#7c4dff", "sim": "#2f6bff"},
       "reading": "What costs the model is losing sight of the target, not seeing things one at a time. The only fully realistic version, where the target is gone and the model must choose from its own remembered description, drops the score by about 40% (to 0.097). Putting the target into words throws away the fine visual detail the match needs (the descriptions were perfectly fluent, e.g. 'a sculpture of a person in mid-air, diving or jumping', and the model gave a clean left/right answer on all but 5 of 2,505 trials). When the target stays on screen, splitting the task into steps costs almost nothing (0.170 ≈ 0.163), so showing all three at once isn't inflating the score just by keeping everything visible.",
