@@ -731,12 +731,26 @@
     }
     setFrame(0);
     // Both brain montages + transcript follow the video's playhead (1 frame per TR).
-    const vid = $('mb-video');
-    if (vid) {
-      vid.src = mb.video + bust;
-      const sync = () => setFrame(Math.floor(vid.currentTime / mb.tr_sec));
-      vid.addEventListener('timeupdate', sync);
-      vid.addEventListener('seeked', sync);
+    // No source video is shown (the real stimulus is licensed); a scrubber +
+    // play button step through the recorded snapshots so both brains animate.
+    const scrub = $('mb-scrub');
+    if (scrub) {
+      scrub.max = mb.n - 1;
+      scrub.addEventListener('input', () => setFrame(+scrub.value));
+    }
+    const playBtn = $('mb-play');
+    if (playBtn) {
+      let timer = null;
+      playBtn.addEventListener('click', () => {
+        if (timer) { clearInterval(timer); timer = null; playBtn.textContent = '▶ play'; return; }
+        playBtn.textContent = '⏸ pause';
+        timer = setInterval(() => {
+          const next = (curFrame + 1) % mb.n;
+          if (scrub) scrub.value = next;
+          setFrame(next);
+          if (next === mb.n - 1) { clearInterval(timer); timer = null; playBtn.textContent = '▶ play'; }
+        }, Math.round(mb.tr_sec * 1000));
+      });
     }
   }
 

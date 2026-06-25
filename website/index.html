@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Brain-Score · Unified Model Interface</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<link rel="stylesheet" href="style.css?v=18" />
+<link rel="stylesheet" href="style.css?v=19" />
 </head>
 <body>
 <nav class="nav">
@@ -106,8 +106,17 @@
   <div class="mb-grid">
     <div class="mb-left">
       <figure class="mb-fig mb-video-fig">
-        <video id="mb-video" controls playsinline preload="metadata"></video>
-        <figcaption>the real Algonauts clip: picture + sound + dialogue (what goes in)</figcaption>
+        <div class="mb-stim-card">
+          <span class="mb-stim-tag">what went in</span>
+          <p>A ~10-second movie clip — moving images, sound, and dialogue — played while the
+            brain was scanned. The source footage is licensed to the research dataset and isn't
+            reproduced here; scrub or play to step through the recorded snapshots.</p>
+        </div>
+        <div class="mb-scrub-row">
+          <button id="mb-play" class="mb-play" type="button">▶ play</button>
+          <input type="range" id="mb-scrub" min="0" max="6" value="0" aria-label="scrub through the clip" />
+        </div>
+        <figcaption>Picture + sound + dialogue went in; both brains respond in step.</figcaption>
       </figure>
       <div class="mb-transcript" id="mb-transcript"></div>
     </div>
@@ -534,8 +543,8 @@
   <div class="muted small" id="provenance"></div>
 </footer>
 
-<script src="data.js?v=22"></script>
-<script src="app.js?v=19"></script>
+<script src="data.js?v=23"></script>
+<script src="app.js?v=20"></script>
 <script src="model_moves.js?v=2"></script>
 <script src="game.js?v=2"></script>
 <script src="audience.js?v=4"></script>

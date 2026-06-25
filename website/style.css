@@ -401,3 +401,13 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .api-band{border-left:3px solid var(--accent)}
 .api-band .api-cols{display:flex;gap:20px;flex-wrap:wrap;margin:16px 0}
 .api-band .api-cols>div{flex:1;min-width:240px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 16px;line-height:1.6}
+
+
+/* ── Movie→brain stimulus card + scrubber (replaces the licensed clip) ── */
+.mb-stim-card{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.mb-stim-tag{display:inline-block;font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);font-weight:700;margin-bottom:6px}
+.mb-stim-card p{margin:0;color:var(--muted);font-size:.92rem;line-height:1.5}
+.mb-scrub-row{display:flex;align-items:center;gap:10px;margin:10px 0 4px}
+.mb-scrub-row input[type=range]{flex:1}
+.mb-play{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.85rem}
+.mb-play:hover{border-color:var(--accent)}
