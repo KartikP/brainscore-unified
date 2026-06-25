@@ -411,3 +411,11 @@ figcaption{color:var(--muted); font-size:.82rem; margin-top:8px}
 .mb-scrub-row input[type=range]{flex:1}
 .mb-play{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:5px 12px;cursor:pointer;font-size:.85rem}
 .mb-play:hover{border-color:var(--accent)}
+
+
+/* ── Illustrative-figure stamp + footer CTA ──────────────────────── */
+.illus-fig{position:relative}
+.illus-badge{position:absolute;top:8px;right:8px;background:rgba(198,129,15,.94);color:#fff;font-size:.6rem;letter-spacing:.07em;text-transform:uppercase;font-weight:700;padding:3px 7px;border-radius:5px;z-index:2;pointer-events:none}
+.cta-row{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.cta-btn{display:inline-block;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:7px 13px;font-size:.85rem;text-decoration:none;font-weight:600}
+.cta-btn:hover{border-color:var(--accent);color:var(--accent)}

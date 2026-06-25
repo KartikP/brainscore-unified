@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Brain-Score · Unified Model Interface</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
-<link rel="stylesheet" href="style.css?v=19" />
+<link rel="stylesheet" href="style.css?v=20" />
 </head>
 <body>
 <nav class="nav">
@@ -86,8 +86,9 @@
   <div class="response-wrap">
     <div class="input-toggles" id="input-toggles"></div>
     <div class="response-panel">
-      <figure>
-        <img id="cortex-img" src="assets/cortex_demo.png?v=3" alt="predicted cortical response" />
+      <figure class="illus-fig">
+        <span class="illus-badge">illustrative</span>
+        <img id="cortex-img" src="assets/cortex_demo.png?v=3" alt="predicted cortical response (illustrative)" />
         <figcaption id="cortex-cap">Illustrative: roughly where in the brain this kind of input is predicted to drive activity, drawn on a standard brain surface by our own visualization tools.</figcaption>
       </figure>
       <div class="response-text">
@@ -541,10 +542,15 @@
     ready-to-run example for each capability shown on this page, and the same toolkit
     draws every figure above.
   </div>
+  <div class="cta-row">
+    <a class="cta-btn" href="https://www.brain-score.org" target="_blank" rel="noopener">Live leaderboard &amp; submit a model →</a>
+    <a class="cta-btn" href="https://github.com/brain-score" target="_blank" rel="noopener">Code on GitHub →</a>
+    <a class="cta-btn" href="architecture.html">How it works →</a>
+  </div>
   <div class="muted small" id="provenance"></div>
 </footer>
 
-<script src="data.js?v=24"></script>
+<script src="data.js?v=25"></script>
 <script src="app.js?v=20"></script>
 <script src="model_moves.js?v=2"></script>
 <script src="game.js?v=2"></script>
