@@ -470,6 +470,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
+        score.attrs['per_voxel_r'] = per_voxel_r   # exposed for bootstrap CIs
         score.attrs['n_videos'] = int(n)
         # Make the pipeline explicit so downstream consumers know what
         # assumption the score was computed under.
