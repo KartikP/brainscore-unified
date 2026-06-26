@@ -182,13 +182,16 @@
       in the benchmark (<code>temporal_bin</code> + <code>hrf_convolve</code>), not a commitment layer —
       the same reason regions map to layers freely rather than through a fixed hierarchy.</p>
 
-    <h3>6 · The dispatch order <span class="muted">— inside <code>process()</code></span></h3>
+    <h3>6 · The dispatch table <span class="muted">— inside <code>process()</code></span></h3>
     <pre class="code"><code>def process(input_event, multi_modality=False):
-    if isinstance(input_event, StateChange):     return state_change_fn(...)      # PerturbationApplied
-    if isinstance(input_event, EnvironmentStep): return action_fn(...)            # EnvironmentResponse
-    if isinstance(input_event, Message):         return action_fn(...)            # Message | EnvironmentResponse
+    # Dispatch is a TABLE, not a hardcoded ladder. A new capability / IO type
+    # registers a handler via register_input_handler — this loop never changes.
+    for event_type, handler in self._INPUT_HANDLERS:    # (StateChange, EnvironmentStep, Message)
+        if isinstance(input_event, event_type):
+            return getattr(self, handler)(input_event)  # PerturbationApplied / EnvironmentResponse / Message
+    return self._handle_stimulus_set(input_event, multi_modality)   # perceptual fallback — the 99% path
 
-    # --- perceptual (StimulusSet) ---
+def _handle_stimulus_set(stimuli, multi_modality=False):  # the perceptual 99% path
     if generation_viable_for_task():             return _generate_predictions()   # BehavioralAssembly
     if readout_viable_for_task():                return _predict_probabilities()  # BehavioralAssembly
 
@@ -218,7 +221,7 @@ model.required    ⊆ benchmark.required   # the benchmark provides what the mod
     <p class="lead">The interface is a <b>backbone</b>: a small, stable core you extend along well-defined
       seams. Model / Benchmark / Metric / Data / Stimulus-set <b>are Brain-Score's existing plugin
       registries</b>, reused unchanged; <b>Capability</b> is the only seam the unified interface adds.
-      We ship the seams + a few reference integrations; you bring the breadth. None of this touches the core.</p>
+      We ship the seams + a few reference integrations; you bring the breadth. Extending happens by registration, not by editing the core dispatch.</p>
 
     <h3>One mechanism: registries</h3>
     <p>Everything is a factory registered under a string identifier. A plugin is a subpackage whose
@@ -248,7 +251,8 @@ score     = brainscore.score('your-model', 'your-benchmark')</code></pre>
       distinct metric (e.g. <code>load_metric('topographic-alignment')</code> scores a model's spatial
       unit layout against cortical topography, which predictivity is blind to — it is permutation-invariant
       over units). Filling an existing <b>Capability</b> slot needs no core change at all; only a genuinely
-      new input/output <i>type</i> touches the core dispatch.</p>
+      new input/output <i>type</i> adds a row to process()'s dispatch table (one
+      <code>register_input_handler</code> call plus a handler) — the dispatch loop is never edited.</p>
 
     <div class="callout" style="border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:14px 16px;margin:14px 0;background:var(--panel2)">
       <p style="margin:0 0 6px"><b>The topographic axis, on real fMRI (a first n=2 sign-check).</b> Scored on an NSD
@@ -342,8 +346,8 @@ unified/brainscore/                   # everything built on the interface
   </section>
 
   <footer class="footer">
-    <div><b>One method, every capability.</b> The routing above is generated from the same
-      dispatch logic the framework actually runs; the contracts are the complete author-facing
+    <div><b>One method, every capability.</b> The routing above mirrors the framework's dispatch table
+      (a hand-maintained illustration of process(), not auto-generated); the contracts are the complete author-facing
       surface.</div>
     <div class="muted small"><a href="index.html">← back to the overview</a></div>
   </footer>
