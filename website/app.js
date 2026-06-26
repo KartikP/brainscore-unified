@@ -304,7 +304,6 @@
       x: a.mask_pct, y: a.vwf_roar, type: 'scatter', mode: 'lines+markers',
       name: 'switch off word-selective units', line: { color: '#d8483b', width: 3 },
       marker: { size: 8 },
-      error_y: { type: 'data', array: a.vwf_roar_sd, color: '#d8483b', thickness: 1 },
       hovertemplate: 'word-selective units, %{x}%: accuracy %{y:.2f}<extra></extra>',
     };
     const rnd = {
@@ -718,6 +717,21 @@
           `</div>`;
       }
     }
+    function renderRCurve(act) {
+      const el = $('mb-rcurve');
+      if (!el || !act.per_tr_r || !window.Plotly) return;
+      const xs = act.per_tr_r.map(function (_, k) { return k + 1; });
+      window.Plotly.react(el, [{
+        x: xs, y: act.per_tr_r, type: 'scatter', mode: 'lines+markers',
+        line: { color: '#2f6bff', width: 2 }, marker: { size: 6 },
+        hovertemplate: 'snapshot %{x}: match %{y:.2f}<extra></extra>'
+      }], {
+        margin: { l: 34, r: 8, t: 6, b: 30 },
+        xaxis: { title: { text: 'snapshot through the clip (~1.5s apart)', font: { size: 10 } }, tickfont: { size: 9 }, fixedrange: true },
+        yaxis: { range: [-0.1, 0.45], tickfont: { size: 9 }, zeroline: true, fixedrange: true },
+        shapes: [{ type: 'line', x0: 0.5, x1: xs.length + 0.5, y0: 0.05, y1: 0.05, line: { color: '#9aa0a6', dash: 'dot', width: 1 } }]
+      }, CFG);
+    }
     // render tab selector
     const tabsEl = $('mb-tabs');
     if (tabsEl && mb.tabs) {
@@ -727,9 +741,11 @@
         active = tabs[+btn.dataset.k];
         tabsEl.querySelectorAll('.mb-tab').forEach(b => b.classList.toggle('on', b === btn));
         setFrame(curFrame);
+        renderRCurve(active);
       }));
     }
     setFrame(0);
+    renderRCurve(active);
     // Both brain montages + transcript follow the video's playhead (1 frame per TR).
     // No source video is shown (the real stimulus is licensed); a scrubber +
     // play button step through the recorded snapshots so both brains animate.

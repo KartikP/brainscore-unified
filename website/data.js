@@ -72,7 +72,7 @@ window.BSU_DATA = {
     },
     "multimodal_algonauts": {
       "capability": "Predicting the brain: watching a movie (Algonauts 2025 / CNeuroMod)",
-      "models": ["text-only", "video-only", "audio-only", "concat", "banded"],
+      "models": ["text-only", "video-only", "audio-only", "combined", "banded (per-sense)"],
       "scores": [0.120, 0.150, 0.157, 0.186, 0.213],
       "null_floor": 0.05,
       "reading": "Predicting a brain watching a full movie, with picture, sound, and dialogue all at once. Each sense on its own predicts the brain a little (0.12–0.16); combining all three does better (0.19); and a smarter way of combining them, which lets each sense pull its own weight, does best (0.21). That matches the published benchmark's own baseline (about 0.20–0.25). The best published result reaches about 0.32 using a single native multimodal model. Whether that extra comes from the model itself or from a more polished pipeline, we haven't tested head-to-head. Worth knowing: an earlier version of this scored near zero, not because the senses don't help but because the model's features and the brain scans weren't lined up in time. Fixing the timing brought it up into the published range."
@@ -102,7 +102,7 @@ window.BSU_DATA = {
   },
   "movie_brain": {
     "title": "Recorded vs. predicted BOLD for a held-out movie clip",
-    "subtitle": "A real person watched a 10-second clip from the TV show Friends (picture, sound, and dialogue) inside an fMRI scanner that recorded their brain. We can't show the clip itself here (it's licensed footage), but we asked an AI model to predict that brain response from the very same clip. Top brain: what the person's brain actually did. Bottom brain: what the model predicted, for a clip it was never trained on. Both light up in step as the clip plays (each map is a snapshot of the whole brain at that moment).",
+    "subtitle": "A real person watched a 10-second clip from the TV show Friends (picture, sound, and dialogue) inside an fMRI scanner that recorded their brain. We can't show the clip itself here (it's licensed footage), but we asked an AI model to predict that brain response from the very same clip. Top brain: what the person's brain actually did. Bottom brain: what the model predicted, for a clip it was never trained on. The two maps won't look pixel-for-pixel identical: the agreement is statistical (a correlation across the whole brain), and the curve below tracks how strong that match is snapshot by snapshot (each map is a snapshot of the whole brain at that moment).",
     "human": "assets/movie_brain_real/human/bold_",
     "tabs": [
       {"id": "tribe", "label": "TRIBEv2: three separate encoders combined", "model": "assets/movie_brain_real/model_tribe/bold_", "per_tr_r": [0.2825, 0.2102, 0.2143, 0.2169, 0.0562, 0.2749, 0.2863], "mean_r": 0.220},
@@ -155,7 +155,7 @@ window.BSU_DATA = {
   },
   "ablation": {
     "capability": "Giving an AI 'dyslexia' on purpose, by switching off its word-selective units (reproducing Honarmand et al. 2026)",
-    "protocol": "First we find the model's 'reading' neurons: the internal units that respond more to real words than to scrambled letters or simple drawings. Then we switch exactly those off and check whether the model can still tell real words from fake ones. The crucial control: we also switch off the same number of randomly-chosen neurons. If only the reading-neuron version breaks reading, the damage is specific. We made it dyslexic, not just generally worse. Nothing is retrained; we just turn neurons off and watch.",
+    "protocol": "First we find the model's 'reading' neurons: the internal units that respond more to real words than to scrambled letters or simple drawings. Then we switch exactly those off and check whether the model can still tell real words from fake ones. The crucial control: we also switch off the same number of randomly-chosen neurons. If only the reading-neuron version breaks reading, the damage is specific. We made it dyslexic, not just generally worse. Nothing is retrained; we just turn neurons off and watch. (The lesioned-units line is one deterministic run, so it carries no error bars; the random control is averaged over several random picks, and its spread is shown.)",
     "mask_pct": [0, 6.9, 15, 25],
     "vwf_roar": [0.975, 0.963, 0.925, 0.537],
     "vwf_roar_sd": [0.0, 0.0, 0.0, 0.0],
