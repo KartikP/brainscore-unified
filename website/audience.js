@@ -16,7 +16,7 @@
 (function () {
   var AUD_KEY = 'bsu-audience';
   var AUD = ['executive', 'board', 'technical'];
-  var DEFAULT = 'board';
+  var DEFAULT = 'executive';
 
   function sections() {
     return Array.prototype.slice.call(document.querySelectorAll('section[data-order]'));
