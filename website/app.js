@@ -251,6 +251,14 @@
       line: { color: '#5b8cff', width: 3 }, marker: { size: 11, color: '#7c5bff' },
       hovertemplate: '%{x}: %{y:.3f}<extra></extra>',
     };
+    if (s.ci_lo && s.ci_hi) {                       // 95% bootstrap CIs (asymmetric)
+      curve.error_y = {
+        type: 'data', symmetric: false,
+        array: s.scores.map((v, i) => s.ci_hi[i] - v),
+        arrayminus: s.scores.map((v, i) => v - s.ci_lo[i]),
+        thickness: 1, width: 4, color: 'rgba(91,140,255,.55)',
+      };
+    }
     const floor = {
       x: s.models, y: s.models.map(() => s.null_floor), type: 'scatter', mode: 'lines',
       line: { color: '#d8483b', width: 1.6, dash: 'dash' }, hoverinfo: 'skip',

@@ -53,8 +53,10 @@ window.BSU_DATA = {
       "capability": "Predicting the brain: watching video (Lahner 2024 BOLDMoments)",
       "models": ["BLIP-2", "Qwen-3B", "VideoMAE", "V-JEPA2", "CLIP-B32", "V-JEPA1"],
       "scores": [0.180, 0.227, 0.321, 0.421, 0.456, 0.533],
+      "ci_lo": [0.1765, 0.2233, 0.3142, 0.4146, 0.4507, 0.5276],
+      "ci_hi": [0.1829, 0.2303, 0.3275, 0.4283, 0.4611, 0.5382],
       "null_floor": 0.05,
-      "reading": "How well each model predicts a brain watching short videos. The standout is V-JEPA v1, a video model trained to predict its own internal picture of a scene rather than to reproduce the exact pixels (VideoMAE, which does the pixel version, lands lower). So how a video model is trained matters more than whether it handles motion 'natively.' One honesty note: an earlier ranking had CLIP ahead of V-JEPA v2, and we checked whether that was just an unlucky choice of which internal layer to read. It wasn't (we tried every layer; the gap is real). These are raw match scores, not adjusted for how noisy each voxel is."
+      "reading": "How well each model predicts a brain watching short videos. The standout is V-JEPA v1, a video model trained to predict its own internal picture of a scene rather than to reproduce the exact pixels (VideoMAE, which does the pixel version, lands lower). So how a video model is trained matters more than whether it handles motion 'natively.' One honesty note: an earlier ranking had CLIP ahead of V-JEPA v2, and we checked whether that was just an unlucky choice of which internal layer to read. It wasn't (we tried every layer; the gap is real). The error bars are 95% bootstrap intervals over voxels: they don't overlap between V-JEPA v1, CLIP, and V-JEPA v2, so that ordering is a real difference, not noise. These are raw match scores, not adjusted for how noisy each voxel is."
     },
     "behavior_roar": {
       "capability": "Behavior: real vs. fake words (ROAR / Yeatman 2021)",
