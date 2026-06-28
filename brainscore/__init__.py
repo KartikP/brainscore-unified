@@ -163,15 +163,24 @@ def load_stimulus_set(identifier: str):
         f"StimulusSet '{identifier}' not found in vision or language registries.")
 
 
-def score(model_identifier: str, benchmark_identifier: str) -> Score:
+def score(model_identifier: str, benchmark_identifier: str,
+          check_mem: bool = True) -> Score:
     """Score a model on a benchmark.
 
     Loads both from the unified registry (with domain fallbacks),
     then runs the benchmark on the model.
     """
+    from brainscore_core.compatibility import check_compatibility
+    from brainscore_core.memory import check_memory
+
     import time as _time
     model = load_model(model_identifier)
     benchmark = load_benchmark(benchmark_identifier)
+
+    check_compatibility(model, benchmark)
+    if check_mem:
+        check_memory(model, benchmark)
+
     _t0 = _time.time()
     result = benchmark(model)
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
