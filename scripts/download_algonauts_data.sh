@@ -12,9 +12,9 @@
 #   IP=$(aws ec2 describe-instances --instance-ids i-0bdbdf83c4db9bdae \
 #        --region us-east-2 \
 #        --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
-#   scp -i quest-kartik-personal.pem unified/scripts/download_algonauts_data.sh \
+#   scp -i ~/.ssh/quest-kartik-personal.pem unified/scripts/download_algonauts_data.sh \
 #       ubuntu@$IP:~/
-#   ssh -i quest-kartik-personal.pem ubuntu@$IP \
+#   ssh -i ~/.ssh/quest-kartik-personal.pem ubuntu@$IP \
 #       'bash ~/download_algonauts_data.sh 2>&1 | tee ~/algonauts_download.log'
 #
 # Estimated time: 1–6 hours depending on subject coverage and bandwidth.
