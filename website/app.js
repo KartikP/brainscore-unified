@@ -100,6 +100,14 @@
   $('cap-grid').innerHTML = CAPS.map(([t, d]) =>
     `<div class="cap-card"><div class="tag">capability</div><h3>${t}</h3>
      <p>${d}</p></div>`).join('');
+  if (D.capability_status) {
+    $('capability-status-note').textContent = D.capability_status.note;
+    $('capability-status-table').innerHTML =
+      '<tr><th>capability</th><th>example</th><th>status</th><th>evidence</th></tr>'
+      + D.capability_status.rows.map(r => `<tr><td>${r.capability}</td><td>${r.example}</td>`
+        + `<td><span class="status-label status-${r.status.toLowerCase().replace(/[^a-z0-9]+/g, '-')}">${r.status}</span></td>`
+        + `<td>${r.evidence}</td></tr>`).join('');
+  }
 
   // ---- input -> brain response ----
   const toggles = $('input-toggles');

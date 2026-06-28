@@ -87,11 +87,12 @@
     <p class="lead">The full surface. These are the only things a model author touches; everything
       else (dispatch, caching, compatibility, memory) is handled by the framework.</p>
 
-    <h3>1 · The <code>UnifiedModel</code> ABC</h3>
+    <h3>1 · The <code>Subject</code> ABC</h3>
     <p>The minimal interface every model satisfies. No capability-named methods
       (<code>look_at</code>, <code>digest_text</code>) — capability is <i>derived</i> from the
-      preprocessors present.</p>
-    <pre class="code"><code>class UnifiedModel(ABC):
+      preprocessors present. <code>UnifiedModel</code> remains a deprecated alias for
+      existing imports.</p>
+    <pre class="code"><code>class Subject(ABC):
     def process(self, input_event: InputEvent,
                 multi_modality: bool = False) -> OutputEvent: ...
     def start_recording(self, recording_target: str | list[str],
@@ -100,7 +101,7 @@
     def reset(self) -> None: ...
 
     @property
-    def supported_modalities(self) -> set[str]:   # derived from preprocessors.keys()
+    def available_modalities(self) -> set[str]:   # derived from preprocessors.keys()
         ...</code></pre>
 
     <h3>2 · The <code>BrainScoreModel</code> registration</h3>
@@ -201,6 +202,7 @@ def _handle_stimulus_set(stimuli, multi_modality=False):  # the perceptual 99% p
         ...
     else:                                         # MODALITY_PRIORITY = (vision, text, audio, video)
         modality = pick_by_priority(detected)
+        if len(detected) > 1: warn_ambiguous_default(modality)
     return activations_model(preprocessors[modality](stimuli), layers)            # NeuroidAssembly</code></pre>
 
     <h3>7 · The compatibility contract</h3>
@@ -211,8 +213,9 @@ model.required    ⊆ benchmark.required   # the benchmark provides what the mod
     <p class="muted small">A benchmark declares exactly one input format via
       <code>required_modalities</code>; a model declares <code>required ⊆ available</code>. GPT-2's
       <code>required={text}</code> is what makes it fail fast on a V4 image benchmark.
-      <code>check_memory()</code> then runs one stimulus through <code>process()</code>, measures
-      peak memory (CUDA / MPS / CPU), and extrapolates to the full benchmark.</p>
+      <code>check_memory()</code> then runs the benchmark stimulus set through
+      <code>process()</code> as an extraction probe, measures peak memory (CUDA / MPS / CPU),
+      reads feature width, and estimates metric + ceiling memory from benchmark metadata.</p>
   </section>
 
   <!-- ============ how you extend it ============ -->

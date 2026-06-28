@@ -109,6 +109,15 @@ section.dd-collapsed{padding-top:40px; padding-bottom:40px}
 .cap-card h3{margin:8px 0 8px; font-size:1.12rem}
 .cap-card p{color:var(--muted); font-size:.92rem; margin:0}
 .cap-card .api{margin-top:12px; font-size:.82rem}
+.status-panel{margin-top:28px}
+.status-panel h3{margin:0 0 8px; font-size:1.18rem}
+.status-table{margin-top:14px}
+.status-label{display:inline-block; padding:3px 8px; border-radius:7px;
+  border:1px solid var(--line); font-size:.78rem; font-weight:700; white-space:nowrap}
+.status-validated{color:var(--good); background:rgba(31,157,87,.08); border-color:rgba(31,157,87,.28)}
+.status-structurally-tested{color:#2f6bff; background:rgba(47,107,255,.08); border-color:rgba(47,107,255,.26)}
+.status-ec2-only{color:var(--warn); background:rgba(198,129,15,.10); border-color:rgba(198,129,15,.30)}
+.status-demo-only{color:#7c4dff; background:rgba(124,77,255,.08); border-color:rgba(124,77,255,.26)}
 
 /* response */
 .response-wrap{display:flex; flex-direction:column; gap:18px}

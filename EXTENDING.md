@@ -19,7 +19,7 @@ data_registry:         Dict[str, Callable[[], DataAssembly]]   # in brainscore_v
 stimulus_set_registry: Dict[str, Callable[[], StimulusSet]]    # in brainscore_vision/_language
 metric_registry:       Dict[str, Callable[[], Metric]]
 benchmark_registry:    Dict[str, Callable[[], Benchmark]]
-model_registry:        Dict[str, Callable[[], UnifiedModel]]
+model_registry:        Dict[str, Callable[[], Subject]]
 ```
 
 This **is** Brain-Score's existing plugin system — five registries (`data`, `stimulus_set`, `metric`,

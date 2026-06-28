@@ -80,6 +80,71 @@ window.BSU_DATA = {
       "reading": "Predicting a brain watching a full movie, with picture, sound, and dialogue all at once. Each sense on its own predicts the brain a little (0.12–0.16); combining all three does better (0.19); and a smarter way of combining them, which lets each sense pull its own weight, does best (0.21). That matches the published benchmark's own baseline (about 0.20–0.25). The best published result reaches about 0.32 using a single native multimodal model. Whether that extra comes from the model itself or from a more polished pipeline, we haven't tested head-to-head. Worth knowing: an earlier version of this scored near zero, not because the senses don't help but because the model's features and the brain scans weren't lined up in time. Fixing the timing brought it up into the published range."
     }
   },
+  "capability_status": {
+    "note": "Status separates what has a checked number from what is structurally wired. EC2-only rows require heavy data, model weights, or API calls outside the local-safe test tier. Demo-only rows exercise the interface but are not brain-alignment claims.",
+    "rows": [
+      {
+        "capability": "Vision neural encoding",
+        "example": "MajajHong2015 V4/IT",
+        "status": "validated",
+        "evidence": "Baseline manifest plus slow replay test preserve the anchored leaderboard scores."
+      },
+      {
+        "capability": "Language neural encoding",
+        "example": "Pereira2018",
+        "status": "validated",
+        "evidence": "Same regression-baseline path as vision; normal CI checks manifest shape, slow tier re-scores."
+      },
+      {
+        "capability": "Behavioral lexical decision",
+        "example": "ROAR / Yeatman2021",
+        "status": "validated",
+        "evidence": "Registered image/text variants, shared split, ceiling, and CLIP-above-chance scoring are tested."
+      },
+      {
+        "capability": "Video neural encoding",
+        "example": "Lahner2024 BOLDMoments",
+        "status": "EC2-only",
+        "evidence": "Local tests verify registration, temporal preprocessing, and V-JEPA wiring; full scoring is EC2-only."
+      },
+      {
+        "capability": "Audio wrapper",
+        "example": "Wav2Vec2-style features",
+        "status": "structurally-tested",
+        "evidence": "Construction, stimulus columns, aggregation, truncation, and cache keys are unit-tested without weights."
+      },
+      {
+        "capability": "Audio+video fMRI",
+        "example": "Lahner2024 multimodal",
+        "status": "EC2-only",
+        "evidence": "Registry, mode validation, null controls, and modality tagging are local; real forward/data runs are EC2-only."
+      },
+      {
+        "capability": "Movie multimodal fMRI",
+        "example": "Algonauts2025 / CNeuroMod",
+        "status": "EC2-only",
+        "evidence": "Twelve benchmark entries and scoring kernels are guarded locally; the data assembly is about 100 GB on EC2."
+      },
+      {
+        "capability": "State-change perturbation",
+        "example": "process(StateChange)",
+        "status": "structurally-tested",
+        "evidence": "Hook install, indexed ablation, concurrent handles, and reset are tested on a toy torch model."
+      },
+      {
+        "capability": "Embodied action",
+        "example": "GridGame action_fn",
+        "status": "demo-only",
+        "evidence": "Floor, ceiling, deterministic boards, and registration are tested; the game is an interface demo."
+      },
+      {
+        "capability": "Closed-weight API behavior",
+        "example": "OpenRouter / OpenAI-compatible",
+        "status": "structurally-tested",
+        "evidence": "Provider registration, lazy model construction, parsing, image payloads, and cache behavior are mocked locally."
+      }
+    ]
+  },
   "limitations": {
     "title": "What to keep in mind",
     "items": [

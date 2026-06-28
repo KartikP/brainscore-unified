@@ -75,8 +75,13 @@
     of the model) and it hands back a response (where the brain lights up, a choice, an
     action, or a written answer). The kind of input decides what's being tested; the kind
     of response tells you how it did. That single, shared hand-off is what lets one model
-    run on every test below.</p>
+    run on every compatible test below.</p>
   <div class="cap-grid" id="cap-grid"></div>
+  <div class="status-panel">
+    <h3>Capability status</h3>
+    <p class="muted small" id="capability-status-note"></p>
+    <table class="nulls-table status-table" id="capability-status-table"></table>
+  </div>
 </section>
 
 <section id="response" data-toc="Brain response" data-order="20" data-tier="act1" class="section">
@@ -285,8 +290,8 @@
         <rect class="sc-box good" x="638" y="44" width="262" height="116" rx="12"/>
         <text class="sc-title" x="769" y="82" text-anchor="middle">Ready to test</text>
         <text class="sc-sub" x="769" y="106" text-anchor="middle">the same one command</text>
-        <text class="sc-sub" x="769" y="124" text-anchor="middle">runs it on every benchmark</text>
-        <text class="sc-sub" x="769" y="142" text-anchor="middle">it's eligible for</text>
+        <text class="sc-sub" x="769" y="124" text-anchor="middle">runs every eligible benchmark</text>
+        <text class="sc-sub" x="769" y="142" text-anchor="middle">from the same model wiring</text>
         <path class="sc-line dashed" d="M433,178 L433,206" marker-end="url(#ah)"/>
         <rect class="sc-box ghost" x="245" y="210" width="376" height="40" rx="10"/>
         <text class="sc-sub" x="433" y="234" text-anchor="middle">a starting point; Tool 2 (below) fine-tunes it</text>

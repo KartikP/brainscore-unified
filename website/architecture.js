@@ -93,7 +93,7 @@
 
   function route(model, input, task, multiModality) {
     const C = model.has;
-    const procStep = S('event', 'process(input_event)', `you hand the model a ${input.event}`, 'UnifiedModel.process');
+    const procStep = S('event', 'process(input_event)', `you hand the model a ${input.event}`, 'Subject.process');
 
     // 1 — StateChange (lesion / perturbation)
     if (input.event === 'StateChange') {
@@ -143,7 +143,7 @@
       }
       return ok([
         procStep,
-        S('check', 'check_compatibility() · check_memory()', 'pre-flight: modality/region subset, then probe-based memory estimate'),
+        S('check', 'check_compatibility() · check_memory()', 'pre-flight: modality/region subset, then extraction probe + metric-memory estimate'),
         S('decision', '_use_generation_for_task & instruction present', 'generation wins (prefer_path="auto")'),
         S('fn', '_generate_predictions(stimuli)', `read the ${pickByPriority(supported)} column → generation_fn(row, instruction, label_set) → parse a label`, 'BrainScoreModel._generate_predictions'),
         S('output', 'BehavioralAssembly', 'one-hot over label_set per stimulus')
@@ -193,7 +193,7 @@
     const towers = useMulti ? supported : [pickByPriority(supported)];
     const steps = [
       procStep,
-      S('check', 'check_compatibility() · check_memory()', 'pre-flight: modality+region subset, then a one-stimulus memory probe'),
+      S('check', 'check_compatibility() · check_memory()', 'pre-flight: modality+region subset, then extraction probe + metric-memory estimate'),
       S('decision', `_detect_modalities() → {${supported.join(', ')}}`,
         useMulti ? 'multi_modality=True → fan out to every supported tower'
                  : (supported.length > 1 ? `multi_modality=False → MODALITY_PRIORITY picks "${towers[0]}"` : 'single modality'))
