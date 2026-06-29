@@ -35,7 +35,9 @@ deliverables ledger (Obsidian): `unified-model-interface-deliverables/COMPUTE-CO
 | 2026-06-22 | TRIBEv2 #69 score: Llama direct-load confirm + 120-clip Lahner predict + per-voxel score | g5.4xlarge | ~1.3 h measured | ~$2.1 |
 | 2026-06-23 | Hardening verification: rsync v1.5 to EC2 + offline tier (404/406) + full regression-baseline reproduction (13 passed, bit-for-bit vs production) | g5.4xlarge | ~1.5 h measured | ~$2.4 |
 | 2026-06-26 | Website error bars: bootstrap 95% CIs over voxels for the Lahner ROI video chart (6 models); fixed a polluted BOLDMoments stimulus cache; medians reproduce displayed scores bit-for-bit | g5.4xlarge | ~0.7 h measured | ~$1.1 |
-| | **GRAND TOTAL (EC2)** | | | **≈ $102** |
+| 2026-06-29 | C1 data-plugin verification: rsync unified data registry changes, Lahner/Algonauts loader smoke, offline tier on EC2 | g5.4xlarge | ~0.17 h measured | ~$0.30 |
+| 2026-06-29 | C3 scoring-DRY verification: rsync scoring/preflight changes, focused C3 tests, offline tier, and full regression-baseline harness (13 passed) on EC2 | g5.4xlarge | ~1.45 h measured | ~$2.4 |
+| | **GRAND TOTAL (EC2)** | | | **≈ $104.7** |
 
 > The MIRAGE/TRIBEv2 arc (sessions 2–5) is the single biggest line — it used the 4× L40S
 > `g6e.12xlarge` at $10.6/hr for the 30B Qwen3-Omni extraction. Everything else is A10G at $1.62/hr.
@@ -65,7 +67,7 @@ isn't checked out on the instance). That file dies with the instance. To make it
 **On instance stop**, pull the markers back and append them to the repo log:
 ```bash
 # from the laptop, before/after stopping the instance
-scp -i /tmp/quest.pem ubuntu@<ip>:/tmp/cost_log.csv /tmp/ec2_cost_log.csv
+scp -i ~/.ssh/quest-kartik-personal.pem ubuntu@<ip>:/tmp/cost_log.csv /tmp/ec2_cost_log.csv
 cat /tmp/ec2_cost_log.csv >> "unified/scripts/cost_tracking/cost_log.csv"
 # then regenerate the per-session report:
 python unified/scripts/cost_tracking/cost_report.py --uptime_hours <h> --out /tmp/COST_REPORT.md
