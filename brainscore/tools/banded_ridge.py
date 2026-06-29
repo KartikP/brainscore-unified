@@ -21,14 +21,18 @@ from itertools import product
 import numpy as np
 
 
-def ridge_fit_predict(X_train, Y_train, X_pred, alpha=1.0):
+def ridge_fit_predict(X_train, Y_train, X_pred, alpha=1.0,
+                      dtype=np.float32):
     """Fit a single-penalty ridge encoder on (X_train → Y_train), predict X_pred.
 
-    Returns float32 predictions of shape ``(len(X_pred), Y_train.shape[1])``.
+    Returns predictions of shape ``(len(X_pred), Y_train.shape[1])``. By
+    default predictions are float32, matching the historical helper contract;
+    pass ``dtype=None`` to preserve sklearn's native prediction dtype.
     """
     from sklearn.linear_model import Ridge
     reg = Ridge(alpha=alpha).fit(X_train, Y_train)
-    return reg.predict(X_pred).astype(np.float32)
+    pred = reg.predict(X_pred)
+    return pred if dtype is None else pred.astype(dtype)
 
 
 def _mean_pearson(Y_true_centered, Y_true_var, Y_pred):

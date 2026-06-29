@@ -9,7 +9,9 @@ Output: pandas DataFrame written to ~/lahner2024_scores.csv with columns
     model, benchmark, raw_r, mean_r, n_voxels, pipeline, time_sec
 
 Usage:
-    python score_timeresolved_all_models.py [--models clip-vit-b-32 vjepa1-vitl] [--variants timeresolved naturalistic]
+    python -m experiments.lahner2024.score_timeresolved_all_models \
+        [--models clip-vit-b-32 vjepa1-vitl] \
+        [--variants timeresolved naturalistic]
 """
 import argparse
 import time

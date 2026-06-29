@@ -17,11 +17,13 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[3]))
-
-import numpy as np  # noqa: E402
+sys.path.insert(0, str(Path(__file__).parents[2]))
 
 import brainscore  # noqa: E402
+from brainscore.benchmarks._scoring_utils import (  # noqa: E402
+    kfold_ridge_predictions,
+    pearson_summary,
+)
 from brainscore.benchmarks.lahner2024.benchmark_multimodal import (  # noqa: E402
     Lahner2024BOLDMoments_multimodal,
 )
@@ -59,35 +61,15 @@ def main():
         Y = Y[:, mask]
     log(f'  neural matrix: {Y.shape}')
 
-    from sklearn.model_selection import KFold
-    from sklearn.linear_model import Ridge
-
-    n = X_video.shape[0]
-    kf = KFold(n_splits=5, shuffle=True, random_state=0)
-
     out = {}
     for alpha in ALPHAS:
         log(f'scoring video_only with alpha={alpha} ...')
-        fold_preds = np.zeros_like(Y)
-        for train_idx, test_idx in kf.split(np.arange(n)):
-            reg = Ridge(alpha=alpha).fit(
-                X_video[train_idx], Y[train_idx])
-            fold_preds[test_idx] = reg.predict(X_video[test_idx])
-        # per-voxel Pearson on held-out predictions
-        n_voxels = Y.shape[1]
-        per_voxel_r = np.zeros(n_voxels)
-        for j in range(n_voxels):
-            yt = Y[:, j]
-            yp = fold_preds[:, j]
-            if yt.std() > 0 and yp.std() > 0:
-                per_voxel_r[j] = np.corrcoef(yt, yp)[0, 1]
-            else:
-                per_voxel_r[j] = np.nan
-        per_voxel_r = per_voxel_r[~np.isnan(per_voxel_r)]
-        median_r = float(np.median(per_voxel_r))
+        fold_preds = kfold_ridge_predictions(
+            X_video, Y, alpha=alpha, n_splits=5, random_state=0, dtype=None)
+        per_voxel_r, median_r, mean_r = pearson_summary(Y, fold_preds)
         out[f'video_only_alpha_{alpha:g}'] = {
             'raw_r': median_r,
-            'mean_r': float(np.mean(per_voxel_r)),
+            'mean_r': mean_r,
             'alpha': alpha,
             'n_voxels_scored': int(len(per_voxel_r)),
         }

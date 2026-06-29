@@ -12,7 +12,9 @@ sidecars. The runtime benchmark loads this sidecar and regresses the motion
 columns out of BOLD per-run-per-voxel before z-scoring + ridge.
 
 Usage:
-    python prepare_motion_sidecar.py --output-path ~/lahner2024_prep/Lahner2024-fMRI-timeresolved-motion.csv --upload-to-s3
+    python -m brainscore.data.lahner2024.prepare_motion_sidecar \
+        --output-path ~/lahner2024_prep/Lahner2024-fMRI-timeresolved-motion.csv \
+        --upload-to-s3
 """
 import argparse
 import hashlib
@@ -135,9 +137,10 @@ def main():
         s3.upload_file(str(args.output_path), bucket_name, full_key)
         head = s3.head_object(Bucket=bucket_name, Key=full_key)
         v = head.get('VersionId', '')
-        print(f'\n=== Paste into benchmark_timeresolved.py ===')
-        print(f"TIMERESOLVED_MOTION_VERSION_ID = '{v}'")
-        print(f"TIMERESOLVED_MOTION_SHA1       = '{sha1}'")
+        print('\n=== Data plugin values ===')
+        print("Update unified/brainscore/data/lahner2024/__init__.py with:")
+        print(f"timeresolved motion version: {v}")
+        print(f"timeresolved motion sha1: {sha1}")
 
 
 if __name__ == '__main__':

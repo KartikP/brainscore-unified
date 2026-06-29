@@ -25,8 +25,9 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-visualROI'] = (
 # TR-resolved variant — predict per-TR BOLD time-series via continuous-time
 # encoding (each subject-run is a presentation; leave-one-run-out ridge with
 # HRF-convolved per-stimulus features). M12-lite. Loading raises until
-# prepare_timeresolved_assembly.py uploads the assembly + events to S3 and
-# the resulting (version_id, sha1) are pasted into benchmark_timeresolved.py.
+# brainscore.data.lahner2024.prepare_timeresolved_assembly uploads the
+# assembly + events to S3 and the resulting version/sha1 are recorded in the
+# Lahner data plugin.
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved'] = (
     Lahner2024BOLDMoments_timeresolved)
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-visualROI'] = (

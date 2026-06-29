@@ -16,11 +16,13 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[3]))
-
-import numpy as np  # noqa: E402
+sys.path.insert(0, str(Path(__file__).parents[2]))
 
 import brainscore  # noqa: E402
+from brainscore.benchmarks._scoring_utils import (  # noqa: E402
+    kfold_ridge_predictions,
+    pearson_summary,
+)
 from brainscore.benchmarks.lahner2024.benchmark_multimodal import (  # noqa: E402
     Lahner2024BOLDMoments_multimodal_auditoryROI,
 )
@@ -78,27 +80,11 @@ def main():
     if voxel_mask is not None:
         Y = Y[:, voxel_mask]
 
-    from sklearn.model_selection import KFold
-    from sklearn.linear_model import Ridge
-
-    n = X_audio.shape[0]
-    kf = KFold(n_splits=5, shuffle=True, random_state=0)
-
     def _score(X, alpha):
-        fold_preds = np.zeros_like(Y)
-        for tr, te in kf.split(np.arange(n)):
-            reg = Ridge(alpha=alpha).fit(X[tr], Y[tr])
-            fold_preds[te] = reg.predict(X[te])
-        per_voxel_r = np.zeros(Y.shape[1])
-        for j in range(Y.shape[1]):
-            yt = Y[:, j]
-            yp = fold_preds[:, j]
-            if yt.std() > 0 and yp.std() > 0:
-                per_voxel_r[j] = np.corrcoef(yt, yp)[0, 1]
-            else:
-                per_voxel_r[j] = np.nan
-        per_voxel_r = per_voxel_r[~np.isnan(per_voxel_r)]
-        return float(np.median(per_voxel_r))
+        fold_preds = kfold_ridge_predictions(
+            X, Y, alpha=alpha, n_splits=5, random_state=0, dtype=None)
+        _, median_r, _ = pearson_summary(Y, fold_preds)
+        return median_r
 
     out['alpha_ablation'] = {}
     for alpha in ALPHA_GRID:

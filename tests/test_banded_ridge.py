@@ -102,3 +102,13 @@ def test_ridge_fit_predict_shape_and_dtype():
                   rng.standard_normal((7, 5)))
     pred = ridge_fit_predict(Xtr, Y, Xp, alpha=1.0)
     assert pred.shape == (7, 3) and pred.dtype == np.float32
+
+
+def test_ridge_fit_predict_can_preserve_sklearn_dtype():
+    rng = np.random.default_rng(2)
+    Xtr, Y, Xp = (rng.standard_normal((30, 5)),
+                  rng.standard_normal((30, 3)),
+                  rng.standard_normal((7, 5)))
+    pred = ridge_fit_predict(Xtr, Y, Xp, alpha=1.0, dtype=None)
+    assert pred.shape == (7, 3)
+    assert pred.dtype == np.float64

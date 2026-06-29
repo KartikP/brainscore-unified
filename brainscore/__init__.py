@@ -20,6 +20,8 @@ _logger = logging.getLogger(__name__)
 model_registry: Dict[str, Callable[[], UnifiedModel]] = {}
 benchmark_registry: Dict[str, Callable[[], Benchmark]] = {}
 metric_registry: Dict[str, Callable[[], Metric]] = {}
+data_registry: Dict[str, Callable[..., Any]] = {}
+stimulus_set_registry: Dict[str, Callable[..., Any]] = {}
 
 
 def _populate_unified_registries() -> None:
@@ -32,6 +34,10 @@ def _populate_unified_registries() -> None:
     loaded — not on ``import brainscore``. Guarded by
     ``tests/test_import_hygiene.py``.
     """
+    try:
+        from . import data  # noqa: F401
+    except ImportError as e:
+        _logger.warning(f"failed to import unified data: {e}")
     try:
         from . import benchmarks  # noqa: F401
     except ImportError as e:
@@ -76,6 +82,13 @@ def load_model(identifier: str) -> UnifiedModel:
     )
 
 
+def _ensure_legacy_benchmark_modalities(benchmark, modalities) -> Benchmark:
+    if not getattr(benchmark, 'required_modalities', None) and not getattr(
+            benchmark, 'accepted_modalities', None):
+        benchmark.required_modalities = set(modalities)
+    return benchmark
+
+
 def load_benchmark(identifier: str) -> Benchmark:
     """Load a benchmark by identifier.
 
@@ -88,14 +101,16 @@ def load_benchmark(identifier: str) -> Benchmark:
     # Fallback to vision
     try:
         from brainscore_vision import load_benchmark as load_vision_benchmark
-        return load_vision_benchmark(identifier)
+        benchmark = load_vision_benchmark(identifier)
+        return _ensure_legacy_benchmark_modalities(benchmark, {'vision'})
     except (KeyError, ImportError, AssertionError):
         pass
 
     # Fallback to language
     try:
         from brainscore_language import load_benchmark as load_language_benchmark
-        return load_language_benchmark(identifier)
+        benchmark = load_language_benchmark(identifier)
+        return _ensure_legacy_benchmark_modalities(benchmark, {'text'})
     except (KeyError, ImportError, AssertionError):
         pass
 
@@ -125,14 +140,21 @@ def load_metric(identifier: str, *args, **kwargs) -> Metric:
     )
 
 
-def load_dataset(identifier: str):
+def load_dataset(identifier: str, *args, **kwargs):
     """Load a dataset (DataAssembly) by identifier.
 
-    Datasets live in the domain repos, not the unified package — this is a
-    convenience passthrough so ``brainscore.load_dataset`` is the single entry
-    point alongside load_model/load_benchmark/load_metric. Tries vision then
-    language. The heavy import is deferred to call time (import hygiene).
+    Checks unified data plugins first, then falls back to the domain repos so
+    ``brainscore.load_dataset`` remains the single entry point alongside
+    load_model/load_benchmark/load_metric.
     """
+    if identifier in data_registry:
+        return data_registry[identifier](*args, **kwargs)
+
+    if args or kwargs:
+        raise KeyError(
+            f"Dataset '{identifier}' not found in unified registry; "
+            "domain fallbacks do not accept loader arguments.")
+
     try:
         from brainscore_vision import load_dataset as _vision
         return _vision(identifier)
@@ -144,11 +166,19 @@ def load_dataset(identifier: str):
     except (KeyError, ImportError, AssertionError):
         pass
     raise KeyError(
-        f"Dataset '{identifier}' not found in vision or language registries.")
+        f"Dataset '{identifier}' not found in unified, vision, or language registries.")
 
 
-def load_stimulus_set(identifier: str):
-    """Load a StimulusSet by identifier (domain-repo passthrough; see load_dataset)."""
+def load_stimulus_set(identifier: str, *args, **kwargs):
+    """Load a StimulusSet by identifier (unified first, then domain repos)."""
+    if identifier in stimulus_set_registry:
+        return stimulus_set_registry[identifier](*args, **kwargs)
+
+    if args or kwargs:
+        raise KeyError(
+            f"StimulusSet '{identifier}' not found in unified registry; "
+            "domain fallbacks do not accept loader arguments.")
+
     try:
         from brainscore_vision import load_stimulus_set as _vision
         return _vision(identifier)
@@ -160,7 +190,7 @@ def load_stimulus_set(identifier: str):
     except (KeyError, ImportError, AssertionError):
         pass
     raise KeyError(
-        f"StimulusSet '{identifier}' not found in vision or language registries.")
+        f"StimulusSet '{identifier}' not found in unified, vision, or language registries.")
 
 
 def score(model_identifier: str, benchmark_identifier: str,

@@ -6,7 +6,7 @@ it. They verify:
 - Constructor validates subject ∈ {1, 2, 3, 5} and mode ∈ VALID_MODES.
 - ``__call__`` raises NotImplementedError until the assembly
   preparation pipeline runs on EC2.
-- ``_load_assembly`` raises FileNotFoundError with a clear pointer to
+- The data plugin raises FileNotFoundError with a clear pointer to
   prepare_assembly.py when data hasn't been built yet.
 """
 import pytest

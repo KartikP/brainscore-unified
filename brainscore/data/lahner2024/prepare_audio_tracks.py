@@ -9,7 +9,7 @@ get a zero waveform of matching duration, so every clip ends up with a
 file at the expected path. The AudioWrapper sees a uniform schema.
 
 Usage:
-    python -m brainscore.benchmarks.lahner2024.prepare_audio_tracks \
+    python -m brainscore.data.lahner2024.prepare_audio_tracks \
         --audio-dir ~/.brainio/lahner2024_audio_16k \
         --target-rate 16000
 
@@ -26,8 +26,8 @@ import numpy as np
 from scipy.io import wavfile
 from tqdm import tqdm
 
-# Local import — placed inside main so it doesn't trigger when the module
-# is imported as part of `brainscore.benchmarks.lahner2024`.
+# Local import — placed inside main so importing this data-plugin script stays
+# side-effect free.
 
 
 VIDEO_DURATION_SEC = 3.0
@@ -83,8 +83,8 @@ def main():
     if shutil.which('ffmpeg') is None:
         raise SystemExit("ffmpeg not found in PATH; install ffmpeg first.")
 
-    from brainscore.benchmarks.lahner2024.benchmark import load_stimulus_set
-    stim = load_stimulus_set()
+    from brainscore import load_stimulus_set
+    stim = load_stimulus_set('BOLDMoments')
     print(f"Loaded stim_set with {len(stim)} clips")
 
     args.audio_dir.mkdir(parents=True, exist_ok=True)

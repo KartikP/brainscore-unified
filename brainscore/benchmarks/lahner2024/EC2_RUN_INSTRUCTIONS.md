@@ -64,7 +64,7 @@ survives stop/start.
 ```bash
 cd ~/brain-score-unified/unified
 conda activate brainscore-unified
-python -m brainscore.benchmarks.lahner2024.prepare_audio_tracks \
+python -m brainscore.data.lahner2024.prepare_audio_tracks \
     --audio-dir ~/brain-score-unified/data/lahner2024_audio_16k \
     --target-rate 16000
 ```
@@ -79,9 +79,8 @@ Pull it once into the brainio cache:
 
 ```bash
 python -c "
-from brainscore.benchmarks.lahner2024.benchmark_timeresolved import \
-    load_timeresolved_assembly
-a = load_timeresolved_assembly()
+from brainscore import load_dataset
+a = load_dataset('Lahner2024-fMRI-timeresolved')
 print('assembly shape:', dict(a.sizes))
 "
 ```
@@ -94,7 +93,7 @@ the brainscore-storage S3 bucket. Subsequent runs are cache hits.
 ```bash
 # Validation harness — runs all 5 modes on auditory-ROI for the signal
 # model + null variants, plus α-ablation on video_only.
-python -u -m brainscore.benchmarks.lahner2024.score_timeresolved_multimodal_smoke \
+python -u -m experiments.lahner2024.score_timeresolved_multimodal_smoke \
     > ~/tr_smoke.log 2>&1 &
 tail -F ~/tr_smoke.log
 ```

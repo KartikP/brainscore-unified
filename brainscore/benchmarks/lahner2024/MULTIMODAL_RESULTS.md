@@ -193,11 +193,11 @@ Local Mac MPS (Apple Silicon):
 # 1. Pre-extract audio tracks (one-time, ~3 min, ~96 MB)
 cd unified
 conda activate brainscore-unified
-python -m brainscore.benchmarks.lahner2024.prepare_audio_tracks \
+python -m brainscore.data.lahner2024.prepare_audio_tracks \
   --audio-dir ~/.brainio/lahner2024_audio_16k --target-rate 16000
 
 # 2. Score (~12 min on Mac MPS)
-python -m brainscore.benchmarks.lahner2024.score_multimodal
+python -m experiments.lahner2024.score_multimodal
 # writes /tmp/lahner_multimodal_score.json
 ```
 
@@ -209,7 +209,7 @@ Then the four-mode driver:
 
 ```bash
 # 3. Score 4 modes on visual-ROI (cached features → ~3.5 min)
-python -u -m brainscore.benchmarks.lahner2024.score_multimodal_modes
+python -u -m experiments.lahner2024.score_multimodal_modes
 # writes /tmp/lahner_multimodal_modes.json
 ```
 

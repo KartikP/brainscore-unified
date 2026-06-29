@@ -18,7 +18,7 @@ subjects into the nested-dict zip.
 
 Usage::
 
-    python -m brainscore.benchmarks.algonauts2025.submit_codabench \
+    python -m experiments.algonauts2025.submit_codabench \
         --predictions-dir ~/algonauts_predictions/ \
         --output ~/fmri_predictions_friends_s7.zip \
         --split friends_s7

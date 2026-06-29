@@ -16,7 +16,8 @@ without the data present will raise `FileNotFoundError`.
 1. **Data acquisition** (EC2, 1–6 hours). Run
    `unified/scripts/download_algonauts_data.sh` on the validation
    instance. Pulls ~100 GB across stimuli + 4-subject fMRI .h5 files.
-2. **Assembly preparation** (EC2, ~30 min). `prepare_assembly.py`
+2. **Assembly preparation** (EC2, ~30 min).
+   `python -m brainscore.data.algonauts2025.prepare_assembly`
    reads the per-subject .h5 files, converts to a brainio
    `NeuroidAssembly` keyed by (subject, movie_split, TR), uploads to
    our S3 bucket. One-time cost.
@@ -50,14 +51,15 @@ and validation protocol we built for Lahner generalize directly.
   `Algonauts2025OOD` classes. Inherit from `BenchmarkBase`. Score via
   banded ridge with three feature groups (V/A/L). Stub `__call__`
   raises NotImplementedError until assembly is built.
-- `prepare_assembly.py` — One-time data pipeline. Run on EC2 after
-  download. Reads .h5 files, builds `NeuralAssembly`, uploads to S3.
-- `submit_codabench.py` — Take a benchmark's per-parcel predictions,
-  format as the Codabench expects, save .zip for upload.
+- `brainscore/data/algonauts2025/prepare_assembly.py` — One-time data
+  pipeline. Run on EC2 after download. Reads .h5 files, builds
+  `NeuralAssembly`, writes the local data-plugin artifacts.
+- `experiments/algonauts2025/submit_codabench.py` — Take a benchmark's
+  per-parcel predictions, format as Codabench expects, save .zip for upload.
 - `__init__.py` — Registry entries for 3 splits × 4 subjects = 12
   benchmark identifiers.
 
-## Data layout (after `prepare_assembly.py` runs)
+## Data layout (after `python -m brainscore.data.algonauts2025.prepare_assembly` runs)
 
 ```
 ~/.brainio/<sha>/algonauts2025_friends_sub01.nc   (~5 GB per subject)

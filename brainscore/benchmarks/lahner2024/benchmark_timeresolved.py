@@ -58,45 +58,24 @@ from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
 )
-from brainscore_core.supported_data_standards.brainio.s3 import (
-    load_assembly_from_s3,
-)
 from brainscore_core.temporal import (
     contiguous_block_cv,
     double_gamma_hrf,
     hrf_convolve,
 )
+from brainscore import load_dataset
+from brainscore.benchmarks._scoring_utils import (
+    masked_ridge_predictions,
+    valid_prediction_per_unit_pearson,
+)
+from brainscore.data.lahner2024 import MOTION_COLUMNS
 
-# Reuse stimulus loader + bibtex + S3 paths from the existing variant
+# Reuse stimulus handling + bibtex from the GLM-beta variant.
 from .benchmark import (
     BIBTEX,
-    STIMULUS_BUCKET,
     Lahner2024BOLDMoments,        # parent class — provides _videos_stimulus_set
-    load_stimulus_set,
 )
 
-
-# ── S3 metadata for the TR-resolved artifacts ─────────────────────────
-# Filled in once `prepare_timeresolved_assembly.py` uploads to S3.
-# Until then, loading raises with an explicit handoff message.
-
-TIMERESOLVED_ASSEMBLY_ID = 'Lahner2024-fMRI-timeresolved'
-TIMERESOLVED_ASSEMBLY_VERSION_ID: Optional[str] = '6VFZOroMxaNg1P_xSQAYwGq7.Fc63zz_'
-TIMERESOLVED_ASSEMBLY_SHA1: Optional[str]       = '4d06589dde6dddf273a489a64da1337940d5fafd'
-TIMERESOLVED_EVENTS_VERSION_ID: Optional[str]   = 'MYar7u8KE_D.i4MXZ83GurH1EDECZ.jo'
-TIMERESOLVED_EVENTS_SHA1: Optional[str]         = '783c5b33a75f121812a49b8b0a7639b9ed07c6a3'
-
-# Motion-confound sidecar — fmriprep nuisance regressors per (subject, run, TR).
-# Filled by prepare_motion_sidecar.py + paste step. Used by the `-improved`
-# variants for per-run motion regression before z-score + ridge.
-TIMERESOLVED_MOTION_VERSION_ID: Optional[str]   = 'wR1CwATaRjpEgvpR4ozr_UzkTS6yitjR'
-TIMERESOLVED_MOTION_SHA1: Optional[str]         = '827130c78f6b706b52f6d0d28962eb2301bee00b'
-MOTION_COLUMNS = [
-    'trans_x', 'trans_y', 'trans_z',
-    'rot_x',   'rot_y',   'rot_z',
-    'framewise_displacement',
-    'csf', 'white_matter',
-]
 
 # Confirmed scanner / paradigm parameters (from EC2 recon, ds005165 v1.0.4)
 TR_SEC = 1.75
@@ -106,77 +85,6 @@ SOA_SEC = 4.0
 # when n_TR_obs ≈ 127k and flattened ViT features ≈ 38k. See `_extract_per_stimulus_features`.
 FEATURE_DIM_CAP = 512
 CLIP_DURATION_SEC = 3.0
-
-
-# ── Loader ────────────────────────────────────────────────────────────
-
-def load_timeresolved_assembly(merge_stimulus_set_meta: bool = False) -> NeuronRecordingAssembly:
-    if TIMERESOLVED_ASSEMBLY_VERSION_ID is None or TIMERESOLVED_ASSEMBLY_SHA1 is None:
-        raise RuntimeError(
-            "Lahner2024 TR-resolved assembly is not yet hosted on S3. "
-            "Run `prepare_timeresolved_assembly.py` on EC2 to download from "
-            "OpenNeuro ds005165 v1.0.4, downsample fsaverage→fsaverage5, build "
-            "the per-(subject, run) assembly, and upload — then paste the "
-            "resulting (version_id, sha1) tuples into benchmark_timeresolved.py."
-        )
-    return load_assembly_from_s3(
-        identifier=TIMERESOLVED_ASSEMBLY_ID,
-        version_id=TIMERESOLVED_ASSEMBLY_VERSION_ID,
-        sha1=TIMERESOLVED_ASSEMBLY_SHA1,
-        bucket=STIMULUS_BUCKET,
-        cls=NeuronRecordingAssembly,
-        stimulus_set_loader=load_stimulus_set,
-        merge_stimulus_set_meta=merge_stimulus_set_meta,
-    )
-
-
-def load_timeresolved_motion():
-    """Load the motion-confound sidecar CSV.
-
-    Long-format: one row per (subject, session, task, run, tr_idx) with
-    columns matching MOTION_COLUMNS. Used by the `-improved` variants for
-    per-run motion regression of BOLD before z-score + ridge.
-    """
-    import io
-    import boto3
-    import pandas as pd
-
-    if TIMERESOLVED_MOTION_VERSION_ID is None or TIMERESOLVED_MOTION_SHA1 is None:
-        raise RuntimeError(
-            "Lahner2024 TR-resolved motion sidecar is not yet hosted on S3. "
-            "Run prepare_motion_sidecar.py + paste version_id/sha1.")
-    parts = STIMULUS_BUCKET.split('/', 1)
-    bucket = parts[0]
-    key = (f'{parts[1]}/Lahner2024-fMRI-timeresolved-motion.csv'
-           if len(parts) > 1 else 'Lahner2024-fMRI-timeresolved-motion.csv')
-    s3 = boto3.client('s3')
-    obj = s3.get_object(Bucket=bucket, Key=key, VersionId=TIMERESOLVED_MOTION_VERSION_ID)
-    return pd.read_csv(io.BytesIO(obj['Body'].read()))
-
-
-def load_timeresolved_events():
-    """Load the per-trial events sidecar CSV (long format).
-
-    Columns: subject, session, run, task, trial_idx, stimulus_id,
-             onset_sec, duration_sec, trial_type.
-    """
-    import io
-    import boto3
-    import pandas as pd
-
-    if TIMERESOLVED_EVENTS_VERSION_ID is None or TIMERESOLVED_EVENTS_SHA1 is None:
-        raise RuntimeError(
-            "Lahner2024 TR-resolved events sidecar is not yet hosted on S3. "
-            "Same handoff as load_timeresolved_assembly."
-        )
-    parts = STIMULUS_BUCKET.split('/', 1)
-    bucket = parts[0]
-    key = (f'{parts[1]}/Lahner2024-fMRI-timeresolved-events.csv'
-           if len(parts) > 1 else 'Lahner2024-fMRI-timeresolved-events.csv')
-    s3 = boto3.client('s3')
-    obj = s3.get_object(Bucket=bucket, Key=key, VersionId=TIMERESOLVED_EVENTS_VERSION_ID)
-    body = obj['Body'].read()
-    return pd.read_csv(io.BytesIO(body))
 
 
 # ── Benchmark class ───────────────────────────────────────────────────
@@ -231,14 +139,15 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     @property
     def assembly(self) -> NeuronRecordingAssembly:
         if self._assembly is None:
-            self._assembly = load_timeresolved_assembly()
+            self._assembly = load_dataset('Lahner2024-fMRI-timeresolved')
             self._sanity_check_assembly(self._assembly)
         return self._assembly
 
     @property
     def events(self):
         if self._events is None:
-            self._events = load_timeresolved_events()
+            self._events = load_dataset(
+                'Lahner2024-fMRI-timeresolved-events')
         return self._events
 
     @property
@@ -247,7 +156,8 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         if not self._apply_motion_regression:
             return None
         if self._motion is None:
-            self._motion = load_timeresolved_motion()
+            self._motion = load_dataset(
+                'Lahner2024-fMRI-timeresolved-motion')
         return self._motion
 
     @property
@@ -505,8 +415,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         plus sklearn's internal Y copies during fit blew past 64GB. We batch the
         voxel axis so peak memory is bounded by VOXEL_BATCH × n_obs × 4B (~1 GB).
         """
-        from sklearn.linear_model import Ridge
-
         n_runs = int(run_idx_per_obs.max() + 1)
         n_obs, n_voxels = Y_flat.shape
         per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)
@@ -522,22 +430,10 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         for v_start in range(0, n_voxels, VOXEL_BATCH):
             v_end = min(v_start + VOXEL_BATCH, n_voxels)
             Y_sub = Y_flat[:, v_start:v_end]
-            held_out_preds = np.full_like(Y_sub, np.nan)
-            for train_mask, test_mask in fold_masks:
-                reg = Ridge(alpha=1.0).fit(X_flat[train_mask], Y_sub[train_mask])
-                held_out_preds[test_mask] = reg.predict(X_flat[test_mask])
-
-            valid = ~np.isnan(held_out_preds[:, 0])
-            if not valid.any():
-                continue
-            Yt = Y_sub[valid]
-            Yp = held_out_preds[valid]
-            Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
-            Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
-            num = (Yt_c * Yp_c).sum(axis=0)
-            den = np.sqrt((Yt_c ** 2).sum(axis=0) * (Yp_c ** 2).sum(axis=0))
-            with np.errstate(divide='ignore', invalid='ignore'):
-                per_voxel_r[v_start:v_end] = np.where(den > 0, num / den, np.nan)
+            held_out_preds = masked_ridge_predictions(
+                X_flat, Y_sub, fold_masks, alpha=1.0, dtype=None)
+            per_voxel_r[v_start:v_end] = valid_prediction_per_unit_pearson(
+                Y_sub, held_out_preds)
         return per_voxel_r
 
     def _cross_validated_ridge_within_subject(self, X_flat, Y_flat,
@@ -556,8 +452,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         where train/test splits are within-subject, and avoids the cross-
         subject mean-leakage that plagues subject_out CV.
         """
-        from sklearn.linear_model import Ridge
-
         n_obs, n_voxels = Y_flat.shape
         unique_subjects = np.unique(subject_per_obs)
         per_subject_r = np.full((len(unique_subjects), n_voxels), np.nan,
@@ -583,21 +477,11 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             for v_start in range(0, n_voxels, VOXEL_BATCH):
                 v_end = min(v_start + VOXEL_BATCH, n_voxels)
                 Y_sub_batch = Y_sub_full[:, v_start:v_end]
-                held_out_preds = np.full_like(Y_sub_batch, np.nan)
-                for tm, em in fold_masks:
-                    reg = Ridge(alpha=1.0).fit(X_sub[tm], Y_sub_batch[tm])
-                    held_out_preds[em] = reg.predict(X_sub[em])
-                valid = ~np.isnan(held_out_preds[:, 0])
-                if not valid.any():
-                    continue
-                Yt = Y_sub_batch[valid]; Yp = held_out_preds[valid]
-                Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
-                Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
-                num = (Yt_c * Yp_c).sum(axis=0)
-                den = np.sqrt((Yt_c**2).sum(axis=0) * (Yp_c**2).sum(axis=0))
-                with np.errstate(divide='ignore', invalid='ignore'):
-                    per_subject_r[s_idx, v_start:v_end] = np.where(
-                        den > 0, num / den, np.nan)
+                held_out_preds = masked_ridge_predictions(
+                    X_sub, Y_sub_batch, fold_masks, alpha=1.0, dtype=None)
+                per_subject_r[s_idx, v_start:v_end] = (
+                    valid_prediction_per_unit_pearson(
+                        Y_sub_batch, held_out_preds))
 
         # Mean per-voxel r across subjects, ignoring NaNs.
         return np.nanmean(per_subject_r, axis=0).astype(np.float32)

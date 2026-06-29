@@ -25,6 +25,12 @@ import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
+from brainscore import load_dataset, load_stimulus_set
+from brainscore.data.algonauts2025 import (
+    assembly_identifier,
+    default_data_root,
+    stimulus_set_identifier,
+)
 
 from .scoring import score_encoding_modes
 
@@ -40,11 +46,6 @@ BIBTEX = """@article{gifford2025algonauts,
 # Schaefer 1000 parcellation, TR for Courtois NeuroMod
 SCHAEFER_N_PARCELS = 1000
 TR_SEC = 1.49
-
-# Default fMRI assembly cache root (set by prepare_assembly.py).
-# Override via the ALGONAUTS_DATA_ROOT environment variable.
-DEFAULT_ASSEMBLY_ROOT = Path('~/.brainio/algonauts2025').expanduser()
-
 
 def _ffmpeg_extract_one(args):
     """Worker for the frame-extraction Pool. Tuple-args because Pool.imap
@@ -100,7 +101,7 @@ class _Algonauts2025Base(BenchmarkBase):
         self._excluded_samples_end = excluded_samples_end
         self._mode = mode
         self._assembly_root = (Path(assembly_root)
-                               if assembly_root else DEFAULT_ASSEMBLY_ROOT)
+                               if assembly_root else default_data_root())
         self._assembly = None
         self._stimulus_set = None
 
@@ -119,54 +120,20 @@ class _Algonauts2025Base(BenchmarkBase):
     @property
     def assembly(self):
         if self._assembly is None:
-            self._assembly = self._load_assembly()
+            self._assembly = load_dataset(
+                assembly_identifier(self._split, self._subject),
+                root=self._assembly_root,
+            )
         return self._assembly
 
     @property
     def stimulus_set(self):
         if self._stimulus_set is None:
-            self._stimulus_set = self._load_stimulus_set()
-        return self._stimulus_set
-
-    def _load_assembly(self):
-        """Load this subject's per-TR Schaefer parcels for this split.
-
-        Expects prepare_assembly.py to have produced a netCDF at
-        ``{assembly_root}/algonauts2025_{split}_sub{subject:02d}.nc``.
-        Raises FileNotFoundError if the data hasn't been prepared yet.
-        """
-        path = (self._assembly_root /
-                f'algonauts2025_{self._split}_sub{self._subject:02d}.nc')
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Algonauts assembly missing at {path}. Run "
-                f"`python -m brainscore.benchmarks.algonauts2025.prepare_assembly` "
-                f"on EC2 first; see README.md."
+            self._stimulus_set = load_stimulus_set(
+                stimulus_set_identifier(self._split),
+                root=self._assembly_root,
             )
-        import xarray as xr
-        from brainscore_core.supported_data_standards.brainio.assemblies import (
-            NeuronRecordingAssembly)
-        data = xr.open_dataarray(str(path))
-        return NeuronRecordingAssembly(data)
-
-    def _load_stimulus_set(self):
-        """Load the StimulusSet for this split. CSV with movie/episode/split
-        rows, plus paths to .mkv stimuli + per-TR transcripts."""
-        import pandas as pd
-        from brainscore_core.supported_data_standards.brainio.stimuli import (
-            StimulusSet)
-        path = (self._assembly_root /
-                f'algonauts2025_stim_{self._split}.csv')
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Algonauts stim_set missing at {path}. Run "
-                f"prepare_assembly.py on EC2 first.")
-        df = pd.read_csv(path)
-        out = StimulusSet(df)
-        out.identifier = f'algonauts2025-{self._split}'
-        out.stimulus_paths = dict(
-            zip(df['stimulus_id'], df['video_path']))
-        return out
+        return self._stimulus_set
 
     # ── Per-TR frame extraction ───────────────────────────────────
 
@@ -453,7 +420,8 @@ class _Algonauts2025Base(BenchmarkBase):
                 f"against — it is a Codabench prediction target. Call "
                 f"`generate_predictions(candidate, out_dir)` to produce the "
                 f"per-parcel prediction .npy, then bundle with "
-                f"`submit_codabench`. (Use Algonauts2025Friends for "
+                f"`python -m experiments.algonauts2025.submit_codabench`. "
+                f"(Use Algonauts2025Friends for "
                 f"in-distribution CV scoring.)"
             )
         return self._score_friends_train(candidate)

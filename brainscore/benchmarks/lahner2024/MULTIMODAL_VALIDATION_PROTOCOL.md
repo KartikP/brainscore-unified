@@ -89,7 +89,7 @@ cd unified
 conda activate brainscore-unified
 
 # Step 1: pre-extract audio (one-time, ~3 min)
-python -m brainscore.benchmarks.lahner2024.prepare_audio_tracks \
+python -m brainscore.data.lahner2024.prepare_audio_tracks \
   --audio-dir ~/.brainio/lahner2024_audio_16k --target-rate 16000
 
 # Step 2: validation harness (runs all checks for both ROIs)

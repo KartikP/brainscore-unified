@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from brainscore.tools.banded_ridge import ridge_fit_predict
-from brainscore.benchmarks.algonauts2025.submit_codabench import (
+from experiments.algonauts2025.submit_codabench import (
     build_submission, write_submission_zip, SCHAEFER_N_PARCELS,
     SPLIT_NPY_NAME)
 

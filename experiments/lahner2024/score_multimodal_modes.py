@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[3]))
+sys.path.insert(0, str(Path(__file__).parents[2]))
 
 import brainscore  # noqa: E402
 from brainscore.benchmarks.lahner2024.benchmark_multimodal import (  # noqa: E402

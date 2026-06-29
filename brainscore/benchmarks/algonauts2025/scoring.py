@@ -26,7 +26,12 @@ from itertools import product
 
 import numpy as np
 
-from brainscore_core.metrics import per_unit_pearson
+from brainscore.benchmarks._scoring_utils import (
+    kfold_positions,
+    masked_ridge_predictions,
+    run_kfold_masks,
+    valid_prediction_per_unit_pearson,
+)
 
 MODALITY_FOR_MODE = {
     'video_only': 'video',
@@ -39,30 +44,21 @@ def per_voxel_pearson(Y_true, Y_pred):
     """Per-column Pearson r between recorded and predicted BOLD, dropping the
     rows the model never predicted (NaN). The centered correlation itself is
     the canonical ``brainscore_core.metrics.per_unit_pearson``."""
-    valid = ~np.isnan(Y_pred[:, 0])
-    return per_unit_pearson(Y_true[valid], Y_pred[valid])
+    return valid_prediction_per_unit_pearson(Y_true, Y_pred)
 
 
 def _run_kfold(run_idx_kept, n_splits, random_state):
     """Yield (train_mask, test_mask) over whole runs — no TR ever splits
     across train/test (avoids temporal leakage)."""
-    from sklearn.model_selection import KFold
-    unique_runs = np.unique(run_idx_kept)
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
-    for tr_pos, te_pos in kf.split(unique_runs):
-        yield (np.isin(run_idx_kept, unique_runs[tr_pos]),
-               np.isin(run_idx_kept, unique_runs[te_pos]))
+    yield from run_kfold_masks(run_idx_kept, n_splits, random_state)
 
 
 def _cv_ridge_predict(X, Y, run_idx_kept, alpha, n_splits, random_state):
     """Run-held-out 5-fold Ridge; return held-out predictions (NaN where
     a row was never in a test fold — shouldn't happen with KFold)."""
-    from sklearn.linear_model import Ridge
-    held = np.full_like(Y, np.nan, dtype=np.float32)
-    for tr, te in _run_kfold(run_idx_kept, n_splits, random_state):
-        reg = Ridge(alpha=alpha).fit(X[tr], Y[tr])
-        held[te] = reg.predict(X[te]).astype(np.float32)
-    return held
+    return masked_ridge_predictions(
+        X, Y, _run_kfold(run_idx_kept, n_splits, random_state),
+        alpha=alpha, dtype=np.float32)
 
 
 def _banded_nested_cv(blocks, Y, run_idx_kept, banded_alpha_grid,
@@ -75,7 +71,6 @@ def _banded_nested_cv(blocks, Y, run_idx_kept, banded_alpha_grid,
     mean inner-val Pearson is refit on the full outer-train and scored on
     the outer-test. XᵀX is hoisted out of the α-tuple loop.
     """
-    from sklearn.model_selection import KFold
     widths = [b.shape[1] for b in blocks]
     offsets, cur = [], 0
     for w in widths:
@@ -86,16 +81,17 @@ def _banded_nested_cv(blocks, Y, run_idx_kept, banded_alpha_grid,
     tuples = list(product(banded_alpha_grid, repeat=n_bands))
 
     unique_runs = np.unique(run_idx_kept)
-    kf = KFold(n_splits=n_splits, shuffle=True, random_state=random_state)
     held = np.full_like(Y, np.nan, dtype=np.float32)
     chosen = []
-    for fold_i, (tr_pos, te_pos) in enumerate(kf.split(unique_runs)):
+    for fold_i, (tr_pos, te_pos) in enumerate(kfold_positions(
+            len(unique_runs), n_splits=n_splits,
+            random_state=random_state)):
         tr_runs, te_runs = unique_runs[tr_pos], unique_runs[te_pos]
         tr = np.isin(run_idx_kept, tr_runs)
         te = np.isin(run_idx_kept, te_runs)
 
-        inner_kf = KFold(n_splits=n_splits, shuffle=True, random_state=fold_i)
-        i_tr_pos, i_va_pos = next(iter(inner_kf.split(tr_runs)))
+        i_tr_pos, i_va_pos = next(kfold_positions(
+            len(tr_runs), n_splits=n_splits, random_state=fold_i))
         i_tr = np.isin(run_idx_kept, tr_runs[i_tr_pos])
         i_va = np.isin(run_idx_kept, tr_runs[i_va_pos])
 

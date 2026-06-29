@@ -44,7 +44,14 @@ import pandas as pd
 
 from brainscore_core.metrics import Score
 
-from brainscore.tools.banded_ridge import banded_ridge_fit_predict
+from brainscore.benchmarks._scoring_utils import (
+    run_kfold_masks,
+    valid_prediction_per_unit_pearson,
+)
+from brainscore.tools.banded_ridge import (
+    banded_ridge_fit_predict,
+    ridge_fit_predict,
+)
 from ._util import read_stimulus_ids
 
 from .benchmark_timeresolved import (
@@ -153,8 +160,9 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         if missing:
             raise FileNotFoundError(
                 f"{len(missing)} audio files missing under {self._audio_dir}. "
-                f"Run prepare_audio_tracks.py with --target-rate 16000 "
-                f"first. First missing: {missing[0]}")
+                f"Run `python -m brainscore.data.lahner2024."
+                f"prepare_audio_tracks --target-rate 16000` first. "
+                f"First missing: {missing[0]}")
         df = pd.DataFrame(rows)
         out = StimulusSet(df)
         out.identifier = (
@@ -360,21 +368,14 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         around the held_out_preds shadow array + sklearn's per-fold
         Y copies (CLAUDE.md note from M12-lite).
         """
-        from sklearn.linear_model import Ridge
-        from sklearn.model_selection import KFold
-
         n_obs, n_voxels = Y_flat.shape
         unique_runs = np.unique(run_idx_per_obs)
         n_runs = len(unique_runs)
         n_held = self._cv_n_held_out_runs
 
-        kf = KFold(n_splits=max(2, n_runs // n_held), shuffle=True,
-                   random_state=0)
-        fold_masks = []
-        for train_runs, test_runs in kf.split(unique_runs):
-            tr_mask = np.isin(run_idx_per_obs, unique_runs[train_runs])
-            te_mask = np.isin(run_idx_per_obs, unique_runs[test_runs])
-            fold_masks.append((tr_mask, te_mask))
+        fold_masks = list(run_kfold_masks(
+            run_idx_per_obs, n_splits=max(2, n_runs // n_held),
+            random_state=0))
 
         per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)
         VOXEL_BATCH = 2000
@@ -393,23 +394,12 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
                     preds = np.zeros((te_mask.sum(), v_end - v_start),
                                      dtype=np.float32)
                     for group in feature_groups:
-                        reg = Ridge(alpha=1.0).fit(group[tr_mask], Y_tr)
-                        preds += reg.predict(group[te_mask]).astype(np.float32)
+                        preds += ridge_fit_predict(
+                            group[tr_mask], Y_tr, group[te_mask], alpha=1.0)
                     held_out_preds[te_mask] = preds
 
-            valid = ~np.isnan(held_out_preds[:, 0])
-            if not valid.any():
-                continue
-            Yt = Y_sub[valid]
-            Yp = held_out_preds[valid]
-            Yt_c = Yt - Yt.mean(axis=0, keepdims=True)
-            Yp_c = Yp - Yp.mean(axis=0, keepdims=True)
-            num = (Yt_c * Yp_c).sum(axis=0)
-            den = np.sqrt((Yt_c ** 2).sum(axis=0)
-                          * (Yp_c ** 2).sum(axis=0))
-            with np.errstate(divide='ignore', invalid='ignore'):
-                per_voxel_r[v_start:v_end] = np.where(
-                    den > 0, num / den, np.nan)
+            per_voxel_r[v_start:v_end] = valid_prediction_per_unit_pearson(
+                Y_sub, held_out_preds)
 
         return per_voxel_r
 

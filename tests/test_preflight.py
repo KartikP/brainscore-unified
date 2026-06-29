@@ -8,6 +8,13 @@ from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.memory import MemoryError
 
 
+class _LegacyBenchmark:
+    identifier = 'legacy-benchmark'
+
+    def __call__(self, model):
+        raise NotImplementedError
+
+
 class TestPreflightInScore:
     """Verify that brainscore.score calls compatibility and memory checks."""
 
@@ -116,3 +123,44 @@ class TestPreflightInScore:
 
         with pytest.raises(MemoryError, match="not enough memory"):
             brainscore.score('test-model', 'test-bench', check_mem=True)
+
+    @patch('brainscore_vision.load_benchmark')
+    def test_vision_fallback_benchmark_gets_modality_metadata(
+            self, mock_load_vision_benchmark):
+        import brainscore
+
+        benchmark = _LegacyBenchmark()
+        mock_load_vision_benchmark.return_value = benchmark
+
+        loaded = brainscore.load_benchmark('legacy-vision-benchmark')
+
+        assert loaded is benchmark
+        assert loaded.required_modalities == {'vision'}
+
+    @patch('brainscore_language.load_benchmark')
+    @patch('brainscore_vision.load_benchmark')
+    def test_language_fallback_benchmark_gets_modality_metadata(
+            self, mock_load_vision_benchmark, mock_load_language_benchmark):
+        import brainscore
+
+        benchmark = _LegacyBenchmark()
+        mock_load_vision_benchmark.side_effect = KeyError
+        mock_load_language_benchmark.return_value = benchmark
+
+        loaded = brainscore.load_benchmark('legacy-language-benchmark')
+
+        assert loaded is benchmark
+        assert loaded.required_modalities == {'text'}
+
+    @patch('brainscore_vision.load_benchmark')
+    def test_fallback_benchmark_keeps_explicit_modality_metadata(
+            self, mock_load_vision_benchmark):
+        import brainscore
+
+        benchmark = _LegacyBenchmark()
+        benchmark.required_modalities = {'audio'}
+        mock_load_vision_benchmark.return_value = benchmark
+
+        loaded = brainscore.load_benchmark('declared-legacy-benchmark')
+
+        assert loaded.required_modalities == {'audio'}

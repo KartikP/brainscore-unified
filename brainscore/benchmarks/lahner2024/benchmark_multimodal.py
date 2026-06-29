@@ -44,6 +44,11 @@ import pandas as pd
 from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
+from brainscore.benchmarks._scoring_utils import (
+    callback_group_kfold_predictions,
+    pearson_summary,
+    summed_group_kfold_ridge_predictions,
+)
 from brainscore.tools.banded_ridge import banded_ridge_fit_predict
 from ._util import read_stimulus_ids
 
@@ -52,7 +57,6 @@ from .benchmark import (
     DEFAULT_SAMPLE_TIMES_MS,
     Lahner2024BOLDMoments,
     VIDEO_DURATION_MS,
-    load_stimulus_set,
 )
 
 
@@ -163,7 +167,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         if missing:
             raise FileNotFoundError(
                 f"{len(missing)} audio files missing under {self._audio_dir}. "
-                f"Run `python -m brainscore.benchmarks.lahner2024."
+                f"Run `python -m brainscore.data.lahner2024."
                 f"prepare_audio_tracks --audio-dir {self._audio_dir}` first. "
                 f"First missing: {missing[0]}"
             )
@@ -303,44 +307,21 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         if mask is not None:
             neural_mat = neural_mat[:, mask]
 
-        from sklearn.model_selection import KFold
-        from sklearn.linear_model import Ridge
-
         n = features.shape[0]
-        kf = KFold(n_splits=5, shuffle=True, random_state=0)
-        fold_preds = np.zeros_like(neural_mat)
         chosen_alphas = []
-        for train_idx, test_idx in kf.split(np.arange(n)):
-            if self._mode == 'banded':
-                X_train = [g[train_idx] for g in features_groups]
-                X_test = [g[test_idx] for g in features_groups]
-                Y_train = neural_mat[train_idx]
-                preds, alpha_pair = self._banded_ridge_fit_predict(
-                    X_train, X_test, Y_train)
-                fold_preds[test_idx] = preds
-                chosen_alphas.append(alpha_pair)
-            else:
-                # Per-modality ridge (sum of independents) when
-                # features_groups has 2 entries; concat / video_only /
-                # audio_only when it has 1. Each group gets its own
-                # Ridge with α=1.0 and predictions are summed.
-                for X in features_groups:
-                    reg = Ridge(alpha=1.0).fit(
-                        X[train_idx], neural_mat[train_idx])
-                    fold_preds[test_idx] += reg.predict(X[test_idx])
+        if self._mode == 'banded':
+            fold_preds, chosen_alphas = callback_group_kfold_predictions(
+                features_groups, neural_mat, self._banded_ridge_fit_predict,
+                n_splits=5, random_state=0, dtype=None)
+        else:
+            # Per-modality ridge (sum of independents) when features_groups has
+            # 2 entries; concat / video_only / audio_only when it has 1.
+            fold_preds = summed_group_kfold_ridge_predictions(
+                features_groups, neural_mat, alpha=1.0, n_splits=5,
+                random_state=0, dtype=None)
 
-        n_voxels = neural_mat.shape[1]
-        per_voxel_r = np.zeros(n_voxels)
-        for j in range(n_voxels):
-            yt = neural_mat[:, j]
-            yp = fold_preds[:, j]
-            if yt.std() > 0 and yp.std() > 0:
-                per_voxel_r[j] = np.corrcoef(yt, yp)[0, 1]
-            else:
-                per_voxel_r[j] = np.nan
-        per_voxel_r = per_voxel_r[~np.isnan(per_voxel_r)]
-        median_r = float(np.median(per_voxel_r))
-        mean_r = float(np.mean(per_voxel_r))
+        per_voxel_r, median_r, mean_r = pearson_summary(
+            neural_mat, fold_preds)
 
         score = Score(median_r / float(self.ceiling))
         score.attrs['raw'] = Score(median_r)

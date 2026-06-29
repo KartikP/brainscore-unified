@@ -70,7 +70,7 @@ on-disk footprint stays under ~5 GB. The final .nc artifact is ~5-10 GB.
 ## Usage
 
     # On EC2, in an env with the deps above:
-    python prepare_timeresolved_assembly.py \\
+    python -m brainscore.data.lahner2024.prepare_timeresolved_assembly \\
         --output-path /tmp/lahner2024_timeresolved.nc \\
         --events-path /tmp/lahner2024_timeresolved-events.csv \\
         --upload-to-s3
@@ -201,11 +201,12 @@ def main():
     if args.upload_to_s3:
         v_assembly = upload_to_s3(args.output_path, args.s3_bucket, args.s3_key_assembly)
         v_events   = upload_to_s3(args.events_path, args.s3_bucket, args.s3_key_events)
-        print("\n=== Paste into benchmark_timeresolved.py ===")
-        print(f"TIMERESOLVED_ASSEMBLY_VERSION_ID = '{v_assembly}'")
-        print(f"TIMERESOLVED_ASSEMBLY_SHA1       = '{sha1_assembly}'")
-        print(f"TIMERESOLVED_EVENTS_VERSION_ID   = '{v_events}'")
-        print(f"TIMERESOLVED_EVENTS_SHA1         = '{sha1_events}'")
+        print("\n=== Data plugin values ===")
+        print("Update unified/brainscore/data/lahner2024/__init__.py with:")
+        print(f"timeresolved assembly version: {v_assembly}")
+        print(f"timeresolved assembly sha1: {sha1_assembly}")
+        print(f"timeresolved events version: {v_events}")
+        print(f"timeresolved events sha1: {sha1_events}")
 
 
 # ── Per-(subject, task) extraction ────────────────────────────────────

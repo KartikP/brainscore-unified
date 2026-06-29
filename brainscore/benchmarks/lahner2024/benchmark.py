@@ -13,11 +13,11 @@ vertices across L/R hemispheres, and ``presentation`` is 1026 videos × 10
 repetitions. We average repetitions to get one clean response per video.
 
 Taken from brain-score/vision PR #1249 (YingtianDt):
-    - S3 bucket, version_ids, SHA1s (verbatim)
     - BOLDMoments as the stimulus-set identifier
     - Citation
 
 Reframed for the unified interface:
+    - Data resolves through the unified data plugin
     - No dependency on the vision-specific Video/Stimulus class hierarchy
     - No dependency on TemporalInferencer (works for frame-based models)
     - Video → frame extraction via cv2 (``cv2.VideoCapture``), wrapped in
@@ -74,10 +74,12 @@ from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
 )
-from brainscore_core.supported_data_standards.brainio.s3 import (
-    load_assembly_from_s3, load_stimulus_set_from_s3,
-)
 from brainscore_core.temporal import expand_clip_to_frames, temporal_bin
+from brainscore import load_dataset, load_stimulus_set
+from brainscore.benchmarks._scoring_utils import (
+    kfold_ridge_predictions,
+    pearson_summary,
+)
 
 
 BIBTEX = """@article{lahner2024modeling,
@@ -92,45 +94,10 @@ BIBTEX = """@article{lahner2024modeling,
   year={2024},
 }"""
 
-# S3 versioning — same as brain-score/vision PR #1249
-STIMULUS_ID = 'BOLDMoments'
-STIMULUS_BUCKET = 'brainscore-storage/brainscore-vision/benchmarks/Lahner2024-fMRI'
-STIMULUS_CSV_SHA1 = '0b27388f5898c908f58cd1f21f8f5cb3eda8536e'
-STIMULUS_ZIP_SHA1 = 'dc9c3bf631632cd433d02f2f1847fd33c01ae0b3'
-STIMULUS_CSV_VERSION_ID = 'WaGkWh59b1drhy1MmAVVSxh7_VT_eTay'
-STIMULUS_ZIP_VERSION_ID = 'OxpOYy_3bveay9NFFFxNCVyghyAbqyIt'
-
-ASSEMBLY_ID = 'Lahner2024-fMRI'
-ASSEMBLY_VERSION_ID = 'zr_i3T9Saww44rPNJwLaxo0hgp8rYjPO'
-ASSEMBLY_SHA1 = '2c7f1d2e5724b8cc3c5cf47986e956c4f13001e4'
-
 # Videos are 3 seconds long
 VIDEO_DURATION_MS = 3000
 # Default: three frames per video (start/middle/end)
 DEFAULT_SAMPLE_TIMES_MS = (500, 1500, 2500)
-
-
-def load_stimulus_set():
-    return load_stimulus_set_from_s3(
-        identifier=STIMULUS_ID,
-        bucket=STIMULUS_BUCKET,
-        csv_sha1=STIMULUS_CSV_SHA1,
-        zip_sha1=STIMULUS_ZIP_SHA1,
-        csv_version_id=STIMULUS_CSV_VERSION_ID,
-        zip_version_id=STIMULUS_ZIP_VERSION_ID,
-    )
-
-
-def load_assembly(merge_stimulus_set_meta: bool = True):
-    return load_assembly_from_s3(
-        identifier=ASSEMBLY_ID,
-        version_id=ASSEMBLY_VERSION_ID,
-        sha1=ASSEMBLY_SHA1,
-        bucket=STIMULUS_BUCKET,
-        cls=NeuronRecordingAssembly,
-        stimulus_set_loader=load_stimulus_set,
-        merge_stimulus_set_meta=merge_stimulus_set_meta,
-    )
 
 
 def _extract_frame_with_cv2(video_path, time_ms: float, frames_dir: Path) -> str:
@@ -234,13 +201,13 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     @property
     def assembly(self) -> NeuronRecordingAssembly:
         if self._assembly is None:
-            self._assembly = load_assembly()
+            self._assembly = load_dataset('Lahner2024-fMRI')
         return self._assembly
 
     @property
     def stimulus_set(self):
         if self._stimulus_set is None:
-            self._stimulus_set = load_stimulus_set()
+            self._stimulus_set = load_stimulus_set('BOLDMoments')
         return self._stimulus_set
 
     def _expand_videos(self):
@@ -256,8 +223,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 
         stim = self.stimulus_set
         # Actual video paths live in stim.get_stimulus(...) or in stimulus_paths.
-        # ``load_stimulus_set_from_s3`` returns a StimulusSet where
-        # ``get_stimulus(stimulus_id)`` gives the local unpacked video path.
+        # The registry loader returns a StimulusSet where get_stimulus(...)
+        # gives the local unpacked video path.
 
         def frame_extractor(video_path, t_ms):
             return _extract_frame_with_cv2(
@@ -381,8 +348,6 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return r_full
 
     def __call__(self, candidate) -> Score:
-        from scipy.stats import pearsonr
-
         # Configure the model's recording once (both paths use it).
         candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
 
@@ -433,37 +398,11 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         # StandardScaler over-rescales heterogeneous-variance features and
         # costs ~0.18 raw r on Lahner2024 (see 2026-04-24 replication note).
         # Pass raw features directly.
-        from sklearn.model_selection import KFold
-        from sklearn.linear_model import Ridge
-
-        n = model_mat.shape[0]
-        kf = KFold(n_splits=5, shuffle=True, random_state=0)
-        fold_preds = np.zeros_like(neural_mat)
-        for train_idx, test_idx in kf.split(np.arange(n)):
-            X_train = model_mat[train_idx]
-            X_test = model_mat[test_idx]
-            y_train = neural_mat[train_idx]
-            reg = Ridge(alpha=1.0).fit(X_train, y_train)
-            fold_preds[test_idx] = reg.predict(X_test)
-
-        # Per-voxel Pearson on the held-out predictions
-        # Vectorized: correlate each column independently
-        y_true = neural_mat
-        y_pred = fold_preds
-        n_voxels = y_true.shape[1]
-        per_voxel_r = np.zeros(n_voxels)
-        for j in range(n_voxels):
-            yt = y_true[:, j]
-            yp = y_pred[:, j]
-            if yt.std() > 0 and yp.std() > 0:
-                per_voxel_r[j] = np.corrcoef(yt, yp)[0, 1]
-            else:
-                per_voxel_r[j] = np.nan
-
-        # Summary: median of voxels with finite scores
-        per_voxel_r = per_voxel_r[~np.isnan(per_voxel_r)]
-        median_r = float(np.median(per_voxel_r))
-        mean_r = float(np.mean(per_voxel_r))
+        fold_preds = kfold_ridge_predictions(
+            model_mat, neural_mat, alpha=1.0, n_splits=5,
+            random_state=0, dtype=None)
+        per_voxel_r, median_r, mean_r = pearson_summary(
+            neural_mat, fold_preds)
 
         score = Score(median_r / float(self.ceiling))
         score.attrs['raw'] = Score(median_r)
@@ -471,7 +410,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
         score.attrs['per_voxel_r'] = per_voxel_r   # exposed for bootstrap CIs
-        score.attrs['n_videos'] = int(n)
+        score.attrs['n_videos'] = int(model_mat.shape[0])
         # Make the pipeline explicit so downstream consumers know what
         # assumption the score was computed under.
         score.attrs['pipeline'] = pipeline_mode
