@@ -7,6 +7,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE_MODEL_INTERFACE = ROOT / "core" / "brainscore_core" / "model_interface.py"
+CORE_CONTRACT = ROOT / "core" / "brainscore_core" / "contract.py"
+CORE_BRAINSCORE_MODEL = ROOT / "core" / "brainscore_core" / "brainscore_model.py"
 UNIFIED_SCORE = ROOT / "unified" / "brainscore" / "__init__.py"
 MEMORY = ROOT / "core" / "brainscore_core" / "memory.py"
 ARCH_HTML = ROOT / "unified" / "website" / "architecture.html"
@@ -21,7 +23,7 @@ def _read(path):
 
 
 def _source_modality_priority():
-    source = _read(CORE_MODEL_INTERFACE)
+    source = _read(CORE_BRAINSCORE_MODEL)
     match = re.search(r"MODALITY_PRIORITY:[^\n=]+=\s*(\([^\)]*\))", source)
     assert match, "source MODALITY_PRIORITY not found"
     return list(ast.literal_eval(match.group(1)))
@@ -35,19 +37,22 @@ def _site_modality_priority():
 
 
 def _source_input_event_order():
-    source = _read(CORE_MODEL_INTERFACE)
+    source = _read(CORE_BRAINSCORE_MODEL)
     match = re.search(r"_INPUT_HANDLERS:[^\n]+=\s*\[(.*?)\]", source, re.S)
     assert match, "source _INPUT_HANDLERS not found"
     return re.findall(r"\((\w+),\s*'_", match.group(1))
 
 
 def test_architecture_uses_subject_as_primary_abc():
-    source = _read(CORE_MODEL_INTERFACE)
+    contract_source = _read(CORE_CONTRACT)
+    facade_source = _read(CORE_MODEL_INTERFACE)
     html = _read(ARCH_HTML)
     js = _read(ARCH_JS)
 
-    assert "class Subject(ABC):" in source
-    assert "UnifiedModel = Subject" in source
+    assert "class Subject(ABC):" in contract_source
+    assert "UnifiedModel = Subject" in contract_source
+    assert "Subject" in facade_source
+    assert "UnifiedModel" in facade_source
     assert "The <code>Subject</code> ABC" in html
     assert "class Subject(ABC):" in html
     assert "Subject.process" in js

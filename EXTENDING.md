@@ -119,6 +119,10 @@ temporal data, reuse `core/brainscore_core/temporal.py` (`temporal_bin`, `hrf_co
 as worked examples. A clip longer than a video model's native temporal window won't silently
 downsample: set `VideoWrapper(..., context_window_ms=...)` to tile it into windows and stitch the
 per-window time-resolved features into one clip-time sequence (set `max_clip_ms` for a fail-fast).
+Before sharing a new benchmark, complete the
+[benchmark addition checklist](docs/benchmark_addition_checklist.md) so the data boundary, null
+floor, ceiling, modality ablations, timing assumptions, score attrs, and EC2 evidence are recorded
+in a reviewable form.
 
 ### Seam 3 — a new metric  *(now first-class)*
 

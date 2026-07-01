@@ -21,6 +21,10 @@ score = brainscore.score('<some-model>', '<your-id>')
 
 Touch the candidate ONLY through `start_recording` / `start_task` / `process` — never
 `look_at`/`digest_text`. That's what lets any compliant model run on your benchmark unchanged.
+Before opening a PR, complete the
+[benchmark addition checklist](../../docs/benchmark_addition_checklist.md) and attach the evidence
+for data-plugin loading, null floor, ceiling, modality ablations, timing assumptions, score attrs,
+and any EC2-only verification.
 
 ## Worked references (read these)
 
