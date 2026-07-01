@@ -37,7 +37,11 @@ deliverables ledger (Obsidian): `unified-model-interface-deliverables/COMPUTE-CO
 | 2026-06-26 | Website error bars: bootstrap 95% CIs over voxels for the Lahner ROI video chart (6 models); fixed a polluted BOLDMoments stimulus cache; medians reproduce displayed scores bit-for-bit | g5.4xlarge | ~0.7 h measured | ~$1.1 |
 | 2026-06-29 | C1 data-plugin verification: rsync unified data registry changes, Lahner/Algonauts loader smoke, offline tier on EC2 | g5.4xlarge | ~0.17 h measured | ~$0.30 |
 | 2026-06-29 | C3 scoring-DRY verification: rsync scoring/preflight changes, focused C3 tests, offline tier, and full regression-baseline harness (13 passed) on EC2 | g5.4xlarge | ~1.45 h measured | ~$2.4 |
-| | **GRAND TOTAL (EC2)** | | | **≈ $104.7** |
+| 2026-06-29 | Model-interface composition + assembly-builder verification: rsync split core modules/wrappers, focused EC2 tests, offline tier, and full regression-baseline harness (13 passed) | g5.4xlarge | ~1.6 h measured | ~$2.6 |
+| 2026-06-29 | Capability-seam checkpoint attempt: rsync neural-capability code + public-surface smoke (4 passed); regression-baseline pytest was interrupted when the already-running instance was externally stopped before summary | g5.4xlarge | same running window as previous row; restart auto-stopped <1 min | $0 incremental |
+| 2026-06-30 | Capability-seam checkpoint regression verify: rsync current checkpoint + full regression-baseline harness (13 passed, 1:01:45, bit-for-bit) on EC2 | g5.4xlarge | 1.07 h measured | ~$1.74 |
+| 2026-07-01 | 4.7 full-decomposition batched verify: regression 13/13 bit-for-bit + constructor-rework confirm on real CLIP/Qwen (ROAR end-to-end blocked by pre-existing hardcoded stimulus path) | g5.4xlarge | 1.15 h measured | ~$1.87 |
+| | **GRAND TOTAL (EC2)** | | | **≈ $110.9** |
 
 > The MIRAGE/TRIBEv2 arc (sessions 2–5) is the single biggest line — it used the 4× L40S
 > `g6e.12xlarge` at $10.6/hr for the 30B Qwen3-Omni extraction. Everything else is A10G at $1.62/hr.
