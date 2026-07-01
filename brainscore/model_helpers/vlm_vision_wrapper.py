@@ -27,7 +27,12 @@ import pandas as pd
 from PIL import Image
 from tqdm.auto import tqdm
 
-from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly, walk_coords
+from brainscore_core.assembly_builder import (
+    concat_neuroid_assemblies,
+    make_assembly,
+    make_layer_neuroid_coords,
+)
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from result_caching import store_xarray
 
@@ -339,17 +344,15 @@ class VLMVisionWrapper:
             # Flatten any remaining feature dims
             flat = activations.reshape(n_stimuli, -1)
             n_features = flat.shape[1]
-            neuroid_id = [f"{self._identifier}.{layer_name}.{i}"
-                          for i in range(n_features)]
-            assembly = NeuroidAssembly(
+            coords = {
+                'stimulus_id': ('presentation', list(range(n_stimuli))),
+                **make_layer_neuroid_coords(
+                    self._identifier, layer_name, n_features,
+                    include=('neuroid_id', 'neuroid_num', 'model', 'layer')),
+            }
+            assembly = make_assembly(
                 flat,
-                coords={
-                    'stimulus_id': ('presentation', list(range(n_stimuli))),
-                    'neuroid_id': ('neuroid', neuroid_id),
-                    'neuroid_num': ('neuroid', list(range(n_features))),
-                    'model': ('neuroid', [self._identifier] * n_features),
-                    'layer': ('neuroid', [layer_name] * n_features),
-                },
+                coords=coords,
                 dims=['presentation', 'neuroid'],
             )
             layer_assemblies.append(assembly)
@@ -357,29 +360,7 @@ class VLMVisionWrapper:
         if len(layer_assemblies) == 1:
             return layer_assemblies[0]
 
-        merged = np.concatenate([a.values for a in layer_assemblies], axis=1)
-        nonneuroid_coords = {
-            coord: (dims, values)
-            for coord, dims, values in walk_coords(layer_assemblies[0])
-            if set(dims) != {'neuroid'}
-        }
-        neuroid_coords = {
-            coord: [dims, values]
-            for coord, dims, values in walk_coords(layer_assemblies[0])
-            if set(dims) == {'neuroid'}
-        }
-        for layer_assembly in layer_assemblies[1:]:
-            for coord in neuroid_coords:
-                neuroid_coords[coord][1] = np.concatenate(
-                    (neuroid_coords[coord][1], layer_assembly[coord].values))
-
-        neuroid_coords = {coord: (dv[0], dv[1])
-                          for coord, dv in neuroid_coords.items()}
-        return NeuroidAssembly(
-            merged,
-            coords={**nonneuroid_coords, **neuroid_coords},
-            dims=layer_assemblies[0].dims,
-        )
+        return concat_neuroid_assemblies(layer_assemblies, strategy='manual')
 
     def _attach_stimulus_set_meta(self, assembly, stimulus_set) -> NeuroidAssembly:
         """Attach stimulus set metadata as coordinates on the presentation dim."""

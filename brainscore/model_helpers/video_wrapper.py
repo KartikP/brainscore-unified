@@ -57,8 +57,13 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 from tqdm.auto import tqdm
 
+from brainscore_core.assembly_builder import (
+    make_assembly,
+    make_neuroid_ids,
+    replace_presentation_coord,
+)
 from brainscore_core.supported_data_standards.brainio.assemblies import (
-    NeuroidAssembly, walk_coords,
+    NeuroidAssembly,
 )
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.temporal import window_plan
@@ -525,8 +530,8 @@ class VideoWrapper:
         layer_labels: List[str] = []
         for layer_name, stacked in layer_tensors:
             F = stacked.shape[2]
-            neuroid_ids.extend([f'{self._identifier}.{layer_name}.{i}'
-                                for i in range(F)])
+            neuroid_ids.extend(
+                make_neuroid_ids(self._identifier, layer_name, F))
             layer_labels.extend([layer_name] * F)
 
         # Build stimulus_ids (placeholder — caller may relabel via
@@ -553,8 +558,7 @@ class VideoWrapper:
             'model': ('neuroid', [self._identifier] * len(neuroid_ids)),
             'layer': ('neuroid', layer_labels),
         }
-
-        return NeuroidAssembly(
+        return make_assembly(
             data,
             coords=coords,
             dims=['presentation', 'time_bin', 'neuroid'],
@@ -571,19 +575,8 @@ class VideoWrapper:
         # Because gather_indexes MultiIndexes the presentation dim, we
         # need to reset and rebuild. Simpler: construct a fresh assembly
         # with the right stimulus_ids.
-        data = assembly.values
-        # Collect all coords except the auto-generated stimulus_id
-        new_coords = {}
-        for coord_name, dims, values in walk_coords(assembly):
-            if coord_name == 'stimulus_id':
-                continue
-            new_coords[coord_name] = (dims, values)
-        new_coords['stimulus_id'] = ('presentation', stimulus_ids)
-        return NeuroidAssembly(
-            data,
-            coords=new_coords,
-            dims=assembly.dims,
-        )
+        return replace_presentation_coord(
+            assembly, 'stimulus_id', stimulus_ids)
 
     def _attach_stimulus_set_meta(self, assembly, stimulus_set):
         """Attach remaining stimulus set columns as presentation coords."""

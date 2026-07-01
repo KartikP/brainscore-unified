@@ -44,6 +44,11 @@ from typing import Callable, List, Optional, Tuple, Union
 import numpy as np
 from tqdm.auto import tqdm
 
+from brainscore_core.assembly_builder import (
+    concat_neuroid_assemblies,
+    make_assembly,
+    make_layer_neuroid_coords,
+)
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from result_caching import store_xarray
@@ -552,37 +557,33 @@ class AudioWrapper:
         # Multi-layer: concatenate along the neuroid axis (matches
         # TextWrapper / VideoWrapper convention when callers pass multiple
         # layers at once).
-        import xarray as xr
-        return xr.concat(layer_assemblies, dim='neuroid')
+        return concat_neuroid_assemblies(layer_assemblies, strategy='xarray')
 
     def _pack_2d(self, activations, layer_name, paths, n_features):
-        neuroid_id = [f"{self._identifier}.{layer_name}.{i}"
-                      for i in range(n_features)]
-        layer_coord = [layer_name] * n_features
         stimulus_id = list(range(len(paths)))  # provisional
-        return NeuroidAssembly(
+        coords = {
+            'stimulus_id': ('presentation', stimulus_id),
+            'stimulus_path': ('presentation', list(paths)),
+            **make_layer_neuroid_coords(
+                self._identifier, layer_name, n_features,
+                include=('neuroid_id', 'layer')),
+        }
+        return make_assembly(
             activations,
-            coords={
-                'stimulus_id': ('presentation', stimulus_id),
-                'stimulus_path': ('presentation', list(paths)),
-                'neuroid_id': ('neuroid', neuroid_id),
-                'layer': ('neuroid', layer_coord),
-            },
+            coords=coords,
             dims=['presentation', 'neuroid'],
         )
 
     def _pack_3d(self, activations, layer_name, paths, n_time, n_features):
-        neuroid_id = [f"{self._identifier}.{layer_name}.{i}"
-                      for i in range(n_features)]
-        layer_coord = [layer_name] * n_features
         stimulus_id = list(range(len(paths)))
         time_bin_ids = list(range(n_time))
         coords = {
             'stimulus_id': ('presentation', stimulus_id),
             'stimulus_path': ('presentation', list(paths)),
             'time_bin_id': ('time_bin', time_bin_ids),
-            'neuroid_id': ('neuroid', neuroid_id),
-            'layer': ('neuroid', layer_coord),
+            **make_layer_neuroid_coords(
+                self._identifier, layer_name, n_features,
+                include=('neuroid_id', 'layer')),
         }
         # If the wrapper knows its model's per-step duration (set during
         # the first forward pass), expose absolute ms boundaries on the
@@ -594,7 +595,7 @@ class AudioWrapper:
             ends = starts + self._step_ms
             coords['time_bin_start_ms'] = ('time_bin', starts)
             coords['time_bin_end_ms'] = ('time_bin', ends)
-        return NeuroidAssembly(
+        return make_assembly(
             activations,
             coords=coords,
             dims=['presentation', 'time_bin', 'neuroid'],
