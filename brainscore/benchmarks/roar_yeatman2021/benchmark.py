@@ -26,10 +26,9 @@ This is unified-interface-native: it uses BrainScoreModel's behavioral
 readout (start_task(TaskContext(task_type='probabilities', ...)) +
 process(test_stimuli) -> BehavioralAssembly).
 
-Data sources (s3://brainscore-storage/brainscore-vision/data/user_764/):
-- assy_Yeatman2021.nc       — 60,000 trials (500 stimuli × 120 subjects)
-- stimulus_Yeatman2021.csv  — stimulus metadata (label, word, real/pseudo)
-- stimulus_Yeatman2021.zip  — 500 PNG images, 500×300 RGB
+Data are resolved through the unified data plugin:
+`brainscore.load_stimulus_set('Yeatman2021')` and
+`brainscore.load_dataset('Yeatman2021')`.
 
 Human assembly schema (verified April 2026):
 - `data`: subject response (1 = "real", 0 = "pseudo")
@@ -38,14 +37,11 @@ Human assembly schema (verified April 2026):
   Accuracy is computed as (data == correct).
 """
 
-import os
-from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 import numpy as np
-import pandas as pd
-import xarray as xr
 
+from brainscore import load_dataset, load_stimulus_set
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import TaskContext
@@ -74,42 +70,11 @@ BIBTEX = """@article{yeatman2021rapid,
 }"""
 
 
-DATA_DIR = Path(os.environ.get(
-    'ROAR_DATA_DIR', '/Users/kartik/Brain-Score Unified/data/roar_yeatman2021'))
-
 # Paper protocol: 200/50 real, 200/50 pseudo
 TRAIN_PER_CLASS = 200
 TEST_PER_CLASS = 50
 DYSLEXIA_THRESHOLD = 0.65  # 1 SD below human mean (Honarmand et al. 2026)
 SPLIT_SEED = 0
-
-
-def _load_stimulus_set(data_dir: Path = DATA_DIR) -> StimulusSet:
-    """Load the ROAR stimulus set with labels.
-
-    Columns: stimulus_id, image_file_name, image_label ('real'/'pseudo'),
-    numeric_label (0/1), word, realpseudo.
-    """
-    csv_path = data_dir / 'stimulus_Yeatman2021.csv'
-    stimuli_dir = data_dir / 'stimuli'
-    df = pd.read_csv(csv_path)
-    df['image_label'] = df['label'].map({1: 'real', 0: 'pseudo'})
-    df['numeric_label'] = df['label']
-    df['image_file_name'] = df['filename'].apply(
-        lambda fn: str(stimuli_dir / fn))
-    # `sentence` column lets text-only models (e.g., GPT-2) process the
-    # word string directly. Vision models still route via image_file_name
-    # (MODALITY_PRIORITY in BrainScoreModel picks vision when both are
-    # present).
-    df['sentence'] = df['word']
-    df = df[['stimulus_id', 'image_file_name', 'sentence', 'image_label',
-             'numeric_label', 'word', 'realpseudo']]
-
-    stimulus_set = StimulusSet(df)
-    stimulus_set.identifier = 'Yeatman2021'
-    stimulus_set.stimulus_paths = dict(
-        zip(df['stimulus_id'].values, df['image_file_name'].values))
-    return stimulus_set
 
 
 def _split_train_test(stimulus_set: StimulusSet,
@@ -152,12 +117,7 @@ def _slice_stimulus_set(stimulus_set: StimulusSet, ids: List[str],
     return new_set
 
 
-def _load_human_assembly(data_dir: Path = DATA_DIR) -> xr.Dataset:
-    """Load the 60k-trial human behavioral dataset."""
-    return xr.open_dataset(data_dir / 'assy_Yeatman2021.nc')
-
-
-def _human_accuracy_on_stimuli(ds: xr.Dataset, stimulus_ids: List[str]) -> float:
+def _human_accuracy_on_stimuli(ds, stimulus_ids: List[str]) -> float:
     """Mean human accuracy across subjects and the given stimuli."""
     accuracy = (ds['data'].values == ds['correct'].values).astype(float)
     stim_ids = ds['stimulus_id'].values
@@ -235,14 +195,14 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         self.modality = modality
         self.required_modalities = {modality}
 
-        full_stimulus_set = _load_stimulus_set()
+        full_stimulus_set = load_stimulus_set('Yeatman2021')
         # Split first on the full set so the train/test partition is the
         # same across modality variants. Then project each side to the
         # chosen modality.
         train_full, test_full = _split_train_test(full_stimulus_set)
         self._train_stimuli = _project_to_modality(train_full, modality)
         self._test_stimuli = _project_to_modality(test_full, modality)
-        self._human_ds = _load_human_assembly()
+        self._human_ds = load_dataset('Yeatman2021')
 
         test_ids = list(self._test_stimuli['stimulus_id'].values)
         self._human_accuracy = _human_accuracy_on_stimuli(self._human_ds, test_ids)

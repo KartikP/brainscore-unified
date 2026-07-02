@@ -7,3 +7,4 @@ stays deferred until ``brainscore.load_dataset`` or
 
 from . import algonauts2025  # noqa: F401
 from . import lahner2024  # noqa: F401
+from . import roar_yeatman2021  # noqa: F401
