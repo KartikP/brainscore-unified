@@ -238,7 +238,9 @@ score     = brainscore.score('your-model', 'your-benchmark')</code></pre>
     <p class="muted small"><code>load_*</code> checks the unified registry first, then falls back to
       the vision / language registries, so legacy plugins keep working. Five registries —
       <code>data</code>, <code>stimulus_set</code>, <code>metric</code>, <code>benchmark</code>,
-      <code>model</code> — are Brain-Score's; the unified interface adds the <code>Capability</code> slots.</p>
+      <code>model</code> — are Brain-Score's; the unified interface adds a sixth, the
+      <code>Capability</code> registry (<code>register_capability</code>), which the model's
+      <code>process()</code> iterates. A capability is a self-registering class, not a hard-coded branch.</p>
 
     <table class="paths-table arch-ref-table">
       <tr><th>Seam</th><th>You implement</th><th>Contract</th><th>Template</th></tr>
@@ -246,7 +248,7 @@ score     = brainscore.score('your-model', 'your-benchmark')</code></pre>
       <tr><td><b>Benchmark</b></td><td>a <code>BenchmarkBase</code> subclass</td><td><code>__call__(candidate) -&gt; Score</code></td><td><code>templates/new_benchmark/</code></td></tr>
       <tr><td><b>Metric</b></td><td>a <code>Metric</code> subclass</td><td><code>__call__(assembly1, assembly2) -&gt; Score</code></td><td><code>templates/new_metric/</code></td></tr>
       <tr><td><b>Data / Stimulus&nbsp;set</b></td><td>a loader in <code>data_registry</code> / <code>stimulus_set_registry</code></td><td>returns a <code>DataAssembly</code> / <code>StimulusSet</code>, reused by many benchmarks</td><td>domain-repo pattern</td></tr>
-      <tr><td><b>Capability</b> <span class="muted">(new)</span></td><td>a <code>generation_fn</code> / <code>action_fn</code> / <code>state_change_fn</code> closure</td><td>wired into a model constructor slot</td><td><code>templates/new_capability/</code></td></tr>
+      <tr><td><b>Capability</b> <span class="muted">(new)</span></td><td>a self-registering <code>Capability</code> subclass (<code>handles</code> / <code>process</code>)</td><td>added as a new file via <code>register_capability</code>; <code>BrainScoreModel</code> + the <code>Subject</code> ABC stay unchanged</td><td><code>templates/new_capability/</code></td></tr>
     </table>
 
     <p>The <b>Metric</b> seam is where the field is moving — beyond linear predictivity toward
@@ -255,7 +257,12 @@ score     = brainscore.score('your-model', 'your-benchmark')</code></pre>
       unit layout against cortical topography, which predictivity is blind to — it is permutation-invariant
       over units). Filling an existing <b>Capability</b> slot needs no core change at all; only a genuinely
       new input/output <i>type</i> adds a row to process()'s dispatch table (one
-      <code>register_input_handler</code> call plus a handler) — the dispatch loop is never edited.</p>
+      <code>register_input_handler</code> call plus a handler) — the dispatch loop is never edited.
+      The five capabilities the interface ships with (neural encoding, behavioral readout, generation,
+      embodied action, state-change) are themselves registered <code>Capability</code> plugins: a new
+      capability is a new self-registering file, dispatched by <code>process()</code> with <b>zero edits
+      to <code>BrainScoreModel</code> or the <code>Subject</code> ABC</b> — Open/Closed, and there is a
+      test that proves it by dispatching a capability defined in a fresh file.</p>
 
     <div class="callout" style="border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:14px 16px;margin:14px 0;background:var(--panel2)">
       <p style="margin:0 0 6px"><b>The topographic axis, on real fMRI (a first n=2 sign-check).</b> Scored on an NSD
