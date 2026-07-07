@@ -200,7 +200,10 @@ def score(model_identifier: str, benchmark_identifier: str,
     Loads both from the unified registry (with domain fallbacks),
     then runs the benchmark on the model.
     """
-    from brainscore_core.compatibility import check_compatibility
+    from brainscore_core.compatibility import (
+        check_channel_compatibility,
+        check_compatibility,
+    )
     from brainscore_core.memory import check_memory
 
     import time as _time
@@ -208,6 +211,7 @@ def score(model_identifier: str, benchmark_identifier: str,
     benchmark = load_benchmark(benchmark_identifier)
 
     check_compatibility(model, benchmark)
+    check_channel_compatibility(model, benchmark)
     if check_mem:
         check_memory(model, benchmark)
 
