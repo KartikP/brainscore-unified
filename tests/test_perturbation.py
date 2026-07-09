@@ -245,3 +245,26 @@ class TestDrive:
 
         bs.reset()
         assert torch.allclose(net(x).detach(), baseline)
+
+
+# ── Index validation (fail at apply, not mid-forward) ────────────────
+
+class TestIndexValidation:
+
+    def test_out_of_range_index_raises_at_apply(self, model_with_ablation):
+        bs, net = model_with_ablation  # fc1 has 8 units
+        with pytest.raises(ValueError, match="out of range"):
+            bs.process(StateChange(
+                kind='ablation',
+                target=Selection(layer='fc1', indices=[99]),
+                perturbation=Perturbation(kind='zero'),
+            ))
+
+    def test_negative_index_raises_at_apply(self, model_with_ablation):
+        bs, net = model_with_ablation
+        with pytest.raises(ValueError, match="non-negative"):
+            bs.process(StateChange(
+                kind='ablation',
+                target=Selection(layer='fc1', indices=[-1]),
+                perturbation=Perturbation(kind='zero'),
+            ))

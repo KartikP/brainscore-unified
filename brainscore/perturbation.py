@@ -151,6 +151,21 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                 f"perturbation to be set."
             )
         layer = _resolve_layer(state_change.target.layer)
+        # Validate indices at apply-time, not cryptically mid-forward-pass.
+        indices = state_change.target.indices
+        if indices is not None:
+            if any((not isinstance(i, int)) or i < 0 for i in indices):
+                raise ValueError(
+                    f"Selection.indices must be non-negative integers, got {indices}."
+                )
+            n_units = (getattr(layer, 'out_features', None)
+                       or getattr(layer, 'num_features', None))
+            if n_units is not None and indices and max(indices) >= n_units:
+                raise ValueError(
+                    f"Selection index {max(indices)} is out of range for layer "
+                    f"'{state_change.target.layer}' with {n_units} units "
+                    f"(valid 0..{n_units - 1})."
+                )
         hook = _make_hook(state_change.target, state_change.perturbation)
         handle = layer.register_forward_hook(hook)
 
