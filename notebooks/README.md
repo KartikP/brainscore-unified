@@ -1,48 +1,62 @@
-# Brain-Score Unified — Demonstration Notebooks
+# Brain-Score UMI notebook path
 
-Short, runnable notebooks that each demonstrate **one** feature of the unified model interface end-to-end. Use these as the entry point when learning a feature; they're meant to be readable in 5 minutes and runnable in under a minute on a laptop.
+The numbered notebooks are the public learning path. They use synthetic or
+small in-memory data unless the table says otherwise. Install their dependencies
+from the distribution root with:
 
-## Conventions
-
-- **One feature per notebook.** Don't bundle. If you want to demo a second feature, write a second notebook.
-- **Self-contained.** No external data files. Synthesize images, sentences, etc. inline. The reader should be able to clone the repo and run the notebook with no setup besides activating the conda env.
-- **Concise.** Aim for ≤15 cells. Visualize before/after. Show the actual numbers, not just the mechanics.
-- **Reset at the end.** If the notebook mutates the model, restore it. Future cells (or future readers running interactively) shouldn't inherit the side effects.
-- **Short prose, dense code.** The notebook is not a tutorial — it's a worked example. Markdown cells are 1-2 sentences each, pointing at what the next code cell does and why.
-
-## Current notebooks
-
-| Notebook | Feature demonstrated | Hardware | Time |
-|---|---|---|---|
-| `state_change.ipynb` | `process(StateChange)` — install/observe/reset a distributed MLP-only ablation across 5 late layers of Qwen2.5-VL. Honarmand-style induced-dyslexia behavioral test on a small synthetic stimulus set with hand-rolled scoring (bypasses `bs_model.process`'s full pipeline). Designed for fast iteration on the lesion mechanics. | GPU (CUDA or MPS) | ~3 min |
-| `yeatman2021_state_change.ipynb` | Production-pipeline counterpart. Same lesion mechanics but uses the actual `Yeatman2021-lexical_decision-image` benchmark (200 train + 100 test ROAR stimuli) and routes scoring through `benchmark(bs_model)` → `bs_model.process(stimulus_set)` → registration's `generation_fn`. Reports published-comparable numbers including the 0.65 dyslexia threshold. | GPU (CUDA or MPS) | ~40 min on Mac MPS, ~15 min on EC2 |
-
-## Adding a new notebook
-
-1. Add an entry to the table above.
-2. Pick a feature that has only one notebook obligation. Examples that don't yet have one:
-   - `environment_step.ipynb` — `process(EnvironmentStep)`: register a fake DROID-shaped policy, drive it through a 5-step rollout, show the action sequence.
-   - `behavioral_readout.ipynb` — fit a probabilities classifier on CLIP features, show top-3 predictions on test stimuli.
-   - `prefer_path.ipynb` — same model, two evaluation paths (readout vs generation), force each via `TaskContext.prefer_path`, show the score delta.
-   - `temporal_binning.ipynb` — `temporal_bin` over a multi-frame stimulus, show the (clip, time_bin, neuroid) shape and how late-binning aggregates differently from early.
-   - `compatibility.ipynb` — `check_compatibility` failure modes; show the error messages and how the registry rejects bad pairings.
-
-3. Keep the notebook lean. If it grows past ~15 cells, ask whether you've drifted into "tutorial" territory and split it into a focused demo plus a separate doc.
-
-4. Test it executes end-to-end before committing:
-   ```bash
-   conda activate brainscore-unified
-   cd unified/notebooks
-   jupyter nbconvert --to notebook --execute --inplace <name>.ipynb
-   ```
-
-## Conda env
-
-These run in the project's `brainscore-unified` env. From the repo root:
-
-```bash
-conda activate brainscore-unified
+~~~bash
+python -m pip install -e "unified[notebooks]"
 jupyter notebook unified/notebooks/
-```
+~~~
 
-Outputs are committed alongside the .ipynb so readers can preview without running.
+Evidence labels:
+
+- **local workflow**: executes a real UMI path with small local components
+- **illustrative companion**: teaches analysis or interpretation, not model
+  registration or a brain-alignment result
+- **structural demo**: verifies interface mechanics, not scientific validity
+- **EC2 companion**: full data/model scoring is intentionally outside laptops
+- **archived**: not part of the default executable path
+
+## Recommended order
+
+| # | Notebook | What it shows | Evidence and hardware | Typical runtime | Prerequisites |
+| --- | --- | --- | --- | --- | --- |
+| 01 | 01_quickstart_layer_mapping.ipynb | Register a deterministic vision stand-in, score it, and record one/all/composite regions | local workflow, CPU | under 10 s | base notebook environment |
+| 02 | 02_behavioral_and_nulls.ipynb | Interpret chance and random-feature floors before trusting a behavioral score | illustrative companion, CPU | under 10 s | matplotlib |
+| 03 | 03_state_change_ablation.ipynb | Apply, observe, and exactly reset a small PyTorch ablation | local workflow, CPU | under 10 s | torch |
+| 04 | 04_embodied_vlm_game.ipynb | Run a tiny neural policy in a closed loop and align per-tick activations | structural demo, CPU | about 15 s | torch, matplotlib |
+| 05 | 05_temporal_multimodal.ipynb | Synchronize modality streams, convolve an HRF, and run a temporal-shift null | local workflow, CPU | under 10 s | NumPy and SciPy |
+| 06 | 06_topographic_metric.ipynb | Visualize synthetic correlation-versus-distance profiles | illustrative companion, CPU | under 10 s | matplotlib |
+| 07 | 07_brain_visualization.ipynb | Render an always-local parcel heatmap; optionally render a downloaded cortical surface | local default plus optional download | under 10 s locally | matplotlib; optional nilearn/network |
+| 08 | 08_scaling_curves.ipynb | Plot recorded repository results against matched null floors | local results visualization, CPU | under 10 s | matplotlib |
+| 09 | archive/09_watch_api_game.ipynb | Paid OpenRouter MiniGrid experiment retained for reference | archived, external API | variable and paid | API key, gymnasium, minigrid |
+| 10 | 10_intervention_spectrum.ipynb | Compare global, regional, single-unit, lesion, and drive interventions | local workflow, CPU | under 10 s | torch |
+| 11 | 11_multiple_subjects.ipynb | Compare several model-subjects and run the multi-agent harness | structural demo, CPU | under 10 s | torch |
+
+Notebook 02 does not score a registered model; it is a null-interpretation
+companion. Notebook 06 does not register or score a model; it demonstrates the
+descriptor used by the topographic metric. Their first cells state these
+boundaries explicitly.
+
+The production counterparts for large models, public benchmark data, video,
+audio-video, and Algonauts are EC2-only. Capability status is summarized in
+../README.md.
+
+## Reproduce the laptop path
+
+Run an individual notebook without modifying the committed file:
+
+~~~bash
+cd unified/notebooks
+jupyter nbconvert --to notebook --execute --stdout 01_quickstart_layer_mapping.ipynb >/tmp/01.ipynb
+~~~
+
+Maintainers should execute every active laptop notebook from top to bottom and
+commit outputs only when execution succeeds with no error cells. Paid API and
+EC2 notebooks do not belong in that gate.
+
+## Archive
+
+archive/ contains superseded, heavy, or externally gated notebooks. See
+[archive/README.md](archive/README.md) before using them.
