@@ -204,3 +204,44 @@ class TestLayerResolution:
         ))
         assert isinstance(applied, PerturbationApplied)
         bs.reset()
+
+
+# ── Drive (stimulation) ──────────────────────────────────────────────
+
+class TestDrive:
+    """The 'drive' kind adds `amount` to the selected units — a stimulation /
+    excitation analog, the additive counterpart of ablation."""
+
+    def test_whole_layer_drive(self, model_with_ablation):
+        bs, net = model_with_ablation
+        x = torch.tensor([[1., 2., 3., 4.]])
+        baseline = net(x).detach().clone()
+
+        bs.process(StateChange(
+            kind='ablation',
+            target=Selection(layer='fc1'),
+            perturbation=Perturbation(kind='drive', amount=2.0),
+        ))
+        # every fc1 unit is driven up by 2 (relu keeps them, fc2 is identity)
+        driven = net(x).detach()
+        assert torch.allclose(driven, baseline + 2.0)
+
+        bs.reset()
+        assert torch.allclose(net(x).detach(), baseline)
+
+    def test_drive_specific_units(self, model_with_ablation):
+        bs, net = model_with_ablation
+        x = torch.tensor([[1., 2., 3., 4.]])
+        baseline = net(x).detach().clone()
+
+        # units 4 and 5 are 0 at baseline; drive them to +3, leave the rest
+        bs.process(StateChange(
+            kind='ablation',
+            target=Selection(layer='fc1', indices=[4, 5]),
+            perturbation=Perturbation(kind='drive', amount=3.0),
+        ))
+        out = net(x).detach()
+        assert torch.allclose(out, torch.tensor([[1., 2., 3., 4., 3., 3., 0., 0.]]))
+
+        bs.reset()
+        assert torch.allclose(net(x).detach(), baseline)

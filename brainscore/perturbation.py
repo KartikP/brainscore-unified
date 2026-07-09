@@ -95,6 +95,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         indices = selection.indices
         kind = perturbation.kind
         scale = perturbation.scale
+        amount = perturbation.amount
 
         def hook(_module, _inputs, output):
             # Some layers return tuples (e.g., MultiheadAttention).
@@ -114,10 +115,12 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     return torch.zeros_like(tensor)
                 elif kind == 'scale':
                     return tensor * scale
+                elif kind == 'drive':
+                    return tensor + amount
                 else:
                     raise ValueError(
                         f"Unsupported Perturbation kind for whole-layer "
-                        f"ablation: {kind!r}. Expected 'zero' or 'scale'.")
+                        f"ablation: {kind!r}. Expected 'zero', 'scale', or 'drive'.")
             # ablate at the last (feature) axis at the named indices
             modified = tensor.clone()
             idx = torch.tensor(indices, dtype=torch.long, device=tensor.device)
@@ -127,10 +130,13 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                 vals = modified.index_select(-1, idx) * scale
                 # in-place scatter back
                 modified.index_copy_(-1, idx, vals)
+            elif kind == 'drive':
+                vals = modified.index_select(-1, idx) + amount
+                modified.index_copy_(-1, idx, vals)
             else:
                 raise ValueError(
                     f"Unsupported Perturbation kind for index-ablation: "
-                    f"{kind!r}. Expected 'zero' or 'scale'.")
+                    f"{kind!r}. Expected 'zero', 'scale', or 'drive'.")
             return modified
 
         return hook
