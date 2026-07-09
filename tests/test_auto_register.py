@@ -210,6 +210,15 @@ class TestInspectModel:
         assert pmap['V1'] == 'encoder.layers.0'
         assert pmap['IT'] == 'encoder.layers.7'
 
+    def test_resnet_stages_are_one_vision_backbone_not_multimodal(self):
+        # ResNet layer1..layer4 are integer-indexed block stacks of ONE vision
+        # backbone; they must not be misread as multiple modality towers.
+        tvm = pytest.importorskip('torchvision.models')
+        p = inspect_model(tvm.resnet18(weights=None), identifier='resnet18')
+        assert not p.is_multimodal
+        assert len(p.recommendations) == 1
+        assert p.recommendations[0].modality in ('vision', 'vision_flat')
+
     def test_clip_is_multimodal_two_towers(self):
         p = inspect_model(make_clip(6, 6), identifier='clip-tiny')
         assert p.is_multimodal

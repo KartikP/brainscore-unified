@@ -353,33 +353,43 @@ def inspect_model(model: Any, processor: Any = None,
             "manually (inspect model.named_modules()).")
     else:
         per_tower = _largest_group_per_tower(groups)
-        multi = len(per_tower) > 1
-        # order towers by stack size, largest first
-        ordered = sorted(per_tower.items(), key=lambda kv: -kv[1].size)
-        for top, group in ordered:
-            if multi:
-                submodule = getattr(model, top, None)
-                modality, reason = _classify_tower(top, submodule, meta)
-                submodule_path = top
-                # layers relative to the wrapped sub-module
-                rel = [p[len(top) + 1:] if p.startswith(top + '.') else p
-                       for p in group.paths]
-            else:
-                modality, reason = _classify_global(meta)
-                submodule_path = None
-                rel = group.paths
-            wrapper, agg, regions = _MODALITY_WRAPPER[modality]
-            recommendations.append(WrapperRecommendation(
-                modality=modality, wrapper=wrapper, block_layers=rel,
-                submodule_path=submodule_path, layer_aggregation=agg,
-                regions=regions, reason=reason))
+        # A model is only genuinely MULTI-tower (multimodal) when its towers span
+        # more than one distinct modality. Same-modality block stacks (a ResNet's
+        # layer1..layer4, or repeated encoder stages) are ONE backbone, not many
+        # towers — classifying them as multimodal broke plain CNNs.
+        tower_modality = {
+            top: _classify_tower(top, getattr(model, top, None), meta)[0]
+            for top in per_tower
+        }
+        distinct = {_base_modality(m) for m in tower_modality.values()}
+        multi = len(distinct) > 1
 
         if multi:
+            ordered = sorted(per_tower.items(), key=lambda kv: -kv[1].size)
+            for top, group in ordered:
+                modality, reason = _classify_tower(
+                    top, getattr(model, top, None), meta)
+                rel = [p[len(top) + 1:] if p.startswith(top + '.') else p
+                       for p in group.paths]
+                wrapper, agg, regions = _MODALITY_WRAPPER[modality]
+                recommendations.append(WrapperRecommendation(
+                    modality=modality, wrapper=wrapper, block_layers=rel,
+                    submodule_path=top, layer_aggregation=agg,
+                    regions=regions, reason=reason))
             notes.append(
                 "Multi-tower model: each tower is wrapped separately because "
                 "the full forward() typically requires every modality's input "
                 "at once (CLIP / BLIP-2 / VLM pattern). Layer paths are "
                 "relative to each tower's sub-module.")
+        else:
+            # single-modality model: one recommendation over the largest stack
+            modality, reason = _classify_global(meta)
+            wrapper, agg, regions = _MODALITY_WRAPPER[modality]
+            largest = max(per_tower.values(), key=lambda g: g.size)
+            recommendations.append(WrapperRecommendation(
+                modality=modality, wrapper=wrapper, block_layers=largest.paths,
+                submodule_path=None, layer_aggregation=agg,
+                regions=regions, reason=reason))
 
     # sizing / precision / gating warnings
     if n_params >= 1_000_000_000:
