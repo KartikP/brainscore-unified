@@ -1,8 +1,14 @@
 # Template: a new capability
 
-A capability is a callable you pass to a `BrainScoreModel` constructor slot; `process()`
-dispatches to it by input-event type. **There is no registry for capabilities** — you write the
-closure and wire it into a model registration. See `EXTENDING.md` (Seam 4).
+This template configures an **existing UMI capability** for one model. Write a
+callable and pass it to a `BrainScoreModel` constructor slot; `process()`
+reaches it through UMI's existing framework capability registry. You do not
+register the callable itself.
+
+This is distinct from adding a new framework capability. That core-level task
+subclasses `brainscore_core.capabilities.Capability` and calls
+`register_capability`; it changes Python source and is not what this template
+does. See `EXTENDING.md` (Seam 4).
 
 | Slot | Fires on | Returns |
 |------|----------|---------|
@@ -19,9 +25,9 @@ closure and wire it into a model registration. See `EXTENDING.md` (Seam 4).
 
 ## The boundary
 
-Filling an existing slot needs **no core change** — that's the point. A genuinely new input or
-output *type* (a new `InputEvent`/`OutputEvent` member) is the only thing that touches the core
-dataclasses + `process()` dispatch; that's a core contribution, not a plugin.
+Filling an existing slot needs **no core change**. A genuinely new input/output
+event or dispatch path is a core framework contribution and belongs in the
+class-based capability registry instead of this callable template.
 
 ## Worked references (read these)
 

@@ -4,9 +4,8 @@ The unified interface is a **backbone**: a small, stable core that you extend al
 well-defined seams. We ship the seams + a few reference integrations; you bring the breadth
 (your model, your dataset, your alignment metric). Nothing below requires touching the core.
 
-> Companion: the interactive contract map at `website/architecture.html`, and the reproduction
-> case study in the Obsidian note `topo-omni-reproduction-feasibility.md` (which exercises
-> several seams at once).
+> Companion: the shipped interactive contract map at
+> [`website/architecture.html`](website/architecture.html).
 
 ## The one mechanism: registries
 
@@ -150,10 +149,21 @@ spatial unit layout against cortical topography (the correlation-vs-distance pro
 predictivity). Copy `templates/new_metric/` to start. Distinct alignment axes are distinct metrics —
 keep predictivity, RSA, topographic, and SCA-style metrics separate rather than overloading one.
 
-### Seam 4 — a new capability (input/output event)
+### Seam 4 — configure or extend a capability
 
-Capabilities are callables passed to the `BrainScoreModel` constructor; `process()` dispatches to
-them by input-event type — **no core change for a new model that supports an existing capability**:
+There are two related extension levels:
+
+1. **Configure an existing capability for a model.** Most model authors do
+   this. Pass a callable into a `BrainScoreModel` constructor slot;
+   `process()` reaches it through the already-registered framework capability.
+   This requires no core change and no capability-registry work.
+2. **Add a new framework dispatch capability.** Core contributors subclass
+   `brainscore_core.capabilities.Capability` and register that class with
+   `register_capability`. This changes Python source and is appropriate only
+   when UMI needs a genuinely new dispatch path, not when one model needs a
+   new implementation of an existing path.
+
+The constructor-callable slots available to model authors are:
 
 | Slot | Fires on | Signature |
 |------|----------|-----------|
@@ -161,9 +171,9 @@ them by input-event type — **no core change for a new model that supports an e
 | `action_fn` | `EnvironmentStep` / `Message` | `(env_step) -> EnvironmentResponse` |
 | `state_change_fn` | `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 
-A genuinely *new* input or output type (a new `InputEvent` / `OutputEvent` member) is the only case
-that touches the core dataclasses + `process()` dispatch — see how `StateChange` and
-`EnvironmentStep` were added in `core/brainscore_core/model_interface.py`.
+A genuinely new input/output event or dispatch behavior belongs at the second
+level. See `core/brainscore_core/capabilities/` for the framework registry and
+`templates/new_capability/` for model-level callable examples.
 
 ---
 

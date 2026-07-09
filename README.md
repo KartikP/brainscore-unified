@@ -23,8 +23,13 @@ Editable install alongside the domain repositories, which provide the
 model-extraction and scoring stack:
 
 ```bash
-pip install -e core -e vision -e language -e unified
+conda env create -n brainscore-unified -f environment-unified.yml
+conda activate brainscore-unified
 ```
+
+The environment file at the distribution root installs all four repositories
+editably. For notebook dependencies in another environment, run
+`pip install -e "unified[notebooks]"` from the distribution root.
 
 Requires Python 3.11 (the data stack pins to 3.11; see the repository for the
 full environment and version constraints).
@@ -40,7 +45,10 @@ model = load_model("clip-vit-b-32")
 score = load_benchmark("MajajHong2015public.IT-pls-unified")(model)
 ```
 
-The full specification lives in the unified-model-interface design documents.
+Start with the shipped [getting-started guide](docs/getting_started.md), then
+use [EXTENDING.md](EXTENDING.md), [templates](templates/), the
+[notebook manifest](notebooks/README.md), and the
+[UMI API cookbook](docs/umi_api_reference.md).
 
 ## Capability Status Matrix
 
