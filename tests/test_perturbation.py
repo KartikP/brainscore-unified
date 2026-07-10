@@ -269,6 +269,27 @@ class TestIndexValidation:
                 perturbation=Perturbation(kind='zero'),
             ))
 
+    def test_numpy_int_index_accepted(self, model_with_ablation):
+        import numpy as np
+        bs, net = model_with_ablation  # fc1 has 8 units
+        bs.process(StateChange(  # np.int64 within range must NOT be rejected
+            kind='ablation',
+            target=Selection(layer='fc1', indices=[np.int64(2)]),
+            perturbation=Perturbation(kind='zero'),
+        ))
+        bs.reset()
+
+    def test_conv_out_channels_range_checked(self):
+        net = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3))  # out_channels = 4
+        bs = BrainScoreModel('conv', net, {}, {'vision': lambda x: x},
+                             state_change_fn=build_pytorch_ablation_fn(net))
+        with pytest.raises(ValueError, match="out of range"):
+            bs.process(StateChange(
+                kind='ablation',
+                target=Selection(layer='0', indices=[99]),  # > 4 channels
+                perturbation=Perturbation(kind='zero'),
+            ))
+
 
 def test_perturbation_positional_api_preserved():
     # 'amount' (added for kind='drive') must not shift the (kind, scale,

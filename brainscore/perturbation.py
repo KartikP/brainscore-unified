@@ -154,15 +154,29 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         # Validate indices at apply-time, not cryptically mid-forward-pass.
         indices = state_change.target.indices
         if indices is not None:
-            if any((not isinstance(i, int)) or i < 0 for i in indices):
-                raise ValueError(
-                    f"Selection.indices must be non-negative integers, got {indices}."
-                )
+            import operator
+            norm = []
+            for i in indices:
+                try:
+                    ii = operator.index(i)  # accepts int + numpy ints, rejects float/str
+                except TypeError:
+                    raise ValueError(
+                        f"Selection.indices must be integers, got {i!r} "
+                        f"({type(i).__name__})."
+                    )
+                if ii < 0:
+                    raise ValueError(
+                        f"Selection.indices must be non-negative, got {ii}."
+                    )
+                norm.append(ii)
+            # width for Linear / BatchNorm / Conv layers (deeper block types
+            # have no simple width attr and are validated at forward instead)
             n_units = (getattr(layer, 'out_features', None)
-                       or getattr(layer, 'num_features', None))
-            if n_units is not None and indices and max(indices) >= n_units:
+                       or getattr(layer, 'num_features', None)
+                       or getattr(layer, 'out_channels', None))
+            if n_units is not None and norm and max(norm) >= n_units:
                 raise ValueError(
-                    f"Selection index {max(indices)} is out of range for layer "
+                    f"Selection index {max(norm)} is out of range for layer "
                     f"'{state_change.target.layer}' with {n_units} units "
                     f"(valid 0..{n_units - 1})."
                 )
