@@ -382,12 +382,22 @@ def inspect_model(model: Any, processor: Any = None,
                 "at once (CLIP / BLIP-2 / VLM pattern). Layer paths are "
                 "relative to each tower's sub-module.")
         else:
-            # single-modality model: one recommendation over the largest stack
+            # single-modality model: ONE recommendation spanning ALL block stacks.
+            # A ResNet's layer1..layer4 are stages of one backbone; keeping only
+            # the largest stack drops layers 2-4 and mis-maps late regions (IT).
+            import re as _re
+
+            def _nat(path):  # natural sort so layer2 < layer10, .0 < .1
+                return [int(t) if t.isdigit() else t
+                        for t in _re.split(r'(\d+)', path)]
+
             modality, reason = _classify_global(meta)
             wrapper, agg, regions = _MODALITY_WRAPPER[modality]
-            largest = max(per_tower.values(), key=lambda g: g.size)
+            all_paths = sorted(
+                (p for group in per_tower.values() for p in group.paths),
+                key=_nat)
             recommendations.append(WrapperRecommendation(
-                modality=modality, wrapper=wrapper, block_layers=largest.paths,
+                modality=modality, wrapper=wrapper, block_layers=all_paths,
                 submodule_path=None, layer_aggregation=agg,
                 regions=regions, reason=reason))
 

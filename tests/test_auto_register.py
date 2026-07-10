@@ -218,6 +218,12 @@ class TestInspectModel:
         assert not p.is_multimodal
         assert len(p.recommendations) == 1
         assert p.recommendations[0].modality in ('vision', 'vision_flat')
+        # ALL stages must survive (not just the largest) and map in depth order
+        stages = {l.split('.')[0] for l in p.recommendations[0].block_layers}
+        assert stages == {'layer1', 'layer2', 'layer3', 'layer4'}
+        pmap = p.provisional_region_layer_map()
+        assert pmap['V1'].startswith('layer1')   # early region, shallow layer
+        assert pmap['IT'].startswith('layer4')   # late region, deepest layer
 
     def test_clip_is_multimodal_two_towers(self):
         p = inspect_model(make_clip(6, 6), identifier='clip-tiny')
