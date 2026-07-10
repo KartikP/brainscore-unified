@@ -301,6 +301,12 @@ class TestNestedBlockHeuristic:
         assert not _looks_like_single_nested_block(
             ['encoder.layers.0', 'encoder.layers.7'])
 
+    def test_numbered_stage_prefix_is_not_a_false_positive(self):
+        # A complete stack under a NUMBERED stage name (stage2.blocks.0..7) is not
+        # one block's internals — 'stage2' ends in a digit but isn't a block index.
+        assert not _looks_like_single_nested_block(
+            ['stage2.blocks.0', 'stage2.blocks.7'])
+
 
 # ── space_layers ─────────────────────────────────────────────────────────────
 

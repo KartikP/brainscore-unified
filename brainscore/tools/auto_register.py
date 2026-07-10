@@ -327,10 +327,13 @@ def _looks_like_single_nested_block(paths: List[str]) -> bool:
     """True if all block-layer paths share a prefix that descends into ONE
     indexed block. Flags ViT/transformer-style models where only a single
     encoder block's internals were captured (torchvision names them
-    ``encoder_layer_0``, HF names them ``0`` — both end in an index), so the
-    auto-detected layers are likely incomplete (block detection needs a manual
-    override). ResNet is safe: its paths diverge at ``layer1``/``layer2`` before
-    any shared indexed segment, so the common prefix carries no index."""
+    ``encoder_layer_0``, HF names them ``0``), so the auto-detected layers are
+    likely incomplete (block detection needs a manual override). A segment counts
+    as a block index only if it is a bare integer (``0``) or ends in ``_<n>``
+    (``encoder_layer_0``) — a numbered STAGE name like ``stage2`` does not, so a
+    complete ``stage2.blocks.0 … stage2.blocks.7`` stack is not falsely flagged.
+    ResNet is also safe: its paths diverge at ``layer1``/``layer2`` before any
+    shared indexed segment, so the common prefix carries no index."""
     if len(paths) < 2:
         return False
     common = []
@@ -339,7 +342,7 @@ def _looks_like_single_nested_block(paths: List[str]) -> bool:
             common.append(segs[0])
         else:
             break
-    return any(re.search(r'\d+$', seg) for seg in common)
+    return any(seg.isdigit() or re.search(r'_\d+$', seg) for seg in common)
 
 
 def inspect_model(model: Any, processor: Any = None,
