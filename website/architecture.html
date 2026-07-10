@@ -213,9 +213,12 @@ model.required    ⊆ benchmark.required   # the benchmark provides what the mod
     <p class="muted small">A benchmark declares exactly one input format via
       <code>required_modalities</code>; a model declares <code>required ⊆ available</code>. GPT-2's
       <code>required={text}</code> is what makes it fail fast on a V4 image benchmark.
-      <code>check_memory()</code> then runs the benchmark stimulus set through
-      <code>process()</code> as an extraction probe, measures peak memory (CUDA / MPS / CPU),
-      reads feature width, and estimates metric + ceiling memory from benchmark metadata.</p>
+      <code>check_memory()</code> then estimates the host-RAM peak from an extraction
+      plan — the benchmark's declared <code>ExecutionPlan</code> when it has one (real
+      processed cardinality + metric width), otherwise a best-effort estimate that probes a
+      single stimulus for the feature width and reads the rest from benchmark metadata. It
+      compares against host RAM (the GPU forward pass is out of scope) and reports the estimate
+      as grounded, not exact.</p>
   </section>
 
   <!-- ============ how you extend it ============ -->
@@ -301,7 +304,7 @@ score     = brainscore.score('your-model', 'your-benchmark')</code></pre>
       <pre class="code arch-tree"><code>core/brainscore_core/                 # the interface spine — no heavy ML deps
 ├── model_interface.py                # Subject/UnifiedModel ABC · BrainScoreModel · process() dispatch · event types
 ├── compatibility.py                  # pre-flight modality/region check (fail fast)
-├── memory.py                         # cross-platform CUDA/MPS/CPU memory probe
+├── memory.py                         # host-RAM extraction-plan estimate · ExecutionPlan
 ├── temporal.py                       # temporal_bin · hrf_convolve · contiguous_block_cv · window_plan
 ├── multimodal.py                     # MultimodalStimulusSet
 ├── behavior.py                       # ProbabilitiesClassifier (logistic readout head)

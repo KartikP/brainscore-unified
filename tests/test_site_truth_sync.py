@@ -79,13 +79,16 @@ def test_architecture_preflight_claims_match_source():
 
     assert "check_compatibility(model, benchmark)" in score_source
     assert "check_memory(model, benchmark)" in score_source
-    assert "The probe runs the full stimulus set" in memory_source
+    # the pre-flight is now an extraction-PLAN estimate, not a full-set probe
+    assert "Extraction-plan memory pre-check" in memory_source
     assert "estimated_metric_memory = estimate_metric_memory" in memory_source
-    assert "runs the benchmark stimulus set" in html
-    assert "estimates metric + ceiling memory" in html
-    assert "extraction probe + metric-memory estimate" in js
-    assert "one stimulus" not in html
-    assert "one-stimulus" not in js
+    assert "ExecutionPlan" in memory_source
+    # the website must describe the plan estimate, not the old full-set probe
+    html_flat = " ".join(html.split())   # collapse wrapping whitespace
+    assert "extraction plan" in html_flat
+    assert "host RAM" in html_flat
+    assert "host-RAM extraction-plan estimate" in js
+    assert "runs the benchmark stimulus set" not in html   # the retired claim
 
 
 def test_capability_status_matrix_is_published():
