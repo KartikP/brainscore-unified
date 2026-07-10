@@ -268,3 +268,11 @@ class TestIndexValidation:
                 target=Selection(layer='fc1', indices=[-1]),
                 perturbation=Perturbation(kind='zero'),
             ))
+
+
+def test_perturbation_positional_api_preserved():
+    # 'amount' (added for kind='drive') must not shift the (kind, scale,
+    # replacement) positional order of the public dataclass.
+    p = Perturbation('replace', 0.25, 'payload')
+    assert (p.kind, p.scale, p.replacement, p.amount) == ('replace', 0.25, 'payload', 0.0)
+    assert Perturbation(kind='drive', amount=8.0).amount == 8.0
