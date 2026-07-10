@@ -169,11 +169,14 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                         f"Selection.indices must be non-negative, got {ii}."
                     )
                 norm.append(ii)
-            # width for Linear / BatchNorm / Conv layers (deeper block types
-            # have no simple width attr and are validated at forward instead)
+            # Index perturbation targets the LAST output axis: the feature axis
+            # for Linear and (N, L, D) transformer-block outputs. It is NOT the
+            # channel axis for conv (out_channels is axis 1, not last), so we do
+            # not range-check conv here — a conv channel index would otherwise be
+            # validated against the wrong axis. Layers with no last-axis width
+            # attr are validated at forward time.
             n_units = (getattr(layer, 'out_features', None)
-                       or getattr(layer, 'num_features', None)
-                       or getattr(layer, 'out_channels', None))
+                       or getattr(layer, 'num_features', None))
             if n_units is not None and norm and max(norm) >= n_units:
                 raise ValueError(
                     f"Selection index {max(norm)} is out of range for layer "
