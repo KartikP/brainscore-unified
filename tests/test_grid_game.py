@@ -121,3 +121,33 @@ class TestNullSeparation:
         rand = evaluate_policy(make, random_action_policy(seed=1),
                                n_episodes=40, size=5)
         assert 0.0 <= rand['success_rate'] < 0.8
+
+
+class TestRunEnvironmentContract:
+    """The GridGameEnvironment adapter lets the generic run_environment helper
+    drive the game (D8) — the raw GridGameEnv cannot, by design."""
+
+    def test_adapter_drives_via_run_environment(self):
+        from brainscore_core.streaming_helpers import run_environment
+        from brainscore_core.model_interface import EnvironmentResponse
+        from brainscore.harnesses.grid_game import GridGameEnvironment
+
+        env = GridGameEnv(size=6, seed=7, n_walls=0)
+        model = _embodied_model(greedy_oracle_policy)
+        motor = run_environment(model, GridGameEnvironment(env))
+
+        assert isinstance(motor, list)                       # the documented return type
+        assert len(motor) >= 1
+        assert all(isinstance(r, EnvironmentResponse) for r in motor)
+        # oracle on a wall-free board solves -> loop terminates before the step cap
+        assert len(motor) < env.max_steps
+        assert env.agent_pos == env.goal_pos                 # terminated on the goal
+
+    def test_raw_gridgameenv_violates_the_contract(self):
+        # The underlying env returns a dict / gym tuple, so the generic helper
+        # rejects it — proving the adapter is required (and guarding the contract).
+        from brainscore_core.streaming_helpers import run_environment
+        env = GridGameEnv(size=4, seed=0)
+        model = _embodied_model(greedy_oracle_policy)
+        with pytest.raises(TypeError, match="EnvironmentStep"):
+            run_environment(model, env)

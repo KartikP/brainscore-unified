@@ -152,6 +152,39 @@ class GridGameEnv:
         }
 
 
+class GridGameEnvironment:
+    """Adapter exposing :class:`GridGameEnv` through the ``run_environment``
+    contract: ``reset()`` / ``step(action)`` return :class:`EnvironmentStep`
+    objects (not a bare obs dict / gym tuple), so the generic
+    ``brainscore_core.streaming_helpers.run_environment`` loop can drive the game.
+
+    This is the streaming-helper complement to :func:`play_game` (the bespoke
+    driver). Both step the same underlying :class:`GridGameEnv`; use this one when
+    you want the game to flow through the same ``reset()/step()`` API a benchmark
+    uses for any embodied environment. Terminal steps set ``is_last`` /
+    ``is_terminal`` so the loop stops (on goal or ``max_steps``).
+    """
+
+    def __init__(self, env: GridGameEnv):
+        self.env = env
+        self._step_num = 0
+
+    def reset(self) -> EnvironmentStep:
+        obs = self.env.reset()
+        self._step_num = 0
+        return EnvironmentStep(observation=obs, instruction=obs['instruction'],
+                               is_first=True, step_num=0)
+
+    def step(self, action) -> EnvironmentStep:
+        act = int(np.asarray(action).reshape(-1)[0])
+        obs, reward, done, info = self.env.step(act)
+        self._step_num += 1
+        return EnvironmentStep(
+            observation=obs, instruction=obs['instruction'],
+            step_num=self._step_num, reward=reward,
+            is_terminal=bool(done), is_last=bool(done))
+
+
 def greedy_oracle_policy(observation: Dict[str, Any], history) -> int:
     """Move to reduce Manhattan distance to the goal (reads privileged state).
 
