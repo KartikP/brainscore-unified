@@ -279,6 +279,25 @@ class TestIndexValidation:
         ))
         bs.reset()
 
+    def test_conv_index_targets_last_axis_not_channels(self):
+        # Index perturbation acts on axis -1 (spatial for conv), so index 5 is
+        # VALID even though out_channels=4; it must APPLY (not be rejected) and
+        # zero spatial column 5. This would fail against c5879b1.
+        from brainscore_core.model_interface import PerturbationApplied
+        net = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3))  # output (N, 4, H-2, W-2)
+        bs = BrainScoreModel('conv', net, {}, {'vision': lambda x: x},
+                             state_change_fn=build_pytorch_ablation_fn(net))
+        applied = bs.process(StateChange(
+            kind='ablation',
+            target=Selection(layer='0', indices=[5]),  # > out_channels, < width
+            perturbation=Perturbation(kind='zero'),
+        ))
+        assert isinstance(applied, PerturbationApplied)  # applied, not rejected
+        out = net(torch.ones(1, 3, 10, 10))              # output width 8
+        assert torch.allclose(out[..., 5], torch.zeros_like(out[..., 5]))  # spatial col 5 zeroed
+        assert not torch.allclose(out[..., 0], torch.zeros_like(out[..., 0]))  # col 0 untouched
+        bs.reset()
+
 
 def test_perturbation_positional_api_preserved():
     # 'amount' (added for kind='drive') must not shift the (kind, scale,
