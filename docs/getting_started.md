@@ -24,7 +24,12 @@ print(float(score))
 ~~~
 
 The explicit load calls make missing registrations fail before the potentially
-long score. brainscore.score currently accepts identifiers, not ad-hoc objects.
+long score. brainscore.score also accepts already-constructed objects, so a model
+you just built can be scored without registering it first:
+
+~~~python
+score = brainscore.score(my_model, benchmark_id)   # model object + benchmark id
+~~~
 
 ## Choose the extraction wrapper
 
