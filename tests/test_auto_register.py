@@ -13,6 +13,7 @@ import torch
 import torch.nn as nn
 
 from brainscore.tools.auto_register import (
+    _looks_like_single_nested_block,
     find_block_groups, inspect_model, scaffold_registration, space_layers,
     auto_register, BlockGroup, _classify_global, _model_meta,
 )
@@ -272,6 +273,33 @@ class TestInspectModel:
         assert 'clip-tiny' in s
         assert 'tower' in s
         assert 'provisional map' in s
+
+    def test_torchvision_vit_warns_single_nested_block(self):
+        # torchvision vit_b_16 nests every block under encoder_layer_0, so block
+        # detection captures only that block's MLP children — a plausible-looking
+        # but WRONG 5-layer recommendation. It must be flagged, not shipped silent.
+        tvm = pytest.importorskip('torchvision.models')
+        p = inspect_model(tvm.vit_b_16(weights=None), identifier='vit_b_16')
+        assert any('INCOMPLETE' in w for w in p.warnings)
+
+
+class TestNestedBlockHeuristic:
+    def test_torchvision_vit_paths_fire(self):
+        assert _looks_like_single_nested_block(
+            ['encoder.layers.encoder_layer_0.mlp.0',
+             'encoder.layers.encoder_layer_0.mlp.3'])
+
+    def test_hf_single_block_paths_fire(self):
+        assert _looks_like_single_nested_block(
+            ['encoder.layers.0.mlp.0', 'encoder.layers.0.mlp.3'])
+
+    def test_resnet_stage_paths_do_not_fire(self):
+        assert not _looks_like_single_nested_block(
+            ['layer1.0', 'layer2.0', 'layer4.1'])
+
+    def test_whole_block_stack_does_not_fire(self):
+        assert not _looks_like_single_nested_block(
+            ['encoder.layers.0', 'encoder.layers.7'])
 
 
 # ── space_layers ─────────────────────────────────────────────────────────────

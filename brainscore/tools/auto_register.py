@@ -37,6 +37,7 @@ Pure-Python module structure inspection — ``torch`` is imported lazily and onl
 where a live wrapper is actually constructed.
 """
 import dataclasses
+import re
 import textwrap
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -322,6 +323,25 @@ def space_layers(block_paths: Sequence[str],
 
 # ── top-level inspection ─────────────────────────────────────────────────────
 
+def _looks_like_single_nested_block(paths: List[str]) -> bool:
+    """True if all block-layer paths share a prefix that descends into ONE
+    indexed block. Flags ViT/transformer-style models where only a single
+    encoder block's internals were captured (torchvision names them
+    ``encoder_layer_0``, HF names them ``0`` — both end in an index), so the
+    auto-detected layers are likely incomplete (block detection needs a manual
+    override). ResNet is safe: its paths diverge at ``layer1``/``layer2`` before
+    any shared indexed segment, so the common prefix carries no index."""
+    if len(paths) < 2:
+        return False
+    common = []
+    for segs in zip(*(p.split('.') for p in paths)):
+        if len(set(segs)) == 1:
+            common.append(segs[0])
+        else:
+            break
+    return any(re.search(r'\d+$', seg) for seg in common)
+
+
 def inspect_model(model: Any, processor: Any = None,
                   identifier: Optional[str] = None) -> ModelProfile:
     """Inspect a model and return a :class:`ModelProfile`: recommended
@@ -396,6 +416,14 @@ def inspect_model(model: Any, processor: Any = None,
             all_paths = sorted(
                 (p for group in per_tower.values() for p in group.paths),
                 key=_nat)
+            if _looks_like_single_nested_block(all_paths):
+                warnings.append(
+                    "Auto-detected recording layers all live inside a single "
+                    "indexed block; the recommendation is likely INCOMPLETE for "
+                    "nested-block models (e.g. a torchvision ViT, where only "
+                    "encoder_layer_0's children are captured and late regions "
+                    "get mis-mapped). Verify against model.named_modules() and "
+                    "set block_layers manually before scoring.")
             recommendations.append(WrapperRecommendation(
                 modality=modality, wrapper=wrapper, block_layers=all_paths,
                 submodule_path=None, layer_aggregation=agg,
