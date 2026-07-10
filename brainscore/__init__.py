@@ -193,11 +193,29 @@ def load_stimulus_set(identifier: str, *args, **kwargs):
         f"StimulusSet '{identifier}' not found in unified, vision, or language registries.")
 
 
-def score(model_identifier: str, benchmark_identifier: str,
+def _resolve_identifier(obj, default: str) -> str:
+    """Best-effort identifier for a model/benchmark object (property or method)."""
+    ident = getattr(obj, 'identifier', None)
+    if callable(ident):
+        try:
+            ident = ident()
+        except Exception:
+            ident = None
+    return ident or default
+
+
+def score(model_identifier, benchmark_identifier,
           check_mem: bool = True) -> Score:
     """Score a model on a benchmark.
 
-    Loads both from the unified registry (with domain fallbacks),
+    Each argument is either an identifier ``str`` — loaded from the unified
+    registry (with domain fallbacks) — or an already-constructed object (a
+    ``UnifiedModel`` / benchmark). Passing objects lets you score a model you just
+    built without registering it first::
+
+        model = BrainScoreModel('my-vlm', ...)
+        score(model, 'MajajHong2015public.IT-pls-unified')
+
     then runs the benchmark on the model.
     """
     from brainscore_core.compatibility import (
@@ -212,8 +230,15 @@ def score(model_identifier: str, benchmark_identifier: str,
     )
 
     import time as _time
-    model = load_model(model_identifier)
-    benchmark = load_benchmark(benchmark_identifier)
+    # accept either an identifier string or an already-built object
+    model = (load_model(model_identifier)
+             if isinstance(model_identifier, str) else model_identifier)
+    benchmark = (load_benchmark(benchmark_identifier)
+                 if isinstance(benchmark_identifier, str) else benchmark_identifier)
+    model_id = (model_identifier if isinstance(model_identifier, str)
+                else _resolve_identifier(model, 'custom-model'))
+    benchmark_id = (benchmark_identifier if isinstance(benchmark_identifier, str)
+                    else _resolve_identifier(benchmark, 'custom-benchmark'))
     requested_channels = requested_output_channels_for_score(benchmark)
 
     check_compatibility(model, benchmark)
@@ -224,8 +249,8 @@ def score(model_identifier: str, benchmark_identifier: str,
     _t0 = _time.time()
     result = benchmark(model)
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
-    result.attrs['model_identifier'] = model_identifier
-    result.attrs['benchmark_identifier'] = benchmark_identifier
+    result.attrs['model_identifier'] = model_id
+    result.attrs['benchmark_identifier'] = benchmark_id
     stamp_score_metadata(
         result,
         model,
