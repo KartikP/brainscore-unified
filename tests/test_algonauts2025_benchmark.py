@@ -102,3 +102,87 @@ def test_default_alpha_grid_logarithmic():
     assert min(grid) <= 1.0
     assert max(grid) >= 10000.0
     assert len(grid) >= 5
+
+
+def test_execution_plan_declares_TR_cardinality_and_metric_cap():
+    """The benchmark declares a reliable ExecutionPlan for the memory pre-flight:
+    one extraction row per TR (not per video), a metric-width cap of
+    stimulus_window x FEATURE_DIM_CAP, and the raw width left to the probe."""
+    from brainscore.benchmarks.algonauts2025.benchmark import (
+        Algonauts2025Friends, _Algonauts2025Base)
+    from brainscore_core.execution_plan import ExecutionPlan
+
+    class _MockAssembly:
+        def __init__(self, n_trs):
+            self._n = n_trs
+        def __getitem__(self, key):
+            assert key == 'stimulus_id'
+            return list(range(self._n))
+
+    b = Algonauts2025Friends(subject=1)
+    b._assembly = _MockAssembly(162_671)  # avoid loading real data
+    plan = b.execution_plan
+    assert isinstance(plan, ExecutionPlan)
+    assert plan.n_extraction_presentations == 162_671          # TRs, not videos
+    assert plan.feature_width is None                          # probed (model-dependent)
+    assert plan.metric_feature_width == (
+        b._stimulus_window * _Algonauts2025Base.FEATURE_DIM_CAP)  # 5 * 1000
+    assert plan.resolved_metric_observations == 162_671        # metric fits per-TR
+
+
+def test_check_memory_takes_the_reliable_path_on_algonauts():
+    """check_memory reads the declared plan and reports a RELIABLE (not
+    APPROXIMATE) estimate, driven by the TR count rather than the video count."""
+    import logging
+    from unittest.mock import patch
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
+    from brainscore_core import memory as mem
+
+    class _MockAssembly:
+        def __init__(self, n_trs):
+            self._n = n_trs
+        def __getitem__(self, key):
+            return list(range(self._n))
+        def __len__(self):
+            return self._n
+
+    class _TinyModel:
+        identifier = 'tiny'
+        region_layer_map = {}
+        def process(self, stimuli):
+            return type('R', (), {'shape': (1, 768)})()
+
+    b = Algonauts2025Friends(subject=1)
+    b._assembly = _MockAssembly(162_671)
+    b._stimulus_set = _MockAssembly(300)  # 300 videos — the WRONG count to size off
+
+    with patch.object(mem, 'get_host_available_memory', return_value=64_000_000_000), \
+         patch('psutil.Process') as proc, \
+         mem_caplog(logging.INFO) as records:
+        proc.return_value.memory_info.return_value.rss = 500_000_000
+        mem.check_memory(_TinyModel(), b)
+    msgs = [r.getMessage() for r in records]
+    assert any('RELIABLE' in m for m in msgs)
+    assert any('162671 presentations' in m for m in msgs)  # TR count, not 300 videos
+    assert not any('APPROXIMATE' in m for m in msgs)
+
+
+from contextlib import contextmanager
+
+@contextmanager
+def mem_caplog(level):
+    import logging
+    logger = logging.getLogger('brainscore_core.memory')
+    records = []
+
+    class _H(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    h = _H(); h.setLevel(level)
+    old_level = logger.level
+    logger.setLevel(level); logger.addHandler(h)
+    try:
+        yield records
+    finally:
+        logger.removeHandler(h); logger.setLevel(old_level)

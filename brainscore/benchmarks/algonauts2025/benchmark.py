@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
+from brainscore_core.execution_plan import ExecutionPlan
 from brainscore_core.metrics import Score
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.data.algonauts2025 import (
@@ -134,6 +135,25 @@ class _Algonauts2025Base(BenchmarkBase):
                 root=self._assembly_root,
             )
         return self._stimulus_set
+
+    @property
+    def execution_plan(self) -> ExecutionPlan:
+        """Declared memory-execution shape so the pre-flight is reliable, not a
+        best-effort guess off ``len(stimulus_set)`` (which counts videos, not TRs).
+
+        Extraction runs one frame per TR — so the held matrix has one row per TR
+        (``len(assembly.stimulus_id)``), an order of magnitude more than the video
+        count. The metric fits over the same TR rows. Per-TR features are
+        SVD-capped to ``FEATURE_DIM_CAP`` and then stacked over ``stimulus_window``
+        TRs, so the metric design never has more than
+        ``stimulus_window * FEATURE_DIM_CAP`` columns regardless of model. The raw
+        recording width (extraction) is model-dependent, so it is left to the probe.
+        """
+        n_trs = len(self.assembly['stimulus_id'])
+        return ExecutionPlan(
+            n_extraction_presentations=n_trs,
+            metric_feature_width=self._stimulus_window * self.FEATURE_DIM_CAP,
+        )
 
     # ── Per-TR frame extraction ───────────────────────────────────
 
