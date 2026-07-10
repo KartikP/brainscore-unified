@@ -138,22 +138,64 @@ class _Algonauts2025Base(BenchmarkBase):
 
     @property
     def execution_plan(self) -> ExecutionPlan:
-        """Declared memory-execution shape so the pre-flight is reliable, not a
-        best-effort guess off ``len(stimulus_set)`` (which counts videos, not TRs).
+        """Declared memory-execution shape so the pre-flight is grounded in real
+        cardinality, not guessed off ``len(stimulus_set)`` (which counts videos).
 
-        Extraction runs one frame per TR — so the held matrix has one row per TR
-        (``len(assembly.stimulus_id)``), an order of magnitude more than the video
-        count. The metric fits over the same TR rows. Per-TR features are
-        SVD-capped to ``FEATURE_DIM_CAP`` and then stacked over ``stimulus_window``
-        TRs, so the metric design never has more than
-        ``stimulus_window * FEATURE_DIM_CAP`` columns regardless of model. The raw
-        recording width (extraction) is model-dependent, so it is left to the probe.
+        - Extraction runs one frame per TR, so the held matrix has one row per TR
+          (``len(assembly.stimulus_id)``) — an order of magnitude more than videos.
+          The raw per-frame width is model-dependent (materialised before the SVD
+          cap), so it is PROBED — with the IT recording target and a synthetic 1-row
+          image frame, so an image-only model isn't handed a raw video row.
+        - The metric fits over the TR rows MINUS the per-run excluded samples.
+        - Per-TR features are SVD-capped to ``FEATURE_DIM_CAP`` then stacked over
+          ``stimulus_window`` TRs, so the metric width is at most
+          ``stimulus_window * FEATURE_DIM_CAP`` (an upper bound for raw < cap).
+        - Scoring is (banded) ridge, and the ceiling is a precomputed constant
+          (``Score(1.0)``), not a re-run metric — so ``runs_ceiling_metric=False``.
         """
         n_trs = len(self.assembly['stimulus_id'])
+        try:
+            stim = self.assembly['stimulus_id'].values
+            run = self.assembly['run'].values
+            n_runs = len({(str(s), str(r)) for s, r in zip(stim, run)})
+            excluded = self._excluded_samples_start + self._excluded_samples_end
+            metric_obs = max(int(n_trs) - excluded * n_runs, 1)
+        except Exception:
+            metric_obs = int(n_trs)  # no run metadata (e.g. a stub): safe over-count
         return ExecutionPlan(
-            n_extraction_presentations=n_trs,
+            n_extraction_presentations=int(n_trs),
+            metric_observations=metric_obs,
             metric_feature_width=self._stimulus_window * self.FEATURE_DIM_CAP,
+            metric_category='ridge',
+            runs_ceiling_metric=False,
+            recording_target='IT',
+            probe_stimuli=self._probe_frame_stimuli(),
         )
+
+    def _probe_frame_stimuli(self):
+        """A 1-row image StimulusSet (a blank 224x224 frame) for the memory
+        pre-flight to probe the vision tower's raw recording width.
+
+        The width is content-invariant, so a blank frame gives the same width as a
+        real one — without running ffmpeg over a video. Mirrors the frame-level set
+        built in ``_expand_to_per_TR_frames`` (stimulus_id + image_file_name +
+        stimulus_paths) so the candidate processes it identically.
+        """
+        import pandas as pd
+        from PIL import Image
+        from brainscore_core.supported_data_standards.brainio.stimuli import (
+            StimulusSet)
+        frames_dir = self._frames_dir()
+        frames_dir.mkdir(parents=True, exist_ok=True)
+        probe_path = frames_dir / '_memcheck_probe.jpg'
+        if not probe_path.exists():
+            Image.new('RGB', (224, 224), color=(0, 0, 0)).save(probe_path)
+        pid = '_memcheck_probe'
+        ss = StimulusSet(pd.DataFrame(
+            [{'stimulus_id': pid, 'image_file_name': str(probe_path)}]))
+        ss.identifier = f'{self.identifier}-memcheck-probe'
+        ss.stimulus_paths = {pid: str(probe_path)}
+        return ss
 
     # ── Per-TR frame extraction ───────────────────────────────────
 

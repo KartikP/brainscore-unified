@@ -104,66 +104,91 @@ def test_default_alpha_grid_logarithmic():
     assert len(grid) >= 5
 
 
-def test_execution_plan_declares_TR_cardinality_and_metric_cap():
-    """The benchmark declares a reliable ExecutionPlan for the memory pre-flight:
-    one extraction row per TR (not per video), a metric-width cap of
-    stimulus_window x FEATURE_DIM_CAP, and the raw width left to the probe."""
+class _Coord:
+    def __init__(self, values):
+        self.values = values
+    def __len__(self):
+        return len(self.values)
+
+
+class _MockAssembly:
+    """Stands in for the loaded fMRI assembly: stimulus_id + run coords, no data."""
+    def __init__(self, stim_ids, runs):
+        self._stim = stim_ids
+        self._run = runs
+    def __getitem__(self, key):
+        return _Coord(self._stim if key == 'stimulus_id' else self._run)
+
+
+def _mock_assembly_two_runs(tr_per_run=20):
+    # two runs -> unique (stim, run) blocks; used to exercise the exclusion math
+    stim = ['v1'] * tr_per_run + ['v2'] * tr_per_run
+    run = ['r1'] * tr_per_run + ['r2'] * tr_per_run
+    return _MockAssembly(stim, run), 2 * tr_per_run, 2  # assembly, n_trs, n_runs
+
+
+def test_execution_plan_declares_TR_cardinality_metric_cap_and_target(tmp_path):
+    """The benchmark declares its memory-execution shape: one extraction row per TR
+    (not per video), a metric-width cap, post-exclusion metric rows, a ridge
+    category, no re-run ceiling, and an IT-target probe frame (raw width probed)."""
     from brainscore.benchmarks.algonauts2025.benchmark import (
         Algonauts2025Friends, _Algonauts2025Base)
     from brainscore_core.execution_plan import ExecutionPlan
 
-    class _MockAssembly:
-        def __init__(self, n_trs):
-            self._n = n_trs
-        def __getitem__(self, key):
-            assert key == 'stimulus_id'
-            return list(range(self._n))
-
-    b = Algonauts2025Friends(subject=1)
-    b._assembly = _MockAssembly(162_671)  # avoid loading real data
+    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    assembly, n_trs, n_runs = _mock_assembly_two_runs(tr_per_run=20)
+    b._assembly = assembly
     plan = b.execution_plan
     assert isinstance(plan, ExecutionPlan)
-    assert plan.n_extraction_presentations == 162_671          # TRs, not videos
-    assert plan.feature_width is None                          # probed (model-dependent)
+    assert plan.n_extraction_presentations == n_trs                 # 40 TRs, not videos
+    assert plan.feature_width is None                               # probed (model-dependent)
     assert plan.metric_feature_width == (
-        b._stimulus_window * _Algonauts2025Base.FEATURE_DIM_CAP)  # 5 * 1000
-    assert plan.resolved_metric_observations == 162_671        # metric fits per-TR
+        b._stimulus_window * _Algonauts2025Base.FEATURE_DIM_CAP)     # 5 * 1000
+    # metric fits over TRs MINUS per-run excluded samples: 40 - (5+5)*2 = 20
+    excluded = b._excluded_samples_start + b._excluded_samples_end
+    assert plan.resolved_metric_observations == n_trs - excluded * n_runs
+    assert plan.metric_category == 'ridge'                          # not the mis-detected PLS
+    assert plan.runs_ceiling_metric is False                       # constant Score(1.0) ceiling
+    assert plan.recording_target == 'IT'                           # the real target region
+    assert plan.probe_stimuli is not None                          # image frame, not a video row
 
 
-def test_check_memory_takes_the_reliable_path_on_algonauts():
-    """check_memory reads the declared plan and reports a RELIABLE (not
-    APPROXIMATE) estimate, driven by the TR count rather than the video count."""
+def test_check_memory_probes_IT_with_a_frame_and_sizes_off_TR_count(tmp_path):
+    """check_memory takes the DECLARED path: it records IT (not the first region)
+    and probes an image frame an image-only model accepts, then sizes off the TR
+    count — not the video count — and reports DECLARED-grounded (not APPROXIMATE)."""
     import logging
     from unittest.mock import patch
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
     from brainscore_core import memory as mem
 
-    class _MockAssembly:
-        def __init__(self, n_trs):
-            self._n = n_trs
-        def __getitem__(self, key):
-            return list(range(self._n))
-        def __len__(self):
-            return self._n
+    recorded = {}
 
-    class _TinyModel:
-        identifier = 'tiny'
-        region_layer_map = {}
+    class _ImageOnlyModel:
+        identifier = 'img-only'
+        region_layer_map = {'V1': 'early', 'IT': 'late'}  # IT is NOT first
+        def start_recording(self, target, time_bins=None, recording_type=None):
+            recorded['target'] = target
         def process(self, stimuli):
+            # an image-only model chokes on a raw video row; the probe passes it
+            # the declared image frame, which it accepts
+            if not hasattr(stimuli, 'stimulus_paths'):
+                raise RuntimeError("cannot process a raw video row")
             return type('R', (), {'shape': (1, 768)})()
 
-    b = Algonauts2025Friends(subject=1)
-    b._assembly = _MockAssembly(162_671)
-    b._stimulus_set = _MockAssembly(300)  # 300 videos — the WRONG count to size off
+    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    assembly, n_trs, _ = _mock_assembly_two_runs(tr_per_run=20)
+    b._assembly = assembly
 
     with patch.object(mem, 'get_host_available_memory', return_value=64_000_000_000), \
          patch('psutil.Process') as proc, \
          mem_caplog(logging.INFO) as records:
         proc.return_value.memory_info.return_value.rss = 500_000_000
-        mem.check_memory(_TinyModel(), b)
+        mem.check_memory(_ImageOnlyModel(), b)
     msgs = [r.getMessage() for r in records]
-    assert any('RELIABLE' in m for m in msgs)
-    assert any('162671 presentations' in m for m in msgs)  # TR count, not 300 videos
+    assert recorded['target'] == 'IT'                        # declared target, not V1
+    assert any('DECLARED-grounded' in m for m in msgs)
+    assert any(f'{n_trs} presentations' in m for m in msgs)  # TR count, not videos
     assert not any('APPROXIMATE' in m for m in msgs)
 
 
