@@ -155,11 +155,15 @@ class _Algonauts2025Base(BenchmarkBase):
         """
         n_trs = len(self.assembly['stimulus_id'])
         try:
+            from collections import Counter
             stim = self.assembly['stimulus_id'].values
             run = self.assembly['run'].values
-            n_runs = len({(str(s), str(r)) for s, r in zip(stim, run)})
+            run_lengths = Counter((str(s), str(r)) for s, r in zip(stim, run))
             excluded = self._excluded_samples_start + self._excluded_samples_end
-            metric_obs = max(int(n_trs) - excluded * n_runs, 1)
+            # clamp per run: a run shorter than the excluded span retains 0, not a
+            # negative count (subtracting excluded*n_runs globally would under-count).
+            metric_obs = max(sum(max(L - excluded, 0)
+                                 for L in run_lengths.values()), 1)
         except Exception:
             metric_obs = int(n_trs)  # no run metadata (e.g. a stub): safe over-count
         return ExecutionPlan(

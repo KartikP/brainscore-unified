@@ -153,6 +153,20 @@ def test_execution_plan_declares_TR_cardinality_metric_cap_and_target(tmp_path):
     assert plan.probe_stimuli is not None                          # image frame, not a video row
 
 
+def test_metric_observations_clamps_per_short_run(tmp_path):
+    """Codex short-run case: a run shorter than the excluded span retains 0 rows,
+    not a negative count. Runs of 6 and 20 with 5 excluded per end retain
+    max(6-10,0) + max(20-10,0) = 0 + 10 = 10 (not 26 - 20 = 6)."""
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
+
+    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    stim = ['short'] * 6 + ['long'] * 20
+    run = ['r1'] * 6 + ['r2'] * 20
+    b._assembly = _MockAssembly(stim, run)
+    assert b._excluded_samples_start == 5 and b._excluded_samples_end == 5
+    assert b.execution_plan.resolved_metric_observations == 10
+
+
 def test_check_memory_probes_IT_with_a_frame_and_sizes_off_TR_count(tmp_path):
     """check_memory takes the DECLARED path: it records IT (not the first region)
     and probes an image frame an image-only model accepts, then sizes off the TR
