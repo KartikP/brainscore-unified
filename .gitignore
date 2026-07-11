@@ -32,3 +32,16 @@ sqlite3.db-journal
 .env
 venv/
 .venv/
+
+# Local development provenance — kept on disk for later dev, never shipped
+scripts/cost_tracking/COST_LEDGER.md
+docs/plans/2026-07-09-distribution-hardening-design.md
+website/DEPLOYMENT_PLAN.md
+scripts/topographic_nsd/PHASE1_TDANN_NOTES.md
+scripts/algonauts2025/RESULTS.md
+brainscore/benchmarks/lahner2024/MULTIMODAL_RESULTS.md
+scripts/topographic_nsd/RESULTS.md
+scripts/tribev2/RESULTS.md
+experiments/molmospaces_validation/results/RESULTS.md
+brainscore/benchmarks/lahner2024/EC2_RUN_INSTRUCTIONS.md
+experiments/molmospaces_validation/README.md
