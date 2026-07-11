@@ -154,7 +154,7 @@ def test_execution_plan_declares_TR_cardinality_metric_cap_and_target(tmp_path):
 
 
 def test_metric_observations_clamps_per_short_run(tmp_path):
-    """Codex short-run case: a run shorter than the excluded span retains 0 rows,
+    """Short-run case: a run shorter than the excluded span retains 0 rows,
     not a negative count. Runs of 6 and 20 with 5 excluded per end retain
     max(6-10,0) + max(20-10,0) = 0 + 10 = 10 (not 26 - 20 = 6)."""
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
