@@ -1,17 +1,10 @@
-# Coming from Brain-Score? Start here.
+# Coming from Brain-Score
 
 If you already use Brain-Score — `score(model_identifier, benchmark_identifier)`,
 model plugins that return a `ModelCommitment`, an `ArtificialSubject` for language —
-this page maps what you know onto the Unified Model Interface (UMI). The short
-version:
+this page maps what you know onto the Unified Model Interface (UMI).
 
-- **Nothing you have breaks.** Every existing vision and language model plugin and
-  benchmark keeps working, unchanged. UMI wraps them automatically.
-- **UMI is opt-in.** You only touch the new API if you want what it adds: one
-  registration that scores across the vision *and* language leaderboards,
-  multimodal models, and new capabilities (behavior, embodied action, lesions).
-
-## The scoring call is the same shape
+## Score through UMI
 
 Today you score per domain:
 
@@ -20,16 +13,15 @@ from brainscore_vision import score
 s = score(model_identifier="alexnet", benchmark_identifier="MajajHong2015.IT-pls")
 ~~~
 
-UMI adds one entry point that reaches both domains — and it falls back to the
-vision and language registries, so your existing identifiers still resolve:
+UMI checks the unified registry, then the vision and language registries:
 
 ~~~python
 import brainscore
 s = brainscore.score("alexnet", "MajajHong2015.IT-pls")   # same identifiers, one call
 ~~~
 
-`load_model` / `load_benchmark` / `score` behave as you expect. `score` also takes
-already-built objects, not just identifiers.
+`load_model`, `load_benchmark`, and `score` use these registries. `score` also
+takes already-built objects, not just identifiers.
 
 ## Concept map
 
@@ -37,29 +29,24 @@ already-built objects, not just identifiers.
 | --- | --- |
 | `ModelCommitment` / `BrainModel` (the concrete scored model) | `BrainScoreModel` (the concrete model you construct) |
 | `look_at(stimuli)` (vision) · `digest_text(text)` (language) | one method: `process(input_event)` |
-| `activations_model` = `PytorchWrapper(...)` | the same `PytorchWrapper`, plus `TextWrapper` / `VideoWrapper` / `AudioWrapper` / `VLMVisionWrapper` for other modalities |
+| `activations_model` = `PytorchWrapper(...)` | `PytorchWrapper`, plus `TextWrapper` / `VideoWrapper` / `AudioWrapper` / `VLMVisionWrapper` for other modalities |
 | `get_layers(...)` + `ModelCommitment(layers=...)` | `region_layer_map` on `BrainScoreModel` (any region → any layer) |
-| `model_registry["id"] = lambda: ...` | the same registry pattern, in `unified/brainscore/models/<name>/__init__.py` |
-| `ArtificialSubject` (language ABC) | `BrainScoreModel` with a `TextWrapper`; the legacy ABC still works via the adapter |
+| `model_registry["id"] = lambda: ...` | `model_registry` in `unified/brainscore/models/<name>/__init__.py` |
+| `ArtificialSubject` (language ABC) | `BrainScoreModel` with a `TextWrapper`; UMI adapter for the legacy ABC |
 
-The legacy classes and methods are still present and still called — the UMI
-adapters delegate to them. You are not being asked to rewrite anything.
+## Capabilities
 
-## What UMI actually adds
-
-The point of the single `process(input_event)` method is that one model can take
-more than one kind of input:
+The single `process(input_event)` method lets one model take more than one kind
+of input:
 
 - **Cross-domain scoring.** Register a vision-language model once and score it on
-  MajajHong (vision) *and* Pereira (language) — no second plugin.
+  MajajHong (vision) *and* Pereira (language).
 - **Multimodal benchmarks.** A model with more than one preprocessor is driven on
   the modality (or modalities) a benchmark provides.
 - **New capabilities**, each an optional slot on `BrainScoreModel`:
   - `generation_fn` / `behavioral_readout_layer` — behavioral tasks (e.g. ROAR).
   - `action_fn` — closed-loop embodied evaluation (`process(EnvironmentStep)`).
   - `state_change_fn` — lesion / perturbation studies (`process(StateChange)`).
-
-None of these exist in the per-domain API; all are additive.
 
 ## Registering a model: before and after
 
@@ -74,8 +61,8 @@ model_registry["my-cnn"] = lambda: ModelCommitment(
     identifier="my-cnn", activations_model=get_model(), layers=get_layers())
 ~~~
 
-**UMI** — the same backbone and wrapper, but a `BrainScoreModel` with an explicit
-`region_layer_map` and `preprocessors`, scored via `process`:
+**UMI** — construct a `BrainScoreModel` with an explicit `region_layer_map` and
+`preprocessors`, scored via `process`:
 
 ~~~python
 # unified/brainscore/models/<name>/__init__.py
@@ -94,13 +81,6 @@ def load_model():
 model_registry["my-cnn"] = load_model
 ~~~
 
-You choose the wrapper the same way you do today — see the wrapper table in
-[getting_started.md](getting_started.md). To add a benchmark or a new capability,
-continue in [EXTENDING.md](../EXTENDING.md).
-
-## Do I have to migrate?
-
-No. If your model only needs the vision (or only the language) leaderboard as it
-works today, leave it — the legacy plugin is auto-wrapped and scores exactly as
-before. Register through UMI when you want cross-domain scoring, a multimodal
-model, or one of the new capabilities.
+Choose a wrapper from the table in [getting_started.md](getting_started.md). To
+add a benchmark or a new capability, continue in
+[EXTENDING.md](../EXTENDING.md).

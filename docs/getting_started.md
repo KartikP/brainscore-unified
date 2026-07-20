@@ -23,9 +23,8 @@ score = brainscore.score(model_id, benchmark_id)
 print(float(score))
 ~~~
 
-The explicit load calls make missing registrations fail before the potentially
-long score. brainscore.score also accepts already-constructed objects, so a model
-you just built can be scored without registering it first:
+brainscore.score also accepts already-constructed objects, so a model you just
+built can be scored without registering it first:
 
 ~~~python
 score = brainscore.score(my_model, benchmark_id)   # model object + benchmark id
@@ -33,9 +32,9 @@ score = brainscore.score(my_model, benchmark_id)   # model object + benchmark id
 
 ## Choose the extraction wrapper
 
-There is no universally best recording layer. The last block is a reasonable
-smoke-test target, but a scientific registration should compare candidate
-layers with the layer-mapping tools and commit the selected region mapping.
+Use the last block as a smoke-test target. For a scientific registration,
+compare candidate layers with the layer-mapping tools and commit the selected
+region mapping.
 
 | Model input | Wrapper | Import | Provisional layer guidance |
 | --- | --- | --- | --- |

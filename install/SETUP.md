@@ -1,7 +1,7 @@
 # Brain-Score UMI local setup
 
 This guide installs the four-repository UMI workspace on a macOS or Linux
-laptop. It does not require the private design notes used during development.
+laptop.
 
 ## Requirements
 
@@ -43,8 +43,8 @@ The script:
 5. Runs pip check, imports all four packages, and verifies the Transformers
    cache API needed by language scoring.
 
-The script deliberately refuses to overwrite an existing conda environment.
-Choose a different name when needed:
+The script refuses to overwrite an existing conda environment. Choose a
+different name when needed:
 
 ~~~bash
 UMI_ENV_NAME=brainscore-unified-test bash setup.sh
@@ -76,15 +76,15 @@ cd unified/notebooks
 jupyter nbconvert --to notebook --execute --stdout 01_quickstart_layer_mapping.ipynb >/tmp/umi-quickstart.ipynb
 ~~~
 
-Then follow the [notebook manifest](unified/notebooks/README.md) or the
-[getting-started guide](unified/docs/getting_started.md).
+Then follow the [notebook manifest](../notebooks/README.md) or the
+[getting-started guide](../docs/getting_started.md).
 
 ## Hardware
 
 ### CPU
 
-All laptop-safe synthetic notebooks run on CPU. The environment does not force
-a CPU-only PyTorch index, so the installed wheel follows the platform default.
+All laptop-safe synthetic notebooks run on CPU. The installed PyTorch wheel
+follows the platform default.
 
 ### Apple Silicon and MPS
 
@@ -107,7 +107,7 @@ python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
 If CUDA is unavailable, install the PyTorch wheel matching the machine's CUDA
 runtime using the official PyTorch package index, then rerun
-python -m pip check. The UMI setup no longer silently forces a CPU wheel.
+python -m pip check.
 
 ## Repository layout
 

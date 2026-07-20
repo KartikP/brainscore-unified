@@ -1,13 +1,11 @@
 # Extending the Unified Model Interface
 
-The unified interface is a **backbone**: a small, stable core that you extend along four
-well-defined seams. We ship the seams + a few reference integrations; you bring the breadth
-(your model, your dataset, your alignment metric). Nothing below requires touching the core.
+Extend the unified interface through five registries and Capability.
 
-> Companion: the shipped interactive contract map at
+> Companion: the interactive contract map at
 > [`website/architecture.html`](website/architecture.html).
 
-## The one mechanism: registries
+## Registries
 
 Everything is a factory registered under a string identifier. Five registries —
 `model`/`benchmark`/`metric` live in `brainscore/__init__.py`; `data`/`stimulus_set`
@@ -21,10 +19,8 @@ benchmark_registry:    Dict[str, Callable[[], Benchmark]]
 model_registry:        Dict[str, Callable[[], Subject]]
 ```
 
-This **is** Brain-Score's existing plugin system — five registries (`data`, `stimulus_set`, `metric`,
-`benchmark`, `model`). The unified interface reuses it unchanged and adds **one** new seam, *Capability*
-(the `process()` dispatch slots). A plugin is a subpackage whose `__init__.py` adds a factory to the
-matching registry; the parent package imports it so registration runs on load. You then load by id:
+A plugin is a subpackage whose `__init__.py` adds a factory to the
+matching registry; the parent package imports it so registration runs on load. Load by id:
 
 ```python
 import brainscore
@@ -35,15 +31,12 @@ benchmark = brainscore.load_benchmark('your-benchmark')
 score     = brainscore.score('your-model', 'your-benchmark')
 ```
 
-`load_*` checks the unified registry first, then falls back to the `brainscore_vision` /
-`brainscore_language` registries, so legacy plugins keep working.
+`load_*` checks the unified registry first, then the `brainscore_vision` /
+`brainscore_language` registries.
 
 ---
 
-## The seams — five inherited + one new
-
-Model / Benchmark / Metric / **Data** / **Stimulus set** are Brain-Score's existing plugin registries,
-reused as-is. **Capability** is the only seam the unified interface adds.
+## Extension seams
 
 | Seam | Lives in | You implement | Contract | Template |
 |------|----------|---------------|----------|----------|
@@ -51,12 +44,10 @@ reused as-is. **Capability** is the only seam the unified interface adds.
 | **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(candidate) -> Score` | `templates/new_benchmark/` |
 | **Metric** | `brainscore/metrics/<name>/` | a `Metric` subclass | `__call__(assembly1, assembly2) -> Score` | `templates/new_metric/` |
 | **Data / Stimulus set** | `brainscore_vision/_language` `data/<name>/` | a loader registered in `data_registry` / `stimulus_set_registry` | returns a `DataAssembly` / `StimulusSet` | (domain-repo pattern) |
-| **Capability** *(new)* | constructor slots on `BrainScoreModel` | a callable (`generation_fn` / `action_fn` / `state_change_fn`) | see below | `templates/new_capability/` |
+| **Capability** | constructor slots on `BrainScoreModel` | a callable (`generation_fn` / `action_fn` / `state_change_fn`) | see below | `templates/new_capability/` |
 
-**Data / stimulus_set are separate seams on purpose: reuse.** A stimulus set or assembly is registered
-once and referenced by *many* benchmarks (e.g. `Allen2022_fmri_stim_train` feeds the Allen2022 ridge/RDM/
-region variants; MajajHong and Rajalingham share stimulus sets). A benchmark *references* registered data
-via `load_dataset` / `load_stimulus_set` rather than owning it.
+Reference registered data from a benchmark with `load_dataset` /
+`load_stimulus_set`.
 
 ### Seam 1 — a new model
 
@@ -82,9 +73,9 @@ def get_model():
 model_registry['your-model'] = get_model
 ```
 
-Then add `from . import your_name` to `brainscore/models/__init__.py`. For most models the
-`auto_register` tool infers the wrapper, layers, and a provisional `region_layer_map` for you —
-start there, then refine with the layer-mapping explorer.
+Then add `from . import your_name` to `brainscore/models/__init__.py`. Run `auto_register` to
+infer the wrapper, layers, and a provisional `region_layer_map`, then refine with the
+layer-mapping explorer.
 
 ### Seam 2 — a new benchmark
 
@@ -115,19 +106,16 @@ benchmark_registry['your-benchmark'] = lambda: YourBenchmark()
 Then add `from . import your_name` to `brainscore/benchmarks/__init__.py`. For naturalistic /
 temporal data, reuse `core/brainscore_core/temporal.py` (`temporal_bin`, `hrf_convolve`,
 `contiguous_block_cv`, `window_plan`) — see `benchmarks/lahner2024` and `benchmarks/algonauts2025`
-as worked examples. A clip longer than a video model's native temporal window won't silently
-downsample: set `VideoWrapper(..., context_window_ms=...)` to tile it into windows and stitch the
-per-window time-resolved features into one clip-time sequence (set `max_clip_ms` for a fail-fast).
+as worked examples. For a clip longer than a video model's native temporal window, set
+`VideoWrapper(..., context_window_ms=...)` to tile it into windows and stitch the per-window
+time-resolved features into one clip-time sequence. Set `max_clip_ms` for a fail-fast.
 Before sharing a new benchmark, complete the
-[benchmark addition checklist](docs/benchmark_addition_checklist.md) so the data boundary, null
-floor, ceiling, modality ablations, timing assumptions, score attrs, and EC2 evidence are recorded
-in a reviewable form.
+[benchmark addition checklist](docs/benchmark_addition_checklist.md). Record the data boundary,
+null floor, ceiling, modality ablations, timing assumptions, score attrs, and EC2 evidence.
 
-### Seam 3 — a new metric  *(now first-class)*
+### Seam 3 — a new metric
 
-A metric compares two assemblies and returns a `Score`. This is the seam the field is moving
-along — beyond linear predictivity toward representational, topographic, behavioral, and causal
-alignment. Subclass `Metric`:
+A metric compares two assemblies and returns a `Score`. Subclass `Metric`:
 
 ```python
 from brainscore_core.metrics import Metric, Score
@@ -143,25 +131,22 @@ class YourMetric(Metric):
 metric_registry['your-metric'] = lambda: YourMetric()
 ```
 
-Then register it in `brainscore/metrics/__init__.py`. A working reference lives at
+Then register it in `brainscore/metrics/__init__.py`. A reference lives at
 `brainscore/metrics/topographic.py` — `load_metric('topographic-alignment')` — which scores a model's
-spatial unit layout against cortical topography (the correlation-vs-distance profile, beyond
-predictivity). Copy `templates/new_metric/` to start. Distinct alignment axes are distinct metrics —
-keep predictivity, RSA, topographic, and SCA-style metrics separate rather than overloading one.
+spatial unit layout against cortical topography (the correlation-vs-distance profile). Copy
+`templates/new_metric/` to start. Keep predictivity, RSA, topographic, and SCA-style metrics
+separate.
 
 ### Seam 4 — configure or extend a capability
 
 There are two related extension levels:
 
-1. **Configure an existing capability for a model.** Most model authors do
-   this. Pass a callable into a `BrainScoreModel` constructor slot;
+1. **Configure an existing capability for a model.** Pass a callable into a
+   `BrainScoreModel` constructor slot;
    `process()` reaches it through the already-registered framework capability.
-   This requires no core change and no capability-registry work.
-2. **Add a new framework dispatch capability.** Core contributors subclass
+2. **Add a new framework dispatch capability.** Subclass
    `brainscore_core.capabilities.Capability` and register that class with
-   `register_capability`. This changes Python source and is appropriate only
-   when UMI needs a genuinely new dispatch path, not when one model needs a
-   new implementation of an existing path.
+   `register_capability` for a new UMI dispatch path.
 
 The constructor-callable slots available to model authors are:
 
@@ -171,23 +156,10 @@ The constructor-callable slots available to model authors are:
 | `action_fn` | `EnvironmentStep` / `Message` | `(env_step) -> EnvironmentResponse` |
 | `state_change_fn` | `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 
-A genuinely new input/output event or dispatch behavior belongs at the second
-level. See `core/brainscore_core/capabilities/` for the framework registry and
+A new input/output event or dispatch behavior belongs at the second level. See
+`core/brainscore_core/capabilities/` for the framework registry and
 `templates/new_capability/` for model-level callable examples.
 
----
-
-## What we deliberately leave to you
-
-The backbone stays small on purpose. These are **out of scope for the core** — build them on top:
-
-- **Discovery / analysis pipelines** (clustering, sweeps, hypothesis generation). They *consume*
-  `process()` outputs; ship them as scripts (cf. `scripts/yeatman_sweep/`), not core primitives.
-- **Model-internal descriptors** that don't compare to the brain (e.g. a model's own spatial
-  smoothness). Those belong in your model repo; only model-vs-brain comparisons are Metrics here.
-- **Training.** The interface evaluates checkpoints; it does not train. Register the checkpoint.
-- **Breadth.** We ship a few reference models/benchmarks/metrics that prove each seam; the catalog
-  is meant to grow from the community, not from us.
-
-If a research goal doesn't fit one of these seams, that's a signal — open an issue describing
-the seam you wish existed rather than forking the core.
+The interface evaluates checkpoints; it does not train. Register the checkpoint.
+For a discovery or analysis pipeline, use `process()` outputs and see
+`scripts/yeatman_sweep/`.

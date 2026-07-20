@@ -15,7 +15,7 @@ Evidence labels:
 - **illustrative companion**: teaches analysis or interpretation, not model
   registration or a brain-alignment result
 - **structural demo**: verifies interface mechanics, not scientific validity
-- **EC2 companion**: full data/model scoring is intentionally outside laptops
+- **EC2 companion**: full data/model scoring requires EC2
 - **archived**: not part of the default executable path
 
 ## Recommended order
@@ -23,7 +23,7 @@ Evidence labels:
 | # | Notebook | What it shows | Evidence and hardware | Typical runtime | Prerequisites |
 | --- | --- | --- | --- | --- | --- |
 | 01 | 01_quickstart_layer_mapping.ipynb | Register a deterministic vision stand-in, score it, and record one/all/composite regions | local workflow, CPU | under 10 s | base notebook environment |
-| 02 | 02_behavioral_and_nulls.ipynb | Interpret chance and random-feature floors before trusting a behavioral score | illustrative companion, CPU | under 10 s | matplotlib |
+| 02 | 02_behavioral_and_nulls.ipynb | Compare a behavioral score with chance and random-feature floors | illustrative companion, CPU | under 10 s | matplotlib |
 | 03 | 03_state_change_ablation.ipynb | Apply, observe, and exactly reset a small PyTorch ablation | local workflow, CPU | under 10 s | torch |
 | 04 | 04_embodied_vlm_game.ipynb | Run a tiny neural policy in a closed loop and align per-tick activations | structural demo, CPU | about 15 s | torch, matplotlib |
 | 05 | 05_temporal_multimodal.ipynb | Synchronize modality streams, convolve an HRF, and run a temporal-shift null | local workflow, CPU | under 10 s | NumPy and SciPy |

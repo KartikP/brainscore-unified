@@ -1,8 +1,5 @@
 # UMI API reference and cookbook
 
-This is the shipped task-oriented reference for the public UMI surface. It
-supplements source docstrings and the domain-specific legacy documentation.
-
 ## Registry entry points
 
 | Function | Purpose |
@@ -115,8 +112,7 @@ modalities.
 
 BrainModel/look_at and ArtificialSubject/digest_text are pre-UMI interfaces.
 New cross-domain code should use Subject or BrainScoreModel with process().
-The domain packages retain legacy APIs for compatibility and adapt them when
-loaded through the unified registry.
+The unified registry adapts the domain-package legacy APIs when loaded.
 
 ## Known distribution boundaries
 
