@@ -163,23 +163,51 @@
       pass; later benchmarks for any region are cache hits.</p>
 
     <h3>5b · Time <span class="muted">— the <code>time_bin</code> axis + the temporal kit</span></h3>
-    <p>Naturalistic benchmarks need <i>when</i>, not just <i>what</i>. Every time-aware wrapper emits a
-      <code>time_bin</code> dim with canonical coords (<code>time_bin_start_ms</code> /
-      <code>time_bin_end_ms</code> / <code>time_bin_center_ms</code>), so a benchmark aligns any wrapper's
-      output uniformly — no per-wrapper special case. <code>core/brainscore_core/temporal.py</code> is the
-      shared kit:</p>
+    <p>Naturalistic benchmarks need <i>when</i>, not just <i>what</i>. The rule is one line: <b>the model
+      always emits time-resolved features at its own native rate, and the benchmark owns the model&rarr;brain
+      time alignment.</b> A benchmark with no native time is just the <i>N=1</i> case of the same machinery —
+      one bin. Every output carries the canonical coords <code>time_bin_start_ms</code> /
+      <code>time_bin_end_ms</code>, so a benchmark aligns any wrapper uniformly. Here is what that looks like
+      in both cases.</p>
+
+    <p class="muted small" style="margin-bottom:4px"><b>Case A — a benchmark with no native timebins</b>
+      (static images, e.g. MajajHong IT). The still-image wrapper has no time axis;
+      <code>add_time_bin_axis</code> stamps one bin = the neural recording window:</p>
+    <pre class="code"><code>still-image wrapper   ->  (2560 images, 168 neuroids)              # 2-D, no time axis
+add_time_bin_axis(a, time_bin_start_ms=70, time_bin_end_ms=170)
+                      ->  (2560 images, time_bin=1, 168 neuroids)
+                          time_bin_start_ms = [70]   time_bin_end_ms = [170]   # the (70,170) ms
+                                                                               # V1-IT response window
+# One bin, stamped with the recording window. The metric runs on it exactly as
+# the old 2-D shape -> static scores are unchanged bit-for-bit.</code></pre>
+
+    <p class="muted small" style="margin-bottom:4px"><b>Case B — a benchmark with native timebins</b>
+      (movie &rarr; fMRI, e.g. Lahner / Algonauts). The stimulus is one <i>clip</i>; the model runs at its
+      native frame rate, then <code>temporal_bin</code> pools those frames onto the brain's TR grid:</p>
+    <pre class="code"><code>1. preprocessor  expand_clip_to_frames  ->  each frame carries frame_time_ms + clip_id
+2. time-aware wrapper (native rate)     ->  (SUM frames over clips, neuroids)  [frame_time_ms, clip_id]
+3. temporal_bin(a, [(0,1750),(1750,3500),(3500,5250)])          # TR = 1750 ms, bins half-open [start,end)
+                      ->  (n_clips, n_TRs, neuroids)             # frames in a bin are mean-pooled; empty -> NaN
+                          time_bin_start_ms = [0, 1750, 3500]   time_bin_end_ms = [1750, 3500, 5250]
+4. hrf_convolve(a, ...)  ->  warp model-time into BOLD-time (double-gamma, ~5 s peak) before the ridge fit
+# The clip's onset in the run (events sidecar) puts frame_time_ms on the brain's
+# absolute clock; contiguous_block_cv splits it (BOLD is autocorrelated, not i.i.d.).</code></pre>
+
+    <p><b>Same operation both times.</b> <code>temporal_bin</code> down-samples the model's native rate onto
+      the brain's grid; <code>add_time_bin_axis</code> is that operation with a single bin = the recording
+      window. The shared kit in <code>core/brainscore_core/temporal.py</code>:</p>
     <table class="paths-table arch-ref-table">
       <tr><th>Helper</th><th>Does</th></tr>
-      <tr><td><code>temporal_bin</code></td><td>aggregate per-frame/token features into requested time windows</td></tr>
+      <tr><td><code>add_time_bin_axis</code></td><td>Case A: promote a still-image wrapper's 2-D output to a single <code>time_bin</code>, stamped with the recording window</td></tr>
+      <tr><td><code>temporal_bin</code></td><td>Case B: pool per-frame/token features into requested TR windows (half-open, mean/first, empty&rarr;NaN)</td></tr>
       <tr><td><code>hrf_convolve</code></td><td>BOLD-aware: convolve model features with the hemodynamic response before fitting fMRI</td></tr>
       <tr><td><code>contiguous_block_cv</code></td><td>block cross-validation for autocorrelated time series</td></tr>
       <tr><td><code>window_plan</code></td><td>tile a clip longer than a model's native window into block/causal windows</td></tr>
-      <tr><td><code>add_time_bin_axis</code></td><td>promote a still-image wrapper's output to a single <code>time_bin</code></td></tr>
     </table>
     <p class="muted small">A clip longer than a video model's native temporal window does <b>not</b> silently
       downsample: <code>VideoWrapper(context_window_ms=…)</code> uses <code>window_plan</code> to chunk it,
       forwards each window, and stitches the per-window time-resolved features into one clip-time sequence
-      with absolute timestamps (<code>max_clip_ms</code> gives a fail-fast). Model→brain time alignment lives
+      with absolute timestamps (<code>max_clip_ms</code> gives a fail-fast). Model&rarr;brain time alignment lives
       in the benchmark (<code>temporal_bin</code> + <code>hrf_convolve</code>), not a commitment layer —
       the same reason regions map to layers freely rather than through a fixed hierarchy.</p>
 
