@@ -29,3 +29,6 @@ already exists.
 `setup.sh` writes `install-manifest.txt` with the exact commit of each repo — keep it
 for reproducible re-runs and citations. First run:
 `unified/notebooks/01_quickstart_layer_mapping.ipynb`.
+
+See [SETUP.md](SETUP.md) for supported versions, hardware notes (CPU / Apple MPS /
+NVIDIA CUDA), and troubleshooting.
