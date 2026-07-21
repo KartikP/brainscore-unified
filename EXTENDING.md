@@ -3,7 +3,7 @@
 Extend the unified interface through five registries and Capability.
 
 > Companion: the interactive contract map at
-> [`website/architecture.html`](website/architecture.html).
+> [brain-score.github.io/public/UMI/architecture.html](https://brain-score.github.io/public/UMI/architecture.html).
 
 ## Registries
 
@@ -52,7 +52,7 @@ Reference registered data from a benchmark with `load_dataset` /
 ### Seam 1 — a new model
 
 A model is one `BrainScoreModel` construction. The optional slots decide which dispatch branches it
-can take (see `website/architecture.html` for the full router):
+can take (see the architecture map at https://brain-score.github.io/public/UMI/architecture.html for the full router):
 
 ```python
 from brainscore_core.model_interface import BrainScoreModel

@@ -1,7 +1,7 @@
 """TODO: one-line description of the model and what it can be scored on.
 
 A model is ONE BrainScoreModel construction. The optional slots you fill decide which
-dispatch branches process() can take (see website/architecture.html for the full router):
+dispatch branches process() can take (see https://brain-score.github.io/public/UMI/architecture.html for the full router):
   - activations_model  -> neural encoding + behavioral readout
   - generation_fn      -> behavioral generation (instruction-following)
   - action_fn          -> embodied closed-loop (EnvironmentStep)

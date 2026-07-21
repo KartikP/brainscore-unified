@@ -1,7 +1,7 @@
 # Template: a new model
 
 A model is one `BrainScoreModel` construction. See `EXTENDING.md` (Seam 1) for the contract and
-`website/architecture.html` for which dispatch branches each optional slot unlocks.
+the architecture map at https://brain-score.github.io/public/UMI/architecture.html for which dispatch branches each optional slot unlocks.
 
 ## Use it
 
