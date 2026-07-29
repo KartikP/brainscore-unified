@@ -94,12 +94,12 @@ contract before using the generic run_environment helper.
 
 brainscore_core.streaming_helpers exports:
 
-- score_stimuli for open-loop neural recording
-- score_behavior for behavioral sessions
+- neural_response for open-loop neural recording
+- behavioral_response for behavioral sessions
 - apply_state_change for perturbation sessions
 - run_environment for compatible reset/step environments
 
-The current score function accepts registry identifiers. Use score_stimuli for
+The current score function accepts registry identifiers. Use neural_response for
 an ad-hoc in-memory subject.
 
 ## Model helper imports
