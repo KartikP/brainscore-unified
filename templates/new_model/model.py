@@ -16,8 +16,10 @@ def get_model() -> BrainScoreModel:
     backbone = ...
 
     # TODO: pick the wrapper that matches your model and build it. One of:
-    #   PytorchWrapper (CNN/ViT) · TextWrapper (LM) · VLMVisionWrapper (flattened-patch VLM)
-    #   VideoWrapper (native-temporal video) · AudioWrapper (HF audio encoder)
+    #   VisionWrapper (any vision: image / VLM / video — dispatches internally; pass kind= to force)
+    #   TextWrapper (LM) · AudioWrapper (HF audio encoder)
+    # VisionWrapper fronts PytorchWrapper / VLMVisionWrapper / VideoWrapper, so a vision
+    # model only needs this one surface:  VisionWrapper(backbone, preprocessing, identifier=...)
     activations_model = ...
 
     # TODO: simple per-modality callables (resize/normalize, tokenize, resample).

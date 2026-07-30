@@ -16,9 +16,9 @@ The model-builder workflow it enables:
 What it removes from the builder's plate (the friction observed registering
 CLIP / Qwen-VL / BLIP-2 / VideoMAE / V-JEPA / Wav2Vec2 by hand):
 
-  1. **Wrapper choice.** Picks among the five activations-model wrappers
-     (``PytorchWrapper`` / ``TextWrapper`` / ``VLMVisionWrapper`` /
-     ``VideoWrapper`` / ``AudioWrapper``) from the model's class, config, and
+  1. **Wrapper choice.** Picks the activations-model wrapper
+     (``VisionWrapper`` for any vision — image / VLM / video — plus
+     ``TextWrapper`` / ``AudioWrapper``) from the model's class, config, and
      module tree.
   2. **Layer discovery.** Finds the repeated indexed block list
      (``encoder.layers.*`` / ``model.layers.*`` / ``blocks.*`` / …) — the
@@ -54,9 +54,9 @@ DEFAULT_AUDIO_REGIONS: Tuple[str, ...] = ('A1',)
 # Each modality maps to (wrapper class name, default layer_aggregation,
 # the brain regions a provisional map spaces over).
 _MODALITY_WRAPPER = {
-    'vision':       ('PytorchWrapper',   None,           DEFAULT_VISION_REGIONS),
-    'vision_flat':  ('VLMVisionWrapper', 'mean_patches', DEFAULT_VISION_REGIONS),
-    'video':        ('VideoWrapper',     None,           DEFAULT_VISION_REGIONS),
+    'vision':       ('VisionWrapper',    None,           DEFAULT_VISION_REGIONS),
+    'vision_flat':  ('VisionWrapper',    'mean_patches', DEFAULT_VISION_REGIONS),
+    'video':        ('VisionWrapper',    None,           DEFAULT_VISION_REGIONS),
     'audio':        ('AudioWrapper',     'mean_time',    DEFAULT_AUDIO_REGIONS),
     'text_causal':  ('TextWrapper',      'last_token',   DEFAULT_LANGUAGE_REGIONS),
     'text_encoder': ('TextWrapper',      'mean_tokens',  DEFAULT_LANGUAGE_REGIONS),
@@ -272,8 +272,8 @@ def _classify_global(meta: Dict[str, Any]) -> Tuple[str, str]:
         return 'text_encoder', f"text-encoder signal in {meta['model_type'] or meta['class']!r}"
     if any(s in sig for s in _VISION_SIGNALS):
         return 'vision', f"vision backbone signal in {meta['model_type'] or meta['class']!r}"
-    # default: assume a standard image model wrapped by PytorchWrapper
-    return 'vision', "no decisive signal; defaulting to vision/PytorchWrapper"
+    # default: assume a standard image model wrapped by VisionWrapper (frame)
+    return 'vision', "no decisive signal; defaulting to vision/VisionWrapper"
 
 
 def _classify_tower(top: str, submodule: Any, meta: Dict[str, Any]) -> Tuple[str, str]:
@@ -482,8 +482,9 @@ def scaffold_registration(profile: ModelProfile, hf_id: Optional[str] = None,
     for w in wrappers:
         if w == 'PytorchWrapper':
             continue
-        snake = {'TextWrapper': 'text_wrapper', 'VLMVisionWrapper': 'vlm_vision_wrapper',
-                 'VideoWrapper': 'video_wrapper', 'AudioWrapper': 'audio_wrapper'}[w]
+        snake = {'VisionWrapper': 'vision_wrapper', 'TextWrapper': 'text_wrapper',
+                 'VLMVisionWrapper': 'vlm_vision_wrapper', 'VideoWrapper': 'video_wrapper',
+                 'AudioWrapper': 'audio_wrapper'}[w]
         imports.append(f"from brainscore.model_helpers.{snake} import {w}")
 
     req = profile.required_modalities()
@@ -543,7 +544,7 @@ def auto_register(model: Any,
     """Build a runnable :class:`BrainScoreModel` from a single-tower model.
 
     Supports the two towers that need no processor-specific configuration to
-    wire automatically — **vision** (``PytorchWrapper``, needs ``preprocessing``)
+    wire automatically — **vision** (``VisionWrapper``, needs ``preprocessing``)
     and **text** (``TextWrapper``, needs ``tokenizer``). For audio / video /
     flattened-patch VLM towers, or multi-tower models, call
     :func:`inspect_model` + :func:`scaffold_registration` and fill in the
@@ -579,9 +580,9 @@ def auto_register(model: Any,
             raise ValueError(
                 "vision model needs a `preprocessing` callable "
                 "(image_filepaths -> (B,C,H,W) array/tensor).")
-        from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
-        activations_model = PytorchWrapper(
-            identifier=identifier, model=model, preprocessing=preprocessing)
+        from brainscore.model_helpers.vision_wrapper import VisionWrapper
+        activations_model = VisionWrapper(
+            model=model, preprocessing=preprocessing, identifier=identifier)
         preprocessors = {'vision': preprocessing}
         return BrainScoreModel(
             identifier=identifier, model=model,

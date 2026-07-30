@@ -246,7 +246,7 @@ class TestInspectModel:
         assert 'vision_flat' in modalities
         assert 'text_causal' in modalities
         vis = next(r for r in p.recommendations if r.modality == 'vision_flat')
-        assert vis.wrapper == 'VLMVisionWrapper'
+        assert vis.wrapper == 'VisionWrapper'   # facade fronts the VLM strategy
         assert vis.submodule_path == 'visual'
         assert vis.block_layers[0] == 'blocks.0'
 
@@ -330,11 +330,11 @@ class TestSpaceLayers:
 # ── scaffold ─────────────────────────────────────────────────────────────────
 
 class TestScaffold:
-    def test_vit_scaffold_has_pytorch_wrapper(self):
+    def test_vit_scaffold_has_vision_wrapper(self):
         p = inspect_model(make_vit(8), identifier='vit-tiny')
         code = scaffold_registration(p, hf_id='org/vit-tiny',
                                      registry_key='vit-tiny')
-        assert 'PytorchWrapper' in code
+        assert 'VisionWrapper' in code
         assert "model_registry['vit-tiny']" in code
         assert 'REGION_LAYER_MAP' in code
         assert 'org/vit-tiny' in code
