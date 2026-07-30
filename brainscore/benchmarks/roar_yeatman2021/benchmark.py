@@ -50,8 +50,10 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 BIBTEX = """@article{yeatman2021rapid,
   title={Rapid online assessment of reading ability},
-  author={Yeatman, Jason D and Tang, Kenny A and Donnelly, Patrick M and
-          Mezer, Aviv A and Wandell, Brian A and White, Alex L},
+  author={Yeatman, Jason D and Tang, Kenny An and Donnelly, Patrick M and
+          Yablonski, Maya and Ramamurthy, Mahalakshmi and Karipidis, Iliana I and
+          Caffarra, Sendy and Takada, Megumi E and Kanopka, Klint and
+          Ben-Shachar, Michal and Domingue, Benjamin W},
   journal={Scientific Reports},
   volume={11},
   number={1},
