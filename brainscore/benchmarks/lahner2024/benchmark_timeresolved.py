@@ -295,7 +295,10 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         # IT-mapped features predict whole-cortex BOLD via per-voxel ridge.
         candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
 
-        if 'video' in getattr(candidate, 'supported_modalities', set()):
+        # route on raw input_modalities: channel unification canonicalizes
+        # video->vision in supported_modalities, so a native-video model reports
+        # 'vision' there and would misroute to frame-aggregation.
+        if 'video' in getattr(candidate, 'input_modalities', set()):
             video_stim = self._stim_helper._videos_stimulus_set()
             # Restrict to the unique_ids we need
             video_stim = video_stim[video_stim['stimulus_id'].isin(unique_ids)]

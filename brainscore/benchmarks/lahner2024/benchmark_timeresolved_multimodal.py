@@ -197,7 +197,9 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         from .benchmark import VIDEO_DURATION_MS
         from brainscore_core.temporal import temporal_bin
         candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
-        if 'video' in supports:
+        # raw input_modalities, not canonicalized supports: a native-video model
+        # reports 'vision' in supports post-unification (see benchmark._is_native_video).
+        if 'video' in getattr(candidate, 'input_modalities', set()):
             video_stim = self._video_stim_set_for(unique_ids)
             video_assembly = candidate.process(video_stim)
         else:

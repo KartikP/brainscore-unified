@@ -222,9 +222,10 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
             modality_per_neuroid: ndarray of {'video', 'audio'} strings,
                 one per output feature column.
         """
-        supports = getattr(candidate, 'supported_modalities', set())
         candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
-        if 'video' in supports:
+        # raw input_modalities, not canonicalized supported_modalities: a native-video model
+        # reports 'vision' in supports post-unification (see benchmark._is_native_video).
+        if 'video' in getattr(candidate, 'input_modalities', set()):
             video_assembly = candidate.process(self._video_stim_set())
         else:
             # Frame-aggregation path: expand each clip into N frames,
