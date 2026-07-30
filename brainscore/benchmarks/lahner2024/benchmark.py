@@ -347,14 +347,27 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         r_full = 2 * r_half / (1 + r_half)
         return r_full
 
+    @staticmethod
+    def _is_native_video(candidate) -> bool:
+        """True when the model consumes whole video clips (a VideoWrapper tower),
+        declared via a ``'video'`` input key.
+
+        Channel unification canonicalizes ``video -> vision`` in
+        ``supported_modalities``, so a native-video model no longer reports
+        ``'video'`` there. Route on the RAW ``input_modalities`` instead, which
+        preserves the declared processing style. Models that don't expose it
+        (legacy adapters, plain still-image models) fall back to frame-aggregation.
+        """
+        return 'video' in getattr(candidate, 'input_modalities', set())
+
     def __call__(self, candidate) -> Score:
         # Configure the model's recording once (both paths use it).
         candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
 
-        # Dispatch on the model's declared modality support. Video-native
+        # Dispatch on the model's declared processing style. Video-native
         # models (VideoMAE, V-JEPA) process a whole video at once and
         # preserve temporal structure; image models see static frames.
-        if 'video' in getattr(candidate, 'supported_modalities', set()):
+        if self._is_native_video(candidate):
             pipeline_mode = 'video_native'
             video_stim = self._videos_stimulus_set()
             result = candidate.process(video_stim)
