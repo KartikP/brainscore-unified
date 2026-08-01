@@ -63,6 +63,105 @@ def pool_if_flattened(vectors, n_units):
     return vectors
 
 
+def render_strips(video_path, strips, out_dir, *, window_ms, stride_ms,
+                  n_windows, audio_from_window=None, caption='', n_units_strip=120,
+                  dpi=130):
+    """Row 3 as N labelled strips.
+
+    ``strips`` is a list of ``(label, array, cmap, start_window)``. Two modes use it:
+    channels (video + audio, the second appearing when it connects) and depths (three
+    taps on the same tower). Same rows 1 and 2 either way -- what the model was handed
+    does not change with which taps you read.
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+
+    os.makedirs(out_dir, exist_ok=True)
+    n = n_windows
+    starts_s = [i * stride_ms / 1000.0 for i in range(n)]
+    total_s = starts_s[-1] + window_ms / 1000.0
+    frames, fps = load_frames_at(video_path, starts_s)
+    thumb_every = max(1, n // 8)
+    thumb_idx = list(range(0, n, thumb_every))
+
+    prep = []
+    for label, arr, cmap, start_w in strips:
+        order = np.argsort(-arr.var(axis=0))[:n_units_strip]
+        lo, hi = np.percentile(arr[:, order], [2, 98])
+        prep.append((label, arr, cmap, start_w, order, lo, hi))
+
+    paths = []
+    for i in range(n):
+        fig = plt.figure(figsize=(13, 4.2 + 1.5 * len(prep)))
+        gs = fig.add_gridspec(2 + len(prep), 1,
+                              height_ratios=[2.6, 1.7] + [1.0] * len(prep),
+                              hspace=0.5)
+
+        ax0 = fig.add_subplot(gs[0])
+        fr = frames.get(i)
+        if fr is not None:
+            ax0.imshow(fr)
+        ax0.set_xticks([]); ax0.set_yticks([])
+        ax0.set_title(f'What a person sees   ·   t = {starts_s[i]:.1f}s', fontsize=13)
+
+        ax1 = fig.add_subplot(gs[1])
+        ax1.set_xlim(-total_s * 0.13, total_s); ax1.set_ylim(0, 1)
+        ax1.set_yticks([]); ax1.set_xlabel('time (s)', fontsize=10)
+        ax1.set_title('What the model was handed: one window at a time', fontsize=12)
+        ax1.hlines(0.68, 0, total_s, color='#dde3ee', lw=8, zorder=1)
+        ax1.text(-total_s * 0.035, 0.68, 'video', ha='right', va='center',
+                 fontsize=11, color='#2f6bff', fontweight='bold')
+        for k in thumb_idx:
+            if k > i:
+                break
+            th = frames.get(k)
+            if th is None:
+                continue
+            small = th[::max(1, th.shape[0] // 44), ::max(1, th.shape[1] // 44)]
+            ax1.add_artist(AnnotationBbox(
+                OffsetImage(small, zoom=0.75), (starts_s[k], 0.68), frameon=True,
+                pad=0.08, bboxprops=dict(edgecolor='#2f6bff', lw=1.2)))
+        ax1.vlines([starts_s[k] for k in range(i + 1)], 0.58, 0.62,
+                   color='#2f6bff', lw=1.4, zorder=3)
+        if audio_from_window is not None and i >= audio_from_window:
+            ax1.hlines(0.24, starts_s[audio_from_window], total_s,
+                       color='#f2e3c4', lw=8, zorder=1)
+            ax1.text(-total_s * 0.035, 0.24, 'audio', ha='right', va='center',
+                     fontsize=11, color='#e0a13b', fontweight='bold')
+            ax1.vlines([starts_s[k] for k in range(audio_from_window, i + 1)],
+                       0.14, 0.18, color='#e0a13b', lw=1.4, zorder=3)
+            ax1.annotate('audio channel connects here',
+                         (starts_s[audio_from_window], 0.06), fontsize=10,
+                         color='#e0a13b', ha='left', style='italic')
+        ax1.axvline(starts_s[i], color='#d8483b', lw=1.6, zorder=4)
+
+        for row, (label, arr, cmap, start_w, order, lo, hi) in enumerate(prep):
+            ax = fig.add_subplot(gs[2 + row])
+            if i >= start_w:
+                strip = arr[start_w:i + 1, order].T
+                ax.imshow(strip, aspect='auto', cmap=cmap, vmin=lo, vmax=hi,
+                          interpolation='nearest',
+                          extent=[starts_s[start_w],
+                                  starts_s[i] + stride_ms / 1000.0, strip.shape[0], 0])
+            ax.set_xlim(0, total_s); ax.set_yticks([])
+            ax.set_ylabel(label, fontsize=10)
+            if row == 0:
+                ax.set_title('What the model computed', fontsize=12, pad=14)
+            if row == len(prep) - 1:
+                ax.set_xlabel(caption or
+                              'time (s)   ·   units ordered by variance, for legibility',
+                              fontsize=9)
+            else:
+                ax.set_xticks([])
+
+        fp = os.path.join(out_dir, f'panel_{i:04d}.png')
+        fig.savefig(fp, dpi=dpi, bbox_inches='tight'); plt.close(fig)
+        paths.append(fp)
+    return paths
+
+
 def render(video_path, vid_vecs, aud_vecs, out_dir, *, window_ms, stride_ms,
            audio_from_window, n_units_strip=120, dpi=130):
     import matplotlib

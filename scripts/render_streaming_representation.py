@@ -57,6 +57,37 @@ def clip_fps(path, default=30.0):
         cap.release()
 
 
+# Depth taps. These are LABELS FOR LAYERS, not brain regions: 'video_mid' asserts only
+# that the hook sits midway up the video tower. The shipped registration's V1/V4/IT
+# names make an anatomical claim that this demo neither needs nor evidences, so the
+# demo uses its own vocabulary.
+DEPTH_TAPS = {
+    'video_early': ('backbone.blocks.2', 'video'),
+    'video_mid':   ('backbone.blocks.11', 'video'),
+    'video_late':  ('backbone.blocks.22', 'video'),
+    'audio_early': ('encoder.layers.1', 'audio'),
+    'audio_mid':   ('encoder.layers.5', 'audio'),
+    'audio_late':  ('encoder.layers.10', 'audio'),
+}
+
+
+def add_depth_taps(model, taps=None):
+    """Register depth-named taps on a built model so one pass can record them all.
+
+    ``start_recording`` accepts a LIST only of names already in region_layer_map --
+    raw layer paths are single-string only. Naming the taps is therefore what buys a
+    single shared forward pass across all of them, instead of one pass per layer.
+    """
+    taps = taps or DEPTH_TAPS
+    from brainscore_core.selection import LayerSelector
+    for name, (layer_path, modality) in taps.items():
+        model._region_layer_map_dict[name] = layer_path
+        model._region_layer_selectors[name] = LayerSelector(name=layer_path)
+        if getattr(model, 'region_modality_map', None) is not None:
+            model.region_modality_map[name] = modality
+    return model
+
+
 def representations_for_clip(model, video_path, *, region, window_ms, stride_ms,
                              frames_dir=None):
     """Stream one clip and collect the per-window representation.
