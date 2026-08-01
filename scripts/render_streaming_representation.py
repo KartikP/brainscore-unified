@@ -115,7 +115,16 @@ def representations_for_clip(model, video_path, *, region, window_ms, stride_ms,
     for event in session.emitted:
         if not event.channel.startswith('neural:'):
             continue
-        arr = np.asarray(event.payload).reshape(-1)
+        # Pool over the window's internal time axis rather than flattening it.
+        # Flattening makes the vector sensitive to WHERE inside the window content
+        # sits, so sliding by one stride shifts content across tubelet boundaries and
+        # the vector changes sharply even though ~75% of the frames are unchanged.
+        # Measured on the first render: consecutive-window correlation was 0.34
+        # flattened vs 0.83 pooled, and that difference is what made the trajectory
+        # look like a scribble. Pooling also matches how the audio channel is
+        # summarized, so the two are treated the same way.
+        arr = np.asarray(event.payload)
+        arr = arr.reshape(-1, arr.shape[-1]).mean(axis=0) if arr.ndim >= 2 else arr.reshape(-1)
         vectors.append(arr)
         meta.append({'t_ms': float(event.t_ms),
                      'stream_index': int(event.meta.get('stream_index', len(meta)))})
