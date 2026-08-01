@@ -83,6 +83,10 @@ def render_strips(video_path, strips, out_dir, *, window_ms, stride_ms,
     starts_s = [i * stride_ms / 1000.0 for i in range(n)]
     total_s = starts_s[-1] + window_ms / 1000.0
     frames, fps = load_frames_at(video_path, starts_s)
+    # single shared x range: the timeline needs a left margin for its row labels, so
+    # the strips must use the SAME margin or a given instant lands at different x
+    # positions in different rows and the panels stop being readable together.
+    x_left = -total_s * 0.13
     thumb_every = max(1, n // 8)
     thumb_idx = list(range(0, n, thumb_every))
 
@@ -97,7 +101,7 @@ def render_strips(video_path, strips, out_dir, *, window_ms, stride_ms,
         fig = plt.figure(figsize=(13, 4.2 + 1.5 * len(prep)))
         gs = fig.add_gridspec(2 + len(prep), 1,
                               height_ratios=[2.6, 1.7] + [1.0] * len(prep),
-                              hspace=0.5)
+                              hspace=0.72)
 
         ax0 = fig.add_subplot(gs[0])
         fr = frames.get(i)
@@ -107,8 +111,8 @@ def render_strips(video_path, strips, out_dir, *, window_ms, stride_ms,
         ax0.set_title(f'What a person sees   ·   t = {starts_s[i]:.1f}s', fontsize=13)
 
         ax1 = fig.add_subplot(gs[1])
-        ax1.set_xlim(-total_s * 0.13, total_s); ax1.set_ylim(0, 1)
-        ax1.set_yticks([]); ax1.set_xlabel('time (s)', fontsize=10)
+        ax1.set_xlim(x_left, total_s); ax1.set_ylim(0, 1)
+        ax1.set_yticks([]); ax1.set_xlabel('')
         ax1.set_title('What the model was handed: one window at a time', fontsize=12)
         ax1.hlines(0.68, 0, total_s, color='#dde3ee', lw=8, zorder=1)
         ax1.text(-total_s * 0.035, 0.68, 'video', ha='right', va='center',
@@ -145,7 +149,7 @@ def render_strips(video_path, strips, out_dir, *, window_ms, stride_ms,
                           interpolation='nearest',
                           extent=[starts_s[start_w],
                                   starts_s[i] + stride_ms / 1000.0, strip.shape[0], 0])
-            ax.set_xlim(0, total_s); ax.set_yticks([])
+            ax.set_xlim(x_left, total_s); ax.set_yticks([])
             ax.set_ylabel(label, fontsize=10)
             if row == 0:
                 ax.set_title('What the model computed', fontsize=12, pad=14)
@@ -202,8 +206,8 @@ def render(video_path, vid_vecs, aud_vecs, out_dir, *, window_ms, stride_ms,
 
         # --- row 2: what the model was handed ---------------------------------
         ax1 = fig.add_subplot(gs[1])
-        ax1.set_xlim(-total_s * 0.13, total_s); ax1.set_ylim(0, 1)
-        ax1.set_yticks([]); ax1.set_xlabel('time (s)', fontsize=10)
+        ax1.set_xlim(x_left, total_s); ax1.set_ylim(0, 1)
+        ax1.set_yticks([]); ax1.set_xlabel('')
         ax1.set_title('What the model was handed: one window at a time', fontsize=12)
         # video track
         ax1.hlines(0.68, 0, total_s, color='#dde3ee', lw=8, zorder=1)
