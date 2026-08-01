@@ -208,6 +208,64 @@ def fetch_schaefer_fsaverage_annot(n_parcels: int = 1000, networks: int = 7,
     return out[0], out[1], names[0], names[1]
 
 
+def vertex_surface_map(vertex_values: np.ndarray, *,
+                       resolution: str = 'fsaverage5',
+                       hemi: str = 'left', view: str = 'lateral',
+                       cmap: str = 'inferno', threshold: Optional[float] = None,
+                       vmin: Optional[float] = None, vmax: Optional[float] = None,
+                       mask: Optional[np.ndarray] = None,
+                       title: Optional[str] = None, out_png: Optional[str] = None):
+    """Render PER-VERTEX values on an inflated fsaverage cortex.
+
+    :func:`cortical_surface_map` takes per-*parcel* values (Schaefer). Benchmarks
+    that score vertex-wise -- Lahner2024 on fsaverage5 -- have no parcels to hand,
+    and averaging into parcels would throw away exactly the spatial detail that
+    makes the picture worth showing. This renders their values directly.
+
+    ``vertex_values`` is length 20484 for fsaverage5 (LH 0..10241 then RH
+    10242..20483), the concatenation order the Lahner assembly uses. A per-hemi
+    array of length 10242 is also accepted.
+
+    ``mask`` is an optional boolean over the same length marking which vertices
+    were actually scored. Unscored vertices render as NaN (background) rather than
+    as zero, because zero is a *value* on a correlation map and would read as
+    "predicted nothing here" instead of "not measured here".
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from nilearn import datasets
+
+    from nilearn import plotting
+
+    vertex_values = np.asarray(vertex_values, dtype=float)
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != vertex_values.shape:
+            raise ValueError(
+                f"mask shape {mask.shape} != values shape {vertex_values.shape}")
+        vertex_values = np.where(mask, vertex_values, np.nan)
+
+    fsavg = datasets.fetch_surf_fsaverage(mesh=resolution)
+    per_hemi = vertex_values.size // 2
+    if vertex_values.size in (10242, 40962, 163842):      # already one hemisphere
+        values_h = vertex_values
+    else:
+        values_h = vertex_values[:per_hemi] if hemi == 'left' else vertex_values[per_hemi:]
+
+    surf = fsavg['infl_left'] if hemi == 'left' else fsavg['infl_right']
+    bg = fsavg['sulc_left'] if hemi == 'left' else fsavg['sulc_right']
+    fig = _safe_plot_surf(plotting, surf, values_h, hemi=hemi, view=view, bg_map=bg,
+                          cmap=cmap, threshold=threshold, vmin=vmin, vmax=vmax,
+                          title=title)
+    if out_png:
+        fig.savefig(out_png, dpi=140, bbox_inches='tight',
+                    facecolor=fig.get_facecolor())
+        plt.close(fig)
+        return out_png
+    return fig
+
+
 def cortical_surface_map(parcel_values: np.ndarray, *, n_parcels: int = 1000,
                          networks: int = 7, resolution: str = 'fsaverage5',
                          hemi: str = 'left', view: str = 'lateral',
