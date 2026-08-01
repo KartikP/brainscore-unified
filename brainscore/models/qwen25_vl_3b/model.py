@@ -2,8 +2,9 @@
 Qwen2.5-VL-3B registered as a BrainScoreModel -- a true VLM where the vision
 encoder feeds into a causal language model.
 
-Uses VLMVisionWrapper for the vision path (handles Qwen's flattened-patch
-layout with image_grid_thw metadata) and TextWrapper for the text path
+Uses the VisionWrapper facade with kind='vlm' for the vision path (it delegates
+to VLMVisionWrapper, which handles Qwen's flattened-patch layout with
+image_grid_thw metadata) and TextWrapper for the text path
 (causal mode with last_token aggregation). Both are class-based, cached via
 @store_xarray, and symmetric in their calling convention.
 
@@ -26,7 +27,7 @@ from brainscore_core.model_interface import BrainScoreModel
 
 
 REGION_LAYER_MAP = {
-    # Vision regions -- relative to model.visual (VLMVisionWrapper root)
+    # Vision regions -- relative to model.visual (VisionWrapper/vlm root)
     'V1': 'blocks.2',
     'V2': 'blocks.6',
     'V4': 'blocks.14',
@@ -93,7 +94,7 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from brainscore.model_helpers.text_wrapper import TextWrapper
-    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
     qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         'Qwen/Qwen2.5-VL-3B-Instruct',
@@ -101,10 +102,12 @@ def get_model(identifier: str) -> BrainScoreModel:
     )
     qwen_processor = AutoProcessor.from_pretrained('Qwen/Qwen2.5-VL-3B-Instruct')
 
-    # Vision: VLMVisionWrapper handles Qwen's flattened-patch layout.
+    # Vision: VisionWrapper(kind='vlm') delegates to VLMVisionWrapper, which
+    # handles Qwen's flattened-patch layout.
     # image_grid_thw tells the wrapper how to segment patches back to images.
-    vision_wrapper = VLMVisionWrapper(
+    vision_wrapper = VisionWrapper(
         model=qwen_model.model.visual,
+        kind='vlm',
         processor=qwen_processor,
         identifier=f'{identifier}-vision',
         image_input_key='pixel_values',
