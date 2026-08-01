@@ -180,6 +180,58 @@ def draw_sequence(out_png, total_s=30.0, connect_s=10.0, stride_s=0.5, dpi=200):
     return out_png
 
 
+# The real functions at the real paths. Two deliberate edits for a slide: the
+# type-check branch is dropped as noise, and variables are shown with the values this
+# run used (the repo has `region` and `window_ms`, not 'video_mid' and 2000). Checked
+# against the sources -- every other line appears verbatim.
+SETUP_CODE = """# unified/scripts/render_streaming_representation.py
+
+session = WindowedStreamSession(
+    decode_frames(video_path), fps=fps,
+    window_ms=2000, stride_ms=500,
+    record='video_mid',
+    window_to_stimuli=window_to_stimuli)
+
+model.start_recording('video_mid')
+_drive_neural_session_streaming(model, session)"""
+
+LOOP_CODE = """# core/brainscore_core/streaming_helpers.py
+#   _drive_neural_session_streaming
+
+event = session.next_input()
+while event is not None:
+    stimuli = _one_row_stimuli(session, event, stream_index)
+    for channel, region in regions:
+        _start_recording(subject, region)
+        output = subject.process(stimuli)
+        session.emit(StreamEvent(
+            channel=channel, payload=output,
+            t_ms=event.t_ms))
+    event = session.next_input()"""
+
+CONNECT_CODE = """# adding the second channel
+
+model.start_recording(['video_mid', 'audio_mid'])
+
+# the loop above is unchanged."""
+
+
+def code_box(slide, x, y, w, h, code, size=10.5, accent=None):
+    """A monospace block. Kept as real text, not an image, so it stays selectable."""
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+    tb = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    tf = tb.text_frame; tf.word_wrap = True
+    for j, line in enumerate(code.split('\n')):
+        p = tf.paragraphs[0] if j == 0 else tf.add_paragraph()
+        p.text = line
+        p.font.size = Pt(size)
+        p.font.name = 'Menlo'
+        comment = line.strip().startswith('#')
+        p.font.color.rgb = RGBColor(0x87, 0x92, 0xa8) if comment else RGBColor(0x1b, 0x23, 0x33)
+    return tb
+
+
 def build_deck(out_pptx, schematic, sequence, channels_mp4, channels_poster,
                depths_mp4, depths_poster):
     from pptx import Presentation
@@ -226,6 +278,21 @@ def build_deck(out_pptx, schematic, sequence, channels_mp4, channels_poster,
     textbox(s, 0.5, 6.9, 12.3, 0.5,
             'The per-window call is the same before and after the second channel '
             'joins; only the recording list changes.', 12, False, GREY)
+
+    # --- the actual code, beside what it produces ---------------------------
+    s = prs.slides.add_slide(BLANK)
+    textbox(s, 0.5, 0.22, 12.3, 0.5, 'The actual code', 24, True)
+    code_box(s, 0.55, 0.85, 6.1, 2.5, SETUP_CODE)
+    code_box(s, 0.55, 3.35, 6.1, 3.3, LOOP_CODE)
+    if os.path.exists(channels_mp4):
+        s.shapes.add_movie(channels_mp4, Inches(6.95), Inches(1.6), Inches(5.9),
+                           Inches(2.3), poster_frame_image=channels_poster,
+                           mime_type='video/mp4')
+    code_box(s, 6.95, 4.3, 5.9, 2.0, CONNECT_CODE)
+    textbox(s, 0.5, 6.95, 12.3, 0.45,
+            'These are the real functions, at the paths in their comments. Variables '
+            'are shown with the values this run used (window_ms=2000, region='
+            "'video_mid').", 11, False, GREY)
 
     # --- backup: depth variant ----------------------------------------------
     s = prs.slides.add_slide(BLANK)
