@@ -167,12 +167,13 @@ def draw_sequence(out_png, total_s=30.0, connect_s=10.0, stride_s=0.5, dpi=200):
                 "model.start_recording('video_mid')",
                 xy=(0, 27.0), xytext=(0, 28.4), fontsize=9.5, family='monospace',
                 color=BLUE, ha='left', va='bottom')
-    ax.annotate("model.start_recording(['video_mid', 'audio_mid'])",
+    ax.annotate("audio feed opened; recording switches per tower each tick",
                 xy=(connect_s, 22.6), xytext=(connect_s + 0.3, 23.2), fontsize=9.5,
                 family='monospace', color=GOLD, ha='left', va='bottom')
 
     ax.text(total_s / 2, 0.0,
-            'Wiring a second channel changes the recording list, not the loop.',
+            'One loop. At t = 10 s the audio feed is opened mid-session; the '
+            'per-window call is unchanged.',
             ha='center', fontsize=12, color=INK, fontweight='bold')
 
     fig.savefig(out_png, dpi=dpi, bbox_inches='tight', facecolor='white')
@@ -209,11 +210,15 @@ while event is not None:
             t_ms=event.t_ms))
     event = session.next_input()"""
 
-CONNECT_CODE = """# adding the second channel
+CONNECT_CODE = """# mid-session, at tick 20 (t = 10 s)
 
-model.start_recording(['video_mid', 'audio_mid'])
+if i >= CONNECT:
+    seg, sr, t_ms = next(audio_iter)
+    model.start_recording('encoder.layers.5')
+    a = model.process(audio_window)
+    model.start_recording('video_mid')
 
-# the loop above is unchanged."""
+# 60 video windows, 40 audio windows."""
 
 
 def code_box(slide, x, y, w, h, code, size=10.5, accent=None):
@@ -230,6 +235,39 @@ def code_box(slide, x, y, w, h, code, size=10.5, accent=None):
         comment = line.strip().startswith('#')
         p.font.color.rgb = RGBColor(0x87, 0x92, 0xa8) if comment else RGBColor(0x1b, 0x23, 0x33)
     return tb
+
+
+def fit(w_box, h_box, img_path):
+    """Largest (w, h) fitting img_path inside the box, preserving aspect.
+
+    The first draft placed pictures and movies at hardcoded inches without consulting
+    their aspect ratios, which put a 4.5-inch-tall schematic and a movie in the same
+    1.8 inches of slide. Everything is measured now.
+    """
+    from PIL import Image
+    iw, ih = Image.open(img_path).size
+    scale = min(w_box / iw, h_box / ih)
+    return iw * scale, ih * scale
+
+
+def place_picture(slide, img, x, y, w_box, h_box, center_in=None):
+    from pptx.util import Inches
+    w, h = fit(w_box, h_box, img)
+    cx = x + (center_in - w) / 2 if center_in else x
+    slide.shapes.add_picture(img, Inches(cx), Inches(y), width=Inches(w),
+                             height=Inches(h))
+    return y + h
+
+
+def place_movie(slide, mp4, poster, x, y, w_box, h_box, center_in=None):
+    from pptx.util import Inches
+    if not os.path.exists(mp4):
+        return y
+    w, h = fit(w_box, h_box, poster)
+    cx = x + (center_in - w) / 2 if center_in else x
+    slide.shapes.add_movie(mp4, Inches(cx), Inches(y), Inches(w), Inches(h),
+                           poster_frame_image=poster, mime_type='video/mp4')
+    return y + h
 
 
 def build_deck(out_pptx, schematic, sequence, channels_mp4, channels_poster,
@@ -262,11 +300,9 @@ def build_deck(out_pptx, schematic, sequence, channels_mp4, channels_poster,
     # --- main slide: schematic above, video below ----------------------------
     s = prs.slides.add_slide(BLANK)
     textbox(s, 0.5, 0.22, 12.3, 0.5, 'What the code does', 24, True)
-    s.shapes.add_picture(schematic, Inches(0.5), Inches(0.8), width=Inches(12.3))
-    if os.path.exists(channels_mp4):
-        s.shapes.add_movie(channels_mp4, Inches(2.1), Inches(3.55), Inches(9.1),
-                           Inches(3.5), poster_frame_image=channels_poster,
-                           mime_type='video/mp4')
+    y = place_picture(s, schematic, 0.5, 0.78, 12.3, 2.75, center_in=12.3)
+    place_movie(s, channels_mp4, channels_poster, 0.5, y + 0.18, 12.3, 3.5,
+                center_in=12.3)
     textbox(s, 0.5, 7.05, 12.3, 0.4,
             'Video tower V-JEPA v1, audio tower Wav2Vec2-base; 2000 ms windows, '
             '500 ms stride; audio connects at t = 10 s.', 11, False, GREY)
@@ -274,7 +310,7 @@ def build_deck(out_pptx, schematic, sequence, channels_mp4, channels_poster,
     # --- how it runs, over time ---------------------------------------------
     s = prs.slides.add_slide(BLANK)
     textbox(s, 0.5, 0.22, 12.3, 0.5, 'How it runs', 24, True)
-    s.shapes.add_picture(sequence, Inches(0.6), Inches(0.85), width=Inches(12.1))
+    place_picture(s, sequence, 0.6, 0.82, 12.1, 5.9, center_in=12.1)
     textbox(s, 0.5, 6.9, 12.3, 0.5,
             'The per-window call is the same before and after the second channel '
             'joins; only the recording list changes.', 12, False, GREY)
@@ -284,11 +320,8 @@ def build_deck(out_pptx, schematic, sequence, channels_mp4, channels_poster,
     textbox(s, 0.5, 0.22, 12.3, 0.5, 'The actual code', 24, True)
     code_box(s, 0.55, 0.85, 6.1, 2.5, SETUP_CODE)
     code_box(s, 0.55, 3.35, 6.1, 3.3, LOOP_CODE)
-    if os.path.exists(channels_mp4):
-        s.shapes.add_movie(channels_mp4, Inches(6.95), Inches(1.6), Inches(5.9),
-                           Inches(2.3), poster_frame_image=channels_poster,
-                           mime_type='video/mp4')
-    code_box(s, 6.95, 4.3, 5.9, 2.0, CONNECT_CODE)
+    y = place_movie(s, channels_mp4, channels_poster, 6.95, 1.0, 5.9, 3.0)
+    code_box(s, 6.95, max(y + 0.25, 4.2), 5.9, 2.0, CONNECT_CODE)
     textbox(s, 0.5, 6.95, 12.3, 0.45,
             'These are the real functions, at the paths in their comments. Variables '
             'are shown with the values this run used (window_ms=2000, region='
@@ -297,10 +330,7 @@ def build_deck(out_pptx, schematic, sequence, channels_mp4, channels_poster,
     # --- backup: depth variant ----------------------------------------------
     s = prs.slides.add_slide(BLANK)
     textbox(s, 0.5, 0.22, 12.3, 0.5, 'Backup: reading three depths at once', 24, True)
-    if os.path.exists(depths_mp4):
-        s.shapes.add_movie(depths_mp4, Inches(2.4), Inches(0.95), Inches(8.5),
-                           Inches(5.1), poster_frame_image=depths_poster,
-                           mime_type='video/mp4')
+    place_movie(s, depths_mp4, depths_poster, 0.5, 0.9, 12.3, 5.1, center_in=12.3)
     textbox(s, 0.5, 6.2, 12.3, 1.1,
             'Three taps on the video tower, one shared forward pass. Measured '
             'adjacent-window similarity: 0.94 early, 0.85 middle, 0.79 late — deeper '
