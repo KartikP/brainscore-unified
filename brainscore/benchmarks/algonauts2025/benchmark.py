@@ -18,6 +18,7 @@ extraction (EC2-verified) supplies them. The published fixed-encoder
 (Wav2Vec2 + MiniLM) baseline reproduction lives in the reproduction script,
 not in the maintained benchmark.
 """
+import hashlib
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -305,8 +306,19 @@ class _Algonauts2025Base(BenchmarkBase):
 
         df = pd.DataFrame(rows)
         out_set = StimulusSet(df)
+        # The activations cache (@store_xarray) keys on (model, stimuli_identifier,
+        # layers) -- NOT on the stimulus set's columns. A fixed identifier therefore
+        # lets a cached assembly built from one column set be merged with a fresh
+        # extraction built from another, which surfaces as an opaque
+        # `AssertionError: Length of new_levels (N) must be <= self.nlevels (M)`
+        # from deep inside pandas' MultiIndex recode. Folding the column signature
+        # into the identifier makes the cache miss instead, which is the correct
+        # behaviour: different columns are genuinely different stimuli metadata.
+        column_signature = hashlib.md5(
+            '|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
         out_set.identifier = (
-            f'algonauts2025-{self._split}-sub{self._subject:02d}-frames')
+            f'algonauts2025-{self._split}-sub{self._subject:02d}-frames'
+            f'-{column_signature}')
         out_set.stimulus_paths = dict(
             zip(df['stimulus_id'], df['image_file_name']))
         return out_set
@@ -566,6 +578,10 @@ class _Algonauts2025Base(BenchmarkBase):
         score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
         score.attrs['mean_r'] = mean_r
         score.attrs['n_parcels_scored'] = int(len(per_voxel_r_finite))
+        # The per-parcel scores themselves, in Schaefer order, so they can be rendered
+        # on a cortical surface. NaNs are kept in place: a parcel that could not be
+        # scored must stay unpainted rather than collapse to a neighbour's value.
+        score.attrs['per_parcel_r'] = per_voxel_r
         score.attrs['n_TRs'] = int(len(Y))
         score.attrs['stimulus_window'] = self._stimulus_window
         score.attrs['hrf_delay'] = self._hrf_delay
