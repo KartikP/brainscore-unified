@@ -1,0 +1,39 @@
+{
+  "rendered": [
+    {
+      "stem": "video",
+      "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
+      "model": "vjepa1-vitl",
+      "score": 0.7314809535115232,
+      "paths": [
+        "cortex_real_video_left_lateral.png",
+        "cortex_real_video_left_ventral.png",
+        "cortex_real_video_right_lateral.png",
+        "cortex_real_video_right_ventral.png"
+      ],
+      "vmax": 0.7892798356640113,
+      "n_voxels": 4042,
+      "median_r": 0.5328519444188079
+    },
+    {
+      "stem": "videoaudio",
+      "benchmark": "Lahner2024-fMRI-naturalistic-multimodal-visualROI",
+      "model": "vjepa1-wav2vec2",
+      "score": 0.4606938768287002,
+      "paths": [
+        "cortex_real_videoaudio_left_lateral.png",
+        "cortex_real_videoaudio_left_ventral.png",
+        "cortex_real_videoaudio_right_lateral.png",
+        "cortex_real_videoaudio_right_ventral.png"
+      ],
+      "vmax": 0.7409433848844943,
+      "n_voxels": 4042,
+      "median_r": 0.4606938768287002
+    }
+  ],
+  "failed": [],
+  "cannot_render": {
+    "image": "MajajHong2015 is macaque V4/IT array recordings -- there is no human cortical surface to paint. A macaque schematic or no figure are the honest options.",
+    "live loop": "the grid game is scored on win rate; there is no brain prediction to map at all."
+  }
+}

@@ -1,5 +1,22 @@
 # EC2 runbook — post-verification cleanup (Group B)
 
+> **RUN 2026-07-31 — ALL THREE TASKS PASSED.** Results in
+> `unified/scripts/ec2_results_2026_07_31/`. 0.67 h, ~$1.09. Instance stopped.
+> The env had to be rebuilt from scratch (no conda present at all) — see the note below.
+> Task 5 PASS: `VisionWrapper(kind='vlm')` is score-identical to `VLMVisionWrapper`
+> (IT exactly equal; V4's 1-ULP delta proved to be stale-cache-vs-fresh-extraction, not
+> the facade — an original-wrapper re-extraction reproduces the migrated value exactly).
+> Task 6 PASS: V-JEPA v1 Lahner visual-ROI raw **0.53285** vs 0.5329 baseline;
+> `supported_modalities == ['vision']` confirms video→vision canonicalization.
+> Task 7 PASS: ROI noise ceiling = **0.7305** (median sqrt(reliability), 4042 voxels);
+> all six models re-scored and normalized, ranking unchanged, none above 1.0.
+>
+> **Env gotcha for next time:** installing `language` (or `unified`) pulls the PyPI
+> `brainscore-vision` wheel, which SHADOWS the editable checkout — `brainscore_vision`
+> then resolves to site-packages and the `-unified` benchmark variants silently do not
+> exist. Fix: `pip uninstall -y brainscore-vision brainscore-language` then re-`pip
+> install -e ./vision ./language`, and verify with `brainscore_vision.__file__`.
+
 Two EC2-gated tasks, batched into one session because both need real weights +
 scoring. Est. ~$2–4 wall, one g5.4xlarge. Both close open items from the
 2026-07-30 codex recheck (`unified-model-interface-deliverables/CODEX-RECHECK-2026-07-30.md`).
@@ -63,6 +80,29 @@ this exercises real weights + real fMRI.
    Record it in CLAUDE.md and flip the "video≡vision EC2 smoke" open item to DONE in
    the codex packet.
 
+## Task 7 — Lahner noise ceiling  (unblocks putting numbers back on the site)
+
+Goal: make Lahner's score ceiling-normalized so it is comparable to MajajHong/Pereira
+instead of a raw undivided correlation. **Do this in the same session as Task 6** — that
+task already pulls the 11 GB assembly, which is the only expensive part here.
+
+1. `_split_half_reliability(n_splits=20, random_state=0)` at `benchmark.py:290` already
+   computes Spearman-Brown-corrected per-voxel reliability; today it is only used to
+   *select* voxels (`reliability_threshold=0.3`), never to normalize.
+2. Compute it once on the visual-ROI voxel set, take the median over the masked voxels
+   (matching how the score itself is summarized), and record the value.
+3. Pass it as `ceiling=` to the benchmark factory (the parameter already exists,
+   `benchmark.py:163`, defaulting to 1.0) and pin it as a module constant so scoring is
+   reproducible without recomputing.
+4. Re-score the six models (V-JEPA1 0.5329, CLIP 0.4556, V-JEPA2 0.4210, VideoMAE 0.3209,
+   Qwen 0.2270, BLIP-2 0.1797 — all raw). Expect every value to rise; the **ranking must
+   not change**, since it is a single positive divisor. A ranking change means a bug.
+5. Sanity gate: a normalized score meaningfully above 1.0 means the ceiling is
+   underestimated — do not ship it.
+
+Then the video numbers can go back on the site next to MajajHong. Algonauts stays raw
+(the challenge normalizes on its side); only its Codabench-graded number is conventional.
+
 ## Teardown
 
 - `aws ec2 stop-instances --instance-ids i-0bdbdf83c4db9bdae`; confirm `stopped`
@@ -71,7 +111,11 @@ this exercises real weights + real fMRI.
 
 ## What this unblocks
 
-Both scores feed the HELD presentation bucket (codex #15/#17/#19): the VisionWrapper
-migration confirms a real registration number, and the V-JEPA Lahner score is a real
-"our own test" figure for the site — so the presentation items can use real numbers
-instead of staying held for fabrication-avoidance.
+Tasks 5 and 6 close codex A6 and the channel-unification gate.
+
+Task 7 is what unblocks the presentation bucket. The bucket was NOT held for lack of
+numbers — the numbers existed. It is held because Lahner and Algonauts report raw
+undivided correlations (`ceiling=Score(1.0)`) while MajajHong and Pereira are
+ceiling-normalized, so they cannot be shown on one scale. Task 7 fixes that for Lahner,
+which is the only one of the two we can fix ourselves. See
+`unified-model-interface-deliverables/PRESENTATION-BUCKET-2026-07-30.md` §REVISION.

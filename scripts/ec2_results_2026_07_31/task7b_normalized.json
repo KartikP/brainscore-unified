@@ -1,0 +1,66 @@
+{
+  "ceiling": 0.7304512193654528,
+  "n_voxels_roi": 4042,
+  "rows": [
+    {
+      "model": "vjepa1-vitl",
+      "raw": 0.5328519444188079,
+      "normalized": 0.7294832704663009,
+      "elapsed_sec": 49.3,
+      "status": "ok"
+    },
+    {
+      "model": "clip-vit-b-32",
+      "raw": 0.4555527160397694,
+      "normalized": 0.6236593272244938,
+      "elapsed_sec": 29.6,
+      "status": "ok"
+    },
+    {
+      "model": "vjepa2-vitl",
+      "raw": 0.42099290800907463,
+      "normalized": 0.5763463689947613,
+      "elapsed_sec": 54.8,
+      "status": "ok"
+    },
+    {
+      "model": "videomae-base",
+      "raw": 0.3208955593377502,
+      "normalized": 0.43931141578011745,
+      "elapsed_sec": 17.4,
+      "status": "ok"
+    },
+    {
+      "model": "qwen2.5-vl-3b",
+      "raw": 0.22700321903650286,
+      "normalized": 0.31077122334562174,
+      "elapsed_sec": 72.4,
+      "status": "ok"
+    },
+    {
+      "model": "blip2-opt-2.7b",
+      "raw": 0.1796528233509187,
+      "normalized": 0.2459477355749836,
+      "elapsed_sec": 128.8,
+      "status": "ok"
+    }
+  ],
+  "ranking_by_raw": [
+    "vjepa1-vitl",
+    "clip-vit-b-32",
+    "vjepa2-vitl",
+    "videomae-base",
+    "qwen2.5-vl-3b",
+    "blip2-opt-2.7b"
+  ],
+  "ranking_by_normalized": [
+    "vjepa1-vitl",
+    "clip-vit-b-32",
+    "vjepa2-vitl",
+    "videomae-base",
+    "qwen2.5-vl-3b",
+    "blip2-opt-2.7b"
+  ],
+  "ranking_unchanged": true,
+  "any_above_one": []
+}

@@ -1,0 +1,52 @@
+{
+  "rows": [
+    {
+      "model": "blip2-opt-2.7b",
+      "normalized": 0.24988221092395918,
+      "ci_lo": 0.24638860062258036,
+      "ci_hi": 0.25337037870102963,
+      "n_voxels": 4042,
+      "status": "ok"
+    },
+    {
+      "model": "qwen2.5-vl-3b",
+      "normalized": 0.31195474694110276,
+      "ci_lo": 0.3075437351154221,
+      "ci_hi": 0.31572002621546585,
+      "n_voxels": 4042,
+      "status": "ok"
+    },
+    {
+      "model": "videomae-base",
+      "normalized": 0.4452965859522503,
+      "ci_lo": 0.43929207558007094,
+      "ci_hi": 0.4517974767038879,
+      "n_voxels": 4042,
+      "status": "ok"
+    },
+    {
+      "model": "vjepa2-vitl",
+      "normalized": 0.5866722689575858,
+      "ci_lo": 0.5801734888934675,
+      "ci_hi": 0.5923129099137774,
+      "n_voxels": 4042,
+      "status": "ok"
+    },
+    {
+      "model": "clip-vit-b-32",
+      "normalized": 0.6340323395546993,
+      "ci_lo": 0.6287726665006305,
+      "ci_hi": 0.638083647993601,
+      "n_voxels": 4042,
+      "status": "ok"
+    },
+    {
+      "model": "vjepa1-vitl",
+      "normalized": 0.7314809535115232,
+      "ci_lo": 0.7272282586132667,
+      "ci_hi": 0.7376851198588966,
+      "n_voxels": 4042,
+      "status": "ok"
+    }
+  ]
+}
