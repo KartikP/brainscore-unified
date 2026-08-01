@@ -36,11 +36,16 @@ Evidence labels:
 | 12 | 12_bring_your_model.ipynb | Take a PyTorch model from `nn.Module` to a wired candidate: inspect, wrap, extract, scaffold | local workflow, CPU | under 30 s | torch, torchvision, Pillow |
 | 13 | 13_real_model_representations.ipynb | Record a pretrained ResNet-50's V1/V2/V4/IT layers and plot how category structure sharpens along the hierarchy (RDM, MDS, separability) | local workflow, CPU | under 30 s | torch, torchvision, matplotlib, scikit-learn, Pillow |
 | 14 | 14_brain_alignment.ipynb | Plot CLIP's held-out predictions of real MajajHong2015 IT neural responses (predicted-vs-measured scatter, per-site predictivity) | EC2 result, replots saved data locally | under 10 s locally | matplotlib |
+| 15 | 15_streaming_delivery.ipynb | Separate streaming *shape* from *delivery*: batched vs one-at-a-time (identical values), windowed delivery with memory bounded independently of feed length, and the three real-time policies | structural demo, CPU | under 10 s | none beyond base |
 
 Notebook 02 does not score a registered model; it is a null-interpretation
 companion. Notebook 06 does not register or score a model; it demonstrates the
 descriptor used by the topographic metric. Their first cells state these
 boundaries explicitly.
+
+Notebook 15 uses deterministic stand-in subjects and filename strings for "frames";
+it demonstrates interface mechanics, not a scientific result. Pointing the same
+machinery at a decoded video with real weights is `unified/scripts/ec2_streaming_video.md`.
 
 The production counterparts for large models, public benchmark data, video,
 audio-video, and Algonauts are EC2-only. Capability status is summarized in
