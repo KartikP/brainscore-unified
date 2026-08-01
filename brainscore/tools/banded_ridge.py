@@ -35,6 +35,54 @@ def ridge_fit_predict(X_train, Y_train, X_pred, alpha=1.0,
     return pred if dtype is None else pred.astype(dtype)
 
 
+def ridge_fit_predict_chunked(X_train, Y_train, X_pred, alpha=1.0,
+                              dtype=np.float32, row_chunk=20000):
+    """Memory-bounded equivalent of :func:`ridge_fit_predict`.
+
+    ``sklearn.linear_model.Ridge`` copies the design matrix and upcasts it to
+    float64, so a (130k x 5000) float32 block costs ~5 GB per fit on top of the
+    original -- which is what OOM-killed Algonauts scoring on a 62 GB box.
+
+    This solves the identical problem via normal equations, accumulating
+    ``XtX`` and ``XtY`` over row chunks so the design matrix is never copied or
+    upcast wholesale. Peak extra memory is O(p^2 + p*k) -- for p=5000, k=1000
+    that is ~240 MB regardless of how many rows there are.
+
+    Mathematically identical to ``Ridge(alpha=alpha)``: both fit an intercept by
+    centering, and neither penalizes it. Guarded by a numerical-equivalence test.
+    """
+    n, p = X_train.shape
+    k = Y_train.shape[1]
+    x_mean = np.zeros(p, dtype=np.float64)
+    y_mean = np.zeros(k, dtype=np.float64)
+    for start in range(0, n, row_chunk):
+        stop = min(start + row_chunk, n)
+        x_mean += X_train[start:stop].sum(axis=0, dtype=np.float64)
+        y_mean += Y_train[start:stop].sum(axis=0, dtype=np.float64)
+    x_mean /= n
+    y_mean /= n
+
+    XtX = np.zeros((p, p), dtype=np.float64)
+    XtY = np.zeros((p, k), dtype=np.float64)
+    for start in range(0, n, row_chunk):
+        stop = min(start + row_chunk, n)
+        xc = X_train[start:stop].astype(np.float64) - x_mean
+        yc = Y_train[start:stop].astype(np.float64) - y_mean
+        XtX += xc.T @ xc
+        XtY += xc.T @ yc
+        del xc, yc
+
+    XtX.flat[::p + 1] += alpha          # penalize coefficients, not the intercept
+    coef = np.linalg.solve(XtX, XtY)
+
+    out = np.empty((X_pred.shape[0], k), dtype=np.float64)
+    for start in range(0, X_pred.shape[0], row_chunk):
+        stop = min(start + row_chunk, X_pred.shape[0])
+        out[start:stop] = (X_pred[start:stop].astype(np.float64) - x_mean) @ coef
+    out += y_mean
+    return out if dtype is None else out.astype(dtype)
+
+
 def _mean_pearson(Y_true_centered, Y_true_var, Y_pred):
     """Mean across-target Pearson r between centered truth and raw preds."""
     yp = Y_pred - Y_pred.mean(axis=0)

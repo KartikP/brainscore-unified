@@ -53,12 +53,34 @@ def _run_kfold(run_idx_kept, n_splits, random_state):
     yield from run_kfold_masks(run_idx_kept, n_splits, random_state)
 
 
-def _cv_ridge_predict(X, Y, run_idx_kept, alpha, n_splits, random_state):
+def _cv_ridge_predict(X, Y, run_idx_kept, alpha, n_splits, random_state,
+                      memory_bounded=False):
     """Run-held-out 5-fold Ridge; return held-out predictions (NaN where
-    a row was never in a test fold — shouldn't happen with KFold)."""
-    return masked_ridge_predictions(
-        X, Y, _run_kfold(run_idx_kept, n_splits, random_state),
-        alpha=alpha, dtype=np.float32)
+    a row was never in a test fold — shouldn't happen with KFold).
+
+    ``memory_bounded=True`` swaps sklearn's Ridge for a chunked normal-equations
+    solver. OFF by default because the two agree only to float32 round-off
+    (~1e-6), and the repo pins Algonauts scores bit-for-bit; turning it on is a
+    deliberate trade of exact reproducibility for the ability to run at all.
+
+    Why it exists:
+    sklearn copies and upcasts the design matrix to float64, which on the full
+    Algonauts design (162,671 x 5,000) costs several GB per fold on top of the
+    original and OOM-killed a 62 GB box. The chunked solver is numerically
+    equivalent (guarded by a test) and its peak extra memory is O(p^2).
+    """
+    if not memory_bounded:
+        return masked_ridge_predictions(
+            X, Y, _run_kfold(run_idx_kept, n_splits, random_state),
+            alpha=alpha, dtype=np.float32)
+
+    from brainscore.tools.banded_ridge import ridge_fit_predict_chunked
+    held = np.full(Y.shape, np.nan, dtype=np.float32)
+    for train_mask, test_mask in _run_kfold(run_idx_kept, n_splits, random_state):
+        held[test_mask] = ridge_fit_predict_chunked(
+            X[train_mask], Y[train_mask], X[test_mask],
+            alpha=alpha, dtype=np.float32)
+    return held
 
 
 def _banded_nested_cv(blocks, Y, run_idx_kept, banded_alpha_grid,
@@ -138,7 +160,7 @@ def _banded_nested_cv(blocks, Y, run_idx_kept, banded_alpha_grid,
 def score_encoding_modes(per_modality_stacked, Y, run_idx_kept, mode, *,
                          ridge_alpha=1.0,
                          banded_alpha_grid=(1.0, 10.0, 100.0, 1000.0, 10000.0),
-                         n_splits=5, random_state=0):
+                         n_splits=5, random_state=0, memory_bounded=False):
     """Score per-parcel encoding for the requested multimodal combination.
 
     Args:
@@ -161,20 +183,23 @@ def score_encoding_modes(per_modality_stacked, Y, run_idx_kept, mode, *,
                 f"only produced {present}. Use a candidate with a {need} "
                 f"tower, or a mode that matches its modalities.")
         held = _cv_ridge_predict(per_modality_stacked[need], Y, run_idx_kept,
-                                 ridge_alpha, n_splits, random_state)
+                                 ridge_alpha, n_splits, random_state,
+                                 memory_bounded=memory_bounded)
         info = {'mode': mode, 'bands': [need], 'ridge_alpha': ridge_alpha}
 
     elif mode == 'concat':
         X = np.concatenate(list(per_modality_stacked.values()), axis=1)
         held = _cv_ridge_predict(X, Y, run_idx_kept, ridge_alpha,
-                                 n_splits, random_state)
+                                 n_splits, random_state,
+                                 memory_bounded=memory_bounded)
         info = {'mode': mode, 'bands': present, 'ridge_alpha': ridge_alpha}
 
     elif mode == 'per_modality':
         held = None
         for block in per_modality_stacked.values():
             pred = _cv_ridge_predict(block, Y, run_idx_kept, ridge_alpha,
-                                     n_splits, random_state)
+                                     n_splits, random_state,
+                                     memory_bounded=memory_bounded)
             held = pred if held is None else held + pred
         info = {'mode': mode, 'bands': present, 'ridge_alpha': ridge_alpha}
 
