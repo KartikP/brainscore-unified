@@ -110,6 +110,20 @@ def render_parcel(score, stem, out_dir, model_name, benchmark_id):
                    'median_r': float(np.nanmedian(per_parcel))}
 
 
+def _truncate_benchmark(bench, max_trs):
+    """Clamp a benchmark to the first N TRs so memory scaling can be measured cheaply.
+
+    Diagnostic only: the score that comes out is meaningless. It exists so an OOM
+    investigation costs seconds instead of seven minutes of extraction.
+    """
+    # Truncating the OUTER stimulus set does NOT work: the per-TR frame set is
+    # rebuilt inside _score_friends_train from the movie files, so the cap has to be
+    # applied there. Verified the hard way -- a --max-trs 20000 run still expanded to
+    # 162,671 frames and OOM-killed.
+    bench._debug_max_trs = int(max_trs)
+    return bench
+
+
 def probe_pereira():
     """Can Pereira be rendered at all? Report, do not assume.
 
@@ -142,17 +156,41 @@ def probe_pereira():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--out', default='/tmp/cortex_assets')
+    ap.add_argument('--max-trs', type=int, default=None,
+                    help='truncate the stimulus set to N TRs. Diagnostic only -- '
+                         'the resulting map is NOT a valid score, it exists to '
+                         'measure how peak memory scales with the design size.')
+    ap.add_argument('--only', default=None,
+                    help='comma-separated asset stems to run (skip the rest)')
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
 
     import brainscore
 
-    manifest = {'rendered': [], 'failed': [], 'cannot_render': CANNOT_RENDER}
-    for stem, benchmark_id, model_name, kind in TARGETS:
+    # peak-RSS instrumentation: the OOM is in extraction, so per-phase memory is
+    # the measurement that matters, not the final score.
+    import resource
+    def peak_gb():
+        return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 ** 2)
+
+    targets = TARGETS
+    if args.only:
+        wanted = {t.strip() for t in args.only.split(',')}
+        targets = [t for t in TARGETS if t[0] in wanted]
+
+    manifest = {'rendered': [], 'failed': [], 'cannot_render': CANNOT_RENDER,
+                'max_trs': args.max_trs}
+    for stem, benchmark_id, model_name, kind in targets:
         try:
             print(f'--- {stem}: {model_name} on {benchmark_id}', flush=True)
+            print(f'    peak RSS before load: {peak_gb():.1f} GB', flush=True)
             model = brainscore.load_model(model_name)
-            score = brainscore.load_benchmark(benchmark_id)(model)
+            bench = brainscore.load_benchmark(benchmark_id)
+            if args.max_trs is not None:
+                _truncate_benchmark(bench, args.max_trs)
+                print(f'    DIAGNOSTIC: truncated to {args.max_trs} TRs', flush=True)
+            score = bench(model)
+            print(f'    peak RSS after score: {peak_gb():.1f} GB', flush=True)
             if kind == 'vertex':
                 paths, meta = render_vertex(score, stem, args.out, model_name, benchmark_id)
             elif kind == 'parcel':

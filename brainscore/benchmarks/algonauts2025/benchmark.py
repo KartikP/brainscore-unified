@@ -507,6 +507,16 @@ class _Algonauts2025Base(BenchmarkBase):
     def _score_friends_train(self, candidate) -> Score:
         print(f'  expanding stim_set to per-TR frames...')
         frame_stim_set = self._expand_to_per_TR_frames()
+        # Diagnostic escape hatch: cap the design so a memory investigation costs
+        # seconds rather than a full extraction. Truncating the OUTER stimulus set
+        # does not work -- the per-TR set is rebuilt here from the movie files --
+        # so the cap has to be applied after expansion. The resulting score is
+        # meaningless by construction and is only for profiling.
+        cap = getattr(self, '_debug_max_trs', None)
+        if cap is not None:
+            frame_stim_set = frame_stim_set.iloc[:int(cap)]
+            print(f'  DEBUG CAP: truncated to {len(frame_stim_set)} frames '
+                  f'(score is invalid; profiling only)')
         print(f'  {len(frame_stim_set)} frames to extract')
 
         print(f'  extracting per-frame features (vision tower)...')
