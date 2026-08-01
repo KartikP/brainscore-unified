@@ -329,6 +329,14 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
+        # Same contract as the single-modality benchmark: expose the per-voxel scores
+        # and WHICH vertices they belong to, so they can be rendered on a cortex.
+        score.attrs['per_voxel_r'] = per_voxel_r
+        mask = self._get_voxel_mask()
+        if mask is not None:
+            import numpy as _np
+            score.attrs['voxel_mask_n_total'] = int(mask.size)
+            score.attrs['voxel_mask_indices'] = _np.flatnonzero(mask)
         score.attrs['n_videos'] = int(n)
         score.attrs['pipeline'] = f'multimodal_av_{self._mode}'
         score.attrs['mode'] = self._mode
@@ -355,8 +363,14 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
 
 def Lahner2024BOLDMoments_multimodal_visualROI(
         audio_dir: Optional[str] = None):
-    """Reliability-thresholded multimodal variant. Same threshold as the
-    single-modality ROI variant (0.3) so the scores compare directly."""
+    """Reliability-thresholded multimodal variant. Same voxel threshold as the
+    single-modality ROI variant (0.3), so the two select the same voxels.
+
+    NOT directly comparable to the single-modality ROI score as of 2026-07-31:
+    that variant now divides by the measured noise ceiling
+    (``benchmark.VISUAL_ROI_CEILING``) while this one still returns a raw,
+    undivided correlation. Compare raw-to-raw via ``score.attrs['raw']``, or
+    give this variant the same ceiling before comparing the headline numbers."""
     return Lahner2024BOLDMoments_multimodal(
         audio_dir=audio_dir,
         reliability_threshold=0.3,

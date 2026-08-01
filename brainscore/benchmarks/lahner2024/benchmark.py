@@ -287,6 +287,23 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         averaged = a.groupby('stimulus_id').mean('presentation')
         return averaged
 
+    def _per_voxel_ceiling(self, mask=None):
+        """sqrt(reliability) per voxel, restricted to the scored voxels.
+
+        Returns None when this variant is not ceiling-normalized (whole cortex and
+        every non-ROI variant deliberately keep ceiling=1.0), so the caller falls back
+        to the scalar path and nothing changes for them.
+        """
+        import numpy as _np
+        if float(self.ceiling) == 1.0:
+            return None
+        rel = _np.asarray(self._split_half_reliability(), dtype=float)
+        if mask is not None:
+            rel = rel[_np.asarray(mask, dtype=bool)]
+        ceil = _np.sqrt(_np.clip(rel, 0.0, 1.0))
+        ceil[~_np.isfinite(ceil) | (ceil <= 0)] = _np.nan   # never divide by ~0
+        return ceil
+
     def _split_half_reliability(self, n_splits: int = 20, random_state: int = 0) -> np.ndarray:
         """Per-voxel split-half reliability across the 10 repetitions.
 
@@ -417,9 +434,25 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         per_voxel_r, median_r, mean_r = pearson_summary(
             neural_mat, fold_preds)
 
-        score = Score(median_r / float(self.ceiling))
+        # Ceiling normalization. The repo convention (see
+        # unified/experiments/vjepa2_sweep/run_budget_curve.py) normalizes PER VOXEL and
+        # then summarizes -- median(r_i / c_i) -- NOT median(r_i) / median(c_i). The two
+        # are not equivalent, and mixing them makes two "ceiling-normalized" numbers on
+        # the same page incomparable. Prefer the per-voxel form whenever the reliability
+        # vector is available (it always is on the ROI variants, which already compute it
+        # to build the mask); fall back to the scalar only if it is not.
+        ceiling_vec = self._per_voxel_ceiling(mask)
+        if ceiling_vec is not None:
+            import numpy as _np
+            normalized = _np.asarray(per_voxel_r, dtype=float) / ceiling_vec
+            score = Score(float(_np.nanmedian(normalized)))
+            score.attrs['ceiling_aggregation'] = 'per_voxel'
+            score.attrs['ceiling'] = float(_np.nanmedian(ceiling_vec))
+        else:
+            score = Score(median_r / float(self.ceiling))
+            score.attrs['ceiling_aggregation'] = 'scalar'
+            score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
         score.attrs['raw'] = Score(median_r)
-        score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
         score.attrs['per_voxel_r'] = per_voxel_r   # exposed for bootstrap CIs
@@ -445,8 +478,22 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         if mask is not None:
             score.attrs['voxel_mask_n_total'] = int(mask.size)
             score.attrs['voxel_mask_n_kept'] = int(mask.sum())
+            # WHICH vertices were scored, not just how many. Without this the
+            # per-voxel scores cannot be placed back onto a cortical surface --
+            # their order is over the kept voxels, and the mapping is lost.
+            score.attrs['voxel_mask_indices'] = np.flatnonzero(mask)
             score.attrs['reliability_threshold'] = float(self._reliability_threshold)
         return score
+
+
+# Noise ceiling for the visual-ROI voxel set, measured on EC2 2026-07-31.
+# For a predictivity CORRELATION the ceiling is sqrt(reliability): the highest r a
+# perfect model could reach given measurement noise. This is the median over the 4042
+# ROI voxels of sqrt(_split_half_reliability(n_splits=20, random_state=0)), the same
+# Spearman-Brown-corrected reliability already used to SELECT those voxels.
+# Pinned rather than recomputed so scoring stays reproducible and cheap.
+# Provenance: unified/scripts/ec2_results_2026_07_31/task7_ceiling.json
+VISUAL_ROI_CEILING = 0.7304512193654528
 
 
 def Lahner2024BOLDMoments_visualROI():
@@ -461,4 +508,5 @@ def Lahner2024BOLDMoments_visualROI():
     return Lahner2024BOLDMoments(
         reliability_threshold=0.3,
         identifier_suffix='-visualROI',
+        ceiling=VISUAL_ROI_CEILING,
     )
