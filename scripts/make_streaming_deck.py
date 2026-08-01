@@ -84,7 +84,103 @@ def draw_schematic(out_png, dpi=200):
     return out_png
 
 
-def build_deck(out_pptx, schematic, channels_mp4, channels_poster,
+def draw_sequence(out_png, total_s=30.0, connect_s=10.0, stride_s=0.5, dpi=200):
+    """How the code RUNS, over time: wire video, run, then wire audio too.
+
+    The static schematic shows what the pieces are. This shows the order they happen
+    in, which is the part that carries the claim: the per-window call is identical
+    before and after the second channel joins. Only the feed list changes.
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import FancyBboxPatch
+
+    BLUE, GOLD, GREY, INK, RED = '#2f6bff', '#e0a13b', '#8792a8', '#1b2333', '#d8483b'
+    fig, ax = plt.subplots(figsize=(15, 7.6))
+    ax.set_xlim(-6.5, total_s + 1.2); ax.set_ylim(0, 30); ax.axis('off')
+
+    def lane(y, label, color):
+        ax.text(-6.2, y, label, ha='left', va='center', fontsize=11,
+                color=color, fontweight='bold')
+        ax.plot([0, total_s], [y, y], color='#e6eaf2', lw=1.2, zorder=0)
+
+    # time axis
+    ax.plot([0, total_s], [2.0, 2.0], color=GREY, lw=1.4)
+    for t in range(0, int(total_s) + 1, 5):
+        ax.plot([t, t], [1.7, 2.0], color=GREY, lw=1.2)
+        ax.text(t, 1.0, f'{t}s', ha='center', fontsize=9, color=GREY)
+
+    # the moment the second channel joins
+    ax.plot([connect_s, connect_s], [2.0, 27.5], color=RED, lw=1.5, ls='--', zorder=1)
+    ax.text(connect_s + 0.25, 27.8, 'audio connects', fontsize=10, color=RED,
+            fontweight='bold')
+
+    ticks = [t for t in np.arange(0, total_s - 2.0 + 1e-9, stride_s)]
+
+    # --- lane 1: video feed --------------------------------------------------
+    lane(24.5, 'video feed', BLUE)
+    for t in ticks:
+        ax.plot([t, t], [24.1, 24.9], color=BLUE, lw=1.1)
+    ax.text(connect_s / 2, 26.0, f'one window every {stride_s:g}s  (2 s of frames each)',
+            ha='center', fontsize=9.5, color=BLUE)
+
+    # --- lane 2: audio feed --------------------------------------------------
+    lane(20.0, 'audio feed', GOLD)
+    for t in [t for t in ticks if t >= connect_s]:
+        ax.plot([t, t], [19.6, 20.4], color=GOLD, lw=1.1)
+    ax.text((connect_s + total_s) / 2, 21.4, 'same cadence, started later',
+            ha='center', fontsize=9.5, color=GOLD)
+
+    # --- lane 3: the call ----------------------------------------------------
+    lane(14.5, 'the call', INK)
+    for t in ticks:
+        ax.plot([t, t], [14.1, 14.9], color=INK, lw=0.9, alpha=0.55)
+    ax.add_patch(FancyBboxPatch((0.2, 12.0), connect_s - 0.6, 4.6,
+                                boxstyle='round,pad=0.25', linewidth=1.6,
+                                edgecolor=BLUE, facecolor='#eef3ff', zorder=2))
+    ax.text(connect_s / 2, 14.3, 'model.process(window)', ha='center', va='center',
+            fontsize=11, family='monospace', color=INK, zorder=3)
+    ax.add_patch(FancyBboxPatch((connect_s + 0.4, 12.0), total_s - connect_s - 0.8, 4.6,
+                                boxstyle='round,pad=0.25', linewidth=1.6,
+                                edgecolor=GOLD, facecolor='#fdf6e8', zorder=2))
+    ax.text((connect_s + total_s) / 2, 14.3, 'model.process(window)', ha='center',
+            va='center', fontsize=11, family='monospace', color=INK, zorder=3)
+    ax.text((connect_s + total_s) / 2, 12.6, 'identical call', ha='center',
+            fontsize=9, color=GOLD, style='italic', zorder=3)
+
+    # --- lane 4: what comes back --------------------------------------------
+    lane(8.0, 'what comes back', GREY)
+    ax.add_patch(FancyBboxPatch((0.2, 6.2), connect_s - 0.6, 3.4,
+                                boxstyle='round,pad=0.2', linewidth=1.4,
+                                edgecolor=BLUE, facecolor='#eef3ff'))
+    ax.text(connect_s / 2, 7.9, 'video units', ha='center', va='center',
+            fontsize=10, color=INK)
+    ax.add_patch(FancyBboxPatch((connect_s + 0.4, 6.2), total_s - connect_s - 0.8, 3.4,
+                                boxstyle='round,pad=0.2', linewidth=1.4,
+                                edgecolor=GOLD, facecolor='#fdf6e8'))
+    ax.text((connect_s + total_s) / 2, 7.9, 'video units  +  audio units',
+            ha='center', va='center', fontsize=10, color=INK)
+
+    # --- the two setup lines, at the moments they run ------------------------
+    ax.annotate("session = WindowedStreamSession(video_feed, window_ms=2000, stride_ms=500)\n"
+                "model.start_recording('video_mid')",
+                xy=(0, 27.0), xytext=(0, 28.4), fontsize=9.5, family='monospace',
+                color=BLUE, ha='left', va='bottom')
+    ax.annotate("model.start_recording(['video_mid', 'audio_mid'])",
+                xy=(connect_s, 22.6), xytext=(connect_s + 0.3, 23.2), fontsize=9.5,
+                family='monospace', color=GOLD, ha='left', va='bottom')
+
+    ax.text(total_s / 2, 0.0,
+            'Wiring a second channel changes the recording list, not the loop.',
+            ha='center', fontsize=12, color=INK, fontweight='bold')
+
+    fig.savefig(out_png, dpi=dpi, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
+    return out_png
+
+
+def build_deck(out_pptx, schematic, sequence, channels_mp4, channels_poster,
                depths_mp4, depths_poster):
     from pptx import Presentation
     from pptx.util import Inches, Pt
@@ -122,6 +218,14 @@ def build_deck(out_pptx, schematic, channels_mp4, channels_poster,
     textbox(s, 0.5, 7.05, 12.3, 0.4,
             'Video tower V-JEPA v1, audio tower Wav2Vec2-base; 2000 ms windows, '
             '500 ms stride; audio connects at t = 10 s.', 11, False, GREY)
+
+    # --- how it runs, over time ---------------------------------------------
+    s = prs.slides.add_slide(BLANK)
+    textbox(s, 0.5, 0.22, 12.3, 0.5, 'How it runs', 24, True)
+    s.shapes.add_picture(sequence, Inches(0.6), Inches(0.85), width=Inches(12.1))
+    textbox(s, 0.5, 6.9, 12.3, 0.5,
+            'The per-window call is the same before and after the second channel '
+            'joins; only the recording list changes.', 12, False, GREY)
 
     # --- backup: depth variant ----------------------------------------------
     s = prs.slides.add_slide(BLANK)
@@ -167,8 +271,10 @@ def main():
 
     schematic = draw_schematic(os.path.join(args.dir, 'schematic.png'))
     print('schematic ->', schematic, flush=True)
+    sequence = draw_sequence(os.path.join(args.dir, 'sequence.png'))
+    print('sequence ->', sequence, flush=True)
     out = build_deck(
-        args.out, schematic,
+        args.out, schematic, sequence,
         os.path.join(args.dir, 'streaming_channels.mp4'),
         os.path.join(args.dir, 'poster_channels.png'),
         os.path.join(args.dir, 'streaming_depths.mp4'),
