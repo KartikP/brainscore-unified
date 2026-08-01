@@ -47,3 +47,6 @@ experiments/molmospaces_validation/README.md
 
 # Local-only archive of retired provenance (never shipped)
 .local-archive/
+
+# streaming demo render output (large binaries; regenerate with render_streaming_representation.py)
+scripts/streaming_demo_output/*.npy

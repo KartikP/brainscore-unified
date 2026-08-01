@@ -74,26 +74,35 @@ def representations_for_clip(model, video_path, *, region, window_ms, stride_ms,
     written = {}
 
     def window_to_stimuli(frames, start_ms, end_ms):
-        """Pack one window into a single clip row -- the native-temporal model wants a
-        clip, not a bag of frames."""
+        """Pack one window into a single clip row.
+
+        VideoWrapper opens ``video_path`` with cv2, so a window has to be written as
+        a real video file -- a folder of PNGs or an array in the column does not work
+        (verified by smoke test: "cv2 could not open [[[1 1 0]..."). Writing one small
+        clip per window keeps the streaming property: only this window exists on disk
+        at the moment it is needed.
+        """
+        import cv2
         idx = len(written)
         out_dir = frames_dir or '/tmp/_stream_windows'
         os.makedirs(out_dir, exist_ok=True)
-        # the wrapper reads from disk, so materialize just this window
-        import imageio.v2 as imageio
-        paths = []
-        for j, fr in enumerate(frames):
-            fp = os.path.join(out_dir, f'w{idx:04d}_f{j:03d}.png')
-            imageio.imwrite(fp, fr)
-            paths.append(fp)
-        written[idx] = paths
+        clip_path = os.path.join(out_dir, f'w{idx:04d}.mp4')
+        h, w = frames[0].shape[:2]
+        writer = cv2.VideoWriter(clip_path, cv2.VideoWriter_fourcc(*'mp4v'),
+                                 fps, (w, h))
+        try:
+            for fr in frames:
+                writer.write(cv2.cvtColor(fr, cv2.COLOR_RGB2BGR))
+        finally:
+            writer.release()
+        written[idx] = clip_path
         ss = StimulusSet(pd.DataFrame({
             'stimulus_id': [f'window_{idx:04d}'],
-            'video_path': [paths[0]],          # wrapper-specific; see --dry-run note
+            'video_path': [clip_path],
             'n_frames': [len(frames)],
         }))
         ss.identifier = f'stream-demo-w{idx:04d}'
-        ss.stimulus_paths = {f'window_{idx:04d}': paths[0]}
+        ss.stimulus_paths = {f'window_{idx:04d}': clip_path}
         return ss
 
     session = WindowedStreamSession(
@@ -113,6 +122,62 @@ def representations_for_clip(model, video_path, *, region, window_ms, stride_ms,
     return np.vstack(vectors) if vectors else np.empty((0, 0)), meta
 
 
+def audio_windows(wav_path, window_ms, stride_ms):
+    """Yield fixed-length waveform windows from a wav file, lazily.
+
+    The video feed yields frames; audio has to yield samples, so it needs its own
+    generator rather than reusing decode_frames. Windows are written to disk as short
+    wavs because AudioWrapper, like VideoWrapper, reads a path.
+    """
+    import soundfile as sf
+    info = sf.info(wav_path)
+    sr = info.samplerate
+    win = int(sr * window_ms / 1000.0)
+    stride = int(sr * stride_ms / 1000.0)
+    data, _ = sf.read(wav_path, dtype='float32', always_2d=False)
+    if data.ndim > 1:
+        data = data.mean(axis=1)
+    start = 0
+    while start < len(data):
+        seg = data[start:start + win]
+        if len(seg) == 0:
+            return
+        yield seg, sr, start / sr * 1000.0
+        start += stride
+
+
+def representations_for_audio(model, wav_path, *, region, window_ms, stride_ms,
+                              work_dir):
+    """Same idea as representations_for_clip, on the audio channel."""
+    import pandas as pd
+    import soundfile as sf
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+    os.makedirs(work_dir, exist_ok=True)
+    model.start_recording(region)
+    vectors, meta = [], []
+    for idx, (seg, sr, t_ms) in enumerate(
+            audio_windows(wav_path, window_ms, stride_ms)):
+        seg_path = os.path.join(work_dir, f'a{idx:04d}.wav')
+        sf.write(seg_path, seg, sr)
+        ss = StimulusSet(pd.DataFrame({
+            'stimulus_id': [f'awindow_{idx:04d}'],
+            'audio_path': [seg_path],
+        }))
+        ss.identifier = f'stream-demo-audio-w{idx:04d}'
+        ss.stimulus_paths = {f'awindow_{idx:04d}': seg_path}
+        out = model.process(ss)
+        # Mean-pool over time rather than flattening: a trailing partial window has
+        # fewer timesteps, so flattening yields a shorter vector and the stack fails
+        # ("array at index 57 has size 56832"). Pooling gives one vector per window
+        # whatever its length, which is also the right summary for a trajectory.
+        arr = np.asarray(out)
+        arr = arr.reshape(-1, arr.shape[-1]).mean(axis=0) if arr.ndim >= 2 else arr.reshape(-1)
+        vectors.append(arr)
+        meta.append({'t_ms': float(t_ms), 'stream_index': idx})
+    return (np.vstack(vectors) if vectors else np.empty((0, 0))), meta
+
+
 def fit_projection(fit_vectors, n_components=2):
     """PCA fit on HELD-OUT material, then applied causally to the demo clip."""
     from sklearn.decomposition import PCA
@@ -121,8 +186,32 @@ def fit_projection(fit_vectors, n_components=2):
     return pca
 
 
+def sample_frames_for_windows(video_path, meta, fps):
+    """One representative frame per window, for the stimulus panel.
+
+    A trajectory with no picture beside it is unreadable to anyone who did not build
+    it -- the whole point is to connect what the model saw to how its state moved.
+    """
+    import cv2
+    want = {int(round(m['t_ms'] / 1000.0 * fps)): i for i, m in enumerate(meta)}
+    out = {}
+    cap = cv2.VideoCapture(video_path)
+    try:
+        idx = 0
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            if idx in want:
+                out[want[idx]] = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            idx += 1
+    finally:
+        cap.release()
+    return out
+
+
 def render_frames(video_traj, video_vectors, audio_traj, out_dir, *, meta, title,
-                  audio_from_index=None):
+                  audio_from_index=None, stimulus_frames=None):
     """One PNG per window: the trajectory so far, plus a unit raster.
 
     Units in the raster are ordered by variance so structure is visible. That is a
@@ -146,8 +235,18 @@ def render_frames(video_traj, video_vectors, audio_traj, out_dir, *, meta, title
 
     paths = []
     for i in range(n):
-        fig, axes = plt.subplots(1, 2, figsize=(11, 4.6),
-                                 gridspec_kw={'width_ratios': [1.1, 1]})
+        ncols = 3 if stimulus_frames else 2
+        widths = [1.0, 1.1, 1.0] if stimulus_frames else [1.1, 1.0]
+        fig, axes = plt.subplots(1, ncols, figsize=(15 if stimulus_frames else 11, 4.6),
+                                 gridspec_kw={'width_ratios': widths})
+        if stimulus_frames:
+            ax0 = axes[0]
+            fr = stimulus_frames.get(i)
+            if fr is not None:
+                ax0.imshow(fr)
+            ax0.set_xticks([]); ax0.set_yticks([])
+            ax0.set_title('what went in', fontsize=10)
+            axes = axes[1:]
         ax = axes[0]
         ax.plot(vx[:i + 1], vy[:i + 1], '-', color='#2f6bff', lw=2, alpha=0.85,
                 label='video channel')
@@ -268,14 +367,14 @@ def main():
     if args.audio:
         try:
             print('--- audio channel', flush=True)
-            aud_vecs, aud_meta = representations_for_clip(
+            aud_vecs, aud_meta = representations_for_audio(
                 model, args.audio, region=args.audio_region,
                 window_ms=args.window_ms, stride_ms=args.stride_ms,
-                frames_dir=os.path.join(args.out, '_audiowindows'))
-            aud_fit, _ = representations_for_clip(
+                work_dir=os.path.join(args.out, '_audiowindows'))
+            aud_fit, _ = representations_for_audio(
                 model, args.fit_audio or args.audio, region=args.audio_region,
                 window_ms=args.window_ms, stride_ms=args.stride_ms,
-                frames_dir=os.path.join(args.out, '_audiofit'))
+                work_dir=os.path.join(args.out, '_audiofit'))
             audio_traj = fit_projection(aud_fit).transform(aud_vecs)
             np.save(os.path.join(args.out, 'audio_trajectory.npy'), audio_traj)
             np.save(os.path.join(args.out, 'audio_vectors.npy'), aud_vecs)
@@ -294,10 +393,11 @@ def main():
     np.save(os.path.join(args.out, 'video_vectors.npy'), vid_vecs)
 
     # --- frames --------------------------------------------------------------
+    stim_frames = sample_frames_for_windows(args.video, meta, clip_fps(args.video))
     frames = render_frames(
         traj, vid_vecs, audio_traj, os.path.join(args.out, 'frames'),
         meta=meta, title=f'{args.model} - streaming representation',
-        audio_from_index=args.audio_from_window)
+        audio_from_index=args.audio_from_window, stimulus_frames=stim_frames)
     manifest['n_rendered_frames'] = len(frames)
     with open(os.path.join(args.out, 'manifest.json'), 'w') as fh:
         json.dump(manifest, fh, indent=2)
