@@ -37,6 +37,7 @@ Evidence labels:
 | 13 | 13_real_model_representations.ipynb | Record a pretrained ResNet-50's V1/V2/V4/IT layers and plot how category structure sharpens along the hierarchy (RDM, MDS, separability) | local workflow, CPU | under 30 s | torch, torchvision, matplotlib, scikit-learn, Pillow |
 | 14 | 14_brain_alignment.ipynb | Plot CLIP's held-out predictions of real MajajHong2015 IT neural responses (predicted-vs-measured scatter, per-site predictivity) | EC2 result, replots saved data locally | under 10 s locally | matplotlib |
 | 15 | 15_streaming_delivery.ipynb | Separate streaming *shape* from *delivery*: batched vs one-at-a-time (identical values), windowed delivery with memory bounded independently of feed length, and the three real-time policies | structural demo, CPU | under 10 s | none beyond base |
+| 16 | 16_multiregion_geometry.ipynb | Record V4 and IT in one forward pass, split the result by region, and compare their representational geometry — a whole analysis with no `Score` object | local workflow, CPU | under 60 s | torch, torchvision, matplotlib, scikit-learn, pandas, Pillow |
 
 Notebook 02 does not score a registered model; it is a null-interpretation
 companion. Notebook 06 does not register or score a model; it demonstrates the
