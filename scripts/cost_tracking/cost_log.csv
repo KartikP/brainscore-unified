@@ -1,9 +1,0 @@
-minigrid_random,-,g5.4xlarge,1780538255,START
-minigrid_qwen7b,Qwen2.5-VL-7B,g5.4xlarge,1780538262,START
-minigrid_qwen7b,Qwen2.5-VL-7B,g5.4xlarge,1780539015,END
-gemma_roar,gemma-4-12B,g5.4xlarge,1780539028,START
-minigrid_gemma,gemma-4-12B,g5.4xlarge,1780539132,START
-gemma_neural_probe,gemma-4-12B,g5.4xlarge,1780541781,START
-gemma_jobs_done,-,g5.4xlarge,1780541797,END
-gemma_neural_full,gemma-4-12B,g5.4xlarge,1780542045,START
-gemma_neural_full,gemma-4-12B,g5.4xlarge,1780542988,END

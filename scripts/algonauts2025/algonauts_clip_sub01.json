@@ -1,9 +1,0 @@
-{
-  "raw_r": 0.11718814074993134,
-  "mean_r": 0.14820696413516998,
-  "n_parcels_scored": 1000,
-  "n_TRs": 159141,
-  "stimulus_window": 5,
-  "hrf_delay": 3,
-  "pipeline": "algonauts_video_only_frame_agg"
-}

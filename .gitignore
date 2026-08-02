@@ -50,3 +50,26 @@ experiments/molmospaces_validation/README.md
 
 # streaming demo render output (large binaries; regenerate with render_streaming_representation.py)
 scripts/streaming_demo_output/*.npy
+
+# ---------------------------------------------------------------------------
+# Local development only — never ship.
+# The public repo should read as a usable library, not a development diary.
+# These stay on disk; they are simply not tracked.
+# ---------------------------------------------------------------------------
+
+# EC2 / infrastructure drivers, experiment runners, cost tracking, result logs
+scripts/
+experiments/
+
+# Dev-process markdown: runbooks, audits, assessments, validation protocols
+INTERFACE-HARMONIZATION.md
+*-ASSESSMENT.md
+*-READINESS.md
+*_RESULTS.md
+*_SPEC.md
+ec2_*.md
+**/MULTIMODAL_VALIDATION_PROTOCOL.md
+
+# Agent/session instructions
+CLAUDE.md
+FRICTION-LOG*.md
