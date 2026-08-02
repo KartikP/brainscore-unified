@@ -9,6 +9,35 @@ python -m pip install -e "unified[notebooks]"
 jupyter notebook unified/notebooks/
 ~~~
 
+**Read [`docs/concepts.md`](../docs/concepts.md) first** — about ten minutes, and it
+defines every term these notebooks use (subject, assembly, neuroid, region_layer_map,
+ceiled vs. raw). Skipping it is the main reason people stall around notebook 05.
+
+## Four arcs
+
+The notebooks are numbered in one sequence, but they group into four. You do not have to
+run them all, and after the first arc you can jump to whichever matches your goal.
+
+**Arc 1 · The core loop (01–02) — start here, everyone.**
+Load a model, record a region, process stimuli, read a score, check it against a null
+floor. Everything else assumes this.
+
+**Arc 2 · Your own analysis (13, 16, 11, 06) — "I want to answer my own question."**
+Record real layers and look at the representations directly. 13 introduces RDMs, 16
+records two regions in one pass and compares their geometry, 11 compares several
+subjects, 06 covers topography. None of these produce a `Score` — this is Brain-Score as
+a toolbox. *Take 13 before 11 or 16*: it is where RDMs are explained.
+
+**Arc 3 · Bring your own model (12, 07, 08, 14) — "I want to score my model."**
+Wrap an `nn.Module`, wire it up, visualise where it predicts the brain, and read results
+against their floors. Pair with [`../EXTENDING.md`](../EXTENDING.md) and the runnable
+skeletons in [`../templates/`](../templates/).
+
+**Arc 4 · Beyond static images (03, 04, 05, 10, 15) — "my work isn't feedforward vision."**
+Lesions and perturbations (03, 10), closed-loop embodied agents (04), temporal and
+multimodal alignment (05), streaming delivery (15). Independent of each other; take only
+what you need.
+
 Evidence labels:
 
 - **local workflow**: executes a real UMI path with small local components
@@ -18,7 +47,9 @@ Evidence labels:
 - **EC2 companion**: full data/model scoring requires EC2
 - **archived**: not part of the default executable path
 
-## Recommended order
+## Full manifest
+
+Numeric order below; the arcs above say which ones you actually need.
 
 | # | Notebook | What it shows | Evidence and hardware | Typical runtime | Prerequisites |
 | --- | --- | --- | --- | --- | --- |
@@ -45,8 +76,9 @@ descriptor used by the topographic metric. Their first cells state these
 boundaries explicitly.
 
 Notebook 15 uses deterministic stand-in subjects and filename strings for "frames";
-it demonstrates interface mechanics, not a scientific result. Pointing the same
-machinery at a decoded video with real weights is `unified/scripts/ec2_streaming_video.md`.
+it demonstrates interface mechanics, not a scientific result. The same machinery
+pointed at a decoded video with real weights needs a GPU host and is not part of the
+laptop path.
 
 The production counterparts for large models, public benchmark data, video,
 audio-video, and Algonauts are EC2-only. Capability status is summarized in

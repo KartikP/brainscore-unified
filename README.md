@@ -45,6 +45,10 @@ model = load_model("clip-vit-b-32")
 score = load_benchmark("MajajHong2015public.IT-pls-unified")(model)
 ```
 
+New to Brain-Score? Read [Concepts](docs/concepts.md) first — it defines the vocabulary
+(subject, assembly, neuroid, `region_layer_map`, raw vs. ceiled) that everything else
+assumes.
+
 Start with the shipped [getting-started guide](docs/getting_started.md), then
 use [EXTENDING.md](EXTENDING.md), [templates](templates/), the
 [notebook manifest](notebooks/README.md), and the
