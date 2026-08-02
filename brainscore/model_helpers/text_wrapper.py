@@ -162,7 +162,9 @@ class TextWrapper:
             stimuli_identifier: Identifier for caching. None to use stimulus_set.identifier.
 
         Returns:
-            NeuroidAssembly with dims (presentation, neuroid).
+            NeuroidAssembly with dims ``(presentation, neuroid)`` for
+            ``last_token`` and ``mean_tokens``, or
+            ``(presentation, time_bin, neuroid)`` for ``per_token``.
         """
         if isinstance(stimuli, StimulusSet):
             return self._from_stimulus_set(stimuli, layers, stimuli_identifier)

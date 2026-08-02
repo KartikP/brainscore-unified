@@ -34,9 +34,8 @@ Design symmetry with other wrappers:
     - No new methods — just the __call__ contract
 
 Design asymmetry (video-specific):
-    - Requires a callable ``frame_sampler`` to extract T frames per video
-      at a target fps (OpenCV / ffmpeg). Kept configurable rather than
-      bundled so brainscore_core stays dependency-free.
+    - Accepts a configurable ``frame_sampler`` to extract T frames per video
+      at a target fps; the default implementation uses OpenCV.
     - Requires a callable ``preprocessing`` that takes a list of T frames
       (as numpy HxWx3 arrays) and returns a model-ready tensor.
     - Configurable ``t_to_time_ms_fn`` maps hook-output time index to
@@ -154,6 +153,8 @@ class VideoWrapper:
             ``(T, C, H, W)`` for a single video, or already batched
             ``(1, T, C, H, W)``. The wrapper normalizes to ``(B, T, C, H, W)``.
         identifier: Model identifier for caching.
+        backbone_id: Optional cache-key identifier shared by registrations
+            backed by the same weights. Defaults to ``identifier``.
         target_fps: Frame sampling rate, in Hz. Default 5.
         num_frames: If set, sample exactly this many frames per video
             (overrides target_fps behavior). Defaults to None.
@@ -177,6 +178,15 @@ class VideoWrapper:
             Default: evenly spread across the video duration.
         batch_size: Number of videos per forward pass. Default 1 — most
             video models have large T×C×H×W tensors.
+        context_window_ms: If set, process long clips in windows of this
+            duration instead of one whole-clip forward pass.
+        context_stride_ms: Window stride; defaults to ``context_window_ms``.
+        context_strategy: Window placement strategy passed to
+            ``window_plan``. Defaults to ``'block'``.
+        out_of_bound: Padding for windows outside the clip: ``'repeat'``,
+            ``'black'``, or ``'gray'``.
+        max_clip_ms: Optional whole-clip duration guard. Over-long clips raise
+            and should be handled with ``context_window_ms``.
     """
 
     def __init__(

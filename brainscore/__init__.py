@@ -3,7 +3,7 @@ Brain-Score Unified — single package for multimodal model evaluation.
 
 Provides unified load_model, load_benchmark, and score functions that work
 across all modalities. New models and benchmarks that comply with the
-UnifiedModel/BrainScoreModel interface are registered here. Legacy models
+Subject/BrainScoreModel interface are registered here. Legacy models
 in brainscore_vision and brainscore_language are accessible via fallback
 registry lookup.
 """
@@ -11,13 +11,13 @@ registry lookup.
 import logging
 from typing import Dict, Any, Callable
 
-from brainscore_core.model_interface import UnifiedModel, BrainScoreModel
+from brainscore_core.model_interface import Subject, UnifiedModel, BrainScoreModel
 from brainscore_core.benchmarks import Benchmark
 from brainscore_core.metrics import Metric, Score
 
 _logger = logging.getLogger(__name__)
 
-model_registry: Dict[str, Callable[[], UnifiedModel]] = {}
+model_registry: Dict[str, Callable[[], Subject]] = {}
 benchmark_registry: Dict[str, Callable[[], Benchmark]] = {}
 metric_registry: Dict[str, Callable[[], Metric]] = {}
 data_registry: Dict[str, Callable[..., Any]] = {}
@@ -52,7 +52,7 @@ def _populate_unified_registries() -> None:
         _logger.warning(f"failed to import unified metrics: {e}")
 
 
-def load_model(identifier: str) -> UnifiedModel:
+def load_model(identifier: str) -> Subject:
     """Load a model by identifier.
 
     Checks the unified registry first, then falls back to domain-specific
@@ -210,7 +210,7 @@ def score(model_identifier, benchmark_identifier,
 
     Each argument is either an identifier ``str`` — loaded from the unified
     registry (with domain fallbacks) — or an already-constructed object (a
-    ``UnifiedModel`` / benchmark). Passing objects lets you score a model you just
+    ``Subject`` / benchmark). Passing objects lets you score a model you just
     built without registering it first::
 
         model = BrainScoreModel('my-vlm', ...)

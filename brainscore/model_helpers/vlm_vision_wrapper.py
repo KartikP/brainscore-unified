@@ -47,7 +47,10 @@ class VLMVisionWrapper:
         model: The vision sub-module of a VLM (e.g., qwen_model.model.visual).
         processor: A HuggingFace AutoProcessor (or equivalent) whose output
             contains the input tensor and any auxiliary grouping metadata.
-        identifier: Model identifier for caching.
+        identifier: Human-readable model identifier; also the cache key when
+            ``backbone_id`` is omitted.
+        backbone_id: Optional cache key shared by registrations backed by the
+            same vision weights.
         image_input_key: Key in processor output for the main pixel tensor.
             Defaults to 'pixel_values'.
         forward_kwargs_map: Optional dict mapping model forward-kwarg name ->

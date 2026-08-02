@@ -5,8 +5,10 @@ and VideoWrapper for audio waveform inputs.
 Wraps an audio backbone (Wav2Vec2, HuBERT, Wav2Vec-Bert, SeamlessM4T, Whisper,
 AudioMAE, etc.), handles waveform loading + processor invocation, runs a
 forward pass with hook-based layer extraction, batches across clips, caches
-via ``@store_xarray``, and packages into a (presentation, time_bin, neuroid)
-NeuroidAssembly that slots into the standard Brain-Score scoring pipeline.
+via ``@store_xarray``, and packages into a NeuroidAssembly that slots into the
+standard Brain-Score scoring pipeline. The default ``mean_time`` aggregation
+returns ``(presentation, neuroid)``; ``time_series`` additionally preserves a
+``time_bin`` dimension.
 
 Design:
 - Constructor: ``AudioWrapper(model, processor, identifier, backbone_id=...)``
@@ -27,12 +29,9 @@ Design:
     cache so two registrations sharing the same audio backbone (e.g.,
     TRIBEv2 and a standalone Wav2Vec-Bert registration) reuse activations.
 
-Out of scope (deferred):
-- Chunking long audio into sliding windows (Whisper's 30s-chunk pattern) —
-  the spec calls for this in M10/M12 when we register a naturalistic
-  multi-minute movie-watching benchmark. For now, ``max_duration_sec``
-  truncates over-long clips and emits a warning.
-- Multi-channel audio: the wrapper mixes down to mono before the processor.
+Long clips are split into consecutive, non-overlapping chunks of at most
+``max_duration_sec`` and recombined per clip. Multi-channel audio is mixed down
+to mono before the processor.
 """
 
 import functools
@@ -113,17 +112,16 @@ class AudioWrapper:
             Usually unnecessary — read from ``processor.sampling_rate``.
         layer_aggregation: ``'mean_time'`` (default) reduces (B, T, H) →
             (B, H); ``'time_series'`` keeps the temporal axis.
-        max_duration_sec: Hard cap on input clip length, in seconds. Longer
-            clips are truncated and a warning is emitted. Useful to avoid
-            OOM on unexpectedly-long files; None disables.
+        max_duration_sec: Maximum non-overlapping chunk length, in seconds.
+            Longer clips are processed in consecutive chunks and recombined;
+            None disables chunking.
         batch_size: Number of clips per forward pass. Default 4 — audio
             models are memory-hungry at long T.
         audio_loader: Optional callable ``(path, target_sr) -> 1-D float32
             waveform``. Defaults to torchaudio → librosa fallback.
-        audio_input_key: Name of the model-forward kwarg holding the
-            processed audio tensor. Wav2Vec2 uses ``input_values``;
-            Wav2Vec-Bert uses ``input_features``. Defaults to
-            ``'input_values'``.
+        audio_input_key: Reserved compatibility parameter. The current
+            implementation forwards the processor output dictionary unchanged
+            and does not remap a tensor with this value.
     """
 
     VALID_AGGREGATIONS = ('mean_time', 'time_series')
