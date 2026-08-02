@@ -10,9 +10,17 @@ import numpy as np
 import pytest
 
 from brainscore.tools.banded_ridge import ridge_fit_predict
-from experiments.algonauts2025.submit_codabench import (
-    build_submission, write_submission_zip, SCHAEFER_N_PARCELS,
-    SPLIT_NPY_NAME)
+
+# The Codabench submission bundler is an operational driver, not library code — it
+# deliberately does not ship (see test_data_plugins.py, which forbids it inside the
+# benchmark package). Skip its tests rather than fail collection where it is absent.
+submit_codabench = pytest.importorskip(
+    'experiments.algonauts2025.submit_codabench',
+    reason='submission bundler is a local operational driver, not part of the package')
+build_submission = submit_codabench.build_submission
+write_submission_zip = submit_codabench.write_submission_zip
+SCHAEFER_N_PARCELS = submit_codabench.SCHAEFER_N_PARCELS
+SPLIT_NPY_NAME = submit_codabench.SPLIT_NPY_NAME
 
 
 class TestFitPredictRidge:

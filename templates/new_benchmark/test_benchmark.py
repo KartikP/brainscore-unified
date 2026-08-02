@@ -5,6 +5,14 @@ These run offline against a tiny dummy candidate, so the wiring is exercised wit
 weights or data. Once your benchmark loads real measurements, enable the slow test at
 the bottom. Adapt freely.
 """
+import os
+
+# Set BEFORE anything imports brainscore. The composition test below runs a real model,
+# whose feature extraction otherwise writes to ~/.result_caching — and a template test
+# has no business depending on the state of the user's home directory (it can be
+# missing, read-only, or a symlink to an unmounted drive).
+os.environ.setdefault('RESULTCACHING_DISABLE', '1')
+
 import numpy as np
 import pytest
 
@@ -79,28 +87,49 @@ def test_asks_the_candidate_to_record():
         'active recording target'
 
 
+def _model_template_candidate():
+    """Return the model template's candidate, or None if it is genuinely not installed.
+
+    Resolution order matters. Once you follow the install instructions this file lives
+    under `brainscore/benchmarks/<name>/`, where the sibling `new_model` package no
+    longer exists — so a bare `import new_model` fails and, if that failure is swallowed,
+    the composition check below silently turns into a no-op exactly for the person who
+    did what the docs said. Ask the registry first, which is what "installed" means.
+
+    Import errors from a model template that IS present are deliberately allowed to
+    propagate: a broken model template must fail this test, not skip it.
+    """
+    import brainscore
+    if 'your-model' in brainscore.model_registry:
+        return brainscore.load_model('your-model')
+
+    # In-repo layout only: templates/new_benchmark/ has templates/new_model/ beside it.
+    import sys
+    from pathlib import Path
+    sibling = Path(__file__).resolve().parents[1] / 'new_model'
+    if not sibling.is_dir():
+        return None
+    sys.path.insert(0, str(sibling.parent))
+    import new_model  # noqa: F401  — registers 'your-model'; errors here are real
+    return brainscore.load_model('your-model')
+
+
 def test_composes_with_the_model_template():
     """The obvious first thing a newcomer tries: score MY model on MY benchmark.
 
-    Regression test. This combination used to fail three separate ways — stimulus
-    paths that pointed at files which did not exist, a metric that required matching
-    unit counts, and a prediction missing the coord the CV splitter stratifies on.
-    Each failed only for a REAL candidate, so the template tests passed throughout.
+    Regression test. This combination used to fail three separate ways — stimulus paths
+    pointing at files that did not exist, a metric requiring matching unit counts, and a
+    prediction missing the coord the CV splitter stratifies on. Every one of them failed
+    only for a REAL candidate, so the other template tests stayed green throughout.
     """
-    import sys
-    from pathlib import Path
-
-    templates_dir = str(Path(__file__).resolve().parents[1])
-    if templates_dir not in sys.path:
-        sys.path.insert(0, templates_dir)
-    try:
-        import new_model  # noqa: F401  (registers 'your-model')
-    except Exception as exc:                                  # pragma: no cover
-        pytest.skip(f'model template not importable here: {exc}')
+    candidate = _model_template_candidate()
+    if candidate is None:
+        pytest.skip('model template is not installed; install templates/new_model per '
+                    'its __init__.py to enable this composition check')
 
     import brainscore
     bench = brainscore.load_benchmark('your-benchmark')
-    score = bench(brainscore.load_model('your-model'))
+    score = bench(candidate)
     assert np.isfinite(float(score))
     # Random weights against random targets: near zero, either sign. The point is that
     # it RUNS end to end, not that the number means anything.

@@ -435,7 +435,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             neural_mat, fold_preds)
 
         # Ceiling normalization. The repo convention (see
-        # unified/experiments/vjepa2_sweep/run_budget_curve.py) normalizes PER VOXEL and
+        # the repository budget-curve sweep) normalizes PER VOXEL and
         # then summarizes -- median(r_i / c_i) -- NOT median(r_i) / median(c_i). The two
         # are not equivalent, and mixing them makes two "ceiling-normalized" numbers on
         # the same page incomparable. Prefer the per-voxel form whenever the reliability
@@ -492,7 +492,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 # ROI voxels of sqrt(_split_half_reliability(n_splits=20, random_state=0)), the same
 # Spearman-Brown-corrected reliability already used to SELECT those voxels.
 # Pinned rather than recomputed so scoring stays reproducible and cheap.
-# Provenance: unified/scripts/ec2_results_2026_07_31/task7_ceiling.json
+# Measured 2026-07-31 as the median sqrt(split-half reliability) over the 4042
+# ROI voxels; recompute with _split_half_reliability(n_splits=20, random_state=0).
 VISUAL_ROI_CEILING = 0.7304512193654528
 
 

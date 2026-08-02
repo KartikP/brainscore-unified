@@ -498,7 +498,8 @@ class _Algonauts2025Base(BenchmarkBase):
                 f"against — it is a Codabench prediction target. Call "
                 f"`generate_predictions(candidate, out_dir)` to produce the "
                 f"per-parcel prediction .npy, then bundle with "
-                f"`python -m experiments.algonauts2025.submit_codabench`. "
+                f"then bundle those .npy files into a zip in the Codabench layout "
+                f"(one entry per subject/episode) and upload it. "
                 f"(Use Algonauts2025Friends for "
                 f"in-distribution CV scoring.)"
             )

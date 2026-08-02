@@ -14,7 +14,7 @@ without the data present will raise `FileNotFoundError`.
 ## Phase plan
 
 1. **Data acquisition** (EC2, 1–6 hours). Run
-   `unified/scripts/download_algonauts_data.sh` on the validation
+   DataLad on the validation
    instance. Pulls ~100 GB across stimuli + 4-subject fMRI .h5 files.
 2. **Assembly preparation** (EC2, ~30 min).
    `python -m brainscore.data.algonauts2025.prepare_assembly`
@@ -54,7 +54,7 @@ and validation protocol we built for Lahner generalize directly.
 - `brainscore/data/algonauts2025/prepare_assembly.py` — One-time data
   pipeline. Run on EC2 after download. Reads .h5 files, builds
   `NeuralAssembly`, writes the local data-plugin artifacts.
-- `experiments/algonauts2025/submit_codabench.py` — Take a benchmark's
+- Submission bundling (not shipped; ~120 lines) — take a benchmark's
   per-parcel predictions, format as Codabench expects, save .zip for upload.
 - `__init__.py` — Registry entries for 3 splits × 4 subjects = 12
   benchmark identifiers.

@@ -5,7 +5,7 @@ Three modalities (audio + visual + transcript), four subjects, predicts
 S7 (in-distribution) and a 2-h OOD movie set.
 
 Status: scaffolding only. Data must be downloaded on EC2 first via
-``unified/scripts/download_algonauts_data.sh``. See README.md.
+DataLad (see README.md for the exact dataset paths). See README.md.
 """
 from brainscore import benchmark_registry
 

@@ -3,8 +3,8 @@
 The local-weights twin of ``api_behavioral.build_api_action_fn``: turn a HF
 vision-language or text model into a one-tick game policy
 ``policy(observation, history) -> action_index`` that ``PolicyWrapper``
-drives through ``process(EnvironmentStep)``. Builders previously lived,
-duplicated and cross-imported, across the ``scripts/vlm_game`` drivers.
+drives through ``process(EnvironmentStep)``. These builders were consolidated
+here from several duplicated, cross-importing copies.
 
 Two action vocabularies, two parsers:
 - grid-game (``harnesses.grid_game``): 4 directional actions; the model emits

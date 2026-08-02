@@ -3,8 +3,8 @@
 Causal test, not a correlation: localize the model's word-form-selective units
 (an fMRI-localizer analogue), switch them off, and measure the reading deficit —
 against a matched random-ablation control that rules out "the model just got
-damaged". This converts the induced-dyslexia sweep
-(`scripts/yeatman_sweep/sweep_topk.py`) into a registered Brain-Score benchmark
+damaged". This converts an induced-dyslexia top-K ablation sweep into a
+registered Brain-Score benchmark
 built on the core ``UnitSelection`` family:
 
   * :class:`FunctionalSelection` — the real-vs-pseudo Cohen's d localizer (one layer)
