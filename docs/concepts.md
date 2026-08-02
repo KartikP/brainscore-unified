@@ -135,6 +135,28 @@ Two different jobs, easy to confuse:
 The wrapper does the heavy lifting. Pick the one that matches your input: `VisionWrapper`
 (images, VLMs, video), `TextWrapper`, `AudioWrapper`.
 
+**Why the examples say `PytorchWrapper` instead.** `VisionWrapper` is a front door: it
+inspects your model and dispatches to `PytorchWrapper` (plain image models),
+`VLMVisionWrapper` (VLMs, whose patches arrive concatenated rather than stacked), or
+`VideoWrapper` (native-temporal models). So for a vision model you normally need only
+that one name.
+
+The notebooks reach past it and use `PytorchWrapper` directly, because seeing the
+concrete class makes the moving parts visible while you are learning. Both are correct.
+If you are registering a model, `VisionWrapper` is the shorter path — it is also what
+the `auto_register` scaffolder emits. If you are reading a notebook and wondering why the
+name differs from this page, that is why.
+
+The preprocessor question follows the same seam. When the wrapper already handles
+preprocessing — which it does in every notebook here — the preprocessor is the identity
+function:
+
+```python
+preprocessors = {'vision': lambda stimuli: stimuli}
+```
+
+That looks like a placeholder and is not. It says "the wrapper did it."
+
 ## Benchmark
 
 Data plus a scoring procedure. Given a subject, it configures recording, calls

@@ -6,6 +6,14 @@ run — they never touch the backbone. The process() smoke below is what catches
 registration that is wired up wrong. Keep it as you swap in your own model.
 """
 import os
+
+# Set BEFORE anything imports brainscore. Feature extraction otherwise writes to
+# ~/.result_caching, and a template smoke test has no business depending on the state
+# of the user's home directory — that path can be missing, read-only, or (as on one
+# machine here) a symlink to an unmounted drive, and the test then fails with a
+# FileNotFoundError that has nothing to do with the model being registered.
+os.environ.setdefault('RESULTCACHING_DISABLE', '1')
+
 import tempfile
 
 import numpy as np

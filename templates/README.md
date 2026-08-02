@@ -3,8 +3,8 @@
 Copy-paste starting points for the four *code* seams (Model / Benchmark / Metric / Capability). Data and
 stimulus sets are also seams but use the domain-repo `data_registry` / `stimulus_set_registry` pattern
 (no template here) — see `../EXTENDING.md`. Each folder is a skeleton with `TODO` markers + a `README.md`
-+ tests-as-spec. Read `../EXTENDING.md` first for the contracts, and `../website/architecture.html` for
-the interactive contract/dispatch map.
++ tests-as-spec. Read `../docs/concepts.md` for the vocabulary, then `../EXTENDING.md`
+for the contracts.
 
 | Template | Seam | You implement | Loadable via |
 |----------|------|---------------|--------------|

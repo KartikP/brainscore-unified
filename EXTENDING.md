@@ -161,5 +161,6 @@ A new input/output event or dispatch behavior belongs at the second level. See
 `templates/new_capability/` for model-level callable examples.
 
 The interface evaluates checkpoints; it does not train. Register the checkpoint.
-For a discovery or analysis pipeline, use `process()` outputs and see
-`scripts/yeatman_sweep/`.
+For a discovery or analysis pipeline, work directly with `process()` outputs — see
+`notebooks/16_multiregion_geometry.ipynb` for an end-to-end analysis that never
+produces a `Score`.
