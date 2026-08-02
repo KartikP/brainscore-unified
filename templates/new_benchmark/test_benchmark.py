@@ -30,16 +30,25 @@ class DummyCandidate:
             NeuroidAssembly)
         stimulus_ids = list(stimuli['stimulus_id'].values)
         rng = np.random.RandomState(self.seed)
-        # Two coords per dim on purpose — see the note in benchmark.py: a single
-        # coord does not get promoted to a MultiIndex, and metrics then cannot find
-        # stimulus_id. Real wrappers already return assemblies shaped this way.
+
+        # Carry the stimulus set's presentation metadata onto the output. This is not
+        # decoration: cross-validated metrics STRATIFY their folds on a presentation
+        # coord (here `object_name`), and a prediction without it fails with
+        # "Expected stratification coordinate object_name". Real wrappers do this for
+        # you via _attach_stimulus_set_meta; a hand-rolled candidate must do it itself.
+        coords = {'stimulus_id': ('presentation', stimulus_ids),
+                  'presentation_index': ('presentation', list(range(len(stimulus_ids)))),
+                  # Two coords per neuroid dim on purpose — a single coord is not
+                  # promoted to a MultiIndex, and metrics then cannot find stimulus_id.
+                  'neuroid_id': ('neuroid', list(range(self.n_neuroids))),
+                  'region': ('neuroid', ['IT'] * self.n_neuroids)}
+        for column in stimuli.columns:
+            if column not in ('stimulus_id', 'image_file_name') and column not in coords:
+                coords[column] = ('presentation', list(stimuli[column].values))
+
         return NeuroidAssembly(
             rng.randn(len(stimulus_ids), self.n_neuroids),
-            coords={'stimulus_id': ('presentation', stimulus_ids),
-                    'presentation_index': ('presentation', list(range(len(stimulus_ids)))),
-                    'neuroid_id': ('neuroid', list(range(self.n_neuroids))),
-                    'region': ('neuroid', ['IT'] * self.n_neuroids)},
-            dims=['presentation', 'neuroid'])
+            coords=coords, dims=['presentation', 'neuroid'])
 
 
 def test_registered_and_loads():
@@ -68,6 +77,35 @@ def test_asks_the_candidate_to_record():
     assert candidate.recorded is not None, \
         'benchmark called process() without start_recording() — the model had no ' \
         'active recording target'
+
+
+def test_composes_with_the_model_template():
+    """The obvious first thing a newcomer tries: score MY model on MY benchmark.
+
+    Regression test. This combination used to fail three separate ways — stimulus
+    paths that pointed at files which did not exist, a metric that required matching
+    unit counts, and a prediction missing the coord the CV splitter stratifies on.
+    Each failed only for a REAL candidate, so the template tests passed throughout.
+    """
+    import sys
+    from pathlib import Path
+
+    templates_dir = str(Path(__file__).resolve().parents[1])
+    if templates_dir not in sys.path:
+        sys.path.insert(0, templates_dir)
+    try:
+        import new_model  # noqa: F401  (registers 'your-model')
+    except Exception as exc:                                  # pragma: no cover
+        pytest.skip(f'model template not importable here: {exc}')
+
+    import brainscore
+    bench = brainscore.load_benchmark('your-benchmark')
+    score = bench(brainscore.load_model('your-model'))
+    assert np.isfinite(float(score))
+    # Random weights against random targets: near zero, either sign. The point is that
+    # it RUNS end to end, not that the number means anything.
+    assert abs(float(score)) < 0.9, (
+        f'implausible score {float(score)} for random weights vs random targets')
 
 
 @pytest.mark.slow

@@ -3,54 +3,80 @@
 A benchmark drives the candidate model and returns a ceiled Score. It calls the model only
 through the unified interface (start_recording / start_task / process) — never legacy shims.
 
-**This file runs as-is.** `_load_assembly()` builds a small synthetic target so the
-benchmark constructs, registers, and scores a candidate offline. Copy the folder, run
-`pytest`, watch it pass, then swap in your real data and metric a piece at a time.
+**This file runs as-is, against a real model.** `_load_assembly()` builds a small synthetic
+target *with real image files on disk*, so `templates/new_model/` can be scored against it
+out of the box:
+
+    import new_model, new_benchmark          # register both
+    bench = brainscore.load_benchmark('your-benchmark')
+    score = bench(brainscore.load_model('your-model'))
+
+Copy the folder, run `pytest`, watch it pass, then swap in your real data and metric a
+piece at a time.
 """
+import os
+import tempfile
+
 import numpy as np
+from PIL import Image
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore import benchmark_registry, load_metric
+from brainscore import benchmark_registry
+import brainscore_vision
 
 BIBTEX = """TODO: @article{...} citation for the data."""
 
-N_STIMULI, N_NEUROIDS = 12, 16
+# 32 is not arbitrary: the cross-validated metrics below stratify their splits by
+# `object_name`, and a test fold must hold at least one stimulus per category. With
+# 4 categories, fewer than ~32 stimuli gives "test_size = 3 should be greater or equal
+# to the number of classes = 4". Real datasets are far larger; this is the floor.
+N_STIMULI, N_NEUROIDS = 32, 16
+CATEGORIES = ['alpha', 'beta', 'gamma', 'delta']
 
 
 def _load_assembly():
     """TODO: load your real target measurements as a DataAssembly.
 
-    Replace this whole function. For naturalistic/temporal data, build the
-    stimulus_set + per-(subject, run) assembly and reuse
-    `brainscore_core/temporal.py` (temporal_bin, hrf_convolve, contiguous_block_cv).
+    Replace this whole function. For naturalistic/temporal data, build the stimulus_set
+    + per-(subject, run) assembly and reuse `brainscore_core/temporal.py`
+    (temporal_bin, hrf_convolve, contiguous_block_cv).
 
-    The synthetic stand-in below exists so the template runs before you have data.
-    Note what it establishes, because your real assembly needs the same things:
+    The synthetic stand-in below exists so the template runs before you have data. Note
+    what it establishes, because your real assembly needs all of it:
       - dims (presentation, neuroid)
-      - a `stimulus_id` coord on presentation that matches the stimulus set
-      - a `stimulus_set` attribute the benchmark can hand to the model
+      - a `stimulus_id` coord on presentation, matching the stimulus set
+      - an `object_name` coord — the cross-validated metrics stratify their splits on it
+      - at least TWO coords per axis (a single coord is not promoted to a MultiIndex,
+        and metrics then fail with "no stimulus_id on the presentation axis")
+      - a `stimulus_set` whose `stimulus_paths` point at files that REALLY EXIST; a real
+        candidate opens them, unlike the dummy in the tests
     """
     rng = np.random.RandomState(0)
     stimulus_ids = [f'stim{i:03d}' for i in range(N_STIMULI)]
+    categories = [CATEGORIES[i % len(CATEGORIES)] for i in range(N_STIMULI)]
 
-    stimulus_set = StimulusSet([{'stimulus_id': sid, 'image_file_name': f'{sid}.png'}
-                                for sid in stimulus_ids])
-    # A real stimulus set maps each id to a file on disk. Ours points nowhere, which
-    # is fine only because the dummy candidate in the tests never opens the images.
-    stimulus_set.stimulus_paths = {sid: f'/nonexistent/{sid}.png' for sid in stimulus_ids}
+    directory = tempfile.mkdtemp(prefix='your_benchmark_stimuli_')
+    paths = {}
+    for i, sid in enumerate(stimulus_ids):
+        path = os.path.join(directory, f'{sid}.png')
+        image_rng = np.random.RandomState(i)
+        Image.fromarray(
+            image_rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(path)
+        paths[sid] = path
+
+    stimulus_set = StimulusSet([
+        {'stimulus_id': sid, 'image_file_name': paths[sid], 'object_name': obj}
+        for sid, obj in zip(stimulus_ids, categories)])
+    stimulus_set.stimulus_paths = paths
     stimulus_set.identifier = 'your-benchmark-stimuli'
 
-    # NOTE — two coords per dimension, not one. brainio promotes coords to a pandas
-    # MultiIndex, and with only a single coord on an axis that promotion does not
-    # happen, so `assembly.stimulus_id` is then missing and metrics fail with
-    # "no stimulus_id on the presentation axis". Carry at least two coords per dim.
     assembly = NeuroidAssembly(
         rng.randn(N_STIMULI, N_NEUROIDS),
         coords={'stimulus_id': ('presentation', stimulus_ids),
-                'presentation_index': ('presentation', list(range(N_STIMULI))),
+                'object_name': ('presentation', categories),
                 'neuroid_id': ('neuroid', list(range(N_NEUROIDS))),
                 'region': ('neuroid', ['IT'] * N_NEUROIDS)},
         dims=['presentation', 'neuroid'])
@@ -60,7 +86,7 @@ def _load_assembly():
 
 def _ceiling() -> Score:
     # TODO: estimate the data ceiling (e.g. split-half reliability). Score(1.0) means
-    # "unceiled" — fine to start, but say so wherever you report the number, since an
+    # "unceiled" — fine to start, but say so wherever you report the number, because an
     # unceiled score is not comparable to a ceiled one.
     return Score(1.0)
 
@@ -73,9 +99,17 @@ class YourBenchmark(BenchmarkBase):
                          bibtex=BIBTEX)
         self._assembly = _load_assembly()
         self._stimulus_set = self._assembly.attrs['stimulus_set']
-        # TODO: your metric id. `direct-comparison` needs no fitting, which keeps this
-        # template offline; a predictivity benchmark usually wants a regression metric.
-        self._metric = load_metric('direct-comparison')
+        # TODO: your metric. A predictivity metric REGRESSES model units onto target
+        # units, so the two need not have matching unit counts — that is what lets any
+        # model be scored against fixed measurements. An element-wise metric such as
+        # 'direct-comparison' requires identical shapes, so it only works when the model
+        # happens to output exactly as many units as the data has.
+        #
+        # `linear_predictivity` is used here rather than the more common `pls` because
+        # PLS defaults to 25 components and raises if a model has fewer units than that
+        # ("`n_components` upper bound is 16. Got 25"). Production neural benchmarks
+        # generally do use `pls` — switch once your models are wide enough.
+        self._metric = brainscore_vision.load_metric('linear_predictivity')
 
     def __call__(self, candidate) -> Score:
         # 1) tell the model what to record / which task to run
