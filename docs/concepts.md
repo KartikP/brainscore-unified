@@ -110,6 +110,38 @@ Two things follow. Passing a **list** records several regions in one forward pas
 tags every unit with its region. Passing an unknown *string* is treated as a raw layer
 path (an escape hatch); passing an unknown region inside a *list* fails fast.
 
+## Layer path — and how to find yours
+
+The right-hand side of `region_layer_map` (`'layer4'`, `'encoder.layers.10'`,
+`'backbone.blocks.16'`) is a **layer path**: PyTorch's own name for a module inside your
+network. Nothing invents these — they come from how the model was built, and you can
+list them:
+
+```python
+[name for name, _ in model.named_modules() if name]
+```
+
+That is the complete set of valid values. For a `torchvision` ResNet-18 it starts
+`['conv1', 'bn1', 'relu', 'maxpool', 'layer1', 'layer1.0', ...]`; dots are nesting, so
+`layer3.0.conv1` is the first conv of the first block of `layer3`.
+
+**Why some layers are called `'0'`, `'1'`, `'2'`.** `nn.Sequential` does not name its
+children, so PyTorch numbers them by position:
+
+```python
+net = nn.Sequential(nn.Conv2d(3, 8, 3), nn.ReLU(), nn.Conv2d(8, 16, 3))
+[name for name, _ in net.named_modules() if name]      # -> ['0', '1', '2']
+```
+
+That is the whole explanation for `Selection(layer='0')` in notebook 03, and for the
+`# '0'` / `# '2'` annotations in `templates/new_model/model.py`.
+
+**Choosing which one.** Listing the paths tells you what is *available*, not which is
+*right*. Two tools help: `brainscore.tools.auto_register.inspect_model(model)` proposes a
+provisional map from the architecture, and the layer-mapping explorer scores candidate
+layers against a real benchmark so you can commit to one on evidence. The provisional
+map is a starting point, not a finding.
+
 ## Modalities
 
 Which kinds of input a model accepts. Derived — never declared twice:
@@ -191,6 +223,54 @@ What the score would be with no real signal — a chance baseline, or a random-w
 with the same architecture. A score only counts if it clears its null. Run the nulls
 *first* on any new benchmark; a model that fails to beat random features is reporting
 noise, however respectable the absolute number looks.
+
+---
+
+## Terms you will meet in passing
+
+**Hook.** A callback PyTorch runs when a module produces output. Wrappers attach one to
+each layer you asked to record, so a single forward pass can capture intermediate
+activations without modifying the model. This is the actual mechanism by which the whole
+system gets numbers out of a network — nothing is re-implemented or re-run per layer.
+
+**Registration.** Making a model or benchmark loadable by name. Concretely: a directory
+under `brainscore/models/<name>/` whose `__init__.py` adds an entry to `model_registry`,
+plus one `from . import <name>` line in the parent `__init__.py`. That is all — no
+database, no decorator. `templates/new_model/` is a working example.
+
+**Pandas MultiIndex.** An index with several named levels rather than one column of
+labels — it lets a single axis carry `stimulus_id` *and* `object_name` *and* `subject` at
+once. Brain-Score builds one on the `presentation` and `neuroid` axes so every row and
+column keeps its metadata. Two consequences you will hit: the levels do not appear in
+`.coords` (use `assembly['name']`, which reads both), and an axis with only one
+coordinate is not promoted to a MultiIndex at all — which is why assemblies want at
+least two coords per axis.
+
+**Tower.** One modality's path through a multimodal model — CLIP has a vision tower and
+a text tower. Recording "both towers" means extracting from each rather than letting
+`MODALITY_PRIORITY` pick one.
+
+**Reading a benchmark identifier.** `MajajHong2015public.IT-pls-unified` decomposes as:
+
+| Part | Meaning |
+| --- | --- |
+| `MajajHong2015` | the dataset, by first author and year |
+| `public` | the openly available split (some data is access-controlled) |
+| `IT` | the brain region measured |
+| `pls` | the metric — PLS regression from model units onto neural units |
+| `unified` | scored through `process()` rather than the legacy per-domain path; regression-validated to give the same numbers, so the difference is plumbing |
+
+**A wart to know about.** The name you *load* by and the name the object *reports* are
+not always the same string:
+
+```python
+b = brainscore.load_benchmark('MajajHong2015public.IT-pls-unified')
+b.identifier            # -> 'MajajHong2015.IT.public-pls-unified'   (NOT loadable)
+```
+
+Use the registry key when loading. `benchmark.identifier` is what appears on results, so
+expect to see both spellings around and do not assume a reported identifier can be passed
+straight back to `load_benchmark`.
 
 ---
 

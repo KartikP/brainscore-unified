@@ -36,8 +36,15 @@ Use the last block as a smoke-test target. For a scientific registration,
 compare candidate layers with the layer-mapping tools and commit the selected
 region mapping.
 
+**If you only remember one: `VisionWrapper`.** For anything visual it inspects your
+model and dispatches to the right row below, so you do not have to categorise it
+yourself — `from brainscore.model_helpers.vision_wrapper import VisionWrapper`. It is
+also what `auto_register` emits. The rows below are what it chooses between, and what
+you reach for when you want the concrete class.
+
 | Model input | Wrapper | Import | Provisional layer guidance |
 | --- | --- | --- | --- |
+| Any vision model (dispatches to the three rows below) | VisionWrapper | from brainscore.model_helpers.vision_wrapper import VisionWrapper | Pass `kind=` only to override the automatic choice |
 | Standard image CNN or ViT | PytorchWrapper | from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper | Start with named late blocks; map V1/V2/V4/IT empirically |
 | Encoder or causal text model | TextWrapper | from brainscore.model_helpers.text_wrapper import TextWrapper | Final transformer block; use mean_tokens for encoders and last_token for causal models |
 | Flattened-patch VLM vision tower | VLMVisionWrapper | from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper | A late visual block after confirming patch aggregation |
