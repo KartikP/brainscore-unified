@@ -7,25 +7,30 @@ Extend the unified interface through five registries and Capability.
 
 ## Registries
 
-Everything is a factory registered under a string identifier. Five registries —
-`model`/`benchmark`/`metric` live in `brainscore/__init__.py`; `data`/`stimulus_set`
-live in the domain repos (`brainscore_vision`/`_language`):
+Everything is a factory registered under a string identifier. All five registries live
+in `brainscore/__init__.py`:
 
 ```python
-data_registry:         Dict[str, Callable[[], DataAssembly]]   # in brainscore_vision/_language
-stimulus_set_registry: Dict[str, Callable[[], StimulusSet]]    # in brainscore_vision/_language
+data_registry:         Dict[str, Callable[[], DataAssembly]]
+stimulus_set_registry: Dict[str, Callable[[], StimulusSet]]
 metric_registry:       Dict[str, Callable[[], Metric]]
 benchmark_registry:    Dict[str, Callable[[], Benchmark]]
 model_registry:        Dict[str, Callable[[], Subject]]
 ```
+
+Each `load_*` checks this package first, then falls back to the `brainscore_vision` and
+`brainscore_language` registries, so legacy domain plugins remain loadable by id. Note
+that those domain registries populate lazily — see
+[Seeing what exists](docs/concepts.md#seeing-what-exists) before concluding something is
+missing because it is not in a registry dict.
 
 A plugin is a subpackage whose `__init__.py` adds a factory to the
 matching registry; the parent package imports it so registration runs on load. Load by id:
 
 ```python
 import brainscore
-data      = brainscore.load_dataset('your-data')          # via vision/language registry
-stimuli   = brainscore.load_stimulus_set('your-stimuli')  #   "
+data      = brainscore.load_dataset("your-data")
+stimuli   = brainscore.load_stimulus_set("your-stimuli")
 metric    = brainscore.load_metric('your-metric')
 benchmark = brainscore.load_benchmark('your-benchmark')
 score     = brainscore.score('your-model', 'your-benchmark')
@@ -43,7 +48,7 @@ score     = brainscore.score('your-model', 'your-benchmark')
 | **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `process(input_event) -> OutputEvent` | `templates/new_model/` |
 | **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(candidate) -> Score` | `templates/new_benchmark/` |
 | **Metric** | `brainscore/metrics/<name>/` | a `Metric` subclass | `__call__(assembly1, assembly2) -> Score` | `templates/new_metric/` |
-| **Data / Stimulus set** | `brainscore_vision/_language` `data/<name>/` | a loader registered in `data_registry` / `stimulus_set_registry` | returns a `DataAssembly` / `StimulusSet` | (domain-repo pattern) |
+| **Data / Stimulus set** | `brainscore/data/<name>/` | loaders registered in `data_registry` / `stimulus_set_registry` | return a `StimulusSet` and a `DataAssembly` | `templates/new_data/` |
 | **Capability** | constructor slots on `BrainScoreModel` | a callable (`generation_fn` / `action_fn` / `state_change_fn`) | see below | `templates/new_capability/` |
 
 Reference registered data from a benchmark with `load_dataset` /

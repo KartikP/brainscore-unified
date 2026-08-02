@@ -11,11 +11,12 @@ for the contracts.
 | `new_model/` | Model | `get_model() -> BrainScoreModel` | `load_model('id')` |
 | `new_benchmark/` | Benchmark | a `BenchmarkBase` subclass | `load_benchmark('id')` |
 | `new_metric/` | Metric | a `Metric` subclass | `load_metric('id')` |
+| `new_data/` | Data / Stimulus set | loaders for your stimuli + measurements | `load_stimulus_set('id')` / `load_dataset('id')` |
 | `new_capability/` | Capability | a `generation_fn`/`action_fn`/`state_change_fn` closure | (wired into a model) |
 
 ## Workflow
 
-1. Copy the relevant folder into `brainscore/{models,benchmarks,metrics}/<your_name>/`
+1. Copy the relevant folder into `brainscore/{models,benchmarks,metrics,data}/<your_name>/`
    (capabilities have no registry — wire the closure into a model instead).
 2. Fill the `TODO`s.
 3. Register it (`__init__.py`) and add `from . import <your_name>` to the parent package's `__init__.py`.
