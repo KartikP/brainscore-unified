@@ -18,9 +18,11 @@ ceiled vs. raw). Skipping it is the main reason people stall around notebook 05.
 The notebooks are numbered in one sequence, but they group into four. You do not have to
 run them all, and after the first arc you can jump to whichever matches your goal.
 
-**Arc 1 · The core loop (01–02) — start here, everyone.**
-Load a model, record a region, process stimuli, read a score, check it against a null
-floor. Everything else assumes this.
+**Arc 1 · The core loop (01, then 02) — start here, everyone.**
+Notebook 01 is the actual loop: register a model, record a region, process stimuli, read
+a score. Notebook 02 is a short companion on *interpreting* a score against chance and
+random-feature floors — it plots recorded numbers and calls no Brain-Score API, so read
+it for the idea rather than the mechanics. Everything later assumes 01.
 
 **Arc 2 · Your own analysis (13, 16, 11, 06) — "I want to answer my own question."**
 Record real layers and look at the representations directly. 13 introduces RDMs, 16

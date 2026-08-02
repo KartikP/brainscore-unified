@@ -71,10 +71,15 @@ from brainscore_core.model_interface import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
 def load_model():
-    activations = PytorchWrapper(identifier="my-cnn", model=backbone(),
+    # Build the network ONCE and hand the same object to both. Calling backbone()
+    # twice loads it into memory twice AND gives the wrapper a different instance
+    # from the one the model holds — so a perturbation applied to one would not
+    # affect what the other extracts.
+    net = backbone()
+    activations = PytorchWrapper(identifier="my-cnn", model=net,
                                  preprocessing=preprocess)
     return BrainScoreModel(
-        "my-cnn", model=backbone(), activations_model=activations,
+        "my-cnn", model=net, activations_model=activations,
         preprocessors={"vision": preprocess},
         region_layer_map={"V1": "layer1", "V4": "layer3", "IT": "layer4"})
 

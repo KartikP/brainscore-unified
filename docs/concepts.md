@@ -20,8 +20,18 @@ Everything below is detail on those six words.
 
 ## Subject
 
-A model, wrapped so Brain-Score can treat it like an experimental subject. In code it is
-`BrainScoreModel`, and it has essentially three verbs:
+A model, wrapped so Brain-Score can treat it like an experimental subject.
+
+**Three names, one thing** — you will meet all three and they are not alternatives:
+
+| Name | What it is |
+| --- | --- |
+| `Subject` | the abstract contract every model satisfies. What benchmarks are written against |
+| `BrainScoreModel` | the concrete class you actually construct. Implements `Subject` |
+| `UnifiedModel` | a deprecated alias of `Subject`, kept so older code keeps working. Do not use it in new code |
+
+You construct a `BrainScoreModel`; you can think in terms of `Subject`. It has
+essentially three verbs:
 
 ```python
 model.start_recording('IT')     # what to measure
@@ -29,13 +39,20 @@ model.start_task(task_context)  # what task to perform (behavioral work only)
 assembly = model.process(stimuli)   # run it, get responses back
 ```
 
-`process()` is the **only** evaluation method. There is no `look_at`, no `digest_text`,
-no per-modality entry point. What a model *can* do is decided by which optional slots
-were filled at registration, not by which methods exist.
+`process()` is the **only evaluation method on the interface**. There is no `look_at`, no
+`digest_text`, no per-modality entry point. What a model *can* do is decided by which
+optional slots were filled at registration, not by which methods exist.
 
 **Why it matters:** the same call works for an image model, a language model, a video
 model, or a VLM. Benchmarks are written against `process()` alone, so a benchmark never
 has to know what kind of model it is scoring.
+
+**What that does not mean.** Your model is still your model — nothing stops you calling
+the underlying `nn.Module` directly, and some notebooks do exactly that (notebooks 03 and
+10 measure a lesion's effect with a plain `net(x)`, because there the point is the
+perturbation, not the recording path). The rule is about the *interface contract*: a
+benchmark only ever reaches a model through `process()`. For your own analysis, use
+whichever is clearer.
 
 ## Stimuli, and `StimulusSet`
 
@@ -223,6 +240,33 @@ What the score would be with no real signal — a chance baseline, or a random-w
 with the same architecture. A score only counts if it clears its null. Run the nulls
 *first* on any new benchmark; a model that fails to beat random features is reporting
 noise, however respectable the absolute number looks.
+
+---
+
+## Seeing what exists
+
+```python
+import brainscore
+sorted(brainscore.model_registry)        # 27 models defined in this package
+sorted(brainscore.benchmark_registry)    # 30 benchmarks defined in this package
+```
+
+**These lists are incomplete, and that trips people up.** `load_model` and
+`load_benchmark` check this package first, then fall back to the vision and language
+registries — and those populate *lazily*, one plugin at a time, the first time something
+in them is loaded. So:
+
+```python
+'MajajHong2015public.IT-pls-unified' in brainscore.benchmark_registry   # False
+brainscore.load_benchmark('MajajHong2015public.IT-pls-unified')         # works fine
+```
+
+Printing the registry and concluding the documented example benchmark does not exist is
+the natural reading, and the wrong one. The vision registry is empty until you load
+something from it; after one `load_benchmark` call it holds ten MajajHong entries.
+
+There is currently no single call that enumerates everything reachable. Until there is,
+treat the registries as "what this package defines", not "what you can load".
 
 ---
 

@@ -36,7 +36,8 @@ full environment and version constraints).
 
 ## Usage
 
-A model is a `Subject` (formerly `UnifiedModel`). The everyday surface:
+A model is a `Subject`; the class you construct is `BrainScoreModel`
+(see [Concepts](docs/concepts.md#subject)). The everyday surface:
 
 ```python
 from brainscore import load_model, load_benchmark
