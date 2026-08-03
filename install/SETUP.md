@@ -52,10 +52,21 @@ UMI_ENV_NAME=brainscore-unified-test bash setup.sh
 
 ## Manual setup
 
-Copy the environment file to the **workspace root** — the directory holding `core/`,
-`vision/`, `language/` and `unified/` — before creating from it. Its editable installs
-are relative paths that conda resolves from the file's own directory, so pointing at it
-in place fails with `ERROR: ./core is not a valid editable requirement`.
+With the four repositories already checked out side by side, the environment file is
+unnecessary — every version pin is declared by the packages:
+
+~~~bash
+cd <workspace-root>
+conda create -y -n brainscore-unified python=3.11
+conda activate brainscore-unified
+pip install -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
+python -m pip check
+python -c "import brainscore"
+~~~
+
+Using `environment-unified.yml` directly instead? It must be copied beside the
+repositories first — conda resolves its relative editable paths from the file's own
+directory:
 
 ~~~bash
 cd <workspace-root>

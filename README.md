@@ -19,11 +19,22 @@ perturbation, embodied) through a single `process()`-based interface.
 
 ## Install
 
-`brainscore` is installed alongside the three domain repositories, which provide the
-model-extraction and scoring stack. All four are editable installs from one workspace.
+Four editable installs in one Python 3.11 environment.
 
-**No checkout yet — use the bootstrap.** It clones all four repositories at the right
-branch and builds the pinned environment:
+**If you already have the four repositories side by side:**
+
+```bash
+cd <workspace-root>          # the directory holding core/ vision/ language/ unified/
+conda create -y -n brainscore-unified python=3.11
+conda activate brainscore-unified
+pip install -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
+```
+
+That is the whole install. Version pins (`numpy<2`, `xarray==2022.3.0`,
+`scikit-learn>=1.5,<1.6`, `transformers>=4.57,<4.58`) live in the packages themselves, so
+pip enforces them without a separate environment file.
+
+**Starting from nothing?** The bootstrap also clones the four repositories:
 
 ```bash
 mkdir brainscore-umi && cd brainscore-umi
@@ -33,45 +44,14 @@ bash setup.sh
 conda activate brainscore-unified
 ```
 
-**Already have the four repositories side by side?** Copy the environment file next to
-them first, then create from there:
+`install/environment-unified.yml` exists for that bootstrap, which places it beside the
+repositories before use. Do not point conda at it in place — conda resolves its relative
+`-e ./core` entries from the file's own directory, so it fails with
+`ERROR: ./core is not a valid editable requirement`. The two-step above avoids the file
+entirely; prefer it when you already have a checkout.
 
-```bash
-cd <workspace-root>          # the directory holding core/ vision/ language/ unified/
-cp unified/install/environment-unified.yml .
-conda env create -n brainscore-unified -f environment-unified.yml
-conda activate brainscore-unified
-```
-
-The copy is not optional. The file's `-e ./core` entries are relative, and conda runs
-its pip step from *the file's own directory* — so pointing at it in place fails with
-`ERROR: ./core is not a valid editable requirement`, even when you invoke conda from the
-workspace root. See [install/README.md](install/README.md).
-
-Requires Python 3.11 and `conda` (miniforge or miniconda). For notebook dependencies in
-an environment you already have, `pip install -e "unified[notebooks]"` from the
-workspace root.
-
-## Usage
-
-A model is a `Subject`; the class you construct is `BrainScoreModel`
-(see [Concepts](docs/concepts.md#subject)). The everyday surface:
-
-```python
-from brainscore import load_model, load_benchmark
-
-model = load_model("clip-vit-b-32")
-score = load_benchmark("MajajHong2015public.IT-pls-unified")(model)
-```
-
-New to Brain-Score? Read [Concepts](docs/concepts.md) first — it defines the vocabulary
-(subject, assembly, neuroid, `region_layer_map`, raw vs. ceiled) that everything else
-assumes.
-
-Start with the shipped [getting-started guide](docs/getting_started.md), then
-use [EXTENDING.md](EXTENDING.md), [templates](templates/), the
-[notebook manifest](notebooks/README.md), and the
-[UMI API cookbook](docs/umi_api_reference.md).
+Requires Python 3.11 and `conda` (miniforge or miniconda). See
+[install/README.md](install/README.md) for troubleshooting.
 
 ## Capability Status Matrix
 

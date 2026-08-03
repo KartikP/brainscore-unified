@@ -20,41 +20,29 @@ already exists.
 
 ## If you already have the four repositories
 
-`setup.sh` is for a machine with no checkout. If `core/`, `vision/`, `language/` and
-`unified/` are already sitting side by side, create the environment directly — **from the
-workspace root**, not from inside any of them:
+`setup.sh` and the environment file are for a machine with no checkout. If `core/`,
+`vision/`, `language/` and `unified/` already sit side by side, skip both — the pins live
+in the packages, so pip alone is enough:
 
 ~~~bash
-cd <workspace-root>          # the directory containing all four
-cp unified/install/environment-unified.yml .
-conda env create -n brainscore-unified -f environment-unified.yml
+cd <workspace-root>
+conda create -y -n brainscore-unified python=3.11
 conda activate brainscore-unified
+pip install -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
 ~~~
 
-**Why the copy is required.** The environment file ends with relative editable
-installs:
-
-~~~yaml
-- -e ./core
-- -e ./vision
-- -e ./language
-- -e ./unified[notebooks]
-~~~
-
-Those resolve against **the directory holding the yml**, because conda runs its pip step
-with the working directory set there — not against wherever you invoke conda. Point at
-the file in place and `./core` means `unified/install/core`, which does not exist:
+**Do not point conda at `install/environment-unified.yml` in place.** Its `-e ./core`
+entries are relative, and conda runs its pip step from *the file's own directory*, so
+`./core` becomes `unified/install/core`:
 
 ~~~
-ERROR: ./core is not a valid editable requirement. It should either be a path to a
-local project or a VCS URL ...
+ERROR: ./core is not a valid editable requirement.
 CondaEnvException: Pip failed
 ~~~
 
-Invoking from the workspace root does **not** fix this; the file has to be moved there.
-
-`setup.sh` avoids this by copying the file to the workspace root before creating the
-environment, which is why the bootstrap path has no such caveat.
+Invoking conda from the workspace root does not help — the file itself has to be there.
+`setup.sh` downloads it to the workspace root, which is why the bootstrap never hits
+this. If you want to use the file anyway, `cp` it beside the repositories first.
 
 ## Common mistakes
 
