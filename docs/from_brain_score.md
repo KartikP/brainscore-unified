@@ -1,12 +1,12 @@
 # Coming from Brain-Score
 
-If you already use Brain-Score — `score(model_identifier, benchmark_identifier)`,
-model plugins that return a `ModelCommitment`, an `ArtificialSubject` for language —
-this page maps what you know onto the Unified Model Interface (UMI).
+For existing Brain-Score users — `score(model_identifier, benchmark_identifier)`, model
+plugins returning a `ModelCommitment`, an `ArtificialSubject` for language — this page
+maps the established API onto the Unified Model Interface (UMI).
 
 ## Score through UMI
 
-Today you score per domain:
+Scoring is currently performed per domain:
 
 ~~~python
 from brainscore_vision import score
@@ -27,7 +27,7 @@ takes already-built objects, not just identifiers.
 
 | In Brain-Score today | In UMI |
 | --- | --- |
-| `ModelCommitment` / `BrainModel` (the concrete scored model) | `BrainScoreModel` (the concrete model you construct) |
+| `ModelCommitment` / `BrainModel` (the concrete scored model) | `BrainScoreModel` (the concrete model that is constructed) |
 | `look_at(stimuli)` (vision) · `digest_text(text)` (language) | one method: `process(input_event)` |
 | `activations_model` = `PytorchWrapper(...)` | `PytorchWrapper`, plus `TextWrapper` / `VideoWrapper` / `AudioWrapper` / `VLMVisionWrapper` for other modalities |
 | `get_layers(...)` + `ModelCommitment(layers=...)` | `region_layer_map` on `BrainScoreModel` (any region → any layer) |

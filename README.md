@@ -21,7 +21,7 @@ perturbation, embodied) through a single `process()`-based interface.
 
 Four editable installs in one Python 3.11 environment.
 
-**If you already have the four repositories side by side:**
+**With the four repositories already checked out side by side:**
 
 ```bash
 cd <workspace-root>          # the directory holding core/ vision/ language/ unified/
@@ -48,7 +48,7 @@ conda activate brainscore-unified
 repositories before use. Do not point conda at it in place — conda resolves its relative
 `-e ./core` entries from the file's own directory, so it fails with
 `ERROR: ./core is not a valid editable requirement`. The two-step above avoids the file
-entirely; prefer it when you already have a checkout.
+entirely and is preferred when a checkout already exists.
 
 Requires Python 3.11 and `conda` (miniforge or miniconda). See
 [install/README.md](install/README.md) for troubleshooting.

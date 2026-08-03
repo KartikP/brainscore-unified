@@ -78,7 +78,7 @@ python -c "import brainscore"
 python -c "from transformers import DynamicCache; assert hasattr(DynamicCache(), 'to_legacy_cache')"
 ~~~
 
-If you created a smaller environment without notebook extras, install them
+For an environment created without the notebook extras, install them
 from the workspace root:
 
 ~~~bash

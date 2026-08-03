@@ -11,11 +11,11 @@ python -m pip install -e "./unified[notebooks]"
 jupyter notebook unified/notebooks/
 ~~~
 
-> **`ModuleNotFoundError: No module named 'matplotlib'`** partway through a notebook means
-> the extra is missing — the library installed fine, but `matplotlib`, `nilearn`,
-> `gymnasium` and `minigrid` only come with `[notebooks]`. Run the command above and
-> restart the kernel. (`[test]` likewise supplies `pytest` for the documented test
-> commands; `"./unified[notebooks,test]"` gets both.)
+> **`ModuleNotFoundError: No module named 'matplotlib'`** partway through a notebook
+> indicates the extra is absent: the library itself installed correctly, but `matplotlib`,
+> `nilearn`, `gymnasium` and `minigrid` ship only with `[notebooks]`. Running the command
+> above and restarting the kernel resolves it. `[test]` likewise supplies `pytest` for the
+> documented test commands; `"./unified[notebooks,test]"` installs both.
 
 **Read [`docs/concepts.md`](../docs/concepts.md) first** — about ten minutes, and it
 defines every term these notebooks use (subject, assembly, neuroid, region_layer_map,
@@ -24,8 +24,7 @@ ceiled vs. raw). Skipping it is the main reason people stall around notebook 05.
 ## Four arcs
 
 The numbering follows the reading order: each arc is a contiguous block and the numbers
-run forward. You do not have to do all fifteen — after Arc 1, jump to whichever arc
-matches your goal.
+run forward. The full sequence is not required; after Arc 1 the arcs are independent.
 
 **Arc 1 · The core loop (01–02) — start here, everyone.**
 `01` is the loop itself: register a model, record a region, process stimuli, read a
@@ -33,23 +32,23 @@ score. `02` is a short companion on *interpreting* a score against chance and
 random-feature floors; it plots recorded numbers and calls no Brain-Score API, so read it
 for the idea rather than the mechanics. Everything later assumes `01`.
 
-**Arc 2 · Your own analysis (03–06) — "I want to answer my own question."**
+**Arc 2 · Independent analysis (03–06).**
 Record real layers and look at the representations directly. `03` introduces
 representational dissimilarity matrices on a pretrained ResNet-50, `04` records two
 regions in one forward pass and compares their geometry, `05` compares several subjects,
 `06` covers topography. None of these produce a `Score` — this is Brain-Score used as a
 toolbox.
 
-**Arc 3 · Bring your own model (07–10) — "I want to score my model."**
+**Arc 3 · Registering a model (07–10).**
 Wrap an `nn.Module` and wire it up (`07`), see where a model predicts the brain (`08`),
 read results against their null floors (`09`), and inspect real held-out predictions
 (`10`). Pair with [`../EXTENDING.md`](../EXTENDING.md) and the runnable skeletons in
 [`../templates/`](../templates/).
 
-**Arc 4 · Beyond static images (11–15) — "my work isn't feedforward vision."**
+**Arc 4 · Beyond static images (11–15).**
 Lesions and perturbations (`11`, `14`), closed-loop embodied agents (`12`), temporal and
-multimodal alignment (`13`), streaming delivery (`15`). These are independent of each
-other; take only what you need.
+multimodal alignment (`13`) and streaming delivery (`15`). These are independent of one
+another.
 
 Evidence labels:
 
@@ -62,7 +61,7 @@ Evidence labels:
 
 ## Full manifest
 
-Numeric order below; the arcs above say which ones you actually need.
+Numeric order below. The arcs above identify the relevant subset.
 
 | # | Notebook | What it shows | Evidence and hardware | Typical runtime | Prerequisites |
 | --- | --- | --- | --- | --- | --- |

@@ -43,7 +43,7 @@ score     = brainscore.score('your-model', 'your-benchmark')
 
 ## Extension seams
 
-| Seam | Lives in | You implement | Contract | Template |
+| Seam | Lives in | Implements | Contract | Template |
 |------|----------|---------------|----------|----------|
 | **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `process(input_event) -> OutputEvent` | `templates/new_model/` |
 | **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(candidate) -> Score` | `templates/new_benchmark/` |
@@ -128,7 +128,7 @@ from brainscore import metric_registry
 
 class YourMetric(Metric):
     def __call__(self, assembly1, assembly2) -> Score:
-        value = compare(assembly1, assembly2)   # your alignment computation
+        value = compare(assembly1, assembly2)   # the alignment computation
         score = Score(value)
         score.attrs['raw'] = ...                 # optional: per-unit / per-fold detail
         return score

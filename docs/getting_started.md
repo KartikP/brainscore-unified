@@ -23,8 +23,8 @@ score = brainscore.score(model_id, benchmark_id)
 print(float(score))
 ~~~
 
-brainscore.score also accepts already-constructed objects, so a model you just
-built can be scored without registering it first:
+brainscore.score also accepts already-constructed objects, so a newly built model can be
+scored without registering it first:
 
 ~~~python
 score = brainscore.score(my_model, benchmark_id)   # model object + benchmark id
@@ -36,11 +36,12 @@ Use the last block as a smoke-test target. For a scientific registration,
 compare candidate layers with the layer-mapping tools and commit the selected
 region mapping.
 
-**If you only remember one: `VisionWrapper`.** For anything visual it inspects your
-model and dispatches to the right row below, so you do not have to categorise it
-yourself — `from brainscore.model_helpers.vision_wrapper import VisionWrapper`. It is
-also what `auto_register` emits. The rows below are what it chooses between, and what
-you reach for when you want the concrete class.
+**`VisionWrapper` is the default entry point.** For any visual model it inspects the
+architecture and dispatches to one of the rows below, removing the need to classify the
+model manually:
+`from brainscore.model_helpers.vision_wrapper import VisionWrapper`. It is also what
+`auto_register` emits. The rows below enumerate what it selects between, and are used
+directly when a concrete class is required.
 
 | Model input | Wrapper | Import | Provisional layer guidance |
 | --- | --- | --- | --- |

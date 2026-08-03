@@ -1,17 +1,16 @@
 # Extension templates
 
-Copy-paste starting points for the four *code* seams (Model / Benchmark / Metric / Capability). Data and
-stimulus sets are also seams but use the domain-repo `data_registry` / `stimulus_set_registry` pattern
-(no template here) — see `../EXTENDING.md`. Each folder is a skeleton with `TODO` markers + a `README.md`
-+ tests-as-spec. Read `../docs/concepts.md` for the vocabulary, then `../EXTENDING.md`
-for the contracts.
+Starting points for all five extension seams: model, benchmark, metric, data and
+capability. Each folder is a runnable skeleton with `TODO` markers, a `README.md`, and
+tests that define the contract. `../docs/concepts.md` covers the vocabulary and
+`../EXTENDING.md` the contracts.
 
-| Template | Seam | You implement | Loadable via |
+| Template | Seam | Implements | Loadable via |
 |----------|------|---------------|--------------|
 | `new_model/` | Model | `get_model() -> BrainScoreModel` | `load_model('id')` |
 | `new_benchmark/` | Benchmark | a `BenchmarkBase` subclass | `load_benchmark('id')` |
 | `new_metric/` | Metric | a `Metric` subclass | `load_metric('id')` |
-| `new_data/` | Data / Stimulus set | loaders for your stimuli + measurements | `load_stimulus_set('id')` / `load_dataset('id')` |
+| `new_data/` | Data / Stimulus set | loaders for stimuli and measurements | `load_stimulus_set('id')` / `load_dataset('id')` |
 | `new_capability/` | Capability | a `generation_fn`/`action_fn`/`state_change_fn` closure | (wired into a model) |
 
 ## Workflow
@@ -22,5 +21,6 @@ for the contracts.
 3. Register it (`__init__.py`) and add `from . import <your_name>` to the parent package's `__init__.py`.
 4. Adapt and run the template's test.
 
-The backbone stays small on purpose: it ships the seams + a few reference integrations, and the
-catalog grows from the community. See `../EXTENDING.md` § "What we deliberately leave to you".
+The core package is deliberately small: it ships the extension seams and a few reference
+integrations, and the catalog grows through contributed plugins. `../EXTENDING.md`
+documents the contract for each seam.

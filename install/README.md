@@ -18,7 +18,7 @@ conda activate brainscore-unified
 Override the env name with `UMI_ENV_NAME=my-env bash setup.sh` if `brainscore-unified`
 already exists.
 
-## If you already have the four repositories
+## With the four repositories already present
 
 `setup.sh` and the environment file are for a machine with no checkout. If `core/`,
 `vision/`, `language/` and `unified/` already sit side by side, skip both — the pins live
@@ -42,7 +42,7 @@ CondaEnvException: Pip failed
 
 Invoking conda from the workspace root does not help — the file itself has to be there.
 `setup.sh` downloads it to the workspace root, which is why the bootstrap never hits
-this. If you want to use the file anyway, `cp` it beside the repositories first.
+this. To use the file directly, `cp` it beside the repositories first.
 
 ## Common mistakes
 
