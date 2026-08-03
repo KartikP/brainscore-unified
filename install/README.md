@@ -18,6 +18,44 @@ conda activate brainscore-unified
 Override the env name with `UMI_ENV_NAME=my-env bash setup.sh` if `brainscore-unified`
 already exists.
 
+## If you already have the four repositories
+
+`setup.sh` is for a machine with no checkout. If `core/`, `vision/`, `language/` and
+`unified/` are already sitting side by side, create the environment directly — **from the
+workspace root**, not from inside any of them:
+
+~~~bash
+cd <workspace-root>          # the directory containing all four
+conda env create -n brainscore-unified -f unified/install/environment-unified.yml
+conda activate brainscore-unified
+~~~
+
+**Why the working directory matters.** The environment file ends with relative editable
+installs:
+
+~~~yaml
+- -e ./core
+- -e ./vision
+- -e ./language
+- -e ./unified[notebooks]
+~~~
+
+Those resolve against wherever you invoke conda. Run it from `unified/` — the natural
+thing to try, since that is where the file lives — and `./core` points at
+`unified/core`, which does not exist. pip then fails with four "path does not exist"
+errors that do not mention the real problem.
+
+`setup.sh` avoids this by copying the file to the workspace root before creating the
+environment, which is why the bootstrap path has no such caveat.
+
+## Common mistakes
+
+| Symptom | Cause |
+| --- | --- |
+| `PackagesNotFoundError: install/environment-unified.yml` | `conda create -f` means *force*. Use `conda env create -f`. |
+| four `path does not exist` errors on the pip step | run from the workspace root, not from `unified/` |
+| `CondaValueError: prefix already exists` | that env name is taken; use `-n` with another name |
+
 ## Requirements
 
 - `conda` (miniconda or miniforge). On a fresh miniconda, `setup.sh` accepts the

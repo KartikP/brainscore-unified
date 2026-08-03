@@ -1,3 +1,19 @@
+# Brain-Score UMI pinned environment.
+#
+# IMPORTANT — run this from the WORKSPACE ROOT, the directory that holds core/,
+# vision/, language/ and unified/ side by side:
+#
+#     conda env create -n brainscore-unified -f unified/install/environment-unified.yml
+#
+# The `-e ./core` entries at the bottom are relative paths. From anywhere else --
+# including from unified/install/ where this file lives in the repository -- they
+# resolve to directories that do not exist, and pip fails with four confusing
+# "path does not exist" errors.
+#
+# On a machine with no checkout yet, prefer install/setup.sh: it clones the four
+# repositories, copies this file to the workspace root, and creates the environment
+# with the paths already correct. See install/README.md.
+
 name: brainscore-unified
 channels:
   - conda-forge

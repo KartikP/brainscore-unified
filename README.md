@@ -19,20 +19,36 @@ perturbation, embodied) through a single `process()`-based interface.
 
 ## Install
 
-Editable install alongside the domain repositories, which provide the
-model-extraction and scoring stack:
+`brainscore` is installed alongside the three domain repositories, which provide the
+model-extraction and scoring stack. All four are editable installs from one workspace.
+
+**No checkout yet — use the bootstrap.** It clones all four repositories at the right
+branch and builds the pinned environment:
 
 ```bash
-conda env create -n brainscore-unified -f environment-unified.yml
+mkdir brainscore-umi && cd brainscore-umi
+base=https://raw.githubusercontent.com/KartikP/brainscore-unified/unified-model-interface-v2/install
+curl -fsSLO "$base/setup.sh" && curl -fsSLO "$base/environment-unified.yml"
+bash setup.sh
 conda activate brainscore-unified
 ```
 
-The environment file at the distribution root installs all four repositories
-editably. For notebook dependencies in another environment, run
-`pip install -e "unified[notebooks]"` from the distribution root.
+**Already have the four repositories side by side?** Create the environment **from the
+workspace root** — the directory containing `core/`, `vision/`, `language/`, `unified/`:
 
-Requires Python 3.11 (the data stack pins to 3.11; see the repository for the
-full environment and version constraints).
+```bash
+cd <workspace-root>          # NOT from inside unified/
+conda env create -n brainscore-unified -f unified/install/environment-unified.yml
+conda activate brainscore-unified
+```
+
+The environment file's `-e ./core` entries are relative paths, so running it from
+anywhere but the workspace root fails with four "path does not exist" errors. See
+[install/README.md](install/README.md) for troubleshooting.
+
+Requires Python 3.11 and `conda` (miniforge or miniconda). For notebook dependencies in
+an environment you already have, `pip install -e "unified[notebooks]"` from the
+workspace root.
 
 ## Usage
 
