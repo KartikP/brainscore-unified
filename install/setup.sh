@@ -54,6 +54,40 @@ clone_or_verify unified "https://github.com/KartikP/brainscore-unified.git"
     done
 } | tee "$WORKDIR/install-manifest.txt"
 
+# Orientation for the workspace root. The four repositories are separate checkouts, so
+# nothing owns this directory and a fresh clone would otherwise have no landing page.
+cat > "$WORKDIR/README.md" <<'ROOT_README'
+# Brain-Score UMI workspace
+
+Four repositories, one interface. `unified/` is where you start.
+
+| Path | What it is |
+| --- | --- |
+| `unified/` | the cross-domain `brainscore` package: models, benchmarks, metrics, templates |
+| `core/` | shared contracts, assemblies, scoring utilities |
+| `vision/`, `language/` | domain models, benchmarks, and extraction helpers |
+
+## Start here
+
+```bash
+conda activate brainscore-unified
+jupyter notebook unified/notebooks/01_quickstart_layer_mapping.ipynb
+```
+
+Then, in order:
+
+1. [Concepts](unified/docs/concepts.md) — the vocabulary. Ten minutes, and it makes
+   everything else legible.
+2. [Notebook path](unified/notebooks/README.md) — sixteen notebooks in four arcs; take
+   the arc that matches your goal rather than all of them.
+3. [Extending UMI](unified/EXTENDING.md) and [templates](unified/templates/) — to add a
+   model, benchmark, metric, dataset, or capability. Every template runs as-is.
+
+Coming from classic Brain-Score? [Start here instead](unified/docs/from_brain_score.md).
+
+`install-manifest.txt` records the exact commit of each repository from this install.
+ROOT_README
+
 if [[ ! -f "$ENV_FILE" ]]; then
     echo "Error: missing $ENV_FILE" >&2
     exit 1
