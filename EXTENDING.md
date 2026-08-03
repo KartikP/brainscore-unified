@@ -167,5 +167,5 @@ A new input/output event or dispatch behavior belongs at the second level. See
 
 The interface evaluates checkpoints; it does not train. Register the checkpoint.
 For a discovery or analysis pipeline, work directly with `process()` outputs — see
-`notebooks/16_multiregion_geometry.ipynb` for an end-to-end analysis that never
+`notebooks/04_multiregion_geometry.ipynb` for an end-to-end analysis that never
 produces a `Score`.

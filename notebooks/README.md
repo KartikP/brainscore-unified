@@ -23,30 +23,33 @@ ceiled vs. raw). Skipping it is the main reason people stall around notebook 05.
 
 ## Four arcs
 
-The notebooks are numbered in one sequence, but they group into four. You do not have to
-run them all, and after the first arc you can jump to whichever matches your goal.
+The numbering follows the reading order: each arc is a contiguous block and the numbers
+run forward. You do not have to do all fifteen — after Arc 1, jump to whichever arc
+matches your goal.
 
-**Arc 1 · The core loop (01, then 02) — start here, everyone.**
-Notebook 01 is the actual loop: register a model, record a region, process stimuli, read
-a score. Notebook 02 is a short companion on *interpreting* a score against chance and
-random-feature floors — it plots recorded numbers and calls no Brain-Score API, so read
-it for the idea rather than the mechanics. Everything later assumes 01.
+**Arc 1 · The core loop (01–02) — start here, everyone.**
+`01` is the loop itself: register a model, record a region, process stimuli, read a
+score. `02` is a short companion on *interpreting* a score against chance and
+random-feature floors; it plots recorded numbers and calls no Brain-Score API, so read it
+for the idea rather than the mechanics. Everything later assumes `01`.
 
-**Arc 2 · Your own analysis (13, 16, 11, 06) — "I want to answer my own question."**
-Record real layers and look at the representations directly. 13 introduces RDMs, 16
-records two regions in one pass and compares their geometry, 11 compares several
-subjects, 06 covers topography. None of these produce a `Score` — this is Brain-Score as
-a toolbox. *Take 13 before 11 or 16*: it is where RDMs are explained.
+**Arc 2 · Your own analysis (03–06) — "I want to answer my own question."**
+Record real layers and look at the representations directly. `03` introduces
+representational dissimilarity matrices on a pretrained ResNet-50, `04` records two
+regions in one forward pass and compares their geometry, `05` compares several subjects,
+`06` covers topography. None of these produce a `Score` — this is Brain-Score used as a
+toolbox.
 
-**Arc 3 · Bring your own model (12, 07, 08, 14) — "I want to score my model."**
-Wrap an `nn.Module`, wire it up, visualise where it predicts the brain, and read results
-against their floors. Pair with [`../EXTENDING.md`](../EXTENDING.md) and the runnable
-skeletons in [`../templates/`](../templates/).
+**Arc 3 · Bring your own model (07–10) — "I want to score my model."**
+Wrap an `nn.Module` and wire it up (`07`), see where a model predicts the brain (`08`),
+read results against their null floors (`09`), and inspect real held-out predictions
+(`10`). Pair with [`../EXTENDING.md`](../EXTENDING.md) and the runnable skeletons in
+[`../templates/`](../templates/).
 
-**Arc 4 · Beyond static images (03, 04, 05, 10, 15) — "my work isn't feedforward vision."**
-Lesions and perturbations (03, 10), closed-loop embodied agents (04), temporal and
-multimodal alignment (05), streaming delivery (15). Independent of each other; take only
-what you need.
+**Arc 4 · Beyond static images (11–15) — "my work isn't feedforward vision."**
+Lesions and perturbations (`11`, `14`), closed-loop embodied agents (`12`), temporal and
+multimodal alignment (`13`), streaming delivery (`15`). These are independent of each
+other; take only what you need.
 
 Evidence labels:
 
@@ -65,20 +68,19 @@ Numeric order below; the arcs above say which ones you actually need.
 | --- | --- | --- | --- | --- | --- |
 | 01 | 01_quickstart_layer_mapping.ipynb | Register a deterministic vision stand-in, score it, and record one/all/composite regions | local workflow, CPU | under 10 s | base notebook environment |
 | 02 | 02_behavioral_and_nulls.ipynb | Compare a behavioral score with chance and random-feature floors | illustrative companion, CPU | under 10 s | matplotlib |
-| 03 | 03_state_change_ablation.ipynb | Apply, observe, and exactly reset a small PyTorch ablation | local workflow, CPU | under 10 s | torch |
-| 04 | 04_embodied_vlm_game.ipynb | Run a tiny neural policy in a closed loop and align per-tick activations | structural demo, CPU | about 15 s | torch, matplotlib |
-| 05 | 05_temporal_multimodal.ipynb | Synchronize modality streams, convolve an HRF, and run a temporal-shift null | local workflow, CPU | under 10 s | NumPy and SciPy |
+| 03 | 03_real_model_representations.ipynb | Record a pretrained ResNet-50's V1/V2/V4/IT layers and plot how category structure sharpens along the hierarchy (RDM, MDS, separability) | local workflow, CPU | under 30 s | torch, torchvision, matplotlib, scikit-learn, Pillow |
+| 04 | 04_multiregion_geometry.ipynb | Record V4 and IT in one forward pass, split the result by region, and compare their representational geometry — a whole analysis with no `Score` object | local workflow, CPU | under 60 s | torch, torchvision, matplotlib, scikit-learn, pandas, Pillow |
+| 05 | 05_multiple_subjects.ipynb | Compare several model-subjects and run the multi-agent harness | structural demo, CPU | under 10 s | torch |
 | 06 | 06_topographic_metric.ipynb | Visualize synthetic correlation-versus-distance profiles | illustrative companion, CPU | under 10 s | matplotlib |
-| 07 | 07_brain_visualization.ipynb | Render an always-local parcel heatmap; optionally render a downloaded cortical surface | local default plus optional download | under 10 s locally | matplotlib; optional nilearn/network |
-| 08 | 08_scaling_curves.ipynb | Plot recorded repository results against matched null floors | local results visualization, CPU | under 10 s | matplotlib |
-| 09 | archive/09_watch_api_game.ipynb | Paid OpenRouter MiniGrid experiment retained for reference | archived, external API | variable and paid | API key, gymnasium, minigrid |
-| 10 | 10_intervention_spectrum.ipynb | Compare global, regional, single-unit, lesion, and drive interventions | local workflow, CPU | under 10 s | torch |
-| 11 | 11_multiple_subjects.ipynb | Compare several model-subjects and run the multi-agent harness | structural demo, CPU | under 10 s | torch |
-| 12 | 12_bring_your_model.ipynb | Take a PyTorch model from `nn.Module` to a wired candidate: inspect, wrap, extract, scaffold | local workflow, CPU | under 30 s | torch, torchvision, Pillow |
-| 13 | 13_real_model_representations.ipynb | Record a pretrained ResNet-50's V1/V2/V4/IT layers and plot how category structure sharpens along the hierarchy (RDM, MDS, separability) | local workflow, CPU | under 30 s | torch, torchvision, matplotlib, scikit-learn, Pillow |
-| 14 | 14_brain_alignment.ipynb | Plot CLIP's held-out predictions of real MajajHong2015 IT neural responses (predicted-vs-measured scatter, per-site predictivity) | EC2 result, replots saved data locally | under 10 s locally | matplotlib |
+| 07 | 07_bring_your_model.ipynb | Take a PyTorch model from `nn.Module` to a wired candidate: inspect, wrap, extract, scaffold | local workflow, CPU | under 30 s | torch, torchvision, Pillow |
+| 08 | 08_brain_visualization.ipynb | Render an always-local parcel heatmap; optionally render a downloaded cortical surface | local default plus optional download | under 10 s locally | matplotlib; optional nilearn/network |
+| 09 | 09_scaling_curves.ipynb | Plot recorded repository results against matched null floors | local results visualization, CPU | under 10 s | matplotlib |
+| 10 | 10_brain_alignment.ipynb | Plot CLIP's held-out predictions of real MajajHong2015 IT neural responses (predicted-vs-measured scatter, per-site predictivity) | EC2 result, replots saved data locally | under 10 s locally | matplotlib |
+| 11 | 11_state_change_ablation.ipynb | Apply, observe, and exactly reset a small PyTorch ablation | local workflow, CPU | under 10 s | torch |
+| 12 | 12_embodied_vlm_game.ipynb | Run a tiny neural policy in a closed loop and align per-tick activations | structural demo, CPU | about 15 s | torch, matplotlib |
+| 13 | 13_temporal_multimodal.ipynb | Synchronize modality streams, convolve an HRF, and run a temporal-shift null | local workflow, CPU | under 10 s | NumPy and SciPy |
+| 14 | 14_intervention_spectrum.ipynb | Compare global, regional, single-unit, lesion, and drive interventions | local workflow, CPU | under 10 s | torch |
 | 15 | 15_streaming_delivery.ipynb | Separate streaming *shape* from *delivery*: batched vs one-at-a-time (identical values), windowed delivery with memory bounded independently of feed length, and the three real-time policies | structural demo, CPU | under 10 s | none beyond base |
-| 16 | 16_multiregion_geometry.ipynb | Record V4 and IT in one forward pass, split the result by region, and compare their representational geometry — a whole analysis with no `Score` object | local workflow, CPU | under 60 s | torch, torchvision, matplotlib, scikit-learn, pandas, Pillow |
 
 Notebook 02 does not score a registered model; it is a null-interpretation
 companion. Notebook 06 does not register or score a model; it demonstrates the

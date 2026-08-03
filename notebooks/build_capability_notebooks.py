@@ -322,14 +322,17 @@ NB08 = [
 
 
 NOTEBOOKS = {
+    # Keys are the current filenames; the NB* constants are the cell-list variables and
+    # keep their original names, which no longer match the file numbers after the
+    # 2026-08-03 renumbering (notebooks were reordered so the reading arcs run forward).
     '01_quickstart_layer_mapping.ipynb': NB01,
     '02_behavioral_and_nulls.ipynb': NB02,
-    '03_state_change_ablation.ipynb': NB03,
-    '04_embodied_vlm_game.ipynb': NB04,
-    '05_temporal_multimodal.ipynb': NB05,
     '06_topographic_metric.ipynb': NB06,
-    '07_brain_visualization.ipynb': NB07,
-    '08_scaling_curves.ipynb': NB08,
+    '08_brain_visualization.ipynb': NB07,
+    '09_scaling_curves.ipynb': NB08,
+    '11_state_change_ablation.ipynb': NB03,
+    '12_embodied_vlm_game.ipynb': NB04,
+    '13_temporal_multimodal.ipynb': NB05,
 }
 
 

@@ -48,8 +48,8 @@ model, or a VLM. Benchmarks are written against `process()` alone, so a benchmar
 has to know what kind of model it is scoring.
 
 **What that does not mean.** Your model is still your model — nothing stops you calling
-the underlying `nn.Module` directly, and some notebooks do exactly that (notebooks 03 and
-10 measure a lesion's effect with a plain `net(x)`, because there the point is the
+the underlying `nn.Module` directly, and some notebooks do exactly that (notebooks 11 and
+14 measure a lesion's effect with a plain `net(x)`, because there the point is the
 perturbation, not the recording path). The rule is about the *interface contract*: a
 benchmark only ever reaches a model through `process()`. For your own analysis, use
 whichever is clearer.
@@ -171,7 +171,7 @@ net = nn.Sequential(nn.Conv2d(3, 8, 3), nn.ReLU(), nn.Conv2d(8, 16, 3))
 [name for name, _ in net.named_modules() if name]      # -> ['0', '1', '2']
 ```
 
-That is the whole explanation for `Selection(layer='0')` in notebook 03, and for the
+That is the whole explanation for `Selection(layer='0')` in notebook 11, and for the
 `# '0'` / `# '2'` annotations in `templates/new_model/model.py`.
 
 **Choosing which one.** Listing the paths tells you what is *available*, not which is
