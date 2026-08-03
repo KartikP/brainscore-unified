@@ -26,11 +26,12 @@ workspace root**, not from inside any of them:
 
 ~~~bash
 cd <workspace-root>          # the directory containing all four
-conda env create -n brainscore-unified -f unified/install/environment-unified.yml
+cp unified/install/environment-unified.yml .
+conda env create -n brainscore-unified -f environment-unified.yml
 conda activate brainscore-unified
 ~~~
 
-**Why the working directory matters.** The environment file ends with relative editable
+**Why the copy is required.** The environment file ends with relative editable
 installs:
 
 ~~~yaml
@@ -40,10 +41,17 @@ installs:
 - -e ./unified[notebooks]
 ~~~
 
-Those resolve against wherever you invoke conda. Run it from `unified/` — the natural
-thing to try, since that is where the file lives — and `./core` points at
-`unified/core`, which does not exist. pip then fails with four "path does not exist"
-errors that do not mention the real problem.
+Those resolve against **the directory holding the yml**, because conda runs its pip step
+with the working directory set there — not against wherever you invoke conda. Point at
+the file in place and `./core` means `unified/install/core`, which does not exist:
+
+~~~
+ERROR: ./core is not a valid editable requirement. It should either be a path to a
+local project or a VCS URL ...
+CondaEnvException: Pip failed
+~~~
+
+Invoking from the workspace root does **not** fix this; the file has to be moved there.
 
 `setup.sh` avoids this by copying the file to the workspace root before creating the
 environment, which is why the bootstrap path has no such caveat.
@@ -53,7 +61,7 @@ environment, which is why the bootstrap path has no such caveat.
 | Symptom | Cause |
 | --- | --- |
 | `PackagesNotFoundError: install/environment-unified.yml` | `conda create -f` means *force*. Use `conda env create -f`. |
-| four `path does not exist` errors on the pip step | run from the workspace root, not from `unified/` |
+| `./core is not a valid editable requirement` | copy the yml to the workspace root first; conda resolves its relative paths from the file's own directory |
 | `CondaValueError: prefix already exists` | that env name is taken; use `-n` with another name |
 
 ## Requirements

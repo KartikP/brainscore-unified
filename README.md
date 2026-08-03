@@ -33,18 +33,20 @@ bash setup.sh
 conda activate brainscore-unified
 ```
 
-**Already have the four repositories side by side?** Create the environment **from the
-workspace root** — the directory containing `core/`, `vision/`, `language/`, `unified/`:
+**Already have the four repositories side by side?** Copy the environment file next to
+them first, then create from there:
 
 ```bash
-cd <workspace-root>          # NOT from inside unified/
-conda env create -n brainscore-unified -f unified/install/environment-unified.yml
+cd <workspace-root>          # the directory holding core/ vision/ language/ unified/
+cp unified/install/environment-unified.yml .
+conda env create -n brainscore-unified -f environment-unified.yml
 conda activate brainscore-unified
 ```
 
-The environment file's `-e ./core` entries are relative paths, so running it from
-anywhere but the workspace root fails with four "path does not exist" errors. See
-[install/README.md](install/README.md) for troubleshooting.
+The copy is not optional. The file's `-e ./core` entries are relative, and conda runs
+its pip step from *the file's own directory* — so pointing at it in place fails with
+`ERROR: ./core is not a valid editable requirement`, even when you invoke conda from the
+workspace root. See [install/README.md](install/README.md).
 
 Requires Python 3.11 and `conda` (miniforge or miniconda). For notebook dependencies in
 an environment you already have, `pip install -e "unified[notebooks]"` from the
