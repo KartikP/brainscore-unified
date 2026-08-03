@@ -1,13 +1,21 @@
 # Brain-Score UMI notebook path
 
 The numbered notebooks are the public learning path. They use synthetic or
-small in-memory data unless the table says otherwise. Install their dependencies
-from the distribution root with:
+small in-memory data unless the table says otherwise.
+
+The plotting and environment libraries these notebooks need are an **extra**, not part
+of a plain install. From the workspace root:
 
 ~~~bash
-python -m pip install -e "unified[notebooks]"
+python -m pip install -e "./unified[notebooks]"
 jupyter notebook unified/notebooks/
 ~~~
+
+> **`ModuleNotFoundError: No module named 'matplotlib'`** partway through a notebook means
+> the extra is missing — the library installed fine, but `matplotlib`, `nilearn`,
+> `gymnasium` and `minigrid` only come with `[notebooks]`. Run the command above and
+> restart the kernel. (`[test]` likewise supplies `pytest` for the documented test
+> commands; `"./unified[notebooks,test]"` gets both.)
 
 **Read [`docs/concepts.md`](../docs/concepts.md) first** — about ten minutes, and it
 defines every term these notebooks use (subject, assembly, neuroid, region_layer_map,
