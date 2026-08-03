@@ -63,6 +63,7 @@ The score attrs include ``pipeline='frame_aggregation'`` and
 ``n_frames_per_video`` to make this sampling explicit on every result.
 """
 
+import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -165,8 +166,15 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         identifier_suffix: str = '',
     ):
         self._sample_times_ms = list(sample_times_ms)
-        self._frames_dir = Path(frames_dir) if frames_dir else Path(
-            '/home/ubuntu/brain-score-unified/data/lahner2024/frames')
+        # Resolve from an env var rather than one machine's layout. The previous
+        # default hard-coded a single EC2 checkout path ('/home/ubuntu/...'), so the
+        # registered benchmark could not be loaded anywhere else without editing source.
+        if frames_dir:
+            self._frames_dir = Path(frames_dir)
+        else:
+            configured = os.environ.get('BRAINSCORE_LAHNER_FRAMES_DIR')
+            self._frames_dir = (Path(configured) if configured
+                                else Path.home() / 'brainscore-data' / 'lahner2024' / 'frames')
         self._assembly: Optional[NeuronRecordingAssembly] = None
         self._stimulus_set = None
         # If set, only voxels with split-half reliability ≥ threshold will
@@ -225,6 +233,16 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         # Actual video paths live in stim.get_stimulus(...) or in stimulus_paths.
         # The registry loader returns a StimulusSet where get_stimulus(...)
         # gives the local unpacked video path.
+
+        if not self._frames_dir.exists():
+            try:
+                self._frames_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as error:
+                raise FileNotFoundError(
+                    f"Lahner2024 frame cache directory {self._frames_dir} does not "
+                    f"exist and could not be created ({error}). Set "
+                    f"BRAINSCORE_LAHNER_FRAMES_DIR to a writable path, or pass "
+                    f"frames_dir=... when constructing the benchmark.") from error
 
         def frame_extractor(video_path, t_ms):
             return _extract_frame_with_cv2(

@@ -131,16 +131,37 @@ path (an escape hatch); passing an unknown region inside a *list* fails fast.
 
 The right-hand side of `region_layer_map` (`'layer4'`, `'encoder.layers.10'`,
 `'backbone.blocks.16'`) is a **layer path**: PyTorch's own name for a module inside your
-network. Nothing invents these — they come from how the model was built, and you can
-list them:
+network. Nothing invents these — they come from how the model was built.
+
+**Paths are relative to whatever module the extraction wrapper wraps, not to the model
+you passed to `BrainScoreModel`.** Those are often the same object, and then this
+distinction never surfaces. They differ whenever the wrapper is pointed at a sub-module —
+which is the normal case for VLMs, because their `forward()` needs every modality's input
+at once, so the wrapper takes a single tower instead.
+
+CLIP is the shipped example. Its registered paths are **absent** from the full model:
 
 ```python
-[name for name, _ in model.named_modules() if name]
+model = brainscore.load_model('clip-vit-b-32')
+model.region_layer_map['IT']                                  # 'encoder.layers.10'
+'encoder.layers.10' in [n for n, _ in model._model.named_modules()]   # False (!)
 ```
 
-That is the complete set of valid values. For a `torchvision` ResNet-18 it starts
+They are relative to the vision tower the wrapper holds — a `CLIPVisionTransformer`.
+So list the paths from **the module the wrapper was built on**:
+
+```python
+backbone = ...                       # whatever you pass to VisionWrapper/PytorchWrapper
+[name for name, _ in backbone.named_modules() if name]
+```
+
+For a `torchvision` ResNet-18 (where wrapper and model are the same object) that starts
 `['conv1', 'bn1', 'relu', 'maxpool', 'layer1', 'layer1.0', ...]`; dots are nesting, so
 `layer3.0.conv1` is the first conv of the first block of `layer3`.
+
+For a multi-tower registration, enumerate each tower separately against its own wrapper —
+the vision paths and text paths live in different namespaces and can legitimately collide
+(CLIP has an `encoder.layers.10` in both).
 
 **Why some layers are called `'0'`, `'1'`, `'2'`.** `nn.Sequential` does not name its
 children, so PyTorch numbers them by position:

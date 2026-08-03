@@ -13,14 +13,28 @@ from brainscore.tools.banded_ridge import ridge_fit_predict
 
 # The Codabench submission bundler is an operational driver, not library code — it
 # deliberately does not ship (see test_data_plugins.py, which forbids it inside the
-# benchmark package). Skip its tests rather than fail collection where it is absent.
-submit_codabench = pytest.importorskip(
-    'experiments.algonauts2025.submit_codabench',
-    reason='submission bundler is a local operational driver, not part of the package')
-build_submission = submit_codabench.build_submission
-write_submission_zip = submit_codabench.write_submission_zip
-SCHAEFER_N_PARCELS = submit_codabench.SCHAEFER_N_PARCELS
-SPLIT_NPY_NAME = submit_codabench.SPLIT_NPY_NAME
+# benchmark package). Import it INSIDE the fixture rather than at module scope: a
+# module-level importorskip raises during collection, which would take the data-free
+# ridge tests below down with it on any checkout lacking the local driver.
+_BUNDLER_NAMES = ('build_submission', 'write_submission_zip',
+                  'SCHAEFER_N_PARCELS', 'SPLIT_NPY_NAME')
+
+
+@pytest.fixture(scope='class')
+def bundler():
+    """Import the local submission bundler, or skip just the tests that need it.
+
+    The bundler is an operational driver that deliberately does not ship (see
+    test_data_plugins.py, which forbids it inside the benchmark package). Importing it
+    at MODULE scope would raise Skipped during collection and take the data-free ridge
+    tests below down with it — silently dropping coverage on exactly the clean external
+    checkout we care about. Binding here keeps that blast radius to one class.
+    """
+    module = pytest.importorskip(
+        'experiments.algonauts2025.submit_codabench',
+        reason='submission bundler is a local operational driver, not part of the package')
+    globals().update({name: getattr(module, name) for name in _BUNDLER_NAMES})
+    return module
 
 
 class TestFitPredictRidge:
@@ -47,6 +61,7 @@ class TestFitPredictRidge:
         assert np.var(big) < np.var(Y)
 
 
+@pytest.mark.usefixtures('bundler')
 class TestWriteSubmissionZip:
     """Core formatter: in-memory nested dict -> Codabench zip (nested .npy)."""
 
@@ -100,6 +115,7 @@ class TestWriteSubmissionZip:
             write_submission_zip({'sub-01': {}}, tmp_path / 'x.zip', 'ood')
 
 
+@pytest.mark.usefixtures('bundler')
 class TestBuildSubmission:
     """Assembles per-subject episode-dict .npy files into the nested zip."""
 

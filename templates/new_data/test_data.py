@@ -26,20 +26,31 @@ def test_stimulus_set_is_loadable_and_dispatchable():
 
     assert len(stimuli) > 0
     assert 'stimulus_id' in stimuli.columns
+
     # Dispatch picks a modality by RECOGNIZED column name; without one, process()
     # raises "No recognized modality columns".
-    recognized = {'image_file_name', 'image_path', 'filename',
-                  'sentence', 'text', 'video_path',
-                  'audio_path', 'audio_file_name', 'audio_file'}
-    assert recognized & set(stimuli.columns), (
+    FILE_BACKED = {'image_file_name', 'image_path', 'filename', 'video_path',
+                   'audio_path', 'audio_file_name', 'audio_file'}
+    INLINE = {'sentence', 'text'}          # TextWrapper reads the value itself
+    present = (FILE_BACKED | INLINE) & set(stimuli.columns)
+    assert present, (
         f'no recognized modality column in {list(stimuli.columns)}; a model cannot '
         f'tell what kind of data this is')
 
-    # Every id must resolve to a file that exists — a real model opens these.
-    assert hasattr(stimuli, 'stimulus_paths')
-    for stimulus_id in stimuli['stimulus_id'].values:
-        path = stimuli.stimulus_paths[stimulus_id]
-        assert os.path.exists(path), f'stimulus_paths[{stimulus_id!r}] -> missing {path}'
+    if FILE_BACKED & present:
+        # Only file-backed modalities need paths on disk — a real model opens them.
+        # Text stimuli carry their content inline and have no files, so requiring
+        # stimulus_paths there would reject a perfectly valid language plugin.
+        assert hasattr(stimuli, 'stimulus_paths'), (
+            'file-backed stimuli need a stimulus_paths mapping')
+        for stimulus_id in stimuli['stimulus_id'].values:
+            path = stimuli.stimulus_paths[stimulus_id]
+            assert os.path.exists(path), (
+                f'stimulus_paths[{stimulus_id!r}] -> missing {path}')
+    else:
+        column = sorted(INLINE & present)[0]
+        values = [str(v).strip() for v in stimuli[column].values]
+        assert all(values), f'empty {column!r} values; inline stimuli carry their content'
 
 
 def test_assembly_is_loadable_and_well_formed():
@@ -63,16 +74,28 @@ def test_assembly_is_loadable_and_well_formed():
 
 
 def test_assembly_and_stimulus_set_agree():
-    """The pairing benchmarks depend on, and the easiest thing to get subtly wrong."""
+    """The pairing benchmarks depend on, and the easiest thing to get subtly wrong.
+
+    A subset check is NOT enough. A model predicts one row per stimulus in the set, so
+    if the assembly is missing even one measurement the prediction and target have
+    different lengths and the metric fails — while a subset assertion happily passes.
+    That is the shape of a half-finished data conversion, so check for it exactly.
+    """
     import brainscore
     stimuli = brainscore.load_stimulus_set('your-stimuli')
     assembly = brainscore.load_dataset('your-measurements')
 
-    in_stimuli = set(np.asarray(stimuli['stimulus_id'].values).astype(str))
-    in_assembly = set(np.asarray(assembly['stimulus_id'].values).astype(str))
-    assert in_assembly <= in_stimuli, (
-        f'measured stimuli missing from the stimulus set: '
-        f'{sorted(in_assembly - in_stimuli)[:5]}')
+    in_stimuli = list(np.asarray(stimuli['stimulus_id'].values).astype(str))
+    in_assembly = list(np.asarray(assembly['stimulus_id'].values).astype(str))
+
+    assert len(set(in_stimuli)) == len(in_stimuli), 'duplicate stimulus_id in the stimulus set'
+    assert len(set(in_assembly)) == len(in_assembly), 'duplicate stimulus_id in the assembly'
+    assert set(in_assembly) == set(in_stimuli), (
+        f'stimulus_id sets differ — measured but not shown: '
+        f'{sorted(set(in_assembly) - set(in_stimuli))[:5]}; '
+        f'shown but not measured: {sorted(set(in_stimuli) - set(in_assembly))[:5]}. '
+        f'If your dataset genuinely measures only a subset, filter the stimulus set to '
+        f'the measured ids so a model is never asked to predict rows you cannot score.')
 
 
 def test_carries_the_coord_metrics_stratify_on():
