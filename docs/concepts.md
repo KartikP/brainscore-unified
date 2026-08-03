@@ -206,6 +206,20 @@ preprocessors = {'vision': lambda stimuli: stimuli}
 
 That looks like a placeholder and is not. It says "the wrapper did it."
 
+**Vision and text are wired differently, and it will surprise you.** A multimodal
+registration usually looks like this:
+
+```python
+preprocessors={'vision': preprocessing,   # a bare callable; the wrapper is separate
+               'text': text_wrapper},     # the whole TextWrapper goes IN here
+activations_model=activations_model,      # the vision wrapper lives here
+```
+
+For vision, the preprocessor and the extraction wrapper are two separate objects. For
+text, the `TextWrapper` *is* the preprocessor entry — it both prepares the input and
+extracts. A tokenizer on its own is not a text preprocessor. See
+`brainscore/models/clip_vit_b_32/model.py` for the maintained example.
+
 ## Benchmark
 
 Data plus a scoring procedure. Given a subject, it configures recording, calls
