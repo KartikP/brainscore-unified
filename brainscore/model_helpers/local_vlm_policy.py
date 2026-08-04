@@ -95,7 +95,9 @@ def build_visual_policy(model_id, *, prompt=VISUAL_PROMPT, max_new_tokens=200):
     try:
         from transformers import Qwen2_5_VLForConditionalGeneration as VLM
     except Exception:
-        from transformers import AutoModelForVision2Seq as VLM
+        # AutoModelForVision2Seq was removed in transformers 5; the
+        # ImageTextToText auto-class is its replacement and exists in 4.57 too.
+        from transformers import AutoModelForImageTextToText as VLM
     from brainscore.harnesses.grid_game import ACTIONS
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'

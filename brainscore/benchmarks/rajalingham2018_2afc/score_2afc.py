@@ -173,7 +173,9 @@ def build_generation_chooser(model_id, prompt_mode='cot', demos=None):
     try:
         from transformers import Qwen2_5_VLForConditionalGeneration as VLM
     except Exception:
-        from transformers import AutoModelForVision2Seq as VLM
+        # AutoModelForVision2Seq was removed in transformers 5; the
+        # ImageTextToText auto-class is its replacement and exists in 4.57 too.
+        from transformers import AutoModelForImageTextToText as VLM
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     proc = AutoProcessor.from_pretrained(model_id)
     model = VLM.from_pretrained(model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
