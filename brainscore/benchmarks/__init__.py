@@ -11,3 +11,4 @@ from . import induced_dyslexia  # noqa: F401  perturbation benchmark (ablation)
 from . import grid_game         # noqa: F401  embodied closed-loop benchmark
 from . import lahner2024        # noqa: F401  naturalistic fMRI (scaffolding)
 from . import algonauts2025     # noqa: F401  multimodal movie fMRI (scaffold; data on EC2)
+from . import lebel2023         # noqa: F401  whole-cortex story-listening fMRI
