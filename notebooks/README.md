@@ -45,10 +45,10 @@ read results against their null floors (`09`), and inspect real held-out predict
 (`10`). Pair with [`../EXTENDING.md`](../EXTENDING.md) and the runnable skeletons in
 [`../templates/`](../templates/).
 
-**Arc 4 · Beyond static images (11–15).**
+**Arc 4 · Beyond static images (11–16).**
 Lesions and perturbations (`11`, `14`), closed-loop embodied agents (`12`), temporal and
-multimodal alignment (`13`) and streaming delivery (`15`). These are independent of one
-another.
+multimodal alignment (`13`), streaming delivery (`15`) and whole-brain encoding against
+real fMRI (`16`). These are independent of one another.
 
 Evidence labels:
 
@@ -80,11 +80,17 @@ Numeric order below. The arcs above identify the relevant subset.
 | 13 | 13_temporal_multimodal.ipynb | Synchronize modality streams, convolve an HRF, and run a temporal-shift null | local workflow, CPU | under 10 s | NumPy and SciPy |
 | 14 | 14_intervention_spectrum.ipynb | Compare global, regional, single-unit, lesion, and drive interventions | local workflow, CPU | under 10 s | torch |
 | 15 | 15_streaming_delivery.ipynb | Separate streaming *shape* from *delivery*: batched vs one-at-a-time (identical values), windowed delivery with memory bounded independently of feed length, and the three real-time policies | structural demo, CPU | under 10 s | none beyond base |
+| 16 | 16_whole_brain_encoding.ipynb | Predict all 20484 cortical vertices from GPT-2 on LeBel2023 story listening, with delayed features, story-held-out CV, and two nulls | local workflow, CPU | about 2 min after first build | transformers, torch, matplotlib; LeBel pickle |
 
 Notebook 02 does not score a registered model; it is a null-interpretation
 companion. Notebook 06 does not register or score a model; it demonstrates the
 descriptor used by the topographic metric. Their first cells state these
 boundaries explicitly.
+
+Notebook 16 is the only one requiring data that is not fetched automatically: the
+LeBel2023 subject pickle. Point `BRAINSCORE_LEBEL_PICKLE` at it, or place it at
+`~/Downloads/assembly_lebel_uts03.pkl`. The first run converts it and caches the result,
+so later runs start in under a second.
 
 Notebook 15 uses deterministic stand-in subjects and filename strings for "frames";
 it demonstrates interface mechanics, not a scientific result. The same machinery
