@@ -62,7 +62,7 @@ NB01 = [
              "picked = list(dict.fromkeys(str_layers))[:2] or str_layers[:1]\n"
              "sel = CompositeSelector(layers=tuple((L, None) for L in picked))\n"
              "print('composite layer paths:', sel.layer_paths)\n"
-             "model.region_layer_map['Vc'] = sel\n"
+             "model.set_region_layer('Vc', sel)\n"
              "model.start_recording('Vc')\n"
              "print('composite recording:', model._composite_recording,\n"
              "      '| layers:', model._recording_layers)"),
