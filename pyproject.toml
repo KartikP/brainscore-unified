@@ -36,7 +36,7 @@ dependencies = [
     "pandas<3",
     "scipy",
     "scikit-learn>=1.5,<1.6",
-    "transformers>=4.57,<4.58",
+    "transformers>=4.57,<6",
     "importlib-metadata<5",
 ]
 
