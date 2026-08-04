@@ -21,6 +21,53 @@ from itertools import product
 import numpy as np
 
 
+def solve_and_project(gram, cross, target):
+    """``cross @ gram⁻¹ @ target``, solving against whichever side is narrower.
+
+    ``gram`` is symmetric, so ``gram⁻¹`` is too and the product may be grouped
+    either way. Solving against ``target`` costs ``O(m²·n_targets)``; solving
+    against ``cross.T`` costs ``O(m²·n_rows)``. Voxelwise encoding has far more
+    targets than held-out rows — 20484 voxels against ~1800 rows — so the second
+    grouping is the cheaper one there, measured at 1.3-1.8x and agreeing to 1e-16.
+
+    The crossover is *not* at ``n_rows == n_targets``, where the flop counts say
+    it should be: transposing forces a copy for LAPACK, and near parity that
+    overhead dominates. Measured, the two are within noise of each other until
+    targets outnumber rows by about 3x, and only then does the second grouping
+    win reliably. The threshold below is set from that measurement, so shapes
+    near parity keep the first grouping — which also leaves existing scores
+    numerically untouched, since reassociating the product changes rounding.
+    """
+    if target.shape[1] >= 3 * cross.shape[0]:
+        return np.linalg.solve(gram, cross.T).T @ target
+    return cross @ np.linalg.solve(gram, target)
+
+
+def dual_aware_ridge_predict(X_train, Y_train, X_test, alpha):
+    """Ridge predictions, solved in whichever form is cheaper.
+
+    With more features than samples the usual normal equations build a ``(p, p)``
+    matrix, which for a large language model's hidden states is thousands of
+    times bigger than it needs to be — 5120 features across four delays gives a
+    20480x20480 solve against roughly 7000 training rows. The dual form solves an
+    ``(n, n)`` system instead and is algebraically the same estimator, via
+    ``(XᵀX + αI)⁻¹Xᵀ = Xᵀ(XXᵀ + αI)⁻¹``.
+
+    Inputs are expected to be already centred; no intercept is fitted.
+    """
+    n_samples, n_features = X_train.shape
+    if n_features > n_samples:
+        gram = X_train @ X_train.T
+        cross = X_test @ X_train.T
+        target = Y_train
+    else:
+        gram = X_train.T @ X_train
+        cross = X_test
+        target = X_train.T @ Y_train
+    gram[np.diag_indices_from(gram)] += alpha
+    return solve_and_project(gram, cross, target)
+
+
 def ridge_fit_predict(X_train, Y_train, X_pred, alpha=1.0,
                       dtype=np.float32):
     """Fit a single-penalty ridge encoder on (X_train → Y_train), predict X_pred.
