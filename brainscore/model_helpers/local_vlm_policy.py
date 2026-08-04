@@ -21,6 +21,7 @@ runs of a model ladder.
 import re
 
 import numpy as np
+from brainscore_core.hf_compat import pin_image_processor
 
 WORD_TO_ACTION = {'up': 0, 'down': 1, 'left': 2, 'right': 3}
 
@@ -102,6 +103,7 @@ def build_visual_policy(model_id, *, prompt=VISUAL_PROMPT, max_new_tokens=200):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     processor = AutoProcessor.from_pretrained(model_id)
+    processor = pin_image_processor(processor, model_id)
     model = VLM.from_pretrained(
         model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
         device_map=device).eval()
@@ -182,6 +184,7 @@ def build_gemma_visual_policy(model_id, *, prompt=VISUAL_PROMPT, max_new_tokens=
         bnb_4bit_compute_dtype=torch.bfloat16,
         llm_int8_skip_modules=['patch_dense', 'embedding_projection', 'lm_head'])
     processor = AutoProcessor.from_pretrained(model_id, revision=revision)
+    processor = pin_image_processor(processor, model_id)
     model = AutoModelForImageTextToText.from_pretrained(
         model_id, revision=revision, quantization_config=bnb, device_map='auto',
         dtype=torch.bfloat16).eval()
@@ -220,6 +223,7 @@ def build_minigrid_qwen_policy(model_id, *, max_new_tokens=220):
 
     dev = 'cuda' if torch.cuda.is_available() else 'cpu'
     proc = AutoProcessor.from_pretrained(model_id)
+    proc = pin_image_processor(proc, model_id)
     model = VLM.from_pretrained(
         model_id, torch_dtype=torch.float16 if dev == 'cuda' else torch.float32,
         device_map=dev).eval()
@@ -256,6 +260,7 @@ def build_minigrid_gemma_policy(model_id, *, max_new_tokens=256, revision=None):
         bnb_4bit_compute_dtype=torch.bfloat16,
         llm_int8_skip_modules=['patch_dense', 'embedding_projection', 'lm_head'])
     proc = AutoProcessor.from_pretrained(model_id, revision=revision)
+    proc = pin_image_processor(proc, model_id)
     model = AutoModelForImageTextToText.from_pretrained(
         model_id, revision=revision, quantization_config=bnb,
         device_map='auto', dtype=torch.bfloat16).eval()

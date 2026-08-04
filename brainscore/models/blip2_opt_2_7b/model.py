@@ -30,6 +30,7 @@ from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pca import LayerPCA
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+from brainscore_core.hf_compat import pin_image_processor
 
 
 REGION_LAYER_MAP = {
@@ -115,7 +116,10 @@ def get_model(identifier: str) -> BrainScoreModel:
         'Salesforce/blip2-opt-2.7b',
         torch_dtype=torch.float16,
     )
+# Pin the image-processor implementation: transformers 5 rebinds the class
+    # names, moving the default from PIL to torchvision and shifting pixels.
     blip_processor = AutoProcessor.from_pretrained('Salesforce/blip2-opt-2.7b')
+    blip_processor = pin_image_processor(blip_processor, 'Salesforce/blip2-opt-2.7b')
 
     preprocessing = functools.partial(
         _load_preprocess_images,

@@ -16,6 +16,7 @@ import csv
 import json
 import os
 import re
+from brainscore_core.hf_compat import pin_image_processor
 
 
 def parse_lr(text):
@@ -88,6 +89,7 @@ def main():
                              llm_int8_skip_modules=['patch_dense', 'embedding_projection', 'lm_head'])
     rev = 'e18f459f54832f4ae2ab6686b935a2268668a9e9' if args.model == 'google/gemma-4-12B-it' else None
     proc = AutoProcessor.from_pretrained(args.model, revision=rev)
+    proc = pin_image_processor(proc, args.model)
     model = AutoModelForImageTextToText.from_pretrained(
         args.model, revision=rev, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
     dev = next(model.parameters()).device

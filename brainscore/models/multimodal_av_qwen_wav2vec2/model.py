@@ -12,6 +12,7 @@ already cover the four signal/null permutations).
 import torch
 
 from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.hf_compat import pin_image_processor
 
 
 REGION_LAYER_MAP = {
@@ -43,8 +44,11 @@ def get_model(identifier: str) -> BrainScoreModel:
         'Qwen/Qwen2.5-VL-3B-Instruct',
         torch_dtype=torch.float16,
     )
+    # Pin the image-processor implementation (see brainscore_core.hf_compat).
     qwen_processor = AutoProcessor.from_pretrained(
         'Qwen/Qwen2.5-VL-3B-Instruct')
+    qwen_processor = pin_image_processor(
+        qwen_processor, 'Qwen/Qwen2.5-VL-3B-Instruct')
 
     vision_wrapper = VLMVisionWrapper(
         model=qwen_model.model.visual,

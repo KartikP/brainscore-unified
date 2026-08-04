@@ -27,6 +27,7 @@ from brainscore_core.model_interface import BrainScoreModel
 
 
 from ._ids import SUPPORTED_IDENTIFIERS
+from brainscore_core.hf_compat import pin_image_processor
 
 REGION_LAYER_MAP = {
     # Vision tower (CLIP ViT-B/32 vision_model — paths relative to
@@ -65,7 +66,10 @@ def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
     from brainscore_vision.model_helpers.activations.pytorch import (
         PytorchWrapper)
 
+# Pin the image-processor implementation: transformers 5 rebinds the class
+    # names, moving the default from PIL to torchvision and shifting pixels.
     processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
+    processor = pin_image_processor(processor, 'openai/clip-vit-base-patch32')
     clip_model = CLIPModel.from_pretrained('openai/clip-vit-base-patch32')
     if random_init:
         torch.manual_seed(0)

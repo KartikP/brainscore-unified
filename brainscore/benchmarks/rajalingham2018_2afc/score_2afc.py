@@ -28,6 +28,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import Behavior
 
 from . import benchmark as B
 from .montage import compose_montage
+from brainscore_core.hf_compat import pin_image_processor
 
 # Two prompt modes, to separate perception from reasoning. Match-to-sample is a
 # perceptual task: chain-of-thought may HURT a small model (it talks itself away
@@ -178,6 +179,7 @@ def build_generation_chooser(model_id, prompt_mode='cot', demos=None):
         from transformers import AutoModelForImageTextToText as VLM
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     proc = AutoProcessor.from_pretrained(model_id)
+    proc = pin_image_processor(proc, model_id)
     model = VLM.from_pretrained(model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
                                 device_map=device).eval()
     rng = np.random.RandomState(0)
@@ -218,6 +220,7 @@ def build_similarity_chooser(model_id):
     mid = model_id or 'openai/clip-vit-base-patch32'
     model = CLIPModel.from_pretrained(mid).to(device).eval()
     proc = CLIPProcessor.from_pretrained(mid)
+    proc = pin_image_processor(proc, mid)
     cache = {}
 
     def embed(path):

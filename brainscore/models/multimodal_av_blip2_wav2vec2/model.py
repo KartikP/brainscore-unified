@@ -21,6 +21,7 @@ import torch
 from PIL import Image
 
 from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.hf_compat import pin_image_processor
 
 
 REGION_LAYER_MAP = {
@@ -60,8 +61,11 @@ def get_model(identifier: str) -> BrainScoreModel:
         PytorchWrapper)
     from brainscore.models._multimodal_av_shared import build_audio_wrapper
 
+    # Pin the image-processor implementation (see brainscore_core.hf_compat).
     blip_processor = AutoProcessor.from_pretrained(
         'Salesforce/blip2-opt-2.7b')
+    blip_processor = pin_image_processor(
+        blip_processor, 'Salesforce/blip2-opt-2.7b')
     blip_model = Blip2ForConditionalGeneration.from_pretrained(
         'Salesforce/blip2-opt-2.7b', torch_dtype=torch.float32)
 

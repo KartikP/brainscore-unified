@@ -42,6 +42,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import Behavior
 from . import benchmark as B
 from .montage import render_sample, compose_choice_array
 from .score_2afc import _parse_lr
+from brainscore_core.hf_compat import pin_image_processor
 
 
 # --------------------------------------------------------------------------- #
@@ -155,6 +156,7 @@ def build_sequential_generation_chooser(model_id, seq_mode='describe', prompt_mo
         from transformers import AutoModelForImageTextToText as VLM
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     proc = AutoProcessor.from_pretrained(model_id)
+    proc = pin_image_processor(proc, model_id)
     model = VLM.from_pretrained(model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
                                 device_map=device).eval()
     rng = np.random.RandomState(0)

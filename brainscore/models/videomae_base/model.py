@@ -105,8 +105,9 @@ def get_model(identifier: str) -> BrainScoreModel:
         'MCG-NJU/videomae-base',
         torch_dtype=torch.float32,  # FP32 is fine for 86M params
     )
+    # Pin the image-processor implementation (see brainscore_core.hf_compat).
     processor = VideoMAEImageProcessor.from_pretrained(
-        'MCG-NJU/videomae-base')
+        'MCG-NJU/videomae-base', use_fast=False)
 
     preprocessing = _make_preprocessing(processor)
 

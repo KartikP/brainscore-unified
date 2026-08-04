@@ -11,6 +11,7 @@ Same 4-bit setup as gemma_chooser (skip the encoder-free vision-embedder leaves)
         --out /tmp/roar_gemma --ceiling 0.8112
 """
 import argparse, csv, json, os, re
+from brainscore_core.hf_compat import pin_image_processor
 
 INSTR = ("The image shows a letter string. Is it a real English word "
          "(not a made-up/pseudo-word)? Answer with exactly one word: yes or no.")
@@ -45,6 +46,7 @@ def main():
                              llm_int8_skip_modules=['patch_dense', 'embedding_projection', 'lm_head'])
     print(f'loading {args.model} (4-bit)…', flush=True)
     proc = AutoProcessor.from_pretrained(args.model, revision=GEMMA_REV)
+    proc = pin_image_processor(proc, args.model)
     model = AutoModelForImageTextToText.from_pretrained(
         args.model, revision=GEMMA_REV, quantization_config=bnb, device_map='auto', dtype=torch.bfloat16).eval()
     dev = next(model.parameters()).device
