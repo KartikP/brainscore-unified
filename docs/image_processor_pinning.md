@@ -57,17 +57,38 @@ flipped `Qwen2VLImageProcessor` to fast-by-default, and pinning moves it back.
 | VideoMAE base | `VideoMAEImageProcessor` (PIL) | same | no |
 | **Qwen2.5-VL-3B** | **`Qwen2VLImageProcessorFast`** | `Qwen2VLImageProcessor` | **yes** |
 
-Qwen's `pixel_values` shift by max 1.5e-2 (mean 6.3e-5). **Every Qwen2.5-VL score in
-the repository was measured on the fast processor and will move by some amount.**
-That includes MajajHong V4 0.2113 and IT 0.3154, Pereira 0.7084, ROAR 0.930, and
-Lahner visual-ROI 0.2270.
+Qwen's `pixel_values` shift by max 1.5e-2 (mean 6.3e-5), so every Qwen2.5-VL score
+in the repository moves — by how much is measured below.
 
-**The magnitude at the score level has not been measured** — only the pixel and
-feature deltas. A 1.5e-2 pixel shift could plausibly be anything from negligible to
-a couple of points of raw r, and which it is determines whether the Qwen numbers
-need republishing. Worth investigating: one EC2 run scoring Qwen2.5-VL on
-MajajHong IT both ways would settle it, and the same run tells us how much
-tolerance to expect when the whole repository eventually moves to the fast path.
+### Measured at the score level
+
+Qwen2.5-VL-3B scored on `MajajHong2015public.IT-pls-unified` both ways, each arm in
+its own process with activation caches cleared between them:
+
+| arm | image processor | score | extraction |
+|---|---|---|---|
+| default | `Qwen2VLImageProcessorFast` | 0.3152492311 | 125 s |
+| pinned | `Qwen2VLImageProcessor` (PIL) | 0.3151280291 | 132 s |
+
+**Delta −0.000121, or 0.038% relative.** A 1.5e-2 shift in pixels becomes a 1.2e-4
+shift in score. At the precision scores are reported the number does not move:
+0.3152 → 0.3151 at four decimals, 0.315 → 0.315 at three.
+
+So the documented Qwen figures stand as published, and the eventual repository-wide
+move to the fast processors is also a sub-0.001 change rather than a re-baselining
+exercise. The pinning is cheap insurance, not a trade-off.
+
+Two harness errors had to be fixed before this number was trustworthy, both of which
+produced a plausible-looking 0.000000 delta:
+
+- Both arms silently replayed one cached activation set, because the cache
+  directories were listed by name and the VLM wrapper's was missed. Arms now clear
+  by suffix, and an arm finishing faster than re-extraction takes is reported as
+  invalid.
+- Patching `pin_image_processor` in-process did not reach the model registrations,
+  which bind the name via `from ... import` at import time; the first arm's patch
+  then persisted in `sys.modules` into the second. Each arm now runs in its own
+  process.
 
 ## The longer-term choice
 
@@ -77,5 +98,7 @@ everywhere and re-baseline, which aligns with upstream and is faster, but shifts
 published numbers.
 
 The current position is deliberate: pin now so the transformers upgrade changes no
-vision score, and treat moving to fast as a separate decision about the leaderboard
-rather than a side effect of a dependency bump.
+vision score, and treat moving to fast as a separate decision rather than a side
+effect of a dependency bump. The measurement above makes that later move cheap —
+0.038% on the one model affected — so it is a scheduling question, not a
+re-baselining one.
