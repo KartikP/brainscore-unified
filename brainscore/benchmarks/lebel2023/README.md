@@ -75,10 +75,11 @@ Layer sweep (2000-vertex subset, so not comparable to the table above):
 Accuracy rises steeply through the first third of the network, plateaus across the middle,
 and falls over the last quarter — the usual profile for language models against brain data.
 
-Qwen3.6 features were extracted on an EC2 g6.12xlarge (4× L4) in an isolated environment,
-because `qwen3_5` requires a newer transformers than this repo pins. Extraction took 13 min
-for 9 layers; scoring is CPU-side. Scripts and result JSON are in
-`experiments/lebel2023/`.
+Qwen3.6 features were extracted in an isolated environment, because `qwen3_5` requires a
+newer transformers than this repo pins, and fed to the benchmark through the
+`_model_features` seam. Reproducing that arm therefore needs an environment with
+transformers >= 5 for the extraction step; the scoring half runs under the pinned
+environment unchanged.
 
 ## Nulls
 
