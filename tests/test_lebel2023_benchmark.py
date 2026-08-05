@@ -332,10 +332,12 @@ class TestModelFeaturesSeam:
 
 
 class TestRegistration:
-    def test_both_variants_are_registered(self):
+    def test_all_variants_are_registered(self):
         from brainscore import benchmark_registry
-        assert 'LeBel2023-UTS03-encoding' in benchmark_registry
-        assert 'LeBel2023-UTS03-encoding-smoke' in benchmark_registry
+        for identifier in ('LeBel2023-UTS03-encoding',
+                           'LeBel2023-UTS03-encoding-smoke',
+                           'LeBel2023-UTS03-encoding-contextwindow'):
+            assert identifier in benchmark_registry, identifier
 
     def test_smoke_variant_subsamples_targets(self):
         from brainscore import benchmark_registry
@@ -343,3 +345,26 @@ class TestRegistration:
         full = benchmark_registry['LeBel2023-UTS03-encoding']()
         assert smoke._max_targets == 2000
         assert full._max_targets is None
+
+    def test_default_reads_words_and_resamples(self):
+        """The default must be the word-level path, not the per-TR one.
+
+        Collapsing each TR to its last token discards ~6 words per sample and
+        costs about 20% of the score, so which path is default is the whole
+        point of the variant split.
+        """
+        from brainscore import benchmark_registry
+        from brainscore.benchmarks.lebel2023.benchmark import (
+            LeBel2023Encoding, LeBel2023EncodingWordLevel)
+        default = benchmark_registry['LeBel2023-UTS03-encoding']()
+        assert isinstance(default, LeBel2023EncodingWordLevel)
+        assert default._pooling == 'lanczos'
+
+        retained = benchmark_registry['LeBel2023-UTS03-encoding-contextwindow']()
+        assert isinstance(retained, LeBel2023Encoding)
+        assert not isinstance(retained, LeBel2023EncodingWordLevel)
+
+    def test_pooling_choices_are_validated(self):
+        from brainscore.benchmarks.lebel2023.benchmark import LeBel2023EncodingWordLevel
+        with pytest.raises(ValueError, match='pooling must be one of'):
+            LeBel2023EncodingWordLevel(pooling='nearest')

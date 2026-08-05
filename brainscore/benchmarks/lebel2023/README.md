@@ -10,12 +10,14 @@ LITCoder).
 
 ## Registered identifiers
 
-| Identifier | Targets | Runtime | Use |
+| Identifier | Features | Targets | Use |
 |---|---|---|---|
-| `LeBel2023-UTS03-encoding` | all 20484 vertices | ~140 s, ~8 GB peak | the benchmark |
-| `LeBel2023-UTS03-encoding-smoke` | random 2000 vertices | ~30 s | pipeline checks only |
+| `LeBel2023-UTS03-encoding` | per word, Lanczos-resampled | all 20484 | the benchmark |
+| `LeBel2023-UTS03-encoding-smoke` | per word, Lanczos-resampled | random 2000 | pipeline checks only |
+| `LeBel2023-UTS03-encoding-contextwindow` | one context window per TR, last token | all 20484 | retained for comparison |
 
-The smoke variant's number is not comparable to the full run.
+The smoke variant's number is not comparable to a full run. Full runs take ~70 s
+and peak near 8 GB.
 
 ## Data
 
@@ -37,8 +39,14 @@ story during scoring.
 
 ## Protocol
 
-One stimulus row per TR (2.0 s), each carrying the words heard in the preceding 10 s,
-reconstructed from word onset times. Model features are copied at delays of 1–4 TRs and
+One stimulus row per spoken word, each carrying the running 32-word context ending at
+that word, so the model's representation of a row is its representation of that word in
+context. About **5.9 words fall inside each 2 s sample**; their features are resampled
+onto the fMRI grid with a windowed-sinc (Lanczos) filter, low-passed at the sampling
+rate. Collapsing each TR to a single value instead — which the `-contextwindow` variant
+does — discards the other words and costs about 20% of the score.
+
+Model features are then copied at delays of 1–4 TRs and
 concatenated, letting each vertex learn its own hemodynamic lag rather than assuming a
 fixed HRF. Cross-validation holds out whole stories, because adjacent TRs within a story
 are correlated enough that a random split leaks. The ridge penalty is selected per fold on
@@ -53,11 +61,31 @@ below, not against ceiling-normalised benchmarks such as MajajHong or Pereira.
 
 All 20484 vertices, held-out median Pearson r.
 
-| Model | Layer | median r | mean r | frac r > 0 | p99 | best vertex |
-|---|---|---|---|---|---|---|
-| **Qwen3.6-27B** | 52 of 64 (best) | **0.0628** | 0.0678 | 92.7% | 0.210 | 0.311 |
-| Qwen3.6-27B | 64 of 64 (last) | 0.0455 | 0.0522 | 87.4% | 0.199 | 0.306 |
-| GPT-2 (124M) | 11 of 12 (last) | 0.0422 | 0.0464 | 89.7% | 0.162 | 0.263 |
+| Model | Layer | Features | median r | mean r | frac r > 0 | p99 | best vertex |
+|---|---|---|---|---|---|---|---|
+| GPT-2 (124M) | 11 of 12 | **per word, Lanczos** | **0.0511** | 0.0546 | 89.7% | 0.181 | 0.276 |
+| GPT-2 (124M) | 11 of 12 | per TR, last token | 0.0422 | 0.0464 | 89.7% | 0.162 | 0.263 |
+| Qwen3.6-27B | 52 of 64 (best) | per TR, last token | 0.0628 | 0.0678 | 92.7% | 0.210 | 0.311 |
+| Qwen3.6-27B | 64 of 64 (last) | per TR, last token | 0.0455 | 0.0522 | 87.4% | 0.199 | 0.306 |
+
+The Qwen rows predate the default change and were measured on the per-TR path; they have
+not been re-run word-level, which would be expected to raise them similarly.
+
+### Within-TR pooling
+
+Scored on 2000 vertices with GPT-2, so comparable to each other but not to the table
+above:
+
+| pooling | median r |
+|---|---|
+| per-TR context, last token (the old default) | 0.0436 |
+| word-level, last | 0.0445 |
+| word-level, sum | 0.0478 |
+| word-level, average | 0.0490 |
+| **word-level, Lanczos** | **0.0525** |
+
+The ordering `last < sum ~ average < Lanczos` reproduces the reference pipeline's, and
+Lanczos beats last-token by 18% on the same word-level features.
 
 Most of cortex is barely predicted and a minority is predicted well, which is the
 distribution a whole-brain benchmark exists to show.
@@ -114,6 +142,13 @@ mostly measuring story onsets. Those TRs are now excluded rather than padded
   MNI152 volumetric output, while the vertex count here is exactly 2 × 10242 — the
   fsaverage5 surface. That discrepancy is unresolved, so no hemisphere or region coord is
   attached. Confirm the space with the data provider before adding an atlas.
+- **Per-target ridge penalties do not help here.** Fitting one penalty per vertex, as
+  reference pipelines do by default, scored 31% *below* a single shared penalty, and
+  nesting the selection over four inner folds barely recovered it. Broken down by
+  signal strength it only breaks even on the best-predicted 5% and loses elsewhere:
+  selecting a penalty per target needs per-target signal-to-noise high enough to select
+  on, which whole-cortex data at this SNR does not have. Available as
+  `per_voxel_alpha=True`; off by default.
 - **Registered models are read at their final block.** The Qwen sweep shows this costs
   roughly a quarter of the achievable score. `gpt2`'s `region_layer_map` still points at
   `h.11`; re-mapping it would improve this benchmark but would move its scores on every

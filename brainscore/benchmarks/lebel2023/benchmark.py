@@ -39,6 +39,7 @@ BIBTEX = """@article{lebel2023natural,
   publisher={Nature Publishing Group}
 }"""
 
+TR_SEC = 2.0
 DEFAULT_DELAYS = (1, 2, 3, 4)
 DEFAULT_ALPHA_GRID = (1e4, 1e5, 1e6, 3e6, 1e7, 3e7, 1e8)
 
@@ -157,13 +158,84 @@ def _ridge_grouped_alpha(X_train, Y_train, X_test, stories_train, alpha_grid,
         X_train - full_mean, Y_train, X_test - full_mean, best_alpha), best_alpha
 
 
+
+def _ridge_per_voxel_alpha(X_train, Y_train, X_test, stories_train, alpha_grid,
+                           random_state=0, n_inner_folds=4):
+    """Ridge with a penalty chosen independently for every target.
+
+    One shared penalty is a compromise across targets whose signal-to-noise
+    ratios differ by orders of magnitude: whole-cortex data mixes reliable
+    language-network vertices with vertices carrying almost no stimulus-locked
+    signal. Fitting a penalty per target is what reference encoding pipelines do
+    (LITcoder's ``single_alpha=False`` is its default).
+
+    The selection must be *nested*, not a single split. Choosing each target's
+    penalty on one held-out set means fitting one noisy estimate per target, and
+    with thousands of targets that selection noise dominates: measured on this
+    benchmark, single-split per-target selection scored 35% *below* a single
+    shared penalty. Averaging the validation scores over several inner folds
+    before selecting is what makes the extra freedom pay rather than cost.
+
+    Inner folds hold out whole stories, as elsewhere here — a random row split
+    leaks across autocorrelated samples.
+
+    Returns ``(predictions, chosen_alphas)`` with one alpha per target.
+    """
+    from brainscore_core.metrics import per_unit_pearson
+
+    n_targets = Y_train.shape[1]
+    val_scores = np.zeros((len(alpha_grid), n_targets), dtype=np.float64)
+    folds = 0
+    for inner_train, inner_val in run_kfold_masks(
+            stories_train, n_splits=n_inner_folds, random_state=random_state):
+        if not inner_val.any() or not inner_train.any():
+            continue
+        folds += 1
+        inner_mean = X_train[inner_train].mean(axis=0)
+        X_inner = X_train[inner_train] - inner_mean
+        X_val = X_train[inner_val] - inner_mean
+        Y_inner, Y_val = Y_train[inner_train], Y_train[inner_val]
+
+        n_inner, n_features = X_inner.shape
+        use_dual = n_features > n_inner
+        if use_dual:
+            gram = X_inner @ X_inner.T
+            cross, target = X_val @ X_inner.T, Y_inner
+        else:
+            gram = X_inner.T @ X_inner
+            cross, target = X_val, X_inner.T @ Y_inner
+
+        diagonal = np.diag_indices_from(gram)
+        penalised = gram.copy()
+        for index, alpha in enumerate(alpha_grid):
+            penalised[diagonal] = gram[diagonal] + alpha
+            predicted = solve_and_project(penalised, cross, target)
+            val_scores[index] += np.nan_to_num(
+                per_unit_pearson(Y_val, predicted), nan=0.0)
+    val_scores /= max(folds, 1)
+
+    chosen = val_scores.argmax(axis=0)
+    alphas = np.asarray(alpha_grid, dtype=float)[chosen]
+
+    # Refit on the full training fold, one solve per distinct penalty.
+    full_mean = X_train.mean(axis=0)
+    X_full, X_test_centred = X_train - full_mean, X_test - full_mean
+    predictions = np.empty((X_test.shape[0], n_targets), dtype=np.float32)
+    for index, alpha in enumerate(alpha_grid):
+        columns = np.flatnonzero(chosen == index)
+        if columns.size:
+            predictions[:, columns] = dual_aware_ridge_predict(
+                X_full, Y_train[:, columns], X_test_centred, alpha)
+    return predictions, alphas
+
+
 class LeBel2023Encoding(BenchmarkBase):
     """Voxelwise encoding score over all measured cortical vertices."""
 
     def __init__(self, identifier='LeBel2023-UTS03-encoding', region='language_system',
                  delays=DEFAULT_DELAYS, alpha_grid=DEFAULT_ALPHA_GRID,
                  n_splits=5, context_window_tr=5, max_targets=None,
-                 random_state=0):
+                 per_voxel_alpha=False, random_state=0):
         # Ceiling is 1.0 because none is estimable here (see module docstring);
         # the reported value is therefore a raw correlation.
         super().__init__(identifier=identifier, ceiling=Score(1.0),
@@ -175,6 +247,8 @@ class LeBel2023Encoding(BenchmarkBase):
         self._context_window_tr = context_window_tr
         # Subsampling targets keeps a smoke run cheap; None scores all vertices.
         self._max_targets = max_targets
+        # One penalty per target rather than one shared across all of them.
+        self._per_voxel_alpha = per_voxel_alpha
         self._random_state = random_state
         self._cached = None
 
@@ -218,12 +292,15 @@ class LeBel2023Encoding(BenchmarkBase):
         # this grouping for run ids, and a story is the same kind of block.
         for train_mask, test_mask in run_kfold_masks(
                 story_ids, self._n_splits, self._random_state):
-            fold_prediction, alpha = _ridge_grouped_alpha(
+            fitter = (_ridge_per_voxel_alpha if self._per_voxel_alpha
+                      else _ridge_grouped_alpha)
+            fold_prediction, alpha = fitter(
                 X[train_mask], Y[train_mask], X[test_mask],
                 story_ids[train_mask], self._alpha_grid,
                 random_state=self._random_state)
             held_out[test_mask] = fold_prediction
-            chosen_alphas.append(float(alpha))
+            chosen_alphas.append(
+                np.median(alpha).item() if np.ndim(alpha) else float(alpha))
 
         per_vertex, median_r, mean_r = pearson_summary(Y, held_out)
 
@@ -262,3 +339,96 @@ class LeBel2023Encoding(BenchmarkBase):
         rng = np.random.default_rng(self._random_state)
         index = np.sort(rng.choice(Y.shape[1], self._max_targets, replace=False))
         return Y[:, index], index
+
+class LeBel2023EncodingWordLevel(LeBel2023Encoding):
+    """Same scoring, but features are read per word and resampled onto the TRs.
+
+    The parent collapses each TR to one context window up front and reads a
+    single vector for it, which discards the several words that fall inside a TR.
+    The reference pipeline instead reads a representation per word and then
+    downsamples word-time features onto the fMRI grid, and reports that
+    last-token selection is its worst-performing aggregation.
+
+    ``pooling`` selects how word-time features become TR-time features:
+
+    - ``lanczos``  windowed-sinc resampling, low-passed at the TR rate
+    - ``average``  mean of the words whose onset falls inside the TR
+    - ``sum``      sum of those words
+    - ``last``     the final word before the TR (what the parent effectively does)
+    """
+
+    VALID_POOLING = ('lanczos', 'average', 'sum', 'last')
+
+    def __init__(self, pooling='lanczos', context_words=32, **kwargs):
+        if pooling not in self.VALID_POOLING:
+            raise ValueError(
+                f'pooling must be one of {self.VALID_POOLING}; got {pooling!r}')
+        super().__init__(**kwargs)
+        self._pooling = pooling
+        self._context_words = context_words
+        self._word_cached = None
+
+    def _word_data(self):
+        if self._word_cached is None:
+            from ...data.lebel2023.data import build_word_level
+            self._word_cached = build_word_level(
+                context_words=self._context_words)
+        return self._word_cached
+
+    def _data(self):
+        word_stimuli, assembly, _ = self._word_data()
+        return word_stimuli, assembly
+
+    def _model_features(self, candidate, stimulus_set, assembly):
+        """Read one feature per word, then resample onto the TR grid."""
+        from brainscore_core.temporal import lanczos_downsample
+
+        word_stimuli, _, tr_times_by_story = self._word_data()
+        candidate.start_recording(self._region, recording_type='fMRI')
+        predictions = candidate.process(word_stimuli)
+
+        # Order model output to the word rows, matching on id rather than position.
+        position = {sid: i for i, sid in
+                    enumerate(np.asarray(predictions['stimulus_id'].values))}
+        wanted = np.asarray(word_stimuli['stimulus_id'].values)
+        missing = [s for s in wanted if s not in position]
+        if missing:
+            raise ValueError(f'model returned no features for {len(missing)} '
+                             f'words (first: {missing[0]})')
+        order = np.fromiter((position[s] for s in wanted), dtype=int,
+                            count=len(wanted))
+        word_features = np.asarray(predictions.values, dtype=np.float32)[order]
+
+        word_story = np.asarray(word_stimuli['story_id'].values)
+        word_time = np.asarray(word_stimuli['word_time_sec'].values, dtype=float)
+        assembly_story = np.asarray(assembly['story_id'].values)
+
+        out = np.zeros((len(assembly_story), word_features.shape[1]),
+                       dtype=np.float32)
+        for story, tr_times in tr_times_by_story.items():
+            rows = np.flatnonzero(word_story == story)
+            targets = np.flatnonzero(assembly_story == story)
+            out[targets] = self._pool(
+                word_features[rows], word_time[rows], tr_times,
+                lanczos_downsample)
+        return out
+
+    def _pool(self, features, feature_times, tr_times, lanczos):
+        if self._pooling == 'lanczos':
+            return lanczos(features, feature_times, tr_times)
+        # The remaining strategies act on the words falling inside each TR.
+        edges = np.searchsorted(feature_times, tr_times)
+        starts = np.searchsorted(feature_times, tr_times - TR_SEC)
+        pooled = np.zeros((len(tr_times), features.shape[1]), dtype=np.float32)
+        for index, (start, stop) in enumerate(zip(starts, edges)):
+            if stop <= start:
+                continue                       # silence: leave the TR at zero
+            block = features[start:stop]
+            if self._pooling == 'average':
+                pooled[index] = block.mean(axis=0)
+            elif self._pooling == 'sum':
+                pooled[index] = block.sum(axis=0)
+            else:                              # 'last'
+                pooled[index] = block[-1]
+        return pooled
+

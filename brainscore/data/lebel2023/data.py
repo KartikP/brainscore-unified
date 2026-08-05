@@ -203,3 +203,92 @@ def load(context_window_tr: int = DEFAULT_CONTEXT_TR, use_cache: bool = True):
         partial.replace(cache)
         stimulus_set.to_csv(cache.with_suffix('.csv'), index=False)
     return stimulus_set, assembly
+
+DEFAULT_CONTEXT_WORDS = 32
+
+
+def build_word_level(pickle_path=None, context_words: int = DEFAULT_CONTEXT_WORDS):
+    """Convert the source pickle into word-level stimuli plus the TR grid.
+
+    One row per spoken word, each carrying the running context that ends at that
+    word, so a model's representation of the row is its representation *of that
+    word in context*. The row also carries the word's onset time, which is what
+    lets features be resampled onto the fMRI grid afterwards
+    (:func:`brainscore_core.temporal.lanczos_downsample`).
+
+    This is the alternative to collapsing each TR to a single context window up
+    front: it keeps the several words that fall inside one TR distinct, which is
+    the information last-token selection throws away.
+
+    Returns ``(word_stimuli, assembly, tr_times_by_story)``.
+    """
+    path = Path(pickle_path) if pickle_path else _pickle_path()
+    if not path.exists():
+        raise FileNotFoundError(
+            f"LeBel pickle not found at {path}. Set BRAINSCORE_LEBEL_PICKLE to "
+            f"its location.")
+    source = _read_pickle(path)
+
+    rows, blocks, tr_times_by_story = [], [], {}
+    for story in source.stories:
+        story_data = source.story_data[story]
+        bold = np.asarray(story_data.brain_data)
+        n_tr = bold.shape[0]
+        all_tr_times = np.asarray(story_data.tr_times, dtype=float)
+        expected = n_tr + TRIM_HEAD + TRIM_TAIL
+        if len(all_tr_times) != expected:
+            raise ValueError(
+                f"{story}: expected {expected} tr_times for {n_tr} volumes, "
+                f"found {len(all_tr_times)}.")
+        tr_times_by_story[story] = all_tr_times[TRIM_HEAD:TRIM_HEAD + n_tr]
+
+        words = [str(w).strip() for w in story_data.words]
+        times = np.asarray(story_data.data_times, dtype=float)
+        order = np.argsort(times)          # onset order is not guaranteed
+        words = [words[i] for i in order]
+        times = times[order]
+
+        contexts = []
+        for index in range(len(words)):
+            window = words[max(0, index - context_words + 1):index + 1]
+            text = ' '.join(w for w in window if w)
+            contexts.append(text if text else '.')
+        rows.append(pd.DataFrame({
+            'story_id': story,
+            'word_index': np.arange(len(words)),
+            'word_time_sec': times,
+            'sentence': contexts,
+        }))
+        blocks.append(bold)
+
+    word_stimuli = StimulusSet(pd.concat(rows, ignore_index=True))
+    word_stimuli['stimulus_id'] = [
+        f'{row.story_id}_w{row.word_index:05d}'
+        for row in word_stimuli.itertuples()]
+    word_stimuli.identifier = f'{IDENTIFIER}-words{context_words}'
+    word_stimuli.stimulus_paths = {}
+
+    data = np.concatenate(blocks, axis=0).astype(np.float32)
+    n_neuroid = data.shape[1]
+    tr_story = np.concatenate(
+        [[story] * len(tr_times_by_story[story]) for story in source.stories])
+    tr_time = np.concatenate([tr_times_by_story[s] for s in source.stories])
+    assembly = NeuroidAssembly(
+        data,
+        dims=('presentation', 'neuroid'),
+        coords={
+            'stimulus_id': ('presentation',
+                            [f'{s}_tr{i:04d}' for s, i in zip(
+                                tr_story,
+                                np.concatenate([np.arange(len(tr_times_by_story[s]))
+                                                for s in source.stories]))]),
+            'story_id': ('presentation', tr_story),
+            'tr_time_sec': ('presentation', tr_time),
+            'neuroid_id': ('neuroid', [f'v{i:05d}' for i in range(n_neuroid)]),
+            'vertex_index': ('neuroid', np.arange(n_neuroid)),
+            'subject': ('neuroid', [SUBJECT] * n_neuroid),
+        },
+    )
+    assembly.name = IDENTIFIER
+    return word_stimuli, assembly, tr_times_by_story
+
