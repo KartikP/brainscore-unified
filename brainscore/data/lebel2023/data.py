@@ -182,7 +182,13 @@ def load(context_window_tr: int = DEFAULT_CONTEXT_TR, use_cache: bool = True):
     The cache key includes the context window, so changing it produces a
     separate file rather than silently reusing stale text.
     """
-    cache = _cache_dir() / f'lebel_uts03_context{context_window_tr}tr.nc'
+    # The trim is part of the cache identity. It was inverted once, and a cache
+    # written under the old convention is indistinguishable from a correct one by
+    # inspection — it just scores half as well. Keying on it makes a stale file a
+    # miss rather than a silent wrong answer.
+    cache = (_cache_dir() /
+             f'lebel_uts03_context{context_window_tr}tr'
+             f'_trim{TRIM_HEAD}-{TRIM_TAIL}.nc')
     if use_cache and cache.exists():
         import xarray as xr
         assembly = NeuroidAssembly(xr.open_dataarray(cache).load())

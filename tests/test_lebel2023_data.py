@@ -115,3 +115,36 @@ class TestTrimDirection:
         assert np.allclose(emitted, all_tr_times[TRIM_HEAD:TRIM_HEAD + n_tr])
         # and explicitly not the inverted convention
         assert not np.allclose(emitted, all_tr_times[TRIM_TAIL:TRIM_TAIL + n_tr])
+
+
+def test_cache_key_includes_the_trim(tmp_path, monkeypatch):
+    """A cache written under a different trim must not be reused.
+
+    The trim was inverted once. A file written under the old convention looks
+    identical on inspection and simply scores half as well, so the cache has to
+    treat it as a different artifact rather than a hit.
+    """
+    import brainscore.data.lebel2023.data as data_module
+    monkeypatch.setattr(data_module, '_cache_dir', lambda: tmp_path)
+
+    seen = []
+    monkeypatch.setattr(data_module, 'build',
+                        lambda **kw: seen.append(kw) or (_ for _ in ()).throw(
+                            RuntimeError('stop after cache miss')))
+
+    for head, tail in ((10, 5), (5, 10)):
+        monkeypatch.setattr(data_module, 'TRIM_HEAD', head)
+        monkeypatch.setattr(data_module, 'TRIM_TAIL', tail)
+        # touch a cache file for this trim, then confirm the other trim misses it
+        for existing in tmp_path.glob('*.nc'):
+            existing.unlink()
+        (tmp_path / f'lebel_uts03_context5tr_trim{head}-{tail}.nc').touch()
+        monkeypatch.setattr(data_module, 'TRIM_HEAD', tail)
+        monkeypatch.setattr(data_module, 'TRIM_TAIL', head)
+        try:
+            data_module.load()
+        except RuntimeError as error:
+            assert 'stop after cache miss' in str(error)
+        else:
+            raise AssertionError(
+                f'cache written at {head}/{tail} was reused at {tail}/{head}')
