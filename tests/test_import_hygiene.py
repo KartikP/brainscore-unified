@@ -19,8 +19,8 @@ def test_import_brainscore_does_not_load_heavy_deps():
         "loaded = [m for m in heavy if m in sys.modules]\n"
         "assert not loaded, f'import brainscore eagerly loaded {loaded}'\n"
         # registries still populate without importing the plugins' model.py
-        "assert len(brainscore.model_registry) == 27, "
-        "f'model_registry={len(brainscore.model_registry)} (expected 27)'\n"
+        "assert len(brainscore.model_registry) == 28, "
+        "f'model_registry={len(brainscore.model_registry)} (expected 28)'\n"
         "assert len(brainscore.benchmark_registry) == 33, "
         "f'benchmark_registry={len(brainscore.benchmark_registry)} (expected 33)'\n"
         "print('OK')\n"

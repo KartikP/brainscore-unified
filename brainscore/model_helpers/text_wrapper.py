@@ -94,6 +94,39 @@ def align_word_times_to_tokens(word_ids, word_onsets_ms, word_durations_ms):
     return start, end
 
 
+
+def _is_externally_placed(model) -> bool:
+    """True when something has already decided where this model lives.
+
+    ``accelerate`` records its plan as ``hf_device_map``, but only on the object
+    it loaded — a submodule handed to this wrapper will not carry it. So the
+    parameters are inspected directly: anything still on ``meta``, or spread over
+    more than one device, means the placement is not ours to change.
+    """
+    if getattr(model, 'hf_device_map', None):
+        return True
+    devices = set()
+    for parameter in model.parameters():
+        if parameter.device.type == 'meta':
+            return True
+        devices.add(parameter.device)
+        if len(devices) > 1:
+            return True
+    return False
+
+
+def _input_device(model):
+    """Where inputs should be sent for a model we did not place.
+
+    The embedding is what consumes ``input_ids``, so its device is the one that
+    matters; accelerate moves activations between devices from there on.
+    """
+    embedding = getattr(model, 'embed_tokens', None)
+    if embedding is not None:
+        return next(embedding.parameters()).device
+    return next(model.parameters()).device
+
+
 class TextWrapper:
     """Text model wrapper symmetric with PytorchWrapper.
 
@@ -131,8 +164,16 @@ class TextWrapper:
         self._max_length = max_length
         self._batch_size = batch_size
         from brainscore.model_helpers._device import select_device
-        self._device = select_device()
-        self._model = self._model.to(self._device)
+        # A model loaded with device_map='auto' is already placed by accelerate,
+        # possibly with layers offloaded to host memory or left on meta. Calling
+        # .to() on it raises "Cannot copy out of meta tensor". Models too large
+        # for one accelerator are loaded that way, so respect the existing
+        # placement and only move inputs to where the model's own inputs live.
+        if _is_externally_placed(self._model):
+            self._device = _input_device(self._model)
+        else:
+            self._device = select_device()
+            self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
         # Cache key: prefer explicit backbone_id, fall back to identifier.
@@ -472,7 +513,15 @@ class TextWrapper:
         def hook_fn(_module, _input, output, name=layer_name):
             if isinstance(output, (tuple, list)):
                 output = output[0]
-            target_dict[name] = output.cpu().data.numpy()
+            # numpy has no bfloat16, and large models are routinely loaded in
+            # it, so a float tensor of any width is promoted on the way out
+            # rather than raising "unsupported ScalarType BFloat16". torch is
+            # imported per-method in this module, so the check reads the dtype
+            # off the tensor instead of naming torch types.
+            activations = output.detach().cpu()
+            if activations.dtype.is_floating_point:
+                activations = activations.float()
+            target_dict[name] = activations.numpy()
 
         return layer.register_forward_hook(hook_fn)
 

@@ -6,6 +6,7 @@ They're imported here so the registry populates on package load.
 
 from . import clip_vit_b_32  # noqa: F401
 from . import qwen25_vl_3b   # noqa: F401
+from . import qwen36_27b  # noqa: F401  27B text tower (needs transformers>=5)
 from . import blip2_opt_2_7b  # noqa: F401
 from . import gpt2            # noqa: F401
 from . import random_vit_b_32  # noqa: F401   null-control: untrained ViT + logistic
