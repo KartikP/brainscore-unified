@@ -9,9 +9,10 @@ Two facts about the source drive this module:
 1. The pickle references ``encoding.*`` classes that are not installed. It is
    read with an unpickler that substitutes permissive stand-ins, so no
    third-party package is required.
-2. ``tr_times`` is 15 entries longer than ``brain_data`` for every story. That
-   is the Huth-lab trim of 5 TRs from the start and 10 from the end, so
-   ``brain_data[i]`` is the volume acquired at ``tr_times[i + 5]``.
+2. ``tr_times`` is 15 entries longer than ``brain_data`` for every story, split
+   10 from the head and 5 from the tail, so ``brain_data[i]`` is the volume
+   acquired at ``tr_times[i + 10]``. The count alone does not fix the direction —
+   getting it backwards misaligns features against BOLD by five samples.
 
 The conversion emits one stimulus row per TR. Each row carries the words spoken
 in the seconds leading up to that TR, which is what a text model reads.
@@ -28,8 +29,14 @@ from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidA
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 TR_SEC = 2.0
-TRIM_HEAD = 5     # TRs dropped from the start of each story
-TRIM_TAIL = 10    # TRs dropped from the end of each story
+# Ten TRs are dropped from the head of each story and five from the tail, so
+# brain_data[i] is the volume acquired at tr_times[i + 10]. This is the split the
+# reference pipeline hardcodes (`downsampled[10:-5]` in LITcoder's train_lebel),
+# and it is not interchangeable with the other way round: assuming 5/10 puts the
+# features five TRs early, which made the regression fit BOLD from words up to
+# six seconds in the *future* and roughly halved every score.
+TRIM_HEAD = 10    # TRs dropped from the start of each story
+TRIM_TAIL = 5     # TRs dropped from the end of each story
 DEFAULT_CONTEXT_TR = 5    # words from this many TRs before each sample
 
 SUBJECT = 'UTS03'

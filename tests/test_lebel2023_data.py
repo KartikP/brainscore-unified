@@ -9,7 +9,8 @@ times, and is tested here without the source pickle.
 import numpy as np
 import pytest
 
-from brainscore.data.lebel2023.data import TR_SEC, TRIM_HEAD, TRIM_TAIL, _context_sentences
+from brainscore.data.lebel2023.data import (
+    TR_SEC, TRIM_HEAD, TRIM_TAIL, _context_sentences)
 
 pytestmark = pytest.mark.unit
 
@@ -59,12 +60,58 @@ class TestContextSentences:
         assert len(got) == len(tr_times)
 
 
-def test_trim_constants_match_the_huth_convention():
-    """brain_data[i] is the volume at tr_times[i + TRIM_HEAD].
-
-    The loader asserts len(tr_times) == n_tr + TRIM_HEAD + TRIM_TAIL per story;
-    measured on the source, that difference is exactly 15 for all 25 stories.
-    """
-    assert (TRIM_HEAD, TRIM_TAIL) == (5, 10)
-    assert TRIM_HEAD + TRIM_TAIL == 15
+def test_sampling_interval():
     assert TR_SEC == 2.0
+
+
+class TestTrimDirection:
+    """The 15 spare ``tr_times`` split 10 from the head and 5 from the tail.
+
+    Getting this backwards is not caught by any consistency check: 5/10 and 10/5
+    both satisfy ``len(tr_times) == n_tr + 15``, which is what the loader asserts.
+    The wrong direction places features five samples early, so the regression
+    fits BOLD from words up to six seconds in the *future* — physiologically
+    impossible, and it roughly halved every score on this benchmark before it was
+    found. The reference pipeline hardcodes ``downsampled[10:-5]``.
+    """
+
+    def test_head_is_larger_than_tail(self):
+        assert TRIM_HEAD == 10 and TRIM_TAIL == 5
+        assert TRIM_HEAD > TRIM_TAIL, (
+            'inverting the trim misaligns features against BOLD by five samples')
+
+    def test_total_is_unchanged(self):
+        """Both directions satisfy this — which is exactly why it is not enough."""
+        assert TRIM_HEAD + TRIM_TAIL == 15
+
+    def test_build_indexes_tr_times_from_the_head_offset(self, monkeypatch, tmp_path):
+        """The emitted TR times must start at ``tr_times[TRIM_HEAD]``.
+
+        Pins the indexing itself, not just the constants, so a change to either
+        one without the other fails here.
+        """
+        import numpy as np
+        import brainscore.data.lebel2023.data as data_module
+
+        n_tr = 12
+        all_tr_times = np.arange(-9.0, -9.0 + 2.0 * (n_tr + 15), 2.0)
+
+        class _Story:
+            brain_data = np.zeros((n_tr, 3), dtype=np.float32)
+            tr_times = all_tr_times
+            words = ['a', 'b', 'c']
+            data_times = np.array([0.5, 1.5, 2.5])
+
+        class _Source:
+            stories = ['only']
+            story_data = {'only': _Story()}
+
+        probe = tmp_path / 'fake.pkl'
+        probe.write_bytes(b'not really a pickle')
+        monkeypatch.setattr(data_module, '_read_pickle', lambda path: _Source())
+
+        stimuli, _ = data_module.build(pickle_path=probe)
+        emitted = np.asarray(stimuli['tr_time_sec'].values)
+        assert np.allclose(emitted, all_tr_times[TRIM_HEAD:TRIM_HEAD + n_tr])
+        # and explicitly not the inverted convention
+        assert not np.allclose(emitted, all_tr_times[TRIM_TAIL:TRIM_TAIL + n_tr])

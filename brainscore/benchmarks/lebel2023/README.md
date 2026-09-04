@@ -30,9 +30,14 @@ Two properties of the source drive `data.py`:
 
 - It references `encoding.*` classes that are not installed, so it is read with an
   unpickler that substitutes permissive stand-ins.
-- `tr_times` is 15 entries longer than `brain_data` for every story — the Huth-lab trim of
-  5 TRs from the start and 10 from the end. So `brain_data[i]` was acquired at
-  `tr_times[i + 5]`. This is asserted per story at build time.
+- `tr_times` is 15 entries longer than `brain_data` for every story, split **10 from the
+  head and 5 from the tail**, so `brain_data[i]` was acquired at `tr_times[i + 10]`. The
+  reference pipeline hardcodes this as `downsampled[10:-5]`. **The count does not
+  determine the direction** — both splits satisfy `len(tr_times) == n_tr + 15`, which is
+  all the loader can assert, and getting it backwards places features five samples early.
+  That inversion made the regression fit BOLD from words up to six seconds in the future
+  and roughly halved every score here before it was caught; it is now pinned by
+  `tests/test_lebel2023_data.py::TestTrimDirection`.
 
 BOLD arrives as raw uncentered intensity (mean ≈ 27000) and is standardised per vertex per
 story during scoring.
@@ -61,53 +66,56 @@ below, not against ceiling-normalised benchmarks such as MajajHong or Pereira.
 
 All 20484 vertices, held-out median Pearson r.
 
-| Model | Layer | Features | median r | mean r | frac r > 0 | p99 | best vertex |
-|---|---|---|---|---|---|---|---|
-| GPT-2 (124M) | 11 of 12 | **per word, Lanczos** | **0.0511** | 0.0546 | 89.7% | 0.181 | 0.276 |
-| GPT-2 (124M) | 11 of 12 | per TR, last token | 0.0422 | 0.0464 | 89.7% | 0.162 | 0.263 |
-| Qwen3.6-27B | 52 of 64 (best) | per TR, last token | 0.0628 | 0.0678 | 92.7% | 0.210 | 0.311 |
-| Qwen3.6-27B | 64 of 64 (last) | per TR, last token | 0.0455 | 0.0522 | 87.4% | 0.199 | 0.306 |
+| Model | Layer | median r | mean r | frac r > 0 | p99 | best vertex |
+|---|---|---|---|---|---|---|
+| GPT-2 (124M) | 11 of 12 | **0.1013** | 0.1134 | 95.3% | 0.360 | 0.543 |
 
-The Qwen rows predate the default change and were measured on the per-TR path; they have
-not been re-run word-level, which would be expected to raise them similarly.
+Most of cortex is barely predicted and a minority is predicted well, which is the
+distribution a whole-brain benchmark exists to show.
+
+### How this number moved
+
+| pipeline | median r |
+|---|---|
+| per-TR context, last token, inverted trim | 0.0422 |
+| + word-level features, Lanczos-resampled | 0.0511 |
+| + corrected 10/5 trim alignment | **0.1013** |
+
+The alignment fix is worth about 2x on its own. Two independent checks support it rather
+than an argmax over candidate splits: the reference pipeline hardcodes `[10:-5]`, and the
+FIR-delay curve only rises to a 9-12 s plateau — reproducing LITcoder's Figure 3B — once
+the alignment is right. At the inverted trim that curve fell monotonically, which was
+previously and wrongly explained as context and delays being substitutes.
 
 ### Within-TR pooling
 
-Scored on 2000 vertices with GPT-2, so comparable to each other but not to the table
-above:
+Scored on 2000 vertices with GPT-2, comparable to each other but not to the table above,
+and measured before the alignment fix:
 
 | pooling | median r |
 |---|---|
-| per-TR context, last token (the old default) | 0.0436 |
+| per-TR context, last token | 0.0436 |
 | word-level, last | 0.0445 |
 | word-level, sum | 0.0478 |
 | word-level, average | 0.0490 |
 | **word-level, Lanczos** | **0.0525** |
 
-The ordering `last < sum ~ average < Lanczos` reproduces the reference pipeline's, and
-Lanczos beats last-token by 18% on the same word-level features.
+The ordering `last < sum ~ average < Lanczos` reproduces the reference pipeline's.
 
-Most of cortex is barely predicted and a minority is predicted well, which is the
-distribution a whole-brain benchmark exists to show.
+### Comparison to LITcoder
 
-**Layer choice is worth as much as model scale here.** Qwen at its best layer beats GPT-2
-by 49%, but Qwen at its *last* layer beats GPT-2 by only 8%. Reading a large model at its
-final block — which is what a naive registration does — discards most of the advantage.
+LITcoder reports ~0.21 for GPT-2 as the **mean within a LanA language mask** (their top-10%
+fsaverage5 mask), against our **median over all cortex** — different quantities. On our
+corrected map the best any 10% mask could achieve is 0.287, so their figure is now
+comfortably reachable and no unexplained residual remains. Before the alignment fix that
+ceiling was 0.145, i.e. below their number, which is what flagged a real deficit rather
+than a masking difference.
 
-Layer sweep (2000-vertex subset, so not comparable to the table above):
-
-| layer | 4 | 12 | 20 | 28 | 36 | 44 | 52 | 60 | 64 |
-|---|---|---|---|---|---|---|---|---|---|
-| median r | 0.0225 | 0.0426 | 0.0568 | 0.0546 | 0.0567 | 0.0569 | **0.0615** | 0.0534 | 0.0489 |
-
-Accuracy rises steeply through the first third of the network, plateaus across the middle,
-and falls over the last quarter — the usual profile for language models against brain data.
-
-Qwen3.6 features were extracted in an isolated environment, because `qwen3_5` requires a
-newer transformers than this repo pins, and fed to the benchmark through the
-`_model_features` seam. Reproducing that arm therefore needs an environment with
-transformers >= 5 for the extraction step; the scoring half runs under the pinned
-environment unchanged.
+> [!warning] Qwen3.6-27B figures withdrawn
+> Every Qwen number previously reported here was measured at the inverted alignment and on
+> the per-TR path, so all of them are wrong. They are removed rather than rescaled; the
+> model needs re-scoring. Its features were extracted out of band because `transformers<5`
+> blocked registration, a constraint since lifted.
 
 ## Nulls
 
@@ -115,14 +123,13 @@ Run these before trusting any new result on this benchmark.
 
 | Null | median r |
 |---|---|
-| GPT-2 | +0.0436 |
-| Qwen3.6-27B layer 52 | +0.0615 |
-| timing-shuffled, GPT-2 | −0.0055 |
-| timing-shuffled, Qwen3.6-27B layer 52 | +0.0019 |
+| GPT-2 | +0.1001 |
+| timing-shuffled | +0.0032 |
 | constant features | undefined — no varying prediction |
 
-(2000-vertex subset, so directly comparable to each other.) Both models' timing-shuffled
-nulls sit at zero, so neither score comes from story identity or feature scale.
+(2000-vertex subset.) Re-run after the alignment fix, since a change that doubles a score
+is exactly when the floor needs rechecking. The shuffled null sits at zero and 95.1% of
+vertices are positive, so the increase is signal rather than an artifact.
 
 The constant null caught a real design error. An earlier version zero-padded the opening
 TRs of each story where the delayed copies had no history. That padding was identical
@@ -137,11 +144,11 @@ mostly measuring story onsets. Those TRs are now excluded rather than padded
 - **One participant.** Nothing here separates this brain from brains in general.
 - **No noise ceiling.** Needs the repeated stories from LeBel's design to become
   normalisable.
-- **No anatomy.** The pickle carries no vertex-to-region mapping, so vertices are
-  identified by index only. The documented LITCoder pipeline (`to_mni_lebel.py`) produces
-  MNI152 volumetric output, while the vertex count here is exactly 2 × 10242 — the
-  fsaverage5 surface. That discrepancy is unresolved, so no hemisphere or region coord is
-  attached. Confirm the space with the data provider before adding an atlas.
+- **No anatomy attached.** The pickle carries no vertex-to-region mapping, so vertices are
+  identified by index only. The space itself is settled: the LITcoder paper states its
+  whole-surface LeBel analyses are fsaverage5, ~22k vertices, subject UTS03 — this data.
+  Adding a region coord needs an atlas projected to that surface, not a resolution of any
+  ambiguity.
 - **Per-target ridge penalties do not help here.** Fitting one penalty per vertex, as
   reference pipelines do by default, scored 31% *below* a single shared penalty, and
   nesting the selection over four inner folds barely recovered it. Broken down by
