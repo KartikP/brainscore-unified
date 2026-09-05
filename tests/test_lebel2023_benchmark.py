@@ -368,3 +368,81 @@ class TestRegistration:
         from brainscore.benchmarks.lebel2023.benchmark import LeBel2023EncodingWordLevel
         with pytest.raises(ValueError, match='pooling must be one of'):
             LeBel2023EncodingWordLevel(pooling='nearest')
+
+
+class TestPoolPredictionsSeam:
+    """Pooling must be reachable without re-extracting.
+
+    A depth sweep records every layer in one pass — an hour of forward passes
+    for Qwen3.6-27B — and then scores each layer from that shared recording.
+    That only works if resampling word-time features onto the fMRI grid is
+    callable on predictions the benchmark did not fetch itself.
+    """
+
+    @staticmethod
+    def _stub(benchmark):
+        import pandas as pd
+        words = pd.DataFrame({
+            'stimulus_id': ['a0', 'a1', 'b0', 'b1'],
+            'story_id': ['a', 'a', 'b', 'b'],
+            'word_time_sec': [0.5, 1.5, 0.5, 1.5],
+        })
+        assembly = {'story_id': type('C', (), {'values': np.array(['a', 'b'])})()}
+
+        class _Assembly:
+            def __getitem__(self, key):
+                return assembly[key]
+
+        tr_times = {'a': np.array([2.0]), 'b': np.array([2.0])}
+        benchmark._word_cached = (words, None, tr_times)
+        return words, _Assembly()
+
+    def _predictions(self, ids, values):
+        class _Predictions:
+            def __init__(self):
+                self.values = values
+            def __getitem__(self, key):
+                assert key == 'stimulus_id'
+                return type('C', (), {'values': np.asarray(ids)})()
+        return _Predictions()
+
+    def test_pools_predictions_it_did_not_fetch(self):
+        from brainscore.benchmarks.lebel2023.benchmark import LeBel2023EncodingWordLevel
+        benchmark = LeBel2023EncodingWordLevel(pooling='last', identifier='seam')
+        _, assembly = self._stub(benchmark)
+        values = np.array([[1.], [2.], [3.], [4.]], dtype=np.float32)
+        out = benchmark._pool_predictions(
+            self._predictions(['a0', 'a1', 'b0', 'b1'], values), assembly)
+        # one row per TR; 'last' takes the final word before each story's TR
+        assert out.shape == (2, 1)
+        assert out[0, 0] == 2. and out[1, 0] == 4.
+
+    def test_pooling_reorders_by_stimulus_id(self):
+        """A sweep slices a shared recording, so row order is not guaranteed."""
+        from brainscore.benchmarks.lebel2023.benchmark import LeBel2023EncodingWordLevel
+        benchmark = LeBel2023EncodingWordLevel(pooling='last', identifier='seam')
+        _, assembly = self._stub(benchmark)
+        shuffled = np.array([[4.], [1.], [3.], [2.]], dtype=np.float32)
+        out = benchmark._pool_predictions(
+            self._predictions(['b1', 'a0', 'b0', 'a1'], shuffled), assembly)
+        assert out[0, 0] == 2. and out[1, 0] == 4.
+
+    def test_model_features_routes_through_the_seam(self):
+        """Overriding pooling alone must change what _model_features returns."""
+        from brainscore.benchmarks.lebel2023.benchmark import LeBel2023EncodingWordLevel
+
+        class _Subclass(LeBel2023EncodingWordLevel):
+            def _pool_predictions(self, predictions, assembly):
+                return 'pooled'
+
+        benchmark = _Subclass(identifier='seam')
+        words, assembly = self._stub(benchmark)
+
+        class _Candidate:
+            def start_recording(self, region, recording_type=None):
+                pass
+            def process(self, stimuli):
+                assert stimuli is words
+                return None
+
+        assert benchmark._model_features(_Candidate(), 'STIM', assembly) == 'pooled'

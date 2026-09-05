@@ -381,11 +381,20 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
 
     def _model_features(self, candidate, stimulus_set, assembly):
         """Read one feature per word, then resample onto the TR grid."""
+        word_stimuli, _, _ = self._word_data()
+        candidate.start_recording(self._region, recording_type='fMRI')
+        return self._pool_predictions(candidate.process(word_stimuli), assembly)
+
+    def _pool_predictions(self, predictions, assembly):
+        """Resample per-word model output onto the fMRI sampling grid.
+
+        Split out from :meth:`_model_features` so a caller that already holds
+        predictions — a layer sweep recording many layers in one pass, say —
+        can pool them without extracting again.
+        """
         from brainscore_core.temporal import lanczos_downsample
 
         word_stimuli, _, tr_times_by_story = self._word_data()
-        candidate.start_recording(self._region, recording_type='fMRI')
-        predictions = candidate.process(word_stimuli)
 
         # Order model output to the word rows, matching on id rather than position.
         position = {sid: i for i, sid in

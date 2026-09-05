@@ -71,10 +71,10 @@ All 20484 vertices, held-out median Pearson r.
 | Qwen3.6-27B | 40 of 64 | **0.1318** | 0.1432 | 96.5% | 0.414 | 0.592 |
 | GPT-2 (124M) | 11 of 12 | 0.1013 | 0.1134 | 95.3% | 0.360 | 0.543 |
 
-Qwen predicts 30% better than GPT-2 at the median and separates further in the tail
-(p99 0.414 against 0.360), which is where a language-responsive vertex would sit. Its
-layer is provisional — chosen from a sweep run at the inverted alignment — so this is a
-floor for the model, not a tuned result.
+These are the scores at each model's registered layer, which is what `score()` returns.
+Qwen leads by 30% at the median and separates further in the tail (p99 0.414 against
+0.360), where a language-responsive vertex would sit. About a third of that lead is a
+layer artifact — see below.
 
 Qwen figures published here before the alignment fix were measured on the inverted time
 axis and the per-TR path; they were discarded rather than rescaled, and this row is a
@@ -82,6 +82,42 @@ fresh run.
 
 Most of cortex is barely predicted and a minority is predicted well, which is the
 distribution a whole-brain benchmark exists to show.
+
+### Depth
+
+Both models swept on all 20484 vertices, every layer recorded in one pass
+(`start_recording([...])`) and scored from the shared recording.
+
+| Qwen3.6-27B | 0 | 5 | 10 | 15 | 20 | 25 | **30** | 35 | 40 | 45 | 50 | 55 | 60 | 63 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| median r | .063 | .082 | .097 | .116 | .123 | .126 | **.132** | .129 | .132 | .129 | .131 | .126 | .126 | .117 |
+
+| GPT-2 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | **7** | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| median r | .082 | .083 | .086 | .088 | .098 | .101 | .104 | **.112** | .108 | .110 | .106 | .101 |
+
+Qwen was swept at stride 5 rather than 4 or 8: it places a full-attention block every 4th
+position, so a stride sharing a factor with 4 samples one kind of block and reports that
+subpopulation's curve as the model's.
+
+Both rise to a plateau over the middle-to-late stack and fall over the last fifth. Read
+three ways:
+
+| comparison | Qwen | GPT-2 | Qwen lead |
+|---|---|---|---|
+| registered layer | 0.1318 (L40) | 0.1013 (h.11) | +30% |
+| best of sweep | 0.1320 (L30) | 0.1124 (h.7) | +17% |
+| **plateau mean** | **0.1306** | **0.1069** | **+22%** |
+
+**Quote +22%.** Best-of-sweep flatters whichever model happens to spike: GPT-2's best sits
+1.39 sd above its own plateau against Qwen's 1.09, so picking maxima rewards its noisier
+curve. The registered-layer comparison flatters Qwen for the opposite reason — GPT-2 is
+registered at its *last* block, 0.011 past its peak, while Qwen's `layers.40` lands on the
+plateau.
+
+Sweeping gained Qwen **+0.0003** over its inherited layer. The layer was carried over from
+a sweep run at the inverted alignment, so it was a guess; the plateau is broad enough
+(0.1306 ± 0.0013 across L30-L50) that the guess cost nothing. `layers.40` stays.
 
 ### How this number moved
 
@@ -160,10 +196,10 @@ mostly measuring story onsets. Those TRs are now excluded rather than padded
   selecting a penalty per target needs per-target signal-to-noise high enough to select
   on, which whole-cortex data at this SNR does not have. Available as
   `per_voxel_alpha=True`; off by default.
-- **Registered models are read at one hand-picked block.** The Qwen sweep shows reading
-  the final block instead costs roughly a quarter of the achievable score, but that sweep
-  predates the alignment fix, so `layers.40` is a reasonable guess rather than a measured
-  optimum. `gpt2`'s `region_layer_map` still points at
+- **GPT-2 is registered past its own peak.** `h.11` scores 0.1013 where `h.7` scores
+  0.1124. Re-mapping would raise this benchmark and move every other benchmark GPT-2
+  appears on, so it is left alone pending a deliberate layer-mapping pass. Qwen's
+  `layers.40` is confirmed on-plateau and needs no change. `gpt2`'s `region_layer_map` still points at
   `h.11`; re-mapping it would improve this benchmark but would move its scores on every
   other benchmark, so it is left alone pending a deliberate layer-mapping pass.
 - **Qwen3.6-27B needs four accelerators.** It is registered and scores through the normal
