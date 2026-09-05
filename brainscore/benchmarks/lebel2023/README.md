@@ -68,7 +68,17 @@ All 20484 vertices, held-out median Pearson r.
 
 | Model | Layer | median r | mean r | frac r > 0 | p99 | best vertex |
 |---|---|---|---|---|---|---|
-| GPT-2 (124M) | 11 of 12 | **0.1013** | 0.1134 | 95.3% | 0.360 | 0.543 |
+| Qwen3.6-27B | 40 of 64 | **0.1318** | 0.1432 | 96.5% | 0.414 | 0.592 |
+| GPT-2 (124M) | 11 of 12 | 0.1013 | 0.1134 | 95.3% | 0.360 | 0.543 |
+
+Qwen predicts 30% better than GPT-2 at the median and separates further in the tail
+(p99 0.414 against 0.360), which is where a language-responsive vertex would sit. Its
+layer is provisional — chosen from a sweep run at the inverted alignment — so this is a
+floor for the model, not a tuned result.
+
+Qwen figures published here before the alignment fix were measured on the inverted time
+axis and the per-TR path; they were discarded rather than rescaled, and this row is a
+fresh run.
 
 Most of cortex is barely predicted and a minority is predicted well, which is the
 distribution a whole-brain benchmark exists to show.
@@ -111,12 +121,6 @@ comfortably reachable and no unexplained residual remains. Before the alignment 
 ceiling was 0.145, i.e. below their number, which is what flagged a real deficit rather
 than a masking difference.
 
-> [!warning] Qwen3.6-27B figures withdrawn
-> Every Qwen number previously reported here was measured at the inverted alignment and on
-> the per-TR path, so all of them are wrong. They are removed rather than rescaled; the
-> model needs re-scoring. Its features were extracted out of band because `transformers<5`
-> blocked registration, a constraint since lifted.
-
 ## Nulls
 
 Run these before trusting any new result on this benchmark.
@@ -156,9 +160,13 @@ mostly measuring story onsets. Those TRs are now excluded rather than padded
   selecting a penalty per target needs per-target signal-to-noise high enough to select
   on, which whole-cortex data at this SNR does not have. Available as
   `per_voxel_alpha=True`; off by default.
-- **Registered models are read at their final block.** The Qwen sweep shows this costs
-  roughly a quarter of the achievable score. `gpt2`'s `region_layer_map` still points at
+- **Registered models are read at one hand-picked block.** The Qwen sweep shows reading
+  the final block instead costs roughly a quarter of the achievable score, but that sweep
+  predates the alignment fix, so `layers.40` is a reasonable guess rather than a measured
+  optimum. `gpt2`'s `region_layer_map` still points at
   `h.11`; re-mapping it would improve this benchmark but would move its scores on every
   other benchmark, so it is left alone pending a deliberate layer-mapping pass.
-- **Qwen3.6-27B is not registered as a model plugin.** Its features were extracted out of
-  band because the repo pins `transformers<5.0`. Registering it needs that pin resolved.
+- **Qwen3.6-27B needs four accelerators.** It is registered and scores through the normal
+  `process()` path, but at bf16 it is 54 GB and was run on 4x A10G. `device_map='auto'`
+  left to itself packs each card to the brim and then OOMs on activations, so the plugin
+  reserves 22% of each device (`WEIGHT_FRACTION`).
