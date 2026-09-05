@@ -22,6 +22,23 @@ HF_IDENTIFIER = 'Qwen/Qwen3.6-27B'
 REGION_LAYER_MAP = {'language_system': 'layers.40'}
 
 
+# Share of each accelerator given over to weights; the rest holds activations.
+WEIGHT_FRACTION = 0.78
+
+
+def _placement_budget(torch):
+    """Per-device memory budget for ``device_map='auto'``, or None on CPU."""
+    if not torch.cuda.is_available():
+        return None
+    budget = {
+        index: int(torch.cuda.get_device_properties(index).total_memory
+                   * WEIGHT_FRACTION)
+        for index in range(torch.cuda.device_count())
+    }
+    budget['cpu'] = '64GiB'      # spill target if the weights still do not fit
+    return budget
+
+
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'qwen3.6-27b'
     # Imported here, not at module scope: importing brainscore must not pull in
@@ -30,10 +47,14 @@ def get_model(identifier: str) -> BrainScoreModel:
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from brainscore.model_helpers.text_wrapper import TextWrapper
 
-    # 54 GB at bf16. device_map='auto' keeps what fits on the accelerator and
-    # offloads the remainder to host memory rather than failing outright.
+    # 54 GB at bf16, so placement is automatic. Left to itself accelerate packs
+    # each device to the brim and the first forward pass then OOMs on
+    # activations — the weights fit but nothing else does. Reserving a fraction
+    # of each device keeps room for activations; whatever still does not fit
+    # spills to host memory rather than failing outright.
     full = AutoModelForCausalLM.from_pretrained(
-        HF_IDENTIFIER, dtype=torch.bfloat16, device_map='auto')
+        HF_IDENTIFIER, dtype=torch.bfloat16, device_map='auto',
+        max_memory=_placement_budget(torch))
     full.eval()
     text_model = full.model                      # Qwen3_5TextModel, 64 layers
 
