@@ -148,14 +148,58 @@ and measured before the alignment fix:
 
 The ordering `last < sum ~ average < Lanczos` reproduces the reference pipeline's.
 
+### Language-network mask
+
+`language_mask.py` builds the LanA language-network mask on this surface, so the
+reference pipeline's statistic — a **mean within the mask** — can be reported next to this
+benchmark's **median over all cortex**. The atlas is an external Fedorenko-lab resource
+([osf.io/kzwbh](https://osf.io/kzwbh/)); download its *FS Atlas* archive and point
+`BRAINSCORE_LANA_ATLAS` at the directory. Without it the mask tests skip and nothing else
+changes.
+
+The mask is applied to the existing whole-cortex fit rather than refitting on the masked
+vertices. This benchmark selects one shared ridge penalty across its targets, so refitting
+on a subset would move that penalty too, and the masked and unmasked numbers would stop
+describing the same model.
+
+| Model | cortex median | cortex mean | LanA median | **LanA mean** |
+|---|---|---|---|---|
+| Qwen3.6-27B (L40) | 0.1318 | 0.1432 | 0.2297 | **0.2345** |
+| GPT-2 (h.11) | 0.1013 | 0.1134 | 0.1837 | **0.1926** |
+
+The mask lifts both models by about 1.7x, which is the check that it is the right set of
+vertices: an equal-sized random mask scores 0.1430 ± 0.0018 against Qwen's 0.2345, putting
+LanA 50 sd above chance.
+
+Two assumptions in building it are silent if wrong, so both are tested rather than
+asserted. The atlas ships at fsaverage7 and this benchmark is fsaverage5, taken as the
+leading 10242 vertices — valid because FreeSurfer's icosahedra are hierarchical, confirmed
+by the fact that those vertices are spaced 2.056 +/- 0.114 deg apart, a regular ico5 mesh,
+where a random subset of the same size gives 1.05 +/- 0.485. And the mask assumes both the
+atlas and this data order the hemispheres left-first: swapping them costs 0.103 (56 sd),
+so the ordering is confirmed rather than a homotopy coincidence. The mask is also 74%
+left-hemisphere, as a left-lateralised language network should be.
+
 ### Comparison to LITcoder
 
-LITcoder reports ~0.21 for GPT-2 as the **mean within a LanA language mask** (their top-10%
-fsaverage5 mask), against our **median over all cortex** — different quantities. On our
-corrected map the best any 10% mask could achieve is 0.287, so their figure is now
-comfortably reachable and no unexplained residual remains. Before the alignment fix that
-ceiling was 0.145, i.e. below their number, which is what flagged a real deficit rather
-than a masking difference.
+With the mask in place the comparison is finally like-for-like. LITcoder reports ~0.21 for
+GPT-2 as a mean within LanA; **we get 0.1926, within 8%.**
+
+All four protocol rows that once separated the two numbers are now matched — mask,
+statistic, within-TR pooling, and FIR delays. Extending the delays from 2-8 s to 2-12 s to
+cover their 9-12 s plateau moved the masked mean by -0.0002 (whole-cortex median 0.1013 to
+0.1038), so the delay row, which was the leading suspect, is not the explanation.
+
+The residual 8% is smaller than the one parameter still unknown. Their mask file is
+bring-your-own, and the top-10% convention here is read off its *filename*, not a stated
+threshold. The masked mean is strongly sensitive to that choice:
+
+| top fraction | 2% | 5% | **10%** | 15% | 20% |
+|---|---|---|---|---|---|
+| GPT-2 LanA mean | 0.264 | 0.224 | **0.193** | 0.177 | 0.163 |
+
+Their 0.21 sits at roughly top-7%. Any conclusion drawn from an 8% gap would be a
+conclusion about their thresholding, so none is drawn.
 
 ## Nulls
 
