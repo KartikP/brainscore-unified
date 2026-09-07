@@ -1,0 +1,72 @@
+# The offline tier: every test that needs no S3 data, no model weights, and no
+# GPU. It runs in well under a minute, which is the whole reason to wire it —
+# the tier already existed and was only ever run by hand, so a regression was
+# caught only when someone remembered to look.
+#
+# Caches are disabled deliberately. A warm activation cache has twice hidden a
+# real defect here: once a fake 0.000000 A/B delta, once a probe cache-key
+# collision. Cold is the only run that proves anything.
+name: offline tests
+
+on:
+  push:
+    branches: [unified-model-interface-v2]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash -el {0}          # -l so the conda activation persists across steps
+    steps:
+      # The four repos must be siblings: environment-unified.yml installs them
+      # with relative `-e ./core` paths, and conda runs its pip step from the
+      # directory holding that file.
+      - name: Check out unified
+        uses: actions/checkout@v4
+        with:
+          path: unified
+      - name: Check out core
+        uses: actions/checkout@v4
+        with:
+          repository: brain-score/core
+          ref: unified-model-interface-v2
+          path: core
+      - name: Check out vision
+        uses: actions/checkout@v4
+        with:
+          repository: brain-score/vision
+          ref: unified-model-interface-v2
+          path: vision
+      - name: Check out language
+        uses: actions/checkout@v4
+        with:
+          repository: brain-score/language
+          ref: unified-model-interface-v2
+          path: language
+
+      # Beside the repos, per the file's own header; from anywhere else the
+      # relative editable installs fail.
+      - name: Stage the environment file at the workspace root
+        run: cp unified/install/environment-unified.yml .
+
+      - name: Create the pinned environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          environment-file: environment-unified.yml
+          activate-environment: brainscore-unified
+          auto-activate-base: false
+
+      # Fails the job on dependency drift, which changes scores rather than
+      # raising, so it must be caught before any test result is believed.
+      - name: Environment doctor
+        run: python -m brainscore.doctor
+
+      - name: Offline tier
+        working-directory: unified        # so pyproject's marker registry applies
+        env:
+          RESULTCACHING_DISABLE: "1"
+        run: pytest tests -m "unit or integration" -q -p no:cacheprovider
