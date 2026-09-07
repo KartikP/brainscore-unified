@@ -22,6 +22,8 @@ import os
 import pickle
 from pathlib import Path
 
+from .. import local
+
 import numpy as np
 import pandas as pd
 
@@ -45,9 +47,7 @@ IDENTIFIER = 'LeBel2023-UTS03'
 
 def _pickle_path() -> Path:
     """Where the source pickle lives; override with BRAINSCORE_LEBEL_PICKLE."""
-    return Path(os.environ.get(
-        'BRAINSCORE_LEBEL_PICKLE',
-        Path.home() / 'Downloads' / 'assembly_lebel_uts03.pkl')).expanduser()
+    return local.LEBEL_PICKLE.resolved()
 
 
 def _cache_dir() -> Path:
@@ -113,11 +113,12 @@ def build(pickle_path=None, context_window_tr: int = DEFAULT_CONTEXT_TR):
     Returns whole-cortex BOLD with no ROI mask applied: every measured vertex is
     a prediction target.
     """
-    path = Path(pickle_path) if pickle_path else _pickle_path()
-    if not path.exists():
-        raise FileNotFoundError(
-            f"LeBel pickle not found at {path}. Set BRAINSCORE_LEBEL_PICKLE to "
-            f"its location.")
+    if pickle_path:
+        path = Path(pickle_path)
+        if not path.exists():
+            raise local.LocalDataMissing(f'LeBel pickle not found at {path}')
+    else:
+        path = local.path(local.LEBEL_PICKLE.name)
     source = _read_pickle(path)
     context_sec = context_window_tr * TR_SEC
 
@@ -235,11 +236,12 @@ def build_word_level(pickle_path=None, context_words: int = DEFAULT_CONTEXT_WORD
 
     Returns ``(word_stimuli, assembly, tr_times_by_story)``.
     """
-    path = Path(pickle_path) if pickle_path else _pickle_path()
-    if not path.exists():
-        raise FileNotFoundError(
-            f"LeBel pickle not found at {path}. Set BRAINSCORE_LEBEL_PICKLE to "
-            f"its location.")
+    if pickle_path:
+        path = Path(pickle_path)
+        if not path.exists():
+            raise local.LocalDataMissing(f'LeBel pickle not found at {path}')
+    else:
+        path = local.path(local.LEBEL_PICKLE.name)
     source = _read_pickle(path)
 
     rows, blocks, tr_times_by_story = [], [], {}

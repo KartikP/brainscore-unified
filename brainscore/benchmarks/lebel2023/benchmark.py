@@ -304,7 +304,9 @@ class LeBel2023Encoding(BenchmarkBase):
 
         per_vertex, median_r, mean_r = pearson_summary(Y, held_out)
 
-        score = Score(median_r)
+        reported, extra_attrs = self._summarize(per_vertex, median_r, mean_r)
+        score = Score(reported)
+        score.attrs.update(extra_attrs)
         score.attrs['raw'] = per_vertex
         score.attrs['mean_r'] = mean_r
         score.attrs['n_targets'] = int(Y.shape[1])
@@ -313,6 +315,14 @@ class LeBel2023Encoding(BenchmarkBase):
         score.attrs['ceiling'] = 'none — single presentation per story, raw r reported'
         score.attrs['error'] = float(np.std(per_vertex) / np.sqrt(len(per_vertex)))
         return score
+
+    def _summarize(self, per_vertex, median_r, mean_r):
+        """Which statistic is reported, and anything extra to record.
+
+        The median over all cortex, by default. A variant reporting some other
+        summary of the same fit overrides this rather than re-running scoring.
+        """
+        return median_r, {}
 
     def _align_features(self, predictions, assembly):
         """Order model features to match the assembly's rows.
@@ -441,3 +451,38 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
                 pooled[index] = block[-1]
         return pooled
 
+
+class LeBel2023EncodingLanguageMask(LeBel2023EncodingWordLevel):
+    """Report the mean inside the LanA language network.
+
+    The reference pipeline (LITcoder) summarises this dataset as a mean within
+    a language mask where this benchmark takes a median over all cortex. Both
+    are defensible and they are not comparable to each other, so this variant
+    exists to produce the first one without anybody having to re-derive it.
+
+    The fit is unchanged: all 20484 vertices are fitted and the mask is applied
+    to the result. Restricting the fit to masked vertices would also move the
+    single shared ridge penalty this benchmark selects across its targets, and
+    then the masked and unmasked numbers would no longer describe the same
+    model. The mask is a reporting choice, deliberately.
+
+    Requires the LanA atlas, which Brain-Score cannot redistribute — see
+    ``python -m brainscore.data lana-atlas``.
+    """
+
+    def __init__(self, identifier='LeBel2023-UTS03-encoding-languagemask',
+                 top_fraction=None, **kwargs):
+        if kwargs.get('max_targets') is not None:
+            raise ValueError(
+                'max_targets subsamples vertices, which breaks the mask '
+                'alignment; score the full set or use the plain variant')
+        super().__init__(identifier=identifier, **kwargs)
+        from .language_mask import DEFAULT_TOP_FRACTION
+        self._top_fraction = (DEFAULT_TOP_FRACTION if top_fraction is None
+                              else top_fraction)
+
+    def _summarize(self, per_vertex, median_r, mean_r):
+        from .language_mask import lana_mask, mask_summary
+        summary = mask_summary(per_vertex, lana_mask(self._top_fraction))
+        summary['top_fraction'] = self._top_fraction
+        return summary['language_mask_mean'], summary

@@ -94,3 +94,43 @@ class TestAgainstTheAtlas:
         assert len(full) == 163842                      # ico7: 10 * 4**7 + 2
         kept = lana_probabilities()[:FSAVERAGE5_PER_HEMISPHERE]
         assert np.allclose(kept, full[:FSAVERAGE5_PER_HEMISPHERE])
+
+
+class TestLanguageMaskVariant:
+    """The registered variant reports the reference statistic off the same fit."""
+
+    def test_registered(self):
+        from brainscore import benchmark_registry
+        from brainscore.benchmarks.lebel2023.benchmark import (
+            LeBel2023EncodingLanguageMask)
+        benchmark = benchmark_registry['LeBel2023-UTS03-encoding-languagemask']()
+        assert isinstance(benchmark, LeBel2023EncodingLanguageMask)
+
+    def test_subsampling_targets_is_refused(self):
+        """A random target subset would not line up with the mask."""
+        from brainscore.benchmarks.lebel2023.benchmark import (
+            LeBel2023EncodingLanguageMask)
+        with pytest.raises(ValueError, match='max_targets'):
+            LeBel2023EncodingLanguageMask(max_targets=2000)
+
+    def test_parent_reports_the_median_over_all_cortex(self):
+        from brainscore.benchmarks.lebel2023.benchmark import (
+            LeBel2023EncodingWordLevel)
+        reported, extra = LeBel2023EncodingWordLevel()._summarize(
+            np.array([0.1, 0.2, 0.3]), median_r=0.2, mean_r=0.2)
+        assert reported == 0.2 and extra == {}
+
+    @needs_atlas
+    def test_variant_reports_the_masked_mean(self):
+        from brainscore.benchmarks.lebel2023.benchmark import (
+            LeBel2023EncodingLanguageMask)
+        from brainscore.benchmarks.lebel2023.language_mask import lana_mask
+
+        mask = lana_mask()
+        per_vertex = np.zeros(N_VERTICES)
+        per_vertex[mask] = 0.4                      # signal only inside the mask
+        reported, extra = LeBel2023EncodingLanguageMask()._summarize(
+            per_vertex, median_r=0.0, mean_r=per_vertex.mean())
+        assert reported == pytest.approx(0.4)
+        assert extra['whole_cortex_median'] == pytest.approx(0.0)
+        assert extra['top_fraction'] == pytest.approx(0.10)
