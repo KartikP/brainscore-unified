@@ -71,8 +71,16 @@ Four repositories, one interface. `unified/` is where you start.
 
 ```bash
 conda activate brainscore-unified
+python -m brainscore.doctor
 jupyter notebook unified/notebooks/01_quickstart_layer_mapping.ipynb
 ```
+
+`python -m brainscore.doctor` prints which interpreter answered, whether every
+dependency sits inside the range scoring is verified against, and which
+user-supplied data assets are present. Run it whenever a result surprises you.
+Drift is worth catching early because it moves scores rather than raising them
+as errors. If the command cannot import `brainscore_core` at all, the active
+environment is the wrong one — easy to do on a machine with several.
 
 Then, in order:
 
@@ -123,6 +131,9 @@ conda run --name "$ENV_NAME" python -m pip check
 conda run --name "$ENV_NAME" python -c "import brainscore, brainscore_core, brainscore_vision, brainscore_language; print('Brain-Score imports: OK')"
 conda run --name "$ENV_NAME" python -c "from transformers import DynamicCache; assert hasattr(DynamicCache(), 'to_legacy_cache'); print('Transformers cache API: OK')"
 conda run --name "$ENV_NAME" python -c "import numpy, sklearn, transformers, xarray; print('numpy', numpy.__version__); print('xarray', xarray.__version__); print('scikit-learn', sklearn.__version__); print('transformers', transformers.__version__)"
+# Same check the user is told to run, so a fresh install is verified by the tool
+# they will actually use rather than by a one-off snippet that can drift from it.
+conda run --name "$ENV_NAME" python -m brainscore.doctor
 
 echo
 echo "Setup complete."
