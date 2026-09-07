@@ -69,12 +69,11 @@ All 20484 vertices, held-out median Pearson r.
 | Model | Layer | median r | mean r | frac r > 0 | p99 | best vertex |
 |---|---|---|---|---|---|---|
 | Qwen3.6-27B | 40 of 64 | **0.1318** | 0.1432 | 96.5% | 0.414 | 0.592 |
-| GPT-2 (124M) | 11 of 12 | 0.1013 | 0.1134 | 95.3% | 0.360 | 0.543 |
+| GPT-2 (124M) | 9 of 12 | 0.1095 | 0.1217 | 96.0% | 0.372 | 0.552 |
 
 These are the scores at each model's registered layer, which is what `score()` returns.
-Qwen leads by 30% at the median and separates further in the tail (p99 0.414 against
-0.360), where a language-responsive vertex would sit. About a third of that lead is a
-layer artifact — see below.
+Qwen leads by 20% at the median and separates further in the tail (p99 0.414 against
+0.372), where a language-responsive vertex would sit.
 
 Qwen figures published here before the alignment fix were measured on the inverted time
 axis and the per-TR path; they were discarded rather than rescaled, and this row is a
@@ -105,15 +104,16 @@ three ways:
 
 | comparison | Qwen | GPT-2 | Qwen lead |
 |---|---|---|---|
-| registered layer | 0.1318 (L40) | 0.1013 (h.11) | +30% |
+| registered layer | 0.1318 (L40) | 0.1095 (h.9) | +20% |
 | best of sweep | 0.1320 (L30) | 0.1124 (h.7) | +17% |
 | **plateau mean** | **0.1306** | **0.1069** | **+22%** |
 
 **Quote +22%.** Best-of-sweep flatters whichever model happens to spike: GPT-2's best sits
 1.39 sd above its own plateau against Qwen's 1.09, so picking maxima rewards its noisier
-curve. The registered-layer comparison flatters Qwen for the opposite reason — GPT-2 is
-registered at its *last* block, 0.011 past its peak, while Qwen's `layers.40` lands on the
-plateau.
+curve. The three now agree to within a few points, which they did not before: GPT-2 used
+to be registered at its *last* block, 0.011 past its peak, which inflated the
+registered-layer row to +30%. It has since been re-mapped to `h.9` — chosen on
+Pereira2018, not here, so this benchmark stays a held-out report of that choice.
 
 Sweeping gained Qwen **+0.0003** over its inherited layer. The layer was carried over from
 a sweep run at the inverted alignment, so it was a guess; the plateau is broad enough
@@ -126,6 +126,9 @@ a sweep run at the inverted alignment, so it was a guess; the plateau is broad e
 | per-TR context, last token, inverted trim | 0.0422 |
 | + word-level features, Lanczos-resampled | 0.0511 |
 | + corrected 10/5 trim alignment | **0.1013** |
+
+(GPT-2 at `h.11`, its registered layer at the time; it is `h.9` now, which is a separate
++0.008. Holding the layer fixed is what makes the rows comparable.)
 
 The alignment fix is worth about 2x on its own. Two independent checks support it rather
 than an argmax over candidate splits: the reference pipeline hardcodes `[10:-5]`, and the
@@ -165,7 +168,7 @@ describing the same model.
 | Model | cortex median | cortex mean | LanA median | **LanA mean** |
 |---|---|---|---|---|
 | Qwen3.6-27B (L40) | 0.1318 | 0.1432 | 0.2297 | **0.2345** |
-| GPT-2 (h.11) | 0.1013 | 0.1134 | 0.1837 | **0.1926** |
+| GPT-2 (h.9) | 0.1095 | 0.1217 | 0.1972 | **0.2035** |
 
 The mask lifts both models by about 1.7x, which is the check that it is the right set of
 vertices: an equal-sized random mask scores 0.1430 ± 0.0018 against Qwen's 0.2345, putting
@@ -183,12 +186,13 @@ left-hemisphere, as a left-lateralised language network should be.
 ### Comparison to LITcoder
 
 With the mask in place the comparison is finally like-for-like. LITcoder reports ~0.21 for
-GPT-2 as a mean within LanA; **we get 0.1926, within 8%.**
+GPT-2 as a mean within LanA; **we get 0.2035, within 3%.**
 
 All four protocol rows that once separated the two numbers are now matched — mask,
 statistic, within-TR pooling, and FIR delays. Extending the delays from 2-8 s to 2-12 s to
 cover their 9-12 s plateau moved the masked mean by -0.0002 (whole-cortex median 0.1013 to
-0.1038), so the delay row, which was the leading suspect, is not the explanation.
+0.1038, both at `h.11`), so the delay row, which was the leading suspect, is not the
+explanation.
 
 The residual 8% is smaller than the one parameter still unknown. Their mask file is
 bring-your-own, and the top-10% convention here is read off its *filename*, not a stated
@@ -196,10 +200,12 @@ threshold. The masked mean is strongly sensitive to that choice:
 
 | top fraction | 2% | 5% | **10%** | 15% | 20% |
 |---|---|---|---|---|---|
-| GPT-2 LanA mean | 0.264 | 0.224 | **0.193** | 0.177 | 0.163 |
+| GPT-2 LanA mean | 0.274 | 0.236 | **0.204** | 0.187 | 0.174 |
 
-Their 0.21 sits at roughly top-7%. Any conclusion drawn from an 8% gap would be a
-conclusion about their thresholding, so none is drawn.
+Their 0.21 sits between top-5% and top-10%. The remaining 3% is well inside that spread,
+so no conclusion is drawn from it. Note that the layer move closed most of the earlier 8%
+gap without being aimed at it: `h.9` was picked on Pereira2018 before this number was
+recomputed.
 
 ## Nulls
 
@@ -240,12 +246,12 @@ mostly measuring story onsets. Those TRs are now excluded rather than padded
   selecting a penalty per target needs per-target signal-to-noise high enough to select
   on, which whole-cortex data at this SNR does not have. Available as
   `per_voxel_alpha=True`; off by default.
-- **GPT-2 is registered past its own peak.** `h.11` scores 0.1013 where `h.7` scores
-  0.1124. Re-mapping would raise this benchmark and move every other benchmark GPT-2
-  appears on, so it is left alone pending a deliberate layer-mapping pass. Qwen's
-  `layers.40` is confirmed on-plateau and needs no change. `gpt2`'s `region_layer_map` still points at
-  `h.11`; re-mapping it would improve this benchmark but would move its scores on every
-  other benchmark, so it is left alone pending a deliberate layer-mapping pass.
+- **Registered layers are chosen elsewhere, on purpose.** GPT-2 was registered at its
+  last block and has been re-mapped to `h.9`, chosen by sweeping Pereira2018 rather than
+  this benchmark — picking the layer that maximises a benchmark and then reporting that
+  benchmark is best-of-sweep. `h.9` is not this benchmark's best block (`h.7` is, at
+  0.1124), which is the sign the two are independent. Qwen's `layers.40` is confirmed
+  on-plateau and needs no change.
 - **Qwen3.6-27B needs four accelerators.** It is registered and scores through the normal
   `process()` path, but at bf16 it is 54 GB and was run on 4x A10G. `device_map='auto'`
   left to itself packs each card to the brim and then OOMs on activations, so the plugin
