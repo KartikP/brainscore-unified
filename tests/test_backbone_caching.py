@@ -89,10 +89,11 @@ class TestTextWrapperBackboneId:
         w = self._make(identifier='wrapper-a', backbone_id='shared-backbone')
         captured = {}
 
-        def fake_stored(identifier, stimuli_identifier, layers, texts):
+        def fake_stored(identifier, stimuli_identifier, layers, texts, extraction_fingerprint):
             captured['identifier'] = identifier
             return 'sentinel'
 
+        w.cache_config = lambda: {"test_configuration": 1}
         w._from_texts_stored = fake_stored
         result = w._from_texts_cached(
             texts=['hello'], layers=['layer'], stimuli_identifier='stim-1')
@@ -127,10 +128,11 @@ class TestVLMVisionWrapperBackboneId:
         w = self._make(identifier='a', backbone_id='shared-vit')
         captured = {}
 
-        def fake_stored(identifier, stimuli_identifier, layers, paths):
+        def fake_stored(identifier, stimuli_identifier, layers, paths, extraction_fingerprint):
             captured['identifier'] = identifier
             return 'sentinel'
 
+        w.cache_config = lambda: {"test_configuration": 1}
         w._from_paths_stored = fake_stored
         result = w._from_paths_cached(
             paths=['a.png'], layers=['layer'], stimuli_identifier='stim-1')
@@ -168,10 +170,11 @@ class TestVideoWrapperBackboneId:
         w = self._make(identifier='vjepa-a', backbone_id='vjepa-shared-l16')
         captured = {}
 
-        def fake_stored(identifier, stimuli_identifier, layers, paths):
+        def fake_stored(identifier, stimuli_identifier, layers, paths, extraction_fingerprint):
             captured['identifier'] = identifier
             return 'sentinel'
 
+        w.cache_config = lambda: {"test_configuration": 1}
         w._from_paths_stored = fake_stored
         result = w._from_paths_cached(
             paths=['a.mp4'], layers=['layer'], stimuli_identifier='stim-1')

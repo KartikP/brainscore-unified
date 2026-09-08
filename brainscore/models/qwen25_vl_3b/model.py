@@ -37,6 +37,11 @@ REGION_LAYER_MAP = {
     'language_system': 'layers.28',
 }
 
+# A declared search population, not an independently validated brain mapping.
+# Unit selectivity is determined by the benchmark's real/pseudo localizer.
+VWFA_LAYER = 'blocks.28'
+ABLATION_VARIANT = 'qwen2.5-vl-3b-vwfa'
+
 
 def _make_generation_fn(qwen_model, qwen_processor, max_new_tokens: int = 8):
     """Create a generation callable for instruction-following behavioral
@@ -91,7 +96,7 @@ def _make_generation_fn(qwen_model, qwen_processor, max_new_tokens: int = 8):
 
 
 def get_model(identifier: str) -> BrainScoreModel:
-    assert identifier == 'qwen2.5-vl-3b'
+    assert identifier in ('qwen2.5-vl-3b', ABLATION_VARIANT)
 
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from brainscore.model_helpers.text_wrapper import TextWrapper
@@ -101,7 +106,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         'Qwen/Qwen2.5-VL-3B-Instruct',
         torch_dtype=torch.float16,
     )
-# Pin the image-processor implementation: transformers 5 rebinds the class
+    # Pin the image-processor implementation: transformers 5 rebinds the class
     # names, moving the default from PIL to torchvision and shifting pixels.
     qwen_processor = AutoProcessor.from_pretrained('Qwen/Qwen2.5-VL-3B-Instruct')
     qwen_processor = pin_image_processor(qwen_processor, 'Qwen/Qwen2.5-VL-3B-Instruct')
@@ -134,14 +139,28 @@ def get_model(identifier: str) -> BrainScoreModel:
     # Qwen-VL is instruction-following, so expose its generate() as the
     # behavioral-task generation path. Benchmarks that pass a TaskContext
     # with an `instruction` and `label_set` (e.g., ROAR) will use this
-    # path; others fall back to the logistic readout (not configured for
-    # Qwen — it doesn't have a behavioral_readout_layer set here).
+    # path; others fall back to the logistic readout configured below.
     generation_fn = _make_generation_fn(qwen_model, qwen_processor)
+
+    region_layer_map = dict(REGION_LAYER_MAP)
+    variant_kwargs = {}
+    if identifier == ABLATION_VARIANT:
+        from brainscore.perturbation import build_pytorch_ablation_fn
+        region_layer_map['VWFA'] = VWFA_LAYER
+        variant_kwargs = dict(
+            # Selection paths are relative to the extraction root. The same
+            # visual module is also used by the full model's generate().
+            state_change_fn=build_pytorch_ablation_fn(qwen_model.model.visual),
+            region_modality_map={
+                region: 'text' if region == 'language_system' else 'vision'
+                for region in region_layer_map
+            },
+        )
 
     return BrainScoreModel(
         identifier=identifier,
         model=qwen_model,
-        region_layer_map=REGION_LAYER_MAP,
+        region_layer_map=region_layer_map,
         preprocessors={
             'vision': vision_wrapper,
             'text': text_wrapper,
@@ -151,4 +170,5 @@ def get_model(identifier: str) -> BrainScoreModel:
         # Also enable the readout path so Qwen can be compared on the same
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',
+        **variant_kwargs,
     )

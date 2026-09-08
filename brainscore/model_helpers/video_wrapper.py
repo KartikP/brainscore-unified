@@ -66,7 +66,9 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
 )
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.temporal import window_plan
-from result_caching import store_xarray
+from brainscore_core.extraction_cache import (
+    store_xarray, extraction_fingerprint, wrapper_config,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -236,14 +238,6 @@ class VideoWrapper:
         # configurations; set a shared backbone_id so cached activations
         # are reused across registrations. Defaults to identifier.
         self._backbone_id = backbone_id or self._identifier
-        # Chunking changes the activations, but @store_xarray keys only on
-        # (backbone_id, stimuli_identifier, layers) — fold the chunk config in
-        # so different windowings don't collide in the cache.
-        if context_window_ms is not None:
-            sig = (f"-ctx{int(context_window_ms)}-{context_strategy}"
-                   f"-s{int(context_stride_ms or context_window_ms)}")
-            self._identifier += sig
-            self._backbone_id += sig
 
     @property
     def identifier(self) -> str:
@@ -299,19 +293,44 @@ class VideoWrapper:
             f"Looked for columns: video_path, video_file_name, "
             f"image_file_name, filename. Got: {list(stimulus_set.columns)}")
 
+    CACHE_FIELDS = (
+        '_preprocessing',
+        '_target_fps',
+        '_num_frames',
+        '_frame_sampler',
+        '_forward_kwargs',
+        '_hook_time_axis',
+        '_post_hook_fn',
+        '_t_to_time_ms_fn',
+        '_batch_size',
+        '_context_window_ms',
+        '_context_stride_ms',
+        '_context_strategy',
+        '_out_of_bound',
+        '_max_clip_ms',
+    )
+
+    def cache_config(self):
+        return wrapper_config(self, self.CACHE_FIELDS)
+
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
         if self._backbone_id and stimuli_identifier:
+            signature = extraction_fingerprint({"configuration": self.cache_config(), "inputs": paths})
+            if signature is None:
+                return self._from_paths(paths, layers, stimuli_identifier)
             return self._from_paths_stored(
                 identifier=self._backbone_id,
                 stimuli_identifier=stimuli_identifier,
                 layers=layers,
                 paths=paths,
+                extraction_fingerprint=signature,
             )
         return self._from_paths(paths, layers, stimuli_identifier)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths):
+    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths,
+                           extraction_fingerprint):
         return self._from_paths(paths, layers, stimuli_identifier)
 
     def _from_paths(self, paths: List[str], layers: List[str],

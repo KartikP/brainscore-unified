@@ -176,11 +176,10 @@ class InducedDyslexia(BenchmarkBase):
             raise ValueError(
                 "induced-dyslexia requires a candidate with a state_change_fn "
                 "(e.g. brainscore.perturbation.build_pytorch_ablation_fn).")
-        # Disable activation caching for the whole run. Ablation changes the
-        # extracted activations but NOT the @store_xarray cache key (which is
-        # keyed by model+stimuli+layer only) — so a cached lesioned reading would
-        # poison every later read, including the baseline. Live extraction makes
-        # each condition's reading respect the perturbation state actually active.
+        # Keep live extraction for every condition, including third-party
+        # candidates whose caches may not fingerprint perturbation state.
+        # Built-in wrappers now fingerprint hooks, but that is not a requirement
+        # of every Subject accepted by this benchmark.
         _prev_cache = os.environ.get('RESULTCACHING_DISABLE')
         os.environ['RESULTCACHING_DISABLE'] = '1'
         try:

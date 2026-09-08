@@ -342,7 +342,7 @@ class TestCacheKey:
     def test_from_paths_cached_uses_backbone_id(self, wrapper):
         captured = {}
 
-        def fake_stored(identifier, stimuli_identifier, layers, paths):
+        def fake_stored(identifier, stimuli_identifier, layers, paths, extraction_fingerprint):
             captured['identifier'] = identifier
             return 'sentinel'
 

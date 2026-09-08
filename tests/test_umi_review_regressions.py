@@ -321,7 +321,7 @@ def test_pereira_declares_passages_before_extraction():
     assert seen == [['the cat', 'the cat the dog'], ['cat sat', 'cat sat dog ran']]
 
 
-def test_context_cache_key_changes_when_grouping_changes(monkeypatch):
+def test_context_expansion_preserves_stimulus_identifier(monkeypatch):
     from brainscore.model_helpers.text_wrapper import TextWrapper
     wrapper = TextWrapper.__new__(TextWrapper)
     wrapper._layer_aggregation = 'last_token'
@@ -335,7 +335,8 @@ def test_context_cache_key_changes_when_grouping_changes(monkeypatch):
     wrapper._from_stimulus_set(stimuli, ['L'])
     stimuli['context_id'] = ['a', 'a', 'b', 'b']
     wrapper._from_stimulus_set(stimuli, ['L'])
-    assert len({identifier for _, identifier in seen}) == 3
+    assert len({identifier for _, identifier in seen}) == 1
+    assert len({tuple(texts) for texts, _ in seen}) == 3
     assert seen[0][0][1] == 'the dog'
     assert seen[1][0][1] == 'the cat the dog'
     wrapper._layer_aggregation = 'per_token'

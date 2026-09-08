@@ -34,7 +34,9 @@ from brainscore_core.assembly_builder import (
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from result_caching import store_xarray
+from brainscore_core.extraction_cache import (
+    store_xarray, extraction_fingerprint, wrapper_config,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -141,19 +143,36 @@ class VLMVisionWrapper:
             f"No image column found in stimulus set. "
             f"Columns: {list(stimulus_set.columns)}")
 
+    CACHE_FIELDS = (
+        '_processor',
+        '_image_input_key',
+        '_forward_kwargs_map',
+        '_patch_count_fn',
+        '_layer_aggregation',
+        '_batch_size',
+    )
+
+    def cache_config(self):
+        return wrapper_config(self, self.CACHE_FIELDS)
+
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
         if self._backbone_id and stimuli_identifier:
+            signature = extraction_fingerprint({"configuration": self.cache_config(), "inputs": paths})
+            if signature is None:
+                return self._from_paths(paths, layers, stimuli_identifier)
             return self._from_paths_stored(
                 identifier=self._backbone_id,
                 stimuli_identifier=stimuli_identifier,
                 layers=layers,
                 paths=paths,
+                extraction_fingerprint=signature,
             )
         return self._from_paths(paths, layers, stimuli_identifier)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths):
+    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths,
+                           extraction_fingerprint):
         return self._from_paths(paths, layers, stimuli_identifier)
 
     def _from_paths(self, paths, layers, stimuli_identifier=None):
