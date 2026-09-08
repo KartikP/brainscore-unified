@@ -6,6 +6,14 @@ target. Post-challenge leaderboard open indefinitely on Codabench.
 
 ## Status
 
+Feature projection protocol: `generate_predictions()` fits SVD on Friends
+training frames and applies that same transform to S7/OOD frames. The historical
+Friends CV path fits SVD on all input frames before its run-level splits; it is
+transductive feature preprocessing, not an inductive estimate for unseen inputs.
+Scores carry `feature_projection_protocol=transductive_svd_all_input_frames`.
+Neither protocol fits SVD to held-out BOLD targets. Held-out prediction must use
+the same subject, stimulus window, and HRF delay as its training encoder.
+
 **Scaffold only — no data, no model scoring yet.** Files in this directory
 define the benchmark structure; data acquisition + assembly preparation
 happen on EC2 (see below). Running any of the registered benchmarks

@@ -70,6 +70,33 @@ class TestScoring:
     CANNED = [Selection(layer='L', indices=[0, 1, 2],
                         metadata={'selector': 'functional', 'n_recorded': 10})]
 
+    @pytest.mark.parametrize('failed_call', [2, 3])
+    def test_reading_failure_removes_lesions(self, monkeypatch, failed_call):
+        bench, cand, reader = _make(
+            {'none': 0.95, 'functional': 0.55, 'random': 0.90},
+            monkeypatch=monkeypatch, canned=self.CANNED)
+        read = bench._reading_accuracy
+        def failing_read(candidate):
+            if reader.calls + 1 == failed_call:
+                raise RuntimeError('synthetic reading failure')
+            return read(candidate)
+        monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
+        with pytest.raises(RuntimeError, match='synthetic reading failure'):
+            bench(cand)
+        assert cand.active == 'none'
+
+    def test_partial_installation_failure_removes_prior_lesion(self, monkeypatch):
+        bench, cand, _ = _make(
+            {'none': 0.95, 'functional': 0.55, 'random': 0.90},
+            monkeypatch=monkeypatch, canned=self.CANNED)
+        def partially_install(candidate, selections):
+            candidate.active = 'functional'
+            raise RuntimeError('second hook failed')
+        monkeypatch.setattr(bench, '_ablate', partially_install)
+        with pytest.raises(RuntimeError, match='second hook failed'):
+            bench(cand)
+        assert cand.active == 'none'
+
     def test_selective_dyslexia_flagged(self, monkeypatch):
         # word-form lesion tanks reading (0.55); random lesion barely dents (0.90)
         bench, cand, reader = _make(

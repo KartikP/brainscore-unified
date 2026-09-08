@@ -83,6 +83,8 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=clip_model,
         region_layer_map=REGION_LAYER_MAP,
+        region_modality_map={region: ('text' if region == 'language_system' else 'vision')
+                             for region in REGION_LAYER_MAP},
         preprocessors={
             'vision': preprocessing,
             'text': text_wrapper,

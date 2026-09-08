@@ -160,6 +160,17 @@ class TextWrapper:
             )
         self._model = model
         self._tokenizer = tokenizer
+        # Truncate the OLDEST tokens, not the newest. With passage context the
+        # text handed to a model is the running prefix, so it is the tail that
+        # names the row being scored: right truncation would silently return a
+        # representation of some earlier sentence, and `last_token` would read a
+        # token from the middle of the passage. The legacy language path makes
+        # the same choice (`truncation_side='left'` in its huggingface helper),
+        # so matching it is also what keeps native and adapter scoring aligned.
+        try:
+            self._tokenizer.truncation_side = 'left'
+        except AttributeError:                       # exotic tokenizers
+            pass
         self._layer_aggregation = layer_aggregation
         self._max_length = max_length
         self._batch_size = batch_size
@@ -217,6 +228,15 @@ class TextWrapper:
             stimuli_identifier = stimulus_set.identifier
 
         texts = self._extract_texts(stimulus_set)
+        if 'context_id' in stimulus_set.columns:
+            if self._layer_aggregation == 'per_token':
+                raise ValueError('context_id passage grouping requires last_token or mean_tokens; '
+                                 'per_token inputs must supply their complete text explicitly.')
+            if stimuli_identifier:
+                import hashlib
+                import json
+                digest = hashlib.sha256(json.dumps(texts).encode('utf-8')).hexdigest()
+                stimuli_identifier = f'{stimuli_identifier}-context-v1-{digest}'
         activations = self._from_texts_cached(
             texts, layers, stimuli_identifier)
 
@@ -224,14 +244,8 @@ class TextWrapper:
         return activations
 
     def _extract_texts(self, stimulus_set):
-        if 'sentence' in stimulus_set.columns:
-            return list(stimulus_set['sentence'].values)
-        elif 'text' in stimulus_set.columns:
-            return list(stimulus_set['text'].values)
-        else:
-            raise ValueError(
-                f"No text column found in stimulus set. "
-                f"Columns: {list(stimulus_set.columns)}")
+        from brainscore_core.text import contextualized_texts
+        return contextualized_texts(stimulus_set)
 
     def _from_texts_cached(self, texts, layers, stimuli_identifier=None):
         if self._backbone_id and stimuli_identifier:

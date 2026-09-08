@@ -35,6 +35,7 @@ from brainscore.data.algonauts2025 import (
 )
 
 from .scoring import score_encoding_modes
+from .projection import FeatureProjection
 
 
 BIBTEX = """@article{gifford2025algonauts,
@@ -342,13 +343,16 @@ class _Algonauts2025Base(BenchmarkBase):
     FEATURE_DIM_CAP = 1000
 
     def _extract_per_TR_features(self, candidate, frame_stim_set,
-                                 recording_target='IT'
+                                 recording_target='IT', *, projection=None,
+                                 fit_projection=False,
                                  ) -> Tuple[np.ndarray, List[str]]:
         """Run candidate's vision tower on the frame stim_set.
 
         Compresses features via TruncatedSVD to FEATURE_DIM_CAP — the
         full token×hidden flatten from CLIP/BLIP-2/V-JEPA blows up the
-        downstream design matrix beyond practical memory.
+        downstream design matrix beyond practical memory. Held-out prediction
+        passes a projection fitted on training frames. With no projection this
+        fits on all supplied frames, the historical transductive CV protocol.
 
         Returns:
             features: (n_TRs, FEATURE_DIM_CAP) float32
@@ -362,13 +366,15 @@ class _Algonauts2025Base(BenchmarkBase):
         if 'time_bin' in assembly.dims:
             assembly = assembly.mean(dim='time_bin')
         feats = assembly.values.astype(np.float32)
-        if feats.shape[1] > self.FEATURE_DIM_CAP:
-            from sklearn.decomposition import TruncatedSVD
-            print(f'  SVD compress: {feats.shape[1]} → '
-                  f'{self.FEATURE_DIM_CAP} features...')
-            svd = TruncatedSVD(
-                n_components=self.FEATURE_DIM_CAP, random_state=0)
-            feats = svd.fit_transform(feats).astype(np.float32)
+        try:
+            feature_ids = assembly['neuroid_id'].values
+        except KeyError:
+            feature_ids = None
+        if projection is None:
+            projection = FeatureProjection(self.FEATURE_DIM_CAP)
+            fit_projection = True
+        feats = (projection.fit_transform(feats, feature_ids) if fit_projection
+                 else projection.transform(feats, feature_ids))
         # Source of truth for frame ordering is the INPUT frame_stim_set,
         # NOT the output assembly's coords. The brainscore_vision cache
         # round-trip can strip custom stim_set columns, but it preserves
@@ -599,11 +605,13 @@ class _Algonauts2025Base(BenchmarkBase):
         score.attrs['mode'] = self._mode
         score.attrs['bands'] = info.get('bands')
         score.attrs['pipeline'] = f"algonauts_{self._mode}_frame_agg"
+        score.attrs['feature_projection_protocol'] = 'transductive_svd_all_input_frames'
         return score
 
     # ── Held-out prediction (Codabench submission) ────────────────
 
-    def _design_matrix(self, candidate, drop_excluded=True):
+    def _design_matrix(self, candidate, drop_excluded=True, *, projection=None,
+                       fit_projection=False):
         """Build the (X_stacked, Y, keep, run_idx) design matrix for this
         split's stimuli. Mirrors the front half of ``_score_friends_train``
         (extract → align → run-block index → stimulus-window/HRF stack), kept
@@ -615,7 +623,8 @@ class _Algonauts2025Base(BenchmarkBase):
         """
         frame_stim_set = self._expand_to_per_TR_frames()
         features, frame_ids = self._extract_per_TR_features(
-            candidate, frame_stim_set)
+            candidate, frame_stim_set, projection=projection,
+            fit_projection=fit_projection)
         X = self._align_features_to_assembly(features, frame_ids, frame_stim_set)
 
         a_stim = list(self.assembly['stimulus_id'].values)
@@ -661,8 +670,16 @@ class _Algonauts2025Base(BenchmarkBase):
                 "generate_predictions is for held-out splits; the friends "
                 "training split is scored via __call__.")
         train = train_benchmark or Algonauts2025Friends(subject=self._subject)
-        X_train, Y_train, _, _ = train._design_matrix(candidate, drop_excluded=True)
-        X_pred, _, _, _ = self._design_matrix(candidate, drop_excluded=False)
+        if train._subject != self._subject or train._split != 'friends':
+            raise ValueError('Prediction requires Friends training data for the same subject.')
+        if (train._stimulus_window, train._hrf_delay) != (
+                self._stimulus_window, self._hrf_delay):
+            raise ValueError('Training and prediction must use the same stimulus window and HRF delay.')
+        projection = FeatureProjection(train.FEATURE_DIM_CAP)
+        X_train, Y_train, _, _ = train._design_matrix(
+            candidate, drop_excluded=True, projection=projection, fit_projection=True)
+        X_pred, _, _, _ = self._design_matrix(
+            candidate, drop_excluded=False, projection=projection)
         from brainscore.tools.banded_ridge import ridge_fit_predict
         preds = ridge_fit_predict(X_train, Y_train, X_pred, alpha=alpha)
         os.makedirs(out_dir, exist_ok=True)

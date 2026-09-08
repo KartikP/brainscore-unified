@@ -19,7 +19,12 @@ The public subject contract is:
    start_task(TaskContext(...)) for behavioral output.
 2. process(input_event) for a StimulusSet, StateChange, EnvironmentStep, or
    Message.
-3. reset() to clear recording, task, and perturbation state.
+3. reset() to clear recording, task, perturbation, and provider-owned history.
+
+Reset between independent evaluations. Callable providers can expose a `reset()`
+method; BrainScoreModel invokes it once per provider, including bound-method
+registrations. Both permanent adapters forward reset to supported legacy helpers.
+Perturbation benchmarks must also clean up in `finally` when evaluation fails.
 
 BrainScoreModel is the compositional implementation. Subject is the preferred
 interface name; UnifiedModel is a compatibility alias.
@@ -38,6 +43,44 @@ model.reset()
 
 The region must be present in the model's region_layer_map. Use
 start_recording("all") only when that mapping is non-empty.
+
+For separate towers with relative layer names, declare `region_modality_map`,
+for example `{'IT': 'vision', 'language_system': 'text'}`. The same layer string
+can then identify different layers in different towers. Recording regions from
+several modalities requires `process(stimuli, multi_modality=True)` and inputs
+for every requested tower. Composite regions retain per-layer `unit_index`
+coordinates from before subsetting; functional selection uses these original
+addresses. Custom subset extractors must retain original unit coordinates.
+
+## Text context and presentation identity
+
+Rows of a text StimulusSet are independent by default. To present ordered parts
+of a passage, add a `context_id` column: rows with the same identifier share
+preceding parts in their input order, while different identifiers reset context.
+Both TextWrapper and LanguageModelAdapter implement this rule. Pereira's unified
+benchmarks declare passage groups explicitly (benchmark version 2).
+
+~~~python
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+stimuli = StimulusSet({
+    'stimulus_id': ['p1-s1', 'p1-s2', 'p2-s1'],
+    'sentence': ['The cat sat.', 'It slept.', 'A dog ran.'],
+    'context_id': ['p1', 'p1', 'p2'],
+})
+~~~
+
+The second presentation sees `The cat sat. It slept.`. Context groups belong to
+one `process()` call. Streaming callers must supply complete context within
+each call/window; a context ID does not create hidden state across calls.
+`per_token` TextWrapper inputs must supply complete text explicitly rather than
+use context grouping, so word timestamps cannot be silently applied to added
+prefix tokens. Raw legacy `digest_text(list_of_parts)` keeps its passage semantics.
+
+The language adapter checks presentation counts and available legacy row
+coordinates, then restores every input presentation column, including
+`stimulus_id`. Benchmarks can align outputs by those IDs without adapter-specific
+repairs. Context-dependent text caches use a separate content-derived key.
 
 ## Run a behavioral task
 
@@ -72,6 +115,11 @@ model.process(StateChange(kind="reset", handle_id=applied.handle_id))
 Use a fresh RESULTCACHING_HOME or disable result caching for mutable-state
 experiments. Current activation cache keys do not uniformly fingerprint every
 hook or perturbation condition.
+
+For a matched random control of a localized subset, pass
+`population=selection.metadata['unit_population']` to `RandomSelection`, with
+`n_total=len(population)`. Sampling `range(n_total)` would lesion different units
+when the recorded population contains original indices such as `[4, 1]`.
 
 ## Run an embodied step
 

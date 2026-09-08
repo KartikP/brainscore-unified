@@ -12,14 +12,18 @@ Architecture:
 from brainscore_core.model_interface import BrainScoreModel
 
 
-# Chosen by sweeping all 12 blocks on Pereira2018.243sentences — the mapping
-# benchmark — and taking the maximum: h.9 scores 0.6007 there against h.11's
-# 0.5268. Deliberately not chosen on LeBel2023, which is reported with this map
-# and would make the choice circular; h.9 is not even LeBel's own best block
-# (h.7 is), so the two are independent. See
-# experiments/layer_mapping/gpt2_language_layer.py.
+# Confirmed by sweeping all 12 blocks on Pereira2018, the mapping benchmark:
+# h.11 scores 0.873 there, ahead of h.9 (0.819) and h.7 (0.761).
+#
+# This was briefly re-mapped to h.9 on 2026-09-07 and is now back. That sweep
+# ran while the unified Pereira variant showed native models one bare sentence
+# at a time, where the legacy path had always supplied the running passage
+# context; the depth curve under that bug peaked mid-stack, and it peaks at the
+# last block once the two paths agree. LeBel2023 does separately prefer h.7
+# (0.1124 against h.11's 0.1013) — benchmarks disagree about depth, and the
+# mapping benchmark decides.
 REGION_LAYER_MAP = {
-    'language_system': 'h.9',
+    'language_system': 'h.11',
 }
 
 
@@ -39,7 +43,10 @@ def get_model(identifier: str) -> BrainScoreModel:
         tokenizer=tokenizer,
         identifier=f'{identifier}-text',
         layer_aggregation='last_token',
-        max_length=128,
+        # Long enough for a whole Pereira passage in context (193 tokens);
+        # inputs shorter than this are unaffected, so other benchmarks do
+        # not move. GPT-2's own window is 1024.
+        max_length=512,
     )
 
     return BrainScoreModel(

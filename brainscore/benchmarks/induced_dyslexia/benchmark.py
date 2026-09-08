@@ -42,6 +42,7 @@ import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
+from brainscore_core.selection import selection_unit_indices
 from brainscore_core.model_interface import (
     StateChange, Selection, Perturbation, FunctionalSelection, RandomSelection,
 )
@@ -84,7 +85,7 @@ class InducedDyslexia(BenchmarkBase):
 
         super().__init__(
             identifier=f'Yeatman2021-induced_dyslexia-{modality}',
-            version=1,
+            version=2,
             parent='perturbation',
             ceiling=Score(1.0),   # ceiling is "no deficit"; the floor is the chance reader
             bibtex=BIBTEX,
@@ -153,9 +154,12 @@ class InducedDyslexia(BenchmarkBase):
             d = np.divide(mp - mn, pooled, out=np.zeros_like(mp, dtype=float),
                           where=pooled > 0)
             order = np.argsort(d)[::-1][:self.n_units]
-            out.append(Selection(layer=L, indices=sorted(int(i) for i in order),
+            population = selection_unit_indices(
+                asm.isel(neuroid=cols), candidate, self.localizer_region)
+            out.append(Selection(layer=L, indices=sorted(int(i) for i in population[order]),
                                  metadata={'selector': 'functional',
-                                           'n_recorded': int(sub.shape[1])}))
+                                           'n_recorded': int(sub.shape[1]),
+                                           'unit_population': population.tolist()}))
         return out
 
     # -- scoring ------------------------------------------------------------
@@ -194,18 +198,23 @@ class InducedDyslexia(BenchmarkBase):
 
         # word-form lesion
         selections = self._localize(candidate, layers)
-        self._ablate(candidate, selections)
-        lesioned_acc = self._reading_accuracy(candidate)
-        candidate.reset()
+        try:
+            self._ablate(candidate, selections)
+            lesioned_acc = self._reading_accuracy(candidate)
+        finally:
+            candidate.reset()
 
         # matched random-ablation control
         controls = [RandomSelection(layer=s.layer, n_units=len(s.indices),
                                     n_total=int(s.metadata['n_recorded']),
-                                    seed=self.control_seed).resolve(candidate)
+                                    seed=self.control_seed,
+                                    population=s.metadata.get('unit_population')).resolve(candidate)
                     for s in selections]
-        self._ablate(candidate, controls)
-        random_acc = self._reading_accuracy(candidate)
-        candidate.reset()
+        try:
+            self._ablate(candidate, controls)
+            random_acc = self._reading_accuracy(candidate)
+        finally:
+            candidate.reset()
 
         specific_deficit = random_acc - lesioned_acc      # >0 ⇒ word-form-specific
         dyslexic = bool(lesioned_acc < DYSLEXIA_THRESHOLD and specific_deficit > 0)
