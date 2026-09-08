@@ -14,7 +14,8 @@ from brainscore_core.metrics import Score
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore.validation.benchmark_parity import (
-    CASES, PEREIRA_CASES, PEREIRA_NATIVE_ULPS, PEREIRA_SCORE_ATOL,
+    ADAPTER_SCORE_ULPS, CASES, PEREIRA_CASES, PEREIRA_NATIVE_ULPS, PEREIRA_SCORE_ATOL,
+    adapter_score_tolerance,
     assert_pereira_activations, assert_pereira_score_drift, fp32_ulp_tolerance, validate_case,
 )
 from tests.test_umi_review_regressions import language_pair, _stimuli
@@ -24,6 +25,13 @@ pytestmark = pytest.mark.integration
 
 def _metric(source, target):
     return Score(float(np.mean(np.abs(source.values))))
+
+
+@pytest.fixture
+def constant_metric(monkeypatch):
+    # Failure-isolation tests still capture and compare real extracted values,
+    # but their scalar metric cannot fail first due to layout-dependent sums.
+    monkeypatch.setattr(__name__ + '._metric', lambda source, target: Score(0.25))
 
 
 @pytest.fixture
@@ -117,7 +125,7 @@ def test_all_registered_factories_on_both_routes(case, synthetic_benchmarks, lan
         assert set(synthetic_benchmarks) == {experiment}
 
 
-def test_harness_rejects_adapter_disguised_as_native(synthetic_benchmarks, language_pair):
+def test_harness_rejects_adapter_disguised_as_native(synthetic_benchmarks, language_pair, constant_metric):
     _, adapter = language_pair
     def factory(case, route):
         adapter.reset()
@@ -126,16 +134,20 @@ def test_harness_rejects_adapter_disguised_as_native(synthetic_benchmarks, langu
         validate_case(CASES[-1], factory)
 
 
-def test_harness_detects_missing_native_context(synthetic_benchmarks, language_pair, monkeypatch):
+def test_harness_detects_missing_native_context(synthetic_benchmarks, language_pair, constant_metric, monkeypatch):
     native, adapter = language_pair
     wrapper = native._preprocessors['text']
-    monkeypatch.setattr(wrapper, '_extract_texts', lambda stimuli: list(stimuli.sentence))
     def factory(case, route):
         native.reset()
         adapter.reset()
         return {'native': native, 'adapter': adapter, 'legacy': adapter._legacy}[route]
-    with pytest.raises(AssertionError, match='native activations differ'):
+    # First establish that the otherwise-identical setup passes with context.
+    validate_case(CASES[-1], factory)
+    monkeypatch.setattr(wrapper, '_extract_texts', lambda stimuli: list(stimuli.sentence))
+    with pytest.raises(AssertionError, match='native activations differ') as failure:
         validate_case(CASES[-1], factory)
+    assert 'score differs' not in str(failure.value)
+    assert 'raw differs' not in str(failure.value)
 
 
 @pytest.fixture
@@ -185,12 +197,50 @@ def run_parity_observations(language_pair):
 
 @pytest.mark.parametrize('case', CASES, ids=lambda case: case.unified)
 @pytest.mark.parametrize('field', ['activation_delta', 'score', 'raw'])
-def test_adapter_exactness_cannot_be_relaxed_by_native_tolerances(case, field, run_parity_observations):
+def test_adapter_guards_cannot_be_relaxed_by_native_tolerances(case, field, run_parity_observations):
     baseline = {'activation_delta': 0, 'score': 0.5, 'raw': 0.25}[field]
     message = 'activations' if field == 'activation_delta' else field
+    delta = 1e-12 if field == 'activation_delta' else 5 * float(np.spacing(np.float32(baseline)))
     with pytest.raises(AssertionError, match=f'adapter {message} differ'):
-        run_parity_observations(case, {'adapter': {field: baseline + 1e-12}},
+        run_parity_observations(case, {'adapter': {field: baseline + delta}},
                                 native_atol=1, score_atol=1)
+
+
+@pytest.mark.parametrize('case', CASES, ids=lambda case: case.unified)
+@pytest.mark.parametrize('field', ['score', 'raw'])
+def test_adapter_scores_allow_four_fp32_ulps_with_exact_activations(case, field, run_parity_observations):
+    # Controlled scalar perturbations, not invented CI activation arrays.
+    # Cover the CI binade and both directions, including the four-ULP boundary.
+    reference = float(np.float32(0.03181))
+    spacing = float(np.spacing(np.float32(reference)))
+    assert spacing == 2 ** -28
+    assert adapter_score_tolerance(reference) == ADAPTER_SCORE_ULPS * spacing
+    for ulps in (1, -4, 4):
+        observed = run_parity_observations(case, {
+            'legacy': {field: reference},
+            'adapter': {field: reference + ulps * spacing},
+            'native': {field: reference},
+        })
+        assert observed['routes']['adapter']['max_activation_delta'] == 0
+    # A genuine activation change must fail even with an allowed scalar delta.
+    with pytest.raises(AssertionError, match='adapter activations differ'):
+        run_parity_observations(case, {
+            'legacy': {field: reference},
+            'adapter': {field: reference + spacing, 'activation_delta': 1e-12},
+            'native': {field: reference},
+        })
+
+
+@pytest.mark.parametrize('reference', [0., 1e-50, 1e-40, -0.03181, 0.5, 1., np.finfo(np.float32).max])
+def test_adapter_score_tolerance_scales_without_an_absolute_floor(reference):
+    magnitude = np.float32(abs(reference))
+    # Compute spacing independently, using the preceding binade at max_float32
+    # to avoid nextafter overflowing to infinity.
+    if magnitude == np.finfo(np.float32).max:
+        spacing = float(magnitude) - float(np.nextafter(magnitude, np.float32(0)))
+    else:
+        spacing = float(np.nextafter(magnitude, np.float32(np.inf))) - float(magnitude)
+    assert adapter_score_tolerance(reference) == 4 * spacing
 
 
 @pytest.mark.parametrize('case, legacy_score, native_score, legacy_raw, native_raw', [

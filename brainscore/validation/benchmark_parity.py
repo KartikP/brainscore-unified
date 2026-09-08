@@ -28,6 +28,7 @@ CASES = tuple(
 
 
 PEREIRA_CASES = tuple(case for case in CASES if case.domain == 'language')
+ADAPTER_SCORE_ULPS = 4
 
 # Fixed GPT-2/Pereira regression policy, not a universal forward-error theorem.
 # User GPU evidence (A10G, torch 2.6.0, transformers 4.57.6, FP32, matmul TF32 off):
@@ -140,6 +141,18 @@ def _scalar(value):
     return float(array.reshape(-1)[0])
 
 
+def adapter_score_tolerance(reference):
+    """Four FP32 spacings at the scalar's magnitude; no absolute-error floor."""
+    magnitude = abs(_scalar(reference))
+    assert magnitude <= np.finfo(np.float32).max, 'Adapter reference score exceeds FP32 range'
+    magnitude = np.float32(magnitude)
+    exponent = np.frexp(magnitude)[1]
+    # Clamp at the subnormal spacing, including zero. ldexp avoids infinity
+    # from nextafter(max_float32); no rounding of either score before comparison.
+    spacing = np.ldexp(1., max(int(exponent) - 24, -149)) if magnitude else 2. ** -149
+    return ADAPTER_SCORE_ULPS * spacing
+
+
 def validate_case(case, candidate_factory, benchmark_loader=None, *,
                   native_atol=1e-6, score_atol=None):
     """Run three independent conditions, retaining inputs as well as scores.
@@ -228,11 +241,30 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
                 score_errors = []
                 for key in ('score', 'raw'):
                     try:
-                        limit = score_atol
-                        if pereira and key == 'raw':
+                        if route == 'adapter':
+                            # Ubuntu CPU CI: delta 3.7252903e-9 at ~0.03181,
+                            # relative 1.17111432e-7: one FP32 ULP (2^-28).
+                            # The synthetic metric is mean(abs(FP32 values)),
+                            # not regression/BLAS. Equal Pereira values arrive
+                            # with different C/F layouts; NumPy reduction order
+                            # can change. Vision uses the same synthetic metric;
+                            # its real PLS/correlation metric also reduces floats.
+                            # Allow four ULPs (two fraction bits) for scalar
+                            # reduction/normalization portability: 1.49011612e-8
+                            # at 0.03181, scaling with each raw/published score.
+                            # This is a small acceptance budget, not a bound on
+                            # arbitrary regression conditioning. Crucially, the
+                            # adapter's activation check above stays atol=rtol=0:
+                            # any changed activation fails before this allowance
+                            # can mask it. Score-only changes beyond four ULPs
+                            # still fail; native tolerances cannot enlarge this.
+                            limit = adapter_score_tolerance(runs['legacy'][key])
+                        else:
+                            limit = score_atol
+                        if route != 'adapter' and pereira and key == 'raw':
                             limit *= runs['legacy']['ceiling']
                         np.testing.assert_allclose(observed[key], runs['legacy'][key], rtol=0,
-                            atol=0 if route == 'adapter' else limit,
+                            atol=limit,
                             err_msg=f'{case.unified}: {route} {key} differs')
                     except AssertionError as error:
                         if route == 'adapter':
