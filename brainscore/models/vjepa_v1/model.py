@@ -103,10 +103,13 @@ def _default_cache_dir() -> Path:
     return cache
 
 
-def _download_checkpoint(url: str, dest: Path) -> Path:
+def _download_checkpoint(url: str, dest: Path, identifier: str = 'vjepa1-vitl') -> Path:
     """Download a URL to ``dest`` if not already present. Atomic via tmp->rename."""
     if dest.exists() and dest.stat().st_size > 0:
         return dest
+    from brainscore.models._downloads import file_preflight
+    # Full training checkpoint (encoders, predictor, optimizer), not just ViT-L.
+    file_preflight(identifier, url, dest, approximate_gb=5.2)
     import urllib.request
     tmp = dest.with_suffix(dest.suffix + '.tmp')
     urllib.request.urlretrieve(url, tmp)

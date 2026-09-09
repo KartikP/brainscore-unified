@@ -111,15 +111,18 @@ def _load_preprocess_images(image_filepaths, processor, image_size=224):
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'blip2-opt-2.7b'
+    from brainscore.models._downloads import hf_preflight
+    download = hf_preflight(identifier, 'Salesforce/blip2-opt-2.7b', 15.5)
 
     blip_model = Blip2ForConditionalGeneration.from_pretrained(
         'Salesforce/blip2-opt-2.7b',
         torch_dtype=torch.float16,
+        **download,
     )
-# Pin the image-processor implementation: transformers 5 rebinds the class
+    # Pin the image-processor implementation: transformers 5 rebinds the class
     # names, moving the default from PIL to torchvision and shifting pixels.
-    blip_processor = AutoProcessor.from_pretrained('Salesforce/blip2-opt-2.7b')
-    blip_processor = pin_image_processor(blip_processor, 'Salesforce/blip2-opt-2.7b')
+    blip_processor = AutoProcessor.from_pretrained('Salesforce/blip2-opt-2.7b', **download)
+    blip_processor = pin_image_processor(blip_processor, 'Salesforce/blip2-opt-2.7b', **download)
 
     preprocessing = functools.partial(
         _load_preprocess_images,

@@ -2,6 +2,14 @@
 
 Extend the unified interface through five registries and Capability.
 
+For a model registration, instantiate `BrainScoreModel`, the concrete `Subject`
+subclass that composes wrappers, recording, and capability callables. For benchmark
+type annotations or a custom implementation, use the abstract `Subject` contract.
+Both are importable from `brainscore_core.model_interface`. The third name there,
+`UnifiedModel`, is the deprecated spelling of the same ABC (`UnifiedModel is Subject`),
+retained for existing imports, subclasses, and `isinstance` checks. It has no separate
+implementation; use `Subject` in new code. See [Concepts](docs/concepts.md#subject).
+
 > Companion: the interactive contract map at
 > [brain-score.github.io/public/UMI/architecture.html](https://brain-score.github.io/public/UMI/architecture.html).
 
@@ -81,6 +89,10 @@ model_registry['your-model'] = get_model
 Then add `from . import your_name` to `brainscore/models/__init__.py`. Run `auto_register` to
 infer the wrapper, layers, and a provisional `region_layer_map`, then refine with the
 layer-mapping explorer.
+
+Factories that fetch multi-gigabyte checkpoints should use the local pre-download
+guard before any loader call; see [model downloads](docs/model_downloads.md) and
+`brainscore/models/blip2_opt_2_7b/model.py` for the pattern.
 
 ### Seam 2 — a new benchmark
 

@@ -54,6 +54,8 @@ def _load_preprocess_images(image_filepaths, processor, image_size=224):
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'blip2-wav2vec2'
+    from brainscore.models._downloads import hf_preflight
+    download = hf_preflight(identifier, 'Salesforce/blip2-opt-2.7b', 15.5)
 
     from transformers import AutoProcessor, Blip2ForConditionalGeneration
     from brainscore_vision.model_helpers.activations.pca import LayerPCA
@@ -63,11 +65,11 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     # Pin the image-processor implementation (see brainscore_core.hf_compat).
     blip_processor = AutoProcessor.from_pretrained(
-        'Salesforce/blip2-opt-2.7b')
+        'Salesforce/blip2-opt-2.7b', **download)
     blip_processor = pin_image_processor(
-        blip_processor, 'Salesforce/blip2-opt-2.7b')
+        blip_processor, 'Salesforce/blip2-opt-2.7b', **download)
     blip_model = Blip2ForConditionalGeneration.from_pretrained(
-        'Salesforce/blip2-opt-2.7b', torch_dtype=torch.float32)
+        'Salesforce/blip2-opt-2.7b', torch_dtype=torch.float32, **download)
 
     preprocessing = functools.partial(
         _load_preprocess_images, processor=blip_processor, image_size=224)

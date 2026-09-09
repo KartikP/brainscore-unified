@@ -41,6 +41,8 @@ def _placement_budget(torch):
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'qwen3.6-27b'
+    from brainscore.models._downloads import hf_preflight
+    download = hf_preflight(identifier, HF_IDENTIFIER, 55.6)
     # Imported here, not at module scope: importing brainscore must not pull in
     # torch or transformers, which is asserted by tests/test_import_hygiene.py.
     import torch
@@ -54,11 +56,11 @@ def get_model(identifier: str) -> BrainScoreModel:
     # spills to host memory rather than failing outright.
     full = AutoModelForCausalLM.from_pretrained(
         HF_IDENTIFIER, dtype=torch.bfloat16, device_map='auto',
-        max_memory=_placement_budget(torch))
+        max_memory=_placement_budget(torch), **download)
     full.eval()
     text_model = full.model                      # Qwen3_5TextModel, 64 layers
 
-    tokenizer = AutoTokenizer.from_pretrained(HF_IDENTIFIER)
+    tokenizer = AutoTokenizer.from_pretrained(HF_IDENTIFIER, **download)
     tokenizer.padding_side = 'left'              # keeps the last position real
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token

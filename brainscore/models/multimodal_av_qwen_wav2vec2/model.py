@@ -34,6 +34,8 @@ REGION_MODALITY_MAP = {
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'qwen2.5-vl-wav2vec2'
+    from brainscore.models._downloads import hf_preflight
+    download = hf_preflight(identifier, 'Qwen/Qwen2.5-VL-3B-Instruct', 7.6)
 
     from transformers import (
         AutoProcessor, Qwen2_5_VLForConditionalGeneration)
@@ -43,12 +45,13 @@ def get_model(identifier: str) -> BrainScoreModel:
     qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         'Qwen/Qwen2.5-VL-3B-Instruct',
         torch_dtype=torch.float16,
+        **download,
     )
     # Pin the image-processor implementation (see brainscore_core.hf_compat).
     qwen_processor = AutoProcessor.from_pretrained(
-        'Qwen/Qwen2.5-VL-3B-Instruct')
+        'Qwen/Qwen2.5-VL-3B-Instruct', **download)
     qwen_processor = pin_image_processor(
-        qwen_processor, 'Qwen/Qwen2.5-VL-3B-Instruct')
+        qwen_processor, 'Qwen/Qwen2.5-VL-3B-Instruct', **download)
 
     vision_wrapper = VLMVisionWrapper(
         model=qwen_model.model.visual,

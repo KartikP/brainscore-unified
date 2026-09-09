@@ -75,7 +75,7 @@ def _build_video_wrapper(identifier: str, random_init: bool = False):
     from .backbone_inits import randomize_module_in_place
 
     cache = _default_cache_dir()
-    ckpt = _download_checkpoint(CHECKPOINT_URL, cache / 'vitl16.pth.tar')
+    ckpt = _download_checkpoint(CHECKPOINT_URL, cache / 'vitl16.pth.tar', identifier)
     backbone = _load_vjepa_v1_vitl(ckpt).eval()
     if random_init:
         # Random-init the loaded backbone in-place. Deterministic seed.

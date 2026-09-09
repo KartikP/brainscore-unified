@@ -1,0 +1,245 @@
+--- a/brainscore_core/contract.py
++++ b/brainscore_core/contract.py
+@@ -39,13 +39,18 @@
+ 
+ class Subject(ABC):
+     """
+-    Base interface for all Brain-Score subjects.
+-
+-    Renamed from ``UnifiedModel`` in v1.5. The interface describes a *subject*,
+-    not specifically a model: every event and measurement is something you could
+-    present to, or read from, a biological subject through a human harness, not
+-    only a model. ``UnifiedModel`` remains a deprecated alias (defined below the
+-    class) for one release so existing imports keep working unchanged.
++    Abstract contract consumed by unified Brain-Score benchmarks and adapters.
++
++    Use ``Subject`` for type annotations or a custom interface implementation.
++    Model registrations normally instantiate ``BrainScoreModel``, the concrete
++    subclass that composes wrappers, recording, and capability callables.
++    ``UnifiedModel`` is the deprecated spelling of this same ABC:
++    ``UnifiedModel is Subject``. It has no separate implementation, but remains
++    a live compatibility alias for existing imports, subclasses, and checks.
++    All three names are importable from ``brainscore_core.model_interface``.
++
++    The contract describes an experimental subject, allowing a model adapter
++    or a future biological-subject harness to expose the same events.
+ 
+     Defines identity, lifecycle, and a single processing method.
+     Benchmarks call process(stimuli) for all evaluation. What the model
+@@ -213,9 +218,6 @@
+             return type(self).__name__
+ 
+ 
+-# Deprecated alias. ``UnifiedModel`` was the v1 name for the subject contract.
+-# Renamed to ``Subject`` in v1.5 to make the interface subject-agnostic: a model
+-# or a future human harness satisfies the same contract. Kept as an alias for one
+-# release so existing imports (``from brainscore_core import UnifiedModel``) keep
+-# working. New code should use ``Subject``.
++# Deprecated spelling of the same ABC, retained for existing imports, subclasses,
++# and isinstance checks. New code should use Subject; no separate implementation.
+ UnifiedModel = Subject
+--- a/brainscore_core/brainscore_model.py
++++ b/brainscore_core/brainscore_model.py
+@@ -34,7 +34,15 @@
+ 
+ 
+ class BrainScoreModel(Subject):
+-    """Compositional implementation of Subject (formerly UnifiedModel)."""
++    """Concrete Subject subclass for ordinary model registrations.
++
++    Instantiate this class to compose wrappers, recording, and capability
++    callables. Use the abstract ``Subject`` contract for benchmark annotations
++    or custom implementations. ``UnifiedModel`` is the deprecated spelling of
++    that same ABC (``UnifiedModel is Subject``), not a separate implementation
++    or a former name for this concrete class. All three names are importable
++    from ``brainscore_core.model_interface``.
++    """
+ 
+     COLUMN_TO_MODALITY: Dict[str, str] = {
+         'image_file_name': 'vision',
+--- a/brainscore_core/model_interface.py
++++ b/brainscore_core/model_interface.py
+@@ -2,6 +2,11 @@
+ 
+ The implementation lives in smaller modules, but all names historically
+ importable from ``brainscore_core.model_interface`` remain importable here.
++
++Instantiate ``BrainScoreModel`` for ordinary registrations; use its abstract
++``Subject`` contract for benchmark annotations or custom implementations.
++``UnifiedModel is Subject``: the deprecated spelling remains a compatibility
++alias for existing imports, subclasses, and isinstance checks.
+ """
+ 
+ from abc import ABC, abstractmethod
+--- a/brainscore_core/memory.py
++++ b/brainscore_core/memory.py
+@@ -1,8 +1,8 @@
+ """
+ Extraction-plan memory pre-check for Brain-Score.
+ 
+-Estimates whether a (model, benchmark) pair will fit in memory BEFORE the run,
+-so a benchmark can't OOM after hours of computation. The estimate is *computed*
++Estimates host RAM before a run to identify likely overruns; passing does not
++guarantee that a (model, benchmark) pair fits. The estimate is *computed*
+ from a plan — ``n_stimuli x n_features x dtype`` for the activation matrix plus
+ an analytic metric-workspace term — not extrapolated from a measured probe run.
+ 
+@@ -15,7 +15,8 @@
+ so a single-stimulus probe (or an explicit ``feature_dim`` / ``expected_feature_dim``
+ declaration) suffices, and everything else is arithmetic.
+ 
+-Cross-platform: CUDA (torch.cuda), MPS (psutil), CPU (psutil).
++Available RAM uses psutil; process peak RSS uses the OS high-water mark.
++CUDA allocation peaks use torch.cuda. MPS device/driver peaks are not measured.
+ brainscore_core stays free of heavy dependencies -- torch is optional.
+ """
+ 
+@@ -77,8 +78,12 @@
+ 
+ def get_peak_memory() -> int:
+     """
+-    Returns peak memory usage in bytes since last reset.
+-    Cross-platform.
++    Return a measured peak in bytes, with backend-specific scope.
++
++    CUDA: peak tensor allocation since the last ``reset_peak_memory()``.
++    CPU/MPS: process peak RSS since process start (OS high-water mark), which
++    cannot be reset. This is not a per-run peak or an MPS device/driver peak.
++    A previous workload can therefore dominate the CPU/MPS value.
+     """
+     try:
+         import torch
+@@ -87,12 +92,15 @@
+     except ImportError:
+         pass
+ 
+-    import psutil
+-    return psutil.Process().memory_info().rss
++    return _get_peak_rss()
+ 
+ 
+ def reset_peak_memory() -> None:
+-    """Reset peak memory tracking."""
++    """Reset CUDA allocation peaks; no-op for CPU/MPS lifetime peak RSS.
++
++    The OS process high-water mark cannot be reset. Use a fresh process to
++    isolate a CPU/MPS workload; this still does not measure MPS driver memory.
++    """
+     try:
+         import torch
+         if torch.cuda.is_available():
+@@ -513,6 +521,12 @@
+     unmodelled failure mode. The raise is always override-able with
+     ``check_mem=False``.
+ 
++    On Apple Silicon, MPS forward-pass and driver allocations share system
++    RAM but are not modelled here. Baseline RSS is a point-in-time reading,
++    not a measured peak. An MPS check warns at the point of use: passing it
++    does not establish that the run fits. ``get_peak_memory()`` is a separate
++    reporting helper, not an input to this estimator.
++
+     Two paths differ only in how well-grounded the *shapes* are; the *peak model*
+     on top (a coarse extraction-transient factor, sklearn-workspace formulas, an
+     allocator slack factor) is heuristic on BOTH:
+@@ -547,6 +561,22 @@
+     """
+     # Host RAM, not VRAM: the plan models host-side arrays (see get_host_available_memory).
+     available = get_host_available_memory()
++
++    try:
++        import torch
++        if (not torch.cuda.is_available()
++                and hasattr(torch.backends, 'mps')
++                and torch.backends.mps.is_available()):
++            warnings.warn(
++                f"MPS memory check for '{model.identifier}' estimates host-side "
++                "arrays only. Baseline RSS is a point-in-time reading, not a "
++                "measured peak. MPS forward-pass and driver allocations share "
++                "system RAM and are not modelled. Passing this check does not "
++                "establish that the run fits.",
++                RuntimeWarning, stacklevel=2,
++            )
++    except ImportError:
++        pass
+ 
+     import psutil
+     baseline_rss = psutil.Process().memory_info().rss
+--- a/tests/test_memory.py
++++ b/tests/test_memory.py
+@@ -174,8 +174,76 @@
+         assert isinstance(peak, int)
+         assert peak >= 0
+ 
++    @pytest.mark.parametrize('platform, raw_peak, expected', [
++        ('darwin', 5000000, 5000000), ('linux', 5000, 5000 * 1024),
++    ])
++    def test_host_peak_uses_os_high_water_mark(self, platform, raw_peak, expected):
++        fake_torch = MagicMock()
++        fake_torch.cuda.is_available.return_value = False
++        fake_torch.backends.mps.is_available.return_value = platform == 'darwin'
++        with patch.dict('sys.modules', {'torch': fake_torch}), \
++                patch('brainscore_core.memory.sys.platform', platform), \
++                patch('brainscore_core.memory.resource.getrusage') as usage, \
++                patch('psutil.Process') as process:
++            usage.return_value.ru_maxrss = raw_peak
++            process.return_value.memory_info.return_value.rss = 1000
++            assert get_peak_memory() == expected
++            reset_peak_memory()
++            assert get_peak_memory() == expected  # lifetime peak cannot reset
++            process.assert_not_called()
++            fake_torch.cuda.reset_peak_memory_stats.assert_not_called()
++
++    def test_host_peak_without_torch(self):
++        with patch.dict('sys.modules', {'torch': None}), \
++                patch('brainscore_core.memory._get_peak_rss', return_value=12345):
++            assert get_peak_memory() == 12345
++
++    def test_cuda_peak_and_reset_keep_allocator_semantics(self):
++        fake_torch = MagicMock()
++        fake_torch.cuda.is_available.return_value = True
++        fake_torch.cuda.max_memory_allocated.return_value = 12345
++        with patch.dict('sys.modules', {'torch': fake_torch}), \
++                patch('brainscore_core.memory._get_peak_rss') as host_peak:
++            assert get_peak_memory() == 12345
++            reset_peak_memory()
++            fake_torch.cuda.reset_peak_memory_stats.assert_called_once_with()
++            host_peak.assert_not_called()
++
+ 
+ # ── reset_peak_memory ────────────────────────────────────────────────
++
++@pytest.mark.parametrize('declared', [False, True])
++def test_mps_check_warns_even_when_host_estimate_fits(declared):
++    from brainscore_core.execution_plan import ExecutionPlan
++    bench = FakeBenchmark(n_stimuli=10, expected_feature_dim=8)
++    if declared:
++        bench.execution_plan = ExecutionPlan(n_extraction_presentations=10,
++                                             feature_width=8)
++    fake_torch = MagicMock()
++    fake_torch.cuda.is_available.return_value = False
++    fake_torch.backends.mps.is_available.return_value = True
++    with patch.dict('sys.modules', {'torch': fake_torch}), \
++            patch('brainscore_core.memory.get_host_available_memory', return_value=10**10), \
++            _mock_memory(1000), \
++            pytest.warns(RuntimeWarning, match='MPS memory check') as caught:
++        check_memory(FakeModel(), bench)
++    message = str(caught[0].message)
++    assert 'point-in-time' in message
++    assert 'driver allocations' in message
++    assert 'does not establish that the run fits' in message
++
++
++def test_cpu_check_has_no_mps_warning():
++    fake_torch = MagicMock()
++    fake_torch.cuda.is_available.return_value = False
++    fake_torch.backends.mps.is_available.return_value = False
++    with patch.dict('sys.modules', {'torch': fake_torch}), \
++            patch('brainscore_core.memory.get_host_available_memory', return_value=10**10), \
++            _mock_memory(1000), warnings.catch_warnings(record=True) as caught:
++        warnings.simplefilter('always')
++        check_memory(FakeModel(), FakeBenchmark(expected_feature_dim=8))
++    assert not any('MPS memory check' in str(w.message) for w in caught)
++
+ 
+ class TestResetPeakMemory:
+ 

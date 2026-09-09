@@ -76,6 +76,8 @@ def registered_toy(monkeypatch, tmp_path):
     monkeypatch.setattr(Qwen2_5_VLForConditionalGeneration, 'from_pretrained', lambda *a, **k: net)
     monkeypatch.setattr(AutoProcessor, 'from_pretrained', lambda *a, **k: Processor())
     monkeypatch.setattr(registration, 'pin_image_processor', lambda processor, *a, **k: processor)
+    # Every checkpoint loader above returns a CPU toy; no real cache is needed.
+    monkeypatch.setenv('BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK', '1')
     paths = {}
     for i, value in enumerate([150, 180, 20, 40]):
         path = tmp_path / f'{i}.png'

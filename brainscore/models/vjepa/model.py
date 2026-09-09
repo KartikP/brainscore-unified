@@ -116,16 +116,19 @@ def _vjepa_post_hook(arr: np.ndarray) -> np.ndarray:
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'vjepa2-vitl'
+    from brainscore.models._downloads import hf_preflight
+    checkpoint = 'facebook/vjepa2-vitl-fpc64-256'
+    download = hf_preflight(identifier, checkpoint, 1.3)
 
     from transformers import VJEPA2Model, VJEPA2VideoProcessor
     from brainscore.model_helpers.video_wrapper import VideoWrapper
 
-    checkpoint = 'facebook/vjepa2-vitl-fpc64-256'
     vjepa = VJEPA2Model.from_pretrained(
         checkpoint,
         torch_dtype=torch.float32,
+        **download,
     )
-    processor = VJEPA2VideoProcessor.from_pretrained(checkpoint)
+    processor = VJEPA2VideoProcessor.from_pretrained(checkpoint, **download)
 
     preprocessing = _make_preprocessing(processor)
 

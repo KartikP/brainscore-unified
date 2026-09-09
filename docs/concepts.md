@@ -23,17 +23,20 @@ The remainder of this document defines those six terms.
 
 A model, wrapped so Brain-Score can treat it like an experimental subject.
 
-**Three names, one concept.** All three appear in the codebase and they are not
-alternatives:
+**Which name to use.** Import these names from `brainscore_core.model_interface`:
 
 | Name | What it is |
 | --- | --- |
-| `Subject` | the abstract contract every model satisfies. What benchmarks are written against |
-| `BrainScoreModel` | the concrete class that is constructed. Implements `Subject` |
-| `UnifiedModel` | a deprecated alias of `Subject`, kept so older code keeps working. Do not use it in new code |
+| `Subject` | The abstract contract consumed by unified benchmarks and adapters. Use for type annotations or a custom implementation |
+| `BrainScoreModel` | The concrete `Subject` subclass to instantiate for ordinary registrations. Composes wrappers, recording, and capability callables |
+| `UnifiedModel` | The deprecated spelling of the same ABC: `UnifiedModel is Subject`. Retained for existing imports, subclasses, and `isinstance` checks; use `Subject` in new code |
 
-`BrainScoreModel` is the class to instantiate; `Subject` is the contract it satisfies.
-It exposes three operations:
+`UnifiedModel` has no separate implementation, but is not unused: core's memory
+annotations and the legacy vision CLIP registration test still reference it.
+It is a compatibility name, not a third kind of model. The permanent vision and
+language adapters implement `Subject` too; existing domain plugins stay supported.
+
+A `BrainScoreModel` exposes the contract's operations:
 
 ```python
 model.start_recording('IT')     # what to measure

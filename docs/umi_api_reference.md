@@ -1,5 +1,16 @@
 # UMI API reference and cookbook
 
+## Which model class to use
+
+Import from `brainscore_core.model_interface`. Instantiate `BrainScoreModel`
+for ordinary model registrations: it is the concrete `Subject` subclass that
+composes wrappers, recording, and capability callables. Use the abstract
+`Subject` contract in benchmark type annotations or for custom implementations
+and adapters. `UnifiedModel` is the deprecated spelling of the same ABC
+(`UnifiedModel is Subject`), retained for existing imports, subclasses, and
+`isinstance` checks. It has no separate implementation; use `Subject` in new code.
+See [the terminology guide](concepts.md#subject) for current compatibility uses.
+
 ## Registry entry points
 
 | Function | Purpose |
@@ -10,6 +21,12 @@
 | brainscore.load_dataset(identifier) | Load a registered DataAssembly |
 | brainscore.load_stimulus_set(identifier) | Load a registered StimulusSet |
 | brainscore.score(model_identifier, benchmark_identifier) | Run compatibility and memory checks, then score |
+
+Cold loads of shipped multi-gigabyte checkpoints stop before downloading and
+report the source, approximate size, cache destination, and free disk. Fully
+cached weights load locally. Set `BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK=1` to
+allow managed CI/EC2 downloads without that guard; see
+[model downloads](model_downloads.md) for scope and disk-budget limitations.
 
 ## Subject lifecycle
 
@@ -25,9 +42,6 @@ Reset between independent evaluations. Callable providers can expose a `reset()`
 method; BrainScoreModel invokes it once per provider, including bound-method
 registrations. Both permanent adapters forward reset to supported legacy helpers.
 Perturbation benchmarks must also clean up in `finally` when evaluation fails.
-
-BrainScoreModel is the compositional implementation. Subject is the preferred
-interface name; UnifiedModel is a compatibility alias.
 
 ## Record a region
 
