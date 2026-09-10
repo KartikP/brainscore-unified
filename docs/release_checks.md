@@ -55,3 +55,28 @@ Run the fast tier with `RESULTCACHING_DISABLE=1` and cold activation caches. A
 warm cache has hidden a real defect three times here, most recently a truncation
 fix that returned a byte-identical wrong score because the cache key did not
 include the tokenizer configuration.
+
+## 5. Which Pereira variant a number came from
+
+`Pereira2018-linear` and `Pereira2018-ridge` are different benchmarks and their
+numbers are not interchangeable. Ridge groups cross-validation by story; linear
+splits sentences at random, which leaks within a passage. Upstream retired the
+plain-linear registration for that reason in #361 (2026-05-18), leaving ridge
+and linear-shuffle.
+
+Measured 2026-09-10, same model and layer, legacy route:
+
+| | 243 linear | 243 ridge | 384 linear | 384 ridge |
+|---|---|---|---|---|
+| gpt2 | 0.8713 | 0.8353 | 0.8293 | 0.6564 |
+| opt-6.7b | 1.0 (clipped) | **0.8696** | 1.0 (clipped) | 0.6310 |
+
+The ceilings differ too — 0.354 for linear against 0.134 for ridge — so the raw
+correlations are on different scales. Linear's raw exceeds its ceiling for
+models above roughly 2.7B and the score clips at 1.0, which is why linear
+cannot rank large models. Ridge does not clip.
+
+**The published leaderboard figure is ridge.** opt-6.7b's 0.8696 here is the
+0.87 reported publicly. Any comparison against the leaderboard must use the
+`-ridge` variants; `-linear` numbers are internally consistent but describe a
+retired protocol.
