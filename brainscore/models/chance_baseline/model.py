@@ -6,7 +6,7 @@ the label set on every call. Used as a floor for behavioral benchmarks:
 if this gets > 0.5 for balanced binary tasks, the benchmark's scoring
 has a leak somewhere.
 
-Implemented as a minimal UnifiedModel subclass rather than a
+Implemented as a minimal Subject subclass rather than a
 BrainScoreModel — it has no preprocessors, no activations, no logistic.
 Benchmarks that use start_task() and process() still work.
 """
@@ -17,14 +17,14 @@ import numpy as np
 import pandas as pd
 
 from brainscore_core.model_interface import (
-    BrainScoreModel, EnvironmentStep, StateChange, TaskContext, UnifiedModel,
+    BrainScoreModel, EnvironmentStep, StateChange, Subject, TaskContext,
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly,
 )
 
 
-class ChanceBaseline(UnifiedModel):
+class ChanceBaseline(Subject):
     """A model that returns uniform probabilities over the label set.
 
     Deterministic and reproducible (same output every call). For a

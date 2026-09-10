@@ -175,7 +175,7 @@ class Witness:
             cols = list(stimuli.columns)
         except Exception:
             cols = []
-        # which column carries each modality (defensive: not every UnifiedModel
+        # which column carries each modality (defensive: not every Subject
         # defines COLUMN_TO_MODALITY — fall back to a sensible default mapping)
         col_map = getattr(self.model, 'COLUMN_TO_MODALITY', None) or _DEFAULT_COLUMN_TO_MODALITY
         col_for = {}

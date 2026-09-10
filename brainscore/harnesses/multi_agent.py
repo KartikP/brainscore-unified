@@ -20,7 +20,7 @@ traces from both agents over a shared interaction.
 
 Any object with ``.identifier`` and ``.process(EnvironmentStep) ->
 EnvironmentResponse`` is a valid agent (a BrainScoreModel with an ``action_fn``,
-or any UnifiedModel). The harness is duck-typed and device-agnostic — it stays
+or any Subject). The harness is duck-typed and device-agnostic — it stays
 out of ``core``, like the other harnesses.
 """
 from typing import Any, Dict, List, Optional, Sequence, Union

@@ -31,9 +31,12 @@ A model, wrapped so Brain-Score can treat it like an experimental subject.
 | `BrainScoreModel` | The concrete `Subject` subclass to instantiate for ordinary registrations. Composes wrappers, recording, and capability callables |
 | `UnifiedModel` | The deprecated spelling of the same ABC: `UnifiedModel is Subject`. Retained for existing imports, subclasses, and `isinstance` checks; use `Subject` in new code |
 
-`UnifiedModel` has no separate implementation, but is not unused: core's memory
-annotations and the legacy vision CLIP registration test still reference it.
-It is a compatibility name, not a third kind of model. The permanent vision and
+`UnifiedModel` has no separate implementation — `UnifiedModel is Subject` is
+literally true — and as of 2026-09-10 nothing inside these four repositories
+uses the old spelling except its own definition and a few "formerly" notes. It
+is exported solely so that code outside this tree importing
+`from brainscore_core import UnifiedModel` keeps working. It is a compatibility
+name, not a third kind of model. The permanent vision and
 language adapters implement `Subject` too; existing domain plugins stay supported.
 
 A `BrainScoreModel` exposes the contract's operations:

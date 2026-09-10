@@ -11,7 +11,7 @@ registry lookup.
 import logging
 from typing import Dict, Any, Callable
 
-from brainscore_core.model_interface import Subject, UnifiedModel, BrainScoreModel
+from brainscore_core.model_interface import Subject, BrainScoreModel
 from brainscore_core.benchmarks import Benchmark
 from brainscore_core.metrics import Metric, Score
 

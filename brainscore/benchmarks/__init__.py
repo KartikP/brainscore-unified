@@ -1,7 +1,7 @@
 """Unified Brain-Score benchmarks.
 
 Benchmarks here call `model.process()` directly (no legacy look_at/digest_text
-shims) and require models that implement the `UnifiedModel` interface.
+shims) and require models that implement the `Subject` interface.
 """
 
 # Import each benchmark subpackage so its __init__.py runs and registers

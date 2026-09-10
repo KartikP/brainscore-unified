@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from brainscore_core.model_interface import (
-    EnvironmentStep, StateChange, TaskContext, UnifiedModel)
+    EnvironmentStep, StateChange, Subject, TaskContext)
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
 from . import benchmark as B
@@ -93,8 +93,8 @@ def compose_montages(trials, n_images, out_dir, seed=0, balance_sides=False):
 # --------------------------------------------------------------------------- #
 # A process()-bearing 2-AFC model (so the run is Witness-recordable)
 # --------------------------------------------------------------------------- #
-class TwoAFCModel(UnifiedModel):
-    """Wraps a per-trial ``choose(row) -> 'LEFT'|'RIGHT'`` into a UnifiedModel
+class TwoAFCModel(Subject):
+    """Wraps a per-trial ``choose(row) -> 'LEFT'|'RIGHT'`` into a Subject
     whose ``process(stim_set)`` returns the chosen objects as a BehavioralAssembly."""
 
     COLUMN_TO_MODALITY = {'image_path': 'vision'}   # so Witness renders the montage
