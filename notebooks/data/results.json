@@ -7,23 +7,23 @@
  },
  "scaling": {
   "language_encoding": {
-   "capability": "Neural encoding — language (Pereira2018, r)",
+   "capability": "Neural encoding — language (Pereira2018.243sentences-ridge, r)",
    "models": [
     "random-vit",
     "CLIP-B32",
     "GPT-2",
-    "Qwen-3B",
-    "BLIP-2"
+    "BLIP-2",
+    "Qwen-3B"
    ],
    "scores": [
-    0.251,
-    0.564,
-    0.873,
-    0.924,
-    0.997
+    0.439,
+    0.797,
+    0.835,
+    0.843,
+    0.927
    ],
-   "null_floor": 0.251,
-   "reading": "How well each model predicts the brain's language network, with each sentence read in its passage context — the convention the legacy Brain-Score language benchmark has always used. Untrained features score 0.25 on their own, because passage context alone carries structure the brain tracks; that is the null floor. The real models clear it by 2-4x. BLIP-2 at 0.997 is essentially at the noise ceiling, meaning this benchmark can no longer separate the strongest models rather than that BLIP-2 is perfect. Earlier versions of this chart showed lower values (GPT-2 0.53-0.60) because native models were being shown bare sentences while adapter-routed models got the passage; the two paths now agree, verified against the legacy benchmark at 0.821 for a matched model."
+   "null_floor": 0.439,
+   "reading": "Ridge protocol, which groups cross-validation by passage. The linear variant previously reported here split sentences at random, leaking within a passage; upstream retired it in #361 for that reason, and under it the three largest models all clipped at the 1.0 ceiling. Under ridge nothing clips (top 0.927 against a 0.439 untrained floor) and the ordering changes: BLIP-2 moves from first to third. These are the leaderboard-comparable figures — opt-6.7b reproduces its published 0.87 to three decimals on this benchmark."
   },
   "it_encoding": {
    "capability": "Neural encoding — IT cortex (MajajHong2015, r)",
