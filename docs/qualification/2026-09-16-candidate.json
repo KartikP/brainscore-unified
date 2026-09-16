@@ -1,0 +1,1178 @@
+{
+  "date": "2026-09-16",
+  "general_availability_approved": false,
+  "candidate": {
+    "core": {
+      "commit": "4bb7a31d31ddd8109e0474238967f7c2ba69c8b6",
+      "wheel": "brainscore_core-2.4.0rc1-py3-none-any.whl",
+      "wheel_sha256": "7ce1688c13dc30946653ca24057cfada6430049b2628d3fc4d03f949709c4534",
+      "matching_packaged_python_and_csv_files": 75
+    },
+    "vision": {
+      "commit": "bed1612461c994901ecd7df80e0804a619d72a87",
+      "wheel": "brainscore_vision-2.4.0rc1-py3-none-any.whl",
+      "wheel_sha256": "6752d43f7eeb447711c12e66337fb40cd65f014957ea693eb0b6568c8f33073b",
+      "matching_packaged_python_and_csv_files": 3028
+    },
+    "language": {
+      "commit": "a4dfe9d8e8080c5cd5d06a08bf20885bc01e4f65",
+      "wheel": "brainscore_language-2.3.0rc1-py3-none-any.whl",
+      "wheel_sha256": "ed7cdec316327b4a95a14bece2e2fa13cbdd91400cc7d3589eddc66e2ea29fcd",
+      "matching_packaged_python_and_csv_files": 161
+    },
+    "unified": {
+      "commit": "2e61867fa09dc89793f35090c73270d3a9f9f0ca",
+      "wheel": "brainscore-0.3.0rc1-py3-none-any.whl",
+      "wheel_sha256": "725b136ed128577beab3c489de50bfdef5bac095dd9c9105a76b899265571c8a",
+      "matching_packaged_python_and_csv_files": 144
+    }
+  },
+  "profiles": {
+    "ubuntu-nvidia-l4": {
+      "environment": {
+        "platform": "Linux-6.8.0-1052-aws-x86_64-with-glibc2.35",
+        "machine": "x86_64",
+        "python": "3.11.15",
+        "dependencies": {
+          "torch": "2.13.0",
+          "torchvision": "0.28.0",
+          "transformers": "4.57.6",
+          "numpy": "1.26.4",
+          "scipy": "1.17.1",
+          "scikit-learn": "1.7.2",
+          "xarray": "2022.3.0"
+        },
+        "torch_threads": 4,
+        "cuda_version": "13.0",
+        "cuda_name": "NVIDIA L4"
+      },
+      "cases": {
+        "MajajHong2015.V4-pls-unified": {
+          "benchmark": "MajajHong2015.V4-pls-unified",
+          "policy": "historical-v1",
+          "native_atol": 1e-06,
+          "native_ulps": null,
+          "native_ulp_magnitude_floor": null,
+          "score_atol": 1e-06,
+          "routes": {
+            "legacy": {
+              "score": 0.5124677120143828,
+              "raw": 0.6772547433485551,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "a8e918483a7da6fc0c0bedd5ae9c6937b845a3e1bef00e72cabca78633466683"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.5124677120143828,
+              "raw": 0.6772547433485551,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "a8e918483a7da6fc0c0bedd5ae9c6937b845a3e1bef00e72cabca78633466683"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.5124677120143828,
+              "raw": 0.6772547433485551,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "a8e918483a7da6fc0c0bedd5ae9c6937b845a3e1bef00e72cabca78633466683"
+                }
+              ],
+              "max_activation_delta": 0.0
+            }
+          }
+        },
+        "MajajHong2015.IT-pls-unified": {
+          "benchmark": "MajajHong2015.IT-pls-unified",
+          "policy": "historical-v1",
+          "native_atol": 1e-06,
+          "native_ulps": null,
+          "native_ulp_magnitude_floor": null,
+          "score_atol": 1e-06,
+          "routes": {
+            "legacy": {
+              "score": 0.38977567038214744,
+              "raw": 0.5659801126512266,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "21111538f91c18cba819cc1049c8b8ecfd230b895c7be243dcfca865efe07250"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.38977567038214744,
+              "raw": 0.5659801126512266,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "21111538f91c18cba819cc1049c8b8ecfd230b895c7be243dcfca865efe07250"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.38977567038214744,
+              "raw": 0.5659801126512266,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "21111538f91c18cba819cc1049c8b8ecfd230b895c7be243dcfca865efe07250"
+                }
+              ],
+              "max_activation_delta": 0.0
+            }
+          }
+        },
+        "MajajHong2015public.V4-pls-unified": {
+          "benchmark": "MajajHong2015public.V4-pls-unified",
+          "policy": "historical-v1",
+          "native_atol": 1e-06,
+          "native_ulps": null,
+          "native_ulp_magnitude_floor": null,
+          "score_atol": 1e-06,
+          "routes": {
+            "legacy": {
+              "score": 0.5054668937392505,
+              "raw": 0.6683716247828101,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "48da8b04691ba534b68efbcc9afc2d350faf5f9232bf16ec5cc2d300c400e413"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.5054668937392505,
+              "raw": 0.6683716247828101,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "48da8b04691ba534b68efbcc9afc2d350faf5f9232bf16ec5cc2d300c400e413"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.5054668937392505,
+              "raw": 0.6683716247828101,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "48da8b04691ba534b68efbcc9afc2d350faf5f9232bf16ec5cc2d300c400e413"
+                }
+              ],
+              "max_activation_delta": 0.0
+            }
+          }
+        },
+        "MajajHong2015public.IT-pls-unified": {
+          "benchmark": "MajajHong2015public.IT-pls-unified",
+          "policy": "historical-v1",
+          "native_atol": 1e-06,
+          "native_ulps": null,
+          "native_ulp_magnitude_floor": null,
+          "score_atol": 1e-06,
+          "routes": {
+            "legacy": {
+              "score": 0.38769494679371197,
+              "raw": 0.5623889114550454,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "27a0959c60560f1bef773d244ef45145ec0da40f4fd28cbf59ce5c28d4929510"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.38769494679371197,
+              "raw": 0.5623889114550454,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "27a0959c60560f1bef773d244ef45145ec0da40f4fd28cbf59ce5c28d4929510"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.38769494679371197,
+              "raw": 0.5623889114550454,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "27a0959c60560f1bef773d244ef45145ec0da40f4fd28cbf59ce5c28d4929510"
+                }
+              ],
+              "max_activation_delta": 0.0
+            }
+          }
+        },
+        "Pereira2018.243sentences-linear-unified": {
+          "benchmark": "Pereira2018.243sentences-linear-unified",
+          "policy": "gpt2-pereira-l4-fp32-v1",
+          "native_atol": null,
+          "native_ulps": 16,
+          "native_ulp_magnitude_floor": 64.0,
+          "score_atol": 1e-05,
+          "routes": {
+            "legacy": {
+              "score": 0.8712606208253366,
+              "raw": 0.30824266734073735,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "07c32e088db7697984b338566c0f0242ffb05f1a496db2d3ecfec9a6ef2dd6ff"
+                }
+              ],
+              "ceiling": 0.3537892795484572,
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.8712606208253366,
+              "raw": 0.30824266734073735,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "07c32e088db7697984b338566c0f0242ffb05f1a496db2d3ecfec9a6ef2dd6ff"
+                }
+              ],
+              "ceiling": 0.3537892795484572,
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.8712618939410148,
+              "raw": 0.30824311775541596,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "687f16ec91bab70419d17fc4f955c7e27dfe5d266a97fe52ebd2679ef9ef2e73"
+                }
+              ],
+              "ceiling": 0.3537892795484572,
+              "max_activation_delta": 0.000213623046875,
+              "max_effective_fp32_ulps": 14.0
+            }
+          }
+        },
+        "Pereira2018.384sentences-linear-unified": {
+          "benchmark": "Pereira2018.384sentences-linear-unified",
+          "policy": "gpt2-pereira-l4-fp32-v1",
+          "native_atol": null,
+          "native_ulps": 16,
+          "native_ulp_magnitude_floor": 64.0,
+          "score_atol": 1e-05,
+          "routes": {
+            "legacy": {
+              "score": 0.829271518982209,
+              "raw": 0.30138835178899515,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "42e96424bc161475d0061a21e1105e31752152fc080dd5c3f4775d6d55c4db49"
+                }
+              ],
+              "ceiling": 0.3634374808372758,
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.829271518982209,
+              "raw": 0.30138835178899515,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "42e96424bc161475d0061a21e1105e31752152fc080dd5c3f4775d6d55c4db49"
+                }
+              ],
+              "ceiling": 0.3634374808372758,
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.8292698976046283,
+              "raw": 0.30138776251961175,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "6003bb9ebc234e0f63171c3be7a66023cb04438421492dde65ba18830a9a6524"
+                }
+              ],
+              "ceiling": 0.3634374808372758,
+              "max_activation_delta": 0.0001220703125,
+              "max_effective_fp32_ulps": 12.0
+            }
+          }
+        },
+        "Pereira2018.243sentences-ridge-unified": {
+          "benchmark": "Pereira2018.243sentences-ridge-unified",
+          "policy": "gpt2-pereira-l4-fp32-v1",
+          "native_atol": null,
+          "native_ulps": 16,
+          "native_ulp_magnitude_floor": 64.0,
+          "score_atol": 1e-05,
+          "routes": {
+            "legacy": {
+              "score": 0.835328661494967,
+              "raw": 0.11168956738229385,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "07c32e088db7697984b338566c0f0242ffb05f1a496db2d3ecfec9a6ef2dd6ff"
+                }
+              ],
+              "ceiling": 0.13370733285076775,
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.835328661494967,
+              "raw": 0.11168956738229385,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "07c32e088db7697984b338566c0f0242ffb05f1a496db2d3ecfec9a6ef2dd6ff"
+                }
+              ],
+              "ceiling": 0.13370733285076775,
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.8353271917005902,
+              "raw": 0.1116893708600079,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "687f16ec91bab70419d17fc4f955c7e27dfe5d266a97fe52ebd2679ef9ef2e73"
+                }
+              ],
+              "ceiling": 0.13370733285076775,
+              "max_activation_delta": 0.000213623046875,
+              "max_effective_fp32_ulps": 14.0
+            }
+          }
+        },
+        "Pereira2018.384sentences-ridge-unified": {
+          "benchmark": "Pereira2018.384sentences-ridge-unified",
+          "policy": "gpt2-pereira-l4-fp32-v1",
+          "native_atol": null,
+          "native_ulps": 16,
+          "native_ulp_magnitude_floor": 64.0,
+          "score_atol": 1e-05,
+          "routes": {
+            "legacy": {
+              "score": 0.6563793676700331,
+              "raw": 0.08875069399514508,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "42e96424bc161475d0061a21e1105e31752152fc080dd5c3f4775d6d55c4db49"
+                }
+              ],
+              "ceiling": 0.13521249808656496,
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.6563793676700331,
+              "raw": 0.08875069399514508,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "42e96424bc161475d0061a21e1105e31752152fc080dd5c3f4775d6d55c4db49"
+                }
+              ],
+              "ceiling": 0.13521249808656496,
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.6563781525926098,
+              "raw": 0.08875052970149129,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "6003bb9ebc234e0f63171c3be7a66023cb04438421492dde65ba18830a9a6524"
+                }
+              ],
+              "ceiling": 0.13521249808656496,
+              "max_activation_delta": 0.0001220703125,
+              "max_effective_fp32_ulps": 12.0
+            }
+          }
+        }
+      },
+      "source_reports": {
+        "cuda": {
+          "sha256": "f5b6ddc1c3288eec41c890c7b08c51e33d61f7375bee79a71f3a39e6b009dca3",
+          "selection_complete": false,
+          "selected_cases": [
+            "MajajHong2015.V4-pls-unified",
+            "MajajHong2015.IT-pls-unified"
+          ]
+        },
+        "cuda-public": {
+          "sha256": "372f0e0af1a3b83f9d2d4b45188658ae7c33e8d174d7630fa952821eaae1a3c4",
+          "selection_complete": true,
+          "selected_cases": [
+            "MajajHong2015public.V4-pls-unified",
+            "MajajHong2015public.IT-pls-unified"
+          ]
+        },
+        "l4-qualified": {
+          "sha256": "b0e8fa41f204403204cd07a6836357bee76f0c3da61fed8b751d0a02ce3ebc97",
+          "selection_complete": true,
+          "selected_cases": [
+            "Pereira2018.243sentences-linear-unified",
+            "Pereira2018.384sentences-linear-unified",
+            "Pereira2018.243sentences-ridge-unified",
+            "Pereira2018.384sentences-ridge-unified"
+          ]
+        }
+      },
+      "checkpoint_manifest": {
+        "resnet18": {
+          "bytes": 46830571,
+          "sha256": "f37072fd47e89c5e827621c5baffa7500819f7896bbacec160b1a16c560e07ec"
+        },
+        "gpt2/config.json": {
+          "bytes": 665,
+          "sha256": "0daed7749b4f02b8f76240d5444551d7b08712dab4d0adb8239c56ba823bb7b4"
+        },
+        "gpt2/merges.txt": {
+          "bytes": 456318,
+          "sha256": "1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5"
+        },
+        "gpt2/model.safetensors": {
+          "bytes": 548105171,
+          "sha256": "248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707"
+        },
+        "gpt2/tokenizer.json": {
+          "bytes": 1355256,
+          "sha256": "8414cab924d8b9b33013f0d221c5862f365ee9be39c5c2bfae8a5a9e970478a6"
+        },
+        "gpt2/tokenizer_config.json": {
+          "bytes": 26,
+          "sha256": "5e04eb606e3a1583530a42e36c2a6b6615c86f34fe77e44d9ddeb43ff940931f"
+        },
+        "gpt2/vocab.json": {
+          "bytes": 1042301,
+          "sha256": "196139668be63f3b5d6574427317ae82f612a97c5d1cdaf36ed2256dbf636783"
+        }
+      }
+    },
+    "ubuntu-amd-cpu-language": {
+      "environment": {
+        "platform": "Linux-6.8.0-1052-aws-x86_64-with-glibc2.35",
+        "machine": "x86_64",
+        "python": "3.11.15",
+        "dependencies": {
+          "torch": "2.13.0",
+          "torchvision": "0.28.0",
+          "transformers": "4.57.6",
+          "numpy": "1.26.4",
+          "scipy": "1.17.1",
+          "scikit-learn": "1.7.2",
+          "xarray": "2022.3.0"
+        },
+        "torch_threads": 1,
+        "cuda_version": "13.0",
+        "cuda_name": null
+      },
+      "cases": {
+        "Pereira2018.243sentences-linear-unified": {
+          "benchmark": "Pereira2018.243sentences-linear-unified",
+          "policy": "gpt2-pereira-cpu-fp32-v1",
+          "native_atol": null,
+          "native_ulps": 32,
+          "native_ulp_magnitude_floor": 64.0,
+          "score_atol": 1e-05,
+          "routes": {
+            "legacy": {
+              "score": 0.871260094830282,
+              "raw": 0.30824248124932596,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "358922b9c8470a9d17375b5bd6894b62f92c63f185a3226ba764a4f2fe8b0293"
+                }
+              ],
+              "ceiling": 0.3537892795484572,
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.871260094830282,
+              "raw": 0.30824248124932596,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "358922b9c8470a9d17375b5bd6894b62f92c63f185a3226ba764a4f2fe8b0293"
+                }
+              ],
+              "ceiling": 0.3537892795484572,
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.8712595668434978,
+              "raw": 0.30824229445326196,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "8429dbd109f4ec36d7e3687b332bc4d42fc72533d1a5c5d699dbef9481e732dc"
+                }
+              ],
+              "ceiling": 0.3537892795484572,
+              "max_activation_delta": 9.918212890625e-05,
+              "max_effective_fp32_ulps": 13.0
+            }
+          }
+        },
+        "Pereira2018.384sentences-linear-unified": {
+          "benchmark": "Pereira2018.384sentences-linear-unified",
+          "policy": "gpt2-pereira-cpu-fp32-v1",
+          "native_atol": null,
+          "native_ulps": 32,
+          "native_ulp_magnitude_floor": 64.0,
+          "score_atol": 1e-05,
+          "routes": {
+            "legacy": {
+              "score": 0.8292710153283414,
+              "raw": 0.3013881687423023,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "8883ad2a8635b1683ce4c33a9b033dc440e877b08b78f66c0ef3ea72e8689860"
+                }
+              ],
+              "ceiling": 0.3634374808372758,
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.8292710153283414,
+              "raw": 0.3013881687423023,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "8883ad2a8635b1683ce4c33a9b033dc440e877b08b78f66c0ef3ea72e8689860"
+                }
+              ],
+              "ceiling": 0.3634374808372758,
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.82927195973526,
+              "raw": 0.3013885119751737,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "ee9aea4d5261394b41e1e5df12883bac03aefd067b23e8e404dc1c13dd37133e"
+                }
+              ],
+              "ceiling": 0.3634374808372758,
+              "max_activation_delta": 0.0002288818359375,
+              "max_effective_fp32_ulps": 21.0
+            }
+          }
+        },
+        "Pereira2018.243sentences-ridge-unified": {
+          "benchmark": "Pereira2018.243sentences-ridge-unified",
+          "policy": "gpt2-pereira-cpu-fp32-v1",
+          "native_atol": null,
+          "native_ulps": 32,
+          "native_ulp_magnitude_floor": 64.0,
+          "score_atol": 1e-05,
+          "routes": {
+            "legacy": {
+              "score": 0.8353279307590461,
+              "raw": 0.11168946967754285,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "358922b9c8470a9d17375b5bd6894b62f92c63f185a3226ba764a4f2fe8b0293"
+                }
+              ],
+              "ceiling": 0.13370733285076775,
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.8353279307590461,
+              "raw": 0.11168946967754285,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "358922b9c8470a9d17375b5bd6894b62f92c63f185a3226ba764a4f2fe8b0293"
+                }
+              ],
+              "ceiling": 0.13370733285076775,
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.8353286613162173,
+              "raw": 0.11168956735839371,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    243,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "8429dbd109f4ec36d7e3687b332bc4d42fc72533d1a5c5d699dbef9481e732dc"
+                }
+              ],
+              "ceiling": 0.13370733285076775,
+              "max_activation_delta": 9.918212890625e-05,
+              "max_effective_fp32_ulps": 13.0
+            }
+          }
+        },
+        "Pereira2018.384sentences-ridge-unified": {
+          "benchmark": "Pereira2018.384sentences-ridge-unified",
+          "policy": "gpt2-pereira-cpu-fp32-v1",
+          "native_atol": null,
+          "native_ulps": 32,
+          "native_ulp_magnitude_floor": 64.0,
+          "score_atol": 1e-05,
+          "routes": {
+            "legacy": {
+              "score": 0.6563819512894201,
+              "raw": 0.0887510433327765,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "8883ad2a8635b1683ce4c33a9b033dc440e877b08b78f66c0ef3ea72e8689860"
+                }
+              ],
+              "ceiling": 0.13521249808656496,
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.6563819512894201,
+              "raw": 0.0887510433327765,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "8883ad2a8635b1683ce4c33a9b033dc440e877b08b78f66c0ef3ea72e8689860"
+                }
+              ],
+              "ceiling": 0.13521249808656496,
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.6563818119266789,
+              "raw": 0.08875102448919212,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    384,
+                    768
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "ee9aea4d5261394b41e1e5df12883bac03aefd067b23e8e404dc1c13dd37133e"
+                }
+              ],
+              "ceiling": 0.13521249808656496,
+              "max_activation_delta": 0.0002288818359375,
+              "max_effective_fp32_ulps": 21.0
+            }
+          }
+        }
+      },
+      "source_reports": {
+        "cpu-language-complete": {
+          "sha256": "6f7f67af63e89e94088fe41f2984ed97f0d3628510e5893fcb3dd15c4a0bc0f1",
+          "selection_complete": true,
+          "selected_cases": [
+            "Pereira2018.243sentences-linear-unified",
+            "Pereira2018.384sentences-linear-unified",
+            "Pereira2018.243sentences-ridge-unified",
+            "Pereira2018.384sentences-ridge-unified"
+          ]
+        }
+      },
+      "checkpoint_manifest": {
+        "resnet18": {
+          "bytes": 46830571,
+          "sha256": "f37072fd47e89c5e827621c5baffa7500819f7896bbacec160b1a16c560e07ec"
+        },
+        "gpt2/config.json": {
+          "bytes": 665,
+          "sha256": "0daed7749b4f02b8f76240d5444551d7b08712dab4d0adb8239c56ba823bb7b4"
+        },
+        "gpt2/merges.txt": {
+          "bytes": 456318,
+          "sha256": "1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5"
+        },
+        "gpt2/model.safetensors": {
+          "bytes": 548105171,
+          "sha256": "248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707"
+        },
+        "gpt2/tokenizer.json": {
+          "bytes": 1355256,
+          "sha256": "8414cab924d8b9b33013f0d221c5862f365ee9be39c5c2bfae8a5a9e970478a6"
+        },
+        "gpt2/tokenizer_config.json": {
+          "bytes": 26,
+          "sha256": "5e04eb606e3a1583530a42e36c2a6b6615c86f34fe77e44d9ddeb43ff940931f"
+        },
+        "gpt2/vocab.json": {
+          "bytes": 1042301,
+          "sha256": "196139668be63f3b5d6574427317ae82f612a97c5d1cdaf36ed2256dbf636783"
+        }
+      }
+    },
+    "amazon-linux-intel-cpu-vision": {
+      "environment": {
+        "platform": "Linux-6.18.20-20.229.amzn2023.x86_64-x86_64-with-glibc2.34",
+        "machine": "x86_64",
+        "python": "3.11.15",
+        "dependencies": {
+          "torch": "2.13.0",
+          "torchvision": "0.28.0",
+          "transformers": "4.57.6",
+          "numpy": "1.26.4",
+          "scipy": "1.17.1",
+          "scikit-learn": "1.7.2",
+          "xarray": "2022.3.0"
+        },
+        "torch_threads": 2,
+        "cuda_version": "13.0",
+        "cuda_name": null
+      },
+      "cases": {
+        "MajajHong2015.V4-pls-unified": {
+          "benchmark": "MajajHong2015.V4-pls-unified",
+          "policy": "historical-v1",
+          "native_atol": 1e-06,
+          "native_ulps": null,
+          "native_ulp_magnitude_floor": null,
+          "score_atol": 1e-06,
+          "routes": {
+            "legacy": {
+              "score": 0.512467700586515,
+              "raw": 0.6772547357972718,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "13a5234b4f014fab3bb017db996e843822200893d7140b077103abc780ff1a5e"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.512467700586515,
+              "raw": 0.6772547357972718,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "13a5234b4f014fab3bb017db996e843822200893d7140b077103abc780ff1a5e"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.512467700586515,
+              "raw": 0.6772547357972718,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "13a5234b4f014fab3bb017db996e843822200893d7140b077103abc780ff1a5e"
+                }
+              ],
+              "max_activation_delta": 0.0
+            }
+          }
+        },
+        "MajajHong2015.IT-pls-unified": {
+          "benchmark": "MajajHong2015.IT-pls-unified",
+          "policy": "historical-v1",
+          "native_atol": 1e-06,
+          "native_ulps": null,
+          "native_ulp_magnitude_floor": null,
+          "score_atol": 1e-06,
+          "routes": {
+            "legacy": {
+              "score": 0.3897756686892531,
+              "raw": 0.5659801114221292,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "bd24c2a7d62b3bb1213fa4aba5d3125c7f9841f0138cf70aaa93deaff5be02ca"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.3897756686892531,
+              "raw": 0.5659801114221292,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "bd24c2a7d62b3bb1213fa4aba5d3125c7f9841f0138cf70aaa93deaff5be02ca"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.3897756686892531,
+              "raw": 0.5659801114221292,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    2560,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "bd24c2a7d62b3bb1213fa4aba5d3125c7f9841f0138cf70aaa93deaff5be02ca"
+                }
+              ],
+              "max_activation_delta": 0.0
+            }
+          }
+        },
+        "MajajHong2015public.V4-pls-unified": {
+          "benchmark": "MajajHong2015public.V4-pls-unified",
+          "policy": "historical-v1",
+          "native_atol": 1e-06,
+          "native_ulps": null,
+          "native_ulp_magnitude_floor": null,
+          "score_atol": 1e-06,
+          "routes": {
+            "legacy": {
+              "score": 0.50546687373025,
+              "raw": 0.6683716115540028,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "60ab2703a9d6649c17a0f26a95ddf968863983857370ca9970278fd9c420dcdf"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.50546687373025,
+              "raw": 0.6683716115540028,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "60ab2703a9d6649c17a0f26a95ddf968863983857370ca9970278fd9c420dcdf"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.50546687373025,
+              "raw": 0.6683716115540028,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    100352
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "60ab2703a9d6649c17a0f26a95ddf968863983857370ca9970278fd9c420dcdf"
+                }
+              ],
+              "max_activation_delta": 0.0
+            }
+          }
+        },
+        "MajajHong2015public.IT-pls-unified": {
+          "benchmark": "MajajHong2015public.IT-pls-unified",
+          "policy": "historical-v1",
+          "native_atol": 1e-06,
+          "native_ulps": null,
+          "native_ulp_magnitude_floor": null,
+          "score_atol": 1e-06,
+          "routes": {
+            "legacy": {
+              "score": 0.3876949354729593,
+              "raw": 0.5623889032441236,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "9da402d9f9e7f48b72ed8c65f120d979e2809b708d662c86465d0dec011205bc"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "adapter": {
+              "score": 0.3876949354729593,
+              "raw": 0.5623889032441236,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "9da402d9f9e7f48b72ed8c65f120d979e2809b708d662c86465d0dec011205bc"
+                }
+              ],
+              "max_activation_delta": 0.0
+            },
+            "native": {
+              "score": 0.3876949354729593,
+              "raw": 0.5623889032441236,
+              "metric_inputs": [
+                {
+                  "shape": [
+                    3200,
+                    25088
+                  ],
+                  "dtype": "float32",
+                  "values_sha256": "9da402d9f9e7f48b72ed8c65f120d979e2809b708d662c86465d0dec011205bc"
+                }
+              ],
+              "max_activation_delta": 0.0
+            }
+          }
+        }
+      },
+      "source_reports": {
+        "MajajHong2015.V4-pls-unified": {
+          "sha256": "31fc97f88b77f571635e75db5129ede495d47af8a578599f62c21b0ace0f7f97",
+          "selection_complete": true,
+          "selected_cases": [
+            "MajajHong2015.V4-pls-unified"
+          ]
+        },
+        "MajajHong2015.IT-pls-unified": {
+          "sha256": "f1574408bb0d60a31ba74a44d11611db7fa71c44d6d93275d959d0b9cd316ba1",
+          "selection_complete": true,
+          "selected_cases": [
+            "MajajHong2015.IT-pls-unified"
+          ]
+        },
+        "MajajHong2015public.V4-pls-unified": {
+          "sha256": "c68c86b6670a149ea9d1fdca88677ae68f7c6078619abeeb8cd8aeef2d77c57f",
+          "selection_complete": true,
+          "selected_cases": [
+            "MajajHong2015public.V4-pls-unified"
+          ]
+        },
+        "MajajHong2015public.IT-pls-unified": {
+          "sha256": "63920f69bb8cef023651fe28b98244897e7e0c9280458d760538dcc0b97d165e",
+          "selection_complete": true,
+          "selected_cases": [
+            "MajajHong2015public.IT-pls-unified"
+          ]
+        }
+      },
+      "checkpoint_manifest": {
+        "resnet18": {
+          "bytes": 46830571,
+          "sha256": "f37072fd47e89c5e827621c5baffa7500819f7896bbacec160b1a16c560e07ec"
+        },
+        "gpt2/config.json": {
+          "bytes": 665,
+          "sha256": "0daed7749b4f02b8f76240d5444551d7b08712dab4d0adb8239c56ba823bb7b4"
+        },
+        "gpt2/merges.txt": {
+          "bytes": 456318,
+          "sha256": "1ce1664773c50f3e0cc8842619a93edc4624525b728b188a9e0be33b7726adc5"
+        },
+        "gpt2/model.safetensors": {
+          "bytes": 548105171,
+          "sha256": "248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707"
+        },
+        "gpt2/tokenizer.json": {
+          "bytes": 1355256,
+          "sha256": "8414cab924d8b9b33013f0d221c5862f365ee9be39c5c2bfae8a5a9e970478a6"
+        },
+        "gpt2/tokenizer_config.json": {
+          "bytes": 26,
+          "sha256": "5e04eb606e3a1583530a42e36c2a6b6615c86f34fe77e44d9ddeb43ff940931f"
+        },
+        "gpt2/vocab.json": {
+          "bytes": 1042301,
+          "sha256": "196139668be63f3b5d6574427317ae82f612a97c5d1cdaf36ed2256dbf636783"
+        }
+      }
+    }
+  },
+  "verified_evidence_manifests": {
+    "gpu-and-cpu-language": {
+      "files": 111,
+      "manifest_sha256": "ba4cbf5e5e6744d883292b92faf9d86574e2774de45948524f7fbe27002b33de"
+    },
+    "cpu-vision": {
+      "files": 52,
+      "manifest_sha256": "cef7d8e2bdc0954a23d8f766fa5d695f9da55c7908838ac90680164ba76537ab"
+    }
+  },
+  "scope": "Fixed staged ResNet18 and GPT-2 inputs. Exact route equality is within a recorded profile, not between hardware profiles."
+}
