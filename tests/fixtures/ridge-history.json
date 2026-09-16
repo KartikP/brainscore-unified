@@ -1,0 +1,35 @@
+{
+  "source": "workspace baselines/M3_RESULTS.md, copied 2026-09-15",
+  "status": "historical report, not rerun candidate evidence",
+  "native_route": "not present in this report",
+  "measurements": [
+    {
+      "model": "gpt2",
+      "benchmark": "Pereira2018.243sentences-ridge",
+      "legacy": 0.8353276341540294,
+      "adapter": 0.8353276341540294,
+      "published_rounded": null
+    },
+    {
+      "model": "gpt2",
+      "benchmark": "Pereira2018.384sentences-ridge",
+      "legacy": 0.6563792945041764,
+      "adapter": 0.6563792945041764,
+      "published_rounded": null
+    },
+    {
+      "model": "opt-6.7b",
+      "benchmark": "Pereira2018.243sentences-ridge",
+      "legacy": 0.8695789444969269,
+      "adapter": 0.8695789444969269,
+      "published_rounded": 0.87
+    },
+    {
+      "model": "opt-6.7b",
+      "benchmark": "Pereira2018.384sentences-ridge",
+      "legacy": 0.6310407327592619,
+      "adapter": 0.6310407327592619,
+      "published_rounded": null
+    }
+  ]
+}

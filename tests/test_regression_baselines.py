@@ -16,28 +16,18 @@ from pathlib import Path
 
 import pytest
 
-BASELINES = Path(__file__).resolve().parents[2] / 'baselines' / 'baselines.json'
+BASELINES = Path(__file__).parent / 'fixtures' / 'regression-baselines.json'
 TOL = 0.01   # allows PLS/scikit-learn non-determinism; tight enough to catch real regressions
 
 
 def _load_all():
-    if not BASELINES.exists():
-        return {}
-    return json.load(open(BASELINES))
+    # This versioned fixture is required: missing release evidence must fail.
+    return json.loads(BASELINES.read_text())
 
 
 def _require_baselines():
-    """Skip when the baseline manifest is absent.
-
-    `baselines/baselines.json` records scores measured on our infrastructure and lives
-    at the workspace root, outside any of the four repositories — so a fresh clone of
-    this package does not have it. Failing there would greet every new developer with
-    two red tests about data they were never given.
-    """
     data = _load_all()
-    if not data:
-        pytest.skip(f'no baseline manifest at {BASELINES}; it is recorded per-workspace '
-                    f'and is not part of this package')
+    assert data, 'Baseline manifest is empty'
     return data
 
 
