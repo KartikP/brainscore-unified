@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 BASELINES = Path(__file__).parent / 'fixtures' / 'regression-baselines.json'
-TOL = 0.01   # allows PLS/scikit-learn non-determinism; tight enough to catch real regressions
+TOL = 0.01   # Historical score tolerance; model-specific qualification is separate.
 
 
 def _load_all():
@@ -32,8 +32,12 @@ def _require_baselines():
 
 
 def _deterministic_pairs():
-    """Pairs with a production baseline that are expected to match (excludes the
-    documented non-deterministic ones, e.g. hmax layer-search jitter)."""
+    """Pairs with a production baseline that are expected to match.
+
+    Historical published-score mismatches, including HMAX, stay excluded.
+    Current-upstream comparisons are recorded separately from these references.
+    Passing this subset does not reproduce the excluded historical scores.
+    """
     return [(k, v) for k, v in _load_all().items()
             if v.get('production_baseline') is not None and v.get('match') is True]
 

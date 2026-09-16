@@ -65,3 +65,11 @@ Investigate HMAX provenance and fixed-layer legacy/adapter behavior before
 attributing its drift to layer selection or dependencies. Real DROID integration,
 an independent researcher trial, final supported profiles, licensing, ownership
 and recovery decisions remain open. See the [production policy](../production_release.md).
+
+### Subsequent HMAX control
+
+The [clean current-master comparison](2026-09-16-hmax-master.md) now matches the
+UMI candidate exactly for both default mapped HMAX CPU cases. The older
+published-score gap also occurs upstream. Historical logs are not required for
+that direct compatibility result. This later source qualification is separate
+from the fixed candidate wheel set identified above; its identities are unchanged.

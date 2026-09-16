@@ -84,7 +84,8 @@ failed reset means the instance is not clean and should not be reused.
 
 1. **B1 compatibility:** all selected source suites; packaged historical baselines;
    cold-cache legacy/adapter/native comparisons for all eight release cases;
-   cache-enabled reuse/invalidation tests; explicit decisions for known HMAX drift.
+   cache-enabled reuse/invalidation tests; current-upstream controls for declared
+   model profiles, with historical published-score discrepancies tracked separately.
 2. **B2 extension:** external domain/channel/capability round trips, reset/reuse,
    declaration and session-combination checks. No contract edits in the example.
 3. **B3 tools:** nested observers, exact method restoration, legacy methods,
@@ -99,6 +100,13 @@ failed reset means the instance is not clean and should not be reused.
    dependency resolution, supported-platform jobs, license decision and publication.
 9. **B9 operations:** named owners, issue route, response policy, recovery rehearsal;
    service canary/rollback if existing production scoring services adopt the set.
+
+The [HMAX current-master control](qualification/2026-09-16-hmax-master.md) passes
+for the recorded macOS CPU V4/IT cases: clean upstream and the UMI candidate
+produce identical activation values and scores. The older published-score gap
+also occurs upstream. Missing historical logs do not block this compatibility
+result; reproducing those older scores remains a separate claim requiring its
+own evidence. This does not qualify other HMAX platforms or protocols.
 
 Run source qualification with:
 

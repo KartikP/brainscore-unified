@@ -1,0 +1,118 @@
+{
+  "status": "passed",
+  "verified_utc": "2026-09-16T17:34:41.479876+00:00",
+  "evidence_integrity_passed": true,
+  "comparison_verdict": "exact",
+  "scope": "Current upstream vision master and core main, HMAX default mapped V4/IT MajajHong v4, recorded macOS CPU profile",
+  "master_source_commits": {
+    "vision": "96108f737df7f9aca16f93e144aafce72fb397f6",
+    "core": "b1604265d5bdb4a44c3f42d5472fd530ba7f2f1a"
+  },
+  "private_neural_data": [
+    {
+      "bytes": 133887856,
+      "sha1": "7a40d16148d6f82939155f0bd976d310857fb156",
+      "sha256": "d3d6ee88b7d3a224d2daab1d59340c880e539bac34e1217f40838d9fa8883d79",
+      "matches_content_addressed_directory": true
+    }
+  ],
+  "cases": {
+    "V4": {
+      "benchmark": "MajajHong2015.V4-pls",
+      "version": 4,
+      "layer": "c2_0",
+      "master_score": {
+        "normalized": 0.032692956553513106,
+        "raw": 0.17105898869239475,
+        "ceiling": 0.8950300216674805
+      },
+      "master_output": {
+        "shape": [
+          2560,
+          400
+        ],
+        "dtype": "float32",
+        "sha256": "a66533ecd4ddfa2ced964146f343467b48dcf24f215c3953f0b02ea9cd27553d"
+      },
+      "comparisons": {
+        "legacy": {
+          "activations_exact": true,
+          "raw_exact": true,
+          "normalized_exact": true,
+          "ceiling_exact": true,
+          "raw_delta": 0.0,
+          "normalized_delta": 0.0
+        },
+        "adapter": {
+          "activations_exact": true,
+          "raw_exact": true,
+          "normalized_exact": true,
+          "ceiling_exact": true,
+          "raw_delta": 0.0,
+          "normalized_delta": 0.0
+        }
+      },
+      "stimuli_and_checkpoint_exact": true,
+      "actual_scoring_forward_presentations": 2560,
+      "preflight_forward_presentations": 1,
+      "module_origins_verified": 57,
+      "source_report_sha256": "5b187c59c6c086a2b2860989ac0fcc5e8c4388f8529a8792967250d4933b484c"
+    },
+    "IT": {
+      "benchmark": "MajajHong2015.IT-pls",
+      "version": 4,
+      "layer": "c2_2",
+      "master_score": {
+        "normalized": 0.04745264477623199,
+        "raw": 0.19748040950139328,
+        "ceiling": 0.8218406438827515
+      },
+      "master_output": {
+        "shape": [
+          2560,
+          400
+        ],
+        "dtype": "float32",
+        "sha256": "ec542efe110430149648091df84b339faab560fe5c6231443407c9b324edd473"
+      },
+      "comparisons": {
+        "legacy": {
+          "activations_exact": true,
+          "raw_exact": true,
+          "normalized_exact": true,
+          "ceiling_exact": true,
+          "raw_delta": 0.0,
+          "normalized_delta": 0.0
+        },
+        "adapter": {
+          "activations_exact": true,
+          "raw_exact": true,
+          "normalized_exact": true,
+          "ceiling_exact": true,
+          "raw_delta": 0.0,
+          "normalized_delta": 0.0
+        }
+      },
+      "stimuli_and_checkpoint_exact": true,
+      "actual_scoring_forward_presentations": 2560,
+      "preflight_forward_presentations": 1,
+      "module_origins_verified": 57,
+      "source_report_sha256": "1eda610cdde16fb8c081d9a081cd78bf8675db24b611bc9faa83c74afa956a4c"
+    }
+  },
+  "current_upstream_compatibility_passed": true,
+  "historical_published_environment_reproduced": false,
+  "historical_logs_required_for_this_comparison": false,
+  "old_published_score_gap_is_a_umi_regression_in_this_profile": false,
+  "compatibility_investigation_required": false,
+  "metadata_scope": "Exact stimulus identity/order and layer feature order. Whole assembly metadata identity is not claimed: the prior eight-layer diagnostic used hmax-fixed-layers and IT recording labels; the default upstream run uses hmax and its actual target region.",
+  "previous_evidence": {
+    "independent-audit.json": "02ef350f0695f8fb92d12b62f61563a9da300c2b2e6d12494f9a9f52b2d139f8",
+    "full-private-legacy/report.json": "6af8161a3a3d826ae54bf879056d7bbc0a305ab4ac7ee229bb385730b7eef40d",
+    "full-private-adapter/report.json": "d1834755ca04e504ac48c44232617018f2051b9436de39350987dfe9e584f5cb",
+    "sklearn15-private.json": "3491896864d69f2e62fa538aaa9f031b7fb0bcf35fd06906a10e2a7f4ce19e28"
+  },
+  "file_count": 19,
+  "comparison_audit_sha256": "10c6db9fc92293b4c4dc8f3b3c8758bd485735c1ad285da4306ea3dc4dba957f",
+  "source_run_not_published_wheel_qualification": true
+}
