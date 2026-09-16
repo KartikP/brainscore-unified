@@ -226,8 +226,8 @@ def build_api_generation_fn(
     cache = _ResponseCache(cache_dir) if cache_dir is not None else None
 
     def _key(prompt, label_set, stim_key, payload_hash) -> str:
-        raw = '|'.join([provider_name, model, prompt,
-                        ','.join(map(str, label_set)), stim_key, payload_hash])
+        raw = json.dumps([provider_name, model, prompt, list(map(str, label_set)),
+                          stim_key, payload_hash, system_prompt, max_tokens])
         return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
     def generate(stimulus_row, instruction: str, label_set) -> str:
@@ -388,7 +388,13 @@ def build_api_action_fn(
                      f"progress. Break the loop — try turning or another action.")
         return "\n\nYour recent moves (in order):\n" + '\n'.join(lines) + warn
 
+    def reset():
+        trace.clear()
+        rng.seed(fallback_seed)
+
     def act(env_step) -> 'EnvironmentResponse':
+        if env_step.is_first:
+            reset()
         obs = env_step.observation or {}
         instruction = obs.get('instruction') or getattr(env_step, 'instruction', '') or ''
         legal = obs.get('legal_actions') or {}
@@ -436,7 +442,7 @@ def build_api_action_fn(
             step_num = getattr(env_step, 'step_num', '')
             key = hashlib.sha256(
                 '|'.join([provider_name, model, prompt, payload,
-                          str(step_num)]).encode()
+                          str(step_num), str(system_prompt), str(max_tokens)]).encode()
             ).hexdigest()
             response = cache.get(key)
         if response is None:
@@ -450,7 +456,11 @@ def build_api_action_fn(
         trace.append({'step': getattr(env_step, 'step_num', len(trace)),
                       'response': response, 'action': idx, 'fallback': fallback,
                       'payload': payload})
-        return EnvironmentResponse(action=idx)
+        return EnvironmentResponse(action=idx, metadata={
+            'raw_response': response, 'valid': not fallback,
+            'fallback': fallback, 'model': model, 'provider': provider_name,
+        })
 
+    act.reset = reset
     act.trace = trace
     return act
