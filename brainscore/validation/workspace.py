@@ -19,7 +19,8 @@ SUITES = {
              'tests/test_streaming_behavior.py', 'tests/test_payload_validation.py',
              'tests/test_io_catalog.py', 'tests/test_io_catalog_preflight.py',
              'tests/test_channel_registry.py', 'tests/test_contract_drift.py'],
-    'vision': ['tests/test_unified_adapter.py', 'tests/test_preflight.py', 'tests/test_subject_conformance.py'],
+    'vision': ['tests/test_unified_adapter.py', 'tests/test_preflight.py',
+               'tests/test_subject_conformance.py', 'tests/test_hmax_runtime.py'],
     'language': ['tests/test_unified_adapter.py', 'tests/test_preflight.py', 'tests/test_subject_conformance.py'],
     'unified': ['tests', '-m', 'unit or integration'],
 }
