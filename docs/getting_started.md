@@ -1,5 +1,7 @@
 # Getting started with Brain-Score UMI
 
+Candidate guide: [Build tools and integrations](tool_authoring.md) | [Production qualification](production_release.md). These pages describe the production candidate and supersede older release-status claims below.
+
 This guide assumes the four-repository distribution was installed with the
 root setup.sh and that the brainscore-unified environment is active.
 

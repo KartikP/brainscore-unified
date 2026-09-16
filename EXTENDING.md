@@ -1,5 +1,7 @@
 # Extending the Unified Model Interface
 
+Candidate guide: [Build tools and integrations](docs/tool_authoring.md) | [Production qualification](docs/production_release.md). These pages describe the production candidate and supersede older release-status claims below.
+
 Extend the unified interface through five registries and Capability.
 
 For a model registration, instantiate `BrainScoreModel`, the concrete `Subject`

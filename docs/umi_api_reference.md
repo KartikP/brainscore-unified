@@ -1,5 +1,7 @@
 # UMI API reference and cookbook
 
+Candidate guide: [Build tools and integrations](tool_authoring.md) | [Production qualification](production_release.md). These pages describe the production candidate and supersede older release-status claims below.
+
 ## Which model class to use
 
 Import from `brainscore_core.model_interface`. Instantiate `BrainScoreModel`
