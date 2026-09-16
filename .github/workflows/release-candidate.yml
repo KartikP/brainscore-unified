@@ -1,0 +1,88 @@
+name: Qualify coordinated release candidate
+on:
+  workflow_dispatch:
+    inputs:
+      core_sha:
+        description: Full commit SHA containing the coordinated core candidate
+        required: true
+      vision_sha:
+        description: Full commit SHA containing the coordinated vision candidate
+        required: true
+      language_sha:
+        description: Full commit SHA containing the coordinated language candidate
+        required: true
+permissions:
+  contents: read
+jobs:
+  qualify:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - name: Require immutable peer revisions
+        env:
+          CORE_SHA: ${{ inputs.core_sha }}
+          VISION_SHA: ${{ inputs.vision_sha }}
+          LANGUAGE_SHA: ${{ inputs.language_sha }}
+        shell: bash
+        run: |
+          for revision in "$CORE_SHA" "$VISION_SHA" "$LANGUAGE_SHA"; do
+            [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          done
+      - uses: actions/checkout@v4
+        with:
+          path: unified
+      - uses: actions/checkout@v4
+        with:
+          repository: brain-score/core
+          ref: ${{ inputs.core_sha }}
+          path: core
+      - uses: actions/checkout@v4
+        with:
+          repository: brain-score/vision
+          ref: ${{ inputs.vision_sha }}
+          path: vision
+      - uses: actions/checkout@v4
+        with:
+          repository: brain-score/language
+          ref: ${{ inputs.language_sha }}
+          path: language
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Build isolated wheels
+        run: |
+          python -m pip install build
+          for repo in core vision language unified; do
+            python -m build --wheel --outdir wheels "$repo"
+          done
+      - name: Install the coordinated wheel set and check dependencies
+        run: |
+          python -m pip install wheels/*.whl pytest pytest-check pytest-mock pytest-timeout matplotlib
+          python -m pip check
+          python -m brainscore.doctor
+      - name: Install independent partner package
+        run: python -m pip install ./unified/examples/partner_tool
+      - name: Exercise installed packages away from source
+        working-directory: ${{ runner.temp }}
+        env:
+          BS_INSTALL_DEPENDENCIES: 'no'
+        run: |
+          python -c "from importlib.resources import files; import brainscore; assert files('brainscore').joinpath('benchmarks/rajalingham2018_2afc/trials.csv').is_file()"
+          python "$GITHUB_WORKSPACE/unified/examples/partner_integration.py" --out "$RUNNER_TEMP/partner-demo"
+          python -m umi_partner_tool --out "$RUNNER_TEMP/external-tool-demo"
+          python -m pip freeze > "$GITHUB_WORKSPACE/resolved-dependencies.txt"
+      - name: Qualify all four source suites
+        run: python -m brainscore.validation.workspace --root . --out qualification/report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: candidate-${{ matrix.os }}
+          path: |
+            wheels
+            qualification
+            resolved-dependencies.txt
+            ${{ runner.temp }}/partner-demo
