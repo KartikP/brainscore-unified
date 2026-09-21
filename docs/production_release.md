@@ -1,7 +1,8 @@
 # UMI production release policy and candidate qualification
 
 Status: **candidate implementation; general availability is not approved**.
-This is the proposed support policy for maintainer review. It does not assign
+Kartik owns the manual release. Publication, remote release CI, and deployment
+are outside the current work. This is the proposed support policy for review. It does not assign
 people, publish artifacts, establish an SLA, or deploy scoring services.
 
 Scientific parity uses the [versioned numerical policy](numerical_policy.md).
@@ -140,9 +141,10 @@ release parity policy.
 
 ## Ownership and issue handling
 
-Before publication, assign actual people for contract/API, vision compatibility,
-language compatibility, tools/records, robotics integration, packaging/release,
-and production scoring operations. Until staffed, these roles are **unassigned**.
+Release owner: **Kartik**, with a manual release process. Support ownership for
+contract/API, vision, language, tools/records, robotics, and scoring operations
+remains unassigned. Release ownership does not imply acceptance of those support
+roles or a response-time guarantee.
 Use the repository's issue tracker for non-sensitive reproducible reports; the
 maintainers must approve and publish a private route for sensitive incidents.
 Proposed operating target: triage installation/authoring issues in three business

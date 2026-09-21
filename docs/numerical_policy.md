@@ -1,5 +1,14 @@
 # Native numerical policy
 
+## Current evidence
+
+The [clean-upstream comparison](qualification/2026-09-16-upstream-language.md)
+found and repaired a token-cache difference in the v2 legacy language helper.
+After repair, all four fixed GPT-2/Pereira cases agree exactly across upstream,
+legacy, adapter, and native routes on the recorded macOS CPU profile. The budgets
+below remain unchanged. Earlier drift measurements and Linux/GPU results describe
+the previous helper; they do not qualify the repair on those platforms.
+
 ## Contract and scope
 
 FP32 remains the production target. Exact compatibility applies to the legacy

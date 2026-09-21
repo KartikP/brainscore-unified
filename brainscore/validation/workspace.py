@@ -21,7 +21,9 @@ SUITES = {
              'tests/test_channel_registry.py', 'tests/test_contract_drift.py'],
     'vision': ['tests/test_unified_adapter.py', 'tests/test_preflight.py',
                'tests/test_subject_conformance.py', 'tests/test_hmax_runtime.py'],
-    'language': ['tests/test_unified_adapter.py', 'tests/test_preflight.py', 'tests/test_subject_conformance.py'],
+    'language': ['tests/test_unified_adapter.py', 'tests/test_preflight.py',
+                 'tests/test_subject_conformance.py', 'tests/test_kv_cache.py',
+                 'tests/test_kv_cache_slicing.py'],
     'unified': ['tests', '-m', 'unit or integration'],
 }
 
