@@ -49,6 +49,27 @@ def test_tiny_wrapper_differences_survive_bypassing_wrappers():
             assert result['cached_vs_full']['transformer.h.3']['max_abs'] < 1e-12
 
 
+def test_replay_preserves_incremental_cache_and_passage_reset(language_pair):
+    from brainscore.validation.language_parity_diagnostics import ForwardTrace, replay
+
+    _, adapter = language_pair
+    model = adapter._legacy.basemodel
+    device = next(model.parameters()).device
+    with ForwardTrace(model, detailed=True) as original, torch.no_grad():
+        for passage in ([[1, 2], [3]], [[2], [1, 3]]):
+            past, length = None, 0
+            for ids in passage:
+                length += len(ids)
+                output = model(input_ids=torch.tensor([ids], device=device),
+                    attention_mask=torch.ones((1, length), dtype=torch.long, device=device),
+                    past_key_values=past, use_cache=True)
+                past = output.past_key_values
+    replayed = replay(model, original.calls, cached=True)
+    assert [c['past_length'] for c in replayed.calls] == [0, 2, 0, 1]
+    for layer in original.names:
+        np.testing.assert_array_equal(original.values[layer], replayed.values[layer])
+
+
 def test_diagnostic_saves_scores_even_when_activation_parity_fails(monkeypatch, tmp_path):
     import brainscore.validation.language_parity_diagnostics as diagnostic
     from brainscore.validation import benchmark_parity
