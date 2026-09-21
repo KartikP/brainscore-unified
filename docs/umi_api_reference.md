@@ -8,9 +8,12 @@ Import from `brainscore_core.model_interface`. Instantiate `BrainScoreModel`
 for ordinary model registrations: it is the concrete `Subject` subclass that
 composes wrappers, recording, and capability callables. Use the abstract
 `Subject` contract in benchmark type annotations or for custom implementations
-and adapters. `UnifiedModel` is the deprecated spelling of the same ABC
-(`UnifiedModel is Subject`), retained for existing imports, subclasses, and
-`isinstance` checks. It has no separate implementation; use `Subject` in new code.
+and adapters. `Subject` requires identity, input/output channels, and
+`interact(session)`, with optional required channels and a reset hook.
+`UnifiedModel` is the compatibility subclass that retains the older typed
+interface. It is no longer an alias for `Subject`. Existing typed implementations
+that inherited the earlier `Subject` should inherit `UnifiedModel` instead;
+new session-native implementations inherit `Subject`.
 See [the terminology guide](concepts.md#subject) for current compatibility uses.
 
 ## Registry entry points
@@ -32,7 +35,12 @@ allow managed CI/EC2 downloads without that guard; see
 
 ## Subject lifecycle
 
-The public subject contract is:
+A native subject consumes inputs with `session.next_input()` and returns events
+with `session.emit(event)` inside `interact(session)`. It does not need model
+layers, modality properties, or the older evaluation methods. Call `reset()`
+between independent evaluations when state must be cleared.
+
+`BrainScoreModel` and legacy adapters additionally retain the typed lifecycle:
 
 1. start_recording(region, time_bins=None) for neural output, or
    start_task(TaskContext(...)) for behavioral output.
@@ -175,7 +183,8 @@ modalities.
 ## Legacy migration
 
 BrainModel/look_at and ArtificialSubject/digest_text are pre-UMI interfaces.
-New cross-domain code should use Subject or BrainScoreModel with process().
+New session-native code should implement Subject.interact(session).
+BrainScoreModel retains process() and the typed convenience methods.
 The unified registry adapts the domain-package legacy APIs when loaded.
 
 ## Known distribution boundaries
