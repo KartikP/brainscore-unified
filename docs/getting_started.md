@@ -2,8 +2,8 @@
 
 Candidate guide: [Build tools and integrations](tool_authoring.md) | [Production qualification](production_release.md). These pages describe the production candidate and supersede older release-status claims below.
 
-This guide assumes the four-repository distribution was installed with the
-root setup.sh and that the brainscore-unified environment is active.
+Install the four repositories together using the [installation guide](../install/README.md).
+Activate that Python 3.11 environment before running these examples.
 
 For a download-free first result, run
 notebooks/01_quickstart_layer_mapping.ipynb. The registered-model example below

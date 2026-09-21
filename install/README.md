@@ -28,7 +28,9 @@ in the packages, so pip alone is enough:
 cd <workspace-root>
 conda create -y -n brainscore-unified python=3.11
 conda activate brainscore-unified
-pip install -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
+python -m pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
+python -m pip check
+python -m brainscore.doctor
 ~~~
 
 **Do not point conda at `install/environment-unified.yml` in place.** Its `-e ./core`
@@ -66,3 +68,37 @@ First run:
 
 See [SETUP.md](SETUP.md) for supported versions, hardware notes (CPU / Apple MPS /
 NVIDIA CUDA), and troubleshooting.
+
+## Reproduce the reviewed peer revisions
+
+The candidate peer versions are not published on PyPI. Supply all four local
+repositories in one pip operation, as above, or build all four wheels before
+installing them together. An isolated install of unified alone cannot resolve
+these candidate dependencies from PyPI.
+
+`peer-revisions.json` records the exact core, vision, and language commits used
+by integration CI for this unified revision. For a fresh workspace, first clone
+unified at the revision you want to evaluate, then run from the workspace root:
+
+```bash
+git clone --branch unified-model-interface-v2 https://github.com/KartikP/brainscore-unified.git unified
+python3.11 - <<'PYTHON'
+import json, subprocess
+from pathlib import Path
+peers = json.loads(Path('unified/install/peer-revisions.json').read_text())
+for name, revision in peers.items():
+    subprocess.run(['git', 'clone', '--no-checkout',
+                    f'https://github.com/brain-score/{name}.git', name], check=True)
+    subprocess.run(['git', '-C', name, 'checkout', '--detach', revision], check=True)
+PYTHON
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[test]"
+python -m pip check
+python -m brainscore.doctor
+python unified/examples/partner_integration.py --out /tmp/umi-first-experiment
+```
+
+Record the unified commit alongside the peer manifest. Use new output directories
+for each experiment. This is a v2 integration profile, not approval for a general
+production release or a replacement for CUDA scientific qualification.
