@@ -23,7 +23,9 @@ experiment or intervention; compare its effect with matched numerical controls.
 | Evaluate a robotics policy | `ActionSpec`, `droid_steps`, `evaluate_droid_episode` | Action semantics, policy, data and scientific protocol |
 | Drive a controlled environment | `EnvironmentSession` | Environment reset/step, action validation, timing and safety |
 
-Robotics helpers are exported from `brainscore.harnesses.robotics`.
+Robotics helpers are exported from `brainscore.harnesses.robotics`. For a policy
+that returns action chunks, follow [Connect a DROID policy](droid_integration.md).
+The [first-author trial](partner_trial.md) helps check the guide with a new user.
 
 Put these implementations in your own Python package. Explicitly import its
 registration module before constructing models. No edits to Subject, core event
