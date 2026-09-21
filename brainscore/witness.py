@@ -74,40 +74,45 @@ class Witness:
         self.label = label or getattr(model, 'identifier', 'model')
         self.max_saw = max_saw
         self.events: List[WitnessEvent] = []
-        self._orig_process = None
+        self._observation = None
 
     # -- context management: patch the instance's process() ----------------
     def __enter__(self):
-        self._orig_process = self.model.process
-
-        def wrapped(input_event, *args, **kwargs):
-            idx = len(self.events)
-            mode = self._infer_mode(input_event)
-            ev = WitnessEvent(index=idx, event_type=self._event_type(input_event), mode=mode)
-            self._record_input(ev, input_event)
-            t0 = time.perf_counter()
-            try:
-                out = self._orig_process(input_event, *args, **kwargs)
-            except Exception as e:                      # record the failure, then re-raise
-                ev.error = f"{type(e).__name__}: {e}"
-                ev.duration_s = time.perf_counter() - t0
-                self.events.append(ev)
-                raise
-            ev.duration_s = time.perf_counter() - t0
-            self._record_output(ev, out)
-            self.events.append(ev)
-            return out
-
-        self.model.process = wrapped
+        from .instrumentation import observe
+        if self._observation is not None:
+            raise RuntimeError("A Witness cannot be entered twice concurrently")
+        self._pending = {}
+        observation = observe(self.model, self)
+        observation.__enter__()
+        self._observation = observation
         return self
 
+    def on_start(self, call):
+        input_event = call.args[0] if call.args else next(
+            (call.kwargs[k] for k in ('input_event', 'stimuli', 'text', 'texts')
+             if k in call.kwargs), None)
+        ev = WitnessEvent(index=len(self.events), event_type=self._event_type(input_event),
+                          mode=self._infer_mode(input_event))
+        self._record_input(ev, input_event)
+        self._pending[call.event_id] = ev
+
+    def on_result(self, call, output):
+        ev = self._pending.pop(call.event_id)
+        ev.duration_s = call.duration_s
+        self._record_output(ev, output)
+        self.events.append(ev)
+
+    def on_error(self, call, error):
+        ev = self._pending.pop(call.event_id)
+        ev.duration_s = call.duration_s
+        ev.error = f'{type(error).__name__}: {error}'
+        self.events.append(ev)
+
     def __exit__(self, *exc):
-        if self._orig_process is not None:
-            try:
-                del self.model.process          # fall back to the class method
-            except AttributeError:
-                self.model.process = self._orig_process
-        return False
+        try:
+            return self._observation.__exit__(*exc)
+        finally:
+            self._observation = None
 
     # -- introspection helpers --------------------------------------------
     def _event_type(self, input_event):
@@ -170,6 +175,13 @@ class Witness:
         ev.saw = self._stimulus_views(stimuli, ev.modalities)
 
     def _stimulus_views(self, stimuli, modalities):
+        # Legacy language calls take raw text; generic event payloads need not
+        # be DataFrames. Observing either must preserve the original call.
+        if not hasattr(stimuli, 'iloc'):
+            values = stimuli if isinstance(stimuli, (list, tuple)) else [stimuli]
+            return [({'modalities': ['text'], 'text': {'text': value}}
+                     if isinstance(value, str) else {'type': type(value).__name__})
+                    for value in values[:self.max_saw]]
         views = []
         try:
             cols = list(stimuli.columns)

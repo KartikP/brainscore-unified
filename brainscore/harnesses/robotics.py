@@ -90,3 +90,8 @@ def proprioception_from_observation(observation) -> Optional[Proprioception]:
     if isinstance(observation, dict):
         return observation.get("proprioception")
     return None
+
+
+# Public robotics integration surface, alongside the legacy envelope helpers.
+from brainscore.robotics import (ActionSpec, droid_steps, evaluate_droid_episode, staged_droid_episodes)
+__all__ += ["ActionSpec", "droid_steps", "evaluate_droid_episode", "staged_droid_episodes"]

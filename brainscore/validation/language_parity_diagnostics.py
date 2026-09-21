@@ -67,6 +67,7 @@ class ForwardTrace:
                 if torch.is_tensor(value)
             })
             self.calls[-1]['past_length'] = cache_length(kwargs.get('past_key_values'))
+            self.calls[-1]['use_cache'] = kwargs.get('use_cache', self.model.config.use_cache)
             self.calls[-1]['hook_dtypes'] = {}
 
         def positions(module, args):
@@ -144,15 +145,22 @@ def token_audit(legacy_calls, native_calls):
 
 
 def replay(model, calls, cached, *, detailed=True):
-    """Replay recorded token IDs on one model, bypassing both wrappers."""
+    """Replay recorded token IDs and cache resets, bypassing both wrappers.
+
+    ``cached`` permits reuse only when the recorded call had cached context.
+    Full-context neural calls and passage starts must discard previous state.
+    """
     past = None
     device = next(model.parameters()).device
     with ForwardTrace(model, detailed=detailed) as trace, torch.no_grad():
         for call in calls:
+            if call['past_length'] == 0:
+                past = None
             tokens = {key: torch.tensor(call[key], dtype=torch.long, device=device)
                       for key in ('input_ids', 'attention_mask', 'token_type_ids', 'position_ids')
                       if key in call}
-            output = model(**tokens, past_key_values=past if cached else None, use_cache=True)
+            output = model(**tokens, past_key_values=past if cached else None,
+                           use_cache=call.get('use_cache', True))
             past = output.past_key_values if cached else None
     return trace
 

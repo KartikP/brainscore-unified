@@ -123,7 +123,7 @@ class TestGenerationClosure:
 class TestGameActionFn:
     """build_api_action_fn drives the embodied game via process(EnvironmentStep)."""
 
-    def _env_step(self, n_actions=3, ascii_board=None):
+    def _env_step(self, n_actions=3, ascii_board=None, is_first=False):
         import numpy as np
         from brainscore_core.model_interface import EnvironmentStep
         obs = {
@@ -135,7 +135,7 @@ class TestGameActionFn:
             obs['ascii'] = ascii_board
         return EnvironmentStep(
             observation=obs, instruction='reach the goal',
-            is_first=True, step_num=0)
+            is_first=is_first, step_num=0)
 
     def _mock(self, response='Action: 2', counter=None):
         def call(model, system, user_text, image, max_tokens):

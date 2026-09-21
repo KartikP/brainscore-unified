@@ -390,3 +390,84 @@ def test_slow_entrypoint_actually_enforces_joint_bias_guard(monkeypatch, tmp_pat
     monkeypatch.setattr(slow, 'validate_case', lambda case, factory: reports[case.unified])
     with pytest.raises(AssertionError, match='same-sign drift'):
         slow.test_pereira_243_and_384_score_parity(tmp_path)
+
+
+@pytest.mark.parametrize('case', (*PEREIRA_CASES,))
+def test_cpu_budget_is_explicit_and_preserves_failure_evidence(case, run_parity_observations):
+    from brainscore.validation.benchmark_parity import CPU_FP32_POLICY, ParityFailure
+    changes = {'native': {'activation_delta': 32 * 2 ** -17, 'score': .500002}}
+    with pytest.raises(ParityFailure) as failure:
+        run_parity_observations(case, changes)
+    assert failure.value.report['routes']['native']['score'] == .500002
+    assert failure.value.report['routes']['native']['max_activation_delta'] == 32 * 2 ** -17
+    assert failure.value.report['routes']['native']['metric_inputs'][0]['shape'] == [1, 2]
+    report = run_parity_observations(case, changes, policy=CPU_FP32_POLICY)
+    assert report['native_ulps'] == 32
+    assert report['score_atol'] == 1e-5
+    with pytest.raises(ParityFailure, match='exceeds 32'):
+        run_parity_observations(case, {'native': {'activation_delta': 33 * 2 ** -17}}, policy=CPU_FP32_POLICY)
+
+
+@pytest.mark.parametrize('field', ['activation_delta', 'score', 'raw'])
+def test_cpu_profile_does_not_relax_adapter(field, run_parity_observations):
+    from brainscore.validation.benchmark_parity import CPU_FP32_POLICY, RIDGE_CASES
+    value = {'activation_delta': 1e-12, 'score': .500001, 'raw': .250001}[field]
+    for case in (*PEREIRA_CASES, *RIDGE_CASES):
+        with pytest.raises(AssertionError, match='adapter'):
+            run_parity_observations(case, {'adapter': {field: value}}, policy=CPU_FP32_POLICY)
+
+
+def test_cpu_ridge_budget_checks_unclipped_raw_score(run_parity_observations):
+    from brainscore.validation.benchmark_parity import CPU_FP32_POLICY, RIDGE_CASES
+    reference = dict(score=1., raw=.3, ceiling=.25)
+    for case in RIDGE_CASES:
+        with pytest.raises(AssertionError, match='native raw differs'):
+            run_parity_observations(case, {'legacy': reference, 'adapter': reference,
+                'native': dict(score=1., raw=.300003)}, policy=CPU_FP32_POLICY)
+
+
+@pytest.mark.parametrize('key', ['score', 'raw'])
+def test_cpu_mean_signed_drift_has_a_finite_budget(key):
+    from brainscore.validation.benchmark_parity import CPU_FP32_POLICY
+    def reports(deltas):
+        return _paired_score_reports(deltas if key == 'score' else (0, 0),
+                                     deltas if key == 'raw' else (0, 0))
+    assert_pereira_score_drift(reports((2e-6, 1e-6)), policy=CPU_FP32_POLICY)
+    with pytest.raises(AssertionError, match='mean signed drift'):
+        assert_pereira_score_drift(reports((6e-6, 6e-6)), policy=CPU_FP32_POLICY)
+    with pytest.raises(AssertionError, match='per-case budget'):
+        assert_pereira_score_drift(reports((11e-6, -11e-6)), policy=CPU_FP32_POLICY)
+    with pytest.raises(AssertionError, match='both experiments'):
+        assert_pereira_score_drift(reports((0, 0))[:1], policy=CPU_FP32_POLICY)
+
+
+@pytest.mark.parametrize('case', (*PEREIRA_CASES,))
+def test_l4_keeps_historical_activation_budget_with_tighter_scores(case, run_parity_observations):
+    from brainscore.validation.benchmark_parity import L4_FP32_POLICY
+    report = run_parity_observations(case, {'native': {'activation_delta': 16 * 2 ** -17,
+        'score': .500002}}, policy=L4_FP32_POLICY)
+    assert report['native_ulps'] == 16
+    assert report['score_atol'] == 1e-5
+    with pytest.raises(AssertionError, match='exceeds 16'):
+        run_parity_observations(case, {'native': {'activation_delta': 17 * 2 ** -17}}, policy=L4_FP32_POLICY)
+
+
+def test_l4_applies_same_activation_rule_to_ridge_and_retains_adapter_guard(run_parity_observations):
+    from brainscore.validation.benchmark_parity import L4_FP32_POLICY, RIDGE_CASES
+    for case in RIDGE_CASES:
+        report = run_parity_observations(case, {'native': {'activation_delta': 16 * 2 ** -17}}, policy=L4_FP32_POLICY)
+        assert report['native_ulps'] == 16
+        assert report['routes']['legacy']['ceiling'] == .5
+        with pytest.raises(AssertionError, match='adapter activations differ'):
+            run_parity_observations(case, {'adapter': {'activation_delta': 1e-12}}, policy=L4_FP32_POLICY)
+        with pytest.raises(AssertionError, match='native raw differs'):
+            run_parity_observations(case, {'native': {'raw': .250006}}, policy=L4_FP32_POLICY)
+
+
+def test_l4_preserves_paired_bias_guard():
+    from brainscore.validation.benchmark_parity import L4_FP32_POLICY, RIDGE_CASES
+    reports = _paired_score_reports((6e-6, 6e-6))
+    for case, report in zip(RIDGE_CASES, reports):
+        report['benchmark'] = case.unified
+    with pytest.raises(AssertionError, match='mean signed drift'):
+        assert_pereira_score_drift(reports, policy=L4_FP32_POLICY)

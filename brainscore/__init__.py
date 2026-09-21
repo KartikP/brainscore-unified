@@ -9,6 +9,7 @@ registry lookup.
 """
 
 import logging
+from brainscore_core.plugin_management.import_plugin import PluginNotFoundError
 from typing import Dict, Any, Callable
 
 from brainscore_core.model_interface import Subject, BrainScoreModel
@@ -67,14 +68,14 @@ def load_model(identifier: str) -> Subject:
     try:
         from brainscore_vision import load_model as load_vision_model
         return load_vision_model(identifier)
-    except (KeyError, ImportError, AssertionError):
+    except PluginNotFoundError:
         pass
 
     # Fallback to language
     try:
         from brainscore_language import load_model as load_language_model
         return load_language_model(identifier)
-    except (KeyError, ImportError, AssertionError):
+    except PluginNotFoundError:
         pass
 
     raise KeyError(
@@ -103,7 +104,7 @@ def load_benchmark(identifier: str) -> Benchmark:
         from brainscore_vision import load_benchmark as load_vision_benchmark
         benchmark = load_vision_benchmark(identifier)
         return _ensure_legacy_benchmark_modalities(benchmark, {'vision'})
-    except (KeyError, ImportError, AssertionError):
+    except PluginNotFoundError:
         pass
 
     # Fallback to language
@@ -111,7 +112,7 @@ def load_benchmark(identifier: str) -> Benchmark:
         from brainscore_language import load_benchmark as load_language_benchmark
         benchmark = load_language_benchmark(identifier)
         return _ensure_legacy_benchmark_modalities(benchmark, {'text'})
-    except (KeyError, ImportError, AssertionError):
+    except PluginNotFoundError:
         pass
 
     raise KeyError(
@@ -132,7 +133,7 @@ def load_metric(identifier: str, *args, **kwargs) -> Metric:
     try:
         from brainscore_vision import load_metric as load_vision_metric
         return load_vision_metric(identifier, *args, **kwargs)
-    except (KeyError, ImportError, AssertionError):
+    except PluginNotFoundError:
         pass
 
     raise KeyError(
@@ -158,12 +159,12 @@ def load_dataset(identifier: str, *args, **kwargs):
     try:
         from brainscore_vision import load_dataset as _vision
         return _vision(identifier)
-    except (KeyError, ImportError, AssertionError):
+    except PluginNotFoundError:
         pass
     try:
         from brainscore_language import load_dataset as _language
         return _language(identifier)
-    except (KeyError, ImportError, AssertionError):
+    except PluginNotFoundError:
         pass
     raise KeyError(
         f"Dataset '{identifier}' not found in unified, vision, or language registries.")
@@ -182,12 +183,7 @@ def load_stimulus_set(identifier: str, *args, **kwargs):
     try:
         from brainscore_vision import load_stimulus_set as _vision
         return _vision(identifier)
-    except (KeyError, ImportError, AssertionError):
-        pass
-    try:
-        from brainscore_language import load_stimulus_set as _language
-        return _language(identifier)
-    except (KeyError, ImportError, AssertionError):
+    except PluginNotFoundError:
         pass
     raise KeyError(
         f"StimulusSet '{identifier}' not found in unified, vision, or language registries.")

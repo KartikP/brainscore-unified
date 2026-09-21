@@ -4,6 +4,7 @@ This module never downloads weights. The runner is opt-in and uses explicit
 local checkpoints; benchmark assemblies/ceilings/stimuli must already be staged.
 """
 import gc
+import hashlib
 import os
 from dataclasses import dataclass
 
@@ -27,8 +28,34 @@ CASES = tuple(
           for experiment in (243, 384))
 
 
+RIDGE_CASES = tuple(ParityCase(f'Pereira2018.{experiment}sentences-ridge', 'language')
+                    for experiment in (243, 384))
+# Ridge uses strict defaults until a separately reviewed calibration exists.
+RELEASE_CASES = CASES + RIDGE_CASES
+
+
 PEREIRA_CASES = tuple(case for case in CASES if case.domain == 'language')
 ADAPTER_SCORE_ULPS = 4
+HISTORICAL_POLICY = 'historical-v1'
+CPU_FP32_POLICY = 'gpt2-pereira-cpu-fp32-v1'
+L4_FP32_POLICY = 'gpt2-pereira-l4-fp32-v1'
+FP32_POLICIES = (CPU_FP32_POLICY, L4_FP32_POLICY)
+POLICIES = (HISTORICAL_POLICY, *FP32_POLICIES)
+# Scoped to these four GPT-2/Pereira cases, not arbitrary language inputs.
+# See docs/numerical_policy.md for the precision decision and counterexamples.
+CPU_NATIVE_ULPS = 32
+# The L4 profile retains the historical linear activation budget for both
+# linear and ridge, whose metric inputs are checked independently.
+L4_NATIVE_ULPS = 16
+CPU_SCORE_ATOL = 1e-5
+CPU_MEAN_DRIFT_ATOL = 5e-6
+
+
+class ParityFailure(AssertionError):
+    """A failed comparison with the observations needed to diagnose it."""
+    def __init__(self, message, report):
+        super().__init__(message)
+        self.report = report
 
 # Fixed GPT-2/Pereira regression policy, not a universal forward-error theorem.
 # User GPU evidence (A10G, torch 2.6.0, transformers 4.57.6, FP32, matmul TF32 off):
@@ -85,7 +112,7 @@ def uses_pereira_policy(case):
     return case in PEREIRA_CASES
 
 
-def fp32_ulp_tolerance(reference):
+def fp32_ulp_tolerance(reference, *, ulps=PEREIRA_NATIVE_ULPS):
     """Elementwise 16-ULP limits with the declared reference-magnitude floor."""
     reference = np.asarray(reference, dtype=np.float64)
     assert np.isfinite(reference).all(), 'Non-finite reference activations'
@@ -94,25 +121,53 @@ def fp32_ulp_tolerance(reference):
     # frexp's exponent is one larger than the binade exponent: FP32 spacing
     # is 2^(exponent-24). Float64 ldexp avoids nextafter(max_float32) -> inf.
     exponent = np.frexp(magnitude)[1]
-    return PEREIRA_NATIVE_ULPS * np.ldexp(np.ones(reference.shape), exponent - 24)
+    return ulps * np.ldexp(np.ones(reference.shape), exponent - 24)
 
 
-def assert_pereira_activations(actual, reference, *, err_msg='native activations differ'):
+def assert_pereira_activations(actual, reference, *, err_msg='native activations differ',
+                              ulps=PEREIRA_NATIVE_ULPS):
     actual, reference = np.asarray(actual), np.asarray(reference)
     assert actual.shape == reference.shape, f'{err_msg}: activation shapes differ'
     assert np.isfinite(actual).all(), f'{err_msg}: non-finite activations'
-    limits = fp32_ulp_tolerance(reference)
+    limits = fp32_ulp_tolerance(reference, ulps=ulps)
     delta = np.abs(actual.astype(np.float64) - reference.astype(np.float64))
-    ratios = delta / (limits / PEREIRA_NATIVE_ULPS)
+    ratios = delta / (limits / ulps)
     maximum = float(np.max(ratios))
     assert (delta <= limits).all(), (
         f'{err_msg}: maximum {maximum:.9g} effective FP32 ULPs exceeds '
-        f'{PEREIRA_NATIVE_ULPS} (magnitude floor {PEREIRA_ULP_MAGNITUDE_FLOOR:g})')
+        f'{ulps} (magnitude floor {PEREIRA_ULP_MAGNITUDE_FLOOR:g})')
     return maximum
 
 
-def assert_pereira_score_drift(reports):
+def assert_pereira_score_drift(reports, *, policy=HISTORICAL_POLICY):
     """Joint guard; callers must supply both fixed Pereira benchmark results."""
+    if policy not in POLICIES:
+        raise ValueError(f'Unknown numerical policy: {policy}')
+    if policy in FP32_POLICIES:
+        found = False
+        for cases in (PEREIRA_CASES, RIDGE_CASES):
+            names = {case.unified for case in cases}
+            pair = [report for report in reports if report['benchmark'] in names]
+            if not pair:
+                continue
+            found = True
+            assert len(pair) == 2 and {p['benchmark'] for p in pair} == names, \
+                'FP32 Pereira score guard requires both experiments for each selected protocol'
+            for key in ('score', 'raw'):
+                deltas = []
+                for report in pair:
+                    reference, native = report['routes']['legacy'], report['routes']['native']
+                    delta = _scalar(native[key]) - _scalar(reference[key])
+                    if key == 'raw':
+                        ceiling = _scalar(reference['ceiling'])
+                        assert ceiling > 0, 'Pereira ceiling must be positive'
+                        delta /= ceiling
+                    assert abs(delta) <= CPU_SCORE_ATOL, f'{policy}: {key} drift exceeds per-case budget'
+                    deltas.append(delta)
+                assert abs(sum(deltas) / len(deltas)) <= CPU_MEAN_DRIFT_ATOL, \
+                    f'{policy}: {key}: mean signed drift exceeds budget: {deltas}'
+        assert found, 'FP32 Pereira score guard requires a complete experiment pair'
+        return
     pairs = [report for report in reports if report['benchmark'] in PEREIRA_SCORE_DRIFT_LIMITS]
     assert len(pairs) == 2 and {p['benchmark'] for p in pairs} == set(PEREIRA_SCORE_DRIFT_LIMITS), \
         'Paired Pereira score guard requires both benchmarks exactly once'
@@ -154,7 +209,7 @@ def adapter_score_tolerance(reference):
 
 
 def validate_case(case, candidate_factory, benchmark_loader=None, *,
-                  native_atol=1e-6, score_atol=None):
+                  native_atol=1e-6, score_atol=None, policy=HISTORICAL_POLICY):
     """Run three independent conditions, retaining inputs as well as scores.
 
     ``candidate_factory(case, route)`` must return fresh, matched-weight models
@@ -172,12 +227,25 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
     if os.environ.get('RESULTCACHING_DISABLE') != '1':
         raise RuntimeError('Parity validation requires RESULTCACHING_DISABLE=1')
     benchmark_loader = benchmark_loader or load_benchmark
-    pereira = uses_pereira_policy(case)
+    if policy not in POLICIES:
+        raise ValueError(f'Unknown numerical policy: {policy}')
+    fixed_pereira = policy in FP32_POLICIES and case in (*PEREIRA_CASES, *RIDGE_CASES)
+    pereira = uses_pereira_policy(case) or fixed_pereira
+    native_ulps = {CPU_FP32_POLICY: CPU_NATIVE_ULPS, L4_FP32_POLICY: L4_NATIVE_ULPS}.get(
+        policy, PEREIRA_NATIVE_ULPS)
+    if fixed_pereira and score_atol is not None:
+        raise ValueError('The versioned FP32 policy has a fixed score budget')
     if score_atol is None:
-        score_atol = PEREIRA_SCORE_ATOL if pereira else 1e-6
+        score_atol = CPU_SCORE_ATOL if fixed_pereira else (PEREIRA_SCORE_ATOL if pereira else 1e-6)
     adapters = (VisionModelAdapter, LanguageModelAdapter)
     runs = {}
     reference = None
+    def report():
+        return {'benchmark': case.unified, 'policy': policy,
+                'native_atol': None if pereira else native_atol,
+                'native_ulps': native_ulps if pereira else None,
+                'native_ulp_magnitude_floor': PEREIRA_ULP_MAGNITUDE_FLOOR if pereira else None,
+                'score_atol': score_atol, 'routes': runs}
     for route in ('legacy', 'adapter', 'native'):
         candidate = candidate_factory(case, route)
         if route == 'native' and not isinstance(candidate, BrainScoreModel):
@@ -201,6 +269,11 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
         try:
             score = benchmark(candidate)
             observed = {'score': _scalar(score), 'raw': _scalar(score.attrs['raw'])}
+            runs[route] = observed
+            observed['metric_inputs'] = [
+                {'shape': list(values.shape), 'dtype': str(values.dtype),
+                 'values_sha256': hashlib.sha256(np.ascontiguousarray(values)).hexdigest()}
+                for _, values, _ in captured]
             if pereira:
                 observed['ceiling'] = _scalar(benchmark.ceiling)
                 assert observed['ceiling'] > 0, 'Pereira ceiling must be positive'
@@ -223,7 +296,7 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
                             # Use the calibrated policy and independent score
                             # gates above; never apply these allowances to adapters.
                             ulps.append(assert_pereira_activations(values, expected[1],
-                                err_msg=f'{case.unified}: native activations differ'))
+                                err_msg=f'{case.unified}: native activations differ', ulps=native_ulps))
                         else:
                             np.testing.assert_allclose(values, expected[1], rtol=0,
                                 atol=0 if route == 'adapter' else native_atol,
@@ -273,19 +346,18 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
                 if score_errors or activation_errors:
                     raise AssertionError('\n\n'.join(score_errors + activation_errors))
             runs[route] = observed
+        except AssertionError as error:
+            raise ParityFailure(str(error), report()) from error
         finally:
             setattr(benchmark, attr, metric)
             if hasattr(candidate, 'reset'):
                 candidate.reset()
             del candidate, benchmark
             gc.collect()
-    return {'benchmark': case.unified, 'native_atol': None if pereira else native_atol,
-            'native_ulps': PEREIRA_NATIVE_ULPS if pereira else None,
-            'native_ulp_magnitude_floor': PEREIRA_ULP_MAGNITUDE_FLOOR if pereira else None,
-            'score_atol': score_atol, 'routes': runs}
+    return report()
 
 
-def local_candidate(case, route):
+def local_candidate(case, route, *, language_precision='float32', execution_observer=None):
     """Reference pairs: local ResNet18 with fixed V4/IT layers, or local GPT-2.
 
     UMI_PARITY_RESNET18 is a torchvision ResNet18 state_dict file.
@@ -293,6 +365,14 @@ def local_candidate(case, route):
     These models test interface parity; they are not scientific layer mappings.
     """
     from brainscore_core.model_interface import BrainScoreModel
+    def finish(subject, net):
+        if execution_observer is not None:
+            execution_observer({
+                'parameter_devices': sorted({str(p.device) for p in net.parameters()}),
+                'parameter_dtypes': sorted({str(p.dtype) for p in net.parameters()}),
+                'attention_implementation': getattr(getattr(net, 'config', None), '_attn_implementation', None),
+            })
+        return subject
     if case.domain == 'vision':
         import functools
         import torch
@@ -307,23 +387,28 @@ def local_candidate(case, route):
         wrapper = PytorchWrapper(net, functools.partial(load_preprocess_images, image_size=224),
                                  identifier='parity-resnet18', batch_size=4)
         if route == 'native':
-            return BrainScoreModel('parity-native', model=net, region_layer_map=mapping,
-                preprocessors={'vision': wrapper}, visual_degrees=8)
+            return finish(BrainScoreModel('parity-native', model=net, region_layer_map=mapping,
+                preprocessors={'vision': wrapper}, visual_degrees=8), net)
         legacy = ModelCommitment('parity-legacy', wrapper, layers=list(mapping.values()),
                                  region_layer_map=mapping, visual_degrees=8)
-        return VisionModelAdapter(legacy) if route == 'adapter' else legacy
+        return finish(VisionModelAdapter(legacy) if route == 'adapter' else legacy, net)
     from transformers import AutoModelForCausalLM, AutoTokenizer
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore_language.model_helpers.huggingface import HuggingfaceSubject
     from brainscore_language.compat.unified_adapter import LanguageModelAdapter
     path = os.environ['UMI_PARITY_GPT2']
     net = AutoModelForCausalLM.from_pretrained(path, local_files_only=True).eval()
+    if language_precision == 'float64-eager':
+        net.double()
+        net.set_attn_implementation('eager')
+    elif language_precision != 'float32':
+        raise ValueError(f'Unsupported language precision: {language_precision}')
     tokenizer = AutoTokenizer.from_pretrained(path, local_files_only=True)
     tokenizer.pad_token = tokenizer.eos_token
     mapping = {'language_system': 'transformer.h.11'}
     if route == 'native':
         wrapper = TextWrapper(net, tokenizer, identifier='parity-native', max_length=1024, batch_size=1)
-        return BrainScoreModel('parity-native', model=net, region_layer_map=mapping,
-                               preprocessors={'text': wrapper})
+        return finish(BrainScoreModel('parity-native', model=net, region_layer_map=mapping,
+                               preprocessors={'text': wrapper}), net)
     legacy = HuggingfaceSubject('parity-legacy', mapping, model=net, tokenizer=tokenizer)
-    return LanguageModelAdapter(legacy) if route == 'adapter' else legacy
+    return finish(LanguageModelAdapter(legacy) if route == 'adapter' else legacy, net)

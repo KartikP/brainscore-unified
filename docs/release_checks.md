@@ -1,5 +1,7 @@
 # Checks to run before a release
 
+Candidate guide: [Build tools and integrations](tool_authoring.md) | [Production qualification](production_release.md) | [Numerical policy](numerical_policy.md). These pages describe the production candidate and supersede older release-status claims below.
+
 The fast tier runs on every push and takes under a minute. These do not: they
 need benchmark assemblies, real model weights, and hours. They are listed here
 because each one exists in response to a defect that shipped, and the failure
@@ -12,8 +14,11 @@ python -m brainscore.validation.run_parity --resnet18 <path> --gpt2 <dir>
 ```
 
 Runs every `-unified` variant through its legacy plugin, that plugin behind the
-compatibility adapter, and a natively-registered model, and asserts all three
-hand the metric identical arrays and produce the same score.
+compatibility adapter, and a natively-registered model. Adapter activations must
+be exact; scalar scores and native outputs use the explicitly selected numerical
+policy. The default historical policy and the scoped CPU FP32 policy differ.
+Reports identify the policy, execution environment, checkpoint hashes and failed
+observations. An FP64 reference run cannot qualify default FP32 execution.
 
 **Why.** "The `-unified` variants were validated bit-for-bit against legacy" was
 true only of the adapter route. Nobody had compared the native one, which is how

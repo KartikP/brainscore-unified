@@ -4,7 +4,7 @@
 
 [project]
 name = "brainscore"
-version = "0.2.0"
+version = "0.3.0rc1"
 description = "Unified Brain-Score model interface: register a model once and score it across vision, language, audio, video, multimodal, perturbation, and embodied benchmarks."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -28,9 +28,9 @@ classifiers = [
 # environment. Keep these ranges aligned with environment-unified.yml at the
 # distribution root.
 dependencies = [
-    "brainscore_core",
-    "brainscore_vision",
-    "brainscore_language",
+    "brainscore_core==2.4.0rc1",
+    "brainscore_vision==2.4.0rc1",
+    "brainscore_language==2.3.0rc1",
     "numpy<2",
     "xarray==2022.3.0",
     "pandas<3",
@@ -41,6 +41,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+robotics-data = ["tensorflow-datasets>=4.9,<5"]
+api = ["openai>=1,<3", "anthropic>=0.40,<1"]
+
 test = [
     "pytest",
     "pytest-check",
@@ -98,3 +101,6 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::FutureWarning:brainscore_core.metrics*",
 ]
+
+[tool.setuptools.package-data]
+brainscore = ["benchmarks/rajalingham2018_2afc/*.csv"]

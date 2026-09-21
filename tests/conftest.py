@@ -18,6 +18,8 @@ Run tiers:
   pytest -m "unit or integration" # CI tier (offline, no big models)
   pytest -m slow                  # on demand (AWS creds + model downloads)
 """
+import os
+
 import pytest
 
 _TIERS = ('unit', 'integration', 'slow')
@@ -27,3 +29,17 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if not any(item.get_closest_marker(t) for t in _TIERS):
             item.add_marker(pytest.mark.unit)
+
+
+@pytest.fixture(autouse=True)
+def requested_cpu_profile(monkeypatch):
+    """Keep CPU qualification off accelerators advertised by hosted runners.
+
+    This opt-in applies only to tests. Device-selection tests can still replace
+    availability within their own fixture; runtime device selection is unchanged.
+    """
+    if os.environ.get('UMI_TEST_CPU_ONLY') != '1':
+        return
+    import torch
+    monkeypatch.setattr(torch.cuda, 'is_available', lambda: False)
+    monkeypatch.setattr(torch.backends.mps, 'is_available', lambda: False)

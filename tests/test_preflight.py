@@ -218,7 +218,8 @@ class TestPreflightInScore:
         import brainscore
 
         benchmark = _LegacyBenchmark()
-        mock_load_vision_benchmark.side_effect = KeyError
+        from brainscore_core.plugin_management.import_plugin import PluginNotFoundError
+        mock_load_vision_benchmark.side_effect = PluginNotFoundError
         mock_load_language_benchmark.return_value = benchmark
 
         loaded = brainscore.load_benchmark('legacy-language-benchmark')

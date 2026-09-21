@@ -1,0 +1,479 @@
+{
+  "status": "passed",
+  "scope": "four fixed GPT-2/Pereira macOS CPU FP32 cases; repaired uncommitted source",
+  "upstream_comparisons": {
+    "Pereira2018.243sentences-linear": {
+      "status": "exact",
+      "score": {
+        "normalized": 0.8712620929373056,
+        "raw": 0.3082431881581703,
+        "ceiling": 0.3537892795484572
+      },
+      "metric_inputs": [
+        {
+          "shape": [
+            243,
+            768
+          ],
+          "dtype": "float32",
+          "sha256": "4bba9085f48cae59dcd23bd2a4330369d0c5c3e94dcfce57fbfd53eb90019fa3"
+        }
+      ],
+      "upstream": "upstream-fixed/Pereira2018.243sentences-linear",
+      "candidate": "candidate-fixed/Pereira2018.243sentences-linear",
+      "upstream_benchmark": "Pereira2018.243sentences-linear-shuffle",
+      "candidate_benchmark": "Pereira2018.243sentences-linear",
+      "source_commits": {
+        "upstream": {
+          "core": "b1604265d5bdb4a44c3f42d5472fd530ba7f2f1a",
+          "language": "2c4744ef9b55b61bb7790200fea994700b092fe1"
+        },
+        "candidate": {
+          "core": "4bb7a31d31ddd8109e0474238967f7c2ba69c8b6",
+          "language": "a4dfe9d8e8080c5cd5d06a08bf20885bc01e4f65"
+        }
+      },
+      "forward_calls": {
+        "upstream": 243,
+        "candidate": 243
+      },
+      "imported_module_counts": {
+        "upstream": 37,
+        "candidate": 67
+      }
+    },
+    "Pereira2018.243sentences-ridge": {
+      "status": "exact",
+      "score": {
+        "normalized": 0.8353256254695343,
+        "raw": 0.11168916144343077,
+        "ceiling": 0.13370733285076775
+      },
+      "metric_inputs": [
+        {
+          "shape": [
+            243,
+            768
+          ],
+          "dtype": "float32",
+          "sha256": "4bba9085f48cae59dcd23bd2a4330369d0c5c3e94dcfce57fbfd53eb90019fa3"
+        }
+      ],
+      "upstream": "upstream-sklearn17/Pereira2018.243sentences-ridge",
+      "candidate": "candidate-fixed/Pereira2018.243sentences-ridge",
+      "upstream_benchmark": "Pereira2018.243sentences-ridge",
+      "candidate_benchmark": "Pereira2018.243sentences-ridge",
+      "source_commits": {
+        "upstream": {
+          "core": "b1604265d5bdb4a44c3f42d5472fd530ba7f2f1a",
+          "language": "2c4744ef9b55b61bb7790200fea994700b092fe1"
+        },
+        "candidate": {
+          "core": "4bb7a31d31ddd8109e0474238967f7c2ba69c8b6",
+          "language": "a4dfe9d8e8080c5cd5d06a08bf20885bc01e4f65"
+        }
+      },
+      "forward_calls": {
+        "upstream": 243,
+        "candidate": 243
+      },
+      "imported_module_counts": {
+        "upstream": 37,
+        "candidate": 67
+      }
+    },
+    "Pereira2018.384sentences-linear": {
+      "status": "exact",
+      "score": {
+        "normalized": 0.8292755863666226,
+        "raw": 0.30138983002894004,
+        "ceiling": 0.3634374808372758
+      },
+      "metric_inputs": [
+        {
+          "shape": [
+            384,
+            768
+          ],
+          "dtype": "float32",
+          "sha256": "c319c0340d9d68cfd0fa91590c6058e149b4e5d6f44a4666762fdc7ccc7fc957"
+        }
+      ],
+      "upstream": "upstream-fixed/Pereira2018.384sentences-linear",
+      "candidate": "candidate-fixed/Pereira2018.384sentences-linear",
+      "upstream_benchmark": "Pereira2018.384sentences-linear-shuffle",
+      "candidate_benchmark": "Pereira2018.384sentences-linear",
+      "source_commits": {
+        "upstream": {
+          "core": "b1604265d5bdb4a44c3f42d5472fd530ba7f2f1a",
+          "language": "2c4744ef9b55b61bb7790200fea994700b092fe1"
+        },
+        "candidate": {
+          "core": "4bb7a31d31ddd8109e0474238967f7c2ba69c8b6",
+          "language": "a4dfe9d8e8080c5cd5d06a08bf20885bc01e4f65"
+        }
+      },
+      "forward_calls": {
+        "upstream": 384,
+        "candidate": 384
+      },
+      "imported_module_counts": {
+        "upstream": 37,
+        "candidate": 67
+      }
+    },
+    "Pereira2018.384sentences-ridge": {
+      "status": "exact",
+      "score": {
+        "normalized": 0.656385233398218,
+        "raw": 0.08875148711490605,
+        "ceiling": 0.13521249808656496
+      },
+      "metric_inputs": [
+        {
+          "shape": [
+            384,
+            768
+          ],
+          "dtype": "float32",
+          "sha256": "c319c0340d9d68cfd0fa91590c6058e149b4e5d6f44a4666762fdc7ccc7fc957"
+        }
+      ],
+      "upstream": "upstream-fixed/Pereira2018.384sentences-ridge",
+      "candidate": "candidate-fixed/Pereira2018.384sentences-ridge",
+      "upstream_benchmark": "Pereira2018.384sentences-ridge",
+      "candidate_benchmark": "Pereira2018.384sentences-ridge",
+      "source_commits": {
+        "upstream": {
+          "core": "b1604265d5bdb4a44c3f42d5472fd530ba7f2f1a",
+          "language": "2c4744ef9b55b61bb7790200fea994700b092fe1"
+        },
+        "candidate": {
+          "core": "4bb7a31d31ddd8109e0474238967f7c2ba69c8b6",
+          "language": "a4dfe9d8e8080c5cd5d06a08bf20885bc01e4f65"
+        }
+      },
+      "forward_calls": {
+        "upstream": 384,
+        "candidate": 384
+      },
+      "imported_module_counts": {
+        "upstream": 37,
+        "candidate": 67
+      }
+    }
+  },
+  "three_routes": {
+    "Pereira2018.243sentences-linear-unified": {
+      "benchmark": "Pereira2018.243sentences-linear-unified",
+      "policy": "gpt2-pereira-cpu-fp32-v1",
+      "native_atol": null,
+      "native_ulps": 32,
+      "native_ulp_magnitude_floor": 64.0,
+      "score_atol": 1e-05,
+      "routes": {
+        "legacy": {
+          "score": 0.8712620929373056,
+          "raw": 0.3082431881581703,
+          "metric_inputs": [
+            {
+              "shape": [
+                243,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "4bba9085f48cae59dcd23bd2a4330369d0c5c3e94dcfce57fbfd53eb90019fa3"
+            }
+          ],
+          "ceiling": 0.3537892795484572,
+          "max_activation_delta": 0.0
+        },
+        "adapter": {
+          "score": 0.8712620929373056,
+          "raw": 0.3082431881581703,
+          "metric_inputs": [
+            {
+              "shape": [
+                243,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "4bba9085f48cae59dcd23bd2a4330369d0c5c3e94dcfce57fbfd53eb90019fa3"
+            }
+          ],
+          "ceiling": 0.3537892795484572,
+          "max_activation_delta": 0.0
+        },
+        "native": {
+          "score": 0.8712620929373056,
+          "raw": 0.3082431881581703,
+          "metric_inputs": [
+            {
+              "shape": [
+                243,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "4bba9085f48cae59dcd23bd2a4330369d0c5c3e94dcfce57fbfd53eb90019fa3"
+            }
+          ],
+          "ceiling": 0.3537892795484572,
+          "max_activation_delta": 0.0,
+          "max_effective_fp32_ulps": 0.0
+        }
+      }
+    },
+    "Pereira2018.384sentences-linear-unified": {
+      "benchmark": "Pereira2018.384sentences-linear-unified",
+      "policy": "gpt2-pereira-cpu-fp32-v1",
+      "native_atol": null,
+      "native_ulps": 32,
+      "native_ulp_magnitude_floor": 64.0,
+      "score_atol": 1e-05,
+      "routes": {
+        "legacy": {
+          "score": 0.8292755863666226,
+          "raw": 0.30138983002894004,
+          "metric_inputs": [
+            {
+              "shape": [
+                384,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "c319c0340d9d68cfd0fa91590c6058e149b4e5d6f44a4666762fdc7ccc7fc957"
+            }
+          ],
+          "ceiling": 0.3634374808372758,
+          "max_activation_delta": 0.0
+        },
+        "adapter": {
+          "score": 0.8292755863666226,
+          "raw": 0.30138983002894004,
+          "metric_inputs": [
+            {
+              "shape": [
+                384,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "c319c0340d9d68cfd0fa91590c6058e149b4e5d6f44a4666762fdc7ccc7fc957"
+            }
+          ],
+          "ceiling": 0.3634374808372758,
+          "max_activation_delta": 0.0
+        },
+        "native": {
+          "score": 0.8292755863666226,
+          "raw": 0.30138983002894004,
+          "metric_inputs": [
+            {
+              "shape": [
+                384,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "c319c0340d9d68cfd0fa91590c6058e149b4e5d6f44a4666762fdc7ccc7fc957"
+            }
+          ],
+          "ceiling": 0.3634374808372758,
+          "max_activation_delta": 0.0,
+          "max_effective_fp32_ulps": 0.0
+        }
+      }
+    },
+    "Pereira2018.243sentences-ridge-unified": {
+      "benchmark": "Pereira2018.243sentences-ridge-unified",
+      "policy": "gpt2-pereira-cpu-fp32-v1",
+      "native_atol": null,
+      "native_ulps": 32,
+      "native_ulp_magnitude_floor": 64.0,
+      "score_atol": 1e-05,
+      "routes": {
+        "legacy": {
+          "score": 0.8353256254695343,
+          "raw": 0.11168916144343077,
+          "metric_inputs": [
+            {
+              "shape": [
+                243,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "4bba9085f48cae59dcd23bd2a4330369d0c5c3e94dcfce57fbfd53eb90019fa3"
+            }
+          ],
+          "ceiling": 0.13370733285076775,
+          "max_activation_delta": 0.0
+        },
+        "adapter": {
+          "score": 0.8353256254695343,
+          "raw": 0.11168916144343077,
+          "metric_inputs": [
+            {
+              "shape": [
+                243,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "4bba9085f48cae59dcd23bd2a4330369d0c5c3e94dcfce57fbfd53eb90019fa3"
+            }
+          ],
+          "ceiling": 0.13370733285076775,
+          "max_activation_delta": 0.0
+        },
+        "native": {
+          "score": 0.8353256254695343,
+          "raw": 0.11168916144343077,
+          "metric_inputs": [
+            {
+              "shape": [
+                243,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "4bba9085f48cae59dcd23bd2a4330369d0c5c3e94dcfce57fbfd53eb90019fa3"
+            }
+          ],
+          "ceiling": 0.13370733285076775,
+          "max_activation_delta": 0.0,
+          "max_effective_fp32_ulps": 0.0
+        }
+      }
+    },
+    "Pereira2018.384sentences-ridge-unified": {
+      "benchmark": "Pereira2018.384sentences-ridge-unified",
+      "policy": "gpt2-pereira-cpu-fp32-v1",
+      "native_atol": null,
+      "native_ulps": 32,
+      "native_ulp_magnitude_floor": 64.0,
+      "score_atol": 1e-05,
+      "routes": {
+        "legacy": {
+          "score": 0.656385233398218,
+          "raw": 0.08875148711490605,
+          "metric_inputs": [
+            {
+              "shape": [
+                384,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "c319c0340d9d68cfd0fa91590c6058e149b4e5d6f44a4666762fdc7ccc7fc957"
+            }
+          ],
+          "ceiling": 0.13521249808656496,
+          "max_activation_delta": 0.0
+        },
+        "adapter": {
+          "score": 0.656385233398218,
+          "raw": 0.08875148711490605,
+          "metric_inputs": [
+            {
+              "shape": [
+                384,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "c319c0340d9d68cfd0fa91590c6058e149b4e5d6f44a4666762fdc7ccc7fc957"
+            }
+          ],
+          "ceiling": 0.13521249808656496,
+          "max_activation_delta": 0.0
+        },
+        "native": {
+          "score": 0.656385233398218,
+          "raw": 0.08875148711490605,
+          "metric_inputs": [
+            {
+              "shape": [
+                384,
+                768
+              ],
+              "dtype": "float32",
+              "values_sha256": "c319c0340d9d68cfd0fa91590c6058e149b4e5d6f44a4666762fdc7ccc7fc957"
+            }
+          ],
+          "ceiling": 0.13521249808656496,
+          "max_activation_delta": 0.0,
+          "max_effective_fp32_ulps": 0.0
+        }
+      }
+    }
+  },
+  "three_route_environment": {
+    "requested_device": "cpu",
+    "platform": "macOS-26.5.1-arm64-arm-64bit",
+    "machine": "arm64",
+    "python": "3.11.15",
+    "dependencies": {
+      "torch": "2.13.0",
+      "torchvision": "0.28.0",
+      "transformers": "4.57.6",
+      "numpy": "1.26.4",
+      "scipy": "1.17.1",
+      "scikit-learn": "1.7.2",
+      "xarray": "2022.3.0"
+    },
+    "torch_threads": 4,
+    "torch_interop_threads": 12,
+    "threadpools": [
+      {
+        "user_api": "blas",
+        "internal_api": "openblas",
+        "num_threads": 4,
+        "prefix": "libopenblas",
+        "filepath": "/private/tmp/umi-production-cold-env/lib/python3.11/site-packages/numpy/.dylibs/libopenblas64_.0.dylib",
+        "version": "0.3.23.dev",
+        "threading_layer": "pthreads",
+        "architecture": "armv8"
+      },
+      {
+        "user_api": "openmp",
+        "internal_api": "openmp",
+        "num_threads": 4,
+        "prefix": "libomp",
+        "filepath": "/private/tmp/umi-production-cold-env/lib/python3.11/site-packages/torch/lib/libomp.dylib",
+        "version": null
+      }
+    ],
+    "cuda_version": null,
+    "cuda_name": null,
+    "matmul_tf32": false,
+    "cudnn_tf32": true,
+    "persistent_result_cache": "disabled",
+    "data_downloads": "refused"
+  },
+  "new_linux_or_gpu_qualification": false,
+  "budget_changed": false,
+  "evidence": {
+    "repaired-three-route-language.json": {
+      "sha256": "575342a0c6435b361611ea637d7c45241ebf3f37bbf39e200db8cb65b0e5b833",
+      "bytes": 12178
+    },
+    "input-verification.json": {
+      "sha256": "e837715d1ea599da5538881ec1aca25764daed0cc63eb5bf13021014df03b840",
+      "bytes": 5226
+    },
+    "cache-regression-before.log": {
+      "sha256": "69dbe6c2b4f7f6388676ba3ce23e2122da70b3b2886389fd5ff9f88e7acc6d41",
+      "bytes": 6866
+    },
+    "cache-regression-after.log": {
+      "sha256": "27c50fe20d50fbf330d1754bc4484692320d98587c2803c4654e4f3838774343",
+      "bytes": 99
+    },
+    "run_case.py": {
+      "sha256": "dbaf68be762790b4a22c87609f7fce0ee2cdf0df13597bd1195fadf55aa8bd42",
+      "bytes": 7082
+    },
+    "audit.py": {
+      "sha256": "d946882e114da3d99b5fa441b5162b448062ff728624bdf97fc9cd2d07dfe25e",
+      "bytes": 3178
+    },
+    "language-comparison.json": {
+      "sha256": "0d637835e92714ace60d94b0d610e8a9a09cfb4b3e4c73ee6f69ade65b4b4908",
+      "bytes": 8107
+    }
+  }
+}

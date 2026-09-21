@@ -1,5 +1,7 @@
 # brainscore (unified model interface)
 
+Candidate guide: [Build tools and integrations](docs/tool_authoring.md) | [Production qualification](docs/production_release.md). These pages describe the production candidate and supersede older release-status claims below.
+
 The unified Brain-Score package: register a model once and score it across every
 compatible benchmark domain (vision, language, audio, video, multimodal,
 perturbation, embodied) through a single `process()`-based interface.
@@ -27,11 +29,19 @@ Four editable installs in one Python 3.11 environment.
 cd <workspace-root>          # the directory holding core/ vision/ language/ unified/
 conda create -y -n brainscore-unified python=3.11
 conda activate brainscore-unified
-pip install -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
+python -m pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
+python -m pip check
+python -m brainscore.doctor
 ```
 
-That is the whole install. Version pins (`numpy<2`, `xarray==2022.3.0`,
-`scikit-learn>=1.5,<1.6`, `transformers>=4.57,<4.58`) live in the packages themselves, so
+Install all four repositories in the same pip command. The candidate peer versions
+are supplied by these checkouts; they are not available from PyPI. Installing
+only unified, vision, or language into an empty environment will not resolve the
+candidate dependencies. Do not remove the exact peer pins to work around this.
+For an immutable checkout set, use [the integration instructions](install/README.md#reproduce-the-reviewed-peer-revisions).
+
+ Version pins (`numpy<2`, `xarray==2022.3.0`,
+`scikit-learn>=1.7,<1.8`, `transformers>=4.57,<6`) live in the packages themselves, so
 pip enforces them without a separate environment file.
 
 **Starting from nothing?** The bootstrap also clones the four repositories:

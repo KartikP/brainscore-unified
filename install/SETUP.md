@@ -17,12 +17,13 @@ The supported shared environment is:
 | Python | 3.11 |
 | NumPy | 1.26.x, always below 2 |
 | xarray | 2022.3.0 |
-| scikit-learn | 1.5.x |
+| scikit-learn | 1.7.x |
 | Transformers | 4.57.x |
 | importlib-metadata | below 5 |
 
-Language features that require scikit-learn 1.6 or newer are not supported in
-the shared UMI environment.
+Use the shared constraints in `install/v2-constraints.txt` for the reviewed CPU
+integration profile. Full platform and scientific qualification is tracked in
+[the production policy](../docs/production_release.md).
 
 ## One-command setup
 
