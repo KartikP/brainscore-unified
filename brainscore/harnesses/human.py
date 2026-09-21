@@ -6,8 +6,8 @@ harness realizes the same contract on a biological subject: it presents inputs
 records outputs (electrodes or fMRI for neural, a button box or eye tracker for
 behavior). The same benchmark code that scores a model scores a human.
 
-This module is a scaffold. It implements the ``Subject`` contract and routes
-each method to pluggable hardware I/O callables that a real deployment fills in.
+This module is a scaffold. It uses the ``UnifiedModel`` compatibility base and routes
+each typed method to pluggable hardware I/O callables that a real deployment fills in.
 With no hardware attached, the callables default to raising, making the
 "not yet wired to hardware" boundary explicit; tests inject in-memory mocks.
 Nothing here drives real hardware. The point is that the specification already
@@ -17,7 +17,7 @@ stimulus presentation.
 """
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
-from brainscore_core.model_interface import Subject, TaskContext
+from brainscore_core.model_interface import UnifiedModel, TaskContext
 
 
 def _no_hardware(*_args, **_kwargs):
@@ -27,7 +27,7 @@ def _no_hardware(*_args, **_kwargs):
     )
 
 
-class HumanHarness(Subject):
+class HumanHarness(UnifiedModel):
     """A ``Subject`` backed by a biological participant via pluggable I/O.
 
     :param identifier: a label for the participant or session.

@@ -36,7 +36,7 @@ import numpy as np
 import pandas as pd
 
 from brainscore_core.model_interface import (
-    EnvironmentStep, StateChange, Subject, TaskContext)
+    EnvironmentStep, StateChange, UnifiedModel, TaskContext)
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
 from . import benchmark as B
@@ -95,7 +95,7 @@ def compose_sequential_trials(trials, n_images, out_dir, seed=0, balance_sides=F
 # A process()-bearing sequential 2-AFC model (Witness-recordable, same output
 # shape as the simultaneous TwoAFCModel so scoring is identical)
 # --------------------------------------------------------------------------- #
-class SequentialTwoAFCModel(Subject):
+class SequentialTwoAFCModel(UnifiedModel):
     """Wraps a per-trial ``choose_seq(row) -> 'LEFT'|'RIGHT'`` (which internally
     presents sample-then-choices) into a Subject."""
 

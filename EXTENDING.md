@@ -7,10 +7,12 @@ Extend the unified interface through five registries and Capability.
 For a model registration, instantiate `BrainScoreModel`, the concrete `Subject`
 subclass that composes wrappers, recording, and capability callables. For benchmark
 type annotations or a custom implementation, use the abstract `Subject` contract.
-Both are importable from `brainscore_core.model_interface`. The third name there,
-`UnifiedModel`, is the deprecated spelling of the same ABC (`UnifiedModel is Subject`),
-retained for existing imports, subclasses, and `isinstance` checks. It has no separate
-implementation; use `Subject` in new code. See [Concepts](docs/concepts.md#subject).
+Both are importable from `brainscore_core.model_interface`. A native `Subject`
+declares identity and input/output channels and implements `interact(session)`;
+it does not need the older typed model methods. `UnifiedModel` retains that
+older interface as a compatibility subclass of `Subject`, not an alias.
+Existing typed implementations that inherited the earlier `Subject` should
+inherit `UnifiedModel`. See [Concepts](docs/concepts.md#subject).
 
 > Companion: the interactive contract map at
 > [brain-score.github.io/public/UMI/architecture.html](https://brain-score.github.io/public/UMI/architecture.html).
