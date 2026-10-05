@@ -4,9 +4,51 @@ UMI lets an experiment send inputs to a model, collect responses, and compare th
 
 Start with [Getting started](getting_started.md). See [Supported features and environments](supported_features.md) for proposed support and remaining validation.
 
+## How should I think about UMI's layers?
+
+Think of a lab experiment with an AI as the participant. **The benchmark asks, the subject handles the interaction, and the model computes.**
+
+```text
+EXPERIMENT                 PARTICIPANT                 AI
+Benchmark <-------------> Subject <-----------------> Model
+What are we testing?      How do we interact?          What computes the answer?
+```
+
+These are responsibilities, not three objects you must always construct separately.
+
+| Part | Job | Image experiment example |
+| --- | --- | --- |
+| **Benchmark** | Choose the inputs, required measurements, and scoring procedure. | Present 100 images and compare responses with measured brain activity. |
+| **Subject** | Receive the experiment's inputs and supply responses through the agreed interface. | Accept the images and return the requested model activity. |
+| **Model** | Perform the underlying computation. | Run the images through a neural network. |
+
+You can implement `Subject` yourself or use `BrainScoreModel` to reuse extraction and task helpers. `UnifiedModel` is the base class used by `BrainScoreModel` and domain adapters; it is not an extra stage in the experiment.
+
+### Helpers inside the subject
+
+| Name | Job |
+| --- | --- |
+| **Preprocessor** | Prepare raw input, such as resizing an image or tokenizing text. |
+| **Extraction wrapper** | Coordinate input preparation, run the model, and collect and label requested activity. It may call a preprocessor internally. |
+| **`activations_model`** | A configuration slot that commonly holds an extraction wrapper. It is not another model layer. |
+
+For a typical neural-recording integration:
+
+1. The benchmark requests measurements from the subject.
+2. The subject uses its extraction wrapper.
+3. The wrapper prepares inputs, runs the network, and collects activity.
+4. The subject supplies those responses to the benchmark, which calculates a score.
+
+Not every subject needs a wrapper: it can call a robotics policy or remote service directly. Not every wrapper goes in `activations_model`: a text integration can put a complete `TextWrapper` in `preprocessors['text']`.
+
+### Where do sessions and `model_interface` fit?
+
+- **Session:** the exchange between experiment and subject. It supplies inputs and accepts responses. The subject handles it through `interact(session)`.
+- **`model_interface`:** the Python module from which you import class definitions. Calls do not pass through it as another runtime layer.
+
 ## Subject
 
-A **subject** is the model or policy being evaluated. Import these classes from `brainscore_core.model_interface`:
+A **subject** is the object an experiment interacts with to evaluate a model or policy. Import these classes from `brainscore_core.model_interface`:
 
 | Class | Use it for |
 | --- | --- |
