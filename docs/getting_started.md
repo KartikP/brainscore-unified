@@ -39,6 +39,7 @@ You can also pass a model object: `brainscore.score(my_model, benchmark_id)`. Re
 | Use an existing vision or language model | [Coming from Brain-Score](from_brain_score.md) |
 | Build a model or policy that handles sessions directly | Implement `Subject` from `brainscore_core.model_interface`: identity, input/output channels, and `interact(session)`. See [Subject lifecycle](umi_api_reference.md#subject-lifecycle). |
 | Reuse neural extraction and capability helpers | Construct `BrainScoreModel` with the wrappers below. |
+| Assemble a session with recording and interventions | [Experiment toolbox](experiment_toolbox.md) |
 | Add a tool, input/output type, or experiment | Use an external package and the [tool-authoring guide](tool_authoring.md). |
 | Connect a DROID policy | Follow the [DROID guide](droid_integration.md). |
 | Connect a robotics benchmark | Follow the [LIBERO integration walkthrough](robotics_benchmark_integration.md). |

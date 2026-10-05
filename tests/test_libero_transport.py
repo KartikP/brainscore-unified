@@ -93,6 +93,18 @@ WebsocketPolicyServer(Policy(), host='127.0.0.1', port=%d).serve_forever()
                         assert module.compare_record(tmp_path / 'reference', client)['passed']
                 finally:
                     client._ws.close()
+        # The same external policy is also usable through the common toolbox runner.
+        path = root / 'examples/libero/toolbox_calls.py'
+        spec = importlib.util.spec_from_file_location('toolbox_calls_transport', path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        client = WebsocketClientPolicy('127.0.0.1', policy_port)
+        try:
+            result = module.run_calls(client, tmp_path / 'reference', tmp_path / 'toolbox')
+            assert result.value['calls'] == 3 and result.value['exact']
+            assert result.manifest['status'] == 'complete'
+        finally:
+            client._ws.close()
     from brainscore.run_record import RunRecord
     assert RunRecord(tmp_path / 'reference').manifest['status'] == 'complete'
     assert RunRecord(tmp_path / 'umi').manifest['status'] == 'complete'

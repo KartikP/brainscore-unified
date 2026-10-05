@@ -8,6 +8,10 @@ Record precision, device and execution configuration with your tool's results.
 The fixed benchmark parity budget does not establish an error bound for a new
 experiment or intervention; compare its effect with matched numerical controls.
 
+For a single setup that lists a protocol and its tools, start with the
+[experiment toolbox](experiment_toolbox.md). It composes these interfaces without
+changing the core contract.
+
 ## Choose the extension point
 
 | Your contribution | Public entry point | What you own |
