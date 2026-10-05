@@ -8,6 +8,14 @@ Record precision, device and execution configuration with your tool's results.
 The fixed benchmark parity budget does not establish an error bound for a new
 experiment or intervention; compare its effect with matched numerical controls.
 
+For a single setup that lists a protocol and its tools, start with the
+[experiment toolbox](experiment_toolbox.md). It composes these interfaces without
+changing the core contract.
+
+## Shared vocabulary
+
+Use the [UMI vocabulary and conventions](conventions.md) across integrations. The experiment tools reuse these interfaces: `RecordActivity` uses `ActivationWindow`, `Ablate` uses the `StateChange` PyTorch implementation, and `result.record` returns `RunRecord`. An existing call observer can be included as `ObserveCalls(observer, methods=['process'])`.
+
 ## Choose the extension point
 
 | Your contribution | Public entry point | What you own |

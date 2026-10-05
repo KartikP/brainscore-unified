@@ -63,15 +63,26 @@ class ActivationCapture:
     tensor: Any                     # torch.Tensor (detached, CPU)
     shape: Tuple[int, ...] = ()
     dtype: str = ''
+    device: str = ''
 
 
 class ActivationWindow:
+    """Capture selected layer outputs while the model runs.
+
+    ``on_capture`` receives each ActivationCapture immediately. Set ``retain=False``
+    to stream captures without keeping a second list in memory. ``max_captures=None``
+    removes the capture limit; otherwise the limit applies in either mode.
+    Callbacks must copy tensors if later model operations could modify them.
+    """
     def __init__(self, target, layers: Optional[List[str]] = None, every: int = 1,
                  max_captures: int = 1024, select_output: Optional[Callable] = None,
-                 label: Optional[str] = None):
+                 label: Optional[str] = None, on_capture: Optional[Callable] = None,
+                 retain: bool = True):
         roots = _resolve_targets(target)
         if not roots:
             raise ValueError("ActivationWindow found no torch module on the target.")
+        self.on_capture = on_capture
+        self.retain = retain
         self.label = label or 'activations'
         self.every = max(1, int(every))
         self.max_captures = max_captures
@@ -92,6 +103,7 @@ class ActivationWindow:
         self.captures: List[ActivationCapture] = []
         self._handles: List[Any] = []
         self._calls: Dict[str, int] = {}
+        self._capture_count = 0
 
     def __enter__(self):
         def make_hook(label):
@@ -101,19 +113,29 @@ class ActivationWindow:
                 self._calls[label] += 1
                 if (self._calls[label] - 1) % self.every != 0:
                     return
-                if len(self.captures) >= self.max_captures:
+                if self.max_captures is not None and self._capture_count >= self.max_captures:
                     return
                 t = self.select_output(out)
                 if not isinstance(t, torch.Tensor):
                     return
+                device = str(t.device)
                 t = t.detach().cpu()
-                self.captures.append(ActivationCapture(
-                    index=len(self.captures), layer=label, call=self._calls[label] - 1,
-                    tensor=t, shape=tuple(t.shape), dtype=str(t.dtype)))
+                capture = ActivationCapture(
+                    index=self._capture_count, layer=label, call=self._calls[label] - 1,
+                    tensor=t, shape=tuple(t.shape), dtype=str(t.dtype), device=device)
+                self._capture_count += 1
+                if self.retain:
+                    self.captures.append(capture)
+                if self.on_capture is not None:
+                    self.on_capture(capture)
             return hook
 
-        for label, mod in self.targets:
-            self._handles.append(mod.register_forward_hook(make_hook(label)))
+        try:
+            for label, mod in self.targets:
+                self._handles.append(mod.register_forward_hook(make_hook(label)))
+        except BaseException:
+            self.__exit__()
+            raise
         return self
 
     def __exit__(self, *exc):

@@ -73,3 +73,7 @@ ec2_*.md
 # Agent/session instructions
 CLAUDE.md
 FRICTION-LOG*.md
+
+# Public experiment composition API (not local experiment output).
+!brainscore/experiments/
+!brainscore/experiments/*.py

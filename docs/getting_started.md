@@ -17,7 +17,7 @@ python unified/examples/partner_integration.py --out /tmp/umi-first-experiment
 
 Use a new output directory each time. This small synthetic example demonstrates external channels, recording, and replay without model downloads. It is an integration check, not a scientific result.
 
-For a visual walkthrough, open [the layer-mapping quickstart](../notebooks/01_quickstart_layer_mapping.ipynb).
+For registration and scoring, open [the layer-mapping quickstart](../notebooks/01_quickstart_layer_mapping.ipynb). To combine recording and interventions on a pretrained model, open [the ResNet-18 experiment](../notebooks/18_resnet_experiment_toolbox.ipynb). Both follow the [shared vocabulary](conventions.md).
 
 ## Score a registered model
 
@@ -39,8 +39,10 @@ You can also pass a model object: `brainscore.score(my_model, benchmark_id)`. Re
 | Use an existing vision or language model | [Coming from Brain-Score](from_brain_score.md) |
 | Build a model or policy that handles sessions directly | Implement `Subject` from `brainscore_core.model_interface`: identity, input/output channels, and `interact(session)`. See [Subject lifecycle](umi_api_reference.md#subject-lifecycle). |
 | Reuse neural extraction and capability helpers | Construct `BrainScoreModel` with the wrappers below. |
+| Assemble a session with recording and interventions | [Experiment toolbox](experiment_toolbox.md) |
 | Add a tool, input/output type, or experiment | Use an external package and the [tool-authoring guide](tool_authoring.md). |
 | Connect a DROID policy | Follow the [DROID guide](droid_integration.md). |
+| Connect a robotics benchmark | Follow the [LIBERO integration walkthrough](robotics_benchmark_integration.md). |
 
 A native `Subject` does not need `process()` or a layer map. `BrainScoreModel` provides them for model extraction and recording workflows.
 

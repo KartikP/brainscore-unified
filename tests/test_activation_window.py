@@ -133,3 +133,15 @@ class TestAccessors:
         man = rec.save(str(tmp_path))
         assert (tmp_path / 'manifest.json').exists()
         assert 'blocks.0' in man['layers']
+
+
+def test_callback_without_retention_respects_capture_limit():
+    model = torch.nn.Identity()
+    received = []
+    with ActivationWindow(model, on_capture=received.append, retain=False, max_captures=2) as window:
+        for _ in range(4):
+            model(torch.ones(2))
+    assert window.captures == []
+    assert [capture.index for capture in received] == [0, 1]
+    assert all(capture.device == 'cpu' for capture in received)
+    assert not model._forward_hooks
