@@ -229,8 +229,7 @@ revalidation of historical published scores remain outside this verification.
 
 Land these changes across all four repositories together: the adapter and
 wrapper changes depend on the new core text and selection helpers. The updated
-public contract is in [the UMI API reference](../umi_api_reference.md); the
-implementation decisions are in [the design record](../plans/2026-09-08-umi-review-fixes-design.md).
+public contract is in [the UMI API reference](../umi_api_reference.md).
 
 ## 7. GPT-2 parity follow-up: scalar-only stage (superseded by section 8)
 
