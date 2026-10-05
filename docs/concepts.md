@@ -29,17 +29,20 @@ A model, wrapped so Brain-Score can treat it like an experimental subject.
 | --- | --- |
 | `Subject` | The abstract contract consumed by unified benchmarks and adapters. Use for type annotations or a custom implementation |
 | `BrainScoreModel` | The concrete `Subject` subclass to instantiate for ordinary registrations. Composes wrappers, recording, and capability callables |
-| `UnifiedModel` | The deprecated spelling of the same ABC: `UnifiedModel is Subject`. Retained for existing imports, subclasses, and `isinstance` checks; use `Subject` in new code |
+| `UnifiedModel` | The compatibility subclass of `Subject` that retains the older typed model interface |
 
-`UnifiedModel` has no separate implementation — `UnifiedModel is Subject` is
-literally true — and as of 2026-09-10 nothing inside these four repositories
-uses the old spelling except its own definition and a few "formerly" notes. It
-is exported solely so that code outside this tree importing
-`from brainscore_core import UnifiedModel` keeps working. It is a compatibility
-name, not a third kind of model. The permanent vision and
-language adapters implement `Subject` too; existing domain plugins stay supported.
+A native `Subject` declares identity and channels and implements
+`interact(session)`. Required input channels are optional, and `reset()` clears
+state between independent evaluations. It does not need a layer map, modality
+properties, or `process()`.
 
-A `BrainScoreModel` exposes the contract's operations:
+`UnifiedModel` retains those older model requirements as a compatibility
+subclass. `BrainScoreModel` and the permanent vision and language adapters use
+that base and remain subjects. Existing domain plugins stay supported. A custom
+implementation that inherited the earlier `Subject` but only implements the
+older typed methods should now inherit `UnifiedModel`.
+
+A `BrainScoreModel` also exposes the typed convenience operations:
 
 ```python
 model.start_recording('IT')     # what to measure
