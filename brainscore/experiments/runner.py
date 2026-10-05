@@ -10,7 +10,7 @@ import time
 import uuid
 
 from brainscore.instrumentation import ObservedSession, observe
-from brainscore.run_record import PayloadCodec
+from brainscore.run_record import PayloadCodec, RunRecord
 
 
 def _identity(value):
@@ -25,7 +25,7 @@ def _write(path, value):
 
 
 class Tool:
-    """External tools override validate, describe and attach; no registry needed.
+    """Observe events with on_event or manage resources with attach; no registry needed.
 
     attach(context) returns a context manager. Release resources in finally,
     including if attachment itself fails. Events contain live payloads; copy or
@@ -40,9 +40,21 @@ class Tool:
     def validate(self, experiment):
         pass
 
+    def on_event(self, event):
+        """Observe one experiment event. Override for a simple external tool."""
+        pass
+
     @contextmanager
     def attach(self, context):
-        yield
+        with context.subscribe(self.on_event):
+            yield
+
+
+@dataclass(frozen=True)
+class Trial:
+    """One repetition within an experimental condition."""
+    condition: str
+    identifier: object
 
 
 class SessionProtocol:
@@ -50,18 +62,24 @@ class SessionProtocol:
 
     The protocol owns trial progression and resets. The factory owns session
     resource cleanup. Channel declarations describe the protocol, not a modality.
+
+    With explicit conditions, the factory receives Trial(condition, identifier).
+    Omitting conditions preserves the single-condition factory(trial_id) form.
+
     """
-    def __init__(self, identifier, session_factory, *, trials=(0,),
+    def __init__(self, identifier, session_factory, *, conditions=None, trials=(0,),
                  input_channels=(), output_channels=(), metadata=None):
         self.identifier = identifier
         self.session_factory = session_factory
         self.trials = tuple(trials)
+        self.conditions = tuple(conditions) if conditions is not None else ('default',)
+        self._legacy_factory = conditions is None
         self.input_channels = frozenset(input_channels)
         self.output_channels = frozenset(output_channels)
         self.metadata = dict(metadata or {})
 
     def describe(self):
-        return {'trials': self.trials, 'input_channels': sorted(self.input_channels),
+        return {'conditions': self.conditions, 'trials': self.trials, 'input_channels': sorted(self.input_channels),
                 'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
                 'reset_policy': 'before and after each trial; tools attach after initial reset'}
 
@@ -70,6 +88,9 @@ class SessionProtocol:
             raise TypeError('SessionProtocol requires subject.interact(session)')
         if not callable(getattr(subject, 'reset', None)):
             raise TypeError('SessionProtocol requires subject.reset()')
+        if (not self.conditions or any(not isinstance(c, str) or not c for c in self.conditions)
+                or len(set(self.conditions)) != len(self.conditions)):
+            raise ValueError('Use nonempty, distinct condition names')
         if not self.trials or len(set(self.trials)) != len(self.trials):
             raise ValueError('Use nonempty, distinct, hashable trial IDs')
         missing = self.input_channels - set(subject.in_channels)
@@ -81,14 +102,16 @@ class SessionProtocol:
 
     def run(self, subject, context):
         results = []
-        for trial in self.trials:
-            try:
-                subject.reset()
-                with context.trial(trial), self.session_factory(trial) as session:
-                    subject.interact(ObservedSession(session, context))
-                    results.append(session.collect() if callable(getattr(session, 'collect', None)) else None)
-            finally:
-                subject.reset()
+        for condition in self.conditions:
+            for trial in self.trials:
+                request = trial if self._legacy_factory else Trial(condition, trial)
+                try:
+                    subject.reset()
+                    with context.trial(trial, condition=condition), self.session_factory(request) as session:
+                        subject.interact(ObservedSession(session, context))
+                        results.append(session.collect() if callable(getattr(session, 'collect', None)) else None)
+                finally:
+                    subject.reset()
         return results
 
 
@@ -127,6 +150,11 @@ class ExperimentResult:
     value: object
 
     @property
+    def record(self):
+        """Inspect saved events with the shared RunRecord API."""
+        return RunRecord(self.directory)
+
+    @property
     def manifest(self):
         return json.loads((self.directory / 'experiment.json').read_text())
 
@@ -138,6 +166,7 @@ class RunContext:
         self.codec = PayloadCodec(self.directory)
         self.listeners = []
         self.trial_id = None
+        self.condition = 'default'
         self.event_id = None
         self.sequence = 0
         self.failed = False
@@ -153,7 +182,7 @@ class RunContext:
 
     def publish(self, kind, payload, *, source='protocol', event_id=None):
         envelope = {'kind': kind, 'payload': payload, 'source': source,
-                    'trial_id': self.trial_id, 'event_id': event_id or self.event_id,
+                    'condition': self.condition, 'trial_id': self.trial_id, 'event_id': event_id or self.event_id,
                     'sequence': self.sequence, 'elapsed_s': time.monotonic() - self.started}
         self.sequence += 1
         try:
@@ -182,7 +211,8 @@ class RunContext:
                      event_id=call.event_id)
 
     @contextmanager
-    def trial(self, identifier):
+    def trial(self, identifier, *, condition='default'):
+        self.condition = condition
         self.trial_id, self.event_id = identifier, None
         self.publish('trial_start', {'id': identifier})
         try:
@@ -197,6 +227,7 @@ class RunContext:
         finally:
             self.publish('trial_end', {'failed': self.failed})
             self.trial_id, self.event_id = None, None
+            self.condition = 'default'
 
     def artifact(self, path, *, producer, description):
         """Register an existing output inside this run; never infer its producer."""

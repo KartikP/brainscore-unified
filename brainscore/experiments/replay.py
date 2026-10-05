@@ -14,10 +14,10 @@ def read_events(directory):
     manifest = json.loads((directory / 'experiment.json').read_text())
     if manifest['status'] != 'complete':
         raise ValueError('Replay requires a completed experiment')
-    record = RunRecord(directory / 'inputs_outputs')
+    record = RunRecord(directory)
     if record.manifest['status'] != 'complete':
         raise ValueError('Replay requires a completed record')
-    return [row['payload'] for row in record.events()]
+    return list(record.events())
 
 
 def _source(directory):
@@ -35,14 +35,19 @@ def replay_sessions(directory):
     The normal SessionProtocol reset policy applies to each trial.
     """
     events = read_events(directory)
-    trials = [e['trial_id'] for e in events if e['kind'] == 'trial_start']
-    inputs = {trial: [] for trial in trials}
+    schedule = [(e.get('condition', 'default'), e['trial_id'])
+                for e in events if e['kind'] == 'trial_start']
+    conditions = list(dict.fromkeys(condition for condition, _ in schedule))
+    trials = list(dict.fromkeys(trial for _, trial in schedule))
+    if schedule != [(condition, trial) for condition in conditions for trial in trials]:
+        raise ValueError('Saved sessions must use a complete condition-by-trial schedule')
+    inputs = {key: [] for key in schedule}
     outputs = set()
     for event in events:
         if event['kind'] == 'input':
             if not isinstance(event['payload'], StreamEvent):
                 raise TypeError('Use replay_calls for recorded method calls')
-            inputs[event['trial_id']].append(event['payload'])
+            inputs[(event.get('condition', 'default'), event['trial_id'])].append(event['payload'])
         elif event['kind'] == 'output':
             if isinstance(event['payload'], StreamEvent):
                 outputs.add(event['payload'].channel)
@@ -50,8 +55,8 @@ def replay_sessions(directory):
     def factory(trial):
         # Independent copies prevent a mutating subject altering another replay.
         from copy import deepcopy
-        yield InMemorySession(deepcopy(inputs[trial]))
-    return SessionProtocol('saved-session-inputs', factory, trials=trials,
+        yield InMemorySession(deepcopy(inputs[(trial.condition, trial.identifier)]))
+    return SessionProtocol('saved-session-inputs', factory, conditions=conditions, trials=trials,
         input_channels={e.channel for group in inputs.values() for e in group},
         output_channels=outputs,
         metadata={**_source(directory), 'mode': 'open_loop_saved_inputs'})

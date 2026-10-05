@@ -73,16 +73,16 @@ def run(directory):
                 yield FeedbackSession()
             else:
                 yield InMemorySession([StreamEvent('observation', payload, t) for t in (0, 20, 40)])
-        protocol = SessionProtocol(name, factory, trials=['baseline', 'ablation'],
+        protocol = SessionProtocol(name, factory, conditions=['normal', 'silenced'],
             input_channels=['observation'], output_channels=['behavior', 'neural'],
             metadata={'evidence': 'synthetic demonstration'})
         result = Experiment(subject=subject, protocol=protocol,
-            tools=[RecordInputsOutputs(), Ablate(['population'], trials=['ablation']),
+            tools=[RecordInputsOutputs(), Ablate(['population'], conditions=['silenced']),
                    RecordActivity(['population'])],
             instrumentation=TorchInstrumentation({'population': subject.population}),
             output_dir=directory/name, metadata={'trained': False}).run()
         replay = Experiment(subject=subject, protocol=replay_sessions(result.directory),
-            tools=[RecordInputsOutputs(), Ablate(['population'], trials=['ablation'])],
+            tools=[RecordInputsOutputs(), Ablate(['population'], conditions=['silenced'])],
             instrumentation=TorchInstrumentation({'population': subject.population}),
             output_dir=directory/(name+'-replay'), metadata={'trained': False}).run()
         summary[name] = compare_outputs(result.directory, replay.directory)

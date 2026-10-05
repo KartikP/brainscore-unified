@@ -261,10 +261,10 @@ def test_no_overwrite_or_silent_activity_loss(tmp_path):
 
 
 def test_non_tensor_output_rejected_and_hooks_removed(tmp_path):
-    class TupleLayer(torch.nn.Module):
+    class UnsupportedLayer(torch.nn.Module):
         def forward(self, value):
-            return (value, value)
-    subject = SimpleNamespace(process=TupleLayer())
+            return {"values": value}
+    subject = SimpleNamespace(process=UnsupportedLayer())
     with pytest.raises(TypeError, match='tensor'):
         Experiment(subject=subject, protocol=CallableProtocol('tuple',
             lambda s, c: s.process(torch.ones(2))),
@@ -382,3 +382,107 @@ def test_existing_adapters_and_scientific_score_passthrough(tmp_path, domain):
     assert result.value is score and getattr(subject, method) == original
     decoded = PayloadCodec(result.directory).decode(json.loads((result.directory/'result.json').read_text()))
     assert decoded.equals(score) and decoded.attrs['raw'].equals(score.attrs['raw'])
+
+
+def test_conditions_repetitions_shared_record_and_replay(tmp_path):
+    from brainscore.experiments import replay_sessions, compare_outputs
+    from brainscore_core.events import Selection
+    subject = FixtureSubject()
+    requests = []
+
+    @contextmanager
+    def factory(trial):
+        requests.append((trial.condition, trial.identifier))
+        yield InMemorySession([StreamEvent('stimulus', [trial.identifier + 1., 2.], 12)])
+
+    schedule = SessionProtocol('conditions', factory,
+        conditions=['normal', 'silenced', 'restored'], trials=[0, 1],
+        input_channels=['stimulus'], output_channels=['behavior'])
+    provider = TorchInstrumentation(torch.nn.ModuleDict({'layer': subject.layer}))
+    def tools():
+        return [RecordInputsOutputs(),
+                Ablate([Selection('layer', [0])], conditions=['silenced']),
+                RecordActivity([Selection('layer', [0])])]
+    result = Experiment(subject=subject, protocol=schedule, tools=tools(),
+        instrumentation=provider, output_dir=tmp_path/'run').run()
+    assert requests == [(c, t) for c in schedule.conditions for t in schedule.trials]
+    assert subject.resets == 12 and subject.state == 0
+    events = list(result.record.events())
+    outputs = list(result.record.outputs())
+    assert len(outputs) == 6  # Excludes activity and lifecycle events.
+    for i, output in enumerate(outputs):
+        expected = [0 if i in (2, 3) else i % 2 + 1, 2]
+        np.testing.assert_array_equal(output.payload, expected)
+    measured = [e for e in events if e['kind'] == 'activity']
+    assert all(e['payload']['value']['array'].shape == (1,) for e in measured)
+    assert [e['condition'] for e in measured] == [c for c, _ in requests]
+    assert result.record.evaluate(lambda event, target: event.payload.sum(), None) == 3
+    replay = Experiment(subject=subject, protocol=replay_sessions(result.directory),
+        tools=tools(), instrumentation=provider, output_dir=tmp_path/'replay').run()
+    assert compare_outputs(result.directory, replay.directory)['equal']
+    assert not subject.layer._forward_hooks
+
+
+def test_toolbox_and_state_change_share_selection_semantics():
+    from brainscore_core.events import Selection, StateChange, Perturbation
+    from brainscore.perturbation import build_pytorch_ablation_fn
+    network = torch.nn.Sequential(torch.nn.Identity())
+    selection = Selection('0', [1])
+    value = torch.tensor([[1., 2., 3.]])
+    _, cleanup = build_pytorch_ablation_fn(network)(
+        StateChange('ablation', selection, Perturbation('zero')))
+    try:
+        expected = network(value)
+    finally:
+        cleanup()
+    with TorchInstrumentation(network).ablate([selection]):
+        torch.testing.assert_close(network(value), expected, rtol=0, atol=0)
+    torch.testing.assert_close(network(value), value)
+    assert not network[0]._forward_hooks
+
+
+def test_tuple_ablation_preserves_other_outputs():
+    class TupleLayer(torch.nn.Module):
+        def forward(self, value):
+            return value, value + 1
+    layer = TupleLayer()
+    provider = TorchInstrumentation(layer)
+    captures = []
+    with provider.ablate(['']), provider.record([''], lambda name, value: captures.append(value)):
+        first, second = layer(torch.ones(2))
+    torch.testing.assert_close(first, torch.zeros(2))
+    torch.testing.assert_close(second, torch.full((2,), 2.))
+    np.testing.assert_array_equal(captures[0]['array'], [0, 0])
+    assert not layer._forward_hooks
+
+
+def test_simple_event_tool_and_existing_call_observer(tmp_path):
+    from brainscore.experiments import ObserveCalls
+    class Events(Tool):
+        def __init__(self):
+            self.kinds = []
+        def on_event(self, event):
+            self.kinds.append(event['kind'])
+    class Observer:
+        def __init__(self):
+            self.results = []
+        def on_result(self, call, result):
+            self.results.append(result)
+    subject = SimpleNamespace(process=lambda x: x + 1)
+    original = subject.process
+    events, observer = Events(), Observer()
+    result = Experiment(subject=subject,
+        protocol=CallableProtocol('existing', lambda s, c: s.process(2)),
+        tools=[events, ObserveCalls(observer)], output_dir=tmp_path/'run').run()
+    assert result.value == 3 and observer.results == [3]
+    assert events.kinds == ['trial_start', 'input', 'output', 'trial_end']
+    assert subject.process is original
+
+
+def test_activity_callback_snapshot_survives_inplace_operations():
+    layer = torch.nn.Identity()
+    captures = []
+    with TorchInstrumentation(layer).record([''], lambda name, value: captures.append(value)):
+        output = layer(torch.ones(2))
+        output.add_(10)
+    np.testing.assert_array_equal(captures[0]['array'], [1, 1])

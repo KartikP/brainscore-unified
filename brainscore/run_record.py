@@ -262,6 +262,13 @@ class RunRecord:
 
     def __init__(self, directory):
         self.directory = Path(directory)
+        self.experiment_manifest = None
+        experiment = self.directory / 'experiment.json'
+        if experiment.is_file():
+            self.experiment_manifest = json.loads(experiment.read_text())
+            if self.experiment_manifest.get('schema_version') != 1:
+                raise ValueError('Unsupported experiment schema version')
+            self.directory = self.directory / 'inputs_outputs'
         self.manifest = json.loads((self.directory / 'manifest.json').read_text())
         if self.manifest.get('schema_version') != SCHEMA_VERSION:
             raise ValueError('Unsupported run-record schema version')
@@ -282,7 +289,15 @@ class RunRecord:
             for key in ('args', 'kwargs', 'payload'):
                 if key in row:
                     row[key] = self.codec.decode(row[key])
-            yield row
+            if self.experiment_manifest is not None:
+                # Experiment records carry lifecycle and condition metadata in an envelope.
+                # Standalone RunRecord callers retain their original representation.
+                envelope = row['payload']
+                if not isinstance(envelope, dict) or 'kind' not in envelope:
+                    raise ValueError('Invalid experiment event envelope')
+                yield envelope
+            else:
+                yield row
 
     def outputs(self):
         """Replay saved measurements into downstream analyses."""
@@ -292,7 +307,9 @@ class RunRecord:
 
     def evaluate(self, metric, target, *, output_index=0):
         """Apply a metric to one saved output. Never invokes model inference."""
-        if self.manifest.get("status") != "complete":
+        if (self.manifest.get("status") != "complete"
+                or (self.experiment_manifest is not None
+                    and self.experiment_manifest.get("status") != "complete")):
             raise ValueError("Measurement replay requires a completed run")
         for index, output in enumerate(self.outputs()):
             if index == output_index:
