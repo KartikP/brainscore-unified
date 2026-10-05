@@ -1,14 +1,8 @@
 # UMI production release policy and candidate qualification
 
-Status: **candidate implementation; general availability is not approved**.
-Kartik owns the manual release. Publication, remote release CI, and deployment
-are outside the current work. This is the proposed support policy for review. It does not assign
-people, publish artifacts, establish an SLA, or deploy scoring services.
+**Proposed release policy.** Kartik owns the manual release. General availability and support commitments await approval.
 
-Scientific parity uses the [versioned numerical policy](numerical_policy.md).
-The opt-in CPU and NVIDIA L4 budgets cover fixed GPT-2/Pereira cases. New inputs, models,
-interventions and robotics actions require their own numerical validation.
-Higher-precision diagnostic agreement does not replace FP32 qualification.
+Use the [support matrix](supported_features.md) for feature/environment targets and the [numerical policy](numerical_policy.md) for score tolerances. Fixed GPT-2/Pereira budgets do not qualify other models, interventions, or robotics actions.
 
 ## Coordinated package identities
 
@@ -26,8 +20,7 @@ together and retain hashes, dependency resolution and platform reports.
 
 ## Install the locally built candidate
 
-On the qualified macOS/Python 3.11 CPU profile, start with a fresh virtual
-environment and the four candidate wheels supplied in the implementation output:
+For the recorded macOS/Python 3.11 CPU installation profile, use a fresh environment and the four locally built candidate wheels:
 
 ```sh
 python3.11 -m venv umi-candidate
@@ -45,7 +38,7 @@ with the constraint file. Do not run an unpinned pip upgrade in a scored experim
 
 ## Compatibility boundary
 
-Preserve Subject/process, task and recording setup, legacy look_at/digest_text,
+Preserve `Subject.interact(session)`, the `UnifiedModel`/`BrainScoreModel` typed methods, task and recording setup, legacy `look_at`/`digest_text`,
 legacy capability constructor forms (with existing deprecation warnings), and
 supported legacy benchmark protocols. Domain loaders continue returning adapters;
 concrete legacy object identity, isinstance checks against old classes, private
@@ -93,8 +86,7 @@ failed reset means the instance is not clean and should not be reused.
    exceptions, scoped intervention and episode state reset.
 4. **B4 records:** supported arrays/assemblies/events/files, integrity failures,
    invalid responses and offline measurement replay. Versioned schema policy.
-5. **B5 embodiment:** synthetic fixture plus actual DROID episode/policy; a
-   controlled feedback environment; declared action semantics and time source.
+5. **B5 embodiment:** compare a trained DROID policy directly and through UMI on recorded observations; verify recording, replay, intervention cleanup, action semantics, and time source. Closed-loop games and feedback simulation remain experimental and do not gate release.
 6. **B6 validation:** actionable loader errors and coherent source/wheel CI.
 7. **B7 authoring:** runnable examples and a recorded unfamiliar-author trial.
 8. **B8 artifacts:** declared build backend, installed-wheel asset checks,
@@ -120,8 +112,7 @@ avoid cross-repository tests-package collisions. Source passes do not certify an
 installation. `release-candidate.yml` builds wheels, installs and exercises them
 outside the source tree, checks dependencies, runs examples, and then runs all four
 source suites on Linux/macOS. Dispatch it with immutable peer commit SHAs after
-the coordinated changes are reviewed and committed. The existing offline workflow
-is development feedback against peer branches, not release certification.
+the coordinated changes are reviewed and committed. The offline workflow builds and tests the immutable peer revisions in `install/peer-revisions.json`. Its CPU integration results do not replace scientific qualification.
 
 Run scientific parity against explicitly staged checkpoints and datasets:
 
@@ -174,9 +165,7 @@ publish corrected guidance. An unreviewed fallback must not silently repair scor
    Roll back the service dependency set on regression; library tests alone do not
    qualify a production service deployment.
 
-No publication, commits, pushes, remote CI dispatch or service changes are part of
-this local implementation. These require subsequent explicit authorization and,
-for remote CI, committed source identities.
+Package publication and service rollout remain manual release decisions. Documentation or v2 branch updates do not authorize either.
 
 ## Deferred scope
 

@@ -1,10 +1,10 @@
 # brainscore (unified model interface)
 
-Candidate guide: [Build tools and integrations](docs/tool_authoring.md) | [Production qualification](docs/production_release.md). These pages describe the production candidate and supersede older release-status claims below.
+Run models across compatible Brain-Score benchmarks, record their responses, and attach experiment tools. Native integrations implement `Subject.interact(session)`; existing model workflows retain `process()` through compatibility helpers.
 
-The unified Brain-Score package: register a model once and score it across every
-compatible benchmark domain (vision, language, audio, video, multimodal,
-perturbation, embodied) through a single `process()`-based interface.
+**Start here:** [Getting started](docs/getting_started.md) | [Concepts](docs/concepts.md) | [Build tools](docs/tool_authoring.md) | [Supported features and environments](docs/supported_features.md)
+
+UMI is a production candidate. See the [release policy](docs/production_release.md) for remaining qualification.
 
 ## Layout
 

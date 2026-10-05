@@ -1,88 +1,74 @@
-# Getting started with Brain-Score UMI
+# Getting started
 
-Candidate guide: [Build tools and integrations](tool_authoring.md) | [Production qualification](production_release.md). These pages describe the production candidate and supersede older release-status claims below.
+UMI is a production candidate. Check the [proposed support matrix](supported_features.md) for features, environments, and validation limits.
 
-Install the four repositories together using the [installation guide](../install/README.md).
-Activate that Python 3.11 environment before running these examples.
+## Install
 
-For a download-free first result, run
-notebooks/01_quickstart_layer_mapping.ipynb. The registered-model example below
-can download CLIP weights and public benchmark data on its first run.
+Use Python 3.11 and install the four repositories together. Follow the [pinned-revision installation instructions](../install/README.md#reproduce-the-reviewed-peer-revisions); the candidate packages are not published on PyPI.
 
-## First registered score
+## Run a first example
 
-The public run loop is load_model, load_benchmark, then score:
+From the workspace containing the four repositories, with your environment activated:
 
-~~~python
+```sh
+python -m brainscore.doctor
+python unified/examples/partner_integration.py --out /tmp/umi-first-experiment
+```
+
+Use a new output directory each time. This small synthetic example demonstrates external channels, recording, and replay without model downloads. It is an integration check, not a scientific result.
+
+For a visual walkthrough, open [the layer-mapping quickstart](../notebooks/01_quickstart_layer_mapping.ipynb).
+
+## Score a registered model
+
+This example can download CLIP weights and public benchmark data on its first run. See [model downloads](model_downloads.md) for the download guard.
+
+```python
 import brainscore
-model_id = "clip-vit-b-32"
-benchmark_id = "MajajHong2015public.IT-pls-unified"
-model = brainscore.load_model(model_id)
-benchmark = brainscore.load_benchmark(benchmark_id)
-print(model.identifier)
-print(benchmark.identifier)
-score = brainscore.score(model_id, benchmark_id)
+
+score = brainscore.score('clip-vit-b-32', 'MajajHong2015public.IT-pls-unified')
 print(float(score))
-~~~
+```
 
-brainscore.score also accepts already-constructed objects, so a newly built model can be
-scored without registering it first:
+You can also pass a model object: `brainscore.score(my_model, benchmark_id)`. Registration is optional for your own experiments.
 
-~~~python
-score = brainscore.score(my_model, benchmark_id)   # model object + benchmark id
-~~~
+## Choose your integration path
 
-## Choose the extraction wrapper
+| Goal | Start here |
+| --- | --- |
+| Use an existing vision or language model | [Coming from Brain-Score](from_brain_score.md) |
+| Build a model or policy that handles sessions directly | Implement `Subject` from `brainscore_core.model_interface`: identity, input/output channels, and `interact(session)`. See [Subject lifecycle](umi_api_reference.md#subject-lifecycle). |
+| Reuse neural extraction and capability helpers | Construct `BrainScoreModel` with the wrappers below. |
+| Add a tool, input/output type, or experiment | Use an external package and the [tool-authoring guide](tool_authoring.md). |
+| Connect a DROID policy | Follow the [DROID guide](droid_integration.md). |
 
-Use the last block as a smoke-test target. For a scientific registration,
-compare candidate layers with the layer-mapping tools and commit the selected
-region mapping.
+A native `Subject` does not need `process()` or a layer map. `BrainScoreModel` retains those methods for existing workflows.
 
-**`VisionWrapper` is the default entry point.** For any visual model it inspects the
-architecture and dispatches to one of the rows below, removing the need to classify the
-model manually:
-`from brainscore.model_helpers.vision_wrapper import VisionWrapper`. It is also what
-`auto_register` emits. The rows below enumerate what it selects between, and are used
-directly when a concrete class is required.
+## Choose an extraction wrapper
 
-| Model input | Wrapper | Import | Provisional layer guidance |
-| --- | --- | --- | --- |
-| Any vision model (dispatches to the three rows below) | VisionWrapper | from brainscore.model_helpers.vision_wrapper import VisionWrapper | Pass `kind=` only to override the automatic choice |
-| Standard image CNN or ViT | PytorchWrapper | from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper | Start with named late blocks; map V1/V2/V4/IT empirically |
-| Encoder or causal text model | TextWrapper | from brainscore.model_helpers.text_wrapper import TextWrapper | Final transformer block; use mean_tokens for encoders and last_token for causal models |
-| Flattened-patch VLM vision tower | VLMVisionWrapper | from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper | A late visual block after confirming patch aggregation |
-| Native temporal video model | VideoWrapper | from brainscore.model_helpers.video_wrapper import VideoWrapper | A late temporal block with its output time axis verified |
-| Audio encoder | AudioWrapper | from brainscore.model_helpers.audio_wrapper import AudioWrapper | A late encoder block; choose mean_time or time_series for the benchmark |
-| Closed-loop policy | PolicyWrapper | from brainscore.model_helpers.policy_wrapper import PolicyWrapper | No neural layer unless activation capture is configured separately |
+Use these when your integration needs model activity extraction:
 
-## Understand preprocessors
+| Input | Wrapper import |
+| --- | --- |
+| Images, visual towers, or video | `from brainscore.model_helpers.vision_wrapper import VisionWrapper` |
+| Standard image CNN or ViT | `from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper` |
+| Text | `from brainscore.model_helpers.text_wrapper import TextWrapper` |
+| Flattened-patch visual tower | `from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper` |
+| Temporal video | `from brainscore.model_helpers.video_wrapper import VideoWrapper` |
+| Audio | `from brainscore.model_helpers.audio_wrapper import AudioWrapper` |
 
-The current model constructor has two extraction patterns:
+`VisionWrapper` selects an image, VLM, or video wrapper from the architecture. Check its choice and choose recorded layers using benchmark evidence.
 
-- Vision commonly uses a bare image preprocessing callable in
-  preprocessors["vision"] and a PytorchWrapper in activations_model.
-- Text, audio, video, and flattened-patch VLM paths place a complete wrapper
-  object in preprocessors. A tokenizer or feature extractor alone is not a
-  UMI preprocessor.
+For image models, `activations_model` usually holds the extraction wrapper. Text paths put a complete wrapper in `preprocessors['text']`. See the [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) for a working multimodal configuration.
 
-Use the complete CLIP example in the distribution root README or
-brainscore/models/clip_vit_b_32/model.py as the reference multimodal pattern.
+## Share a model or tool
 
-## Register a model
+For an external integration, start with [examples/partner_tool](../examples/partner_tool/README.md). Import its registration module before constructing models; no Brain-Score repository edit is required.
 
-Copy templates/new_model into brainscore/models/<your_name>, then:
+To contribute a model to this repository's catalog, copy [templates/new_model](../templates/new_model), implement its factory and test, and register it in `brainscore/models`. That template uses `BrainScoreModel`; its layer mappings are for neural recording. See [EXTENDING.md](../EXTENDING.md) for catalog contribution details.
 
-1. Load the backbone and processor lazily inside get_model.
-2. Choose the wrapper from the table above.
-3. Declare region_layer_map and preprocessors.
-4. Register the factory in the model package __init__.py.
-5. Import the new package from brainscore/models/__init__.py.
-6. Adapt and run the template test.
+## Next steps
 
-Continue in [EXTENDING.md](../EXTENDING.md).
-
-## Notebook path
-
-The [notebook manifest](../notebooks/README.md) identifies the recommended
-order, runtime, prerequisites, and whether each result is local, illustrative,
-structural, or EC2-only.
+- [Concepts](concepts.md): the main terms.
+- [API reference](umi_api_reference.md): recording, sessions, and scoring.
+- [Notebook guide](../notebooks/README.md): examples and their data/compute requirements.

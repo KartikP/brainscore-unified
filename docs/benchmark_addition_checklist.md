@@ -1,17 +1,14 @@
 # Benchmark addition checklist
 
-Every new benchmark must leave enough evidence that it is scientifically
-calibrated, reproducible, and compatible with the unified interface. Treat this
-as the pre-merge checklist for benchmark PRs and as the runbook for any EC2-only
-validation work.
+Use this checklist when adding a benchmark. Attach evidence for its protocol, data, and supported model path.
 
 ## Required evidence
 
 | Area | Requirement | Evidence to attach |
 | --- | --- | --- |
-| Interface contract | Drive candidates only through `start_recording`, `start_task`, and `process`; never call legacy `look_at` or `digest_text` from new benchmark code. | Unit or integration test that runs a minimal compliant model through the benchmark path. |
+| Interface contract | Use sessions for native `Subject` implementations. Benchmarks using `start_recording`, `start_task`, and `process` must declare that they require the retained model interface. Keep domain-specific legacy calls inside adapters. | Unit or integration test that runs a minimal compliant model through the benchmark path. |
 | Data boundary | Resolve data through a registered data plugin via `load_stimulus_set` and `load_dataset`; keep S3 keys, one-time packaging, and run-once experiments outside the importable benchmark package. | Data registry test and a benchmark import test that does not touch S3 at import time. |
-| User-supplied inputs | If any input cannot be redistributed — licensed stimuli, data under an agreement, a third-party atlas — declare it in the manifest in `brainscore/data/local.py` and read it with `local.path(...)`, so a missing file prints how to obtain and convert it. See [local_data.md](local_data.md). | A test that skips rather than fails when the asset is absent, and passes when it is present. |
+| User-supplied inputs | If any input cannot be redistributed — licensed stimuli, data under an agreement, a third-party atlas — declare it in the manifest in `brainscore/data/local.py` and read it with `local.path(...)`, so a missing file prints how to obtain and convert it. See [local_data.md](local_data.md). | Optional local tests may skip absent assets. Required qualification cases must fail clearly when assets are missing; a skip is not a pass. |
 | Assembly contract | Document expected dimensions, coordinates, and units. Naturalistic benchmarks must state how `stimulus_id`, `time_bin_start_ms`, `time_bin_end_ms`, modality tags, and neuroid metadata align with the target assembly. | Small fixture test covering dims, coord names, coord order, and dtype-sensitive values. |
 | Null floor | Score a chance or randomized baseline. Neural predictivity raw correlations should be near zero unless the benchmark is explicitly testing a different floor. | Raw score, expected tolerance, and command or script used to produce it. |
 | Ceiling | Define the ceiling source and whether reported scores are raw, ceiled, normalized, or both. | Ceiling value, computation path, and score attrs showing raw and ceiled values. |
@@ -21,7 +18,7 @@ validation work.
 | Determinism | Rerun the same score with caches cleared or isolated. Any stochastic component must be seeded or excluded from the benchmark path. | Two raw scores and the cache/seed settings used. |
 | Pipeline attrs | Scores must carry enough attrs for downstream docs and dashboards to identify pipeline, modality mode, ROI, timing variant, and raw score. | Assertion over `Score.attrs` in the benchmark test. |
 | Regression baseline | If the benchmark changes an existing scored path, compare against `baselines/baselines.json` with `unified/tests/test_regression_baselines.py`. | Local reference-test output and EC2 full-regression result for heavy paths. |
-| Heavy compute | Large downloads, full benchmark scoring, and model sweeps run on EC2 only. Stop the instance and log cost after the run. | EC2 command log, score output, instance stop confirmation, and cost ledger entry. |
+| Heavy compute | Use an approved compute environment for large downloads, full scoring, and sweeps. Record the platform and resource use; stop any temporary instances afterward. | Command log, score output, environment details, and shutdown/cost records when using temporary cloud compute. |
 | Docs status | Update public capability/status docs when the benchmark adds a new modality, domain, or support level. | Link to the docs/site diff and the benchmark identifier. |
 
 ## Lahner multimodal validation matrix
@@ -39,12 +36,7 @@ evidence before their scores are treated as stable.
 | Region by modality specificity | ROI or target-subset changes alter the dominant modality in the scientifically expected direction. |
 | Reproducibility | Two cold-cache runs produce the same raw score to the documented precision. |
 
-Keep the benchmark-local protocol for runnable details when a benchmark has
-special data preparation, but promote the reusable acceptance criteria here.
-For Lahner, the runnable protocol remains in
-[MULTIMODAL_VALIDATION_PROTOCOL.md](../brainscore/benchmarks/lahner2024/MULTIMODAL_VALIDATION_PROTOCOL.md),
-and the EC2 matrix lives in
-[EC2_RUN_INSTRUCTIONS.md](../brainscore/benchmarks/lahner2024/EC2_RUN_INSTRUCTIONS.md).
+Include runnable data-preparation and evaluation instructions with each benchmark. The former Lahner protocol and EC2 instruction files are not shipped in this checkout; the matrix above describes the required checks.
 
 ## Minimal pytest template
 

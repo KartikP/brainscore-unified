@@ -1,91 +1,57 @@
 # Coming from Brain-Score
 
-For existing Brain-Score users — `score(model_identifier, benchmark_identifier)`, model
-plugins returning a `ModelCommitment`, an `ArtificialSubject` for language — this page
-maps the established API onto the Unified Model Interface (UMI).
+Existing vision and language models can be loaded through UMI's adapters. You do not need to rewrite a model to try the unified scoring entry point.
 
-## Score through UMI
+## Score an existing model
 
-Scoring is currently performed per domain:
-
-~~~python
-from brainscore_vision import score
-s = score(model_identifier="alexnet", benchmark_identifier="MajajHong2015.IT-pls")
-~~~
-
-UMI checks the unified registry, then the vision and language registries:
-
-~~~python
+```python
 import brainscore
-s = brainscore.score("alexnet", "MajajHong2015.IT-pls")   # same identifiers, one call
-~~~
 
-`load_model`, `load_benchmark`, and `score` use these registries. `score` also
-takes already-built objects, not just identifiers.
+score = brainscore.score('alexnet', 'MajajHong2015.IT-pls')
+```
 
-## Concept map
+The loaders check unified, then the vision and language registries. `score` also accepts already-built model and benchmark objects.
 
-| In Brain-Score today | In UMI |
+Compatibility applies to tested model, benchmark, and environment combinations. See the [support matrix](supported_features.md) and [numerical policy](numerical_policy.md).
+
+## Choose the interface
+
+| Your situation | Use |
 | --- | --- |
-| `ModelCommitment` / `BrainModel` (the concrete scored model) | `BrainScoreModel` (the concrete model that is constructed) |
-| `look_at(stimuli)` (vision) · `digest_text(text)` (language) | one method: `process(input_event)` |
-| `activations_model` = `PytorchWrapper(...)` | `PytorchWrapper`, plus `TextWrapper` / `VideoWrapper` / `AudioWrapper` / `VLMVisionWrapper` for other modalities |
-| `get_layers(...)` + `ModelCommitment(layers=...)` | `region_layer_map` on `BrainScoreModel` (any region → any layer) |
-| `model_registry["id"] = lambda: ...` | `model_registry` in `unified/brainscore/models/<name>/__init__.py` |
-| `ArtificialSubject` (language ABC) | `BrainScoreModel` with a `TextWrapper`; UMI adapter for the legacy ABC |
+| Existing vision `BrainModel` / `ModelCommitment` | Load through UMI; the vision adapter bridges the existing methods. |
+| Existing language `ArtificialSubject` | Load through UMI; the language adapter bridges `digest_text`. |
+| New model or policy with its own session loop | `Subject`: declare identity/channels and implement `interact(session)`. |
+| Model using shared extraction and capability helpers | `BrainScoreModel`, which extends the compatibility base `UnifiedModel`. |
+| Custom class based on the earlier `Subject`, implementing only older typed methods | Change its base to `UnifiedModel`. |
 
-## Capabilities
+`UnifiedModel` is a subclass of `Subject`, not an alias. It retains `process`, `start_task`, `start_recording`, and layer/modality declarations. A native `Subject` needs none of those older methods.
 
-The single `process(input_event)` method lets one model take more than one kind
-of input:
+## Use shared extraction helpers
 
-- **Cross-domain scoring.** Register a vision-language model once and score it on
-  MajajHong (vision) *and* Pereira (language).
-- **Multimodal benchmarks.** A model with more than one preprocessor is driven on
-  the modality (or modalities) a benchmark provides.
-- **New capabilities**, each an optional slot on `BrainScoreModel`:
-  - `generation_fn` / `behavioral_readout_layer` — behavioral tasks (e.g. ROAR).
-  - `action_fn` — closed-loop embodied evaluation (`process(EnvironmentStep)`).
-  - `state_change_fn` — lesion / perturbation studies (`process(StateChange)`).
+For a `BrainScoreModel`, configure a backbone, wrapper, and region mapping. Build the network once so extraction and interventions act on the same instance.
 
-## Registering a model: before and after
-
-**Brain-Score today** — a vision plugin commits a region→layer mapping and scores
-via `look_at`:
-
-~~~python
-# models/<name>/__init__.py
-from brainscore_vision import model_registry
-from brainscore_vision.model_helpers.brain_transformation import ModelCommitment
-model_registry["my-cnn"] = lambda: ModelCommitment(
-    identifier="my-cnn", activations_model=get_model(), layers=get_layers())
-~~~
-
-**UMI** — construct a `BrainScoreModel` with an explicit `region_layer_map` and
-`preprocessors`, scored via `process`:
-
-~~~python
-# unified/brainscore/models/<name>/__init__.py
-from brainscore import model_registry
+```python
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
-def load_model():
-    # Build the network ONCE and hand the same object to both. Calling backbone()
-    # twice loads it into memory twice AND gives the wrapper a different instance
-    # from the one the model holds — so a perturbation applied to one would not
-    # affect what the other extracts.
-    net = backbone()
-    activations = PytorchWrapper(identifier="my-cnn", model=net,
-                                 preprocessing=preprocess)
-    return BrainScoreModel(
-        "my-cnn", model=net, activations_model=activations,
-        preprocessors={"vision": preprocess},
-        region_layer_map={"V1": "layer1", "V4": "layer3", "IT": "layer4"})
+# Supply your network and preprocessing function.
+net = backbone()
+activations = PytorchWrapper(
+    identifier='my-cnn', model=net, preprocessing=preprocess,
+)
+model = BrainScoreModel(
+    'my-cnn', model=net, activations_model=activations,
+    preprocessors={'vision': preprocess},
+    region_layer_map={'V4': 'layer3', 'IT': 'layer4'},
+)
+```
 
-model_registry["my-cnn"] = load_model
-~~~
+The layer names above are examples; select a mapping for your architecture and benchmark. Pass the model directly to `brainscore.score`, or register a factory if you want to load it by name.
 
-Choose a wrapper from the table in [getting_started.md](getting_started.md). To
-add a benchmark or a new capability, continue in
-[EXTENDING.md](../EXTENDING.md).
+## Add capabilities and tools
+
+`BrainScoreModel` supports behavioral readout/generation, action, and state-change callables. Native subjects can handle session events directly. Closed-loop games remain experimental; trained robotics qualification is separate from a working action callback.
+
+- [Getting started](getting_started.md): wrapper imports and examples.
+- [Build tools and integrations](tool_authoring.md): extend UMI from your own package.
+- [API reference](umi_api_reference.md): recording, context, reset, and interventions.

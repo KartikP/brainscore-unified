@@ -1,20 +1,16 @@
 # UMI API reference and cookbook
 
-Candidate guide: [Build tools and integrations](tool_authoring.md) | [Production qualification](production_release.md). These pages describe the production candidate and supersede older release-status claims below.
+UMI is a production candidate. See [Getting started](getting_started.md), [Tools and integrations](tool_authoring.md), and the [support matrix](supported_features.md).
 
 ## Which model class to use
 
-Import from `brainscore_core.model_interface`. Instantiate `BrainScoreModel`
-for ordinary model registrations: it is the concrete `Subject` subclass that
-composes wrappers, recording, and capability callables. Use the abstract
-`Subject` contract in benchmark type annotations or for custom implementations
-and adapters. `Subject` requires identity, input/output channels, and
-`interact(session)`, with optional required channels and a reset hook.
-`UnifiedModel` is the compatibility subclass that retains the older typed
-interface. It is no longer an alias for `Subject`. Existing typed implementations
-that inherited the earlier `Subject` should inherit `UnifiedModel` instead;
-new session-native implementations inherit `Subject`.
-See [the terminology guide](concepts.md#subject) for current compatibility uses.
+Import from `brainscore_core.model_interface`:
+
+- `Subject`: implement identity, input/output channels, and `interact(session)` for a native integration.
+- `UnifiedModel`: retain the older typed model interface. It extends `Subject`; it is not an alias.
+- `BrainScoreModel`: reuse extraction wrappers and capability callables.
+
+Classes that inherited the earlier `Subject` but implement only its older typed methods should inherit `UnifiedModel`. See [Concepts](concepts.md#subject).
 
 ## Registry entry points
 
@@ -171,8 +167,7 @@ brainscore_core.streaming_helpers exports:
 - apply_state_change for perturbation sessions
 - run_environment for compatible reset/step environments
 
-The current score function accepts registry identifiers. Use neural_response for
-an ad-hoc in-memory subject.
+`brainscore.score` accepts registry identifiers or model/benchmark objects. Use `neural_response` for direct neural measurement without a benchmark.
 
 ## Model helper imports
 
@@ -187,10 +182,8 @@ New session-native code should implement Subject.interact(session).
 BrainScoreModel retains process() and the typed convenience methods.
 The unified registry adapts the domain-package legacy APIs when loaded.
 
-## Known distribution boundaries
+## Environment and validation limits
 
-- Python 3.11, NumPy below 2, xarray 2022.3.0, sklearn 1.5.x, and
-  Transformers 4.57.x are the supported shared versions.
-- Full video, audio-video, Algonauts, and large VLM scoring are EC2-only.
-- Notebook results marked illustrative or demo-only are not brain-alignment
-  validation.
+Use the [shared constraints](../install/v2-constraints.txt) for the tested Python 3.11 CPU integration stack, including scikit-learn 1.7.2 and Transformers 4.57.6. The [support matrix](supported_features.md) distinguishes proposed profiles from completed qualification.
+
+Large models and full benchmark runs require suitable compute and staged data. An illustrative notebook or synthetic test does not establish brain-alignment or GPU qualification.
