@@ -1,8 +1,56 @@
 # Set up an experiment
 
-Use one `Experiment` API to combine a subject, protocol, tools, and output folder.
-The protocol owns the task sequence. Tools record or intervene without changing
-the subject's core contract. These APIs are a feature-branch candidate.
+An `Experiment` combines a **subject** (the model adapter), a **protocol** (what to run), and **tools** (what to record or change). These use the same subjects, layer selections, and saved records as the rest of UMI.
+
+Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipynb) or the [small digit classifier](../notebooks/17_experiment_toolbox.ipynb). Both run on CPU. The APIs here are a feature-branch candidate.
+
+## Choose the protocol
+
+| Protocol | Use it when | Who supplies the next input? |
+| --- | --- | --- |
+| `SessionProtocol` | Your subject implements `interact(session)` | The session, which can respond to model outputs. |
+| `CallableProtocol` | You already have a benchmark or evaluator | The existing evaluator, with its scoring and reset rules. |
+
+For sessions, name the **conditions** you want to compare and the **trials** that repeat each condition:
+
+```python
+from contextlib import contextmanager
+from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore.experiments import SessionProtocol
+
+@contextmanager
+def make_session(trial):
+    # trial.condition names the setting; trial.identifier identifies the repetition.
+    # Supply already prepared inputs and collect the model's responses.
+    yield InMemorySession([StreamEvent('image', images.copy(), t_ms=0)])
+
+protocol = SessionProtocol(
+    'compare-conditions', make_session,
+    conditions=['normal', 'silenced', 'restored'],
+    trials=[0],  # One repetition of each condition.
+    input_channels=['image'], output_channels=['prediction'],
+)
+```
+
+Supply `images` and a subject with matching channels. The protocol resets the subject before and after each trial. The factory creates a fresh session and closes any resources it owns. `@contextmanager` lets Python manage that setup and cleanup around `yield`.
+
+`session.next_input()` returns `None` only when the session has ended. Inputs may be images, text, robot observations, or other documented payloads; channel names alone do not define their shape or units.
+
+For an existing evaluator:
+
+```python
+from brainscore.experiments import CallableProtocol
+
+protocol = CallableProtocol(
+    'existing-benchmark',
+    lambda subject, context: benchmark(subject),
+    methods=['look_at'],  # Select the public calls to observe.
+)
+```
+
+Use the methods your evaluator calls, such as `look_at`, `digest_text`, or `process`. Nested calls are observed once. The evaluator retains its task, reset, and score semantics. Use separate experiments for its baseline and intervention conditions unless the evaluator provides those boundaries itself.
+
+## Choose the tools
 
 ```python
 from brainscore.experiments import (
@@ -13,136 +61,72 @@ experiment = Experiment(
     subject=subject,
     protocol=protocol,
     tools=[
-        RecordInputsOutputs(),
-        Ablate(['population'], trials=['intervention']),
-        RecordActivity(['population']),
+        RecordInputsOutputs(),  # Save inputs, outputs, and tool measurements.
+        Ablate(['layer3.0.bn2'], conditions=['silenced']),  # Zero this layer output.
+        RecordActivity(['layer3.0.bn2']),  # Measure activity after the change.
     ],
-    instrumentation=TorchInstrumentation({'population': model.encoder}),
+    instrumentation=TorchInstrumentation(model),  # Use the model's actual layer paths.
     output_dir='runs/my-experiment',
     metadata={'checkpoint': 'exact revision', 'seed': 7},
 )
-experiment.validate()  # Checks compatibility without running inference.
-result = experiment.run()
+experiment.validate()  # Check compatibility without running the model.
+result = experiment.run()  # Run, save results, and detach tools.
 ```
 
-Supply the subject, protocol, and model module. The protocol must contain a trial
-named `intervention`. For recording alone, omit the last two tools and the
-instrumentation provider. The [CPU example](../examples/experiment_toolbox/run.py)
-is complete and runnable.
+This example assumes the session protocol above and a ResNet model. For recording alone, omit the activity/ablation tools and instrumentation.
 
-## Choose a protocol
+| Tool | Purpose |
+| --- | --- |
+| `RecordInputsOutputs` | Save input/output, activity, and lifecycle events with condition, trial, and call IDs. |
+| `RecordActivity` | Record selected layer outputs through `ActivationWindow`. Requires `RecordInputsOutputs`. |
+| `Ablate` | Zero selected outputs using the same implementation as `StateChange` interventions. |
+| `ObserveCalls` | Attach an existing `on_start` / `on_result` / `on_error` observer. |
+| Your own `Tool` | Observe events or manage resources from your own package. |
 
-| Protocol | Use it for | Who drives the experiment? |
-| --- | --- | --- |
-| `SessionProtocol` | Subjects implementing `interact(session)` | Each supplied session determines the next input, including feedback from outputs. |
-| `CallableProtocol` | Existing benchmarks or external evaluators | The original evaluator keeps its loop, resets, task definitions, and score. |
+Order tools as: observers, activity with `when='before'`, interventions, activity with `when='after'`. Give multiple recorders distinct names. Tools detach in reverse order, including on errors. Other hooks already installed on the model remain in place.
 
-For native sessions, supply a context-managed factory. Each trial gets a fresh
-session; the subject resets before and after it. The factory closes any simulator,
-file handles, or other resources it owns.
+### Select layers and units
+
+Use the same dotted layer paths throughout UMI, such as `layer3.0.bn2`. To select units, pass the existing `Selection` type:
 
 ```python
-from contextlib import contextmanager
-from brainscore.experiments import SessionProtocol
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.events import Selection
 
-@contextmanager
-def make_session(trial_id):
-    yield InMemorySession([
-        StreamEvent('observation', {'text': 'Which object moved?'}, t_ms=0),
-    ])
-
-protocol = SessionProtocol(
-    'my-protocol', make_session,
-    trials=['baseline', 'intervention'],
-    input_channels=['observation'], output_channels=['answer'],
-)
+selected = Selection('encoder', indices=[0, 3])
+# These indices address the last output axis, as they do in StateChange.
+activity = RecordActivity([selected])
+ablation = Ablate([selected], conditions=['silenced'])
 ```
 
-The channel names must match your subject's declarations. Payload schemas and
-units belong to those channels and adapters. The runner does not infer them from
-labels such as vision, language, VLM, or robotics. A stateful subject can emit
-both activity and behavior in response to one input.
+For a linear layer, the last axis contains its units. For a convolutional output, it is usually image width, **not channels**. Check the output shape before choosing indices.
 
-For an existing benchmark:
+`TorchInstrumentation` records tensor outputs, the first tensor in a tuple/list, or supported transformer output fields. Ablation supports tensors and tuples beginning with a tensor; other tuple entries are unchanged. Unsupported outputs raise errors when encountered. This does not provide weight editing or internal access to a remote model.
+
+An external instrumentation provider implements `describe`, `validate`, `record`, and `ablate`. The last two return context managers and must clean up after partial attachment failures. No core changes are needed.
+
+## Read saved results
 
 ```python
-from brainscore.experiments import CallableProtocol
+# RunRecord is the shared reader for standalone recordings and experiments.
+for event in result.record.events():
+    print(event['condition'], event['trial_id'], event['kind'])
 
-protocol = CallableProtocol(
-    'existing-benchmark',
-    lambda subject, context: benchmark(subject),
-    methods=['look_at'],  # Or digest_text, process, or an explicit provider API.
-    metadata={'benchmark_revision': 'exact revision'},
-)
+for response in result.record.outputs():
+    print(response)  # Only model responses, excluding activity and lifecycle events.
 ```
 
-Selected methods must exist. Nested calls are observed once. An inference error
-caught by the evaluator still marks the experiment failed. The evaluator owns
-reset semantics; use separate executions for baseline/intervention conditions
-unless its protocol explicitly handles them. The runner never changes its score.
+You can also open `RunRecord('runs/my-experiment')`. Events retain their original payloads. `event_id` connects input, activity, and output where the protocol permits it. `t_ms` is experiment time; `elapsed_s` is wall-clock duration.
 
-## Attach tools
+| Location | Contents |
+| --- | --- |
+| `experiment.json` | Setup, status, provenance, and artifact hashes/producers. |
+| `result.json` | The protocol's return value. |
+| `inputs_outputs/` | Event log and saved arrays/files. |
+| `external/` | Artifacts explicitly copied from an external evaluator. |
 
-| Tool | What it does | Requirement |
-| --- | --- | --- |
-| `RecordInputsOutputs` | Saves events, trial/call IDs, activity events, and intervention history | Events or selected public method calls |
-| `RecordActivity` | Publishes snapshots of selected internal outputs | Instrumentation provider and `RecordInputsOutputs` |
-| `Ablate` | Zeros selected internal outputs during selected trials | Instrumentation provider |
-| Your own `Tool` | Subscribes to events or manages experimental resources | Public `validate`, `describe`, and `attach` methods |
+For external videos or reports, use `context.import_artifact(path, name='trial.mp4', producer='LIBERO evaluator', description='Trial video')`. This records the actual producer. Supply checkpoint, seed, precision, and environment details in metadata; UMI cannot discover every setting in an external process.
 
-Order tools explicitly: observers first, then activity recording with
-`when='before'`, then interventions, then activity recording with `when='after'`.
-Use different names for multiple activity recorders. Tools detach in reverse
-order. Interventions attach after a native trial's initial reset and detach
-before its final reset, including on errors and cancellation.
-
-`TorchInstrumentation` accepts named PyTorch modules. It currently records
-**tensor outputs** and ablates **whole module outputs**. It does not support
-arbitrary tuple/dict outputs, individual-unit selection, weight edits, training,
-or internal access through a remote API. Unsupported output types fail when
-encountered; preflight cannot discover them without running the model. Existing
-model hooks remain installed and can affect values observed by these tools.
-
-An external provider can implement `describe()`, `validate(operation, targets)`,
-`record(targets, callback)`, and `ablate(targets)`. The last two return context
-managers and must clean up partially attached resources. No core edit is needed.
-For a remote model, put instrumentation inside its server or expose it explicitly;
-do not claim that an input/output connection provides internal access.
-
-## Inspect the outputs
-
-- `experiment.json`: actual protocol, tools, provenance, status, and artifact producers/hashes.
-- `result.json`: evaluator return value encoded with the existing record codec.
-- `inputs_outputs/`: verified event log and content-addressed arrays/files.
-- `external/`: explicitly imported artifacts, credited to their producer.
-
-```python
-from brainscore.experiments import read_events
-
-for event in read_events('runs/my-experiment'):
-    print(event['trial_id'], event['kind'], event['source'])
-```
-
-Input/output events carry the original payload. Activity and lifecycle events
-have distinct kinds. `event_id` links observations, activity, and responses where
-the protocol boundary permits it. Multiple outputs may follow one input. Event
-`t_ms` is experiment time; `elapsed_s` is wall-clock duration. Neither is inferred
-from the other. For an external evaluator, finer trial boundaries must be emitted
-by its adapter; the default scope is the whole evaluator call.
-
-External evaluators can call
-`context.import_artifact(path, name='trial.mp4', producer='OpenPI LIBERO evaluator', description='Trial video')`.
-This copies and hashes an existing video; it does not claim Brain-Score created it.
-Supply checkpoint hashes, seeds, device/runtime details, and scientific settings
-in metadata. The runner records what you provide; it cannot discover every hidden
-setting in an external process.
-
-A failed or interrupted run is not a valid completed measurement. Output folders
-must be new. Errors propagate and cleanup runs before final status is written.
-Large records still inherit `RunRecord`'s memory/materialization limits. Use
-bounded runs. Each running experiment needs its own subject, tools, and provider;
-concurrent reuse and distributed execution are not supported by this runner.
+Failed runs remain readable for diagnosis but cannot be replayed as completed measurements. Use a new output directory and separate subject/tools for each experiment. This synchronous runner does not support concurrent reuse or distributed execution. Keep recordings bounded; the codec materializes individual assets in memory.
 
 ## Replay saved inputs
 
@@ -150,45 +134,42 @@ concurrent reuse and distributed execution are not supported by this runner.
 from brainscore.experiments import replay_sessions, compare_outputs
 
 replay = Experiment(
-    subject=fresh_subject,
-    protocol=replay_sessions('runs/my-experiment'),
-    tools=[RecordInputsOutputs()],
+    subject=subject,
+    protocol=replay_sessions(result.directory),  # Preserve conditions, trials, and inputs.
+    tools=[RecordInputsOutputs(), Ablate(['layer3.0.bn2'], conditions=['silenced'])],
+    instrumentation=TorchInstrumentation(model),
     output_dir='runs/replay',
 ).run()
-comparison = compare_outputs('runs/my-experiment', replay.directory)
+comparison = compare_outputs(result.directory, replay.directory)
 ```
 
-Reattach interventions explicitly if reproducing an intervention condition.
-Replay never silently executes saved tool configuration. `replay_sessions` feeds
-saved inputs into a model; it does not rerun physics or regenerate feedback.
-`replay_calls` handles saved method calls with an explicit method allowlist and
-caller-supplied reset function. Check model revisions, random state, precision,
-and environment when interpreting differences.
+Reattach interventions explicitly: saved settings never execute automatically. `replay_sessions` sends saved inputs to the model; it does not rerun a simulator or regenerate feedback. For saved method calls, `replay_calls` requires an explicit method list and reset callback.
 
-`compare_outputs` compares outputs in sequence exactly, including event channels,
-timestamps, and metadata. It is an inspection utility, not a task score,
-statistical test, or proof of equivalent closed-loop behavior. Use domain metrics
-for unsupported payloads or scientific comparisons.
+`compare_outputs` checks exact output agreement, including channels, timestamps, and metadata. It is not a benchmark score or evidence of equivalent closed-loop behavior. Model versions, random state, precision, and runtime can affect agreement.
 
-## Add a tool from your own package
+## Add a tool
 
-Subclass `Tool`, describe its configuration, validate its requirements, and
-return a context manager from `attach(context)`. Subscribe with
-`context.subscribe(callback)` and register output files with `context.artifact`.
-Callbacks must snapshot data before returning and must not mutate live payloads.
+```python
+from brainscore.experiments import Tool
 
-[CountEvents](../examples/experiment_toolbox/partner_tool.py) is a complete example
-using public imports only. Pass `CountEvents()` alongside the other tools. No
-registry changes or edits to `Subject`, `Session`, or Brain-Score are required.
+class CountOutputs(Tool):
+    name = 'output_count'
 
-## What the examples prove
+    def __init__(self):
+        self.count = 0
 
-The five CPU demonstrations cover image, text, image-plus-text, feedback-control,
-and recurrent activity/behavior payloads with the same API. They use small,
-untrained models and synthetic data. They verify plumbing and intervention
-cleanup, not scientific performance or a whole-brain model.
+    def on_event(self, event):
+        # Count responses without changing the data sent to the model.
+        if event['kind'] == 'output':
+            self.count += 1
+```
 
-The [OpenPI call example](../examples/libero/toolbox_calls.py) connects the same
-runner to saved LIBERO requests and a policy server. Its websocket test uses a
-synthetic policy. The ongoing trained LIBERO qualification uses the earlier
-bridge; it does not qualify this runner or demonstrate an internal π₀.₅ ablation.
+Pass `CountOutputs()` in the tool list. For resources or saved files, override `attach(context)` with a context manager; see [CountEvents](../examples/experiment_toolbox/partner_tool.py). Add `validate` for requirements and `describe` for configuration. Copy live payloads before retaining them, and do not mutate them.
+
+For existing method observers, use `ObserveCalls(observer, methods=['process'])`. Method callbacks describe calls; `on_event` also sees session and lifecycle events. These are distinct boundaries, not interchangeable payloads. See [tool authoring](tool_authoring.md) for lower-level control.
+
+## Evidence limits
+
+The [five CPU examples](../examples/experiment_toolbox/run.py) exercise image, text, image-plus-text, feedback-control, and recurrent activity/behavior with synthetic data. They verify integration, not scientific performance. Notebooks 17 and 18 add trained image-model demonstrations.
+
+The [OpenPI example](../examples/libero/toolbox_calls.py) uses saved LIBERO requests and a policy server. Its websocket test uses a synthetic policy. The trained LIBERO qualification uses the separate bridge; it does not qualify this experiment runner or demonstrate internal policy ablation.

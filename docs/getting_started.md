@@ -17,7 +17,7 @@ python unified/examples/partner_integration.py --out /tmp/umi-first-experiment
 
 Use a new output directory each time. This small synthetic example demonstrates external channels, recording, and replay without model downloads. It is an integration check, not a scientific result.
 
-For a visual walkthrough, open [the layer-mapping quickstart](../notebooks/01_quickstart_layer_mapping.ipynb).
+For registration and scoring, open [the layer-mapping quickstart](../notebooks/01_quickstart_layer_mapping.ipynb). To combine recording and interventions on a pretrained model, open [the ResNet-18 experiment](../notebooks/18_resnet_experiment_toolbox.ipynb). Both follow the [shared vocabulary](conventions.md).
 
 ## Score a registered model
 

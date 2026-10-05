@@ -153,3 +153,7 @@ These list the unified package's registered entries. Loaders also consult vision
 - [Build tools and integrations](tool_authoring.md): external extensions, recording, and interventions.
 - [API reference](umi_api_reference.md): method details and examples.
 - [Coming from Brain-Score](from_brain_score.md): existing models and migration.
+
+## Experiments and tools
+
+A subject is the model adapter; a session carries inputs and outputs. A protocol sets the procedure, and an `Experiment` combines that protocol with a subject and tools. Conditions describe settings such as normal or silenced; trials repeat those settings. Tools use the same layer paths, `Selection`, and `RunRecord` as the lower-level interfaces. See [set up an experiment](experiment_toolbox.md) and the [shared vocabulary](conventions.md).

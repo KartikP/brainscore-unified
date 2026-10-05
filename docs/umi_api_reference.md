@@ -184,3 +184,9 @@ Existing vision models use `BrainModel`/`look_at`; language models use `Artifici
 Use the [shared constraints](../install/v2-constraints.txt) for the tested Python 3.11 CPU integration stack, including scikit-learn 1.7.2 and Transformers 4.57.6. The [support matrix](supported_features.md) distinguishes proposed profiles from completed qualification.
 
 Large models and full benchmark runs require suitable compute and staged data. An illustrative notebook or synthetic test does not establish brain-alignment or GPU qualification.
+
+## Experiments and tools
+
+`Experiment(subject=..., protocol=..., tools=..., output_dir=...)` assembles a run without changing the subject contract. Use `SessionProtocol` for session-based subjects or `CallableProtocol` around an existing evaluator. Conditions name settings being compared; trials identify repetitions.
+
+`RecordInputsOutputs`, `RecordActivity`, and `Ablate` record or change the run. Layer targets use model paths and `Selection`; `result.record` returns the shared `RunRecord` reader. See [set up an experiment](experiment_toolbox.md) for the complete API and [shared vocabulary](conventions.md) for terminology.
