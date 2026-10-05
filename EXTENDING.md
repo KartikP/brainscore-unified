@@ -1,6 +1,6 @@
 # Extending the Unified Model Interface
 
-Candidate guide: [Build tools and integrations](docs/tool_authoring.md) | [Production qualification](docs/production_release.md). These pages describe the production candidate and supersede older release-status claims below.
+[Build tools and integrations](docs/tool_authoring.md) | [Support matrix](docs/supported_features.md) | [Release qualification](docs/production_release.md)
 
 Extend the unified interface through five registries and Capability.
 
@@ -9,10 +9,9 @@ subclass that composes wrappers, recording, and capability callables. For benchm
 type annotations or a custom implementation, use the abstract `Subject` contract.
 Both are importable from `brainscore_core.model_interface`. A native `Subject`
 declares identity and input/output channels and implements `interact(session)`;
-it does not need the older typed model methods. `UnifiedModel` retains that
-older interface as a compatibility subclass of `Subject`, not an alias.
-Existing typed implementations that inherited the earlier `Subject` should
-inherit `UnifiedModel`. See [Concepts](docs/concepts.md#subject).
+it does not need `process()` or a layer map. `UnifiedModel` extends `Subject`
+with `process`, task/recording setup, and layer/modality declarations.
+`BrainScoreModel` builds on that base. See [Concepts](docs/concepts.md#subject).
 
 > Companion: the interactive contract map at
 > [brain-score.github.io/public/UMI/architecture.html](https://brain-score.github.io/public/UMI/architecture.html).

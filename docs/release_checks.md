@@ -1,6 +1,6 @@
 # Checks to run before a release
 
-Candidate guide: [Build tools and integrations](tool_authoring.md) | [Production qualification](production_release.md) | [Numerical policy](numerical_policy.md). These pages describe the production candidate and supersede older release-status claims below.
+[Build tools and integrations](tool_authoring.md) | [Release qualification](production_release.md) | [Numerical policy](numerical_policy.md)
 
 The fast tier runs on every push and takes under a minute. These do not: they
 need benchmark assemblies, real model weights, and hours. They are listed here

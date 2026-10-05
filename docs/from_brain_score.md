@@ -21,10 +21,9 @@ Compatibility applies to tested model, benchmark, and environment combinations. 
 | Existing vision `BrainModel` / `ModelCommitment` | Load through UMI; the vision adapter bridges the existing methods. |
 | Existing language `ArtificialSubject` | Load through UMI; the language adapter bridges `digest_text`. |
 | New model or policy with its own session loop | `Subject`: declare identity/channels and implement `interact(session)`. |
-| Model using shared extraction and capability helpers | `BrainScoreModel`, which extends the compatibility base `UnifiedModel`. |
-| Custom class based on the earlier `Subject`, implementing only older typed methods | Change its base to `UnifiedModel`. |
+| Model using shared extraction and capability helpers | `BrainScoreModel`, which extends `UnifiedModel`. |
 
-`UnifiedModel` is a subclass of `Subject`, not an alias. It retains `process`, `start_task`, `start_recording`, and layer/modality declarations. A native `Subject` needs none of those older methods.
+`UnifiedModel` extends `Subject` with `process`, `start_task`, `start_recording`, and layer/modality declarations. Implement `Subject` directly when your integration only needs session interaction.
 
 ## Use shared extraction helpers
 

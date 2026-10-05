@@ -7,10 +7,10 @@ UMI is a production candidate. See [Getting started](getting_started.md), [Tools
 Import from `brainscore_core.model_interface`:
 
 - `Subject`: implement identity, input/output channels, and `interact(session)` for a native integration.
-- `UnifiedModel`: retain the older typed model interface. It extends `Subject`; it is not an alias.
+- `UnifiedModel`: a `Subject` base with `process`, task/recording setup, and layer/modality declarations.
 - `BrainScoreModel`: reuse extraction wrappers and capability callables.
 
-Classes that inherited the earlier `Subject` but implement only its older typed methods should inherit `UnifiedModel`. See [Concepts](concepts.md#subject).
+See [Concepts](concepts.md#subject) for how these classes fit together.
 
 ## Registry entry points
 
@@ -33,10 +33,10 @@ allow managed CI/EC2 downloads without that guard; see
 
 A native subject consumes inputs with `session.next_input()` and returns events
 with `session.emit(event)` inside `interact(session)`. It does not need model
-layers, modality properties, or the older evaluation methods. Call `reset()`
+layers, modality properties, or `process()`. Call `reset()`
 between independent evaluations when state must be cleared.
 
-`BrainScoreModel` and legacy adapters additionally retain the typed lifecycle:
+`BrainScoreModel` and domain adapters also support this lifecycle:
 
 1. start_recording(region, time_bins=None) for neural output, or
    start_task(TaskContext(...)) for behavioral output.
@@ -175,12 +175,9 @@ See [getting_started.md](getting_started.md) for the wrapper import table and
 the current distinction between vision preprocessing and wrapper-backed
 modalities.
 
-## Legacy migration
+## Existing Brain-Score models
 
-BrainModel/look_at and ArtificialSubject/digest_text are pre-UMI interfaces.
-New session-native code should implement Subject.interact(session).
-BrainScoreModel retains process() and the typed convenience methods.
-The unified registry adapts the domain-package legacy APIs when loaded.
+Existing vision models use `BrainModel`/`look_at`; language models use `ArtificialSubject`/`digest_text`. UMI loaders adapt these domain interfaces. For a new integration, implement `Subject.interact(session)` or use `BrainScoreModel` for extraction and capability helpers.
 
 ## Environment and validation limits
 

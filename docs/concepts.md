@@ -11,12 +11,12 @@ A **subject** is the model or policy being evaluated. Import these classes from 
 | Class | Use it for |
 | --- | --- |
 | `Subject` | A new integration that handles a session directly. Declare `identifier`, `in_channels`, and `out_channels`; implement `interact(session)`. |
-| `UnifiedModel` | Compatibility with the older model interface: `process`, task/recording setup, layer maps, and modality declarations. |
+| `UnifiedModel` | A `Subject` base with `process`, task/recording setup, layer maps, and modality declarations. |
 | `BrainScoreModel` | A ready-made implementation combining extraction wrappers and capabilities. It extends `UnifiedModel`. |
 
 A native `Subject` needs no layer map or `process()` method. Stateful subjects implement `reset()` to clear state between independent runs. `required_channels` can declare inputs that must be present.
 
-If your class inherited the earlier `Subject` and implements only the older model methods, inherit `UnifiedModel` instead. Existing vision and language models can use adapters; compatibility evidence is listed in the support matrix.
+Existing Brain-Score vision and language models can use adapters; compatibility evidence is listed in the support matrix.
 
 ## Sessions and channels
 

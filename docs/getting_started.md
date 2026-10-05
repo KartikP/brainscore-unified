@@ -42,7 +42,7 @@ You can also pass a model object: `brainscore.score(my_model, benchmark_id)`. Re
 | Add a tool, input/output type, or experiment | Use an external package and the [tool-authoring guide](tool_authoring.md). |
 | Connect a DROID policy | Follow the [DROID guide](droid_integration.md). |
 
-A native `Subject` does not need `process()` or a layer map. `BrainScoreModel` retains those methods for existing workflows.
+A native `Subject` does not need `process()` or a layer map. `BrainScoreModel` provides them for model extraction and recording workflows.
 
 ## Choose an extraction wrapper
 

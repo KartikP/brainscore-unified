@@ -16,7 +16,7 @@ A supported result identifies the four package revisions, dependency environment
 
 | Surface | Initial support target | Current evidence and remaining boundary |
 | --- | --- | --- |
-| Model contract | Minimal `Subject`: identity, input/output channels, `interact(session)`, and reset; `UnifiedModel`/`BrainScoreModel` retain the older model methods | Source tests cover dispatch and lifecycle. Add uncovered session and failure-path assertions before release. |
+| Model contract | Minimal `Subject`: identity, input/output channels, `interact(session)`, and reset; `UnifiedModel`/`BrainScoreModel` provide `process` and task/recording helpers | Source tests cover dispatch and lifecycle. Add uncovered session and failure-path assertions before release. |
 | Legacy use | Vision `look_at`, language `digest_text`, legacy task/recording protocols, registry loading, existing capability constructor forms | Adapters and selected legacy helpers are tested. Existing deprecation warnings remain. Full plugin compatibility is not established. |
 | Vision and language scoring | Fixed ResNet18/MajajHong and GPT-2/Pereira reference cases; documented layer/region mapping and numerical policy | Eight-case candidate evidence exists. Requalify the final coordinated artifacts, especially the repaired language helper on Linux/CUDA. |
 | Additional benchmark domains | One identified native behavioral, temporal, multimodal, perturbation, and embodied example for the release checks | Structural tests and earlier demonstrations exist. Select exact model/data/protocol profiles and obtain current real-model evidence; broader catalogs remain experimental. |
@@ -31,7 +31,7 @@ The representative-domain requirement follows [issue #18](https://github.com/bra
 
 ### Compatibility limits
 
-Domain loaders may return adapters. Concrete legacy class identity, private attributes, arbitrary pickles, and every historical plugin dependency environment are outside the contract. `UnifiedModel` extends `Subject` to preserve the older model interface; it is no longer an alias. New session-native implementations can inherit `Subject` directly. `BrainScoreModel` builds on `UnifiedModel`. A plugin without compatibility evidence is unqualified, not necessarily broken.
+Domain loaders may return adapters. Concrete legacy class identity, private attributes, arbitrary pickles, and every historical plugin dependency environment are outside the contract. `UnifiedModel` extends `Subject` with `process`, task/recording setup, and layer/modality declarations. Session-native implementations can inherit `Subject` directly. `BrainScoreModel` builds on `UnifiedModel`. A plugin without compatibility evidence is unqualified, not necessarily broken.
 
 Intentional corrections remain visible: `EnvironmentSession.next_input` raises while an action is owed; API action history resets at episode start; missing registrations raise `PluginNotFoundError`, while construction errors propagate. Failed reset means the instance must not be reused as clean.
 
