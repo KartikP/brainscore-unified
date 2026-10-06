@@ -67,7 +67,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.temporal import window_plan
 from brainscore_core.extraction_cache import (
-    store_xarray, extraction_fingerprint, wrapper_config,
+    store_xarray, extraction_fingerprint, wrapper_config, file_inputs,
 )
 
 
@@ -315,7 +315,11 @@ class VideoWrapper:
 
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
         if self._backbone_id and stimuli_identifier:
-            signature = extraction_fingerprint({"configuration": self.cache_config(), "inputs": paths})
+            signature = extraction_fingerprint(
+                {"configuration": self.cache_config(), "inputs": file_inputs(paths)},
+                cache_identifier=(f'{type(self).__module__}.{type(self).__name__}'
+                                  f'._from_paths_stored/identifier={self._backbone_id}'),
+            )
             if signature is None:
                 return self._from_paths(paths, layers, stimuli_identifier)
             return self._from_paths_stored(

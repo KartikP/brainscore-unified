@@ -256,7 +256,11 @@ class TextWrapper:
 
     def _from_texts_cached(self, texts, layers, stimuli_identifier=None):
         if self._backbone_id and stimuli_identifier:
-            signature = extraction_fingerprint({"configuration": self.cache_config(), "inputs": texts})
+            signature = extraction_fingerprint(
+                {"configuration": self.cache_config(), "inputs": texts},
+                cache_identifier=(f'{type(self).__module__}.{type(self).__name__}'
+                                  f'._from_texts_stored/identifier={self._backbone_id}'),
+            )
             if signature is None:
                 return self._from_texts(texts, layers, stimuli_identifier)
             return self._from_texts_stored(

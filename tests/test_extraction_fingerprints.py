@@ -43,6 +43,9 @@ def _storage(method):
 
 @pytest.fixture
 def isolated_cache(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    for name in ('a', 'b'):
+        (tmp_path / name).write_bytes(name.encode())
     # Keep RESULTCACHING_DISABLE=1. Only our sentinel model's temporary cache
     # is enabled, to exercise the real result_caching read/merge/write code.
     monkeypatch.setenv('RESULTCACHING_DISABLE', '1')
@@ -90,6 +93,7 @@ def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, 
     assert len(calls) == 3
     # Separate instance with identical config and the same registered weights.
     other = _wrapper(cls)
+    other._model.load_state_dict(wrapper._model.state_dict())
     monkeypatch.setattr(other, f'_from_{inp}', lambda *a, **k: pytest.fail('cache missed'))
     np.testing.assert_array_equal(getattr(other, f'_from_{inp}_cached')(['a', 'b'], ['L'], 'stimuli'), expected)
 

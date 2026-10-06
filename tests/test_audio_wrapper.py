@@ -339,7 +339,10 @@ class TestWaveformChunking:
 
 class TestCacheKey:
 
-    def test_from_paths_cached_uses_backbone_id(self, wrapper):
+    def test_from_paths_cached_uses_backbone_id(self, wrapper, tmp_path, monkeypatch):
+        monkeypatch.setenv('RESULTCACHING_DISABLE', '0')
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'x.wav').write_bytes(b'input')
         captured = {}
 
         def fake_stored(identifier, stimuli_identifier, layers, paths, extraction_fingerprint):
