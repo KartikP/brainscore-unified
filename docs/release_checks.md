@@ -2,10 +2,29 @@
 
 [Build tools and integrations](tool_authoring.md) | [Release qualification](production_release.md) | [Numerical policy](numerical_policy.md)
 
-The fast tier runs on every push and takes under a minute. These do not: they
-need benchmark assemblies, real model weights, and hours. They are listed here
-because each one exists in response to a defect that shipped, and the failure
-mode they guard against is silent — a wrong number, not an exception.
+## Required offline checks
+
+The coordinated GitHub Actions workflow builds all four packages and runs the
+offline source profile on Ubuntu and macOS. This validates core as part of the
+coordinated checkout. A core-only PR does not automatically trigger this workflow;
+run coordinated validation against the proposed peers before merging. Independent
+core triggering and Jenkins configuration remain separate infrastructure work.
+
+```sh
+python -m brainscore.validation.workspace --root /path/to/repos --out source.json
+```
+
+The report records revisions, local changes, commands, selected and deselected
+tests, unselected test files, and every skip reason. Unexpected skips, empty
+runs, missing reports, failures, and timeouts fail the profile. Only the exact
+test/reason pairs in `brainscore/validation/optional_checks.py` may skip. These
+optional results do not qualify OpenPI/JAX, external data, or maintainer tools.
+Adding an exception requires a documented prerequisite and separate validation.
+
+The source selection lives in `brainscore/validation/workspace.py`. It includes
+legacy scoring, compatibility, state changes, cache invalidation, hook cleanup,
+and early-failure checks. It is not the full plugin test suite or a complete
+release gate. Required scientific and environment qualifications follow below.
 
 ## 1. Three-route benchmark parity
 
