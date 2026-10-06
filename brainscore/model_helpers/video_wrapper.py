@@ -392,13 +392,16 @@ class VideoWrapper:
             video_batch = video_batch.to(model_dtype)
 
         layer_outputs: OrderedDict = OrderedDict()
-        hooks = [self._register_hook(self._get_layer(ln), ln, layer_outputs)
-                 for ln in layers]
-        self._model.eval()
-        with torch.no_grad():
-            self._model(video_batch, **self._forward_kwargs)
-        for hook in hooks:
-            hook.remove()
+        hooks = []
+        try:
+            for name in layers:
+                hooks.append(self._register_hook(self._get_layer(name), name, layer_outputs))
+            self._model.eval()
+            with torch.no_grad():
+                self._model(video_batch, **self._forward_kwargs)
+        finally:
+            for hook in hooks:
+                hook.remove()
         return {ln: self._flatten_layer_output(arr) for ln, arr in layer_outputs.items()}
 
     def _clip_duration_ms(self, path) -> Tuple[float, int, float]:

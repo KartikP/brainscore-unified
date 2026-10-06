@@ -236,17 +236,19 @@ class VLMVisionWrapper:
 
         layer_results: OrderedDict = OrderedDict()
         hooks = []
-        for layer_name in layer_names:
-            layer = self._get_layer(layer_name)
-            hook = self._register_hook(layer, layer_name, layer_results)
-            hooks.append(hook)
+        try:
+            for layer_name in layer_names:
+                layer = self._get_layer(layer_name)
+                hook = self._register_hook(layer, layer_name, layer_results)
+                hooks.append(hook)
 
-        self._model.eval()
-        with torch.no_grad():
-            self._forward(processed)
+            self._model.eval()
+            with torch.no_grad():
+                self._forward(processed)
 
-        for hook in hooks:
-            hook.remove()
+        finally:
+            for hook in hooks:
+                hook.remove()
 
         # Segment patches into per-image activations and aggregate
         n_images = len(images)

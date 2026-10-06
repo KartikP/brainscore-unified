@@ -494,17 +494,19 @@ class TextWrapper:
         layer_results = OrderedDict()
         hooks = []
 
-        for layer_name in layer_names:
-            layer = self._get_layer(layer_name)
-            hook = self._register_hook(layer, layer_name, layer_results)
-            hooks.append(hook)
+        try:
+            for layer_name in layer_names:
+                layer = self._get_layer(layer_name)
+                hook = self._register_hook(layer, layer_name, layer_results)
+                hooks.append(hook)
 
-        self._model.eval()
-        with torch.no_grad():
-            self._model(**tokens)
+            self._model.eval()
+            with torch.no_grad():
+                self._model(**tokens)
 
-        for hook in hooks:
-            hook.remove()
+        finally:
+            for hook in hooks:
+                hook.remove()
 
         # Aggregate over sequence dimension
         for layer_name in layer_results:
