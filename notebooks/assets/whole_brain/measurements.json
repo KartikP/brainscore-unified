@@ -1,0 +1,38 @@
+{
+  "measured": true,
+  "model": "gpt2",
+  "layer": "h.11",
+  "benchmark": "LeBel2023-UTS03-encoding",
+  "subject": "UTS03",
+  "median_r": 0.10132703185081482,
+  "mean_r": 0.11335279792547226,
+  "n_targets": 20484,
+  "n_samples": 8964,
+  "n_words": 52904,
+  "n_stories": 25,
+  "finite_vertices": 20484,
+  "positive_fraction": 0.9534758836164812,
+  "alphas": [
+    30000000.0,
+    30000000.0,
+    30000000.0,
+    100000000.0,
+    30000000.0
+  ],
+  "elapsed_seconds": 203.47982096672058,
+  "timestamp_utc": "2026-10-06T10:08:51Z",
+  "dataset_url": "https://drive.google.com/file/d/1q-XLPjvhd8doGFhYBmeOkcenS9Y59x64/view",
+  "dataset_source": "https://github.com/GT-LIT-Lab/litcoder_core",
+  "dataset_sha256": "713a20a69188bab7f51db4e04de34cec2ce68285c9eed05714435e4e8a63cc0f",
+  "python": "3.11.15",
+  "device": "mps",
+  "package_versions": {
+    "torch": "2.13.0",
+    "transformers": "4.57.6",
+    "numpy": "1.26.4",
+    "scipy": "1.17.1",
+    "scikit-learn": "1.7.2"
+  },
+  "notes": "Raw held-out Pearson correlations. Five whole-story folds; registered defaults. No noise-ceiling normalization. No anatomical mask.",
+  "unified_git_revision": "cf22538eb5ef6aeee38005a44bc04313e4d63dde"
+}
