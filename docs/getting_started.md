@@ -1,6 +1,6 @@
 # Getting started
 
-UMI is a production candidate. Check the [proposed support matrix](supported_features.md) for features, environments, and validation limits.
+UMI is a production candidate. Check the [feature reference](supported_features.md) for features, environments, and validation limits.
 
 ## Install
 

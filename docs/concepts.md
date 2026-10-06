@@ -2,7 +2,7 @@
 
 UMI lets an experiment send inputs to a model, collect responses, and compare them with measured data. Tools can record those interactions or change model activity during an experiment.
 
-Start with [Getting started](getting_started.md). See [Supported features and environments](supported_features.md) for proposed support and remaining validation.
+Start with [Getting started](getting_started.md). See [Supported features and environments](supported_features.md) for capabilities, examples, and environment limits.
 
 ## How should I think about UMI's layers?
 
