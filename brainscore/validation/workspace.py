@@ -21,12 +21,13 @@ SUITES = {
              'tests/test_channel_registry.py', 'tests/test_contract_drift.py',
              'tests/test_output_event.py', 'tests/test_native_subject.py',
              'tests/test_subject_channels.py', 'tests/test_subject_rename.py',
-             'tests/test_model_interface_public_api.py'],
+             'tests/test_model_interface_public_api.py',
+             'tests/test_plugin_management/test_plugin_command_paths.py'],
     'vision': ['tests/test_unified_adapter.py', 'tests/test_preflight.py',
                'tests/test_subject_conformance.py', 'tests/test_hmax_runtime.py'],
     'language': ['tests/test_unified_adapter.py', 'tests/test_preflight.py',
                  'tests/test_subject_conformance.py', 'tests/test_kv_cache.py',
-                 'tests/test_kv_cache_slicing.py'],
+                 'tests/test_kv_cache_slicing.py', 'tests/test_pereira2018_registry.py'],
     'unified': ['tests', '-m', 'unit or integration'],
 }
 
