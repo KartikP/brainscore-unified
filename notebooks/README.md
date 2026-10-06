@@ -13,6 +13,8 @@ jupyter notebook unified/notebooks/
 
 Select that Python environment as your kernel and run cells in order. Some examples download weights; rerunning notebook 16 also needs the linked LeBel dataset. Missing plotting libraries usually mean the notebook extra is not installed.
 
+If scoring reports a cache-storage error, see [cache troubleshooting](../docs/getting_started.md#check-storage-before-a-long-run). The [caching guide](../docs/caching.md) explains reuse and weight-editing limits.
+
 ## Choose an example
 
 ### Register, record, and score

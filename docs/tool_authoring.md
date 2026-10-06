@@ -177,6 +177,10 @@ handlers accepting the same combination are rejected. Catalog declarations alone
 do not implement execution. See the working `response_trace.py` implementation
 and `core/tests/test_external_extensions.py` for complete examples.
 
+## Cache behavior for custom tools
+
+Custom extraction providers use `cache_config()` to describe state that affects their outputs. If that state cannot be represented, disable result caching for the experiment. Make weight edits through `.data` aliases or NumPy **between scoring runs**; these edits are not detected during a run. See [activation caching](caching.md) for supported wrappers and limits.
+
 ## Internal measurements and interventions
 
 Use `ActivationWindow(network, layers=['layer.path'])` around the experiment to

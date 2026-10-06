@@ -97,6 +97,11 @@ Factories that fetch multi-gigabyte checkpoints should use the local pre-downloa
 guard before any loader call; see [model downloads](docs/model_downloads.md) and
 `brainscore/models/blip2_opt_2_7b/model.py` for the pattern.
 
+Custom extraction providers should expose output-affecting state through `cache_config()`.
+Disable result caching if that state cannot be represented. Make `.data` alias or
+NumPy weight edits between scoring runs, because they bypass within-run change
+tracking. See [activation caching](docs/caching.md) for supported paths and limits.
+
 ### Seam 2 — a new benchmark
 
 A benchmark drives the candidate model and scores it. Subclass `BenchmarkBase`, implement

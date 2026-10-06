@@ -132,9 +132,11 @@ applied = model.process(StateChange(
 model.process(StateChange(kind="reset", handle_id=applied.handle_id))
 ~~~
 
-Use a fresh RESULTCACHING_HOME or disable result caching for mutable-state
-experiments. Current activation cache keys do not uniformly fingerprint every
-hook or perturbation condition.
+Supported extraction wrappers check weights, inputs, and supported hook configuration
+before reusing activations. If a custom intervention's state cannot be represented
+in `cache_config()`, disable result caching with `RESULTCACHING_DISABLE=1`.
+Make `.data` alias or NumPy weight edits between scoring runs. See
+[activation caching](caching.md) for wrapper coverage and limits.
 
 For a matched random control of a localized subset, pass
 `population=selection.metadata['unit_population']` to `RandomSelection`, with

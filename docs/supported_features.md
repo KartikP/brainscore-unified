@@ -24,6 +24,8 @@ The same experiment tools work across domains when the subject exposes the requi
 | What you can do | Entry point | Boundary |
 | --- | --- | --- |
 | Score models | `brainscore.score` | Registered identifiers or model/benchmark objects; compatible inputs/outputs |
+| Reuse cached activations | [Content checks](caching.md) | Standard vision, text, VLM, audio, and unified video wrappers check weights, settings, and input contents; excludes vision's separate temporal extractor |
+| Check storage and data early | `score()`, `python -m brainscore.doctor` | Scoring checks cache storage before loading benchmarks/models; unified also checks declared local assets. Lazy or remote failures can occur later |
 | Map activity to brain regions | `region_layer_map`, recording helpers | One layer, composite selections, or all layers; the benchmark determines fitting/scoring |
 | Reuse legacy models | `look_at`, `digest_text`, adapters | Existing vision/language task and recording workflows |
 | Assemble an experiment | `Experiment` | Combines a subject, one protocol, tools, and an output folder |
