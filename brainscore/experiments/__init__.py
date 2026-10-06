@@ -9,3 +9,7 @@ from .replay import replay_sessions, replay_calls, compare_outputs, read_events
 __all__ += ['replay_sessions', 'replay_calls', 'compare_outputs', 'read_events']
 from .reasoning import RecordReasoning
 __all__ += ['RecordReasoning']
+from .backends.openpi import OpenPIInstrumentation
+from .backends.openpi_remote import RemoteOpenPIInstrumentation, OpenPIPolicyClient, OpenPIToolServer
+__all__ += ['OpenPIInstrumentation', 'RemoteOpenPIInstrumentation',
+            'OpenPIPolicyClient', 'OpenPIToolServer']

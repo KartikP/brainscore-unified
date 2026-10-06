@@ -12,6 +12,7 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 | `SessionProtocol` / `CallableProtocol` | Define the procedure: run sessions, or wrap an existing evaluator. |
 | `RecordInputsOutputs`, `RecordActivity`, `Ablate` | Ready-to-use tools attached to the run. |
 | `TorchInstrumentation` | Connect activity/intervention tools to the actual PyTorch network. |
+| `OpenPIInstrumentation` / `RemoteOpenPIInstrumentation` (feature branch) | Connect the same tools to the pinned local/remote OpenPI JAX policy. |
 | `observe`, `ActivationWindow`, `RunRecorder` | Building blocks used underneath the tools; also usable directly. |
 | `build_trace_subject` | Adapt a generated-response provider into a subject. It produces traces; recorders save them. |
 
@@ -188,4 +189,4 @@ For existing method observers, use `ObserveCalls(observer, methods=['process'])`
 
 The [five CPU examples](../examples/experiment_toolbox/run.py) exercise image, text, image-plus-text, feedback-control, and recurrent activity/behavior with synthetic data. They verify integration, not scientific performance. Notebooks 17 and 18 add trained image-model demonstrations.
 
-The [OpenPI example](../examples/libero/toolbox_calls.py) uses saved LIBERO requests and a policy server. Its websocket test uses a synthetic policy. The trained LIBERO qualification uses the separate bridge; it does not qualify this experiment runner or demonstrate internal policy ablation.
+The [OpenPI example](../examples/libero/toolbox_calls.py) uses saved LIBERO requests and a policy server. Its websocket test uses a synthetic policy. The trained LIBERO qualification uses the separate bridge; it does not qualify internal policy ablation. The feature-branch [OpenPI providers](policy_instrumentation.md) also have [trained L4 and ten-task LIBERO checks](qualification/2026-10-06-openpi-tools.md), including exact recording-only actions under controlled compiler settings.

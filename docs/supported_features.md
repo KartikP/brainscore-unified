@@ -17,7 +17,7 @@ The same experiment tools work across domains when the subject exposes the requi
 | Robotics | Observations, instructions, state, actions and action chunks | Local, accessible policy backend; remote internals require server support | Recorded-action comparisons; external simulator task success | [DROID](droid_integration.md): untrained-policy transport/tool demonstration. [LIBERO](robotics_benchmark_integration.md): trained-policy smoke comparison |
 | Recurrent neural/behavioral models | Sequential inputs, activity and behavioral outputs | Accessible components, with explicit state/reset behavior | User-defined protocols and metrics | [Recurrent example](../examples/experiment_toolbox/run.py): synthetic integration, not a validated whole-brain model |
 
-**Backend access** means the tool can attach to the underlying model. Built-in internal recording and ablation use `TorchInstrumentation`; another backend needs an instrumentation provider. A remote model's input/output access does not provide access to its layers.
+**Backend access** means the tool can attach to the underlying model. Internal recording and ablation use `TorchInstrumentation`, or the feature-branch OpenPI/JAX providers below. Other backends need a provider. A remote model's input/output access does not provide access to its layers.
 
 ## Run and score
 
@@ -49,6 +49,8 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | Component | Responsibility | Relationship to experiment tools |
 | --- | --- | --- |
 | `TorchInstrumentation` | Access the actual PyTorch network's named layers | Supplies internal recording/ablation; [policy backends](policy_instrumentation.md) |
+| `OpenPIInstrumentation` **(feature branch)** | Record/ablate three sites in the pinned Pi0/Pi0.5 JAX sampler | Selected units and denoising iterations; [trained L4 and ten-task smoke checks](qualification/2026-10-06-openpi-tools.md) |
+| `RemoteOpenPIInstrumentation` **(feature branch)** | Use the same tools through `OpenPIToolServer` and `OpenPIPolicyClient` | Request-scoped cleanup and separate activity delivery; [guide](policy_instrumentation.md) |
 | `observe` | Notify callbacks about method starts, results, and errors | Used by `ObserveCalls`; does not save anything by itself |
 | `ActivationWindow` / `intervene` | Scoped activity capture / intervention | The direct mechanisms behind activity and intervention workflows |
 | `RunRecorder` | Write records, arrays, files, and metadata | Storage used by recording tools |
@@ -72,6 +74,7 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | Record generated reasoning | [Reasoning recorder](reasoning_recording.md) | — | [Streamed response example](../examples/experiment_toolbox/reasoning.py) (feature branch) |
 | Handle time and streaming | [Streaming API](umi_api_reference.md#streaming-helpers) | [13: temporal alignment](../notebooks/13_temporal_multimodal.ipynb), [15: delivery](../notebooks/15_streaming_delivery.ipynb) | [Session examples](../examples/experiment_toolbox/run.py) |
 | Display brain measurements | [Local data](local_data.md) | [08: illustrative maps](../notebooks/08_brain_visualization.ipynb), [16: measured predictions](../notebooks/16_whole_brain_encoding.ipynb) | [Measured figure scripts](../notebooks/figure_sources/README.md) |
+| Inspect an OpenPI policy | [Policy tools](policy_instrumentation.md) | [19: trained-policy measurements](../notebooks/19_openpi_experiment_toolbox.ipynb) | [Server](../examples/libero/serve_tools.py), [qualification](../examples/libero/qualify_tools.py) (feature branch) |
 | Connect a robotics evaluator | [DROID](droid_integration.md), [LIBERO](robotics_benchmark_integration.md) | — | [LIBERO bridge and evaluator](../examples/libero/README.md) |
 | Add a tool or domain | [Tool authoring](tool_authoring.md), [extension guide](../EXTENDING.md) | — | [External package](../examples/partner_tool/README.md), [custom experiment tool](../examples/experiment_toolbox/partner_tool.py) |
 

@@ -1,0 +1,26 @@
+[
+  {
+    "target": "embed_suffix",
+    "calls": 10,
+    "exact": true,
+    "max_abs_error": 0.0,
+    "measurements": 20,
+    "seconds": 9.711093826000024
+  },
+  {
+    "target": "PaliGemma.llm.suffix",
+    "calls": 10,
+    "exact": true,
+    "max_abs_error": 0.0,
+    "measurements": 20,
+    "seconds": 9.737355045999948
+  },
+  {
+    "target": "action_out_proj",
+    "calls": 10,
+    "exact": true,
+    "max_abs_error": 0.0,
+    "measurements": 20,
+    "seconds": 9.752809051000213
+  }
+]

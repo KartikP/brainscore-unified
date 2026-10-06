@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "run_id": "66ec9e9f735144d9a833b6ec11f58e94",
+  "metadata": {
+    "$mapping": [
+      [
+        "experiment",
+        "c9e6cfed25394c7c8b0f59d7531b7d94"
+      ],
+      [
+        "plan",
+        {
+          "$mapping": [
+            [
+              "subject",
+              "openpi.policies.policy.Policy"
+            ],
+            [
+              "subject_type",
+              "openpi.policies.policy.Policy"
+            ],
+            [
+              "protocol",
+              {
+                "$mapping": [
+                  [
+                    "identifier",
+                    "recording"
+                  ],
+                  [
+                    "implementation",
+                    "brainscore.experiments.runner.CallableProtocol"
+                  ],
+                  [
+                    "config",
+                    {
+                      "$mapping": [
+                        [
+                          "methods",
+                          {
+                            "$tuple": [
+                              "infer"
+                            ]
+                          }
+                        ],
+                        [
+                          "metadata",
+                          {
+                            "$mapping": []
+                          }
+                        ],
+                        [
+                          "reset_policy",
+                          "owned by external evaluator"
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "tools",
+              [
+                {
+                  "$mapping": [
+                    [
+                      "name",
+                      "inputs_outputs"
+                    ],
+                    [
+                      "implementation",
+                      "brainscore.experiments.tools.RecordInputsOutputs"
+                    ],
+                    [
+                      "phase",
+                      "observe"
+                    ],
+                    [
+                      "config",
+                      {
+                        "$mapping": []
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "$mapping": [
+                    [
+                      "name",
+                      "activity"
+                    ],
+                    [
+                      "implementation",
+                      "brainscore.experiments.tools.RecordActivity"
+                    ],
+                    [
+                      "phase",
+                      "after_intervention"
+                    ],
+                    [
+                      "config",
+                      {
+                        "$mapping": [
+                          [
+                            "targets",
+                            [
+                              {
+                                "$mapping": [
+                                  [
+                                    "layer",
+                                    "action_out_proj"
+                                  ],
+                                  [
+                                    "indices",
+                                    [
+                                      0
+                                    ]
+                                  ]
+                                ]
+                              }
+                            ]
+                          ],
+                          [
+                            "when",
+                            "after"
+                          ]
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ],
+            [
+              "instrumentation",
+              {
+                "$mapping": [
+                  [
+                    "provider",
+                    "OpenPIInstrumentation"
+                  ],
+                  [
+                    "backend",
+                    "jax"
+                  ],
+                  [
+                    "jax_version",
+                    "0.5.3"
+                  ],
+                  [
+                    "checkpoint",
+                    "pi05_libero:sha256:a6423f21c698393718047e96c05e0d13026d002f6788a6f05c22f750597083c1"
+                  ],
+                  [
+                    "sampler_sha256",
+                    "da5a021ff1e58d893428c4c4915348a112668e65403ac3f9bf73c8b3265574fe"
+                  ],
+                  [
+                    "openpi_revision",
+                    "215abfb217dbac7d5f1273282331b9b1866c0479"
+                  ],
+                  [
+                    "devices",
+                    [
+                      "cuda:0"
+                    ]
+                  ],
+                  [
+                    "steps",
+                    {
+                      "$tuple": [
+                        0,
+                        1
+                      ]
+                    }
+                  ],
+                  [
+                    "targets",
+                    {
+                      "$mapping": [
+                        [
+                          "embed_suffix",
+                          {
+                            "$mapping": [
+                              [
+                                "description",
+                                "Action/state/time embeddings before the transformer"
+                              ],
+                              [
+                                "width",
+                                1024
+                              ]
+                            ]
+                          }
+                        ],
+                        [
+                          "PaliGemma.llm.suffix",
+                          {
+                            "$mapping": [
+                              [
+                                "description",
+                                "Action transformer output before the projection"
+                              ],
+                              [
+                                "width",
+                                1024
+                              ]
+                            ]
+                          }
+                        ],
+                        [
+                          "action_out_proj",
+                          {
+                            "$mapping": [
+                              [
+                                "description",
+                                "Denoising velocity before integration, not returned actions"
+                              ],
+                              [
+                                "width",
+                                32
+                              ]
+                            ]
+                          }
+                        ]
+                      ]
+                    }
+                  ],
+                  [
+                    "operations",
+                    [
+                      "record",
+                      "ablate"
+                    ]
+                  ]
+                ]
+              }
+            ],
+            [
+              "metadata",
+              {
+                "$mapping": []
+              }
+            ]
+          ]
+        }
+      ]
+    ]
+  },
+  "status": "complete",
+  "event_count": 42,
+  "events_sha256": "195f7105c79d2dea7107af93da796d12a9191c0e0d5815530fc9ae53744da1a2"
+}

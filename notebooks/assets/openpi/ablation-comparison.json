@@ -1,0 +1,25 @@
+{
+  "episodes_per_route": 10,
+  "suite": "libero_spatial",
+  "reference_only_successes": 0,
+  "umi_only_successes": 0,
+  "success_rate_difference": 0.0,
+  "interpretation": "descriptive comparison; not proof of equivalence",
+  "interval_note": "95% Wilson interval pooled across trials; task dependence is not modeled",
+  "reference": {
+    "successes": 10,
+    "success_rate": 1.0,
+    "wilson_95": [
+      0.7224672001371107,
+      0.9999999999999999
+    ]
+  },
+  "umi": {
+    "successes": 10,
+    "success_rate": 1.0,
+    "wilson_95": [
+      0.7224672001371107,
+      0.9999999999999999
+    ]
+  }
+}

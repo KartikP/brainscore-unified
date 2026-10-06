@@ -1,0 +1,88 @@
+{
+  "schema_version": 1,
+  "run_id": "027d1836e90d4cf986e2ca2a8186a836",
+  "status": "complete",
+  "started_utc": "2026-10-06T13:35:26.425848+00:00",
+  "plan": {
+    "subject": "openpi.policies.policy.Policy",
+    "subject_type": "openpi.policies.policy.Policy",
+    "protocol": {
+      "identifier": "baseline",
+      "implementation": "brainscore.experiments.runner.CallableProtocol",
+      "config": {
+        "methods": [
+          "infer"
+        ],
+        "metadata": {},
+        "reset_policy": "owned by external evaluator"
+      }
+    },
+    "tools": [
+      {
+        "name": "inputs_outputs",
+        "implementation": "brainscore.experiments.tools.RecordInputsOutputs",
+        "phase": "observe",
+        "config": {}
+      }
+    ],
+    "instrumentation": {
+      "provider": "OpenPIInstrumentation",
+      "backend": "jax",
+      "jax_version": "0.5.3",
+      "checkpoint": "pi05_libero:sha256:a6423f21c698393718047e96c05e0d13026d002f6788a6f05c22f750597083c1",
+      "sampler_sha256": "da5a021ff1e58d893428c4c4915348a112668e65403ac3f9bf73c8b3265574fe",
+      "openpi_revision": "215abfb217dbac7d5f1273282331b9b1866c0479",
+      "devices": [
+        "cuda:0"
+      ],
+      "steps": [
+        0,
+        1
+      ],
+      "targets": {
+        "embed_suffix": {
+          "description": "Action/state/time embeddings before the transformer",
+          "width": 1024
+        },
+        "PaliGemma.llm.suffix": {
+          "description": "Action transformer output before the projection",
+          "width": 1024
+        },
+        "action_out_proj": {
+          "description": "Denoising velocity before integration, not returned actions",
+          "width": 32
+        }
+      },
+      "operations": [
+        "record",
+        "ablate"
+      ]
+    },
+    "metadata": {}
+  },
+  "artifacts": [
+    {
+      "path": "result.json",
+      "producer": "protocol",
+      "description": "Protocol return value, RunRecord payload encoding",
+      "sha256": "0daad6dbe877fad917e3790677408c9e2556edb6339d3c98c9c91682d22314f6",
+      "bytes": 60
+    },
+    {
+      "path": "inputs_outputs/manifest.json",
+      "producer": "brainscore.RunRecorder",
+      "description": "Record manifest with event-log checksum",
+      "sha256": "a5cfc109e0c6331e4f0f57b4054d0363923481a7cacd41e2a3fae5d6639ac609",
+      "bytes": 5996
+    },
+    {
+      "path": "inputs_outputs/events.jsonl",
+      "producer": "brainscore.RunRecorder",
+      "description": "Events with content-addressed array/file references",
+      "sha256": "29c3aa7986b9a1ba925ad1e7df94589e47960360ef82d8fe0fe1c9d6ba9c153f",
+      "bytes": 12995
+    }
+  ],
+  "finished_utc": "2026-10-06T13:35:49.094961+00:00",
+  "event_count": 22
+}

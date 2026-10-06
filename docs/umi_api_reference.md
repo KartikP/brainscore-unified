@@ -193,4 +193,6 @@ Large models and full benchmark runs require suitable compute and staged data. A
 
 `TorchInstrumentation` connects internal tools to a PyTorch network, including a local robotics policy. `ObserveCalls` wraps the direct `observe` mechanism; recording tools write through `RunRecorder`. See [component responsibilities](experiment_toolbox.md#how-the-pieces-fit) and [policy instrumentation](policy_instrumentation.md).
 
+**Feature branch:** `OpenPIInstrumentation(policy, checkpoint=..., steps=...)` connects the same activity/ablation tools to three named sites in the pinned Pi0/Pi0.5 JAX sampler. `RemoteOpenPIInstrumentation(client)` uses `OpenPIPolicyClient` and `OpenPIToolServer` for request-scoped remote access. See [policy instrumentation](policy_instrumentation.md) for targets and qualification limits.
+
 **Feature branch:** `RecordReasoning` saves exposed reasoning in `reasoning/`, read with `RunRecord(result.directory / 'reasoning')`. `build_trace_subject(..., streaming=True)` emits intermediate response traces during sessions and parses only the final answer. See [reasoning recording](reasoning_recording.md).

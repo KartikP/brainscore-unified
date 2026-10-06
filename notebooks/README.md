@@ -47,8 +47,9 @@ Select that Python environment as your kernel and run cells in order. Some examp
 | 15 | [Control delivery](15_streaming_delivery.ipynb) | Inspect batching, windows, and clock policies. | Advanced internal-driver demonstration; CPU. |
 | 17 | [Experiment with digits](17_experiment_toolbox.ipynb) | Train, record, ablate, restore, and replay. | Real bundled digits; CPU, no download. |
 | 18 | [Experiment with ResNet-18](18_resnet_experiment_toolbox.ipynb) | Attach the same tools to a pretrained image model. | Real bundled photos; CPU, ~45 MB weight download. |
+| 19 | [Inspect an OpenPI policy](19_openpi_experiment_toolbox.ipynb) | Read internal measurements and compare predicted actions; optionally attach tools remotely. | Saved trained-policy GPU results; reading needs no GPU. Live use requires the OpenPI tool server and matching inputs. |
 
-`Ablate` uses the same intervention implementation as notebooks 11 and 14. `RecordActivity` uses `ActivationWindow`, demonstrated directly in 05 and 12. These are composition and direct-control entry points to the same components.
+In the PyTorch notebooks, `Ablate` uses the same intervention implementation as notebooks 11 and 14. `RecordActivity` uses `ActivationWindow`, demonstrated directly in 05 and 12. These are composition and direct-control entry points to the same components.
 
 For notebook 16, set `BRAINSCORE_LEBEL_PICKLE` to the supplied dataset path. A saved-result notebook does not rerun the original scoring, and a synthetic demonstration does not establish scientific validity.
 
