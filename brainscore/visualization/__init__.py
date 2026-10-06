@@ -18,6 +18,7 @@ from .brain_map import (
     cortical_surface_map,
     cortical_surface_movie,
     voxel_surface_map,
+    vertex_surface_map,
     parcels_to_vertices,
     parcels_to_nifti,
     quickbrain_outline_map,
@@ -47,6 +48,7 @@ from .layer_contribution import layer_modality_heatmap, layer_unit_heatmap
 __all__ = [
     'normalize_values', 'parcel_grid_heatmap', 'network_strip',
     'cortical_surface_map', 'cortical_surface_movie', 'voxel_surface_map',
+    'vertex_surface_map',
     'fetch_schaefer_fsaverage_annot',
     'parcels_to_vertices', 'parcels_to_nifti', 'quickbrain_outline_map',
     'quickbrain_outline_movie', 'glass_brain_map', 'glass_brain_movie',

@@ -11,7 +11,7 @@ python -m pip install -e './unified[notebooks]'
 jupyter notebook unified/notebooks/
 ```
 
-Select that Python environment as your kernel and run cells in order. Some examples download weights; notebook 16 also needs a separately supplied dataset. Missing plotting libraries usually mean the notebook extra is not installed.
+Select that Python environment as your kernel and run cells in order. Some examples download weights; rerunning notebook 16 also needs the linked LeBel dataset. Missing plotting libraries usually mean the notebook extra is not installed.
 
 ## Choose an example
 
@@ -35,7 +35,7 @@ Select that Python environment as your kernel and run cells in order. Some examp
 | 06 | [Measure spatial organization](06_topographic_metric.ipynb) | Compare correlation with distance between units. | Synthetic layouts; CPU. |
 | 08 | [Display a brain map](08_brain_visualization.ipynb) | Plot values assigned to cortical parcels. | Explicitly illustrative values; CPU local plots. |
 | 13 | [Align signals in time](13_temporal_multimodal.ipynb) | Resample features and test timing shifts. | Synthetic streams; CPU. |
-| 16 | [Predict story-listening responses](16_whole_brain_encoding.ipynb) | Score GPT-2 against held-out fMRI stories. | GPT-2, LeBel2023 pickle, sufficient memory. |
+| 16 | [Predict story-listening responses](16_whole_brain_encoding.ipynb) | Score GPT-2 against held-out fMRI stories. | Saved measured figures; rerun needs GPT-2, LeBel2023 pickle, sufficient memory. |
 
 ### Intervene and run sessions
 
