@@ -54,10 +54,21 @@ def report():
                      f"{row['kind']:<12s} {row['path']}")
     lines.append('')
 
+    dependency_problems = problems
+    from brainscore_core.preflight import check_cache_directory
+    try:
+        cache = check_cache_directory()
+        lines.append(f'result cache  {cache if cache is not None else "disabled"}')
+    except OSError as error:
+        lines.append(f'result cache  XX {error}')
+        problems += 1
+    lines.append('')
+
     if problems:
-        lines.append(f'{problems} dependency problem(s). Scoring may be wrong '
-                     f'rather than merely broken: install the pinned '
-                     f'environment (environment-unified.yml).')
+        lines.append(f'{problems} environment problem(s). Resolve the errors above before scoring.')
+        if dependency_problems:
+            lines.append('Dependency mismatches can make scoring wrong rather than merely broken: '
+                         'install the pinned environment (environment-unified.yml).')
     else:
         lines.append('Dependencies are within bounds. Missing data assets above '
                      'are only needed by the benchmarks that name them; run '

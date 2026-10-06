@@ -23,6 +23,8 @@ For registration and scoring, open [the layer-mapping quickstart](../notebooks/0
 
 This example can download CLIP weights and public benchmark data on its first run. See [model downloads](model_downloads.md) for the download guard.
 
+Allow roughly 1.1 GB for the model download, plus benchmark data and caches. One M3 Pro CPU audit took about eight minutes with benchmark data already cached; this is an example measurement, not a runtime guarantee. Download time and scoring time depend on your connection and hardware.
+
 ```python
 import brainscore
 
@@ -31,6 +33,16 @@ print(float(score))
 ```
 
 You can also pass a model object: `brainscore.score(my_model, benchmark_id)`. Registration is optional for your own experiments.
+
+## Check storage before a long run
+
+`python -m brainscore.doctor` checks result-cache writability. If the cache points to an unmounted drive, mount it or choose another directory **before starting Python**:
+
+```sh
+export RESULTCACHING_HOME=/path/to/writable/cache
+```
+
+Use `RESULTCACHING_DISABLE=1` to bypass result caching. Activation caches check model weights, extraction settings, and input contents before reusing results. See [caching](caching.md) for costs and limits.
 
 ## Choose your integration path
 

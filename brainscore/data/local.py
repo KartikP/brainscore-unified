@@ -196,3 +196,10 @@ ALGONAUTS_ROOT = register(LocalAsset(
             '--algonauts-root <root> --subjects 1',
     used_by=['Algonauts2025-friends-sub01'],
 ))
+
+
+def check_benchmark_assets(identifier: str) -> None:
+    """Check declared local assets without constructing a model or reading data."""
+    for asset in REGISTRY.values():
+        if identifier in asset.used_by:
+            path(asset.name)

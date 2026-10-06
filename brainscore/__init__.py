@@ -83,19 +83,14 @@ def load_model(identifier: str) -> Subject:
     )
 
 
-def _ensure_legacy_benchmark_modalities(benchmark, modalities) -> Benchmark:
-    if not getattr(benchmark, 'required_modalities', None) and not getattr(
-            benchmark, 'accepted_modalities', None):
-        benchmark.required_modalities = set(modalities)
-    return benchmark
-
-
 def load_benchmark(identifier: str) -> Benchmark:
     """Load a benchmark by identifier.
 
     Checks the unified registry first, then falls back to domain-specific
     registries.
     """
+    from brainscore_core.compatibility import ensure_legacy_benchmark_modalities
+
     if identifier in benchmark_registry:
         return benchmark_registry[identifier]()
 
@@ -103,7 +98,7 @@ def load_benchmark(identifier: str) -> Benchmark:
     try:
         from brainscore_vision import load_benchmark as load_vision_benchmark
         benchmark = load_vision_benchmark(identifier)
-        return _ensure_legacy_benchmark_modalities(benchmark, {'vision'})
+        return ensure_legacy_benchmark_modalities(benchmark, {'vision'})
     except PluginNotFoundError:
         pass
 
@@ -111,7 +106,7 @@ def load_benchmark(identifier: str) -> Benchmark:
     try:
         from brainscore_language import load_benchmark as load_language_benchmark
         benchmark = load_language_benchmark(identifier)
-        return _ensure_legacy_benchmark_modalities(benchmark, {'text'})
+        return ensure_legacy_benchmark_modalities(benchmark, {'text'})
     except PluginNotFoundError:
         pass
 
@@ -218,6 +213,7 @@ def score(model_identifier, benchmark_identifier,
         check_channel_compatibility,
         check_compatibility,
     )
+    from brainscore_core.extraction_cache import weight_fingerprint_scope
     from brainscore_core.memory import check_memory
     from brainscore_core.score_metadata import (
         infer_score_protocol,
@@ -227,10 +223,15 @@ def score(model_identifier, benchmark_identifier,
 
     import time as _time
     # accept either an identifier string or an already-built object
-    model = (load_model(model_identifier)
-             if isinstance(model_identifier, str) else model_identifier)
+    from brainscore_core.preflight import check_cache_directory
+    check_cache_directory()
+    if isinstance(benchmark_identifier, str):
+        from brainscore.data.local import check_benchmark_assets
+        check_benchmark_assets(benchmark_identifier)
     benchmark = (load_benchmark(benchmark_identifier)
                  if isinstance(benchmark_identifier, str) else benchmark_identifier)
+    model = (load_model(model_identifier)
+             if isinstance(model_identifier, str) else model_identifier)
     model_id = (model_identifier if isinstance(model_identifier, str)
                 else _resolve_identifier(model, 'custom-model'))
     benchmark_id = (benchmark_identifier if isinstance(benchmark_identifier, str)
@@ -243,7 +244,8 @@ def score(model_identifier, benchmark_identifier,
         check_memory(model, benchmark)
 
     _t0 = _time.time()
-    result = benchmark(model)
+    with weight_fingerprint_scope():
+        result = benchmark(model)
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
     result.attrs['benchmark_identifier'] = benchmark_id
