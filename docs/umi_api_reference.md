@@ -190,3 +190,7 @@ Large models and full benchmark runs require suitable compute and staged data. A
 `Experiment(subject=..., protocol=..., tools=..., output_dir=...)` assembles a run without changing the subject contract. Use `SessionProtocol` for session-based subjects or `CallableProtocol` around an existing evaluator. Conditions name settings being compared; trials identify repetitions.
 
 `RecordInputsOutputs`, `RecordActivity`, and `Ablate` record or change the run. Layer targets use model paths and `Selection`; `result.record` returns the shared `RunRecord` reader. See [set up an experiment](experiment_toolbox.md) for the complete API and [shared vocabulary](conventions.md) for terminology.
+
+`TorchInstrumentation` connects internal tools to a PyTorch network, including a local robotics policy. `ObserveCalls` wraps the direct `observe` mechanism; recording tools write through `RunRecorder`. See [component responsibilities](experiment_toolbox.md#how-the-pieces-fit) and [policy instrumentation](policy_instrumentation.md).
+
+**Feature branch:** `RecordReasoning` saves exposed reasoning in `reasoning/`, read with `RunRecord(result.directory / 'reasoning')`. `build_trace_subject(..., streaming=True)` emits intermediate response traces during sessions and parses only the final answer. See [reasoning recording](reasoning_recording.md).

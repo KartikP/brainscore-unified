@@ -2,7 +2,22 @@
 
 An `Experiment` combines a **subject** (the model adapter), a **protocol** (what to run), and **tools** (what to record or change). These use the same subjects, layer selections, and saved records as the rest of UMI.
 
-Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipynb) or the [small digit classifier](../notebooks/17_experiment_toolbox.ipynb). Both run on CPU. The APIs here are a feature-branch candidate.
+Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipynb) or the [small digit classifier](../notebooks/17_experiment_toolbox.ipynb). Both run on CPU.
+
+## How the pieces fit
+
+| Part | Responsibility |
+| --- | --- |
+| `Experiment` | Run the subject with one protocol and the selected tools; save results and clean up. |
+| `SessionProtocol` / `CallableProtocol` | Define the procedure: run sessions, or wrap an existing evaluator. |
+| `RecordInputsOutputs`, `RecordActivity`, `Ablate` | Ready-to-use tools attached to the run. |
+| `TorchInstrumentation` | Connect activity/intervention tools to the actual PyTorch network. |
+| `observe`, `ActivationWindow`, `RunRecorder` | Building blocks used underneath the tools; also usable directly. |
+| `build_trace_subject` | Adapt a generated-response provider into a subject. It produces traces; recorders save them. |
+
+`ObserveCalls` wraps `observe` for experiments. `RecordActivity` uses `ActivationWindow` through instrumentation. `RecordInputsOutputs` writes through `RunRecorder`. These are shared implementations at different levels of control.
+
+For exposed CoT and streamed responses, see [reasoning recording](reasoning_recording.md). For policies, see [robotics instrumentation](policy_instrumentation.md).
 
 ## Choose the protocol
 
@@ -78,6 +93,7 @@ This example assumes the session protocol above and a ResNet model. For recordin
 | Tool | Purpose |
 | --- | --- |
 | `RecordInputsOutputs` | Save input/output, activity, and lifecycle events with condition, trial, and call IDs. |
+| `RecordReasoning` (feature branch) | Save exposed reasoning and response context in a focused record; requires `RecordInputsOutputs`. |
 | `RecordActivity` | Record selected layer outputs through `ActivationWindow`. Requires `RecordInputsOutputs`. |
 | `Ablate` | Zero selected outputs using the same implementation as `StateChange` interventions. |
 | `ObserveCalls` | Attach an existing `on_start` / `on_result` / `on_error` observer. |

@@ -22,6 +22,8 @@ Use these terms across code, guides, and notebooks. Explain a term once, then us
 | Trial | One repetition within a condition. |
 | Experiment | One execution combining a subject, protocol, tools, and output location. |
 | Tool | A component that observes a run or changes selected model behavior. |
+| Instrumentation | The backend connection that lets tools record or change internal model activity; `TorchInstrumentation` supplies it for PyTorch. |
+| Reasoning trace | Exposed model-generated reasoning text. Preserve whether it is a complete block, a streamed delta, a cumulative snapshot, or a provider summary. It is not automatically a faithful explanation of internal computation. |
 | Benchmark | A defined evaluation procedure that returns a score. Not every experiment is a benchmark. |
 | RunRecord | The shared reader for saved measurements. Reading a record does not run the model. |
 | Replay | Sending saved inputs through a model again. This does not regenerate an environment's feedback. |
