@@ -2,7 +2,7 @@
 
 UMI connects models to benchmarks and experiments through a shared subject interface. Use it to score models, record their responses, inspect internal activity, intervene, and analyze or replay a run.
 
-These features are available in the **v2 source candidate**, except additions explicitly marked **feature branch**. Model, data, and environment combinations have different validation coverage; general-release commitments are defined in the [release policy](production_release.md).
+These features are available in the **v2 source candidate**. Model, data, and environment combinations have different validation coverage; general-release commitments are defined in the [release policy](production_release.md).
 
 ## Capabilities by domain
 
@@ -17,7 +17,7 @@ The same experiment tools work across domains when the subject exposes the requi
 | Robotics | Observations, instructions, state, actions and action chunks | Local, accessible policy backend; remote internals require server support | Recorded-action comparisons; external simulator task success | [DROID](droid_integration.md): untrained-policy transport/tool demonstration. [LIBERO](robotics_benchmark_integration.md): trained-policy smoke comparison |
 | Recurrent neural/behavioral models | Sequential inputs, activity and behavioral outputs | Accessible components, with explicit state/reset behavior | User-defined protocols and metrics | [Recurrent example](../examples/experiment_toolbox/run.py): synthetic integration, not a validated whole-brain model |
 
-**Backend access** means the tool can attach to the underlying model. Internal recording and ablation use `TorchInstrumentation`, or the feature-branch OpenPI/JAX providers below. Other backends need a provider. A remote model's input/output access does not provide access to its layers.
+**Backend access** means the tool can attach to the underlying model. Internal recording and ablation use `TorchInstrumentation`, or the OpenPI/JAX providers below. Other backends need a provider. A remote model's input/output access does not provide access to its layers.
 
 ## Run and score
 
@@ -40,7 +40,7 @@ Pass these in `Experiment(tools=[...])`.
 | `RecordActivity` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation |
 | `Ablate` | Temporarily zero selected outputs, optionally in selected conditions/trials | Instrumentation |
 | `ObserveCalls` | Include an existing call observer in the experiment | Observer callbacks and selected subject methods |
-| `RecordReasoning` **(feature branch)** | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
+| `RecordReasoning` | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
 
 ## Adapters and building blocks
 
@@ -49,13 +49,13 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | Component | Responsibility | Relationship to experiment tools |
 | --- | --- | --- |
 | `TorchInstrumentation` | Access the actual PyTorch network's named layers | Supplies internal recording/ablation; [policy backends](policy_instrumentation.md) |
-| `OpenPIInstrumentation` **(feature branch)** | Record/ablate three sites in the pinned Pi0/Pi0.5 JAX sampler | Selected units and denoising iterations; [trained L4 and ten-task smoke checks](qualification/2026-10-06-openpi-tools.md) |
-| `RemoteOpenPIInstrumentation` **(feature branch)** | Use the same tools through `OpenPIToolServer` and `OpenPIPolicyClient` | Request-scoped cleanup and separate activity delivery; [guide](policy_instrumentation.md) |
+| `OpenPIInstrumentation` | Record/ablate three sites in the pinned Pi0/Pi0.5 JAX sampler | Selected units and denoising iterations; [trained L4 and ten-task smoke checks](qualification/2026-10-06-openpi-tools.md) |
+| `RemoteOpenPIInstrumentation` | Use the same tools through `OpenPIToolServer` and `OpenPIPolicyClient` | Request-scoped cleanup and separate activity delivery; [guide](policy_instrumentation.md) |
 | `observe` | Notify callbacks about method starts, results, and errors | Used by `ObserveCalls`; does not save anything by itself |
 | `ActivationWindow` / `intervene` | Scoped activity capture / intervention | The direct mechanisms behind activity and intervention workflows |
 | `RunRecorder` | Write records, arrays, files, and metadata | Storage used by recording tools |
 | `RunRecord` | Read saved measurements and apply metrics | Shared reader; no model execution |
-| `build_trace_subject` | Adapt a provider and answer parser into a subject | Produces raw responses and parsed answers for recorders; streaming is a **feature-branch** addition |
+| `build_trace_subject` | Adapt a provider and answer parser into a subject | Produces raw responses, streamed fragments, and parsed answers for recorders |
 | `replay_sessions` / `replay_calls` | Send saved inputs through a model again | Explicit new execution; does not regenerate simulator feedback |
 | `context.import_artifact` | Copy external videos/reports with producer metadata | Keeps evaluator-produced artifacts with the experiment |
 
@@ -71,10 +71,10 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | Use existing Brain-Score models | [Legacy integration](from_brain_score.md) | [10: brain alignment](../notebooks/10_brain_alignment.ipynb) | [Guide’s scoring example](from_brain_score.md#score-an-existing-model) |
 | Record, ablate, restore and replay | [Experiment toolbox](experiment_toolbox.md) | [17: digits](../notebooks/17_experiment_toolbox.ipynb), [18: ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipynb) | [Five-domain tool examples](../examples/experiment_toolbox/README.md) |
 | Work directly with internal activity | [Tool authoring](tool_authoring.md#internal-measurements-and-interventions) | [04: several regions](../notebooks/04_multiregion_geometry.ipynb), [11: ablation](../notebooks/11_state_change_ablation.ipynb), [14: interventions](../notebooks/14_intervention_spectrum.ipynb) | [Experiment tools](../examples/experiment_toolbox/run.py) |
-| Record generated reasoning | [Reasoning recorder](reasoning_recording.md) | — | [Streamed response example](../examples/experiment_toolbox/reasoning.py) (feature branch) |
+| Record generated reasoning | [Reasoning recorder](reasoning_recording.md) | — | [Streamed response example](../examples/experiment_toolbox/reasoning.py) |
 | Handle time and streaming | [Streaming API](umi_api_reference.md#streaming-helpers) | [13: temporal alignment](../notebooks/13_temporal_multimodal.ipynb), [15: delivery](../notebooks/15_streaming_delivery.ipynb) | [Session examples](../examples/experiment_toolbox/run.py) |
 | Display brain measurements | [Local data](local_data.md) | [08: illustrative maps](../notebooks/08_brain_visualization.ipynb), [16: measured predictions](../notebooks/16_whole_brain_encoding.ipynb) | [Measured figure scripts](../notebooks/figure_sources/README.md) |
-| Inspect an OpenPI policy | [Policy tools](policy_instrumentation.md) | [19: trained-policy measurements](../notebooks/19_openpi_experiment_toolbox.ipynb) | [Server](../examples/libero/serve_tools.py), [qualification](../examples/libero/qualify_tools.py) (feature branch) |
+| Inspect an OpenPI policy | [Policy tools](policy_instrumentation.md) | [19: trained-policy measurements](../notebooks/19_openpi_experiment_toolbox.ipynb) | [Server](../examples/libero/serve_tools.py), [qualification](../examples/libero/qualify_tools.py) |
 | Connect a robotics evaluator | [DROID](droid_integration.md), [LIBERO](robotics_benchmark_integration.md) | — | [LIBERO bridge and evaluator](../examples/libero/README.md) |
 | Add a tool or domain | [Tool authoring](tool_authoring.md), [extension guide](../EXTENDING.md) | — | [External package](../examples/partner_tool/README.md), [custom experiment tool](../examples/experiment_toolbox/partner_tool.py) |
 
