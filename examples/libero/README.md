@@ -1,9 +1,8 @@
 # Reproduce a trained policy on LIBERO
 
-**Status: trained-policy smoke checks passed with cached GPU autotuning; full
-Spatial evaluation is in progress.** Both routes completed 10/10 smoke trials;
-221 same-input inference requests matched exactly. This is not yet a completed
-full benchmark qualification.
+**Transport results:** both routes passed 10/10 smoke trials and 221 saved requests matched exactly. The full Spatial run later completed: reference 496/500 successes, UMI 488/500. Those closed-loop outcomes were not equivalent.
+
+**Internal tools (feature branch):** a separate ten-task check passed after a GPU recording fix. Baseline, recording and ablation each succeeded on 10/10 tasks; baseline and recording matched all 223 observations/action chunks exactly. See the [qualification report](../../docs/qualification/2026-10-06-openpi-tools.md).
 
 For the design and steps to reuse in another benchmark, read
 [Connect a robotics benchmark](../../docs/robotics_benchmark_integration.md).
@@ -134,3 +133,44 @@ time without reducing benchmark trials. `replay-source.txt` and `replay.json`
 identify the selected corpus and call count. Do not describe that result as a
 replay of every full-benchmark request. Use the same checkpoint and saved tuning
 profile that produced the selected corpus.
+
+## Internal policy tools (feature branch)
+
+`serve_tools.py` adds the common `RecordActivity` and `Ablate` tools to the pinned
+OpenPI JAX sampler. `qualify_tools.py` compares baseline, recorded, ablated and
+restored inference on saved requests. See [policy instrumentation](../../docs/policy_instrumentation.md)
+for the target names, client example and cleanup rules.
+
+The providers have 36 CPU checks plus trained NVIDIA L4 same-input and remote checks. Selected-unit recording at all three sites preserved actions exactly on ten inputs each. The separate ten-task simulator check uses shared GPU autotuning results; it is not full benchmark reproduction.
+
+To run the optional tests, add these dependencies to an isolated Python 3.11
+UMI test environment. `OPENPI_SOURCE` must point to the pinned checkout above:
+
+```bash
+python -m pip install -r examples/libero/requirements-tools-cpu.txt
+OPENPI_SOURCE=/path/to/openpi python -m pytest \
+  tests/test_openpi_instrumentation.py \
+  tests/test_openpi_remote.py -q
+```
+
+The CPU requirements cover the test fixture. Loading a full trained checkpoint
+also requires OpenPI's complete runtime (including its LeRobot dependencies),
+checkpoint/normalization files, and suitable compute. The server imports those
+through OpenPI's own policy factory.
+
+### Use the official evaluator with tools
+
+Start `serve_tools.py` on port 8000 with `--steps 0 1`. In the UMI/OpenPI client environment, run:
+
+```bash
+python examples/libero/serve_tool_bridge.py \
+  --upstream ws://127.0.0.1:8000 \
+  --mode recording \
+  --out /path/to/new/experiment-records
+```
+
+Point the pinned evaluator at port 8001. The bridge uses the same `LiberoChunkPolicy` and common experiment tools; LIBERO still owns physics, observations, scheduling and success scoring. `--mode baseline` omits internal tools; `--mode ablation` additionally silences projection unit 0. Restart the policy server for each matched condition.
+
+For matched GPU processes, preserve baseline compilation choices with `XLA_FLAGS=--xla_gpu_dump_autotune_results_to=/path/to/autotune.textproto`. Subsequent conditions load that file with `--xla_gpu_load_autotune_results_from=/path/to/autotune.textproto --xla_gpu_require_complete_aot_autotune_results=true`. Set these before starting the policy process and retain the file with the run evidence.
+
+`qualify_remote_tools.py` takes the same `--checkpoint`, `--record`, and `--out` paths as the local qualification script, and tests direct-versus-remote inference before simulator use.

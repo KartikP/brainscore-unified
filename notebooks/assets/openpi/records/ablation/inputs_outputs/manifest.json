@@ -1,0 +1,354 @@
+{
+  "schema_version": 1,
+  "run_id": "592fbd3c443a48a8941e8f8902ecbef8",
+  "metadata": {
+    "$mapping": [
+      [
+        "experiment",
+        "a3e707ad3d6c46a38d9a0bb53f7fcd2e"
+      ],
+      [
+        "plan",
+        {
+          "$mapping": [
+            [
+              "subject",
+              "openpi.policies.policy.Policy"
+            ],
+            [
+              "subject_type",
+              "openpi.policies.policy.Policy"
+            ],
+            [
+              "protocol",
+              {
+                "$mapping": [
+                  [
+                    "identifier",
+                    "ablation"
+                  ],
+                  [
+                    "implementation",
+                    "brainscore.experiments.runner.CallableProtocol"
+                  ],
+                  [
+                    "config",
+                    {
+                      "$mapping": [
+                        [
+                          "methods",
+                          {
+                            "$tuple": [
+                              "infer"
+                            ]
+                          }
+                        ],
+                        [
+                          "metadata",
+                          {
+                            "$mapping": []
+                          }
+                        ],
+                        [
+                          "reset_policy",
+                          "owned by external evaluator"
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "tools",
+              [
+                {
+                  "$mapping": [
+                    [
+                      "name",
+                      "inputs_outputs"
+                    ],
+                    [
+                      "implementation",
+                      "brainscore.experiments.tools.RecordInputsOutputs"
+                    ],
+                    [
+                      "phase",
+                      "observe"
+                    ],
+                    [
+                      "config",
+                      {
+                        "$mapping": []
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "$mapping": [
+                    [
+                      "name",
+                      "before"
+                    ],
+                    [
+                      "implementation",
+                      "brainscore.experiments.tools.RecordActivity"
+                    ],
+                    [
+                      "phase",
+                      "before_intervention"
+                    ],
+                    [
+                      "config",
+                      {
+                        "$mapping": [
+                          [
+                            "targets",
+                            [
+                              {
+                                "$mapping": [
+                                  [
+                                    "layer",
+                                    "action_out_proj"
+                                  ],
+                                  [
+                                    "indices",
+                                    [
+                                      0
+                                    ]
+                                  ]
+                                ]
+                              }
+                            ]
+                          ],
+                          [
+                            "when",
+                            "before"
+                          ]
+                        ]
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "$mapping": [
+                    [
+                      "name",
+                      "ablation"
+                    ],
+                    [
+                      "implementation",
+                      "brainscore.experiments.tools.Ablate"
+                    ],
+                    [
+                      "phase",
+                      "intervene"
+                    ],
+                    [
+                      "config",
+                      {
+                        "$mapping": [
+                          [
+                            "targets",
+                            [
+                              {
+                                "$mapping": [
+                                  [
+                                    "layer",
+                                    "action_out_proj"
+                                  ],
+                                  [
+                                    "indices",
+                                    [
+                                      0
+                                    ]
+                                  ]
+                                ]
+                              }
+                            ]
+                          ],
+                          [
+                            "conditions",
+                            null
+                          ],
+                          [
+                            "trials",
+                            null
+                          ],
+                          [
+                            "operation",
+                            "zero_output"
+                          ]
+                        ]
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "$mapping": [
+                    [
+                      "name",
+                      "after"
+                    ],
+                    [
+                      "implementation",
+                      "brainscore.experiments.tools.RecordActivity"
+                    ],
+                    [
+                      "phase",
+                      "after_intervention"
+                    ],
+                    [
+                      "config",
+                      {
+                        "$mapping": [
+                          [
+                            "targets",
+                            [
+                              {
+                                "$mapping": [
+                                  [
+                                    "layer",
+                                    "action_out_proj"
+                                  ],
+                                  [
+                                    "indices",
+                                    [
+                                      0
+                                    ]
+                                  ]
+                                ]
+                              }
+                            ]
+                          ],
+                          [
+                            "when",
+                            "after"
+                          ]
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ],
+            [
+              "instrumentation",
+              {
+                "$mapping": [
+                  [
+                    "provider",
+                    "OpenPIInstrumentation"
+                  ],
+                  [
+                    "backend",
+                    "jax"
+                  ],
+                  [
+                    "jax_version",
+                    "0.5.3"
+                  ],
+                  [
+                    "checkpoint",
+                    "pi05_libero:sha256:a6423f21c698393718047e96c05e0d13026d002f6788a6f05c22f750597083c1"
+                  ],
+                  [
+                    "sampler_sha256",
+                    "da5a021ff1e58d893428c4c4915348a112668e65403ac3f9bf73c8b3265574fe"
+                  ],
+                  [
+                    "openpi_revision",
+                    "215abfb217dbac7d5f1273282331b9b1866c0479"
+                  ],
+                  [
+                    "devices",
+                    [
+                      "cuda:0"
+                    ]
+                  ],
+                  [
+                    "steps",
+                    {
+                      "$tuple": [
+                        0,
+                        1
+                      ]
+                    }
+                  ],
+                  [
+                    "targets",
+                    {
+                      "$mapping": [
+                        [
+                          "embed_suffix",
+                          {
+                            "$mapping": [
+                              [
+                                "description",
+                                "Action/state/time embeddings before the transformer"
+                              ],
+                              [
+                                "width",
+                                1024
+                              ]
+                            ]
+                          }
+                        ],
+                        [
+                          "PaliGemma.llm.suffix",
+                          {
+                            "$mapping": [
+                              [
+                                "description",
+                                "Action transformer output before the projection"
+                              ],
+                              [
+                                "width",
+                                1024
+                              ]
+                            ]
+                          }
+                        ],
+                        [
+                          "action_out_proj",
+                          {
+                            "$mapping": [
+                              [
+                                "description",
+                                "Denoising velocity before integration, not returned actions"
+                              ],
+                              [
+                                "width",
+                                32
+                              ]
+                            ]
+                          }
+                        ]
+                      ]
+                    }
+                  ],
+                  [
+                    "operations",
+                    [
+                      "record",
+                      "ablate"
+                    ]
+                  ]
+                ]
+              }
+            ],
+            [
+              "metadata",
+              {
+                "$mapping": []
+              }
+            ]
+          ]
+        }
+      ]
+    ]
+  },
+  "status": "complete",
+  "event_count": 64,
+  "events_sha256": "71f5b9f0974bdcfad8ac897ecfdf4ba808f6f78a1d5e2797510844af9f474c3d"
+}

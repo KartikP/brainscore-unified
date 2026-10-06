@@ -140,6 +140,8 @@ ValueError/TypeError produces `valid=False`, `answer=None` and `parse_error`, wh
 retaining the raw response. Provider errors propagate. This explicit path leaves
 legacy behavioral label/one-hot scoring behavior unchanged.
 
+For a focused CoT record and streamed fragments, see [reasoning recording](reasoning_recording.md). `RecordReasoning` uses the same record format and retains links to the complete input/output log.
+
 ## New input/output domains
 
 ```python
