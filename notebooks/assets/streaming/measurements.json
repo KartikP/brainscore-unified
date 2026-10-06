@@ -1,0 +1,43 @@
+{
+  "source": "15_streaming_delivery.ipynb",
+  "code_sha256": "a23c9beb8993fa13ac3de9217bba561b5fdbe0e45d2bbe4f8bdd335071e18138",
+  "evidence": "Executed deterministic session demonstration; simulated clock.",
+  "maximum_frames_held": {
+    "75_frame_feed": 30,
+    "600_frame_feed": 30
+  },
+  "timing": [
+    {
+      "Run": "Fast control",
+      "Delivered": 10,
+      "Dropped": 0,
+      "Maximum delivery lag (s)": 0.0,
+      "Finished or stopped at (s)": 9.1,
+      "Status": "Completed"
+    },
+    {
+      "Run": "Drop",
+      "Delivered": 4,
+      "Dropped": 6,
+      "Maximum delivery lag (s)": 1.0,
+      "Finished or stopped at (s)": 12.0,
+      "Status": "Completed"
+    },
+    {
+      "Run": "Lag",
+      "Delivered": 10,
+      "Dropped": 0,
+      "Maximum delivery lag (s)": 18.0,
+      "Finished or stopped at (s)": 30.0,
+      "Status": "Completed"
+    },
+    {
+      "Run": "Error",
+      "Delivered": 1,
+      "Dropped": 0,
+      "Maximum delivery lag (s)": 0.0,
+      "Finished or stopped at (s)": 3.0,
+      "Status": "Raised error"
+    }
+  ]
+}
