@@ -108,4 +108,4 @@ filterwarnings = [
 ]
 
 [tool.setuptools.package-data]
-brainscore = ["benchmarks/rajalingham2018_2afc/*.csv"]
+brainscore = ["benchmarks/rajalingham2018_2afc/*.csv", "benchmarks/nodekit_fitts/site/**/*"]

@@ -21,8 +21,8 @@ def test_import_brainscore_does_not_load_heavy_deps():
         # registries still populate without importing the plugins' model.py
         "assert len(brainscore.model_registry) == 31, "
         "f'model_registry={len(brainscore.model_registry)} (expected 31)'\n"
-        "assert len(brainscore.benchmark_registry) == 34, "
-        "f'benchmark_registry={len(brainscore.benchmark_registry)} (expected 34)'\n"
+        "assert len(brainscore.benchmark_registry) == 35, "
+        "f'benchmark_registry={len(brainscore.benchmark_registry)} (expected 35)'\n"
         "print('OK')\n"
     )
     r = subprocess.run([sys.executable, '-c', code],
