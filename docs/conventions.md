@@ -6,6 +6,8 @@ Use these terms across code, guides, and notebooks. Explain a term once, then us
 | --- | --- |
 | Model | The network or service performing the computation. |
 | Subject | The interface through which an experiment or benchmark uses a model. `BrainScoreModel` is a configurable implementation. |
+| Adapter | Connects an existing interface to another; name the interfaces, such as `VisionModelAdapter` bridging a vision plugin to UMI. |
+| Environment harness | Connects an external environment's observations, actions and lifecycle to the subject. |
 | Preprocessor | Prepares an input in the format a model expects. |
 | Wrapper | Adapts a model or extractor to an expected interface. It can include preprocessing. |
 | Activations | Internal values produced by the model. “Activity” is the plain-language name for these measurements. |
@@ -14,6 +16,7 @@ Use these terms across code, guides, and notebooks. Explain a term once, then us
 | Region mapping | A proposed correspondence between brain regions and model layers. A mapping alone is not evidence of biological similarity. |
 | Assembly | An array with labels describing its samples, units, and other axes. |
 | Neuroid | An entry on a recorded-unit axis: a model feature or biological recording site, depending on the data. |
+| Modality | An input domain, such as vision, text, or audio; channel names also describe outputs. |
 | Channel | A named kind of input or output, with a documented payload schema. |
 | Event | One timestamped input or output. Experiment logs also include activity and lifecycle events. |
 | Session | The exchange of inputs and outputs. `None` from `next_input()` means it has ended. |
@@ -30,12 +33,16 @@ Use these terms across code, guides, and notebooks. Explain a term once, then us
 
 ## One learning path
 
-- Use `subject` for the adapter and `model` or `network` for the underlying network when both appear together.
+- Use `subject` for the UMI-facing object and `model` or `network` for the underlying network when both appear together.
 - Use real layer paths in examples. Named-module mappings remain supported when an integration needs them.
 - Use `conditions` for comparisons and `trials` for repetitions. `Ablate` can filter either.
 - Use `RunRecord` or `result.record` to read measurements. `read_events` remains a convenience for complete experiment records.
 - Prefer `Experiment` when assembling several tools. Teach direct `observe`, `ActivationWindow`, and `intervene` when the example needs that level of control; explain their relationship to the tools.
 - Preserve public entry points and compatibility. Do not rename working APIs only to make their spelling match.
+
+Use “silence” for setting selected activity to zero and “intervention” for the broader category of changes. Keep API names such as `Ablate`, `StateChange`, and `Perturbation`. Explain `drive` as adding a value. Preserve meaningful controls such as recording-only, and retain condition names in saved records.
+
+Prefer “activity” in introductory prose. Use “features” for values supplied to an analysis and “representations” for patterns being compared; explain the distinction where needed. Use “v2 source candidate” for the current release status. Keep exact version numbers where installation or evidence requires them.
 
 ## Notebook structure
 

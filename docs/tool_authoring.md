@@ -1,6 +1,6 @@
 # Build tools and integrations with UMI
 
-This guide describes the 0.3.0rc1 candidate and its coordinated peer packages.
+This guide describes the v2 source candidate and its coordinated peer packages.
 The public release remains subject to the [release policy](production_release.md).
 
 When interpreting small measured effects, read the [numerical policy](numerical_policy.md).
@@ -24,8 +24,8 @@ Use the [UMI vocabulary and conventions](conventions.md) across integrations. Th
 | Record an experiment | `RunRecorder` plus `observe` or `ObservedSession` | Model, data, protocol and configuration provenance |
 | Analyze saved measurements | `RunRecord.events`, `outputs`, `evaluate` | Analysis/metric and target data |
 | Collect generated responses | `build_trace_subject` | Provider callable and explicit answer parser |
-| Measure internal activations | `ActivationWindow` / `PerceptWindow` | Supported model module and selected layers |
-| Change model activations | `intervene` and `StateChange` | Model-supported perturbation and condition design |
+| Measure internal activity | `ActivationWindow` / `PerceptWindow` | Supported model module and selected layers |
+| Change model activity | `intervene` and `StateChange` | Model-supported perturbation and condition design |
 | Add a sensory domain | `register_channel(..., columns=...)` and a preprocessor | Payload validation, materialization and model extraction |
 | Add an output or session | `Capability` with `StreamEvent` | Schema, channel declarations, dispatch and lifecycle |
 | Evaluate a robotics policy | `ActionSpec`, `droid_steps`, `evaluate_droid_episode` | Action semantics, policy, data and scientific protocol |
@@ -180,6 +180,20 @@ and `core/tests/test_external_extensions.py` for complete examples.
 ## Cache behavior for custom tools
 
 Custom extraction providers use `cache_config()` to describe state that affects their outputs. If that state cannot be represented, disable result caching for the experiment. Make weight edits through `.data` aliases or NumPy **between scoring runs**; these edits are not detected during a run. See [activation caching](caching.md) for supported wrappers and limits.
+
+## Choose a recording or intervention interface
+
+| Interface | What it does | When to use it |
+| --- | --- | --- |
+| `start_recording` + `process` | Requests benchmark-facing activity, with the subject's region mapping and assembly format | Benchmarks using `BrainScoreModel` or a compatible adapter |
+| `observe` | Observes calls, returned values, timing and failures | Add a recorder or observer to an existing evaluator |
+| `ActivationWindow` / `PerceptWindow` | Captures internal outputs / input tensors on accessible modules | Direct control of a recording context |
+| `RecordActivity` | Uses instrumentation to emit activity into an experiment record | Combine recording with other `Experiment` tools; requires `RecordInputsOutputs` |
+| `process(StateChange)` | Applies or removes a supported change through the subject | Explicit intervention control; caller owns cleanup |
+| `intervene` | Applies a `StateChange` and removes its handle on context exit | Scoped intervention around an existing evaluator |
+| `Ablate` | Silences selected units for chosen conditions/trials through instrumentation | Automatic attachment and cleanup within an `Experiment` |
+
+These operations share components, but record different things. `RecordActivity` uses `ActivationWindow` through `TorchInstrumentation`; other backends supply their own provider. An observation of a model call does not expose hidden internal activity.
 
 ## Internal measurements and interventions
 

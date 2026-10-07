@@ -1,6 +1,6 @@
 # Template: a new benchmark
 
-A benchmark drives a candidate model through the unified interface and returns a ceiled `Score`.
+This template evaluates a subject through task/recording helpers and returns a ceiling-adjusted `Score`. Benchmarks without a reliability ceiling can return raw scores instead; state the score definition explicitly.
 See `EXTENDING.md` (Seam 2) for the contract.
 
 ## Use it
@@ -19,8 +19,7 @@ score = brainscore.score('<some-model>', '<your-id>')
 
 ## The interface contract
 
-Touch the candidate ONLY through `start_recording` / `start_task` / `process` — never
-`look_at`/`digest_text`. That's what lets any compliant model run on your benchmark unchanged.
+This template requires `start_recording`, `start_task`, and `process`, supplied by `BrainScoreModel` and compatible adapters. A session-native `Subject` does not promise those methods; use `interact(session)` in a benchmark designed for that contract.
 Before opening a PR, complete the
 [benchmark addition checklist](../../docs/benchmark_addition_checklist.md) and attach the evidence
 for data-plugin loading, null floor, ceiling, modality ablations, timing assumptions, score attrs,

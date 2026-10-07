@@ -1,14 +1,14 @@
-# brainscore (unified model interface)
+# Brain-Score Unified Model Interface (UMI)
 
-Run models across compatible Brain-Score benchmarks, record their responses, and attach experiment tools. Native integrations implement `Subject.interact(session)`; existing model workflows retain `process()` through compatibility helpers.
+Run models across compatible Brain-Score benchmarks, record their responses, and attach experiment tools. A `Subject` connects the model to the experiment; `BrainScoreModel` supplies extraction and task helpers. Use `Experiment` to combine a protocol with recording and intervention tools.
 
 **Start here:** [Getting started](docs/getting_started.md) | [Concepts](docs/concepts.md) | [Build tools](docs/tool_authoring.md) | [Supported features and environments](docs/supported_features.md)
 
-UMI is a production candidate. See the [release policy](docs/production_release.md) for remaining qualification.
+UMI is a v2 source candidate. See the [release policy](docs/production_release.md) for remaining qualification.
 
 ## Layout
 
-- `brainscore/model_helpers/` — wrappers (model harnesses): image, text,
+- `brainscore/model_helpers/` — extraction wrappers: image, text,
   VLM-vision, video, audio, tensor, and the stateful `PolicyWrapper` for
   closed-loop embodied dispatch.
 - `brainscore/harnesses/` — environment and subject harnesses (robotics

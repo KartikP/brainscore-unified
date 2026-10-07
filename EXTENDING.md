@@ -32,7 +32,7 @@ model_registry:        Dict[str, Callable[[], Subject]]
 Each `load_*` checks this package first, then falls back to the `brainscore_vision` and
 `brainscore_language` registries, so legacy domain plugins remain loadable by id. Note
 that those domain registries populate lazily — see
-[Seeing what exists](docs/concepts.md#seeing-what-exists) before concluding something is
+[Finding models and benchmarks](docs/concepts.md#finding-models-and-benchmarks) before concluding something is
 missing because it is not in a registry dict.
 
 A plugin is a subpackage whose `__init__.py` adds a factory to the
@@ -54,10 +54,12 @@ score     = brainscore.score('your-model', 'your-benchmark')
 
 ## Extension seams
 
+The model and benchmark templates below use `BrainScoreModel` task and extraction helpers. For a session-native integration, implement `Subject.interact(session)` and use a benchmark or protocol that consumes that contract. A bare `Subject` is not required to implement `process()` or region mapping.
+
 | Seam | Lives in | Implements | Contract | Template |
 |------|----------|---------------|----------|----------|
 | **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `process(input_event) -> OutputEvent` | `templates/new_model/` |
-| **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(candidate) -> Score` | `templates/new_benchmark/` |
+| **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(subject) -> Score` | `templates/new_benchmark/` |
 | **Metric** | `brainscore/metrics/<name>/` | a `Metric` subclass | `__call__(assembly1, assembly2) -> Score` | `templates/new_metric/` |
 | **Data / Stimulus set** | `brainscore/data/<name>/` | loaders registered in `data_registry` / `stimulus_set_registry` | return a `StimulusSet` and a `DataAssembly` | `templates/new_data/` |
 | **Capability** | constructor slots on `BrainScoreModel` | a callable (`generation_fn` / `action_fn` / `state_change_fn`) | see below | `templates/new_capability/` |
@@ -104,8 +106,8 @@ tracking. See [activation caching](docs/caching.md) for supported paths and limi
 
 ### Seam 2 — a new benchmark
 
-A benchmark drives the candidate model and scores it. Subclass `BenchmarkBase`, implement
-`__call__(candidate)`:
+A benchmark drives the subject model and scores it. Subclass `BenchmarkBase`, implement
+`__call__(subject)`:
 
 ```python
 from brainscore_core.benchmarks import BenchmarkBase
@@ -119,9 +121,9 @@ class YourBenchmark(BenchmarkBase):
         self._assembly = load_assembly()        # target measurements
         self._metric = load_metric('your-metric')
 
-    def __call__(self, candidate):
-        candidate.start_recording('IT', time_bins=[(70, 170)])
-        predictions = candidate.process(self._stimulus_set)   # -> NeuroidAssembly
+    def __call__(self, subject):
+        subject.start_recording('IT', time_bins=[(70, 170)])
+        predictions = subject.process(self._stimulus_set)   # -> NeuroidAssembly
         raw = self._metric(predictions, self._assembly)
         return ceil_score(raw, self.ceiling)
 

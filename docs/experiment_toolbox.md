@@ -1,6 +1,6 @@
 # Set up an experiment
 
-An `Experiment` combines a **subject** (the model adapter), a **protocol** (what to run), and **tools** (what to record or change). These use the same subjects, layer selections, and saved records as the rest of UMI.
+An `Experiment` combines a **subject** (the model-facing interface), a **protocol** (what to run), and **tools** (what to record or change). These use the same subjects, layer selections, and saved records as the rest of UMI.
 
 Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipynb) or the [small digit classifier](../notebooks/17_experiment_toolbox.ipynb). Both run on CPU.
 

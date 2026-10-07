@@ -1,6 +1,6 @@
 # UMI API reference and cookbook
 
-UMI is a production candidate. See [Getting started](getting_started.md), [Tools and integrations](tool_authoring.md), and the [support matrix](supported_features.md).
+UMI is a v2 source candidate. See [Getting started](getting_started.md), [Tools and integrations](tool_authoring.md), and the [support matrix](supported_features.md).
 
 ## Which model class to use
 

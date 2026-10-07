@@ -48,7 +48,7 @@ Not every subject needs a wrapper: it can call a robotics policy or remote servi
 
 ## Subject
 
-A **subject** is the object an experiment interacts with to evaluate a model or policy. Import these classes from `brainscore_core.model_interface`:
+A **subject** is the interface through which an experiment or benchmark uses a model. Import these classes from `brainscore_core.model_interface`:
 
 | Class | Use it for |
 | --- | --- |
@@ -103,6 +103,18 @@ region_layer_map = {'V4': 'layer3', 'IT': 'layer4'}
 
 On a `BrainScoreModel`, `start_recording('IT')` then selects `layer4`. Choose the mapping using benchmark evidence; it is not automatically a scientifically validated match. Composite selections can combine units from several layers; see the [API reference](umi_api_reference.md#record-a-region).
 
+## Selections
+
+| Type | Use it for |
+| --- | --- |
+| `Selection` | A concrete layer path and optional unit indices for recording/intervention tools |
+| `UnitSelection` | A recipe resolved into a `Selection`, such as random units or a functional localizer |
+| `UnitSelector` | The base for region-mapping selectors |
+| `LayerSelector` | One layer in a region mapping; a string layer path is shorthand |
+| `CompositeSelector` | Units from several layers grouped into one region mapping |
+
+These are different roles, not interchangeable names. Extraction selectors index recorded units; PyTorch interventions index the last output axis. On a convolutional output that axis is usually image width, so inspect the shape before selecting units.
+
 ## Layer path
 
 A layer path is PyTorch's name for a module, such as `layer3.0.conv1`. List the paths on the module passed to the extraction wrapper:
@@ -115,7 +127,9 @@ Paths are relative to that module. A VLM wrapper may wrap only its vision tower,
 
 ## Modalities
 
-For `BrainScoreModel`, preprocessors describe available input modalities. `required_modalities` identifies inputs the model cannot run without. Native subjects declare channels directly.
+A **modality** is an input domain, such as vision, text, or audio. A **channel** names an input or output and its payload schema, including outputs such as `neural:IT`.
+
+For `BrainScoreModel`, preprocessors describe input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly: a custom session label such as `image` is not automatically an alias of `vision`; its producer and consumer must agree on the name and payload.
 
 ## Preprocessor vs. `activations_model`
 
@@ -133,7 +147,7 @@ A **metric** compares model responses with target measurements. It receives outp
 
 ## Score, raw vs. ceiled
 
-A `Score` holds a value and metadata. **Raw** means the direct metric result. **Ceiled** means adjusted using the benchmark's estimate of measurement reliability. State which form you report; normalization depends on the benchmark.
+A `Score` holds a value and metadata. **Raw** means the direct metric result. **Ceiled** means adjusted using the benchmark's estimate of measurement reliability. State which form you report and the formula used. Other normalization, such as standardizing responses, is not necessarily ceiling adjustment. Not every benchmark has a ceiling.
 
 Some ceiled scores can exceed 1.0. That is not the same as an accuracy above 100%. A **null floor** is the chance or randomized baseline used to interpret a result.
 
@@ -156,4 +170,4 @@ These list the unified package's registered entries. Loaders also consult vision
 
 ## Experiments and tools
 
-A subject is the model adapter; a session carries inputs and outputs. A protocol sets the procedure, and an `Experiment` combines that protocol with a subject and tools. Conditions describe settings such as normal or silenced; trials repeat those settings. Tools use the same layer paths, `Selection`, and `RunRecord` as the lower-level interfaces. See [set up an experiment](experiment_toolbox.md) and the [shared vocabulary](conventions.md).
+A subject provides the model-facing interface; a session carries inputs and outputs. A protocol sets the procedure, and an `Experiment` combines that protocol with a subject and tools. Conditions describe settings such as normal or silenced; trials repeat those settings. Tools use the same layer paths, `Selection`, and `RunRecord` as the lower-level interfaces. See [set up an experiment](experiment_toolbox.md) and the [shared vocabulary](conventions.md).

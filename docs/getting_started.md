@@ -1,10 +1,22 @@
 # Getting started
 
-UMI is a production candidate. Check the [feature reference](supported_features.md) for features, environments, and validation limits.
+UMI is a v2 source candidate. Check the [feature reference](supported_features.md) for features, environments, and validation limits.
 
 ## Install
 
 Use Python 3.11 and install the four repositories together. Follow the [pinned-revision installation instructions](../install/README.md#reproduce-the-reviewed-peer-revisions); the candidate packages are not published on PyPI.
+
+## Choose your starting point
+
+| Goal | Start here |
+| --- | --- |
+| Score a registered model | [Scoring example below](#score-a-registered-model); no custom class needed |
+| Connect a model using extraction/task helpers | `BrainScoreModel`; [notebook 01](../notebooks/01_quickstart_layer_mapping.ipynb) |
+| Define a custom session interaction | `Subject.interact(session)`; [subject contract](concepts.md#subject) |
+| Combine recording and intervention tools | `Experiment`; [notebook 18](../notebooks/18_resnet_experiment_toolbox.ipynb) |
+| Connect a robotics evaluator | [DROID](droid_integration.md) or [LIBERO](robotics_benchmark_integration.md) |
+
+`BrainScoreModel` implements `Subject`. Choose helpers that fit your task; a session-native subject does not need a region mapping. The benchmark still determines which inputs, outputs, and methods it requires.
 
 ## Run a first example
 
@@ -17,7 +29,7 @@ python unified/examples/partner_integration.py --out /tmp/umi-first-experiment
 
 Use a new output directory each time. This small synthetic example demonstrates external channels, recording, and replay without model downloads. It is an integration check, not a scientific result.
 
-For registration and scoring, open [the layer-mapping quickstart](../notebooks/01_quickstart_layer_mapping.ipynb). To combine recording and interventions on a pretrained model, open [the ResNet-18 experiment](../notebooks/18_resnet_experiment_toolbox.ipynb). Both follow the [shared vocabulary](conventions.md).
+Examples follow the [shared vocabulary](conventions.md).
 
 ## Score a registered model
 
