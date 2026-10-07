@@ -20,3 +20,4 @@ from . import multimodal_av_clip_wav2vec2  # noqa: F401  multimodal A+V: CLIP fr
 from . import multimodal_av_blip2_wav2vec2  # noqa: F401  multimodal A+V: BLIP-2 ViT-G frames + Wav2Vec2 (signal-only)
 from . import multimodal_av_qwen_wav2vec2  # noqa: F401  multimodal A+V: Qwen2.5-VL-3B vision + Wav2Vec2 (signal-only)
 from . import api_closed  # noqa: F401  closed-weight API models (Claude/GPT-4), behavioral-only via generation_fn
+from . import nodekit_pointer  # noqa: F401  pointer null + reference mover for nodekit benchmarks
