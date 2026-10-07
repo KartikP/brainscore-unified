@@ -82,3 +82,42 @@ interface is exercised, but the result is not a brain-alignment claim.
 | State-change perturbation | `process(StateChange)` | structurally-tested | Hook install, indexed ablation, concurrent handles, and reset are tested on a toy torch model. |
 | Embodied action | GridGame `action_fn` | demo-only | Floor, ceiling, deterministic boards, and registration are tested; the game is an interface demo. |
 | Closed-weight API behavior | OpenRouter / OpenAI-compatible | structurally-tested | Provider registration, lazy model construction, parsing, image payloads, and cache behavior are mocked locally. |
+| Cursor traces | `Nodekit-fitts-pointing` | demo-only | Prototype. Pointer actions replay in headless Chromium on a nodekit site; trace reader, metrics, harness timing and click adapter are tested. No human traces yet, so the ceiling is a placeholder. |
+
+## Cursor traces (nodekit, prototype)
+
+Models play the same browser task people do. A [nodekit](https://github.com/intelligence-observatory/nodekit)
+site runs in headless Chromium; the model sees a screenshot of the task board and answers
+with pointer samples, which are replayed as real mouse events. nodekit's own runtime logs
+them, so model and human traces share one format and one coordinate system (Board
+coordinates: origin at the centre, y up, 1024 x 1024 px).
+
+```bash
+pip install -e "./unified[browser]"
+playwright install chromium
+```
+
+```python
+from brainscore import load_benchmark, load_model
+score = load_benchmark('Nodekit-fitts-pointing')(load_model('nodekit-straight-reach'))
+score.attrs['fitts_r'], score.attrs['per_trial'][0], score.attrs['trace']['events'][:3]
+```
+
+- **Action format:** `process(EnvironmentStep)` returns an `EnvironmentResponse` whose
+  `action` is an `(n, 4)` array of `(dt_ms, x, y, kind)` rows (kind 0 = move, 1 = button
+  down, 2 = button up). Build one with `brainscore.harnesses.nodekit_browser.pointer_action`
+  or `click`.
+- **Timing:** the page clock is frozen between actions, so model thinking time is not
+  recorded. Page time advances only by the `dt_ms` the model emits; page times are
+  identical from run to run.
+- **Models:** `nodekit-random-pointer` (null floor), `nodekit-straight-reach` (reference
+  mover that reads the card layout), and
+  `brainscore.model_helpers.pointer_policy.build_click_policy` for vision-language models
+  (API or local weights).
+- **Score:** Pearson r between movement time and Fitts' index of difficulty over completed
+  trials. Reference mover: 0.61 (36/36 trials); random null: 0 (0/36).
+- **Rebuilding the site** needs nodekit, which requires Python 3.12, in its own
+  environment: `pip install "nodekit @ git+https://github.com/intelligence-observatory/nodekit@3a13ac4"`
+  then `python brainscore/benchmarks/nodekit_fitts/build_site.py`. Scoring does not need it.
+- **Tests:** `pytest tests/test_cursor_traces.py tests/test_nodekit_fitts.py tests/test_nodekit_browser.py`
+  (the browser tests skip when Playwright or Chromium is missing).
