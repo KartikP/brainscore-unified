@@ -29,15 +29,20 @@ CLICK_PROMPT = (
 
 
 def parse_click(text: str, size: int = BOARD_SIZE) -> Optional[Tuple[float, float]]:
-    """Pixel (x, y) from the last ``Click: (x, y)``, else the last in-range number pair."""
+    """Pixel (x, y) from the last ``Click: (x, y)``, else the last in-range number pair.
+
+    A pair opened with ``(`` but never closed, as in a reply cut off at the
+    token limit ("... at (512, 51"), is ignored rather than read as a click.
+    """
     if not text:
         return None
     num = r'(-?\d+(?:\.\d+)?)'
-    pairs = (re.findall(rf'click\s*:\s*\(?\s*{num}\s*,\s*{num}', text, re.I)
-             or re.findall(rf'{num}\s*,\s*{num}', text))[::-1]
-    for x, y in pairs:
+    pair = rf'(\(?)\s*{num}\s*,\s*{num}\s*(\)?)'
+    pairs = (re.findall(rf'click\s*:\s*{pair}', text, re.I)
+             or re.findall(pair, text))[::-1]
+    for opened, x, y, closed in pairs:
         x, y = float(x), float(y)
-        if 0 <= x <= size and 0 <= y <= size:
+        if (not opened or closed) and 0 <= x <= size and 0 <= y <= size:
             return x, y
     return None
 
@@ -119,7 +124,7 @@ def api_generate(provider, model: str, *, cache_dir=None, max_tokens: int = 300,
     return generate
 
 
-def local_vlm_generate(model_id: str, *, max_new_tokens: int = 64,
+def local_vlm_generate(model_id: str, *, max_new_tokens: int = 256,
                        resize: Optional[int] = 512) -> Callable:
     """``generate`` backed by a local HuggingFace image-text-to-text model."""
     import torch

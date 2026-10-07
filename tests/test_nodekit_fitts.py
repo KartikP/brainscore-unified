@@ -69,6 +69,8 @@ def test_pointer_action_validation():
     ('around 300, 400', (300, 400)),
     ('Click: (5000, 10)', None),
     ('no idea', None),
+    ('The center is at (512, 51', None),                     # cut off at the token limit
+    ('Click: (300, 400)\nso the square is at (512, 51', (300, 400)),
 ])
 def test_parse_click(text, expected):
     assert parse_click(text) == expected
