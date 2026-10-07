@@ -76,3 +76,13 @@ def test_click_policy_completes_a_trial_from_pixels():
     generate.calls = 0
     trials = read_trials(_play(build_click_policy(generate)))
     assert [t.action['action_value'] for t in trials if t.completed] == ['home', 'target']
+
+
+def test_target_is_dark_on_the_screenshot():
+    target = DESIGN['trials'][0]
+    with NodekitBrowserEnvironment(SITE) as env:
+        env.reset()
+        image = env.step(click(0, 0, dt_ms=20)).observation['image']
+    half = BOARD_SIZE // 2
+    assert image[half - target['y'], half + target['x']].max() < 100   # target centre
+    assert image[10, 10].min() > 240                                    # white board

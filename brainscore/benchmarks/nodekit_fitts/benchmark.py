@@ -81,8 +81,7 @@ class NodekitFittsBenchmark(BenchmarkBase):
     def __call__(self, candidate) -> Score:
         with NodekitBrowserEnvironment(
                 self.site_html, max_steps=self.max_steps, nodekit_version=NODEKIT_VERSION,
-                instruction='Click the grey square in the middle, then click the grey square '
-                            'that appears.') as env:
+                instruction='Click the dark grey square.') as env:
             trace = play_site(candidate, env)
         value, info = score_trace(trace, self.design)
         score = Score(value)

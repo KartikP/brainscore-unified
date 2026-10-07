@@ -22,7 +22,7 @@ WIDTHS = (32, 64, 128)
 DISTANCES = (128, 256, 384)
 DIRECTIONS = ((1, 0), (0, 1), (-1, 0), (0, -1))
 HOME_SIZE = 50
-CARD_COLOR = '#b8b8b8'
+CARD_COLOR = '#404040'  # dark: VLMs did not see light grey on white
 
 
 def _button(name, x, y, size):
