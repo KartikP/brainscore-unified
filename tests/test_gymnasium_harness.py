@@ -1,7 +1,7 @@
 """Tests for the Gymnasium harness — drive a standard env through process(EnvironmentStep).
 
 Uses a random policy (no GPU, no model weights) so it runs anywhere gymnasium+minigrid
-are installed. Skips cleanly if they're absent.
+are installed. The required CI profile rejects skips when either is absent.
 """
 import numpy as np
 import pytest

@@ -48,6 +48,10 @@ test = [
     "pytest",
     "pytest-check",
     "pytest-mock",
+    "pytest-timeout",
+    "matplotlib",
+    "gymnasium",
+    "minigrid",
 ]
 
 notebooks = [
