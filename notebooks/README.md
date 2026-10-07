@@ -1,6 +1,6 @@
 # Learn the Brain-Score UMI
 
-Start with **18** to attach tools to a pretrained model, or **01** to learn model registration and scoring. The remaining notebooks are independent examples. Read the [concepts](../docs/concepts.md) when a term is unfamiliar; the [shared vocabulary](../docs/conventions.md) applies throughout.
+Choose by task: **01** for registration and scoring, **18** for recording/intervention tools, or **19** for trained robotics-policy measurements. See [Getting started](../docs/getting_started.md#choose-your-starting-point) for how these paths fit together. The remaining notebooks are independent examples. Read the [concepts](../docs/concepts.md) when a term is unfamiliar; the [shared vocabulary](../docs/conventions.md) applies throughout.
 
 ## Set up
 
