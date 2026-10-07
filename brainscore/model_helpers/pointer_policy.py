@@ -128,7 +128,8 @@ def local_vlm_generate(model_id: str, *, max_new_tokens: int = 64,
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     processor = AutoProcessor.from_pretrained(model_id)
-    model = AutoModelForImageTextToText.from_pretrained(model_id, torch_dtype=torch.float32).to(device).eval()
+    dtype = torch.bfloat16 if device == 'cuda' else torch.float32
+    model = AutoModelForImageTextToText.from_pretrained(model_id, dtype=dtype).to(device).eval()
 
     def generate(image, prompt):
         img = Image.fromarray(np.asarray(image, dtype=np.uint8))
