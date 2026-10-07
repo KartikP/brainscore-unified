@@ -23,9 +23,9 @@ import numpy as np
 from brainscore.harnesses.nodekit_browser import BOARD_SIZE, click
 
 CLICK_PROMPT = (
-    "{instruction}\n\nThe image is the task screen, {size} x {size} pixels, with "
-    "(0, 0) at the top-left corner. Where should the mouse click? Reply with a "
-    "final line exactly like: Click: (x, y)")
+    "{instruction}\n\nThe image is the task screen as it is now, {size} x {size} "
+    "pixels, with (0, 0) at the top-left corner. Where should the mouse click on "
+    "this screen? Reply with a final line exactly like: Click: (x, y)")
 
 
 def parse_click(text: str, size: int = BOARD_SIZE) -> Optional[Tuple[float, float]]:
