@@ -1,5 +1,7 @@
 # Connect a robotics benchmark: the LIBERO example
 
+For shared specifications, episode records, and clocks, see [environment sessions](environment_sessions.md).
+
 **LIBERO is a collection of simulated robot manipulation tasks.** A policy
 receives camera images, robot state, and an instruction, then predicts movement
 commands. The simulator applies those commands and returns new observations.

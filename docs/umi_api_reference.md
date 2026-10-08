@@ -157,8 +157,10 @@ response = model.process(EnvironmentStep(
 action = response.action
 ~~~
 
-The environment harness owns the observation and action schemas. Consult its
-contract before using the generic run_environment helper.
+The environment wrapper declares observations and actions. See
+[environment sessions](environment_sessions.md) for specifications, seeded reset,
+execution records, and clocks. `run_environment` returns applied actions and
+closes the environment; its caller owns subject reset.
 
 ## Streaming helpers
 

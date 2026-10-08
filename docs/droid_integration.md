@@ -1,5 +1,7 @@
 # Connect a DROID policy
 
+For shared specifications, episode records, and clocks, see [environment sessions](environment_sessions.md).
+
 Use `DroidPolicy` to connect a policy that exposes `infer(request)` to UMI.
 Your policy owns model loading, image preprocessing, and inference. UMI supplies
 observations and records the returned actions. No robot is controlled by this

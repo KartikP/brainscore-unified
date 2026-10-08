@@ -78,3 +78,20 @@ def test_policy_reset_failure_propagates():
     def fail():raise RuntimeError('reset failed')
     adapter=DroidPolicy(Policy(),action_spec=spec(),reset_policy=fail)
     with pytest.raises(RuntimeError,match='reset failed'):adapter.reset()
+
+
+def test_chunk_metadata_declares_predictions_execution_and_owner():
+    policy = Policy()
+    adapter = DroidPolicy(
+        policy, action_spec=spec(), reset_policy=lambda: None, action_horizon=2,
+    )
+    responses = [adapter(step(n, first=n == 0)) for n in range(3)]
+    assert len(policy.requests) == 2
+    assert [r.metadata['chunk_id'] for r in responses] == [0, 0, 1]
+    assert [r.metadata['chunk_index'] for r in responses] == [0, 1, 0]
+    for response in responses:
+        assert response.metadata['prediction_horizon'] == 3
+        assert response.metadata['execution_horizon'] == 2
+        assert response.metadata['scheduler'] == 'policy_adapter'
+        assert response.metadata['action_kind'] == 'single'
+        assert response.metadata['control_period_ms'] == spec().period_ms
