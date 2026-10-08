@@ -16,6 +16,7 @@ SUITES = {
              'tests/test_model_interface.py', 'tests/test_constructor_ergonomics.py',
              'tests/test_channel_compatibility.py', 'tests/test_device_agnostic_env.py',
              'tests/test_streaming.py', 'tests/test_streaming_helpers.py',
+             'tests/test_environment_contract.py',
              'tests/test_streaming_behavior.py', 'tests/test_payload_validation.py',
              'tests/test_io_catalog.py', 'tests/test_io_catalog_preflight.py',
              'tests/test_channel_registry.py', 'tests/test_contract_drift.py',

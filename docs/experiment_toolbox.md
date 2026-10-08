@@ -18,6 +18,8 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 
 `ObserveCalls` wraps `observe` for experiments. `RecordActivity` uses `ActivationWindow` through instrumentation. `RecordInputsOutputs` writes through `RunRecorder`. These are shared implementations at different levels of control.
 
+For closed-loop episodes, see [environment sessions](environment_sessions.md).
+
 For exposed CoT and streamed responses, see [reasoning recording](reasoning_recording.md). For policies, see [robotics instrumentation](policy_instrumentation.md).
 
 ## Choose the protocol

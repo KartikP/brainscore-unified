@@ -4,7 +4,7 @@ This module accepts NumPy episodes (for example tfds.as_numpy output). It does
 not download data, drive hardware, or infer units from an unnamed action vector.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from pathlib import Path
 import time
 
@@ -14,38 +14,7 @@ from brainscore_core.events import CameraFrame, EnvironmentStep, EnvironmentResp
 from brainscore_core.streaming import StreamEvent
 
 
-@dataclass(frozen=True)
-class ActionSpec:
-    names: tuple[str, ...]
-    units: tuple[str, ...]
-    frame: str
-    period_ms: float
-    lower: tuple[float, ...]
-    upper: tuple[float, ...]
-
-    def __post_init__(self):
-        n = len(self.names)
-        if not n or len(set(self.names)) != n or any(not x for x in self.names):
-            raise ValueError('Action names must be nonempty and unique')
-        if any(len(x) != n for x in (self.units, self.lower, self.upper)):
-            raise ValueError('Action names, units and bounds must have equal length')
-        if not self.frame or any(not x for x in self.units):
-            raise ValueError('Explicit units and coordinate frame are required')
-        if not np.isfinite(self.period_ms) or self.period_ms <= 0:
-            raise ValueError('period_ms must be positive and finite')
-        if not np.all(np.isfinite([self.lower, self.upper])) or np.any(
-                np.asarray(self.lower) > np.asarray(self.upper)):
-            raise ValueError('Action bounds must be finite and ordered')
-
-    def validate(self, action):
-        action = np.asarray(action)
-        if action.shape != (len(self.names),) or action.dtype.kind not in 'fiu':
-            raise ValueError(f'Expected numeric action shape {(len(self.names),)}')
-        if not np.all(np.isfinite(action)):
-            raise ValueError('Action contains nonfinite values')
-        if np.any(action < self.lower) or np.any(action > self.upper):
-            raise ValueError('Action exceeds declared bounds; no implicit clipping')
-        return action.copy()
+from brainscore_core.environment import ActionSpec
 
 
 def _vector(observation, key, size):
@@ -134,7 +103,8 @@ def evaluate_droid_episode(subject, episode, *, action_spec, action_source,
                 recorder.record('output', StreamEvent('motor', response, step.context['t_ms'],
                     {'step_num': step.step_num, 'target': target, 'latency_ms': elapsed,
                      'deadline_missed': elapsed > action_spec.period_ms,
-                     'evaluation': 'recorded_trajectory'}))
+                     'evaluation': 'recorded_trajectory', 'action_status': 'predicted',
+                     'deadline_enforced': False}))
     finally:
         subject.reset()
     return {'predictions': np.stack(predictions), 'targets': np.stack(targets),

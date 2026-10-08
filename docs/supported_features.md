@@ -77,6 +77,7 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | Handle time and streaming | [Streaming API](umi_api_reference.md#streaming-helpers) | [13: temporal alignment](../notebooks/13_temporal_multimodal.ipynb), [15: delivery](../notebooks/15_streaming_delivery.ipynb) | [Session examples](../examples/experiment_toolbox/run.py) |
 | Display brain measurements | [Local data](local_data.md) | [08: illustrative maps](../notebooks/08_brain_visualization.ipynb), [16: measured predictions](../notebooks/16_whole_brain_encoding.ipynb) | [Measured figure scripts](../notebooks/figure_sources/README.md) |
 | Inspect an OpenPI policy | [Policy tools](policy_instrumentation.md) | [19: trained-policy measurements](../notebooks/19_openpi_experiment_toolbox.ipynb) | [Server](../examples/libero/serve_tools.py), [qualification](../examples/libero/qualify_tools.py) |
+| Run a native environment session | [Environment sessions](environment_sessions.md): spaces, reset, clocks, execution records | — | Grid and rendered discrete Gymnasium environments |
 | Connect a robotics evaluator | [DROID](droid_integration.md), [LIBERO](robotics_benchmark_integration.md) | — | [LIBERO bridge and evaluator](../examples/libero/README.md) |
 | Add a tool or domain | [Tool authoring](tool_authoring.md), [extension guide](../EXTENDING.md) | — | [External package](../examples/partner_tool/README.md), [custom experiment tool](../examples/experiment_toolbox/partner_tool.py) |
 

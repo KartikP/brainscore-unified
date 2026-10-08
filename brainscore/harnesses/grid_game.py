@@ -1,33 +1,15 @@
-"""A minimal, self-contained grid video game as an environment harness, plus a
-closed-loop driver that steps it through ``process(EnvironmentStep(...))``.
+"""Grid navigation environment and policy examples.
 
-This is the concrete realization of the reserved closed-loop embodied path: a
-benchmark (or demo) drives the loop one tick at a time — render a frame, wrap it
-in an :class:`EnvironmentStep`, call ``model.process(step)``, apply the returned
-action, render the next frame — without ever calling ``reset()`` between ticks.
-The model is a ``BrainScoreModel(action_fn=PolicyWrapper(policy))``; the policy
-can be a scripted oracle, a random null, or a real VLM that reads the rendered
-frame and decides where to move.
-
-The game itself is deliberately tiny and dependency-free (numpy only): an agent
-must navigate a small grid to a goal. It renders to an ``(H, W, 3) uint8`` RGB
-array — a real image a vision-language model can look at — so the same loop that
-drives a robot in simulation drives a VLM playing a video game.
-
-Design choices:
-  * The observation a *visual* policy sees is ``{'frame', 'instruction',
-    'legal_actions'}``. Ground-truth coordinates live under the private
-    ``'_state'`` key; an honest visual policy must not read keys starting with
-    ``'_'``. The oracle (which is allowed to cheat) reads ``'_state'``.
-  * Reward is ``+1`` on reaching the goal, a small ``-0.01`` step penalty
-    otherwise, so "solved in fewer steps" scores higher and a random walker is
-    clearly separated from a competent player.
+GridGameEnvironment declares observations/actions for EnvironmentSession.
+The oracle reads privileged _state; visual policies use the rendered frame.
 """
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from brainscore_core.model_interface import EnvironmentResponse, EnvironmentStep
+from brainscore_core.model_interface import EnvironmentStep
+from brainscore_core.environment import ArraySpec, DiscreteSpec, MappingSpec, TextSpec
+from brainscore_core.streaming_helpers import run_environment
 
 # Discrete action space. Row 0 is the top of the grid, so "up" decreases row.
 ACTIONS: Dict[int, str] = {0: 'up', 1: 'down', 2: 'left', 3: 'right'}
@@ -67,7 +49,9 @@ class GridGameEnv:
         self.reset()
 
     # -- environment API -------------------------------------------------
-    def reset(self) -> Dict[str, Any]:
+    def reset(self, *, seed=None) -> Dict[str, Any]:
+        if seed is not None:
+            self._rng = np.random.RandomState(seed)
         cells = [(r, c) for r in range(self.size) for c in range(self.size)]
         self._rng.shuffle(cells)
         self.agent_pos = cells[0]
@@ -77,8 +61,9 @@ class GridGameEnv:
         return self._observe()
 
     def step(self, action: int) -> Tuple[Dict[str, Any], float, bool, Dict]:
+        action = DiscreteSpec(len(ACTIONS)).validate(action)
         self._steps += 1
-        dr, dc = _DELTA.get(int(action), (0, 0))
+        dr, dc = _DELTA[action]
         nr, nc = self.agent_pos[0] + dr, self.agent_pos[1] + dc
         moved = False
         if 0 <= nr < self.size and 0 <= nc < self.size and (nr, nc) not in self.walls:
@@ -153,36 +138,59 @@ class GridGameEnv:
 
 
 class GridGameEnvironment:
-    """Adapter exposing :class:`GridGameEnv` through the ``run_environment``
-    contract: ``reset()`` / ``step(action)`` return :class:`EnvironmentStep`
-    objects (not a bare obs dict / gym tuple), so the generic
-    ``brainscore_core.streaming_helpers.run_environment`` loop can drive the game.
+    """Wrap grid observations and actions for one turn-based environment session.
 
-    This is the streaming-helper complement to :func:`play_game` (the bespoke
-    driver). Both step the same underlying :class:`GridGameEnv`; use this one when
-    you want the game to flow through the same ``reset()/step()`` API a benchmark
-    uses for any embodied environment. Terminal steps set ``is_last`` /
-    ``is_terminal`` so the loop stops (on goal or ``max_steps``).
+    The rendered view and privileged oracle state are unchanged. There is no
+    physical clock: step_num counts decisions and t_ms is unknown.
     """
 
-    def __init__(self, env: GridGameEnv):
+    def __init__(self, env: GridGameEnv, *, max_steps=None):
         self.env = env
+        self.max_steps = env.max_steps if max_steps is None else max_steps
+        if type(self.max_steps) is not int or self.max_steps < 1:
+            raise ValueError('max_steps must be a positive integer')
         self._step_num = 0
+        self.total_reward = 0.
+        self.solved = False
+        self.optimal_steps = None
 
-    def reset(self) -> EnvironmentStep:
-        obs = self.env.reset()
+    def observation_spec(self):
+        pixels = self.env.size * self.env.cell_px
+        return MappingSpec({
+            'frame': ArraySpec((pixels, pixels, 3), 'uint8'),
+            'instruction': TextSpec(),
+            'ascii': TextSpec(),
+            'legal_actions': MappingSpec({key: TextSpec() for key in ACTIONS}),
+        }, allow_extra=True)  # _state is privileged input for the oracle demo.
+
+    def action_spec(self):
+        return DiscreteSpec(len(ACTIONS))
+
+    def reset(self, *, seed=None, options=None) -> EnvironmentStep:
+        if options:
+            raise ValueError('GridGameEnvironment has no reset options')
+        obs = self.env.reset(seed=seed)
         self._step_num = 0
-        return EnvironmentStep(observation=obs, instruction=obs['instruction'],
-                               is_first=True, step_num=0)
+        self.total_reward = 0.
+        self.solved = False
+        self.optimal_steps = self.env._manhattan()
+        return EnvironmentStep(
+            observation=obs, instruction=obs['instruction'],
+            is_first=True, step_num=0,
+        )
 
     def step(self, action) -> EnvironmentStep:
-        act = int(np.asarray(action).reshape(-1)[0])
-        obs, reward, done, info = self.env.step(act)
+        action = self.action_spec().validate(action)
+        obs, reward, done, info = self.env.step(action)
         self._step_num += 1
+        self.total_reward += reward
+        self.solved = bool(info['reached_goal'])
         return EnvironmentStep(
             observation=obs, instruction=obs['instruction'],
             step_num=self._step_num, reward=reward,
-            is_terminal=bool(done), is_last=bool(done))
+            is_terminal=self.solved,
+            is_last=bool(done or self._step_num >= self.max_steps),
+        )
 
 
 def greedy_oracle_policy(observation: Dict[str, Any], history) -> int:
@@ -215,38 +223,23 @@ def random_action_policy(seed: int = 0) -> Callable:
     return policy
 
 
-def play_game(model, env: GridGameEnv, max_steps: Optional[int] = None) -> Dict[str, Any]:
-    """Drive one episode of ``env`` through ``model.process(EnvironmentStep)``.
+def play_game(model, env: GridGameEnv, max_steps: Optional[int] = None,
+              *, seed=None) -> Dict[str, Any]:
+    """Run one grid episode through EnvironmentSession; return the usual score.
 
-    Returns a result dict: ``solved`` (reached goal), ``steps`` taken,
-    ``total_reward``, ``optimal_steps`` (initial Manhattan distance — the
-    fewest possible on a wall-free board), and the full action trace.
+    The caller owns subject reset. SessionProtocol provides isolated trials when
+    using tools or comparing conditions.
     """
-    max_steps = max_steps or env.max_steps
-    obs = env.reset()
-    optimal = env._manhattan()
-    step = EnvironmentStep(observation=obs, instruction=obs['instruction'],
-                           is_first=True, step_num=0)
-    total_reward, actions = 0.0, []
-    solved, taken = False, 0
-    for t in range(max_steps):
-        response = model.process(step)
-        action = int(np.asarray(response.action).reshape(-1)[0])
-        actions.append(action)
-        obs, reward, done, info = env.step(action)
-        total_reward += reward
-        taken = t + 1
-        if done:
-            solved = info['reached_goal']
-            break
-        step = EnvironmentStep(observation=obs, instruction=obs['instruction'],
-                               step_num=t + 1, reward=reward)
+    wrapper = GridGameEnvironment(env, max_steps=max_steps)
+    responses = run_environment(model, wrapper, seed=seed, require_specs=True)
+    actions = [int(np.asarray(response.action).item()) for response in responses]
+    taken = len(actions)
     return {
-        'solved': solved,
+        'solved': wrapper.solved,
         'steps': taken,
-        'total_reward': round(total_reward, 4),
-        'optimal_steps': optimal,
-        'efficiency': round(optimal / taken, 3) if (solved and taken) else 0.0,
+        'total_reward': round(wrapper.total_reward, 4),
+        'optimal_steps': wrapper.optimal_steps,
+        'efficiency': round(wrapper.optimal_steps / taken, 3) if (wrapper.solved and taken) else 0.0,
         'actions': actions,
     }
 

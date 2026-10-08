@@ -5,6 +5,7 @@ import json
 import numpy as np
 from brainscore.run_record import RunRecord
 from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.events import EnvironmentStep
 from .runner import SessionProtocol, CallableProtocol
 
 
@@ -45,7 +46,7 @@ def replay_sessions(directory):
     outputs = set()
     for event in events:
         if event['kind'] == 'input':
-            if not isinstance(event['payload'], StreamEvent):
+            if not isinstance(event['payload'], (StreamEvent, EnvironmentStep)):
                 raise TypeError('Use replay_calls for recorded method calls')
             inputs[(event.get('condition', 'default'), event['trial_id'])].append(event['payload'])
         elif event['kind'] == 'output':
@@ -55,9 +56,18 @@ def replay_sessions(directory):
     def factory(trial):
         # Independent copies prevent a mutating subject altering another replay.
         from copy import deepcopy
-        yield InMemorySession(deepcopy(inputs[(trial.condition, trial.identifier)]))
+        saved = deepcopy(inputs[(trial.condition, trial.identifier)])
+        session = InMemorySession(saved)
+        if any(isinstance(event, EnvironmentStep) for event in saved):
+            if not all(isinstance(event, EnvironmentStep) for event in saved):
+                raise ValueError('Cannot mix environment and ordinary stream inputs in a trial')
+            session.requested_output_channels = ('motor',)
+        # SessionProtocol collects results after the final observation.
+        session.collect = lambda: [event.payload for event in session.emitted]
+        yield session
     return SessionProtocol('saved-session-inputs', factory, conditions=conditions, trials=trials,
-        input_channels={e.channel for group in inputs.values() for e in group},
+        input_channels={'observation' if isinstance(e, EnvironmentStep) else e.channel
+                        for group in inputs.values() for e in group},
         output_channels=outputs,
         metadata={**_source(directory), 'mode': 'open_loop_saved_inputs'})
 

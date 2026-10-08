@@ -109,6 +109,8 @@ class SessionProtocol:
                     subject.reset()
                     with context.trial(trial, condition=condition), self.session_factory(request) as session:
                         subject.interact(ObservedSession(session, context))
+                        if getattr(session, 'complete', True) is False:
+                            raise RuntimeError('Environment session ended before episode completion')
                         results.append(session.collect() if callable(getattr(session, 'collect', None)) else None)
                 finally:
                     subject.reset()

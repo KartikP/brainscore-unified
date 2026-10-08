@@ -33,10 +33,16 @@ class DroidPolicy:
         self.action_horizon = action_horizon
         self._pending = []
         self._next_step = None
+        self._chunk_id = -1
+        self._chunk_index = 0
+        self._prediction_horizon = None
 
     def reset(self):
         self._pending.clear()
         self._next_step = None
+        self._chunk_id = -1
+        self._chunk_index = 0
+        self._prediction_horizon = None
         self.reset_policy()
 
     def __call__(self, step):
@@ -68,9 +74,18 @@ class DroidPolicy:
                 self._next_step = None
                 raise
             self._pending = checked[:self.action_horizon]
+            self._prediction_horizon = len(checked)
+            self._chunk_id += 1
+            self._chunk_index = 0
         response = EnvironmentResponse(action=self._pending.pop(0), metadata={
             'action_horizon': self.action_horizon, 'external_camera': self.external_camera,
-            'step_num': step.step_num, 'action_transform': 'none'})
+            'step_num': step.step_num, 'action_transform': 'none',
+            'prediction_horizon': self._prediction_horizon,
+            'execution_horizon': self.action_horizon,
+            'chunk_id': self._chunk_id, 'chunk_index': self._chunk_index,
+            'scheduler': 'policy_adapter', 'action_kind': 'single',
+            'control_period_ms': self.action_spec.period_ms})
+        self._chunk_index += 1
         self._next_step = step.step_num + 1
         if step.is_last:
             self._pending.clear()

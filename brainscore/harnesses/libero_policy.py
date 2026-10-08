@@ -19,10 +19,14 @@ class LiberoChunkPolicy:
     joint velocities. Controller scaling remains in the reference environment.
     """
 
-    def __init__(self, policy):
+    def __init__(self, policy, *, execution_horizon=None):
         if not callable(getattr(policy, 'infer', None)):
             raise TypeError('Policy must expose infer(request)')
+        if execution_horizon is not None and (
+                type(execution_horizon) is not int or execution_horizon < 1):
+            raise ValueError('execution_horizon must be a positive integer')
         self.policy = policy
+        self.execution_horizon = execution_horizon
 
     def __call__(self, step):
         if not isinstance(step, EnvironmentStep):
@@ -46,7 +50,14 @@ class LiberoChunkPolicy:
         if (actions.ndim != 2 or actions.shape[0] == 0 or actions.shape[1] != 7
                 or actions.dtype.kind not in 'fiu' or not np.isfinite(actions).all()):
             raise ValueError('Expected a nonempty finite action chunk with shape (horizon, 7)')
+        if self.execution_horizon is not None and self.execution_horizon > len(actions):
+            raise ValueError('Predicted chunk does not cover execution_horizon')
         return EnvironmentResponse(
             action=actions.copy(),
-            metadata={'policy_output': deepcopy({k: v for k, v in result.items() if k != 'actions'})},
+            metadata={
+                'policy_output': deepcopy({k: v for k, v in result.items() if k != 'actions'}),
+                'action_kind': 'chunk', 'prediction_horizon': len(actions),
+                'execution_horizon': self.execution_horizon,
+                'scheduler': 'external_evaluator',
+            },
         )

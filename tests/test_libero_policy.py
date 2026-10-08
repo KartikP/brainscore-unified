@@ -175,3 +175,24 @@ def test_comparison_detects_pairing_errors_and_reports_both_disagreement_directi
     (tmp_path / 'umi/trials.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
     with pytest.raises(ValueError, match='Initial state mismatch'):
         module.compare(tmp_path / 'reference', tmp_path / 'umi')
+
+
+def test_chunk_metadata_does_not_change_external_scheduling():
+    policy = FixturePolicy()
+    response = LiberoChunkPolicy(policy, execution_horizon=5)(
+        EnvironmentStep(observation=request(), instruction='task')
+    )
+    assert response.action.shape == (10, 7)
+    assert response.metadata['prediction_horizon'] == 10
+    assert response.metadata['execution_horizon'] == 5
+    assert response.metadata['scheduler'] == 'external_evaluator'
+    assert response.metadata['action_kind'] == 'chunk'
+    unknown = LiberoChunkPolicy(policy)(EnvironmentStep(observation=request(), instruction='task'))
+    assert unknown.metadata['execution_horizon'] is None
+
+
+def test_chunk_must_cover_declared_execution_horizon():
+    with pytest.raises(ValueError, match='execution_horizon'):
+        LiberoChunkPolicy(FixturePolicy(), execution_horizon=11)(
+            EnvironmentStep(observation=request(), instruction='task')
+        )

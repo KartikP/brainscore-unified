@@ -123,5 +123,14 @@ class ObservedSession:
         return event
 
     def emit(self, event):
-        self.sink.record('output', event)
-        return self.session.emit(event)
+        if not getattr(self.session, 'records_action_execution', False):
+            self.sink.record('output', event)
+            return self.session.emit(event)
+        try:
+            with self.session.observe_actions(lambda saved: self.sink.record('output', saved)):
+                return self.session.emit(event)
+        except BaseException as error:
+            on_error = getattr(self.sink, 'on_error', None)
+            if callable(on_error):
+                on_error(Call('emit', (event,), {}), error)
+            raise

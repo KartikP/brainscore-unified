@@ -240,10 +240,12 @@ latency/deadline misses are diagnostic observations, not real-time guarantees.
 
 `evaluate_droid_episode` measures prediction agreement along recorded observations.
 It cannot measure task success under model control. For closed-loop environments,
-use `EnvironmentSession(environment, action_validator=spec.validate)`, with your
-environment returning EnvironmentStep and accepting validated actions. Hardware
-emergency stops, calibrated transforms, watchdogs and control frequency belong to
-the robotics harness and require qualification on that hardware.
+use `EnvironmentSession(environment, require_specs=True)`. The environment wrapper
+returns `EnvironmentStep` and declares `observation_spec()` and `action_spec()`.
+An optional `action_validator` can add checks. See [environment sessions](environment_sessions.md)
+for reset, recording, and timing. Hardware emergency stops, calibrated transforms,
+watchdogs, and control frequency belong to the robotics integration and require
+qualification on that hardware.
 
 ## Contribution acceptance
 
