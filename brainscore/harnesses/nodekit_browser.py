@@ -110,6 +110,7 @@ class NodekitBrowserEnvironment:
         self._steps = 0
         self._cursor = (0.0, 0.0)
         self._board = None
+        self._events: List[Dict[str, Any]] = []
 
     # -- lifecycle -------------------------------------------------------
     def _ensure_browser(self):
@@ -122,6 +123,9 @@ class NodekitBrowserEnvironment:
             self._browser = self._pw.chromium.launch(headless=self.headless)
 
     def close(self) -> None:
+        # Sessions close the environment when the episode ends; keep the trace.
+        if self._page is not None:
+            self._events = self.events()
         if self._browser is not None:
             self._browser.close()
             self._pw.stop()
@@ -133,7 +137,10 @@ class NodekitBrowserEnvironment:
     def __exit__(self, *exc):
         self.close()
 
-    def reset(self) -> EnvironmentStep:
+    def reset(self, *, seed=None, options=None) -> EnvironmentStep:
+        """Start the site. The site is deterministic, so ``seed`` has no effect."""
+        if options:
+            raise ValueError('NodekitBrowserEnvironment has no reset options')
         self._ensure_browser()
         if self._page is not None:
             self._page.close()
@@ -172,6 +179,9 @@ class NodekitBrowserEnvironment:
 
     # -- reading the page ------------------------------------------------
     def events(self) -> List[Dict[str, Any]]:
+        """Trace events so far; after :meth:`close`, those of the last episode."""
+        if self._page is None:
+            return list(self._events)
         return self._page.evaluate('window.__nk')
 
     def trace(self) -> Dict[str, Any]:
@@ -264,5 +274,5 @@ def play_site(model, environment: NodekitBrowserEnvironment) -> Dict[str, Any]:
     ``motor`` channel like any other embodied action.
     """
     from brainscore_core.streaming_helpers import run_environment
-    run_environment(model, environment)
+    run_environment(model, environment)  # closes the environment
     return environment.trace()

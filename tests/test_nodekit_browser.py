@@ -86,3 +86,15 @@ def test_target_is_dark_on_the_screenshot():
     half = BOARD_SIZE // 2
     assert image[half - target['y'], half + target['x']].max() < 100   # target centre
     assert image[10, 10].min() > 240                                    # white board
+
+
+def test_trace_survives_close_and_reset_follows_the_session_contract():
+    env = NodekitBrowserEnvironment(SITE)
+    env.reset(seed=3)
+    env.step(click(0, 0, dt_ms=20))
+    before = env.trace()['events']
+    env.close()
+    assert before and env.trace()['events'] == before
+    with pytest.raises(ValueError, match='no reset options'):
+        env.reset(options={'level': 2})
+    env.close()
