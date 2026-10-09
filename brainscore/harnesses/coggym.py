@@ -191,7 +191,12 @@ class CogGymRunner:
         }
 
     def protocol(self, *, reset):
-        """Wrap the evaluator; reset takes a repetition number, not the subject."""
+        """Build evaluation steps for Experiment without running CogGym yet.
+
+        CallableProtocol lets tools observe the subject while CogGym keeps its
+        trial loop and scoring. reset(repetition) clears provider history and
+        sampling state as needed, while preserving model instrumentation.
+        """
         if not callable(reset):
             raise TypeError('Supply a reset(repetition) callback for your provider')
 
@@ -201,6 +206,8 @@ class CogGymRunner:
                     path, producer='CogGym evaluator via UMI adapter',
                     description='Reference trial results, summary, and explicit run coverage',
                 )
+            # Translate CogGym provider calls into subject.process() calls.
+            # This is where the external evaluator connects to UMI tools.
             return self._run(
                 lambda repetition: _SubjectProvider(
                     subject, repetition, self.experiment, self._prompt_trials,

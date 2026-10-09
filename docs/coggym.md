@@ -27,7 +27,7 @@ score = brainscore.score(subject, benchmark)
 
 The result is CogGym's **raw Pearson R²**, with coverage and configuration in `score.attrs`. No human ceiling is applied. Undefined correlations raise an error and preserve the trial records. Without `output_dir`, records remain in a new temporary directory whose path is returned in `score.attrs["run_directory"]`.
 
-To attach tools, use `benchmark.protocol(model=subject.identifier)` in the `Experiment` example below instead of `runner.protocol(...)`. It uses the configured provider reset and returns the same `Score`. A provider without state can explicitly use `reset=lambda repetition: None`; UMI does not assume that reset is unnecessary.
+To attach tools, use `benchmark.protocol(model=subject.identifier)` in the `Experiment` example below instead of `runner.protocol(...)`. This returns a `CallableProtocol`: the evaluation steps wrapped for use with tools. `Experiment.run()` executes those steps using the configured provider reset and returns the score and run directory. A provider without state can explicitly use `reset=lambda repetition: None`; UMI does not assume that reset is unnecessary.
 
 Set `BRAINSCORE_COGGYM_CHECKOUT` to omit `checkout`. You can list names without loading data or a model:
 
@@ -41,6 +41,9 @@ names = sorted(
 The registry covers 11 text, 6 image and 6 video experiments. Media experiments need a provider that actually handles the supplied media. Loading validates the reference revision and prompts; it does not download data automatically. The defaults are one repetition, temperature 1.0 and an 8,192-token limit. Match the reference settings explicitly before claiming replication.
 
 ## Prepare the reference evaluator
+
+For the local data layout and a check without model inference, see the
+[data README](../brainscore/data/coggym/README.md).
 
 Use a separate experiment environment. Install the four UMI packages first, then clone and pin CogGym:
 

@@ -44,6 +44,8 @@ def prepare_dataset(
     if destination.exists() or destination.is_symlink():
         raise FileExistsError('Output already exists; choose a new directory')
     destination.parent.mkdir(parents=True, exist_ok=True)
+    # Build beside the destination, then rename only after validation succeeds.
+    # An interrupted build must not look like a ready-to-use dataset.
     staging = Path(tempfile.mkdtemp(prefix='.brainscore-build-', dir=destination.parent))
     try:
         builder = factory()

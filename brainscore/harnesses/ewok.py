@@ -16,6 +16,7 @@ class EWoKProvider:
         self.native_model = native_model
 
     def __call__(self, request: dict) -> dict:
+        """Translate a subject's request into a call to the EWoK model evaluator."""
         if request['operation'] == 'ewok.logprobs':
             values = self.native_model.score(request['targets'], request['contexts'])
             values = [float(value) for value in values]
@@ -27,4 +28,7 @@ class EWoKProvider:
             values = [str(value) for value in values]
         else:
             raise ValueError('Unsupported EWoK provider operation')
+        # build_trace_subject(parse=json.loads) turns this JSON text into the
+        # response_trace answer list used by the benchmark. This is the shared
+        # provider interface, even when the answers are numbers rather than prose.
         return {'text': json.dumps(values, allow_nan=False)}

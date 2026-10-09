@@ -18,8 +18,10 @@ from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOut
 def logprob_accuracy(values: list[float]) -> float:
     """Compare each target under the two contexts; exact ties earn half credit.
 
-    Order: T1|C1, T1|C2, T2|C1, T2|C2. Matches the paper's R analysis.
-    Unconditional target probabilities cancel in these within-target contrasts.
+    A target is a possible continuation; a context is the text preceding it.
+    Order: T1|C1, T1|C2, T2|C1, T2|C2 (target given context).
+    Target 1 should be more likely under context 1, and target 2 under context 2.
+    Their average matches the paper's R analysis; exact ties earn half credit.
     """
     if len(values) != 4 or any(
         isinstance(v, bool) or not isinstance(v, Real) or not math.isfinite(v)
@@ -32,6 +34,7 @@ def logprob_accuracy(values: list[float]) -> float:
 
 
 def _mean_by_version(rows: list[dict]) -> tuple[float, dict]:
+    """Average items within each dataset version, then weight versions equally."""
     groups = defaultdict(list)
     for row in rows:
         groups[row['version']].append(row['accuracy'])
@@ -42,6 +45,7 @@ def _mean_by_version(rows: list[dict]) -> tuple[float, dict]:
 class EWoKBenchmark(BenchmarkBase):
     """Score a prepared local EWoK dataset; no automatic model/data downloads."""
 
+    # Declare the messages the subject must accept and return before a run starts.
     required_input_channels = frozenset({'generation_request'})
     requested_output_channels = frozenset({'response_trace'})
 
@@ -58,6 +62,7 @@ class EWoKBenchmark(BenchmarkBase):
             raise ValueError('Choose logprobs or choice')
         if type(batch_size) is not int or batch_size < 1:
             raise ValueError('batch_size must be a positive integer')
+        # Check local data and its checksum before spending time on model calls.
         rows, manifest = load_prepared(root)
         if domains is not None:
             if not domains or set(domains) - set(manifest['domains']):
@@ -79,13 +84,22 @@ class EWoKBenchmark(BenchmarkBase):
         )
 
     def protocol(self) -> CallableProtocol:
-        """Attach RecordActivity, RecordReasoning or interventions with Experiment."""
+        """Build the evaluation steps for an Experiment; do not run them yet.
+
+        CallableProtocol wraps an evaluation function so Experiment can run it
+        with recording and intervention tools. The return annotation names that
+        wrapper; the Score is produced only when the protocol runs.
+        """
+        # Experiment supplies the subject (model interface) and context (run
+        # directory and artifact registration).
         def evaluate(subject, context):
             check_channel_compatibility(subject, self)
             scored = []
             for offset in range(0, len(self._rows), self._batch_size):
                 batch = self._rows[offset:offset + self._batch_size]
                 returned = {}
+                # Log probabilities compare each target under each context.
+                # Choice requests show both contexts; 0 means neither is selected.
                 pairs = ((1, 1), (1, 2), (2, 1), (2, 2)) if self._mode == 'logprobs' else ((1, 0), (2, 0))
                 for target, context_number in pairs:
                     request = {
@@ -100,7 +114,8 @@ class EWoKBenchmark(BenchmarkBase):
                             contexts2=[r['Context2'] for r in batch],
                             gen_type='constrained', prompt_type='optimized',
                         )
-                    # No expected answers or target-number labels enter the model request.
+                    # Route through the subject so tools can observe or intervene.
+                    # Expected answers and target-number labels stay in the benchmark.
                     response = subject.process(StreamEvent(
                         'generation_request', request, None,
                         {'trial_ids': [r['item_id'] for r in batch]},
@@ -109,6 +124,7 @@ class EWoKBenchmark(BenchmarkBase):
                         raise TypeError('EWoK requires a response_trace event')
                     if response.payload.get('valid') is not True:
                         raise ValueError('EWoK provider returned an invalid response')
+                    # The provider returns one value per item in the same batch order.
                     values = response.payload['answer']
                     if not isinstance(values, list) or len(values) != len(batch):
                         raise ValueError('EWoK provider must return one value per requested target')
@@ -128,11 +144,14 @@ class EWoKBenchmark(BenchmarkBase):
                         'family': row['family'], 'version': row['Version'],
                         'accuracy': accuracy, 'invalid_answers': invalid,
                     })
+                # Save each completed batch. Replace the previous file only after
+                # writing finishes, so an interrupted write keeps the last checkpoint.
                 path = context.directory / 'item-scores.json'
                 temporary = path.with_suffix('.partial')
                 temporary.write_text(json.dumps(scored, indent=2, allow_nan=False) + '\n')
                 temporary.replace(path)
             context.artifact(path, producer='EWoK benchmark', description='Item scores without benchmark text')
+            # Report overall and per-domain accuracy with the same weighting rule.
             value, versions = _mean_by_version(scored)
             domains = {}
             for domain in sorted({r['domain'] for r in scored}):
@@ -152,7 +171,9 @@ class EWoKBenchmark(BenchmarkBase):
             )
             return score
         return CallableProtocol(
-            self.identifier, evaluate, methods=['process'],
+            self.identifier,
+            evaluate,
+            methods=['process'],  # Expose model calls to the attached tools.
             metadata={
                 'protocol': self._mode, 'dataset': self._manifest,
                 'items': len(self._rows), 'batch_size': self._batch_size,
@@ -161,6 +182,7 @@ class EWoKBenchmark(BenchmarkBase):
         )
 
     def __call__(self, candidate: Subject) -> Score:
+        """Run benchmark(subject) with input/output recording and return its Score."""
         check_channel_compatibility(candidate, self)
         directory = self._output_dir
         if directory is None:
@@ -169,4 +191,5 @@ class EWoKBenchmark(BenchmarkBase):
             subject=candidate, protocol=self.protocol(),
             tools=[RecordInputsOutputs()], output_dir=directory,
         ).run()
+        # Experiment also returns the run directory; the benchmark returns the score.
         return result.value

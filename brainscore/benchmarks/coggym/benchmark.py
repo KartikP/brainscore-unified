@@ -23,6 +23,7 @@ class CogGymBenchmark(BenchmarkBase):
     One repetition is a preliminary evaluation, not a leaderboard replication.
     """
 
+    # Declare the messages the subject must accept and return before a run starts.
     required_input_channels = frozenset({'generation_request'})
     requested_output_channels = frozenset({'response_trace'})
 
@@ -84,7 +85,12 @@ class CogGymBenchmark(BenchmarkBase):
         model: str,
         reset: Callable[[int], None] | None = None,
     ) -> CallableProtocol:
-        """Use this benchmark in Experiment with the same tools as other protocols."""
+        """Build the evaluation steps for an Experiment; do not run them yet.
+
+        CallableProtocol wraps an evaluation function so Experiment can run it
+        with recording and intervention tools. The return annotation names that
+        wrapper; the Score is produced only when the protocol runs.
+        """
         reset = reset if reset is not None else self._reset
         if not callable(reset):
             raise TypeError(
@@ -95,9 +101,12 @@ class CogGymBenchmark(BenchmarkBase):
         runner = CogGymRunner(model=model, **self._configuration)
         native = runner.protocol(reset=reset)
 
+        # Experiment supplies the subject (model interface) and context (run
+        # directory and artifact registration). CogGym still owns the trial loop.
         def evaluate(subject, context):
             check_channel_compatibility(subject, self)
-            # The outer CallableProtocol observes calls once; reuse only the evaluator.
+            # Call evaluate(), not run(): the outer protocol already observes
+            # subject.process() calls, so nesting observers would record them twice.
             result = native.evaluate(subject, context)
             rows = result['experiments']
             if len(rows) != 1 or rows[0]['experiment'] != self.experiment or rows[0]['model'] != model:
@@ -108,6 +117,8 @@ class CogGymBenchmark(BenchmarkBase):
                     'CogGym R² is undefined; inspect the saved responses and coverage. '
                     'An unscorable experiment is not a zero score.'
                 )
+            # Keep CogGym's R² unchanged. Attributes explain how it was obtained;
+            # no human-ceiling normalization is applied.
             score = Score(value)
             score.attrs.update(
                 raw=Score(value),
@@ -127,11 +138,12 @@ class CogGymBenchmark(BenchmarkBase):
         return CallableProtocol(
             self.identifier,
             evaluate,
-            methods=['process'],
+            methods=['process'],  # Expose model calls to the attached tools.
             metadata=runner.describe(),
         )
 
     def __call__(self, candidate: Subject) -> Score:
+        """Run benchmark(subject) with input/output recording and return its Score."""
         check_channel_compatibility(candidate, self)
         protocol = self.protocol(model=candidate.identifier)
         directory = self._output_dir
@@ -143,4 +155,5 @@ class CogGymBenchmark(BenchmarkBase):
             tools=[RecordInputsOutputs()],
             output_dir=directory,
         ).run()
+        # Experiment also returns the run directory; the benchmark returns the score.
         return result.value

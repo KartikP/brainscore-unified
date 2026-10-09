@@ -42,9 +42,12 @@ def load_stimulus_set(root: str | Path | None = None) -> "StimulusSet":
 
 
 def load_dataset(root: str | Path | None = None) -> "BehavioralAssembly":
+    """Package the correct context for each target alongside its stimulus metadata."""
     import numpy as np
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     stimuli = load_stimulus_set(root)
+    # Every item pairs target 1 with context 1 and target 2 with context 2.
+    # These are answer keys, not measured human responses.
     assembly = BehavioralAssembly(
         np.tile([1, 2], (len(stimuli), 1)),
         dims=['presentation', 'choice'],

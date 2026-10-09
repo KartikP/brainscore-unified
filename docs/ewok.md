@@ -6,6 +6,8 @@ those relationships. The data plugin supplies answer keys, not human recordings.
 
 ## Prepare your data
 
+For step-by-step setup, see the [data README](../brainscore/data/ewok/README.md).
+
 After the four-repository installation, install the file readers from the workspace root:
 
 ```bash
@@ -112,14 +114,16 @@ The request never contains expected answers.
 
 ## Attach tools
 
-Use the same `Experiment` pattern as other benchmarks:
+Use the same `Experiment` pattern as other benchmarks. `benchmark.protocol()`
+returns a `CallableProtocol`: the evaluation steps wrapped for use with tools.
+`Experiment.run()` executes those steps and returns the score and run directory.
 
 ```python
 from brainscore.experiments import Experiment, RecordInputsOutputs
 
 result = Experiment(
     subject=subject,
-    protocol=benchmark.protocol(),  # Runs the same benchmark and score calculation.
+    protocol=benchmark.protocol(),  # Prepares the same evaluation steps and scoring.
     tools=[RecordInputsOutputs()],  # Saves requests, responses, and failures.
     output_dir="runs/ewok-recorded",
 ).run()
