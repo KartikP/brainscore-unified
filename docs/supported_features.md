@@ -24,6 +24,7 @@ The same experiment tools work across domains when the subject exposes the requi
 | What you can do | Entry point | Boundary |
 | --- | --- | --- |
 | Score models | `brainscore.score` | Registered identifiers or model/benchmark objects; compatible inputs/outputs |
+| Run public CogGym experiments | `CogGym.<Study>.<experiment>` via `load_benchmark` | 23 registered experiments delegate to the pinned CogGym runner; raw R², explicit provider reset and repetitions. Registration does not establish leaderboard replication |
 | Reuse cached activations | [Content checks](caching.md) | Standard vision, text, VLM, audio, and unified video wrappers check weights, settings, and input contents; excludes vision's separate temporal extractor |
 | Check storage and data early | `score()`, `python -m brainscore.doctor` | Scoring checks cache storage before loading benchmarks/models; unified also checks declared local assets. Lazy or remote failures can occur later |
 | Map activity to brain regions | `region_layer_map`, recording helpers | One layer, composite selections, or all layers; the benchmark determines fitting/scoring |
@@ -80,6 +81,7 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | Inspect an OpenPI policy | [Policy tools](policy_instrumentation.md) | [19: trained-policy measurements](../notebooks/19_openpi_experiment_toolbox.ipynb) | [Server](../examples/libero/serve_tools.py), [qualification](../examples/libero/qualify_tools.py) |
 | Run a native environment session | [Environment sessions](environment_sessions.md): spaces, reset, clocks, execution records | — | Grid and rendered discrete Gymnasium environments |
 | Connect a robotics evaluator | [DROID](droid_integration.md), [LIBERO](robotics_benchmark_integration.md) | — | [LIBERO bridge and evaluator](../examples/libero/README.md) |
+| Use CogGym with UMI tools | [CogGym registration and runner](coggym.md) | — | [Recorded calls, intervention and replay](../examples/coggym_toolbox.py) |
 | Add a tool or domain | [Tool authoring](tool_authoring.md), [extension guide](../EXTENDING.md) | — | [External package](../examples/partner_tool/README.md), [custom experiment tool](../examples/experiment_toolbox/partner_tool.py) |
 
 See the [notebook index](../notebooks/README.md) for downloads, compute requirements, and whether each example uses synthetic, measured, or saved results.

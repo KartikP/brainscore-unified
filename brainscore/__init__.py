@@ -83,16 +83,20 @@ def load_model(identifier: str) -> Subject:
     )
 
 
-def load_benchmark(identifier: str) -> Benchmark:
+def load_benchmark(identifier: str, **configuration: Any) -> Benchmark:
     """Load a benchmark by identifier.
 
     Checks the unified registry first, then falls back to domain-specific
-    registries.
+    registries. Configuration keywords are passed to unified benchmark factories.
+    Domain fallbacks accept identifiers only.
     """
     from brainscore_core.compatibility import ensure_legacy_benchmark_modalities
 
     if identifier in benchmark_registry:
-        return benchmark_registry[identifier]()
+        return benchmark_registry[identifier](**configuration)
+
+    if configuration:
+        raise TypeError('Benchmark configuration is supported only by unified registry factories')
 
     # Fallback to vision
     try:
