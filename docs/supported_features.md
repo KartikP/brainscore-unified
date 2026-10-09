@@ -41,6 +41,7 @@ Pass these in `Experiment(tools=[...])`.
 | `RecordInputsOutputs` | Save inputs, outputs, activity, errors, and lifecycle events | Supported payloads |
 | `RecordActivity` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation |
 | `Ablate` | Temporarily zero selected outputs, optionally in selected conditions/trials | Instrumentation |
+| `ScaleActivity` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged |
 | `ObserveCalls` | Include an existing call observer in the experiment | Observer callbacks and selected subject methods |
 | `RecordReasoning` | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
 
