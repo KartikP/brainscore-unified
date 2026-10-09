@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>NodeKit</title>
+    <link rel="shortcut icon" href="">
+
+    <!-- NodeKit -->
+    <script src="../runtime/nodekit.60690f3c23c507186dd9363c1629807e67c673e51ccb95fe4219ec4f3ed39864.js"></script>
+    <link href="../runtime/nodekit.37cf022ba53272210d699302cd99cd8a55b0f257fef249d56d0c76b2ad241d97.css" rel="stylesheet">
+    <script>
+        const graphGzB64 = `H4sIAAAAAAACE+2dX2/aMBTFv4v3SqvYBkp5naa+7aV7j9LEQFaaoCR0/SO++2wDbdEW32qTFvfutBJBca7jxKc/ru3T8Cy6x40Rc3HVZJuVGImqLsxt2aX3
+pmnLurIlybk+T84Lcz87FLdi/iwS9/KHsav6zrwJ/2r32+I8awoxr7br9Ui0pmrrxh2zf5ceDr02a5N31/vSkSi2TdbZM6V3rcmPsfmqLvPTE7mqj1V8Mw/d
+Z3eqkWjM0jfzWTyIeTISj/71h5hP7Ga13zylZVWYh2Pld1l7aytpbCuyark2YjcSna3R7rMVLuqqS9vyyZ5H2djv27YrF2W+b+Oqbsone0C2tgfnpuqMu4TT
+Y+yd6+z7kyNc9Wler939EJ8S/7NY2IKbLL9dNvW2Kl6Lx4n7tcW7nW3ZTe0u/KVwcfixsauyMOmmLv055ots3ZqRyKqq7nxD9pfrri1rlqb7J531eqr3dJdU
+szcdppXvMLf5rzvMXVyTVW3p9p3+rb3sPt7Zq9q1tbbvDnd+f4dbe4J0uymyznfL7lQEv9TypSr6Am1ka0PdrfateD3Ml/9WbxJYAVYGxMq+u87UZOp7bDr2
+PeY24MpH5ooCV8CVAblydpqvgCtMuKLBFXBl8HxFz8bACiesjIEVYGXIdMUTBekKN65MwBVwZfB0BbMrzLAyBVaAlWhGQX6qZXXYAiwfGSwXAAvAMuQ4yKcq
+Lz0GsrAhywxkAVniWWiGgYUJVy7BFXAlmhkWYIWLLw5+W3AlohUhgIULWOC4BViGT1j8jAqWhBhxBY5bcCWCCRYsCvFDC0y3QEs8KQuGQly4AtctuDIkV7DY
+zJUs8N2CLBENhjDLwgUscN4CLEOCBatCPLkC4y24EkHCgjkWbmCB7xZgiSdhwUCIC1fguwVXIkpYMHnL59FxsN4CLfEsC2EoxIUrcN6CK/EMhZCx8CELvLcg
+S0SPTUDKwgUscN4CLBGBBdO3XMAC6y3AEpFBDhkLF7DAeQuwRLQuhIyFC1jgvAVY4nnmLRIWLlyB8xZciehBT1gW4oMWeG+BlniemwCy8CEL3LcgSzxPvQVZ
++Hy/Ksy3IMuQZMH3NvPkCsy34EpE3/+BlIUPWuC+BVri+X8hpCxcuALzLbgy6MrQ6VgIS85cwALzLcASEVgwFuKDFthvgZZ4pm9BFiZk+bX5CdV22d9sScWq
+/lhFxer+WE3Fjvtjx1TspD92QsVO+2OnVOxFf+wFFTvrj51RsZf9sZekNpKAOGhlhaRFaksGxCVJdcmAvCSpLxkQmCQVJgMSk6TGZEBkklSZDMhMkjqTAaFJ
+UmkyIDVJak0FtKZIramA1hTNsRDISK2pgNYUqTUV0JoitaYCWlOk1lRAa4rUmgpoTZFaUwGtKVJrKqA1RWpNB7SmSa3pgNY0qTUd0JqmPzVDH5uk1nRAa5rU
+mg5oTU/+JrtJ3pHa/AQCvQj/kqUAAA==`;
+        function renderLoadError(message) {
+            document.body.innerHTML = `
+                <main style="font-family: sans-serif; max-width: 48rem; margin: 4rem auto; padding: 0 1.5rem; line-height: 1.5;">
+                    <h1 style="font-size: 1.5rem; margin-bottom: 1rem;">Unable to load this NodeKit site</h1>
+                    <p style="margin-bottom: 0.75rem;">
+                        This browser could not decode the embedded Graph payload required to start the task.
+                    </p>
+                    <pre style="white-space: pre-wrap; word-break: break-word; background: #f5f5f5; padding: 1rem; border-radius: 0.5rem;">${message}</pre>
+                </main>
+            `;
+        }
+        async function loadGraph() {
+            if (typeof DecompressionStream === "undefined") {
+                throw new Error("DecompressionStream is not available in this browser.");
+            }
+            const normalizedB64 = graphGzB64.replace(/\s+/g, "");
+            const gzBytes = Uint8Array.from(atob(normalizedB64), (c) => c.charCodeAt(0));
+            const decompressed = new Blob([gzBytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+            const graphJson = await new Response(decompressed).text();
+            const graph = JSON.parse(graphJson);
+            await NodeKit.play(graph);
+        }
+        window.onload = async () => {
+            try {
+                await loadGraph();
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                renderLoadError(message);
+                console.error(error);
+            }
+        };
+    </script>
+</head>
+<body></body>
+</html>

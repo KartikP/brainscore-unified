@@ -70,10 +70,12 @@ jobs:
       - name: Install coordinated packages
         run: |
           unified_wheels=(wheels/brainscore-*.whl)
-          python -m pip install -c unified/install/v2-constraints.txt wheels/*.whl "${unified_wheels[0]}[test]"
+          python -m pip install -c unified/install/v2-constraints.txt wheels/*.whl "${unified_wheels[0]}[test,browser]"
           python -m pip check
           python -m pip freeze > resolved-dependencies.txt
           python -m pip install --no-deps ./unified/examples/partner_tool
+      - name: Install Chromium for browser integration tests
+        run: python -m playwright install --with-deps chromium
       - name: Verify installed packages outside source
         working-directory: ${{ runner.temp }}
         run: |

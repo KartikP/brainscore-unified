@@ -1,5 +1,7 @@
 # Shared CPU integration profile; full scientific platform qualification is separate.
 numpy==1.26.4
+# Keep Parquet readers compatible with the shared NumPy version.
+pyarrow==25.0.1
 pandas==2.3.3
 scipy==1.17.1
 scikit-learn==1.7.2
