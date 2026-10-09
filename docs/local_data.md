@@ -13,15 +13,6 @@ Ask what you are missing before starting a run rather than during one:
 python -m brainscore.data
 ```
 
-```
-   asset               kind         path
-
--- algonauts2025-root  stimuli      /home/you/algonauts_2025
-ok lana-atlas          atlas        /home/you/Downloads/20425209/FS
-ok lebel2023-pickle    neural data  /home/you/Downloads/assembly_lebel_uts03.pkl
-
-2/3 present; missing: algonauts2025-root
-```
 
 Then ask about one of them:
 
@@ -35,6 +26,38 @@ not directly readable — the command that converts it.
 
 Every asset can live wherever you already keep it; the environment variable
 exists so you never have to move or copy a dataset you already have.
+
+## Build from native files or an access ID
+
+List the available builders:
+
+```bash
+python -m brainscore.data list
+```
+
+Build from the original authors' files, without manually converting them:
+
+```bash
+python -m brainscore.data prepare EWoK-core-1.0 \
+  --source /path/to/native-data \
+  --output /path/to/new-build
+```
+
+A plugin with an author-supported download service can instead accept
+`--request-id YOUR_ID`. The identifier's meaning belongs to that provider: an
+author-issued retrieval code, an accession, or a dataset repository ID. It is
+not a universal authorization token. Authentication and access approval still
+follow the provider's process. [EWoK](ewok.md) supports approved Hugging Face
+access and native local exports.
+
+The shared command builds in a private staging directory and publishes the
+output only after successful conversion. Failed builds leave no partial dataset;
+existing outputs are never overwritten. Input files remain unchanged. A
+`build.json` records the builder's source and conversion provenance.
+
+Existing asset-status commands and dataset-specific conversion scripts still
+work. EWoK is the first plugin using this shared builder; other datasets are not
+automatically migrated.
 
 ## As a benchmark author
 
@@ -86,3 +109,36 @@ inspection and simply scores half as well.
 Writable caches the code creates itself, such as
 `BRAINSCORE_LAHNER_FRAMES_DIR` or `BRAINSCORE_LEBEL_CACHE`. Those are outputs,
 not things a user obtains, and a missing one is not an error.
+
+### Register a reusable builder
+
+Keep the converter beside the data plugin. Register a lazy factory:
+
+```python
+from brainscore.data.preparation import DataBuilder, data_builder_registry
+
+
+def builder():
+    from .prepare import convert, retrieve
+    return DataBuilder(build=convert, resolve=retrieve)
+
+
+data_builder_registry["MyDataset"] = builder
+```
+
+- `convert(source, destination)` validates native files, writes the prepared
+  dataset under `destination`, and returns JSON provenance. Record source hashes,
+  conversion settings, exclusions, and the schema version. Validate shapes,
+  unique IDs, and required metadata before returning.
+- `retrieve(request_id)` uses the authors' documented service and returns
+  `(local_path, provenance)`. Use existing authentication; never accept terms or
+  print credentials. Keep private request IDs out of provenance and error text.
+  Set `resolve=None` when there is no supported retrieval service.
+- Loaders must verify the prepared schema and checksum before scoring. Register
+  them in `data_registry` and `stimulus_set_registry` as usual.
+- Test both access paths using synthetic fixtures, failed downloads/conversions,
+  and score agreement with the native evaluator. Do not commit restricted data.
+
+A LAION-fMRI-style request-ID workflow belongs in that dataset's `retrieve`
+function. The command passes the ID through without interpreting or storing it;
+it cannot invent a download API where the authors provide none.
