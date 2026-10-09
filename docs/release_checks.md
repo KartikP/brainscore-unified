@@ -2,6 +2,8 @@
 
 [Build tools and integrations](tool_authoring.md) | [Release qualification](production_release.md) | [Numerical policy](numerical_policy.md)
 
+See the [release test matrix](release_test_matrix.md) for the current CI baseline, proposed GitHub Actions/Jenkins split, and routing of skipped and unselected tests.
+
 ## Required offline checks
 
 The coordinated GitHub Actions workflow builds all four packages and runs the
