@@ -203,3 +203,17 @@ def check_benchmark_assets(identifier: str) -> None:
     for asset in REGISTRY.values():
         if identifier in asset.used_by:
             path(asset.name)
+
+
+EWOK_ROOT = register(LocalAsset(
+    name='ewok-core-1.0',
+    env_var='BRAINSCORE_EWOK_ROOT',
+    default_path='.brainio/ewok-core-1.0',
+    kind='stimuli',
+    why_local='The authors require protected or gated distribution of EWoK text.',
+    source='https://huggingface.co/datasets/ewok-core/ewok-core-1.0',
+    obtain='Obtain the native files from the authors, or use approved Hugging Face access.',
+    prepare='python -m brainscore.data prepare EWoK-core-1.0 '
+            '--source <native files> --output <new build directory>',
+    used_by=['EWoK-core-1.0-logprobs', 'EWoK-core-1.0-choice'],
+))

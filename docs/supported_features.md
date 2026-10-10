@@ -24,6 +24,9 @@ The same experiment tools work across domains when the subject exposes the requi
 | What you can do | Entry point | Boundary |
 | --- | --- | --- |
 | Score models | `brainscore.score` | Registered identifiers or model/benchmark objects; compatible inputs/outputs |
+| Run public CogGym experiments | `CogGym.<Study>.<experiment>` via `load_benchmark` | 23 registered experiments delegate to the pinned CogGym runner; raw R², explicit provider reset and repetitions. Registration does not establish leaderboard replication |
+| Score EWoK world knowledge | `EWoK-core-1.0-logprobs`, `EWoK-core-1.0-choice` | Local data build; raw accuracy; version/domain summaries; ordinary experiment tools. Archived log-probability score replay verified; fresh model inference remains unqualified |
+| Build a local dataset | `python -m brainscore.data prepare` | Native files or provider-specific request ID; validation, provenance, and private atomic output. EWoK is the first registered builder |
 | Reuse cached activations | [Content checks](caching.md) | Standard vision, text, VLM, audio, and unified video wrappers check weights, settings, and input contents; excludes vision's separate temporal extractor |
 | Check storage and data early | `score()`, `python -m brainscore.doctor` | Scoring checks cache storage before loading benchmarks/models; unified also checks declared local assets. Lazy or remote failures can occur later |
 | Map activity to brain regions | `region_layer_map`, recording helpers | One layer, composite selections, or all layers; the benchmark determines fitting/scoring |
@@ -41,6 +44,7 @@ Pass these in `Experiment(tools=[...])`.
 | `RecordInputsOutputs` | Save inputs, outputs, activity, errors, and lifecycle events | Supported payloads |
 | `RecordActivity` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation |
 | `Ablate` | Temporarily zero selected outputs, optionally in selected conditions/trials | Instrumentation |
+| `ScaleActivity` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged |
 | `ObserveCalls` | Include an existing call observer in the experiment | Observer callbacks and selected subject methods |
 | `RecordReasoning` | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
 
@@ -79,6 +83,8 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | Inspect an OpenPI policy | [Policy tools](policy_instrumentation.md) | [19: trained-policy measurements](../notebooks/19_openpi_experiment_toolbox.ipynb) | [Server](../examples/libero/serve_tools.py), [qualification](../examples/libero/qualify_tools.py) |
 | Run a native environment session | [Environment sessions](environment_sessions.md): spaces, reset, clocks, execution records | — | Grid and rendered discrete Gymnasium environments |
 | Connect a robotics evaluator | [DROID](droid_integration.md), [LIBERO](robotics_benchmark_integration.md) | — | [LIBERO bridge and evaluator](../examples/libero/README.md) |
+| Use CogGym with UMI tools | [CogGym registration and runner](coggym.md) | — | [Recorded calls, intervention and replay](../examples/coggym_toolbox.py) |
+| Use EWoK with UMI tools | [EWoK](ewok.md) and [local data builders](local_data.md) | — | Native-file preparation and recorded scoring examples in the guide |
 | Add a tool or domain | [Tool authoring](tool_authoring.md), [extension guide](../EXTENDING.md) | — | [External package](../examples/partner_tool/README.md), [custom experiment tool](../examples/experiment_toolbox/partner_tool.py) |
 
 See the [notebook index](../notebooks/README.md) for downloads, compute requirements, and whether each example uses synthetic, measured, or saved results.

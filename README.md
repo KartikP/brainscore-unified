@@ -63,6 +63,13 @@ entirely and is preferred when a checkout already exists.
 Requires Python 3.11 and `conda` (miniforge or miniconda). See
 [install/README.md](install/README.md) for troubleshooting.
 
+## Local datasets and external experiments
+
+Use [local data builders](docs/local_data.md) to prepare author-format files or
+retrieve data with a provider-supported request ID. See [EWoK](docs/ewok.md) for
+world-knowledge scoring and [CogGym](docs/coggym.md) for cognitive experiments
+with UMI recording and intervention tools.
+
 ## Capability Status Matrix
 
 Status labels separate real numeric validation from local structural coverage.
