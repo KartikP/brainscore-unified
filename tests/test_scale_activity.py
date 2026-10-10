@@ -1,12 +1,13 @@
 """Scaling uses real hooks, preserves tuple outputs, and detaches on failure."""
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 import torch
 
 from brainscore.experiments import (
-    Experiment, RecordActivity, RecordInputsOutputs, ScaleActivity,
+    Ablate, CallableProtocol, Experiment, RecordActivity, RecordInputsOutputs, ScaleActivity,
     SessionProtocol, TorchInstrumentation,
 )
 from brainscore_core.contract import Subject
@@ -14,6 +15,31 @@ from brainscore_core.events import Selection
 from brainscore_core.streaming import InMemorySession, StreamEvent
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize('tool_class', [Ablate, ScaleActivity])
+@pytest.mark.parametrize('invalid', ['instrumentation', 'conditions', 'trials'])
+def test_intervention_validation_names_the_selected_tool(tool_class, invalid):
+    layer = torch.nn.Identity()
+    options = {'factor': 0.5} if tool_class is ScaleActivity else {}
+    if invalid != 'instrumentation':
+        options[invalid] = ['coggym-question-1']
+    tool = tool_class(['layer'], **options)
+    experiment = SimpleNamespace(
+        instrumentation=(
+            None if invalid == 'instrumentation'
+            else TorchInstrumentation({'layer': layer})
+        ),
+        protocol=CallableProtocol('external-evaluation', lambda subject, context: None),
+    )
+    message = (
+        f'{tool_class.__name__} requires an instrumentation provider'
+        if invalid == 'instrumentation'
+        else f'{tool_class.__name__} {invalid} must belong to the protocol'
+    )
+    with pytest.raises(ValueError, match=f'^{message}$'):
+        tool.validate(experiment)
+    assert not layer._forward_hooks
 
 
 def test_selected_units_conditions_and_recording_order(tmp_path):

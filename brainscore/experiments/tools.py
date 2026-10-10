@@ -79,14 +79,14 @@ class Ablate(Tool):
 
     def validate(self, experiment):
         if experiment.instrumentation is None:
-            raise ValueError('Ablate requires an instrumentation provider')
+            raise ValueError(f'{type(self).__name__} requires an instrumentation provider')
         experiment.instrumentation.validate(self.operation, self.targets)
         available_conditions = getattr(experiment.protocol, 'conditions', ('default',))
         if self.conditions is not None and (not self.conditions or set(self.conditions) - set(available_conditions)):
-            raise ValueError('Ablation conditions must belong to the protocol')
+            raise ValueError(f'{type(self).__name__} conditions must belong to the protocol')
         available = getattr(experiment.protocol, 'trials', ('external',))
         if self.trials is not None and (not self.trials or set(self.trials) - set(available)):
-            raise ValueError('Ablation trials must belong to the protocol')
+            raise ValueError(f'{type(self).__name__} trials must belong to the protocol')
 
     @contextmanager
     def attach(self, context):
