@@ -1,35 +1,45 @@
 # Use UMI tools with CogGym
 
-CogGym runs the experiment and scores its responses. UMI observes the model calls and attaches recording or intervention tools to the model.
+CogGym supplies the prompts, questions, answer parser, and scoring. Brain-Score connects the model and tools while CogGym runs its own evaluator.
 
-`CogGymRunner` calls CogGym's existing prompt builder, trial selector, evaluator, parser, and analyzer. It does not translate the experiment into a different task loop.
+| Component | Role here |
+| --- | --- |
+| Model | The network or service producing answers. |
+| Provider | Your adapter that calls the model using CogGym's arguments. |
+| Subject | The UMI interface through which tools observe those calls. |
+| Protocol | The procedure that runs the CogGym evaluation. |
+| Experiment | Combines the subject, protocol, tools, and output directory. |
 
-## Select a registered experiment
+## 1. Prepare CogGym
 
-All 23 public experiments are registered as `CogGym.<Study>.<experiment>`. For example, `CogGym.Hu2023Fine.exp1` selects the text experiment. Registration provides access; it does not mean that every model or modality has been qualified.
+Install the four UMI packages in a separate experiment environment, then pin CogGym:
 
-With your provider and response-trace subject prepared:
+```bash
+git clone https://github.com/lance-ying/coggym.git
+git -C coggym checkout a1cd9df1118fec80eba7463de237d1497d77e041
+python -m pip install -r coggym/evaluation/requirements.txt
+```
+
+CogGym imports the Google SDK even for local models; installing it requires no API key. See the [data README](../brainscore/data/coggym/README.md) for the data layout and checks without inference. Loading a benchmark checks the reference revision and prompts, rejects tracked evaluator or data edits, and does not download data.
+
+## 2. Select a benchmark
+
+All 23 public experiments are registered: 11 text, 6 image, and 6 video. Registration does not mean every model has been tested on them.
 
 ```python
 import brainscore
 
+# Check the experiment before loading a model.
 benchmark = brainscore.load_benchmark(
     "CogGym.Hu2023Fine.exp1",
-    checkout="/path/to/coggym",  # Use the pinned checkout below.
-    reset=provider.reset,  # Reset provider history and sampling for each repeat.
-    repetitions=1,  # A preliminary pass, not a full leaderboard replication.
+    checkout="/path/to/coggym",
+    repetitions=1,  # A preliminary pass; not a full leaderboard replication.
     temperature=1.0,
     max_tokens=8192,
-    output_dir="runs/coggym-score",  # A new directory; existing runs are preserved.
 )
-score = brainscore.score(subject, benchmark)
 ```
 
-The result is CogGym's **raw Pearson R²**, with coverage and configuration in `score.attrs`. No human ceiling is applied. Undefined correlations raise an error and preserve the trial records. Without `output_dir`, records remain in a new temporary directory whose path is returned in `score.attrs["run_directory"]`.
-
-To attach tools, use `benchmark.protocol(model=subject.identifier)` in the `Experiment` example below instead of `runner.protocol(...)`. This returns a `CallableProtocol`: the evaluation steps wrapped for use with tools. `Experiment.run()` executes those steps using the configured provider reset and returns the score and run directory. A provider without state can explicitly use `reset=lambda repetition: None`; UMI does not assume that reset is unnecessary.
-
-Set `BRAINSCORE_COGGYM_CHECKOUT` to omit `checkout`. You can list names without loading data or a model:
+Set `BRAINSCORE_COGGYM_CHECKOUT` to omit `checkout`. List available names with:
 
 ```python
 names = sorted(
@@ -38,89 +48,68 @@ names = sorted(
 )
 ```
 
-The registry covers 11 text, 6 image and 6 video experiments. Media experiments need a provider that actually handles the supplied media. Loading validates the reference revision and prompts; it does not download data automatically. The defaults are one repetition, temperature 1.0 and an 8,192-token limit. Match the reference settings explicitly before claiming replication.
+## 3. Connect your model
 
-## Prepare the reference evaluator
-
-For the local data layout and a check without model inference, see the
-[data README](../brainscore/data/coggym/README.md).
-
-Use a separate experiment environment. Install the four UMI packages first, then clone and pin CogGym:
-
-```bash
-git clone https://github.com/lance-ying/coggym.git
-git -C coggym checkout a1cd9df1118fec80eba7463de237d1497d77e041
-python -m pip install -r coggym/evaluation/requirements.txt
-```
-
-CogGym imports the Google SDK even for local providers. Installing it does not require an API key or make API calls.
-
-```python
-from brainscore.harnesses.coggym import CogGymRunner
-
-runner = CogGymRunner(
-    "coggym",
-    experiment="Hu2023Fine/exp1",
-    model="your-provider-model-id",
-    temperature=1.0,
-    max_tokens=512,
-    repetitions=1,
-)
-```
-
-Construction checks the pinned source, canonical trial selection, and prompts before model loading. The adapter rejects tracked edits to the evaluator or data. By default, the provider is declared to support text. For a multimodal provider, declare `modalities=["text", "image", "video"]`; this declaration does not implement image or video processing.
-
-The public manifest limits the available experiments. An optional `trial_ids=[...]` selects a smoke subset in canonical order; its records explicitly identify that reduced scope.
-
-## Connect a model and tools
-
-Supply a provider implementing CogGym's `complete_with_metadata(system, messages, model, temperature, max_tokens)`. It returns a dictionary with `text`, `reasoning`, and `token_usage`. Use `None` for unavailable reasoning or token counts. Preserve all supplied text and media.
+The following examples assume your integration supplies `provider`. Its CogGym method, `complete_with_metadata(system, messages, model, temperature, max_tokens)`, must preserve the supplied text and media and return a dictionary containing `text`, `reasoning`, and `token_usage`. Use `None` for unavailable reasoning or token counts.
 
 ```python
 from brainscore.model_helpers.response_trace import build_trace_subject
+
+subject = build_trace_subject(
+    "your-provider-model-id",
+    # UMI passes one request dictionary; CogGym expects named arguments.
+    provider=lambda request: provider.complete_with_metadata(**request),
+    parse=str,  # Keep the answer text for CogGym's own parser.
+    provenance={"checkpoint": "exact revision", "precision": "float32"},
+)
+```
+
+`provider.reset(repetition)` receives a one-based repetition number. It resets conversation and sampling state without replacing the model or removing its hooks. A stateless provider can explicitly use `reset=lambda repetition: None`. Record the seed policy, checkpoint, precision, decoding, and media-processing settings in provenance.
+
+CogGym's `text`, `image`, and `video` labels describe message content. UMI carries these messages on the `generation_request` channel and answers on `response_trace`. These channel names describe the exchange; they do not replace UMI modality names such as `vision` or add media support to a provider.
+
+## 4. Run with tools
+
+For a local PyTorch model exposed as `provider.model`:
+
+```python
 from brainscore.experiments import (
     Experiment,
+    RecordActivity,
     RecordInputsOutputs,
     RecordReasoning,
-    RecordActivity,
     TorchInstrumentation,
 )
 
-subject = build_trace_subject(
-    "my-coggym-model",
-    provider=lambda request: provider.complete_with_metadata(**request),
-    parse=str,  # CogGym interprets the answer with its own parser.
-    provenance={"checkpoint": "exact revision", "precision": "float32"},
+protocol = benchmark.protocol(
+    model=subject.identifier,
+    reset=provider.reset,
 )
-
 result = Experiment(
     subject=subject,
-    protocol=runner.protocol(reset=provider.reset),
+    protocol=protocol,
     tools=[
-        RecordInputsOutputs(),  # Save calls and tool measurements.
-        RecordReasoning(),  # Save reasoning only when the provider exposes it.
-        RecordActivity(["encoder"]),  # Use a real layer path from your model.
+        RecordInputsOutputs(),  # Save the model's requests and responses.
+        RecordReasoning(),  # Save reasoning only if the provider exposes it.
+        RecordActivity(["encoder"]),  # Replace with your model's layer path.
     ],
-    instrumentation=TorchInstrumentation(provider.model),
-    output_dir="runs/coggym-recorded",
+    instrumentation=TorchInstrumentation(provider.model),  # Connect layer hooks.
+    output_dir="runs/coggym-recorded",  # Use a new directory for each run.
 ).run()
+score = result.value
 ```
 
-Here `provider` and its `model` are supplied by your integration. `provider.reset(repetition)` receives a one-based repetition number. It must reset conversation state and sampling as appropriate, without replacing the instrumented model or removing its hooks. Store the seed policy, checkpoint, precision, decoding, and media-processing settings in provenance. UMI does not infer these settings.
+For a remote service, omit `RecordActivity` and `TorchInstrumentation`; recording inputs, outputs, and exposed reasoning still works. `benchmark.protocol(...) -> CallableProtocol` means it returns the evaluation procedure. The score is produced when `Experiment.run()` executes it.
 
-The adapter passes only CogGym's provider arguments to the model. Human scoring targets remain in the evaluator. Each call uses the reference runner's independent trial prompt. Records include the experiment, repetition, attempt index, and IDs whose reference prompts match that request. Duplicate prompts retain multiple matching IDs rather than an invented unique association. These indices are not physical timestamps.
+The result is CogGym's **raw Pearson R²**, without a human ceiling. Coverage and configuration are in `score.attrs`; artifacts are in `result.directory`. To score without selecting tools, use `brainscore.score(subject, benchmark)` after supplying `reset=provider.reset` when loading the benchmark. That path records inputs and outputs automatically.
 
-## Check recording and interventions
+## 5. Compare baseline and intervention
 
-1. Call `runner.run(provider, output_dir=..., reset=provider.reset)` for a direct reference run.
-2. Run the `Experiment` with recording under the same model and sampling settings.
-3. Compare actual requests, raw responses, parsed answers, and scores.
-4. Add `Ablate([selection])` before `RecordActivity` in a separate experiment.
-5. Remove the intervention and confirm that the original outputs return under controlled settings.
+Run separate `Experiment`s for baseline, intervention, and restoration. Keep prompts, model, and generation settings fixed; use a new output directory each time.
 
-An ablation must name its scope. For example, zeroing half the intermediate units of one MLP layer is not the same as removing half the model's neurons. Use the shared `Selection` type; its indices address the last output axis.
+Add `Ablate([selection])` to zero selected activity, or `ScaleActivity(targets, factor=0.5)` to halve it. Both use `TorchInstrumentation`. A `Selection` names a layer and optional unit indices along its last output axis. Zeroing half of one layer is not zeroing half the model.
 
-For dampening, use `ScaleActivity(targets, factor=0.5)` with `TorchInstrumentation`. For a model exposing `model.language_model.layers`, this selects every fifth full block:
+For a model exposing `model.language_model.layers`, this selects every fifth full block:
 
 ```python
 from brainscore.experiments import ScaleActivity
@@ -129,12 +118,56 @@ targets = [
     f"model.language_model.layers.{index}"
     for index in range(4, len(provider.model.model.language_model.layers), 5)
 ]
-dampen = ScaleActivity(targets, factor=0.5)  # Halve outputs at blocks 5, 10, 15, ...
+dampen = ScaleActivity(targets, factor=0.5)  # Halve blocks 5, 10, 15, ...
 ```
 
-Add `dampen` before the after-intervention `RecordActivity` tool. This scales the whole block's output, including its residual stream. It does not randomize or replace weights. Use the same prompts and generation settings for baseline and intervention. Compare scores on the shared scorable questions, and report invalid or truncated responses separately. Different internal activity does not imply worse benchmark performance.
+Place `dampen` before `RecordActivity` to record the changed outputs. This scales the full block output, including its residual stream; weights stay unchanged. Compare scores on shared scorable questions and report invalid or truncated answers separately. Changed activity does not necessarily mean worse performance.
 
-The [CPU example](../examples/coggym_toolbox.py) uses a cached, pretrained SmolVLM-256M model in text mode. It compares direct execution, recording, a seeded 50% ablation in one MLP layer, restoration, and actual call replay:
+**Tool scope:** CogGym calls each question a trial. UMI wraps the whole CogGym evaluator as one trial, `external`, in condition `default`. CogGym question IDs are recorded as metadata; they cannot be passed to a tool's `trials=` filter. Likewise, `conditions=["baseline"]` does not create a condition. For the separate runs above, leave tool filters unset. Filtering interventions by individual CogGym questions is not supported.
+
+## Inspect and replay
+
+| Location | Contents |
+| --- | --- |
+| `experiment.json` | Setup, completion status, and artifact provenance |
+| `inputs_outputs/` | Model requests, responses, and recorded activity |
+| `reasoning/` | Exposed reasoning or an explicit unavailable marker |
+| `coggym/run-001.json` | Reference trial results, summary, scope, and coverage |
+| `coggym/analysis.json` | Reference analyzer output, including undefined results |
+
+Call metadata includes experiment, repetition, attempt index, and matching CogGym question IDs. Duplicate prompts can match several IDs; attempt indices are not physical timestamps. Human scoring targets stay in the evaluator and are not sent to the model.
+
+Failed, missing, or reordered trials fail the run after saving their records. Unparseable answers remain visible as unscorable. Undefined correlations also fail registered scoring and preserve the records; they are not zero scores. Always inspect coverage alongside the score.
+
+`replay_calls` sends saved requests to a model again. Viewing saved responses needs no inference. Neither reruns an interactive environment. See the [tool guide](experiment_toolbox.md#replay-saved-inputs).
+
+## Advanced: compare direct and UMI execution
+
+`CogGymRunner` delegates to the same evaluator directly, which is useful for checking that tools preserve behavior. Unlike the registered benchmark, it returns an analysis dictionary rather than a `Score`. Its token default is 512; the benchmark default is 8,192. Set all comparison settings explicitly:
+
+```python
+from brainscore.harnesses.coggym import CogGymRunner
+
+# Match the registered text benchmark above, including its model identifier.
+runner = CogGymRunner(
+    "/path/to/coggym",
+    experiment="Hu2023Fine/exp1",
+    model=subject.identifier,
+    modalities=["text"],
+    repetitions=1,
+    temperature=1.0,
+    max_tokens=8192,
+)
+direct = runner.run(
+    provider,
+    reset=provider.reset,
+    output_dir="runs/coggym-direct",
+)
+```
+
+Compare saved requests, responses, parsed answers, and R² against the recorded benchmark run. Controlled decoding and resets are needed for exact equality. Runner `modalities` declares the CogGym content the provider handles; image/video experiments need corresponding support. Optional `trial_ids` selects a labelled smoke subset; the registered benchmark uses the complete canonical selection.
+
+The [CPU qualification example](../examples/coggym_toolbox.py) checks direct execution, recording, a seeded 50% ablation in one MLP layer, restoration, and call replay using cached SmolVLM-256M weights:
 
 ```bash
 python examples/coggym_toolbox.py \
@@ -144,28 +177,12 @@ python examples/coggym_toolbox.py \
   --trials 3
 ```
 
-The model must already be cached. This is a small tool qualification, not a CogGym leaderboard run.
-
-## Read the results
-
-| Location | Contents |
-| --- | --- |
-| `experiment.json` | UMI setup, completion status, and artifact provenance |
-| `inputs_outputs/` | Actual model requests, responses, and recorded activity |
-| `reasoning/` | Provider-exposed reasoning or an explicit unavailable marker |
-| `coggym/run-001.json` | Reference trial results and summary, with added scope and coverage metadata |
-| `coggym/analysis.json` | Reference analyzer output, including undefined results and coverage |
-
-CogGym catches provider errors per trial. The adapter saves those results and raises if trials failed, were omitted, or returned out of order. Unparseable responses remain visible as unscorable trials; they are not silently replaced. Check coverage alongside any score. CogGym's analyzer can omit experiments with insufficient usable responses or undefined correlation.
-
-Trial results are saved before summary aggregation. If native scoring fails, the experiment remains failed and the saved artifact identifies the scoring error. Calls and activity are still available for inspection; a scoring failure is not a zero score or a completed benchmark.
-
-`replay_calls` resends saved requests to a model. Viewing saved responses requires no inference. Neither operation reruns an interactive environment. See the [tool guide](experiment_toolbox.md#replay-saved-inputs).
+This small check verifies tool behavior, not leaderboard performance.
 
 ## Comparing with the leaderboard
 
-Match the public-set scope, checkpoint, prompts, trial IDs, sampling, repetition count, and media processing. The public README's five-run example and the paper's ten-run description are not interchangeable guarantees of a particular leaderboard row. Preserve the reference analyzer and report any differences from the published setup explicitly.
+Match the public-set scope, checkpoint, prompts, trial IDs, sampling, repetitions, and media processing. The README's five-run example and the paper's ten-run description do not establish the settings of every leaderboard row. Report differences explicitly.
 
-The public analyzer is the authority for this adapter's scores. Reproducing its behavior is separate from reproducing the published leaderboard values. Hosted Qwen3.5-Flash corresponds to Qwen3.5-35B-A3B, but a local deployment still needs its own checkpoint and serving qualification.
+Matching the reference analyzer is separate from reproducing published scores. Hosted Qwen3.5-Flash corresponds to Qwen3.5-35B-A3B, but local serving still needs its own qualification.
 
 Sources: [CogGym evaluator](https://github.com/lance-ying/coggym/tree/a1cd9df1118fec80eba7463de237d1497d77e041/evaluation), [paper](https://arxiv.org/html/2609.21259), [Qwen model card](https://huggingface.co/Qwen/Qwen3.5-35B-A3B).

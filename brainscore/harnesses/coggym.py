@@ -13,6 +13,8 @@ import math
 from pathlib import Path
 import subprocess
 import sys
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from brainscore.experiments import CallableProtocol
 from brainscore_core.streaming import StreamEvent
@@ -112,9 +114,18 @@ class CogGymRunner:
     It is always labelled as a subset, never a complete CogGym evaluation.
     """
 
-    def __init__(self, checkout, *, model, temperature=1.0, max_tokens=512,
-                 repetitions=1, trial_ids=None, experiment=DEFAULT_EXPERIMENT,
-                 modalities=('text',)):
+    def __init__(
+        self,
+        checkout: str | Path,
+        *,
+        model: str,
+        temperature: float = 1.0,
+        max_tokens: int = 512,
+        repetitions: int = 1,
+        trial_ids: Sequence[str] | None = None,
+        experiment: str = DEFAULT_EXPERIMENT,
+        modalities: Sequence[str] = ('text',),
+    ) -> None:
         if not isinstance(model, str) or not model.strip():
             raise ValueError('Supply the provider model identifier')
         if not isinstance(temperature, (int, float)) or not math.isfinite(temperature) or temperature < 0:
@@ -173,10 +184,10 @@ class CogGymRunner:
             self._prompt_trials.setdefault(_prompt_key(system, messages), []).append(trial.id)
 
     @property
-    def trial_ids(self):
+    def trial_ids(self) -> tuple[str, ...]:
         return tuple(trial.id for trial in self._trials)
 
-    def describe(self):
+    def describe(self) -> dict[str, Any]:
         return {
             'reference_revision': REFERENCE_REVISION,
             'experiment': self.experiment, 'model': self.model,
@@ -190,12 +201,15 @@ class CogGymRunner:
             'reset': 'caller-supplied callback before each repetition',
         }
 
-    def protocol(self, *, reset):
+    def protocol(self, *, reset: Callable[[int], None]) -> CallableProtocol:
         """Build evaluation steps for Experiment without running CogGym yet.
 
         CallableProtocol lets tools observe the subject while CogGym keeps its
         trial loop and scoring. reset(repetition) clears provider history and
         sampling state as needed, while preserving model instrumentation.
+
+        The whole evaluator occupies UMI trial ``external`` and condition
+        ``default``. CogGym question IDs are call metadata, not tool filters.
         """
         if not callable(reset):
             raise TypeError('Supply a reset(repetition) callback for your provider')
@@ -219,7 +233,13 @@ class CogGymRunner:
             f'coggym:{self.experiment}', evaluate, methods=['process'], metadata=self.describe(),
         )
 
-    def run(self, provider, *, output_dir, reset):
+    def run(
+        self,
+        provider: Any,
+        *,
+        output_dir: str | Path,
+        reset: Callable[[int], None],
+    ) -> dict[str, Any]:
         """Run CogGym directly, without UMI observation or instrumentation."""
         if not callable(getattr(provider, 'complete_with_metadata', None)):
             raise TypeError('Provider must implement complete_with_metadata')
