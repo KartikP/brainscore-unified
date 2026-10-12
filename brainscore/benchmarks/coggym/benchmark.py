@@ -156,7 +156,17 @@ class CogGymBenchmark(BenchmarkBase):
         protocol = self.protocol(model=candidate.identifier, reset=reset)
         directory = self._output_dir
         if directory is None:
-            directory = Path(tempfile.mkdtemp(prefix='brainscore-coggym-')) / 'run'
+            # Keep implicit recordings only for this call, even if scoring fails.
+            with tempfile.TemporaryDirectory(prefix='brainscore-coggym-') as temporary:
+                score = self._run(candidate, protocol, Path(temporary) / 'run')
+                score.attrs['run_directory'] = None
+                score.attrs['records_retained'] = False
+                return score
+        score = self._run(candidate, protocol, directory)
+        score.attrs['records_retained'] = True
+        return score
+
+    def _run(self, candidate: Subject, protocol: CallableProtocol, directory: Path) -> Score:
         result = Experiment(
             subject=candidate,
             protocol=protocol,
