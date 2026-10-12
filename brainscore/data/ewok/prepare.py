@@ -59,13 +59,13 @@ def _read_table(raw: bytes, suffix: str):
 
 
 def _archive_table(path: Path, member: str):
+    password = os.environ.get('EWOK_ARCHIVE_PASSWORD')
+    if not password:
+        raise ValueError('Set EWOK_ARCHIVE_PASSWORD to the password in the authors’ terms of use')
     try:
         import pyzipper
     except ImportError:
         raise ImportError('Install brainscore[ewok-data] to read protected EWoK ZIP files') from None
-    password = os.environ.get('EWOK_ARCHIVE_PASSWORD')
-    if not password:
-        raise ValueError('Set EWOK_ARCHIVE_PASSWORD to the password in the authors’ terms of use')
     with pyzipper.AESZipFile(path) as archive:
         info = archive.getinfo(member)
         if info.file_size > MAX_TABLE_BYTES:

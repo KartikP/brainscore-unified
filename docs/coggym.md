@@ -104,6 +104,8 @@ For a remote service, omit `RecordActivity` and `TorchInstrumentation`; recordin
 
 The result is CogGym's **raw Pearson R²**, without a human ceiling. Coverage and configuration are in `score.attrs`; artifacts are in `result.directory`. To score without selecting tools, use `brainscore.score(subject, benchmark)` using the reset callback supplied with the subject or benchmark. That path records inputs and outputs automatically.
 
+When scoring without `output_dir`, temporary recordings are deleted on success, failure, or interruption; `score.attrs["run_directory"]` is `None`. Supply `output_dir` when loading the benchmark, or use `Experiment` as above, to retain calls and failed-run evidence. `records_retained` reports that choice on a returned score.
+
 ## 5. Compare baseline and intervention
 
 Run separate `Experiment`s for baseline, intervention, and restoration. Keep prompts, model, and generation settings fixed; use a new output directory each time.
@@ -138,7 +140,7 @@ Place `dampen` before `RecordActivity` to record the changed outputs. This scale
 
 Call metadata includes experiment, repetition, attempt index, and matching CogGym question IDs. Duplicate prompts can match several IDs; attempt indices are not physical timestamps. Human scoring targets stay in the evaluator and are not sent to the model.
 
-Failed, missing, or reordered trials fail the run after saving their records. Unparseable answers remain visible as unscorable. Undefined correlations also fail registered scoring and preserve the records; they are not zero scores. Always inspect coverage alongside the score.
+With an explicit output directory, failed, missing, or reordered trials fail the run and preserve their records. Unparseable answers remain visible as unscorable. Undefined correlations also fail registered scoring. Always inspect coverage alongside the score.
 
 `replay_calls` sends saved requests to a model again. Viewing saved responses needs no inference. Neither reruns an interactive environment. See the [tool guide](experiment_toolbox.md#replay-saved-inputs).
 

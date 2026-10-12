@@ -162,6 +162,8 @@ def register_trace_channels() -> None:
                 shape_validator=lambda value: isinstance(value, dict)))
         elif io_catalog.get(name).owner != 'brainscore.response_trace':
             raise ValueError(f'Channel {name} already belongs to another extension')
+
+
 def provider_reset(subject: Any) -> Callable[[int], None]:
     """Find the reset explicitly supplied with a response-trace subject."""
     from brainscore_core.compatibility import CompatibilityError

@@ -119,6 +119,10 @@ class CogGymRunner:
 
     ``trial_ids`` selects an explicit smoke subset of the canonical selection.
     It is always labelled as a subset, never a complete CogGym evaluation.
+
+    Defaults match the pinned CLI: one repetition, 512 tokens, temperature 1.
+    CogGymBenchmark instead uses the README example's five repetitions.
+    Set these values explicitly when comparing direct and registered runs.
     """
 
     def __init__(

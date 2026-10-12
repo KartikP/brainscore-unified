@@ -84,6 +84,47 @@ def test_coggym_reference_profile_reset_and_leaderboard_policy(scored_reference,
     assert len(calls) == 15 and all(call['max_tokens'] == 512 for call in calls)
     assert benchmark.leaderboard_eligible is score.attrs['leaderboard_eligible'] is False
     assert score.attrs['reference_profile'] is True
+    assert score.attrs['records_retained'] is True
+    assert (tmp_path / 'default/coggym/run-001.json').exists()
+
+
+@pytest.mark.parametrize('outcome', ['success', 'undefined_score', 'interrupted'])
+def test_coggym_implicit_records_always_deleted(scored_reference, tmp_path, monkeypatch, outcome):
+    import brainscore.benchmarks.coggym.benchmark as module
+    import tempfile
+    root, analysis = scored_reference
+    original = tempfile.TemporaryDirectory
+    created = []
+
+    def directory(**kwargs):
+        handle = original(dir=tmp_path, **kwargs)
+        created.append(Path(handle.name))
+        return handle
+
+    def respond(request):
+        if outcome == 'interrupted':
+            raise KeyboardInterrupt('fixture interrupt')
+        return provider(request)
+
+    monkeypatch.setattr(module.tempfile, 'TemporaryDirectory', directory)
+    if outcome == 'undefined_score':
+        analysis.analyze = lambda *args, **kwargs: ([{
+            'model': 'fixture', 'experiment': 'Hu2023Fine/exp1', 'r2': None,
+        }], [], [])
+    benchmark = brainscore.load_benchmark(
+        'CogGym.Hu2023Fine.exp1', checkout=root, reset=lambda repetition: None,
+    )
+    candidate = make_subject(respond)
+    if outcome == 'success':
+        score = benchmark(candidate)
+        assert float(score) == 0.375
+        assert score.attrs['run_directory'] is None
+        assert score.attrs['records_retained'] is False
+    else:
+        with pytest.raises(KeyboardInterrupt if outcome == 'interrupted' else ValueError):
+            benchmark(candidate)
+    assert len(created) == 1 and not created[0].exists()
+    assert not list(tmp_path.glob('brainscore-coggym-*'))
 
 
 @pytest.mark.parametrize('settings', [

@@ -3,6 +3,7 @@
 Uses stubs (no real model/benchmark) so it runs offline and fast.
 """
 import time
+import pytest
 import brainscore
 
 
@@ -84,3 +85,20 @@ def test_score_object_without_identifier_falls_back(monkeypatch):
                         lambda ident: (_ for _ in ()).throw(AssertionError("is object")))
     s = brainscore.score('m', _Anon())
     assert s.attrs['benchmark_identifier'] == 'custom-benchmark'  # graceful default
+
+
+@pytest.mark.parametrize('recorded_name', ['fake-benchmark', 'requested-alias', 'unrelated-benchmark'])
+def test_score_identity_must_match_requested_or_resolved_benchmark(monkeypatch, recorded_name):
+    class QualifiedBenchmark(_FakeBenchmark):
+        def __call__(self, model):
+            score = _FakeScore()
+            score.attrs['benchmark_identifier'] = recorded_name
+            return score
+
+    monkeypatch.setattr(brainscore, 'load_benchmark', lambda ident: QualifiedBenchmark())
+    if recorded_name == 'unrelated-benchmark':
+        with pytest.raises(ValueError, match='benchmark_identifier'):
+            brainscore.score(_FakeModel(), 'requested-alias', check_mem=False)
+    else:
+        score = brainscore.score(_FakeModel(), 'requested-alias', check_mem=False)
+        assert score.attrs['benchmark_identifier'] == recorded_name

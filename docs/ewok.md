@@ -151,6 +151,27 @@ can only save reasoning a provider actually returns.
 
 ## Qualification
 
+### Reference build identity
+
+The UMI archive-replay reference contains **4,372 items**, versions 0–4, after
+25 final exclusions. Its `items.json` SHA-256 is:
+
+```text
+3067c20fc5f262c147b5a177900f74e6685afabec9ce4d7da1977f2f878849a8
+```
+
+The corresponding full-build identifiers are
+`EWoK-core-1.0-logprobs-data-3067c20fc5f262c1` and
+`EWoK-core-1.0-choice-data-3067c20fc5f262c1`. Domain subsets add a suffix.
+Compare this hash with `items_sha256` in your local `manifest.json`; a different
+hash identifies a different build and must be reported separately.
+
+This is the verified **UMI archive reference**, not an author-certified canonical
+dataset. No official full-build hash has been established: the hosted export is
+unqualified and the paper's two-item count discrepancy remains unresolved.
+
+### Validation limits
+
 The registered log-probability benchmark exactly reproduces independent
 calculations from the authors’ archived GPT-2 XL, Phi-1.5, and Phi-2 outputs.
 This checks the scoring path, not fresh model inference or numerical agreement
