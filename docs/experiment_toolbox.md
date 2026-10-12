@@ -68,6 +68,8 @@ protocol = CallableProtocol(
 
 Use the methods your evaluator calls, such as `look_at`, `digest_text`, or `process`. Nested calls are observed once. The evaluator retains its task, reset, and score semantics. Use separate experiments for its baseline and intervention conditions unless the evaluator provides those boundaries itself.
 
+For a concrete example, see [CogGym](coggym.md): keep its evaluator and scoring, then attach UMI tools to the model calls.
+
 ## Choose the tools
 
 ```python
@@ -99,10 +101,13 @@ This example assumes the session protocol above and a ResNet model. For recordin
 | `RecordReasoning` (feature branch) | Save exposed reasoning and response context in a focused record; requires `RecordInputsOutputs`. |
 | `RecordActivity` | Record selected layer outputs through `ActivationWindow`. Requires `RecordInputsOutputs`. |
 | `Ablate` | Zero selected outputs using the same implementation as `StateChange` interventions. |
+| `ScaleActivity` | Multiply selected outputs by a fixed factor, such as `0.5` to halve them. Currently supported by `TorchInstrumentation`. |
 | `ObserveCalls` | Attach an existing `on_start` / `on_result` / `on_error` observer. |
 | Your own `Tool` | Observe events or manage resources from your own package. |
 
 Order tools as: observers, activity with `when='before'`, interventions, activity with `when='after'`. Give multiple recorders distinct names. Tools detach in reverse order, including on errors. Other hooks already installed on the model remain in place.
+
+`ScaleActivity(targets, factor=0.5)` uses the same targets, conditions and trials as `Ablate`. It changes activity during the run, not the trained weights. Removing the tool removes the intervention. A full transformer block, an MLP output and selected units are different targets: name which one you use.
 
 ### Select layers and units
 

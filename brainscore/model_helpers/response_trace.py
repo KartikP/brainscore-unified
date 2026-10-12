@@ -2,11 +2,22 @@
 
 No claim is made that returned text exposes a model's hidden reasoning.
 """
+from functools import lru_cache
+from collections.abc import Callable, Mapping, Sequence
+from typing import Any
 
 from brainscore_core.capabilities.base import Capability
 from brainscore_core.capabilities.registry import register_capability
 from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
 from brainscore_core.model_interface import BrainScoreModel
+
+REQUEST_CHANNELS = {
+    'generation_request': 'Text generation request',
+    'image_generation_request': 'Generation request containing text and images',
+    'video_generation_request': 'Generation request containing text, images and video',
+    'conditional_logprob_request': 'Conditional log probabilities for targets given contexts',
+    'context_choice_request': 'Constrained choice between two contexts for each target',
+}
 
 
 class ResponseTraceCapability(Capability):
@@ -14,11 +25,16 @@ class ResponseTraceCapability(Capability):
     input_channels = frozenset({'generation_request'})
     output_channels = frozenset({'response_trace'})
 
+    def __init__(self, input_channels=('generation_request',)):
+        self.input_channels = frozenset(input_channels)
+        if self.input_channels != {'generation_request'}:
+            self.identifier = 'response-trace:' + ','.join(sorted(self.input_channels))
+
     def enabled_for(self, model):
         return self.identifier in model.capability_config
 
     def handles(self, model, event, **kwargs):
-        return isinstance(event, StreamEvent) and event.channel == 'generation_request'
+        return isinstance(event, StreamEvent) and event.channel in self.input_channels
 
     def _response(self, model, event, raw, *, final=True):
         config = model.capability_config[self.identifier]
@@ -77,7 +93,7 @@ class ResponseTraceCapability(Capability):
     def interact(self, model, session):
         while (event := session.next_input()) is not None:
             if not self.handles(model, event):
-                raise ValueError('Response trace session requires generation_request events')
+                raise ValueError(f'Response trace session requires one of {sorted(self.input_channels)}')
             config = model.capability_config[self.identifier]
             if config.get('streaming', False):
                 responses = self._stream(model, event)
@@ -90,10 +106,21 @@ class ResponseTraceCapability(Capability):
                 session.emit(model.process(event))
 
 
-_CAPABILITY = ResponseTraceCapability()
+@lru_cache(maxsize=None)
+def _capability(input_channels):
+    return ResponseTraceCapability(input_channels)
 
 
-def build_trace_subject(identifier, *, provider, parse, provenance, streaming=False):
+def build_trace_subject(
+    identifier: str,
+    *,
+    provider: Callable[[dict], Any],
+    parse: Callable[[str], Any],
+    provenance: Mapping[str, Any],
+    streaming: bool = False,
+    input_channels: Sequence[str] = ('generation_request',),
+    reset: Callable[[int], None] | None = None,
+) -> BrainScoreModel:
     """Build a subject from provider(request)->dict and parse(text)->answer.
 
     With streaming=True, provider yields dicts containing text and final: bool.
@@ -104,18 +131,46 @@ def build_trace_subject(identifier, *, provider, parse, provenance, streaming=Fa
     Provider/model/configuration identity belongs in provenance; never credentials.
     A parse error is preserved as an invalid response, never a fabricated label.
     Provider errors propagate to observers and the caller.
+
+    Declare only request channels the provider actually implements. Text
+    generation alone does not imply media support or access to probabilities.
+    Optional reset(repetition) prepares the provider for each CogGym repetition.
     """
+    if isinstance(input_channels, str) or not input_channels or set(input_channels) - REQUEST_CHANNELS.keys():
+        raise ValueError(f'Declare supported request channels from {sorted(REQUEST_CHANNELS)}')
+    if reset is not None and not callable(reset):
+        raise TypeError('reset must be a reset(repetition) callback')
+    channels = tuple(sorted(set(input_channels)))
+    register_trace_channels()
+    capability = _capability(channels)
+    register_capability(capability)
+    return BrainScoreModel(identifier, capability_config={capability.identifier: {
+        'provider': provider, 'parse': parse, 'provenance': dict(provenance),
+        'streaming': streaming, 'reset': reset}})
+
+
+def register_trace_channels() -> None:
+    """Make request schemas known without claiming any model supports them."""
     from brainscore_core import io_catalog
-    for name, direction, validator in (
-            ('generation_request', 'input', lambda value: isinstance(value, dict)),
-            ('response_trace', 'output', lambda value: isinstance(value, dict))):
+    for name in (*REQUEST_CHANNELS, 'response_trace'):
+        direction = 'output' if name == 'response_trace' else 'input'
         if not io_catalog.has(name):
             register_channel(CatalogEntry(name, direction, 'StreamEvent',
-                'dict; see response_trace module', 'response-trace capability',
-                owner='brainscore.response_trace', shape_validator=validator))
+                'dict; see response_trace module',
+                REQUEST_CHANNELS.get(name, 'Provider response with raw text and parsed answer'),
+                owner='brainscore.response_trace',
+                shape_validator=lambda value: isinstance(value, dict)))
         elif io_catalog.get(name).owner != 'brainscore.response_trace':
             raise ValueError(f'Channel {name} already belongs to another extension')
-    register_capability(_CAPABILITY)
-    return BrainScoreModel(identifier, capability_config={'response-trace': {
-        'provider': provider, 'parse': parse, 'provenance': dict(provenance),
-        'streaming': streaming}})
+def provider_reset(subject: Any) -> Callable[[int], None]:
+    """Find the reset explicitly supplied with a response-trace subject."""
+    from brainscore_core.compatibility import CompatibilityError
+    if isinstance(subject, BrainScoreModel):
+        for name, config in subject.capability_config.items():
+            if name == 'response-trace' or name.startswith('response-trace:'):
+                if callable(config.get('reset')):
+                    return config['reset']
+    raise CompatibilityError(
+        'Supply reset=provider.reset to build_trace_subject or the CogGym benchmark. '
+        'Stateless providers can explicitly use lambda repetition: None.'
+    )

@@ -1,5 +1,6 @@
 """Reusable recording and optional PyTorch instrumentation tools."""
 from contextlib import contextmanager, ExitStack
+import math
 from brainscore.run_record import RunRecorder
 from brainscore_core.events import Selection, Perturbation, StateChange
 from brainscore.instrumentation import observe
@@ -65,6 +66,7 @@ class Ablate(Tool):
     """Zero selected layer outputs in chosen conditions or repetitions."""
     name = 'ablation'
     phase = 'intervene'
+    operation = 'ablate'
 
     def __init__(self, targets, *, conditions=None, trials=None):
         self.targets = tuple(targets)
@@ -77,14 +79,14 @@ class Ablate(Tool):
 
     def validate(self, experiment):
         if experiment.instrumentation is None:
-            raise ValueError('Ablate requires an instrumentation provider')
-        experiment.instrumentation.validate('ablate', self.targets)
+            raise ValueError(f'{type(self).__name__} requires an instrumentation provider')
+        experiment.instrumentation.validate(self.operation, self.targets)
         available_conditions = getattr(experiment.protocol, 'conditions', ('default',))
         if self.conditions is not None and (not self.conditions or set(self.conditions) - set(available_conditions)):
-            raise ValueError('Ablation conditions must belong to the protocol')
+            raise ValueError(f'{type(self).__name__} conditions must belong to the protocol')
         available = getattr(experiment.protocol, 'trials', ('external',))
         if self.trials is not None and (not self.trials or set(self.trials) - set(available)):
-            raise ValueError('Ablation trials must belong to the protocol')
+            raise ValueError(f'{type(self).__name__} trials must belong to the protocol')
 
     @contextmanager
     def attach(self, context):
@@ -92,12 +94,33 @@ class Ablate(Tool):
                 or (self.trials is not None and context.trial_id not in self.trials)):
             yield
             return
-        with context.experiment.instrumentation.ablate(self.targets):
+        with self._apply(context.experiment.instrumentation):
             context.publish('intervention_start', self.describe(), source=self.name)
             try:
                 yield
             finally:
                 context.publish('intervention_end', self.describe(), source=self.name)
+
+    def _apply(self, instrumentation):
+        return instrumentation.ablate(self.targets)
+
+
+class ScaleActivity(Ablate):
+    """Multiply selected outputs by a fixed factor without changing model weights."""
+    name = 'scale_activity'
+    operation = 'scale'
+
+    def __init__(self, targets, *, factor, conditions=None, trials=None):
+        super().__init__(targets, conditions=conditions, trials=trials)
+        if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not math.isfinite(factor):
+            raise ValueError('factor must be a finite number')
+        self.factor = float(factor)
+
+    def describe(self):
+        return {**super().describe(), 'operation': 'scale_output', 'factor': self.factor}
+
+    def _apply(self, instrumentation):
+        return instrumentation.scale(self.targets, factor=self.factor)
 
 
 def _selection(target):
@@ -150,13 +173,13 @@ class TorchInstrumentation:
         return {'provider': 'TorchInstrumentation',
                 'targets': {name: type(module).__module__ + '.' + type(module).__qualname__
                             for name, module in self.targets.items()},
-                'operations': ['record', 'ablate'],
+                'operations': ['record', 'ablate', 'scale'],
                 'selection': 'layer path; optional last-axis indices'}
 
     def validate(self, operation, targets):
         import operator
         import torch
-        if operation not in ('record', 'ablate'):
+        if operation not in ('record', 'ablate', 'scale'):
             raise ValueError(f'Unsupported operation: {operation}')
         selections = [_selection(t) for t in targets]
         if not selections or any(not isinstance(s, Selection) for s in selections):
@@ -202,6 +225,18 @@ class TorchInstrumentation:
 
     @contextmanager
     def ablate(self, targets):
+        with self._perturb(targets, Perturbation(kind='zero')):
+            yield
+
+    @contextmanager
+    def scale(self, targets, *, factor):
+        if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not math.isfinite(factor):
+            raise ValueError('factor must be a finite number')
+        with self._perturb(targets, Perturbation(kind='scale', scale=float(factor))):
+            yield
+
+    @contextmanager
+    def _perturb(self, targets, perturbation):
         import torch
         from brainscore.perturbation import build_pytorch_ablation_fn
         self.validate('ablate', targets)
@@ -220,6 +255,6 @@ class TorchInstrumentation:
                 apply = build_pytorch_ablation_fn(root)
                 _, cleanup = apply(StateChange(kind='ablation',
                     target=Selection(layer='target', indices=selection.indices),
-                    perturbation=Perturbation(kind='zero')))
+                    perturbation=perturbation))
                 stack.callback(cleanup)
             yield
