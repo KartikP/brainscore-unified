@@ -263,6 +263,8 @@ def test_archive_build_applies_final_exclusions(native, tmp_path, monkeypatch):
 
 
 def test_missing_archive_password_fails_without_partial_data(tmp_path, monkeypatch):
+    # Password validation must work even without the optional archive reader.
+    monkeypatch.setitem(sys.modules, 'pyzipper', None)
     source=tmp_path/'paper';(source/'analyses').mkdir(parents=True)
     (source/'analyses/data.zip').write_bytes(b'not-read')
     monkeypatch.delenv('EWOK_ARCHIVE_PASSWORD',raising=False)
