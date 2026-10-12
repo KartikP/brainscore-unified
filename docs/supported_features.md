@@ -24,8 +24,8 @@ The same experiment tools work across domains when the subject exposes the requi
 | What you can do | Entry point | Boundary |
 | --- | --- | --- |
 | Score models | `brainscore.score` | Registered identifiers or model/benchmark objects; compatible inputs/outputs |
-| Run public CogGym experiments | `CogGym.<Study>.<experiment>` via `load_benchmark` | 23 registered experiments delegate to the pinned CogGym runner; raw R², explicit provider reset and repetitions. Registration does not establish leaderboard replication |
-| Score EWoK world knowledge | `EWoK-core-1.0-logprobs`, `EWoK-core-1.0-choice` | Local data build; raw accuracy; version/domain summaries; ordinary experiment tools. Archived log-probability score replay verified; fresh model inference remains unqualified |
+| Run public CogGym experiments | `CogGym.<Study>.<experiment>` via `load_benchmark` | Research only: no ceiling. 23 registered experiments delegate to the pinned CogGym runner; raw R², explicit provider reset and repetitions. Registration does not establish leaderboard replication |
+| Score EWoK world knowledge | `EWoK-core-1.0-logprobs`, `EWoK-core-1.0-choice` | Research only: no ceiling. Local data build; raw accuracy; version/domain summaries; experiment tools. Archived log-probability score replay verified; fresh model inference remains unqualified |
 | Build a local dataset | `python -m brainscore.data prepare` | Native files or provider-specific request ID; validation, provenance, and private atomic output. EWoK is the first registered builder |
 | Reuse cached activations | [Content checks](caching.md) | Standard vision, text, VLM, audio, and unified video wrappers check weights, settings, and input contents; excludes vision's separate temporal extractor |
 | Check storage and data early | `score()`, `python -m brainscore.doctor` | Scoring checks cache storage before loading benchmarks/models; unified also checks declared local assets. Lazy or remote failures can occur later |

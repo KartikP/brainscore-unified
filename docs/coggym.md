@@ -33,9 +33,9 @@ import brainscore
 benchmark = brainscore.load_benchmark(
     "CogGym.Hu2023Fine.exp1",
     checkout="/path/to/coggym",
-    repetitions=1,  # A preliminary pass; not a full leaderboard replication.
+    repetitions=5,  # Match the pinned README example.
     temperature=1.0,
-    max_tokens=8192,
+    max_tokens=512,
 )
 ```
 
@@ -60,13 +60,15 @@ subject = build_trace_subject(
     # UMI passes one request dictionary; CogGym expects named arguments.
     provider=lambda request: provider.complete_with_metadata(**request),
     parse=str,  # Keep the answer text for CogGym's own parser.
+    reset=provider.reset,  # Declare repetition reset once, with the provider.
+    input_channels=["generation_request"],  # This example handles text.
     provenance={"checkpoint": "exact revision", "precision": "float32"},
 )
 ```
 
 `provider.reset(repetition)` receives a one-based repetition number. It resets conversation and sampling state without replacing the model or removing its hooks. A stateless provider can explicitly use `reset=lambda repetition: None`. Record the seed policy, checkpoint, precision, decoding, and media-processing settings in provenance.
 
-CogGym's `text`, `image`, and `video` labels describe message content. UMI carries these messages on the `generation_request` channel and answers on `response_trace`. These channel names describe the exchange; they do not replace UMI modality names such as `vision` or add media support to a provider.
+Declare only request channels your provider implements: `generation_request` for text, `image_generation_request` for text with images, and `video_generation_request` for text with images and video. A multimodal provider can declare all three. Responses use `response_trace`. Benchmarks reject missing media support before inference; a declaration does not implement media processing.
 
 ## 4. Run with tools
 
@@ -83,7 +85,6 @@ from brainscore.experiments import (
 
 protocol = benchmark.protocol(
     model=subject.identifier,
-    reset=provider.reset,
 )
 result = Experiment(
     subject=subject,
@@ -101,7 +102,7 @@ score = result.value
 
 For a remote service, omit `RecordActivity` and `TorchInstrumentation`; recording inputs, outputs, and exposed reasoning still works. `benchmark.protocol(...) -> CallableProtocol` means it returns the evaluation procedure. The score is produced when `Experiment.run()` executes it.
 
-The result is CogGym's **raw Pearson R²**, without a human ceiling. Coverage and configuration are in `score.attrs`; artifacts are in `result.directory`. To score without selecting tools, use `brainscore.score(subject, benchmark)` after supplying `reset=provider.reset` when loading the benchmark. That path records inputs and outputs automatically.
+The result is CogGym's **raw Pearson R²**, without a human ceiling. Coverage and configuration are in `score.attrs`; artifacts are in `result.directory`. To score without selecting tools, use `brainscore.score(subject, benchmark)` using the reset callback supplied with the subject or benchmark. That path records inputs and outputs automatically.
 
 ## 5. Compare baseline and intervention
 
@@ -143,7 +144,7 @@ Failed, missing, or reordered trials fail the run after saving their records. Un
 
 ## Advanced: compare direct and UMI execution
 
-`CogGymRunner` delegates to the same evaluator directly, which is useful for checking that tools preserve behavior. Unlike the registered benchmark, it returns an analysis dictionary rather than a `Score`. Its token default is 512; the benchmark default is 8,192. Set all comparison settings explicitly:
+`CogGymRunner` delegates to the same evaluator directly, which is useful for checking that tools preserve behavior. Unlike the registered benchmark, it returns an analysis dictionary rather than a `Score`. Both use a 512-token limit. The runner defaults to one repetition (the pinned CLI default); the registered benchmark uses five (the pinned README example). Set comparison settings explicitly:
 
 ```python
 from brainscore.harnesses.coggym import CogGymRunner
@@ -154,9 +155,9 @@ runner = CogGymRunner(
     experiment="Hu2023Fine/exp1",
     model=subject.identifier,
     modalities=["text"],
-    repetitions=1,
+    repetitions=5,
     temperature=1.0,
-    max_tokens=8192,
+    max_tokens=512,
 )
 direct = runner.run(
     provider,
@@ -179,7 +180,12 @@ python examples/coggym_toolbox.py \
 
 This small check verifies tool behavior, not leaderboard performance.
 
-## Comparing with the leaderboard
+## Score identity and leaderboard policy
+
+The registered profile uses five repetitions, temperature 1.0, and 512 tokens. Overrides add those settings to the resolved benchmark identifier so preliminary runs cannot share its score identity. These settings match the README example, not necessarily a published leaderboard row.
+
+CogGym scores have no estimated ceiling. The benchmark and score declare `leaderboard_eligible=False`; keep them off Brain-Score leaderboards until a ceiling and reporting policy are established. Local raw-score comparisons remain available.
+
 
 Match the public-set scope, checkpoint, prompts, trial IDs, sampling, repetitions, and media processing. The README's five-run example and the paper's ten-run description do not establish the settings of every leaderboard row. Report differences explicitly.
 

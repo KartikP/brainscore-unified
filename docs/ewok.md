@@ -65,7 +65,13 @@ gated distribution rules.
 Each item contributes two decisions. Scores average within each dataset version,
 then average the versions equally. They are raw accuracy, without a human ceiling.
 Domain scores, item counts, invalid answers, and the dataset checksum accompany
-the result. A domain subset is explicitly recorded.
+the result. Resolved benchmark identifiers include the dataset checksum; domain
+subsets add a selection suffix. Different local exports or subsets cannot share
+the full evaluation's identity.
+
+Neither variant has an estimated ceiling. Both declare `leaderboard_eligible=False`
+and must stay off Brain-Score leaderboards until a ceiling and reporting policy
+are established. Raw accuracy remains available for local research.
 
 The choice variant is the authors’ constrained-choice protocol. It is **not** the
 Qwen chat-with-thinking localizer pilot shown on the demonstration website.
@@ -90,7 +96,8 @@ from brainscore.model_helpers.response_trace import build_trace_subject
 subject = build_trace_subject(
     "my-model",
     provider=EWoKProvider(native_model),  # Calls the existing EWoK model evaluator.
-    parse=json.loads,  # Reads the returned batch of probabilities or choices.
+    parse=json.loads,  # Read the returned batch of probabilities.
+    input_channels=["conditional_logprob_request"],  # Require actual probability access.
     provenance={
         "checkpoint": "your exact model revision",
         "evaluator_revision": "9e40d30e242925866ee50448f80a13bcdf971318",
@@ -105,12 +112,20 @@ benchmark = brainscore.load_benchmark(
 score = brainscore.score(subject, benchmark)
 ```
 
+For the choice variant, declare `context_choice_request` instead. Declare both
+only if the provider implements both operations. A text-generation-only subject
+fails compatibility checks before any model call.
+
 A custom provider can implement the same request payload instead. Log-probability
 requests contain `operation`, `targets`, and `contexts`; choice requests contain
 `targets`, `contexts1`, `contexts2`, `gen_type`, and `prompt_type`. Return
 `{"text": json.dumps(values)}` with one value per target, in request order.
 Do not substitute a model's self-reported confidence for conditional log probabilities.
 The request never contains expected answers.
+
+Without `output_dir`, scoring deletes temporary recordings on success or failure
+and returns only scores and metadata. Set `output_dir` to retain a private run,
+or use `Experiment` below. These recordings contain dataset text; do not publish them.
 
 ## Attach tools
 
