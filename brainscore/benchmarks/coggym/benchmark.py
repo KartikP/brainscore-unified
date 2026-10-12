@@ -10,7 +10,8 @@ from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
-from brainscore.harnesses.coggym import CogGymRunner
+from brainscore.harnesses.coggym import CogGymRunner, GENERATION_CHANNELS
+from brainscore.model_helpers.response_trace import provider_reset, register_trace_channels
 
 from . import EXPERIMENTS
 
@@ -26,18 +27,20 @@ class CogGymBenchmark(BenchmarkBase):
     # Declare the messages the subject must accept and return before a run starts.
     required_input_channels = frozenset({'generation_request'})
     requested_output_channels = frozenset({'response_trace'})
+    leaderboard_eligible = False
 
     def __init__(
         self,
         experiment: str,
         *,
         checkout: str | Path | None = None,
-        repetitions: int = 1,
+        repetitions: int = 5,
         temperature: float = 1.0,
-        max_tokens: int = 8192,
+        max_tokens: int = 512,
         reset: Callable[[int], None] | None = None,
         output_dir: str | Path | None = None,
     ) -> None:
+        register_trace_channels()
         if experiment not in EXPERIMENTS:
             raise ValueError(f'Unknown public CogGym experiment: {experiment}')
         checkout = checkout or os.environ.get('BRAINSCORE_COGGYM_CHECKOUT')
@@ -50,6 +53,7 @@ class CogGymBenchmark(BenchmarkBase):
             raise TypeError('reset must be a provider reset(repetition) callback')
         self.experiment = experiment
         self.modality = EXPERIMENTS[experiment]
+        self.required_input_channels = frozenset({GENERATION_CHANNELS[self.modality]})
         self._reset = reset
         self._output_dir = Path(output_dir) if output_dir is not None else None
         self._configuration = {
@@ -69,8 +73,12 @@ class CogGymBenchmark(BenchmarkBase):
         CogGymRunner(model='preflight', **self._configuration)
         ceiling = Score(float('nan'))
         ceiling.attrs['status'] = 'not_estimated'
+        identifier = f'CogGym.{experiment.replace("/", ".")}'
+        self._reference_profile = (repetitions, temperature, max_tokens) == (5, 1.0, 512)
+        if not self._reference_profile:
+            identifier += f'.repeats-{repetitions}.tokens-{max_tokens}.temperature-{float(temperature)!r}'
         super().__init__(
-            identifier=f'CogGym.{experiment.replace("/", ".")}',
+            identifier=identifier,
             version=1,
             parent='behavioral',
             ceiling=ceiling,
@@ -92,19 +100,15 @@ class CogGymBenchmark(BenchmarkBase):
         wrapper; the Score is produced only when the protocol runs.
         """
         reset = reset if reset is not None else self._reset
-        if not callable(reset):
-            raise TypeError(
-                'Supply reset=provider.reset when loading the benchmark or '
-                'creating its protocol. Stateless providers can explicitly use '
-                'lambda repetition: None.'
-            )
+        if reset is not None and not callable(reset):
+            raise TypeError('reset must be a reset(repetition) callback')
         runner = CogGymRunner(model=model, **self._configuration)
-        native = runner.protocol(reset=reset)
 
         # Experiment supplies the subject (model interface) and context (run
         # directory and artifact registration). CogGym still owns the trial loop.
         def evaluate(subject, context):
             check_channel_compatibility(subject, self)
+            native = runner.protocol(reset=reset if reset is not None else provider_reset(subject))
             # Call evaluate(), not run(): the outer protocol already observes
             # subject.process() calls, so nesting observers would record them twice.
             result = native.evaluate(subject, context)
@@ -121,17 +125,20 @@ class CogGymBenchmark(BenchmarkBase):
             # no human-ceiling normalization is applied.
             score = Score(value)
             score.attrs.update(
+                benchmark_identifier=self.identifier,
                 raw=Score(value),
                 metric='pearson_r_squared',
                 ceiling_status='not_estimated',
                 normalized=False,
+                leaderboard_eligible=False,
                 modality=self.modality,
                 configuration=result['configuration'],
                 coverage=result['repetitions'],
                 native_analysis=result,
                 run_directory=str(context.directory),
                 evaluation_scope='public_subset',
-                repetition_note='One repeat is preliminary; serving settings must be matched before claiming replication.',
+                reference_profile=self._reference_profile,
+                repetition_note='Five repeats match the reference README example, not a guarantee of leaderboard replication.',
             )
             return score
 
@@ -145,7 +152,8 @@ class CogGymBenchmark(BenchmarkBase):
     def __call__(self, candidate: Subject) -> Score:
         """Run benchmark(subject) with input/output recording and return its Score."""
         check_channel_compatibility(candidate, self)
-        protocol = self.protocol(model=candidate.identifier)
+        reset = self._reset if self._reset is not None else provider_reset(candidate)
+        protocol = self.protocol(model=candidate.identifier, reset=reset)
         directory = self._output_dir
         if directory is None:
             directory = Path(tempfile.mkdtemp(prefix='brainscore-coggym-')) / 'run'

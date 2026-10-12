@@ -1,5 +1,6 @@
 """EWoK accuracy through process(), with ordinary Experiment tools."""
 from collections import defaultdict
+import hashlib
 import json
 import math
 from numbers import Real
@@ -13,6 +14,7 @@ from brainscore_core.model_interface import Subject
 from brainscore_core.streaming import StreamEvent
 from brainscore.data.ewok.data import load_prepared
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
+from brainscore.model_helpers.response_trace import register_trace_channels
 
 
 def logprob_accuracy(values: list[float]) -> float:
@@ -46,8 +48,8 @@ class EWoKBenchmark(BenchmarkBase):
     """Score a prepared local EWoK dataset; no automatic model/data downloads."""
 
     # Declare the messages the subject must accept and return before a run starts.
-    required_input_channels = frozenset({'generation_request'})
     requested_output_channels = frozenset({'response_trace'})
+    leaderboard_eligible = False
 
     def __init__(
         self,
@@ -58,6 +60,7 @@ class EWoKBenchmark(BenchmarkBase):
         batch_size: int = 8,
         output_dir: str | Path | None = None,
     ) -> None:
+        register_trace_channels()
         if mode not in ('logprobs', 'choice'):
             raise ValueError('Choose logprobs or choice')
         if type(batch_size) is not int or batch_size < 1:
@@ -74,9 +77,19 @@ class EWoKBenchmark(BenchmarkBase):
         self._output_dir = Path(output_dir) if output_dir is not None else None
         self._mode = mode
         self._subset = domains is not None
+        self.required_input_channels = frozenset({
+            'conditional_logprob_request' if mode == 'logprobs' else 'context_choice_request',
+        })
+        # Local exports and domain subsets must never share a score identity.
+        identifier = f'EWoK-core-1.0-{mode}-data-{manifest["items_sha256"][:16]}'
+        if domains is not None:
+            selection = json.dumps(sorted(set(domains))).encode()
+            identifier += f'-domains-{hashlib.sha256(selection).hexdigest()[:12]}'
+        ceiling = Score(float('nan'))
+        ceiling.attrs['status'] = 'not_estimated'
         super().__init__(
-            identifier=f'EWoK-core-1.0-{mode}', version=1, parent='behavioral',
-            ceiling=Score(float('nan')),
+            identifier=identifier, version=1, parent='behavioral',
+            ceiling=ceiling,
             bibtex='@article{ivanova2025elements, title={Elements of World Knowledge}, '
                    'author={Ivanova, Anna and others}, year={2025}, '
                    'journal={Transactions of the Association for Computational Linguistics}, '
@@ -94,6 +107,8 @@ class EWoKBenchmark(BenchmarkBase):
         # directory and artifact registration).
         def evaluate(subject, context):
             check_channel_compatibility(subject, self)
+            # Recorded requests contain restricted item text; keep runs private.
+            context.directory.chmod(0o700)
             scored = []
             for offset in range(0, len(self._rows), self._batch_size):
                 batch = self._rows[offset:offset + self._batch_size]
@@ -117,7 +132,7 @@ class EWoKBenchmark(BenchmarkBase):
                     # Route through the subject so tools can observe or intervene.
                     # Expected answers and target-number labels stay in the benchmark.
                     response = subject.process(StreamEvent(
-                        'generation_request', request, None,
+                        next(iter(self.required_input_channels)), request, None,
                         {'trial_ids': [r['item_id'] for r in batch]},
                     ))
                     if not isinstance(response, StreamEvent) or response.channel != 'response_trace':
@@ -158,8 +173,10 @@ class EWoKBenchmark(BenchmarkBase):
                 domains[domain] = _mean_by_version([r for r in scored if r['domain'] == domain])[0]
             score = Score(value)
             score.attrs.update(
+                benchmark_identifier=self.identifier,
                 raw=Score(value), normalized=False, metric='accuracy',
                 ceiling_status='not_estimated', protocol=self._mode,
+                leaderboard_eligible=False,
                 aggregation='mean of within-version mean accuracies',
                 version_scores=versions, domain_scores=domains,
                 items=len(scored), questions=2 * len(scored),
@@ -186,7 +203,18 @@ class EWoKBenchmark(BenchmarkBase):
         check_channel_compatibility(candidate, self)
         directory = self._output_dir
         if directory is None:
-            directory = Path(tempfile.mkdtemp(prefix='brainscore-ewok-')) / 'run'
+            # Default scoring returns only scores; delete private call records
+            # on both success and failure. Explicit output_dir opts into retention.
+            with tempfile.TemporaryDirectory(prefix='brainscore-ewok-') as temporary:
+                score = self._run(candidate, Path(temporary) / 'run')
+                score.attrs['run_directory'] = None
+                score.attrs['records_retained'] = False
+                return score
+        score = self._run(candidate, directory)
+        score.attrs['records_retained'] = True
+        return score
+
+    def _run(self, candidate: Subject, directory: Path) -> Score:
         result = Experiment(
             subject=candidate, protocol=self.protocol(),
             tools=[RecordInputsOutputs()], output_dir=directory,

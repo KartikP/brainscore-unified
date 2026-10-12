@@ -46,8 +46,8 @@ def test_environment_checkout_and_explicit_provider_reset(scored_reference, monk
     root, _ = scored_reference
     monkeypatch.setenv('BRAINSCORE_COGGYM_CHECKOUT', str(root))
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
-    with pytest.raises(TypeError, match='provider.reset'):
-        benchmark.protocol(model='fixture')
+    with pytest.raises(CompatibilityError, match='provider.reset'):
+        benchmark(make_subject(provider))
     assert math.isnan(float(benchmark.ceiling))
 
 
@@ -70,14 +70,15 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     assert resets == [1, 2]
     assert len(calls) == 6
     assert all(call['max_tokens'] == 1234 for call in calls)
-    assert score.attrs['benchmark_identifier'] == 'CogGym.Hu2023Fine.exp1'
+    assert score.attrs['benchmark_identifier'] == benchmark.identifier
+    assert '.repeats-2.tokens-1234.temperature-1.0' in benchmark.identifier
     assert (tmp_path / 'scored/coggym/analysis.json').is_file()
 
 
 def test_protocol_and_plain_runner_produce_identical_reference_artifacts(scored_reference, tmp_path):
     root, _ = scored_reference
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root)
-    direct = coggym.CogGymRunner(root, experiment='Hu2023Fine/exp1', model='fixture', max_tokens=8192)
+    direct = coggym.CogGymRunner(root, experiment='Hu2023Fine/exp1', model='fixture', max_tokens=512, repetitions=5)
     from types import SimpleNamespace
     def complete(system, messages, model, temperature, max_tokens):
         return provider(dict(system=system, messages=messages, model=model,
@@ -93,7 +94,7 @@ def test_protocol_and_plain_runner_produce_identical_reference_artifacts(scored_
     wrapped = json.loads((result.directory / 'coggym/run-001.json').read_text())
     assert wrapped == plain
     assert float(result.value) == 0.375
-    assert sum(event['kind'] == 'input' for event in result.record.events()) == 3
+    assert sum(event['kind'] == 'input' for event in result.record.events()) == 15
 
 
 @pytest.mark.parametrize('value', [None, float('nan'), float('inf')])

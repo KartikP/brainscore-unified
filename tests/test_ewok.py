@@ -38,7 +38,8 @@ def prepared(native, tmp_path):
 
 def subject(provider):
     return build_trace_subject('fixture', provider=provider, parse=json.loads,
-                               provenance={'model': 'synthetic-test'})
+                               provenance={'model': 'synthetic-test'},
+                               input_channels=['conditional_logprob_request', 'context_choice_request'])
 
 
 def test_data_and_benchmark_registrations():
@@ -110,7 +111,7 @@ def test_native_column_case_and_version_from_directory(native, tmp_path):
 
 
 def test_parquet_native_round_trip(native, tmp_path):
-    import pyarrow  # Native Parquet is part of the test extra.
+    pytest.importorskip('pyarrow', reason='Native Parquet requires brainscore[ewok-data]')
     path=tmp_path/'native.parquet';pd.read_csv(native,dtype=str).to_parquet(path,index=False)
     result=prepare_dataset('EWoK-core-1.0',source=path,output=tmp_path/'out')
     assert len(load_prepared(result)[0])==3
@@ -243,7 +244,7 @@ def test_existing_local_asset_cli_is_preserved(capsys):
 
 
 def test_archive_build_applies_final_exclusions(native, tmp_path, monkeypatch):
-    import pyzipper
+    pyzipper = pytest.importorskip('pyzipper', reason='Protected archives require brainscore[ewok-data]')
     rows=pd.read_csv(native,dtype=str)
     archive_root=tmp_path/'paper';(archive_root/'analyses').mkdir(parents=True)
     for filename,member,frame in [

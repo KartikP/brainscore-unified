@@ -35,7 +35,7 @@ def reference(tmp_path, monkeypatch):
         results = []
         for trial in selected:
             try:
-                system, messages = prompt(trial, experiment)
+                system, messages = cli.build_messages(trial, experiment)
                 raw = provider.complete_with_metadata(
                     system, messages, model, temperature, max_tokens,
                 )

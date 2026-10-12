@@ -17,11 +17,17 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from brainscore.experiments import CallableProtocol
+from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.streaming import StreamEvent
 
 
 REFERENCE_REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
 DEFAULT_EXPERIMENT = 'Hu2023Fine/exp1'
+GENERATION_CHANNELS = {
+    'text': 'generation_request',
+    'image': 'image_generation_request',
+    'video': 'video_generation_request',
+}
 
 
 def _prompt_key(system, messages):
@@ -73,19 +79,20 @@ def _load_reference(checkout):
 class _SubjectProvider:
     """Translate CogGym provider calls into the existing response-trace contract."""
 
-    def __init__(self, subject, repetition, experiment, prompt_trials):
+    def __init__(self, subject, repetition, experiment, prompt_trials, input_channel):
         self.subject = subject
         self.experiment = experiment
         self.repetition = repetition
         self.call_index = 0
         self.prompt_trials = prompt_trials
+        self.input_channel = input_channel
 
     def complete_with_metadata(self, system, messages, model, temperature, max_tokens):
         request = dict(system=system, messages=messages, model=model,
                        temperature=temperature, max_tokens=max_tokens)
         trial_ids = self.prompt_trials[_prompt_key(system, messages)]
         event = StreamEvent(
-            'generation_request', request, t_ms=None,
+            self.input_channel, request, t_ms=None,
             meta={'experiment': self.experiment, 'repetition': self.repetition,
                   'provider_call': self.call_index, 'matching_trial_ids': trial_ids},
         )
@@ -146,6 +153,10 @@ class CogGymRunner:
             raise ValueError('Declare supported modalities: text, image, video')
         self.experiment = experiment
         self.modalities = tuple(sorted(set(modalities)))
+        content = 'video' if 'video' in modalities else 'image' if 'image' in modalities else 'text'
+        self.input_channel = GENERATION_CHANNELS[content]
+        self.required_input_channels = frozenset({self.input_channel})
+        self.requested_output_channels = frozenset({'response_trace'})
         self._experiment = self._cli.load_experiment(self.checkout / 'EML' / experiment)
         selection = self._cli._load_selection_map(
             self.checkout / 'evaluation' / 'trial_selection_map.json',
@@ -215,6 +226,8 @@ class CogGymRunner:
             raise TypeError('Supply a reset(repetition) callback for your provider')
 
         def evaluate(subject, context):
+            # Reject missing media support before the first provider call.
+            check_channel_compatibility(subject, self)
             def register(path):
                 context.artifact(
                     path, producer='CogGym evaluator via UMI adapter',
@@ -224,7 +237,7 @@ class CogGymRunner:
             # This is where the external evaluator connects to UMI tools.
             return self._run(
                 lambda repetition: _SubjectProvider(
-                    subject, repetition, self.experiment, self._prompt_trials,
+                    subject, repetition, self.experiment, self._prompt_trials, self.input_channel,
                 ),
                 context.directory / 'coggym', reset, register,
             )

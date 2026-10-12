@@ -252,7 +252,8 @@ def score(model_identifier, benchmark_identifier,
         result = benchmark(model)
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
-    result.attrs['benchmark_identifier'] = benchmark_id
+    # Benchmarks can supply a qualified identity for settings or data subsets.
+    result.attrs.setdefault('benchmark_identifier', benchmark_id)
     stamp_score_metadata(
         result,
         model,
