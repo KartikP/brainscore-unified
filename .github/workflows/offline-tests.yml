@@ -94,3 +94,67 @@ jobs:
             unified/install/peer-revisions.json
             ${{ runner.temp }}/partner-demo
             ${{ runner.temp }}/external-tool-demo
+  openpi-client:
+    name: OpenPI client protocol
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      RESULTCACHING_DISABLE: '1'
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      BS_INSTALL_DEPENDENCIES: 'no'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: unified
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Read pinned core revision
+        id: peers
+        run: |
+          python - <<'PY'
+          import json, os, re
+          revision = json.load(open('unified/install/peer-revisions.json'))['core']
+          if not re.fullmatch('[0-9a-f]{40}', revision):
+              raise ValueError('Invalid core revision')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f'core={revision}', file=output)
+          PY
+      - uses: actions/checkout@v4
+        with:
+          repository: brain-score/core
+          ref: ${{ steps.peers.outputs.core }}
+          path: core
+      - name: Install client test environment
+        run: |
+          python -m pip install -c unified/install/v2-constraints.txt ./core -r unified/install/openpi-client-tests.txt
+          python -m pip check
+      - name: Record environment and revisions
+        if: always()
+        run: |
+          mkdir -p qualification
+          python -m pip freeze > qualification/dependencies.txt
+          git -C unified rev-parse HEAD > qualification/unified-revision.txt
+          git -C core rev-parse HEAD > qualification/core-revision.txt
+      - name: Require every client protocol test
+        working-directory: unified
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/unified:${{ github.workspace }}/core
+        run: |
+          python -m pytest tests/test_openpi_remote.py -q -ra \
+            -p no:cacheprovider -p brainscore.validation.required_checks \
+            --umi-repository openpi-client \
+            --umi-check-report ../qualification/openpi-client.json \
+            --junitxml=../qualification/openpi-client.xml --timeout=30 \
+            2>&1 | tee ../qualification/openpi-client.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openpi-client-protocol
+          path: |
+            qualification
+            unified/install/openpi-client-tests.txt
+            unified/install/v2-constraints.txt
+            unified/install/peer-revisions.json

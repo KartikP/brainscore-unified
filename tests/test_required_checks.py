@@ -49,6 +49,40 @@ def test_optional_permission_is_scoped_to_test_and_reason():
     assert [entry['optional'] for entry in plugin.skipped] == [True, False, False]
 
 
+@pytest.mark.parametrize('profile,expected_code', [('unified', 0), ('openpi-client', 1)])
+def test_client_profile_rejects_the_offline_skip_exemption(tmp_path, profile, expected_code):
+    """A missing client may skip in the base job, but must fail its dedicated job."""
+    tests = tmp_path / 'tests'
+    tests.mkdir()
+    (tests / 'test_openpi_remote.py').write_text(
+        'import pytest\n'
+        'def test_ok(): pass\n'
+        'def test_loopback_record_ablate_ack_and_cleanup():\n'
+        '    pytest.skip("could not import \'openpi_client.msgpack_numpy\': '
+        'No module named \'openpi_client\'")\n'
+    )
+    report = tmp_path / 'checks.json'
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
+    paths = [str(Path(__file__).resolve().parents[1])]
+    paths.extend(str(Path(part or '.').resolve())
+                 for part in env.get('PYTHONPATH', '').split(os.pathsep))
+    env['PYTHONPATH'] = os.pathsep.join(paths)
+    result = subprocess.run(
+        [
+            sys.executable, '-m', 'pytest', 'tests', '-q',
+            '-p', 'brainscore.validation.required_checks',
+            '--umi-repository', profile,
+            '--umi-check-report', str(report),
+        ],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == expected_code, result.stdout + result.stderr
+    evidence = json.loads(report.read_text())
+    assert len(evidence['passed']) == 1
+    assert len(evidence['skipped']) == 1
+    assert len(evidence['unexpected_skips']) == expected_code
+
+
 @pytest.mark.parametrize('failure', ['missing_report', 'timeout'])
 def test_workspace_rejects_incomplete_run(tmp_path, monkeypatch, failure):
     from types import SimpleNamespace

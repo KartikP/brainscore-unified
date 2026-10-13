@@ -1,0 +1,8 @@
+# Client protocol only: no JAX, Torch, trained weights, or simulator.
+# Keep the client revision aligned with backends/openpi.py::OPENPI_REVISION.
+openpi-client @ git+https://github.com/Physical-Intelligence/openpi.git@215abfb217dbac7d5f1273282331b9b1866c0479#subdirectory=packages/openpi-client
+websockets==15.0.1
+msgpack==1.2.3
+importlib-metadata==4.13.0
+pytest==9.1.1
+pytest-timeout==2.4.0
