@@ -10,9 +10,9 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 | --- | --- |
 | `Experiment` | Run the subject with one protocol and the selected tools; save results and clean up. |
 | `SessionProtocol` / `CallableProtocol` | Define the procedure: run sessions, or wrap an existing evaluator. |
-| `RecordInputsOutputs`, `RecordActivity`, `Ablate` | Ready-to-use tools attached to the run. |
+| `RecordInputsOutputs`, `RecordActivity`, `Ablate`, `PatchActivity` | Ready-to-use tools attached to the run. |
 | `TorchInstrumentation` | Connect activity/intervention tools to the actual PyTorch network. |
-| `OpenPIInstrumentation` / `RemoteOpenPIInstrumentation` (feature branch) | Connect the same tools to the pinned local/remote OpenPI JAX policy. |
+| `OpenPIInstrumentation` / `RemoteOpenPIInstrumentation` | Connect recording and ablation to the pinned local/remote OpenPI JAX policy. |
 | `observe`, `ActivationWindow`, `RunRecorder` | Building blocks used underneath the tools; also usable directly. |
 | `build_trace_subject` | Adapt a generated-response provider into a subject. It produces traces; recorders save them. |
 
@@ -21,6 +21,9 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 For closed-loop episodes, see [environment sessions](environment_sessions.md).
 
 For exposed CoT and streamed responses, see [reasoning recording](reasoning_recording.md). For policies, see [robotics instrumentation](policy_instrumentation.md).
+
+To estimate unit influence and verify it by replacing activity between paired
+inputs, see [attribution and activation patching](attribution_patching.md).
 
 ## Choose the protocol
 

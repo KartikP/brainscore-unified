@@ -26,6 +26,7 @@ Use the [UMI vocabulary and conventions](conventions.md) across integrations. Th
 | Collect generated responses | `build_trace_subject` | Provider callable and explicit answer parser |
 | Measure internal activity | `ActivationWindow` / `PerceptWindow` | Supported model module and selected layers |
 | Change model activity | `intervene` and `StateChange` | Model-supported perturbation and condition design |
+| Estimate and verify unit influence | `TorchInstrumentation.attribute`, `PatchActivity` | Paired inputs, differentiable objective, independent validation and controls; [guide](attribution_patching.md) |
 | Add a sensory domain | `register_channel(..., columns=...)` and a preprocessor | Payload validation, materialization and model extraction |
 | Add an output or session | `Capability` with `StreamEvent` | Schema, channel declarations, dispatch and lifecycle |
 | Evaluate a robotics policy | `ActionSpec`, `droid_steps`, `evaluate_droid_episode` | Action semantics, policy, data and scientific protocol |
