@@ -70,8 +70,9 @@ subsets add a selection suffix. Different local exports or subsets cannot share
 the full evaluation's identity.
 
 Neither variant has an estimated ceiling. Both declare `leaderboard_eligible=False`
-and must stay off Brain-Score leaderboards until a ceiling and reporting policy
-are established. Raw accuracy remains available for local research.
+and stay off Brain-Score leaderboards until a ceiling and reporting policy are
+established. Core's submission pipeline enforces this before model loading,
+database storage, and S3 upload. Raw accuracy remains available for local research.
 
 The choice variant is the authors’ constrained-choice protocol. It is **not** the
 Qwen chat-with-thinking localizer pilot shown on the demonstration website.

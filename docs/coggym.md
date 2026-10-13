@@ -142,6 +142,16 @@ Call metadata includes experiment, repetition, attempt index, and matching CogGy
 
 With an explicit output directory, failed, missing, or reordered trials fail the run and preserve their records. Unparseable answers remain visible as unscorable. Undefined correlations also fail registered scoring. Always inspect coverage alongside the score.
 
+### Slider response checks
+
+CogGym's parser can extract numbers from placeholders or refusals. UMI checks slider answers separately, using policy `coggym-slider-v1`. The original responses, parsed answers, and native scores stay unchanged.
+
+A valid slider answer must give one finite number within the declared scale and agree with CogGym's parsed value. For multiple questions, answers must be assigned by question tag, number (such as `"1"` or `"Question 1"`), or an ordered JSON list or sequence of objects. Multi-slider questions must name every option. Placeholders, prose, booleans, nested arrays, duplicate keys, and out-of-range values fail the check. A single bare number or `Answer: 42` is also accepted.
+
+Find `response_validation` in `analysis.json` and under `umi` in each run file. It reports the policy, number of checked and invalid questions, and the trial IDs and reasons for failures. `status: complete` in a run file describes execution; response validity is separate.
+
+The registered benchmark (version 2) returns no score if any slider answer fails. It never repairs or silently drops answers. `CogGymRunner` still returns the native analysis for comparison, with the validation report attached; an invalid report disqualifies that analysis from scientific interpretation. Set an explicit output directory to retain failed-run evidence.
+
 `replay_calls` sends saved requests to a model again. Viewing saved responses needs no inference. Neither reruns an interactive environment. See the [tool guide](experiment_toolbox.md#replay-saved-inputs).
 
 ## Advanced: compare direct and UMI execution
@@ -186,7 +196,7 @@ This small check verifies tool behavior, not leaderboard performance.
 
 The registered profile uses five repetitions, temperature 1.0, and 512 tokens. Overrides add those settings to the resolved benchmark identifier so preliminary runs cannot share its score identity. These settings match the README example, not necessarily a published leaderboard row.
 
-CogGym scores have no estimated ceiling. The benchmark and score declare `leaderboard_eligible=False`; keep them off Brain-Score leaderboards until a ceiling and reporting policy are established. Local raw-score comparisons remain available.
+CogGym scores have no estimated ceiling. The benchmark and score declare `leaderboard_eligible=False`. Core's submission pipeline rejects excluded benchmarks before model loading, and excluded scores before database storage or S3 upload. This does not change local scoring or existing benchmarks that omit the flag. CogGym remains off Brain-Score leaderboards until a ceiling and reporting policy are established.
 
 
 Match the public-set scope, checkpoint, prompts, trial IDs, sampling, repetitions, and media processing. The README's five-run example and the paper's ten-run description do not establish the settings of every leaderboard row. Report differences explicitly.

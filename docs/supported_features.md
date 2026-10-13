@@ -24,7 +24,7 @@ The same experiment tools work across domains when the subject exposes the requi
 | What you can do | Entry point | Boundary |
 | --- | --- | --- |
 | Score models | `brainscore.score` | Registered identifiers or model/benchmark objects; compatible inputs/outputs |
-| Run public CogGym experiments | `CogGym.<Study>.<experiment>` via `load_benchmark` | Research only: no ceiling. 23 registered experiments delegate to the pinned CogGym runner; raw R², explicit provider reset and repetitions. Registration does not establish leaderboard replication |
+| Run public CogGym experiments | `CogGym.<Study>.<experiment>` via `load_benchmark` | Research only; publication blocked. 23 experiments use the pinned runner and raw R². Invalid slider answers block scoring; native results are retained with an explicit output directory. Registration does not establish leaderboard replication |
 | Score EWoK world knowledge | `EWoK-core-1.0-logprobs`, `EWoK-core-1.0-choice` | Research only: no ceiling. Local data build; raw accuracy; version/domain summaries; experiment tools. Archived log-probability score replay verified; fresh model inference remains unqualified |
 | Build a local dataset | `python -m brainscore.data prepare` | Native files or provider-specific request ID; validation, provenance, and private atomic output. EWoK is the first registered builder |
 | Reuse cached activations | [Content checks](caching.md) | Standard vision, text, VLM, audio, and unified video wrappers check weights, settings, and input contents; excludes vision's separate temporal extractor |
