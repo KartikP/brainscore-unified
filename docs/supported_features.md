@@ -45,6 +45,7 @@ Pass these in `Experiment(tools=[...])`.
 | `RecordActivity` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation |
 | `Ablate` | Temporarily zero selected outputs, optionally in selected conditions/trials | Instrumentation |
 | `ScaleActivity` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged |
+| `PatchActivity` | Replace selected outputs with recorded values from a paired input | `TorchInstrumentation`, `RecordInputsOutputs`, aligned shapes and one invocation per target; [guide](attribution_patching.md) |
 | `ObserveCalls` | Include an existing call observer in the experiment | Observer callbacks and selected subject methods |
 | `RecordReasoning` | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
 
@@ -54,7 +55,7 @@ Use these to connect a model or build a tool. They also underpin the tools above
 
 | Component | Responsibility | Relationship to experiment tools |
 | --- | --- | --- |
-| `TorchInstrumentation` | Access the actual PyTorch network's named layers | Supplies internal recording/ablation; [policy backends](policy_instrumentation.md) |
+| `TorchInstrumentation` | Access the actual PyTorch network's named layers | Recording, ablation, scaling, paired-input attribution and exact patches; attribution needs a differentiable forward call; [patching guide](attribution_patching.md), [policy backends](policy_instrumentation.md) |
 | `OpenPIInstrumentation` | Record/ablate three sites in the pinned Pi0/Pi0.5 JAX sampler | Selected units and denoising iterations; [trained L4 and ten-task smoke checks](qualification/2026-10-06-openpi-tools.md) |
 | `RemoteOpenPIInstrumentation` | Use the same tools through `OpenPIToolServer` and `OpenPIPolicyClient` | Request-scoped cleanup and separate activity delivery; [guide](policy_instrumentation.md) |
 | `observe` | Notify callbacks about method starts, results, and errors | Used by `ObserveCalls`; does not save anything by itself |
@@ -77,6 +78,7 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | Use existing Brain-Score models | [Legacy integration](from_brain_score.md) | [10: brain alignment](../notebooks/10_brain_alignment.ipynb) | [Guide’s scoring example](from_brain_score.md#score-an-existing-model) |
 | Record, ablate, restore and replay | [Experiment toolbox](experiment_toolbox.md) | [17: digits](../notebooks/17_experiment_toolbox.ipynb), [18: ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipynb) | [Five-domain tool examples](../examples/experiment_toolbox/README.md) |
 | Work directly with internal activity | [Tool authoring](tool_authoring.md#internal-measurements-and-interventions) | [04: several regions](../notebooks/04_multiregion_geometry.ipynb), [11: ablation](../notebooks/11_state_change_ablation.ipynb), [14: interventions](../notebooks/14_intervention_spectrum.ipynb) | [Experiment tools](../examples/experiment_toolbox/run.py) |
+| Estimate and verify unit influence | [Attribution and activation patching](attribution_patching.md) | — | [Cached GPT-2 tool check](../examples/attribution_patching.py); one pair, not held-out localization |
 | Record generated reasoning | [Reasoning recorder](reasoning_recording.md) | — | [Streamed response example](../examples/experiment_toolbox/reasoning.py) |
 | Handle time and streaming | [Streaming API](umi_api_reference.md#streaming-helpers) | [13: temporal alignment](../notebooks/13_temporal_multimodal.ipynb), [15: delivery](../notebooks/15_streaming_delivery.ipynb) | [Session examples](../examples/experiment_toolbox/run.py) |
 | Display brain measurements | [Local data](local_data.md) | [08: illustrative maps](../notebooks/08_brain_visualization.ipynb), [16: measured predictions](../notebooks/16_whole_brain_encoding.ipynb) | [Measured figure scripts](../notebooks/figure_sources/README.md) |

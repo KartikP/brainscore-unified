@@ -1,6 +1,8 @@
 """Reusable recording and optional PyTorch instrumentation tools."""
 from contextlib import contextmanager, ExitStack
+import copy
 import math
+from typing import Any, Callable, ContextManager, Iterator
 from brainscore.run_record import RunRecorder
 from brainscore_core.events import Selection, Perturbation, StateChange
 from brainscore.instrumentation import observe
@@ -123,6 +125,43 @@ class ScaleActivity(Ablate):
         return instrumentation.scale(self.targets, factor=self.factor)
 
 
+class PatchActivity(Ablate):
+    """Replace outputs with a paired input's saved activity for one forward call.
+
+    Uses the same Selection, condition and trial filters as Ablate. The reference
+    records the original coordinates and units; subsets may be patched later.
+    """
+    name = 'patch_activity'
+    operation = 'patch'
+
+    def __init__(self, targets: Any, *, reference: dict,
+                 conditions: Any = None, trials: Any = None) -> None:
+        super().__init__(targets, conditions=conditions, trials=trials)
+        self.reference = copy.deepcopy(reference)
+
+    def describe(self) -> dict:
+        from .attribution import reference_digest
+        return {**super().describe(), 'operation': 'replace_output',
+                'reference_sha256': reference_digest(self.reference),
+                'location': self.reference['location'], 'calls_per_scope': 1}
+
+    def validate(self, experiment: Any) -> None:
+        super().validate(experiment)
+        if not any(isinstance(tool, RecordInputsOutputs) for tool in experiment.tools):
+            raise ValueError('PatchActivity requires RecordInputsOutputs to save the reference')
+        experiment.instrumentation.validate_reference(self.targets, self.reference)
+
+    @contextmanager
+    def attach(self, context: Any) -> Iterator[None]:
+        # Save the actual donor values, not just a hash in the experiment plan.
+        context.publish('patch_reference', self.reference, source=self.name)
+        with super().attach(context):
+            yield
+
+    def _apply(self, instrumentation):
+        return instrumentation.patch(self.targets, reference=self.reference)
+
+
 def _selection(target):
     return Selection(layer=target) if isinstance(target, str) else target
 
@@ -173,13 +212,13 @@ class TorchInstrumentation:
         return {'provider': 'TorchInstrumentation',
                 'targets': {name: type(module).__module__ + '.' + type(module).__qualname__
                             for name, module in self.targets.items()},
-                'operations': ['record', 'ablate', 'scale'],
+                'operations': ['record', 'ablate', 'scale', 'attribute', 'patch'],
                 'selection': 'layer path; optional last-axis indices'}
 
     def validate(self, operation, targets):
         import operator
         import torch
-        if operation not in ('record', 'ablate', 'scale'):
+        if operation not in ('record', 'ablate', 'scale', 'attribute', 'patch'):
             raise ValueError(f'Unsupported operation: {operation}')
         selections = [_selection(t) for t in targets]
         if not selections or any(not isinstance(s, Selection) for s in selections):
@@ -234,6 +273,30 @@ class TorchInstrumentation:
             raise ValueError('factor must be a finite number')
         with self._perturb(targets, Perturbation(kind='scale', scale=float(factor))):
             yield
+
+    def attribute(self, targets: Any, *, reference_call: Callable[[], Any],
+                  comparison_call: Callable[[], Any], objective: Callable[[Any], Any],
+                  location: tuple[int, ...] | None = None, normalize: bool = True) -> dict:
+        """Estimate paired-input patch effects on a differentiable scalar objective.
+
+        location indexes every axis except the last unit axis, e.g. (0, -1)
+        selects batch 0's final token. None keeps every position. The reference
+        returned here can be passed to PatchActivity for exact verification.
+        """
+        from .attribution import attribute
+        return attribute(self, targets, reference_call=reference_call,
+                         comparison_call=comparison_call, objective=objective,
+                         location=location, normalize=normalize)
+
+    def validate_reference(self, targets: Any, reference: dict) -> None:
+        """Validate saved coordinates, units and values before patching."""
+        from .attribution import validate_reference
+        validate_reference(self, targets, reference)
+
+    def patch(self, targets: Any, *, reference: dict) -> ContextManager[None]:
+        """Temporarily replace activity during one forward call."""
+        from .attribution import patch
+        return patch(self, targets, reference)
 
     @contextmanager
     def _perturb(self, targets, perturbation):
