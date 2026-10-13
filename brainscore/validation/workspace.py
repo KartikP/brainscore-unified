@@ -133,6 +133,7 @@ def qualify(root, out):
         checks.unlink(missing_ok=True)
         command = [sys.executable, '-m', 'pytest', *suite, '-q', '-ra',
                    '-p', 'no:cacheprovider', '-p', 'brainscore.validation.required_checks',
+                   '-p', 'brainscore.validation.cpu_profile',
                    '--umi-check-report', str(checks), '--umi-repository', repo]
         with log.open('w') as handle:
             try:

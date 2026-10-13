@@ -13,12 +13,12 @@ The expanded selection was tested locally on October 13, 2026, using Python 3.11
 | Core source | 741 | Contracts, shared utilities, dispatch, metrics and preflight |
 | Vision source | 233 | Adapters, cache, transformations, layer mapping and plugin checks |
 | Language source | 67 | Adapters, legacy scoring, preprocessing and metadata checks |
-| Unified source | 1,129 | Offline unit/integration tests; 43 explicit skips, 61 slow cases deselected |
+| Unified source | 1,133 | Offline unit/integration tests; 43 explicit skips, 61 slow cases deselected |
 | OpenPI client | 42 | Real loopback transport with fixture policies; zero skips |
 
-The four-repository profile totals **2,170 passes**. The client profile overlaps it by 15 cases; do not add the two totals as unique tests. This change promotes 511 existing offline cases and adds two skip-enforcement cases. It does not measure a new coverage percentage or qualify trained models.
+The four-repository profile totals **2,174 passes**. The client profile overlaps it by 15 cases; do not add the two totals as unique tests. This change promotes 511 existing offline cases and adds two skip-enforcement cases and four CPU-profile cases. It does not measure a new coverage percentage or qualify trained models.
 
-Source identities and results are recorded in `source.json`, per-repository check reports and the client report. The local peer trees have the same runtime/test content as the pinned revisions; vision/language differ in documentation. Unified changes are on `test/release-checks`, based on `0e2e7f9`. The [last recorded hosted baseline](https://github.com/KartikP/brainscore-unified/actions/runs/37627147300) remains separate evidence.
+Source identities and results are recorded in `source.json`, per-repository check reports and the client report. Core includes the isolated Conda-discovery test in [core #184](https://github.com/brain-score/core/pull/184). The local peer trees have the same runtime/test content as the pinned revisions; vision/language differ in documentation. Unified changes are on `test/release-checks`, based on `0e2e7f9`. The [last recorded hosted baseline](https://github.com/KartikP/brainscore-unified/actions/runs/37627147300) remains separate evidence.
 
 ## Capability acceptance
 

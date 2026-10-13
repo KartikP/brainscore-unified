@@ -8,6 +8,46 @@ import sys
 import pytest
 
 
+@pytest.mark.parametrize('cpu_only,torch_present', [
+    ('1', True), ('0', True), ('', True), ('1', False),
+])
+def test_cpu_profile_applies_outside_unified(tmp_path, cpu_only, torch_present):
+    """Peer suites get CPU selection without depending on unified's conftest."""
+    if torch_present:
+        # Simulate an advertised accelerator even on a CPU-only test machine.
+        (tmp_path / 'torch.py').write_text(
+            'from types import SimpleNamespace\n'
+            'cuda = SimpleNamespace(is_available=lambda: True)\n'
+            'backends = SimpleNamespace(mps=SimpleNamespace(is_available=lambda: True))\n'
+        )
+        expected = cpu_only != '1'
+        source = (
+            'import torch\n'
+            'def test_selection():\n'
+            f'    assert torch.cuda.is_available() is {expected}\n'
+            f'    assert torch.backends.mps.is_available() is {expected}\n'
+            'def test_device_override(monkeypatch):\n'
+            '    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)\n'
+            '    assert torch.cuda.is_available()\n'
+        )
+    else:
+        (tmp_path / 'conftest.py').write_text('import sys\nsys.modules["torch"] = None\n')
+        source = 'def test_without_torch(): pass\n'
+    (tmp_path / 'test_sample.py').write_text(source)
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD='1', UMI_TEST_CPU_ONLY=cpu_only)
+    env['PYTHONPATH'] = os.pathsep.join([
+        str(tmp_path), str(Path(__file__).resolve().parents[1]),
+        env.get('PYTHONPATH', ''),
+    ])
+    result = subprocess.run(
+        [sys.executable, '-m', 'pytest', str(tmp_path), '-q',
+         '-p', 'brainscore.validation.cpu_profile'],
+        cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f'{2 if torch_present else 1} passed' in result.stdout
+
+
 @pytest.mark.parametrize('source,code,passed,unexpected', [
     ('def test_ok(): assert True', 0, 1, 0),
     ('import pytest\ndef test_skip(): pytest.skip("data missing")', 1, 0, 1),

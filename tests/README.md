@@ -7,10 +7,10 @@ Use the coordinated environment from [install/README.md](../install/README.md). 
 From the directory containing `core/`, `vision/`, `language/` and `unified/`:
 
 ```bash
-python -m brainscore.validation.workspace --root . --out qualification/source.json
+UMI_TEST_CPU_ONLY=1 python -m brainscore.validation.workspace --root . --out qualification/source.json
 ```
 
-The runner tests each repository in a separate process. It records revisions, local changes, selected tests, failures, skip reasons and unselected files. Unexpected skips, empty suites, missing reports and timeouts fail. The [selection](../brainscore/validation/workspace.py) includes shared UMI code and legacy helpers; it does not run every plugin.
+The runner tests each repository in a separate process. It records revisions, local changes, selected tests, failures, skip reasons and unselected files. Unexpected skips, empty suites, missing reports and timeouts fail. The [selection](../brainscore/validation/workspace.py) includes shared UMI code and legacy helpers; it does not run every plugin. `UMI_TEST_CPU_ONLY=1` disables automatic CUDA/MPS selection in all four test suites; device-selection tests can override it. Runtime model selection is unchanged.
 
 GitHub Actions builds the four pinned wheels, runs installed examples, and executes these source checks on Ubuntu/macOS CPU. Core, vision and language use explicit selections. Unified uses these markers:
 
@@ -44,7 +44,7 @@ PYTHONPATH="$PWD:$PWD/../core" python -m pytest tests/test_openpi_remote.py \
     --timeout=30
 ```
 
-These tests use real local WebSockets with fixture policies. Every selected case must run: no skips are allowed. No JAX, Torch, GPU, trained checkpoint or simulator is needed. Leave `UMI_TEST_CPU_ONLY` unset in this minimal environment; that flag configures Torch tests in the main profile.
+These tests use real local WebSockets with fixture policies. Every selected case must run: no skips are allowed. No JAX, Torch, GPU, trained checkpoint or simulator is needed. The CPU flag has no effect when Torch is absent.
 
 The main profile's 27 missing-client exemptions do not apply to this job. Local JAX instrumentation and trained-policy comparisons have separate requirements in the matrix.
 
