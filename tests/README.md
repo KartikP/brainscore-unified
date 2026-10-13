@@ -1,39 +1,55 @@
-# Unified test suite — tiers
+# Running tests
 
-Tests are organized into tiers via pytest markers (registered in
-`unified/pyproject.toml`; the same set is registered in `core`, `vision`,
-`language`). `tests/conftest.py` auto-marks any untiered test as `unit`, so the
-tiers are meaningful without hand-marking every file.
+Use the coordinated environment from [install/README.md](../install/README.md). The [release matrix](../docs/release_test_matrix.md) maps capabilities to tests, real-model comparisons and runner requirements.
 
-| marker | meaning | runs in CI? |
-|---|---|---|
-| `unit` | fast, offline, isolated — no real model weights, no network, no S3 (default) | yes (every commit) |
-| `integration` | end-to-end across components (e.g. `process()` → benchmark → `score()`), still offline with synthetic models/fixtures | yes |
-| `slow` | needs real model downloads / heavy data / GPU | on demand only |
-| `private_access` | needs S3 / private resources (usually combined with `slow`) | on demand only |
+## Four-repository offline checks
 
-## Running
+From the directory containing `core/`, `vision/`, `language/` and `unified/`:
 
 ```bash
-pytest -m unit                    # fast inner loop (every commit)
-pytest -m "unit or integration"   # full offline CI tier (no big models)  — ~265 tests, ~7s
-pytest -m slow                    # real-model + regression tier (AWS creds + downloads)
-pytest -m "slow and not private_access"   # slow but no S3
+UMI_TEST_CPU_ONLY=1 python -m brainscore.validation.workspace --root . --out qualification/source.json
 ```
 
-## What's marked `slow`
+The runner tests each repository in a separate process. It records revisions, local changes, selected tests, failures, skip reasons and unselected files. Unexpected skips, empty suites, missing reports and timeouts fail. The [selection](../brainscore/validation/workspace.py) includes shared UMI code and legacy helpers; it does not run every plugin. `UMI_TEST_CPU_ONLY=1` disables automatic CUDA/MPS selection in all four test suites; device-selection tests can override it. Runtime model selection is unchanged.
 
-- `test_text_wrapper.py` — loads real CLIP / GPT-2 weights
-- `test_vlm_vision_wrapper.py` — loads real Qwen2.5-VL-3B
-- `test_roar_benchmark.py` — loads CLIP + the ROAR benchmark data
-- `test_regression_baselines.py::test_score_matches_baseline` — scores real
-  models against `baselines/baselines.json` (also `private_access`)
+GitHub Actions builds the four pinned wheels, runs installed examples, and executes these source checks on Ubuntu/macOS CPU. Core, vision and language use explicit selections. Unified uses these markers:
 
-Everything else is `unit` (offline; wrappers tested with tiny CPU models,
-benchmark-structure checks, message/multi-agent, layer-mapping, percept/activation
-windows, visualization, harnesses). The two `score()`-orchestration e2e tests are
-`integration`.
+| Marker | Purpose |
+| --- | --- |
+| `unit` | Offline checks; default for tests without a tier |
+| `integration` | Offline component combinations, usually with fixture models |
+| `slow` | Real models, datasets or expensive computation |
+| `private_access` | Restricted resources, usually combined with `slow` |
 
-> Eventual CI target: Jenkins on ephemeral EC2 (runs `-m "unit or integration"`
-> per change, `-m slow` on demand). Wiring is deferred; the markers are
-> location-independent and ready now.
+For a quick unified-only run:
+
+```bash
+pytest -m "unit or integration"
+```
+
+This plain command permits skips. Use the coordinated runner for required-check accounting. Fixture tests and scientific qualification are separate evidence.
+
+## OpenPI client checks
+
+The separate Linux job needs only core and the client package. From the workspace root, in a fresh Python 3.11 environment:
+
+```bash
+python -m pip install -c unified/install/v2-constraints.txt \
+    ./core -r unified/install/openpi-client-tests.txt
+python -m pip check
+cd unified
+PYTHONPATH="$PWD:$PWD/../core" python -m pytest tests/test_openpi_remote.py \
+    -q -ra -p brainscore.validation.required_checks \
+    --umi-repository openpi-client --umi-check-report qualification/openpi.json \
+    --timeout=30
+```
+
+These tests use real local WebSockets with fixture policies. Every selected case must run: no skips are allowed. No JAX, Torch, GPU, trained checkpoint or simulator is needed. The CPU flag has no effect when Torch is absent.
+
+The main profile's 27 missing-client exemptions do not apply to this job. Local JAX instrumentation and trained-policy comparisons have separate requirements in the matrix.
+
+## Real models and data
+
+Run the matrix's integration/qualification selections only after staging their data and checkpoints. `pytest -m slow` is not a complete release qualification command. Scientific compatibility uses all eight cases in `python -m brainscore.validation.run_parity`; the matrix records the other required domain comparisons.
+
+Keep submission/database tests in isolated services without production credentials. Save failed runs alongside successful results.

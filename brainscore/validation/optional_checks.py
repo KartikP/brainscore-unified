@@ -3,6 +3,8 @@
 These exclusions are visible in source.json and do not qualify their features.
 A different skip reason, or any new skipped test, fails the profile. OpenPI/JAX,
 LanA data, and external maintainer scripts require separate qualification.
+Remote client skips are permitted only here; the dedicated openpi-client job
+installs the pinned client and allows no skips.
 """
 
 OPTIONAL_SKIPS = {

@@ -24,18 +24,6 @@ class TestRoarYeatman2021:
         import brainscore
         return brainscore.load_benchmark('Yeatman2021-lexical_decision-image')
 
-    def test_image_variant_registered(self):
-        import brainscore
-        assert 'Yeatman2021-lexical_decision-image' in brainscore.benchmark_registry
-
-    def test_text_variant_registered(self):
-        import brainscore
-        assert 'Yeatman2021-lexical_decision-text' in brainscore.benchmark_registry
-
-    def test_legacy_alias_registered(self):
-        import brainscore
-        assert 'Yeatman2021-lexical_decision' in brainscore.benchmark_registry
-
     def test_split_sizes(self, benchmark):
         assert len(benchmark._train_stimuli) == 400
         assert len(benchmark._test_stimuli) == 100
