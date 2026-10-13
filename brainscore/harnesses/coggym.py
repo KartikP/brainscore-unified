@@ -17,6 +17,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 
 from brainscore.experiments import CallableProtocol
+from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY, validate_slider_responses
 from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.streaming import StreamEvent
 
@@ -214,6 +215,7 @@ class CogGymRunner:
                       else 'smoke_subset'),
             'clock': 'no physical clock; provider_call is an attempt index',
             'reset': 'caller-supplied callback before each repetition',
+            'slider_validation': SLIDER_VALIDATION_POLICY,
         }
 
     def protocol(self, *, reset: Callable[[int], None]) -> CallableProtocol:
@@ -268,12 +270,17 @@ class CogGymRunner:
         _check_checkout(self.checkout)
         directory.mkdir(parents=True, exist_ok=False)
         artifacts = []
+        validations = []
         for repetition in range(1, self.repetitions + 1):
             reset(repetition)
             results = self._cli._run_experiment(
                 self._experiment, self._trials, provider_factory(repetition),
                 self.model, self.temperature, self.max_tokens,
             )
+            # Keep reference parsing and scoring intact. Check separately whether
+            # slider ratings really occur in the response, rather than in prose.
+            validation = validate_slider_responses(self._trials, results)
+            validations.append(validation)
             coverage = {
                 'expected_trials': len(self._trials),
                 'returned_trials': len(results),
@@ -293,6 +300,7 @@ class CogGymRunner:
                 'summary': None, 'trials': results,
                 'umi': {**self.describe(), 'coverage': coverage,
                         'status': 'complete' if complete else 'failed',
+                        'response_validation': validation,
                         'summary_status': 'pending'},
             }
             path = directory / f'run-{repetition:03d}.json'
@@ -329,6 +337,15 @@ class CogGymRunner:
         result = {'configuration': self.describe(), 'experiments': rows,
                   'summary': summary, 'skipped': skipped,
                   'repetitions': [json.loads(path.read_text())['umi']['coverage'] for path in artifacts]}
+        checked = sum(report['checked_queries'] for report in validations)
+        invalid = sum(report['invalid_queries'] for report in validations)
+        result['response_validation'] = {
+            'policy': SLIDER_VALIDATION_POLICY,
+            'status': 'invalid' if invalid else 'valid' if checked else 'not_applicable',
+            'checked_queries': checked,
+            'invalid_queries': invalid,
+            'repetitions': validations,
+        }
         path = directory / 'analysis.json'
         path.write_text(json.dumps(result, indent=2, allow_nan=False) + '\n')
         register(path)

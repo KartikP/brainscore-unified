@@ -79,7 +79,7 @@ class CogGymBenchmark(BenchmarkBase):
             identifier += f'.repeats-{repetitions}.tokens-{max_tokens}.temperature-{float(temperature)!r}'
         super().__init__(
             identifier=identifier,
-            version=1,
+            version=2,
             parent='behavioral',
             ceiling=ceiling,
             bibtex='@misc{coggym2026, title={CogGym: Towards Large-Scale Comparative '
@@ -112,6 +112,13 @@ class CogGymBenchmark(BenchmarkBase):
             # Call evaluate(), not run(): the outer protocol already observes
             # subject.process() calls, so nesting observers would record them twice.
             result = native.evaluate(subject, context)
+            validation = result['response_validation']
+            if validation['status'] == 'invalid':
+                raise ValueError(
+                    f'CogGym slider validation rejected {validation["invalid_queries"]} answers; '
+                    'no benchmark score is returned. Inspect response_validation in the saved '
+                    'analysis and run artifacts. Native results are unchanged.'
+                )
             rows = result['experiments']
             if len(rows) != 1 or rows[0]['experiment'] != self.experiment or rows[0]['model'] != model:
                 raise RuntimeError('CogGym must return exactly the requested model and experiment')
@@ -134,6 +141,7 @@ class CogGymBenchmark(BenchmarkBase):
                 modality=self.modality,
                 configuration=result['configuration'],
                 coverage=result['repetitions'],
+                response_validation=validation,
                 native_analysis=result,
                 run_directory=str(context.directory),
                 evaluation_scope='public_subset',

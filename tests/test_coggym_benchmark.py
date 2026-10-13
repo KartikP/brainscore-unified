@@ -2,6 +2,7 @@
 import json
 import math
 from collections import Counter
+from types import SimpleNamespace
 
 import pytest
 
@@ -28,6 +29,51 @@ def scored_reference(reference, monkeypatch):
         return [row], [], []
     analysis.analyze = analyze
     return root, analysis
+
+
+@pytest.mark.parametrize('invalid', [False, True])
+def test_slider_validation_preserves_native_results_and_gates_score(scored_reference, tmp_path, invalid):
+    root, _ = scored_reference
+    cli, _ = coggym._load_reference(root)
+    trials = cli._selected_trials(None, None, False)
+    for trial in trials:
+        trial.queries = [SimpleNamespace(
+            tag='rating', type='single-slider', slider_config={'min': 0, 'max': 100}, option=[],
+        )]
+    native = [{
+        'trial_id': trial.id,
+        'response': '{"answer": <number between 0 and 100>}' if invalid and i == 0 else '{"answer": 42}',
+        'parsed': {'rating': {'value': 0 if invalid and i == 0 else 42}},
+        'scores': {'rating': {'scorable': True}},
+    } for i, trial in enumerate(trials)]
+    cli._run_experiment = lambda *args: native
+    runner = coggym.CogGymRunner(root, model='fixture', repetitions=1)
+    direct = runner.run(
+        SimpleNamespace(complete_with_metadata=lambda *args: None),
+        output_dir=tmp_path / 'direct', reset=lambda repetition: None,
+    )
+    assert direct['experiments'][0]['r2'] == 0.375
+    validation = direct['response_validation']
+    assert validation['status'] == ('invalid' if invalid else 'valid')
+    assert validation['checked_queries'] == 3
+    assert validation['invalid_queries'] == int(invalid)
+    saved = json.loads((tmp_path / 'direct/run-001.json').read_text())
+    assert saved['trials'] == native
+    assert saved['umi']['response_validation'] == validation['repetitions'][0]
+    benchmark = brainscore.load_benchmark(
+        'CogGym.Hu2023Fine.exp1', checkout=root, repetitions=1,
+        reset=lambda repetition: None, output_dir=tmp_path / 'registered',
+    )
+    assert benchmark.version == 2
+    if invalid:
+        with pytest.raises(ValueError, match='slider validation rejected 1 answers'):
+            benchmark(make_subject(provider))
+        assert json.loads((tmp_path / 'registered/experiment.json').read_text())['status'] == 'failed'
+    else:
+        score = benchmark(make_subject(provider))
+        assert float(score) == 0.375
+        assert score.attrs['response_validation'] == validation
+    assert json.loads((tmp_path / 'registered/coggym/run-001.json').read_text())['trials'] == native
 
 
 def test_all_public_experiments_registered_lazily():

@@ -25,7 +25,7 @@ def reference(tmp_path, monkeypatch):
     (folder / 'public_manifest.json').write_text(json.dumps({
         'experiments': [{'path': 'Hu2023Fine/exp1'}],
     }))
-    trials = [SimpleNamespace(id=f'trial-{index}') for index in range(3)]
+    trials = [SimpleNamespace(id=f'trial-{index}', queries=[]) for index in range(3)]
     experiment = SimpleNamespace(human_data_mean={'secret': 'never pass to provider'})
 
     def prompt(trial, experiment):
