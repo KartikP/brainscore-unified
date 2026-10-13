@@ -61,6 +61,51 @@ automatically migrated.
 
 ## As a benchmark author
 
+### Release requirement: users can prepare the data locally
+
+Every benchmark in the supported release scope needs a documented path to its
+stimulus set and data assembly. Check access to each separately: permission to
+share responses does not imply permission to share the stimuli.
+
+| Access route | What the user receives |
+| --- | --- |
+| Redistribution permitted | A versioned download of the prepared assets, with integrity checks and a local loader |
+| User must obtain access | Instructions for obtaining the authors' files, plus a maintained command that builds the assets locally |
+| Provider supports retrieval IDs | The same local build, with an optional provider-specific `--request-id` resolver |
+
+The data plugin's `README.md` must give the source/version, access terms, native
+input layout, dependencies, expected disk/runtime needs, preparation command,
+output location and a data-only validation command. Users should not need to
+edit Python code or upload restricted files to Brain-Score.
+
+Completion requires:
+
+- Both stimuli and reference responses load through the benchmark's documented
+  local path, from a fresh directory without an author's private cache.
+- Validation checks IDs, stimulus-to-response alignment, dimensions, coordinates,
+  labels, splits, exclusions and missing values against a versioned reference.
+- The build records source checksums, converter revision and preprocessing
+  settings. For converted assets, two builds agree on content, allowing only
+  documented numerical tolerances; container timestamps need not match.
+- Small fixture tests cover malformed inputs and incomplete builds. An authorized
+  full-data run verifies the documented path before release; fixtures alone do
+  not establish dataset reproducibility.
+- Missing access or files are reported before model loading. Conversion preserves
+  the source files and never exposes credentials or restricted data in logs.
+
+Use the shared preparation command where conversion is needed. A pinned native
+dataset used directly by an external evaluator need not be converted into new
+UMI assemblies solely to satisfy this requirement; document its equivalent
+stimuli, reference responses and validation, as for CogGym.
+
+If an asset cannot be recovered from available source files, record the specific
+gap for release-scope review rather than describe it as reproducible. This is a
+release acceptance requirement, not a claim that every existing plugin meets it.
+See the [dataset preparation audit](dataset_preparation.md) for existing routes
+and the checks still needed for each benchmark family.
+
+### Declare local assets
+
 Declare the asset in the manifest at the bottom of `brainscore/data/local.py`:
 
 ```python
