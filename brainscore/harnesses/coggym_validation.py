@@ -74,6 +74,10 @@ def _segments(raw, queries):
         numbers = [str(i) for i in range(1, len(queries) + 1)]
         if set(value) == set(numbers):
             return [value[key] for key in numbers]
+        # CogGym labels prompts and accepts JSON keys as "Question N".
+        labels = [f'Question {number}' for number in numbers]
+        if set(value) == set(labels):
+            return [value[key] for key in labels]
         if set(value) == {'answers'}:
             value = value['answers']
     if isinstance(value, list) and len(value) == len(queries):

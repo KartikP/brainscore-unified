@@ -54,6 +54,8 @@ def test_unambiguous_single_rating_matches_native_value(raw):
     '{"answer": 42}\n{"answer": 61}',
     '[42, 61]', '{"answers": [42, 61]}',
     '{"2": 61, "1": 42}',
+    '{"Question 1": {"answer": 42}, "Question 2": {"answer": 61}}',
+    '{"Question 2": 61, "Question 1": 42}',
     'Question 1: 42\nQuestion 2: 61',
 ])
 def test_multiple_answers_are_assigned_explicitly(raw):
@@ -67,6 +69,11 @@ def test_multiple_answers_are_assigned_explicitly(raw):
     '{"first_random_key": 42, "second_random_key": 61}',
     'Question 1: 42\nQuestion 1: 61',
     '42 61',
+    '{"Question 1": 42}',
+    '{"Question 1": 42, "Question 3": 61}',
+    '{"Question 1": 42, "2": 61}',
+    '{"Question 1": 42, "Question 2": 61, "Question 3": 80}',
+    '{"Question 1": 42, "Question 1": 61}',
 ])
 def test_ambiguous_multi_question_answers_are_rejected(raw):
     report = validate(raw, {'left': {'value': 42}, 'right': {'value': 61}}, [query('left'), query('right')])
@@ -109,3 +116,24 @@ def test_missing_response_is_not_validated_as_success():
 def test_duplicate_question_tags_cannot_broadcast_one_rating():
     report = validate('{"rating": 42}', {'rating': {'value': 42}}, [query(), query()])
     assert report['invalid_queries'] == 2
+
+
+def test_question_labels_preserve_mixed_query_order():
+    queries = [query('choice', 'multi-choice'), query('ratings', 'multi-slider', ['A', 'B'])]
+    report = validate(
+        '{"Question 2": {"answer": {"A": 10, "B": 90}}, "Question 1": "A"}',
+        {'ratings': {'values': {'A': 10, 'B': 90}}},
+        queries,
+    )
+    assert report['status'] == 'valid'
+    assert report['checked_queries'] == 1
+
+
+def test_question_labels_still_require_native_parser_agreement():
+    report = validate(
+        '{"Question 1": 42, "Question 2": 61}',
+        {'left': {'value': 61}, 'right': {'value': 42}},
+        [query('left'), query('right')],
+    )
+    assert report['invalid_queries'] == 2
+    assert all(issue['reason'] == 'reference_parse_mismatch' for issue in report['issues'])

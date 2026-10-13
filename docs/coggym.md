@@ -146,7 +146,7 @@ With an explicit output directory, failed, missing, or reordered trials fail the
 
 CogGym's parser can extract numbers from placeholders or refusals. UMI checks slider answers separately, using policy `coggym-slider-v1`. The original responses, parsed answers, and native scores stay unchanged.
 
-A valid slider answer must give one finite number within the declared scale and agree with CogGym's parsed value. For multiple questions, answers must be assigned by question tag, number, or an ordered JSON list or sequence of objects. Multi-slider questions must name every option. Placeholders, prose, booleans, nested arrays, duplicate keys, and out-of-range values fail the check. A single bare number or `Answer: 42` is also accepted.
+A valid slider answer must give one finite number within the declared scale and agree with CogGym's parsed value. For multiple questions, answers must be assigned by question tag, number (such as `"1"` or `"Question 1"`), or an ordered JSON list or sequence of objects. Multi-slider questions must name every option. Placeholders, prose, booleans, nested arrays, duplicate keys, and out-of-range values fail the check. A single bare number or `Answer: 42` is also accepted.
 
 Find `response_validation` in `analysis.json` and under `umi` in each run file. It reports the policy, number of checked and invalid questions, and the trial IDs and reasons for failures. `status: complete` in a run file describes execution; response validity is separate.
 
