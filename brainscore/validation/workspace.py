@@ -41,6 +41,7 @@ SUITES = {
         'tests/test_compatibility.py',
         'tests/test_state_change.py',
         'tests/test_extraction_cache.py',
+        'tests/test_runtime_dependencies.py',
         'tests/test_preflight.py',
         'tests/test_leaderboard_eligibility.py',
         'tests/test_assembly_builder.py',
