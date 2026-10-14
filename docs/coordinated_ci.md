@@ -23,11 +23,9 @@ inherit secrets or dispatch a privileged workflow in another repository.
 
 ## Required checks
 
-The October 14 audit found no branch protection or effective rules on any v2
-branch. Workflows reporting green is different from GitHub requiring them.
-
-After the caller PRs merge and their check names have appeared, require these
-checks on `unified-model-interface-v2` only:
+These checks are required on `unified-model-interface-v2` in all four
+repositories, verified on October 14, 2026. Protection applies to administrators
+and requires branches to be up to date before merging.
 
 | Repository | Coordinated checks | Existing domain checks to retain |
 | --- | --- | --- |
@@ -36,10 +34,10 @@ checks on `unified-model-interface-v2` only:
 | Vision | Same three `UMI v2 / ...` checks | `Vision Unittests, Non-Plugins`, `Vision Unittests, Plugins` |
 | Language | Same three `UMI v2 / ...` checks | `Language Unittests, Non-Plugins`, `Language Unittests, Plugins`, `Language Integration Tests` |
 
-Confirm the exact reported names before changing settings. Re-read branch
-protection and effective rules afterward; a documentation update does not enable
-a merge gate. Do not require a name that has not yet run. An infrastructure PR
-alone does not qualify the live Vision v2 environment.
+When changing this list, confirm the reported names and read back the protection
+settings afterward. An infrastructure PR alone does not qualify the live Vision
+v2 environment. See [merge automation](ci_automation.md) for the other actions
+that PRs and merges can trigger.
 
 ## Longer integration tests
 
