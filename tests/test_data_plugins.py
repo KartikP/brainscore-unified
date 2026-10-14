@@ -5,7 +5,7 @@ from pathlib import Path
 import brainscore
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_ROOT = Path(brainscore.__file__).resolve().parent
 
 
 def test_lahner_data_registry_entries_present():
@@ -256,11 +256,13 @@ def test_benchmark_package_does_not_inline_s3_loader_metadata():
         's3://',
     )
     offenders = {}
-    for path in (REPO_ROOT / 'brainscore' / 'benchmarks').rglob('*.py'):
+    benchmark_root = PACKAGE_ROOT / 'benchmarks'
+    assert benchmark_root.is_dir()
+    for path in benchmark_root.rglob('*.py'):
         text = path.read_text()
         hits = [pattern for pattern in forbidden if pattern in text]
         if hits:
-            offenders[str(path.relative_to(REPO_ROOT))] = hits
+            offenders[str(path.relative_to(PACKAGE_ROOT))] = hits
 
     assert not offenders
 
@@ -268,9 +270,10 @@ def test_benchmark_package_does_not_inline_s3_loader_metadata():
 def test_benchmark_package_does_not_contain_prep_or_driver_scripts():
     forbidden_names = set()
     for benchmark_dir in (
-        REPO_ROOT / 'brainscore' / 'benchmarks' / 'lahner2024',
-        REPO_ROOT / 'brainscore' / 'benchmarks' / 'algonauts2025',
+        PACKAGE_ROOT / 'benchmarks' / 'lahner2024',
+        PACKAGE_ROOT / 'benchmarks' / 'algonauts2025',
     ):
+        assert benchmark_dir.is_dir()
         forbidden_names.update(
             path.name for path in benchmark_dir.glob('prepare_*.py'))
         forbidden_names.update(

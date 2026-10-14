@@ -1,15 +1,18 @@
-"""Run the offline contract suites in separate processes for all four repos.
+"""Run the offline suites against source checkouts or installed candidate wheels.
 
 python -m brainscore.validation.workspace --root /path/to/sibling/repos --out report.json
-This is a source qualification tier. It is not scientific parity or wheel CI.
+Use --mode installed --wheels /path/to/wheels for installed-package checks.
+Neither mode replaces scientific or first-use qualification.
 """
 import argparse
 import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
+import tempfile
 
 # Keep offline selections explicit: mixed files contain real-model/data tests.
 SUITES = {
@@ -38,6 +41,7 @@ SUITES = {
         'tests/test_compatibility.py',
         'tests/test_state_change.py',
         'tests/test_extraction_cache.py',
+        'tests/test_runtime_dependencies.py',
         'tests/test_preflight.py',
         'tests/test_leaderboard_eligibility.py',
         'tests/test_assembly_builder.py',
@@ -109,13 +113,39 @@ SUITES = {
 }
 
 
-def qualify(root, out):
+def stage_tests(checkout: Path, destination: Path) -> None:
+    """Copy test inputs without making repository packages importable."""
+    for name in ('tests', 'examples', 'install', '.github'):
+        source = checkout / name
+        if source.is_dir():
+            shutil.copytree(source, destination / name,
+                            ignore=shutil.ignore_patterns('__pycache__', '.pytest_cache', '*.pyc'))
+    for name in ('pyproject.toml', 'pytest.ini', 'setup.cfg'):
+        source = checkout / name
+        if source.is_file():
+            shutil.copy2(source, destination / name)
+
+
+def qualify(root, out, *, mode='source', wheels=None):
     root, out = Path(root).resolve(), Path(out).resolve()
+    if mode not in ('source', 'installed'):
+        raise ValueError(f'Unknown test mode: {mode}')
+    if mode == 'installed' and wheels is None:
+        raise ValueError('Installed checks require --wheels')
+    wheels = Path(wheels).resolve() if wheels is not None else None
     out.parent.mkdir(parents=True, exist_ok=True)
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(str(root/repo) for repo in SUITES),
         RESULTCACHING_DISABLE='1', HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
         BS_INSTALL_DEPENDENCIES='no')
-    report = {'tier': 'source-offline', 'python': sys.version,
+    if mode == 'installed':
+        for key in ('PYTHONPATH', 'PYTHONHOME', 'PYTEST_ADDOPTS', 'PYTEST_PLUGINS'):
+            env.pop(key, None)
+        for key in list(env):
+            if key.startswith('AWS_'):
+                del env[key]
+        env.update(AWS_EC2_METADATA_DISABLED='true', AWS_SHARED_CREDENTIALS_FILE=os.devnull,
+                   AWS_CONFIG_FILE=os.devnull)
+    report = {'tier': f'{mode}-offline', 'python': sys.version,
               'complete': False, 'repositories': {}}
     out.write_text(json.dumps(report, indent=2)+'\n')
     for repo, suite in SUITES.items():
@@ -135,9 +165,28 @@ def qualify(root, out):
                    '-p', 'no:cacheprovider', '-p', 'brainscore.validation.required_checks',
                    '-p', 'brainscore.validation.cpu_profile',
                    '--umi-check-report', str(checks), '--umi-repository', repo]
-        with log.open('w') as handle:
+        identity = out.with_name(f'{out.stem}-{repo}-installed.json')
+        identity.unlink(missing_ok=True)
+        with tempfile.TemporaryDirectory(prefix=f'umi-{repo}-') as temporary, log.open('w') as handle:
+            cwd = checkout
+            run_env = env.copy()
+            if mode == 'installed':
+                cwd = Path(temporary)
+                stage_tests(checkout, cwd)
+                home = cwd / 'home'
+                home.mkdir()
+                run_env.update(HOME=str(home), RESULTCACHING_HOME=str(home / 'results'),
+                               BRAINIO_HOME=str(home / 'brainio'), HF_HOME=str(home / 'huggingface'),
+                               HF_HUB_CACHE=str(home / 'huggingface/hub'),
+                               HUGGINGFACE_HUB_CACHE=str(home / 'huggingface/hub'),
+                               TRANSFORMERS_CACHE=str(home / 'huggingface/transformers'),
+                               TORCH_HOME=str(home / 'torch'),
+                               XDG_CACHE_HOME=str(home / 'cache'), MPLCONFIGDIR=str(home / 'matplotlib'))
+                command = [sys.executable, '-I', '-m', 'brainscore.validation.installed',
+                           '--stage', str(cwd), '--wheels', str(wheels),
+                           '--identity', str(identity), *command[3:]]
             try:
-                run = subprocess.run(command, cwd=checkout, env=env, stdout=handle,
+                run = subprocess.run(command, cwd=cwd, env=run_env, stdout=handle,
                                      stderr=subprocess.STDOUT, timeout=1800)
                 returncode = run.returncode
             except subprocess.TimeoutExpired:
@@ -147,11 +196,17 @@ def qualify(root, out):
         # A zero process exit without a completed evidence report is not success.
         if returncode == 0 and (not evidence or evidence['returncode'] or not evidence['passed']):
             returncode = 1
+        installed = json.loads(identity.read_text()) if identity.exists() else None
+        if mode == 'installed' and returncode == 0 and (
+                not installed or not installed['complete'] or installed['returncode']
+                or installed['import_violations']):
+            returncode = 1
         selected_files = {node.split('::')[0] for node in (evidence or {}).get('selected', [])}
         inventory = {str(path.relative_to(checkout)) for path in (checkout/'tests').rglob('test_*.py')}
         report['repositories'][repo] = {'base_commit': commit, 'working_changes_sha256': digest.hexdigest(),
             'dirty': bool(diff or untracked), 'returncode': returncode, 'log': str(log),
             'command': command, 'checks': evidence,
+            'installed': installed,
             'unselected_test_files': sorted(inventory - selected_files)}
         out.write_text(json.dumps(report, indent=2)+'\n')
         print(f'{repo}: {"PASS" if returncode == 0 else "FAIL"} ({log})', flush=True)
@@ -164,8 +219,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', required=True)
     parser.add_argument('--out', required=True)
+    parser.add_argument('--mode', choices=('source', 'installed'), default='source')
+    parser.add_argument('--wheels', help='Directory containing the four candidate wheels')
     args = parser.parse_args()
-    return qualify(args.root, args.out)
+    return qualify(args.root, args.out, mode=args.mode, wheels=args.wheels)
 
 
 if __name__ == '__main__':

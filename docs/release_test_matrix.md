@@ -6,7 +6,7 @@ This matrix defines the checks for [#18](https://github.com/brain-score/unified-
 
 ## Current validation
 
-The expanded selection was tested locally on October 13, 2026, using Python 3.11 on macOS CPU. The OpenPI test selection also passed in a fresh client-only environment. Hosted Linux/macOS verification of these changes is pending.
+The October 13 source baseline below passed locally on macOS CPU. F2/F3 are now merged, and [hosted Linux/macOS checks passed](https://github.com/KartikP/brainscore-unified/actions/runs/38578586361). Counts below describe that historical selection; current reports record the exact tests run.
 
 | Profile | Passing tests | Scope |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ The expanded selection was tested locally on October 13, 2026, using Python 3.11
 
 The four-repository profile totals **2,174 passes**. The client profile overlaps it by 15 cases; do not add the two totals as unique tests. This change promotes 511 existing offline cases and adds two skip-enforcement cases and four CPU-profile cases. It does not measure a new coverage percentage or qualify trained models.
 
-Source identities and results are recorded in `source.json`, per-repository check reports and the client report. Core includes the isolated Conda-discovery test in [core #184](https://github.com/brain-score/core/pull/184). The local peer trees have the same runtime/test content as the pinned revisions; vision/language differ in documentation. Unified changes are on `test/release-checks`, based on `0e2e7f9`. The [last recorded hosted baseline](https://github.com/KartikP/brainscore-unified/actions/runs/37627147300) remains separate evidence.
+F1 now runs the same required selection against installed wheels, with copied tests outside the checkouts. It verifies installed files against wheel hashes, checks module import locations during tests, and records versions and skip reasons. Each suite uses a temporary home and cache directories. Candidate reports identify whether execution used source or installed packages; earlier source results do not qualify later wheels.
 
 ## Capability acceptance
 
@@ -56,13 +56,13 @@ The [September candidate](qualification/2026-09-16-candidate.md) contains real v
 
 ## One execution matrix
 
-**Implemented** means an existing runner executes the selection. **Configured; locally verified** means the workflow change awaits hosted CI. **Proposed** means selection, installation or scheduling still needs implementation. Limits in parentheses are existing limits, not measured runtimes. New compute budgets must be set before scheduling.
+**Implemented** means an existing runner executes the selection. **Proposed** means selection, installation or scheduling still needs implementation. Limits in parentheses are existing limits, not measured runtimes. New compute budgets must be set before scheduling.
 
 | ID / check | Selection and purpose | Runner / trigger | Prerequisites and completion criterion | Status / responsible role |
 | --- | --- | --- | --- | --- |
-| F1 — Coordinated offline baseline | [workspace selection](../brainscore/validation/workspace.py): contracts, adapters, cache integrity, preflight, tools, records, reasoning, synthetic robotics and Gymnasium; plus installed tests/examples | GitHub Actions, unified PRs and v2 pushes; Ubuntu/macOS CPU (40-minute job; 30 minutes per source suite) | Four pinned revisions, constraints, built wheels and test extra. Every required case runs; no unexpected skips, empty suites or missing reports | **Implemented**; CI maintainer |
-| F2 — Additional shared and legacy tests | Explicit assembly, readout, unit selection, memory, streaming, metric, preprocessing and plugin-selection checks; offline classes selected from mixed files; ROAR registry tests separated from data tests | GitHub Actions, extension to F1 on both CPU platforms | No network, private data or model download. Record selected IDs and timings before promotion; retain needed cases in integration profiles if they cannot run offline | **Configured; locally verified**; core/domain maintainers |
-| F3 — Remote policy protocol | `tests/test_openpi_remote.py`: loopback requests, timeouts, disconnects, invalid responses, cleanup, concurrent-client handling | GitHub Actions, dedicated Linux CPU job on unified PRs and v2 pushes | Install [pinned client dependencies](../install/openpi-client-tests.txt) and pinned core. All 42 selected cases run, including the 27 skipped in F1. No skip exemptions; local sockets only, no trained weights/JAX/Torch; 15-minute job, 30-second test limit | **Configured; locally verified**; robotics/tool maintainer |
+| F1 — Coordinated offline baseline | [workspace selection](../brainscore/validation/workspace.py): contracts, adapters, cache integrity, preflight, tools, records, reasoning, synthetic robotics and Gymnasium; plus examples | GitHub Actions, unified PRs and v2 pushes; Ubuntu/macOS CPU (40-minute job; 30 minutes per suite) | Four pinned revisions, constraints, installed candidate wheels and test extra. Verify package files and import locations; every required case runs, with no unexpected skips, empty suites or missing reports | **Implemented**; CI maintainer |
+| F2 — Additional shared and legacy tests | Explicit assembly, readout, unit selection, memory, streaming, metric, preprocessing and plugin-selection checks; offline classes selected from mixed files; ROAR registry tests separated from data tests | GitHub Actions, extension to F1 on both CPU platforms | No network, private data or model download. Record selected IDs and timings before promotion; retain needed cases in integration profiles if they cannot run offline | **Implemented**; core/domain maintainers |
+| F3 — Remote policy protocol | `tests/test_openpi_remote.py`: loopback requests, timeouts, disconnects, invalid responses, cleanup, concurrent-client handling | GitHub Actions, dedicated Linux CPU job on unified PRs and v2 pushes | Install [pinned client dependencies](../install/openpi-client-tests.txt) and pinned core. All 42 selected cases run, including the 27 skipped in F1. No skip exemptions; local sockets only, no trained weights/JAX/Torch; 15-minute job, 30-second test limit | **Implemented**; robotics/tool maintainer |
 | I1 — Changed-plugin integration | Existing vision/language plugin selectors, plus shared plugin installation/import/environment tests. Model PR: declared smoke benchmark; benchmark PR: representative compatible models. Shared-code changes: representative pairs in both domains | Jenkins, relevant PR head; scheduled sweep for shared changes | Coordinated revisions, plugin dependencies, data/checkpoint access and CPU/GPU sizing. Assert nonempty expected tests for changed plugins; setup, OOM, timeout and failed tests cannot qualify a change | Existing domain runners; **UMI coordination proposed**; domain + CI maintainers |
 | I2 — Real-model and data integration | Legacy vision transformation/integration tests; language embedding/Hugging Face/container/localization tests; unified `test_text_wrapper.py`, `test_vlm_vision_wrapper.py`, `test_roar_benchmark.py`; representative audio/video adapters | Jenkins, relevant PRs plus scheduled CPU/GPU jobs | Pre-staged, identified weights/data; licensed access where required. Verify loading, output shape/semantics, repeated calls and recorded expected results. Use GPU for cases that require it, not the whole tier | **Proposed coordinated selection**; domain maintainers |
 | I3 — Submission and storage integration | Core/vision/language submission tests, metadata-only flows, compatible/incompatible/failed score persistence | Jenkins, relevant PRs and candidate runs | Disposable database/service fixtures and test credentials. Verify score provenance and failure/N/A behavior; no production writes. Move pure mocked cases to F2 | Existing tests; **isolated coordinated profile proposed**; scoring/database maintainers; #22 |
@@ -96,9 +96,20 @@ For each promoted selection, store exact test IDs, dependencies, environment, ex
 
 ## Implementation order
 
-1. Review and merge F2/F3 after hosted CI passes. No check is a required GitHub merge gate until repository settings require its status.
+1. Require F1 installed-package checks and F3 client checks after hosted CI passes. F2/F3 are merged. No check is a required GitHub merge gate until repository settings require its status.
 2. Reconcile Jenkins deployment records; add a coordinated UMI revision/install path and exact-head reporting without changing ordinary production jobs implicitly (#16).
 3. Define changed-plugin and representative-pair manifests, then add isolated integration profiles (I1–I5) with explicit resource limits.
 4. After #6 scope approval, bind each required capability/environment to these rows and run Q1–Q3 on the final candidate (#19/#20).
 
 The workflow implements F1–F3; the remaining rows are routing and acceptance requirements. This document launches no compute and authorizes no publication. Release execution remains manual and owned by Kartik.
+
+## New-user acceptance — separate pre-release task
+
+Track the independent trial under [#2](https://github.com/brain-score/unified-model-interface/issues/2), with evidence reused by #19. Schedule it after package installation and the guide are stable; it does not block implementation of F1.
+
+- Start with a new environment and empty application caches, without editable installs or private cached data.
+- Follow the guide to install the candidate, obtain or prepare an authorized dataset, and complete a first benchmark run.
+- Build a small tool using the documented extension points.
+- Record the candidate revisions, steps, time, questions and workarounds. An unfamiliar developer must complete the agreed workflow without undocumented assistance; blocking findings must be fixed and retried before release.
+
+Existing guide feedback remains useful evidence, but does not replace a trial of the final candidate. New-user acceptance, automated installed-package checks and scientific qualification are separate results.
