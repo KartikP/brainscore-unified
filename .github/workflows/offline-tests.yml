@@ -4,8 +4,26 @@ on:
     branches: [unified-model-interface-v2]
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      candidate:
+        description: Repository under test (core, vision or language)
+        required: true
+        type: string
+      candidate_repository:
+        description: GitHub repository containing the candidate, including forks
+        required: true
+        type: string
+      candidate_revision:
+        description: Exact PR head or pushed commit
+        required: true
+        type: string
+      unified_revision:
+        description: Immutable Unified revision supplying the runner and peer pins
+        required: true
+        type: string
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: umi-installed-${{ github.repository }}-${{ github.ref }}
   cancel-in-progress: true
 permissions:
   contents: read
@@ -26,38 +44,45 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          repository: ${{ inputs.unified_revision && 'KartikP/brainscore-unified' || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.unified_revision || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
           path: unified
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Read immutable peer revisions
+      - name: Resolve exact candidate and pinned peers
         id: peers
+        env:
+          CANDIDATE: ${{ inputs.candidate || 'unified' }}
+          CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          CANDIDATE_REVISION: ${{ inputs.candidate_revision || github.event.pull_request.head.sha || github.sha }}
+          UNIFIED_REPOSITORY: ${{ inputs.unified_revision && 'KartikP/brainscore-unified' || github.event.pull_request.head.repo.full_name || github.repository }}
         run: |
-          python - <<'PY'
-          import json, os, re
-          peers = json.load(open('unified/install/peer-revisions.json'))
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              for name in ('core', 'vision', 'language'):
-                  revision = peers[name]
-                  if not re.fullmatch('[0-9a-f]{40}', revision):
-                      raise ValueError(f'Invalid revision for {name}')
-                  print(f'{name}={revision}', file=output)
-          PY
+          export UNIFIED_REVISION=$(git -C unified rev-parse HEAD)
+          python unified/brainscore/validation/revisions.py \
+            --manifest unified/install/peer-revisions.json \
+            --record qualification/revisions.json
       - uses: actions/checkout@v4
         with:
-          repository: brain-score/core
-          ref: ${{ steps.peers.outputs.core }}
+          repository: ${{ steps.peers.outputs.core_repository }}
+          ref: ${{ steps.peers.outputs.core_revision }}
+          persist-credentials: false
           path: core
       - uses: actions/checkout@v4
         with:
-          repository: brain-score/vision
-          ref: ${{ steps.peers.outputs.vision }}
+          repository: ${{ steps.peers.outputs.vision_repository }}
+          ref: ${{ steps.peers.outputs.vision_revision }}
+          persist-credentials: false
           path: vision
       - uses: actions/checkout@v4
         with:
-          repository: brain-score/language
-          ref: ${{ steps.peers.outputs.language }}
+          repository: ${{ steps.peers.outputs.language_repository }}
+          ref: ${{ steps.peers.outputs.language_revision }}
+          persist-credentials: false
           path: language
+      - name: Verify checkout revisions before building
+        run: python unified/brainscore/validation/revisions.py --record qualification/revisions.json --verify
       - name: Build all four wheels
         run: |
           python -m pip install build setuptools==68.2.2 wheel
@@ -111,26 +136,33 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          repository: ${{ inputs.unified_revision && 'KartikP/brainscore-unified' || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.unified_revision || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
           path: unified
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Read pinned core revision
+      - name: Resolve exact candidate and pinned peers
         id: peers
+        env:
+          CANDIDATE: ${{ inputs.candidate || 'unified' }}
+          CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          CANDIDATE_REVISION: ${{ inputs.candidate_revision || github.event.pull_request.head.sha || github.sha }}
+          UNIFIED_REPOSITORY: ${{ inputs.unified_revision && 'KartikP/brainscore-unified' || github.event.pull_request.head.repo.full_name || github.repository }}
         run: |
-          python - <<'PY'
-          import json, os, re
-          revision = json.load(open('unified/install/peer-revisions.json'))['core']
-          if not re.fullmatch('[0-9a-f]{40}', revision):
-              raise ValueError('Invalid core revision')
-          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-              print(f'core={revision}', file=output)
-          PY
+          export UNIFIED_REVISION=$(git -C unified rev-parse HEAD)
+          python unified/brainscore/validation/revisions.py \
+            --manifest unified/install/peer-revisions.json \
+            --record qualification/revisions.json
       - uses: actions/checkout@v4
         with:
-          repository: brain-score/core
-          ref: ${{ steps.peers.outputs.core }}
+          repository: ${{ steps.peers.outputs.core_repository }}
+          ref: ${{ steps.peers.outputs.core_revision }}
+          persist-credentials: false
           path: core
+      - name: Verify checkout revisions before installing
+        run: python unified/brainscore/validation/revisions.py --record qualification/revisions.json --verify core unified
       - name: Install client test environment
         run: |
           python -m pip install -c unified/install/v2-constraints.txt ./core -r unified/install/openpi-client-tests.txt

@@ -87,7 +87,7 @@ For each promoted selection, store exact test IDs, dependencies, environment, ex
 
 ## Shared execution rules
 
-- **Revision set:** start from `install/peer-revisions.json`; for a peer PR, override that peer with its exact head SHA and record all four resulting revisions. A unified-only trigger cannot protect core/vision/language PRs. Add cross-repository triggering and check reporting before calling this a per-repository merge gate.
+- **Revision set:** start from `install/peer-revisions.json`; for a peer PR, override that peer with its exact head SHA and record all four resulting revisions. The reusable offline workflow accepts this override and verifies checkouts before building. [Coordinated CI](coordinated_ci.md) describes caller pins and the required-check rollout; until callers and repository settings are enabled, this is not a per-repository merge gate.
 - **One test implementation:** reuse the repository runners and domain selectors. GitHub/Jenkins should supply environments and schedules, not separate assertions.
 - **Report actual work:** save selected/deselected/skipped IDs and reasons, JUnit or equivalent outcomes, all revisions, wheel hashes, dependency lock, data/checkpoint identifiers, precision/device, cache settings, durations and resource use. A zero exit with absent evidence is a failure. An OOM/UNSTABLE Jenkins outcome cannot satisfy a required release check.
 - **Bound expensive runs:** check dependencies, credentials/data availability, disk and expected memory before downloading/loading models. Set a hard runtime/compute limit and verify cleanup; an alarm that only sends a notification is insufficient.
