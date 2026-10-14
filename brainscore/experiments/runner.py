@@ -13,6 +13,14 @@ from brainscore.instrumentation import ObservedSession, observe
 from brainscore.run_record import PayloadCodec, RunRecord
 
 
+# These data fields affect built-in session evaluation. Never serialize a live
+# environment, iterator, callback, or clock when recording a replay request.
+_SESSION_CONTEXT_FIELDS = (
+    'requested_output_channels', 'stimulus_set', 'task_context', 'time_bins',
+    'streaming',
+)
+
+
 def _identity(value):
     cls = type(value)
     return f'{cls.__module__}.{cls.__qualname__}'
@@ -108,6 +116,13 @@ class SessionProtocol:
                 try:
                     subject.reset()
                     with context.trial(trial, condition=condition), self.session_factory(request) as session:
+                        settings = {
+                            name: getattr(session, name)
+                            for name in _SESSION_CONTEXT_FIELDS
+                            if getattr(session, name, None) is not None
+                        }
+                        if settings:
+                            context.publish('session_context', settings)
                         subject.interact(ObservedSession(session, context))
                         if getattr(session, 'complete', True) is False:
                             raise RuntimeError('Environment session ended before episode completion')

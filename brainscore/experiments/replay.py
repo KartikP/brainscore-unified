@@ -3,10 +3,11 @@ from contextlib import contextmanager
 from pathlib import Path
 import json
 import numpy as np
+import xarray as xr
 from brainscore.run_record import RunRecord
 from brainscore_core.streaming import InMemorySession, StreamEvent
 from brainscore_core.events import EnvironmentStep
-from .runner import SessionProtocol, CallableProtocol
+from .runner import SessionProtocol, CallableProtocol, _SESSION_CONTEXT_FIELDS
 
 
 def read_events(directory):
@@ -43,21 +44,36 @@ def replay_sessions(directory):
     if schedule != [(condition, trial) for condition in conditions for trial in trials]:
         raise ValueError('Saved sessions must use a complete condition-by-trial schedule')
     inputs = {key: [] for key in schedule}
+    settings = {key: {} for key in schedule}
+    trial_outputs = {key: set() for key in schedule}
     outputs = set()
     for event in events:
+        key = (event.get('condition', 'default'), event['trial_id'])
         if event['kind'] == 'input':
             if not isinstance(event['payload'], (StreamEvent, EnvironmentStep)):
                 raise TypeError('Use replay_calls for recorded method calls')
-            inputs[(event.get('condition', 'default'), event['trial_id'])].append(event['payload'])
+            inputs[key].append(event['payload'])
+        elif event['kind'] == 'session_context':
+            if not isinstance(event['payload'], dict) or set(event['payload']) - set(_SESSION_CONTEXT_FIELDS):
+                raise ValueError('Unsupported saved session settings')
+            settings[key] = event['payload']
         elif event['kind'] == 'output':
             if isinstance(event['payload'], StreamEvent):
                 outputs.add(event['payload'].channel)
+                trial_outputs[key].add(event['payload'].channel)
     @contextmanager
     def factory(trial):
         # Independent copies prevent a mutating subject altering another replay.
         from copy import deepcopy
-        saved = deepcopy(inputs[(trial.condition, trial.identifier)])
+        key = (trial.condition, trial.identifier)
+        saved = deepcopy(inputs[key])
         session = InMemorySession(saved)
+        for name, value in deepcopy(settings[key]).items():
+            setattr(session, name, value)
+        if 'requested_output_channels' not in settings[key] and trial_outputs[key]:
+            # Older records have no request metadata. Keep the observed channel
+            # names scoped to this trial rather than mixing different trials.
+            session.requested_output_channels = tuple(sorted(trial_outputs[key]))
         if any(isinstance(event, EnvironmentStep) for event in saved):
             if not all(isinstance(event, EnvironmentStep) for event in saved):
                 raise ValueError('Cannot mix environment and ordinary stream inputs in a trial')
@@ -106,6 +122,9 @@ def _equal(left, right):
     if isinstance(left, StreamEvent) and isinstance(right, StreamEvent):
         return (left.channel == right.channel and left.t_ms == right.t_ms
                 and _equal(left.meta, right.meta) and _equal(left.payload, right.payload))
+    if isinstance(left, xr.DataArray) or isinstance(right, xr.DataArray):
+        return (type(left) is type(right) and left.dtype == right.dtype
+                and left.identical(right))
     if isinstance(left, np.ndarray) or isinstance(right, np.ndarray):
         return (isinstance(left, np.ndarray) and isinstance(right, np.ndarray)
                 and left.dtype == right.dtype and np.array_equal(
