@@ -25,9 +25,10 @@ Staging the two reference checkpoints, on a machine with a GPU::
     AutoTokenizer.from_pretrained('gpt2').save_pretrained('parity/gpt2')
     PY
 
-Expect roughly three hours and about 10 GB of resident memory: every route's
-activations are held for comparison, which is the point, and which is why a
-15 GB box is not enough (it is OOM-killed part way through the vision cases).
+Activation snapshots use temporary disk space and bounded comparison chunks.
+The scoring metric still needs RAM. Peak memory and runtime of this revision
+must be measured on the real cases; the earlier in-memory runner took hours.
+Use run_vision_parity for sequential, resource-limited vision subprocesses.
 """
 
 import argparse
@@ -50,6 +51,8 @@ def main(argv=None):
     parser.add_argument('--gpt2', required=True,
                         help='local Hugging Face GPT-2 model/tokenizer directory')
     parser.add_argument('--out', default='parity_report.json')
+    parser.add_argument('--scratch-dir', default=None,
+                        help='existing directory for temporary activation snapshots')
     parser.add_argument('--only', default='',
                         help='comma-separated benchmark identifiers; blank = all eight release cases')
     parser.add_argument('--device', choices=('auto', 'cpu', 'cuda'), default='auto')
@@ -124,7 +127,9 @@ def main(argv=None):
                     continue
                 started = time.time()
                 try:
-                    reports[case.unified] = validate_case(case, factory, policy=args.policy)
+                    reports[case.unified] = validate_case(
+                        case, factory, policy=args.policy, scratch_dir=args.scratch_dir,
+                    )
                     print(f'  PASS {case.unified} ({time.time() - started:.0f}s)', flush=True)
                 except Exception as error:                  # noqa: BLE001
                     if isinstance(error, ParityFailure):
