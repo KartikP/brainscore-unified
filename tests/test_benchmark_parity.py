@@ -23,6 +23,21 @@ from tests.test_umi_review_regressions import language_pair, _stimuli
 pytestmark = pytest.mark.integration
 
 
+@pytest.mark.parametrize('failure', [False, True])
+def test_snapshot_cleanup_and_hash_compatibility(tmp_path, run_parity_observations, failure):
+    changes = {'native': {'activation_delta': 1.}} if failure else {}
+    if failure:
+        with pytest.raises(AssertionError, match='activations differ'):
+            run_parity_observations(CASES[0], changes, scratch_dir=tmp_path)
+    else:
+        import hashlib
+        report = run_parity_observations(CASES[0], changes, scratch_dir=tmp_path)
+        expected_hash = hashlib.sha256(np.array([[1., 2.]])).hexdigest()
+        for route in ('legacy', 'adapter', 'native'):
+            assert report['routes'][route]['metric_inputs'][0]['values_sha256'] == expected_hash
+    assert not list(tmp_path.iterdir())
+
+
 def _metric(source, target):
     return Score(float(np.mean(np.abs(source.values))))
 

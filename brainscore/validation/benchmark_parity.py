@@ -4,11 +4,14 @@ This module never downloads weights. The runner is opt-in and uses explicit
 local checkpoints; benchmark assemblies/ceilings/stimuli must already be staged.
 """
 import gc
-import hashlib
 import os
 from dataclasses import dataclass
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
+
+from .parity_storage import CHUNK_BYTES, snapshot
 
 
 @dataclass(frozen=True)
@@ -209,17 +212,57 @@ def adapter_score_tolerance(reference):
 
 
 def validate_case(case, candidate_factory, benchmark_loader=None, *,
-                  native_atol=1e-6, score_atol=None, policy=HISTORICAL_POLICY):
+                  native_atol=1e-6, score_atol=None, policy=HISTORICAL_POLICY,
+                  scratch_dir=None):
     """Run three independent conditions, retaining inputs as well as scores.
 
     ``candidate_factory(case, route)`` must return fresh, matched-weight models
     for ``legacy``, ``adapter``, and ``native``. Native must be a BrainScoreModel;
     an adapter passed as native is rejected. Fixed recording layers avoid layer
     search confounds. Real score execution belongs exclusively in the slow tier.
+    Activation snapshots use temporary files; comparisons read bounded chunks.
+    ``scratch_dir`` selects their parent directory; files are removed on exit.
     Fixed Pereira cases use the ULP policy above; ``native_atol`` applies only
     to other cases. Call ``assert_pereira_score_drift`` on both Pereira reports
     as well: per-case validation alone cannot detect joint score bias.
     """
+    with TemporaryDirectory(prefix='umi-parity-', dir=scratch_dir) as directory:
+        return _validate_case(
+            case, candidate_factory, benchmark_loader,
+            native_atol=native_atol, score_atol=score_atol, policy=policy,
+            directory=Path(directory),
+        )
+
+
+def _compare_snapshots(actual, reference, *, route, case, native_atol, pereira, native_ulps):
+    assert actual.shape == reference.shape, f'{case.unified}: {route} activation shapes differ'
+    assert np.prod(actual.shape) > 0, f'{case.unified}: empty activations'
+    # Both files use the same element boundaries even if their dtypes differ.
+    elements = CHUNK_BYTES // max(actual.dtype.itemsize, reference.dtype.itemsize)
+    max_delta, max_ulps = 0., 0.
+    error = None
+    for values, expected in zip(actual.chunks(elements), reference.chunks(elements)):
+        try:
+            if route == 'native' and pereira:
+                max_ulps = max(max_ulps, assert_pereira_activations(
+                    values, expected, err_msg=f'{case.unified}: native activations differ',
+                    ulps=native_ulps))
+            else:
+                np.testing.assert_allclose(
+                    values, expected, rtol=0, atol=0 if route == 'adapter' else native_atol,
+                    err_msg=f'{case.unified}: {route} activations differ',
+                )
+        except AssertionError as failure:
+            if route == 'adapter':
+                raise
+            # Retain one useful error without accumulating a message per chunk.
+            error = error or str(failure)
+        max_delta = float(np.maximum(max_delta, np.max(np.abs(values - expected))))
+    return max_delta, max_ulps, error
+
+
+def _validate_case(case, candidate_factory, benchmark_loader, *,
+                   native_atol, score_atol, policy, directory):
     from brainscore import load_benchmark
     from brainscore_core.model_interface import BrainScoreModel
     from brainscore_language.compat.unified_adapter import LanguageModelAdapter
@@ -262,7 +305,7 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
             source = source.transpose('presentation', 'neuroid')
             # Model names in neuroid_id legitimately differ between routes.
             captured.append((np.array(source.stimulus_id.values, copy=True),
-                             np.array(source.values, copy=True),
+                             snapshot(source.values, directory / f'{route}-{len(captured)}.bin'),
                              np.array(target.stimulus_id.values, copy=True)))
             return metric(source, target, *args, **kwargs)
         setattr(benchmark, attr, capture)
@@ -272,7 +315,7 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
             runs[route] = observed
             observed['metric_inputs'] = [
                 {'shape': list(values.shape), 'dtype': str(values.dtype),
-                 'values_sha256': hashlib.sha256(np.ascontiguousarray(values)).hexdigest()}
+                 'values_sha256': values.sha256}
                 for _, values, _ in captured]
             if pereira:
                 observed['ceiling'] = _scalar(benchmark.ceiling)
@@ -291,21 +334,15 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
                     ids, values, target_ids = actual
                     np.testing.assert_array_equal(ids, expected[0], err_msg=f'{route}: stimulus order')
                     np.testing.assert_array_equal(target_ids, expected[2], err_msg=f'{route}: target order')
-                    try:
-                        if route == 'native' and pereira:
-                            # Use the calibrated policy and independent score
-                            # gates above; never apply these allowances to adapters.
-                            ulps.append(assert_pereira_activations(values, expected[1],
-                                err_msg=f'{case.unified}: native activations differ', ulps=native_ulps))
-                        else:
-                            np.testing.assert_allclose(values, expected[1], rtol=0,
-                                atol=0 if route == 'adapter' else native_atol,
-                                err_msg=f'{case.unified}: {route} activations differ')
-                    except AssertionError as error:
-                        if route == 'adapter':
-                            raise  # Exact compatibility contract on every benchmark.
-                        activation_errors.append(str(error))
-                    deltas.append(float(np.max(np.abs(values - expected[1]))))
+                    delta, effective_ulps, error = _compare_snapshots(
+                        values, expected[1], route=route, case=case,
+                        native_atol=native_atol, pereira=pereira, native_ulps=native_ulps,
+                    )
+                    deltas.append(delta)
+                    if error:
+                        activation_errors.append(error)
+                    elif route == 'native' and pereira:
+                        ulps.append(effective_ulps)
                 observed['max_activation_delta'] = max(deltas)
                 if ulps:
                     observed['max_effective_fp32_ulps'] = max(ulps)
@@ -349,6 +386,9 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
         except AssertionError as error:
             raise ParityFailure(str(error), report()) from error
         finally:
+            if route != 'legacy':
+                for _, values, _ in captured:
+                    values.path.unlink(missing_ok=True)
             setattr(benchmark, attr, metric)
             if hasattr(candidate, 'reset'):
                 candidate.reset()
