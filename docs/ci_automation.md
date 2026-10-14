@@ -15,9 +15,16 @@ maintainer. A passing test run does not authorize publishing packages or scores.
 | Unified candidate qualification | Manual dispatch with peer commit IDs | Builds and tests packages; does not publish them. |
 | Infrastructure image publication | `main` changes under `docker/`, `scoring/`, or `resource_tracking/`; manual dispatch | The Jenkins script changes under `ci/` do not rebuild or publish images. |
 
-## PR-time controls still need attention
+## Maintainer controls for v2 PRs
 
-These are existing automation paths, separate from merge-triggered publication:
+Layer mapping, generated metadata commits, and plugin auto-merges require a
+separate maintainer request for v2. CI remains automatic. The guards are in
+[Vision #2601](https://github.com/brain-score/vision/pull/2601) and
+[Language #426](https://github.com/brain-score/language/pull/426); they take effect
+when merged. They exclude only v2 from the existing submission workflows and
+preserve other target branches.
+
+The audit found these existing paths, separate from merge-triggered publication:
 
 - Vision mapping accepts a mapping label or a web-submission branch without a
   target-branch restriction. Its auto-merge workflows also lack that restriction.
@@ -28,16 +35,17 @@ These are existing automation paths, separate from merge-triggered publication:
   the v2 copy does not control every status-event action; see GitHub's
   [status-event rules](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#status).
 
-Until explicit branch guards are implemented, keep v2 work on ordinary feature
-branches and do not apply mapping or auto-merge submission labels. Required
-checks prevent merging failing code; they do not require a human to initiate a
-merge after the checks pass. Manual metadata and publication workflows must not
-be dispatched as part of qualification.
+Use an ordinary feature branch and request mapping or metadata preparation from
+a maintainer in the PR. Submission labels are not a v2 execution mechanism.
+Merge v2 PRs manually after their required checks pass. No new dispatch command
+is added by these guards. Manual metadata and publication workflows must not be
+dispatched as part of qualification.
 
-To close the automation portion of roadmap #16, enforce the agreed target-branch
-rules and test both PR and status-event routes without triggering production
-scoring, metadata writes, emails, or publication. The release maintainer owns
-these controls; CI maintainers implement and verify them.
+Vision's default-branch status observer can still inspect checks and labels.
+The v2 mapping/auto-merge consumers are excluded at the PR event boundary,
+including labeled events. A label from that observer cannot bypass this filter.
+The release maintainer owns the policy; CI maintainers verify the branch filters
+and automatic test triggers. No production actions are needed to test the policy.
 
 ## Live Jenkins acceptance
 
