@@ -102,3 +102,26 @@ python unified/examples/partner_integration.py --out /tmp/umi-first-experiment
 Record the unified commit alongside the peer manifest. Use new output directories
 for each experiment. This is a v2 integration profile, not approval for a general
 production release or a replacement for CUDA scientific qualification.
+
+## Check the installed packages
+
+After building and installing the four candidate wheels, run from outside the
+checkouts. Use absolute paths for the workspace, wheels and report:
+
+```bash
+python -I -m brainscore.validation.workspace \
+  --root /path/to/workspace \
+  --mode installed \
+  --wheels /path/to/wheels \
+  --out /path/to/reports/installed.json
+```
+
+This runs the same required offline tests as the source profile. It copies tests,
+fixtures and examples into temporary directories, verifies installed package
+files against the wheels, and rejects imports from source checkouts. Reports
+include wheel hashes, package versions, import locations and skip reasons.
+Each suite gets a temporary home and cache directories; result caching and model
+downloads are disabled. Cache-integrity tests enable their own temporary caches.
+
+This checks package contents and behavior. The separate new-user trial covers
+installation from the guide, first-time data access and the first benchmark run.
