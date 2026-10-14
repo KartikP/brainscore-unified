@@ -55,6 +55,8 @@ protocol = SessionProtocol(
 
 Supply `images` and a subject with matching channels. The protocol resets the subject before and after each trial. The factory creates a fresh session and closes any resources it owns. `@contextmanager` lets Python manage that setup and cleanup around `yield`.
 
+Each entry in `result.value` is the session's `collect()` result. Built-in neural sessions return an assembly for one requested region, or a dictionary keyed by channel for several regions. Use `session.collect(channel='neural:IT')` to select one. Behavioral sessions return their behavioral assembly.
+
 `session.next_input()` returns `None` only when the session has ended. Inputs may be images, text, robot observations, or other documented payloads; channel names alone do not define their shape or units.
 
 For an existing evaluator:
@@ -170,9 +172,11 @@ replay = Experiment(
 comparison = compare_outputs(result.directory, replay.directory)
 ```
 
-Reattach interventions explicitly: saved settings never execute automatically. `replay_sessions` sends saved inputs to the model; it does not rerun a simulator or regenerate feedback. For saved method calls, `replay_calls` requires an explicit method list and reset callback.
+New session records include requested channels, stimulus metadata, task instructions, time bins, and streaming mode. Replay restores these settings separately for each trial. Older records lack this context; observed output channels alone cannot recover missing task instructions or stimulus metadata.
 
-`compare_outputs` checks exact output agreement, including channels, timestamps, and metadata. It is not a benchmark score or evidence of equivalent closed-loop behavior. Model versions, random state, precision, and runtime can affect agreement.
+Reattach intervention tools explicitly. `replay_sessions` sends saved inputs to the model; it does not rerun a simulator, enforce the original real-time clock, or regenerate feedback. Custom session logic is not serialized. For saved method calls, `replay_calls` requires an explicit method list and reset callback.
+
+`compare_outputs` checks exact output agreement, including channels, timestamps, metadata, and assembly coordinates. It is not a benchmark score or evidence of equivalent closed-loop behavior. Model versions, random state, precision, and runtime can affect agreement.
 
 ## Add a tool
 
