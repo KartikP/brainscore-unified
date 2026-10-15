@@ -51,3 +51,37 @@ Full vision qualification, trained-policy qualification and performance budgets
 remain separate profiles in the [release test matrix](release_test_matrix.md).
 Missing data, an empty test selection or a resource failure is not scientific
 qualification. The first-use trial remains under roadmap #2.
+
+## Notebook and local policy checks
+
+The offline jobs also execute the [15 offline tutorials](../notebooks/README.md#automated-offline-check)
+against installed packages. Their reports and executed copies are retained with
+the other qualification artifacts. No weights or private datasets are required.
+
+`OpenPI local instrumentation` uses a separate CPU environment with
+[explicit dependency pins](../install/openpi-instrumentation-tests.txt) and OpenPI
+revision `215abfb217dbac7d5f1273282331b9b1866c0479`. It runs
+`test_openpi_instrumentation.py` and `test_libero_transport.py` with the
+`openpi-instrumentation` reporting profile, which permits no skips. These small
+JIT/loopback tests fit hosted CI; trained-policy and simulator runs stay separate.
+The source checkout is used for this profile; it is not installed-wheel or
+trained-DROID qualification.
+
+After hosted qualification, promote the new OpenPI check in branch protection
+and update the peer callers' immutable workflow/source pins together. Until then,
+the required-check table above remains the deployed policy.
+
+To repeat the local policy profile, create a Python 3.11 environment, check out
+OpenPI at the revision above, and run from the Unified checkout:
+
+```bash
+python -m pip install -c install/v2-constraints.txt ../core \
+  -r install/openpi-instrumentation-tests.txt
+python -m pip check
+OPENPI_SOURCE=/path/to/pinned/openpi PYTHONPATH=. JAX_PLATFORMS=cpu \
+  RESULTCACHING_DISABLE=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 \
+  python -m pytest tests/test_openpi_instrumentation.py tests/test_libero_transport.py \
+  -q -ra -p brainscore.validation.required_checks \
+  --umi-repository openpi-instrumentation \
+  --umi-check-report /tmp/openpi-instrumentation.json --timeout=120
+```

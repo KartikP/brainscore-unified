@@ -89,7 +89,9 @@ def test_optional_permission_is_scoped_to_test_and_reason():
     assert [entry['optional'] for entry in plugin.skipped] == [True, False, False]
 
 
-@pytest.mark.parametrize('profile,expected_code', [('unified', 0), ('openpi-client', 1)])
+@pytest.mark.parametrize('profile,expected_code', [
+    ('unified', 0), ('openpi-client', 1), ('openpi-instrumentation', 1),
+])
 def test_client_profile_rejects_the_offline_skip_exemption(tmp_path, profile, expected_code):
     """A missing client may skip in the base job, but must fail its dedicated job."""
     tests = tmp_path / 'tests'

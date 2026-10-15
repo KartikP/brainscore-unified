@@ -113,6 +113,12 @@ jobs:
             --root "$GITHUB_WORKSPACE" \
             --mode installed --wheels "$GITHUB_WORKSPACE/wheels" \
             --out "$GITHUB_WORKSPACE/qualification/installed.json"
+      - name: Execute offline tutorials against installed packages
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -I -m brainscore.validation.notebooks \
+            --source "$GITHUB_WORKSPACE/unified/notebooks" \
+            --out "$GITHUB_WORKSPACE/qualification/notebooks" --timeout 180
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -192,6 +198,90 @@ jobs:
           name: openpi-client-protocol
           path: |
             qualification
+            unified/install/openpi-client-tests.txt
+            unified/install/v2-constraints.txt
+            unified/install/peer-revisions.json
+  openpi-instrumentation:
+    name: OpenPI local instrumentation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RESULTCACHING_DISABLE: '1'
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      BS_INSTALL_DEPENDENCIES: 'no'
+      JAX_PLATFORMS: cpu
+      UMI_TEST_CPU_ONLY: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.unified_revision && 'KartikP/brainscore-unified' || github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ inputs.unified_revision || github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          path: unified
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Resolve exact candidate and pinned peers
+        id: peers
+        env:
+          CANDIDATE: ${{ inputs.candidate || 'unified' }}
+          CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository || github.event.pull_request.head.repo.full_name || github.repository }}
+          CANDIDATE_REVISION: ${{ inputs.candidate_revision || github.event.pull_request.head.sha || github.sha }}
+          UNIFIED_REPOSITORY: ${{ inputs.unified_revision && 'KartikP/brainscore-unified' || github.event.pull_request.head.repo.full_name || github.repository }}
+        run: |
+          export UNIFIED_REVISION=$(git -C unified rev-parse HEAD)
+          python unified/brainscore/validation/revisions.py \
+            --manifest unified/install/peer-revisions.json \
+            --record qualification/revisions.json
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.peers.outputs.core_repository }}
+          ref: ${{ steps.peers.outputs.core_revision }}
+          persist-credentials: false
+          path: core
+      - name: Verify checkout revisions before installing
+        run: python unified/brainscore/validation/revisions.py --record qualification/revisions.json --verify core unified
+      - uses: actions/checkout@v4
+        with:
+          repository: Physical-Intelligence/openpi
+          ref: 215abfb217dbac7d5f1273282331b9b1866c0479
+          persist-credentials: false
+          path: openpi
+      - name: Install CPU Torch
+        run: python -m pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cpu
+      - name: Install local instrumentation environment
+        run: |
+          python -m pip install -c unified/install/v2-constraints.txt ./core -r unified/install/openpi-instrumentation-tests.txt
+          python -m pip check
+      - name: Record environment and revisions
+        if: always()
+        run: |
+          mkdir -p qualification
+          python -m pip freeze > qualification/dependencies.txt
+          git -C unified rev-parse HEAD > qualification/unified-revision.txt
+          git -C core rev-parse HEAD > qualification/core-revision.txt
+          git -C openpi rev-parse HEAD > qualification/openpi-revision.txt
+      - name: Require every local instrumentation and transport test
+        working-directory: unified
+        shell: bash
+        env:
+          OPENPI_SOURCE: ${{ github.workspace }}/openpi
+          PYTHONPATH: ${{ github.workspace }}/unified:${{ github.workspace }}/core
+        run: |
+          python -m pytest tests/test_openpi_instrumentation.py tests/test_libero_transport.py -q -ra \
+            -p no:cacheprovider -p brainscore.validation.required_checks \
+            --umi-repository openpi-instrumentation \
+            --umi-check-report ../qualification/openpi-instrumentation.json \
+            --junitxml=../qualification/openpi-instrumentation.xml --timeout=120 \
+            2>&1 | tee ../qualification/openpi-instrumentation.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: openpi-local-instrumentation
+          path: |
+            qualification
+            unified/install/openpi-instrumentation-tests.txt
             unified/install/openpi-client-tests.txt
             unified/install/v2-constraints.txt
             unified/install/peer-revisions.json
