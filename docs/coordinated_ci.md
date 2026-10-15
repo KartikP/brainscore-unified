@@ -24,15 +24,15 @@ inherit secrets or dispatch a privileged workflow in another repository.
 ## Required checks
 
 These checks are required on `unified-model-interface-v2` in all four
-repositories, verified on October 14, 2026. Protection applies to administrators
+repositories, verified on October 15, 2026. Protection applies to administrators
 and requires branches to be up to date before merging.
 
 | Repository | Coordinated checks | Existing domain checks to retain |
 | --- | --- | --- |
-| Unified | `offline (ubuntu-24.04)`, `offline (macos-14)`, `OpenPI client protocol` | None |
-| Core | `UMI v2 / offline (ubuntu-24.04)`, `UMI v2 / offline (macos-14)`, `UMI v2 / OpenPI client protocol` | `Core Unit tests (AWS Jenkins, AWS Execution)` |
-| Vision | Same three `UMI v2 / ...` checks | `Vision Unittests, Non-Plugins`, `Vision Unittests, Plugins` |
-| Language | Same three `UMI v2 / ...` checks | `Language Unittests, Non-Plugins`, `Language Unittests, Plugins`, `Language Integration Tests` |
+| Unified | `offline (ubuntu-24.04)`, `offline (macos-14)`, `OpenPI client protocol`, `OpenPI local instrumentation` | None |
+| Core | `UMI v2 / offline (ubuntu-24.04)`, `UMI v2 / offline (macos-14)`, `UMI v2 / OpenPI client protocol`, `UMI v2 / OpenPI local instrumentation` | `Core Unit tests (AWS Jenkins, AWS Execution)` |
+| Vision | Same four `UMI v2 / ...` checks | `Vision Unittests, Non-Plugins`, `Vision Unittests, Plugins` |
+| Language | Same four `UMI v2 / ...` checks | `Language Unittests, Non-Plugins`, `Language Unittests, Plugins`, `Language Integration Tests` |
 
 When changing this list, confirm the reported names and read back the protection
 settings afterward. An infrastructure PR alone does not qualify the live Vision
@@ -46,6 +46,8 @@ a benchmark change selects its benchmark tests, and shared-helper changes select
 the broader domain suite. Each plugin should include a small representative
 model/benchmark pair, expected output shape and score behavior, and its data and
 resource requirements. These checks complement the offline four-package suite.
+The [targeted integration selections](integration_tests.md) define the proposed
+first profiles and the checks needed before enabling them in Jenkins.
 
 Full vision qualification, trained-policy qualification and performance budgets
 remain separate profiles in the [release test matrix](release_test_matrix.md).
@@ -67,9 +69,10 @@ JIT/loopback tests fit hosted CI; trained-policy and simulator runs stay separat
 The source checkout is used for this profile; it is not installed-wheel or
 trained-DROID qualification.
 
-After hosted qualification, promote the new OpenPI check in branch protection
-and update the peer callers' immutable workflow/source pins together. Until then,
-the required-check table above remains the deployed policy.
+Hosted qualification passed. All three peer callers now pin the workflow and
+runner to Unified `78074cbf7a9bbfacde09bb21abcc95981a51d060`. Both OpenPI jobs
+are required merge checks in all four repositories. The notebooks run inside
+the already-required offline jobs.
 
 To repeat the local policy profile, create a Python 3.11 environment, check out
 OpenPI at the revision above, and run from the Unified checkout:
