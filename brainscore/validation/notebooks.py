@@ -89,7 +89,7 @@ def execute(source: Path, destination: Path, timeout: int) -> None:
 
 def run(source: Path, output: Path, timeout: int = 180) -> dict:
     """Run the explicit selection; missing, new or failing notebooks fail the check."""
-    if source.resolve() == output.resolve():
+    if source.resolve() == output.resolve() or source.resolve() in output.resolve().parents:
         raise ValueError('Execution output must not overwrite source notebooks')
     output.mkdir(parents=True, exist_ok=True)
     actual = {path.name for path in source.glob('*.ipynb')}
@@ -101,6 +101,10 @@ def run(source: Path, output: Path, timeout: int = 180) -> dict:
         'unclassified': sorted(actual - expected), 'results': [], 'passed': False,
     }
     (output / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+    # Saved Markdown figures must still open after the temporary kernels exit.
+    for folder in ('assets', 'data'):
+        if (source / folder).exists():
+            shutil.copytree(source / folder, output / folder, dirs_exist_ok=True)
     for name in SELECTED:
         path = source / name
         result = {'notebook': name, 'passed': False}

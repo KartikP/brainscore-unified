@@ -10,6 +10,8 @@ from brainscore.validation import notebooks
 def test_notebook_selection_fails_closed(tmp_path, monkeypatch, condition):
     source = tmp_path / 'source'
     source.mkdir()
+    (source / 'assets').mkdir()
+    (source / 'assets/figure.png').write_bytes(b'figure bytes')
     monkeypatch.setattr(notebooks, 'SELECTED', ('tutorial.ipynb',))
     monkeypatch.setattr(notebooks, 'EXCLUDED', {})
     if condition != 'missing':
@@ -26,6 +28,7 @@ def test_notebook_selection_fails_closed(tmp_path, monkeypatch, condition):
     report = notebooks.run(source, tmp_path / 'outputs')
     assert report['passed'] == (condition == 'pass')
     assert json.loads((tmp_path / 'outputs/report.json').read_text()) == report
+    assert (tmp_path / 'outputs/assets/figure.png').read_bytes() == b'figure bytes'
     if condition == 'failure':
         assert 'tutorial failed' in report['results'][0]['error']
 
