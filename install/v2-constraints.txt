@@ -1,5 +1,7 @@
 # Shared CPU integration profile; full scientific platform qualification is separate.
 numpy==1.26.4
+# netCDF4 1.7.5 wheels require macOS 15; CI supports macOS 14.
+netCDF4==1.7.4
 # Keep Parquet readers compatible with the shared NumPy version.
 pyarrow==25.0.1
 pandas==2.3.3
