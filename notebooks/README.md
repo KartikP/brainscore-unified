@@ -65,3 +65,23 @@ jupyter nbconvert --to notebook --execute --stdout 18_resnet_experiment_toolbox.
 ```
 
 Maintainers should retain outputs only from successful runs and state when data-dependent examples could not be executed. Follow the [example conventions](../docs/conventions.md) when adding a notebook. Superseded and externally gated examples are listed in [archive/README.md](archive/README.md).
+
+## Automated offline check
+
+From the installed test environment, run:
+
+```bash
+python -m brainscore.validation.notebooks \
+  --source /path/to/unified/notebooks \
+  --out /path/to/new-notebook-results
+```
+
+CI runs 15 tutorials with fresh kernels and temporary application caches on
+Ubuntu and macOS. A setup cell in each executed copy forces CPU selection; the
+tutorial cells stay unchanged. It saves source hashes and `report.json`,
+including partial output on failure. Missing images, execution errors and
+unclassified new notebooks fail the check. Source notebooks are not overwritten.
+
+Notebooks 03, 04 and 18 need pretrained weights; 16 needs LeBel data and GPT-2.
+They remain separate qualification runs. Notebook 19 reads saved measurements;
+its optional live-server cell stays off. Passing it does not rerun the policy.

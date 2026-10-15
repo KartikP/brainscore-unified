@@ -113,6 +113,12 @@ jobs:
             --root "$GITHUB_WORKSPACE" \
             --mode installed --wheels "$GITHUB_WORKSPACE/wheels" \
             --out "$GITHUB_WORKSPACE/qualification/installed.json"
+      - name: Execute offline tutorials against installed packages
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -I -m brainscore.validation.notebooks \
+            --source "$GITHUB_WORKSPACE/unified/notebooks" \
+            --out "$GITHUB_WORKSPACE/qualification/notebooks" --timeout 180
       - uses: actions/upload-artifact@v4
         if: always()
         with:
