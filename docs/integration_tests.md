@@ -1,114 +1,135 @@
 # Targeted integration tests
 
-Integration tests check real model dependencies and datasets that do not belong
-in the short offline suite. Reuse the existing pytest tests and domain plugin
-selectors. Jenkins supplies the environment, assets and time limit.
+These profiles test real models and datasets outside the short offline suite.
+The [selection file](../install/integration-tests.json) defines eight profiles
+with 53 test IDs. Seven have an executable runner. `language-installation` is
+blocked until its CLI tests use installed entry points and its dependency
+installation preserves the coordinated package versions.
 
-**Status:** proposed selections for release-matrix I1/I2. The
-[selection file](../install/integration-tests.json) is review material; no job
-reads it yet. Collecting tests verifies their names, not their scientific results.
-This change does not schedule workers or download weights or datasets.
-The eight profiles collected **52 test cases** locally on October 15, 2026.
-Their full IDs and source revisions are recorded in the selection file. No test
-fixtures or models executed during this check; the existing Python environment
-was reused with temporary caches and network-dependent loading disabled.
+**Qualification is pending.** The runner has offline regression tests; the
+asset-backed Linux CPU/CUDA profiles have not been qualified or scheduled.
 
-## Select tests from the change
+## Choose a profile
 
-| Change | Selection |
-| --- | --- |
-| Model plugin | That plugin's own tests and generic model checks, plus one author-declared compatible benchmark |
-| Benchmark plugin | That benchmark's own tests, plus a model with a known reference result and a cheap baseline where meaningful |
-| Data plugin | Its preparation/loading tests and a benchmark that consumes the changed data |
-| Metric plugin | Its metric tests and an affected representative benchmark/model pair |
-| Shared domain code | The affected domain profiles below and the coordinated offline suite |
-| Core interface or shared extraction code | Both domains' profiles and affected native wrapper profiles |
-| Documentation only | Offline examples/notebooks; asset-backed reruns only when the changed example needs them |
-
-Use the union when a change touches several areas. A new plugin needs an explicit
-test pair and prerequisites in its review; an unrelated default pair cannot
-qualify it. New model sizes and devices need a separate resource assessment.
-
-## First representative selections
-
-Exact pytest arguments, asset names, owner roles and proposed limits are in the
-selection file. Roles describe responsibility, not new assignments to people.
-The initial targets are Linux CPU, except the Qwen profile, which proposes a
-CUDA worker after explicit device assertions are added.
-
-| Profile | What it checks | Assets |
+| Profile | What it checks | Prepared caches |
 | --- | --- | --- |
-| `vision-public-score` | Existing Vision scoring with a cheap pixels baseline | MajajHong2015 public IT data and images |
-| `vision-layer-mapping` | AlexNet layer selection, scores and saved mapping files | AlexNet weights; MajajHong2015 public V4/IT data |
-| `language-public-score` | Existing Language scoring and a fixed reference result | DistilGPT-2; Futrell2018 data |
-| `language-readout` | Reading-time outputs and token handling | DistilGPT-2; test strings supplied by the tests |
-| `language-installation` | Existing dependency-installation modes and CLI scoring | Conda; random embeddings; Pereira2018 data |
-| `native-text` | CLIP/GPT-2 feature shapes, layers, batching and token alignment | CLIP and GPT-2; test strings |
-| `native-vlm` | Qwen image features, patch grouping and repeated outputs | Qwen2.5-VL-3B; generated test images |
-| `behavioral-roar` | Fixed train/test split, CLIP readout and score structure | CLIP; authorized Yeatman2021 stimulus/data build |
+| `vision-public-score` | Pixels model on public MajajHong IT data | BrainIO |
+| `vision-layer-mapping` | AlexNet layer selection, scores and saved mappings | Torch; BrainIO |
+| `language-public-score` | DistilGPT-2/Futrell reference score | Hugging Face; BrainIO |
+| `language-readout` | Reading-time outputs and token handling | Hugging Face |
+| `language-installation` | Dependency installation and CLI scoring; currently blocked | BrainIO; isolated installation environment needed |
+| `native-text` | CLIP/GPT-2 extraction and `BrainScoreModel.process()` dispatch | Hugging Face |
+| `native-vlm` | Qwen image features, patch grouping and `process()` dispatch on CUDA | Hugging Face |
+| `behavioral-roar` | Fixed splits, CLIP readout and score structure | Hugging Face; authorized Yeatman2021 BrainIO build |
 
-These small selections complement the eight-case scientific parity matrix.
-They do not qualify every plugin, trained DROID, audio/video scoring, or every
-supported device. Those retain their acceptance criteria in the
-[release matrix](release_test_matrix.md).
+Model changes also need that plugin's tests and a declared compatible benchmark.
+Benchmark changes need a representative model and a cheap baseline where useful.
+Data changes need preparation/loading tests and a consuming benchmark. Shared
+code changes need the affected profiles in both domains. Combine selections
+when a change crosses these boundaries.
 
-## Before enabling a profile
+These profiles complement [scientific parity and release qualification](release_test_matrix.md).
+They do not qualify every plugin, trained DROID, or audio/video scoring.
 
-1. Resolve all four source revisions and build the coordinated wheels. Pin the
-   model/processor snapshot and dataset build or object versions in the run
-   record. A model name alone is not a checkpoint pin.
-2. Stage authorized assets before testing. Check their presence, disk space and
-   estimated memory before model loading. Give the worker an isolated writable
-   cache; do not reuse a developer's private result cache.
-3. Collect the exact pytest selection in the proposed environment. Freeze its
-   full test IDs and count for that revision; reject empty or changed selections
-   until reviewed. Missing imports or collection skips are failures.
-4. Run the collected tests with a hard timeout, zero skip exemptions and retained
-   JSON/JUnit reports. Record device, precision, dependency versions, duration,
-   memory and failures. Missing reports, OOM and timeout are failures.
-5. Run against installed packages outside source checkouts, checking import
-   locations and wheel hashes. Source-only CLI tests need adjustment before they
-   can establish installed-package acceptance.
+## Prepare a run
 
-The proposed limits in the selection file are stopping limits, not measured
-budgets or permission to start paid workers. Confirm resource sizing with a
-bounded pilot before scheduling. Keep each profile in its own environment when
-its dependencies or hardware differ.
+Use a disposable Linux/Python 3.11 environment with the four coordinated wheels
+installed. Follow [coordinated CI](coordinated_ci.md) to resolve revisions and
+build wheels. Keep clean source checkouts under `core/`, `vision/`, `language/`
+and `unified/`; they supply the tests, not the imported packages.
 
-## Reuse the current reporting tools
+Prepare authorized assets separately. A cache directory must contain the exact
+checkpoint, processor/tokenizer files, and dataset build required by its profile.
+Do not include tokens or credentials. Hugging Face caches include their `hub/`
+directory and pinned `refs/` and `snapshots/`. BrainIO must contain all assembly
+and stimulus files; a partial cache is insufficient.
 
-For execution, use `brainscore.validation.required_checks` with a distinct
-profile such as `integration-native-text`; these names have no skip exemptions.
-Retain the same `qualification/revisions.json` and installed-package identity
-evidence used by coordinated CI. Collection-only runs do not use this plugin:
-its success rule requires tests to have executed.
+Create an asset manifest for the selected profile. For example, `native-text`:
 
-Do not pass the offline suite's `-m "unit or integration"` filter: it would
-exclude the real-model tests marked `slow`. Preserve only the explicit filters
-listed in the selection file. Start with result caching disabled; repeated-output
-checks alone do not prove a cache hit. Cache-hit/miss instrumentation belongs to Q3.
+```json
+{
+  "profile": "native-text",
+  "assets": {
+    "huggingface": {
+      "path": "/prepared/native-text/huggingface",
+      "sha256": "CONTENT_DIGEST",
+      "build": "CLIP snapshot <commit>; GPT-2 snapshot <commit>"
+    }
+  }
+}
+```
 
-## Gaps to resolve during activation
+Compute `CONTENT_DIGEST` with the runner's directory fingerprint. It covers file
+names and contents, including snapshot-link targets:
 
-- **Plugin result accounting:** Core's `run_args()` accepts pytest exit code 5
-  and overwrites its result dictionary when several test files are supplied.
-  Qualify each selected plugin separately and retain every result; harden this
-  accounting before treating the combined runner's exit status as acceptance.
-- **Installed CLI checks:** Vision/Language CLI tests execute a source directory.
-  Adapt those checks to installed entry points before claiming installed CLI
-  coverage. The initial Vision profile selects the Python scoring test only.
-  Language's dependency-installation modes must also preserve and verify the
-  coordinated peer versions rather than silently installing different packages.
-- **Subject dispatch:** the tests named `TestTextWrapperIntegration` and
-  `TestVLMVisionWrapperIntegration` call wrappers directly. They do not prove
-  real-model dispatch through `BrainScoreModel.process()`. Retain the wrapper
-  checks and add genuine dispatch checks before closing that acceptance item.
-- **GPU selection:** the current Qwen fixture does not explicitly require CUDA.
-  A GPU worker alone is not GPU evidence. Record/assert model placement and
-  precision before counting a GPU run.
-- **Other domains:** add explicit audio/video selections and frozen reference
-  outputs; keep isolated submission/database tests under #22 and full scientific
-  execution under #19/#20.
+```python
+from pathlib import Path
+from brainscore.validation.integration import fingerprint
 
-Enable the profiles only after these requirements and #6's support scope are
-reviewed. Keep Jenkins deployment changes separate from this selection review.
+digest, size_bytes = fingerprint(Path('/prepared/native-text/huggingface'))
+print(digest)
+```
+
+The required cache names are listed in `required_caches` for each profile. Give
+each its own path, digest and build description. The runner verifies and copies
+them; it does not download assets or modify the prepared originals. Cache hashes
+pin the bytes actually tested, including model-name references.
+
+## Execute
+
+Run from outside the source checkouts:
+
+```bash
+python -I -m brainscore.validation.integration \
+  --root /candidate/repos \
+  --revisions /candidate/qualification/revisions.json \
+  --wheels /candidate/wheels \
+  --manifest /candidate/repos/unified/install/integration-tests.json \
+  --assets /prepared/native-text.json \
+  --profile native-text \
+  --output /candidate/qualification/native-text
+```
+
+The output directory must be new. Deny outbound network traffic at the worker
+level. The runner removes inherited credentials and cache overrides, enables
+Hugging Face offline loading, and rejects Python socket connections; those
+checks do not sandbox subprocesses.
+
+The runner requires the profile's host-memory allowance to be available and
+enough disk to copy assets plus 2 GiB working headroom. CPU profiles disable
+accelerator selection. The Qwen profile requires CUDA and checks the extracted
+vision module's actual device and float16 precision. CLIP/GPT-2 fixtures record
+CPU placement and float32 precision.
+
+## Read the result
+
+`report.json` summarizes preparation, revisions, dependencies, device inventory,
+commands, elapsed time and sampled process-tree memory. Collection/execution
+JSON, installed-package identities, logs and `tests.xml` retain the details.
+A pass requires:
+
+- Exactly the reviewed, nonempty test IDs, checked before fixtures run.
+- Every selected test's setup, call and teardown passing; no skip exemptions.
+- Installed package files matching all four supplied wheels before and after tests.
+- Complete JSON and JUnit reports, with no import from a package source checkout.
+- Completion within the profile's shared collection/execution deadline and
+  sampled host-memory limit. Timeout or excess memory terminates the process group.
+
+Asset copying and hashing happen before the test deadline. Host memory is sampled,
+not an OS-enforced allocation limit; worker/container limits should provide the
+outer boundary. GPU OOM is a failure, not a successful partial run. Proposed
+limits still need a bounded pilot before scheduling.
+
+Result caching is disabled. Repeated-output checks establish consistency, not a
+cache hit; cache performance remains a separate qualification task.
+
+## Remaining activation work
+
+- Supply reviewed asset manifests and run the Linux CPU/CUDA pilots.
+- Repair the installed language CLI/dependency-installation profile.
+- Add explicit audio/video profiles and scientific reference outputs.
+- Review supported scope under #6 before deploying scheduled Jenkins jobs.
+
+Core's companion plugin-runner fix retains results for every selected file,
+rejects empty or entirely skipped runs, and runs the requested filename.
+Submission/database qualification remains separate under #22.
