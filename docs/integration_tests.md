@@ -2,9 +2,8 @@
 
 These profiles test real models and datasets outside the short offline suite.
 The [selection file](../install/integration-tests.json) defines eight profiles
-with 53 test IDs. Seven have an executable runner. `language-installation` is
-blocked until its CLI tests use installed entry points and its dependency
-installation preserves the coordinated package versions.
+with 52 test IDs. All eight have an executable runner. Each run checks the
+four installed candidate packages before and after testing.
 
 **Qualification is pending.** The runner has offline regression tests; the
 asset-backed Linux CPU/CUDA profiles have not been qualified or scheduled.
@@ -17,7 +16,7 @@ asset-backed Linux CPU/CUDA profiles have not been qualified or scheduled.
 | `vision-layer-mapping` | AlexNet layer selection, scores and saved mappings | Torch; BrainIO |
 | `language-public-score` | DistilGPT-2/Futrell reference score | Hugging Face; BrainIO |
 | `language-readout` | Reading-time outputs and token handling | Hugging Face |
-| `language-installation` | Dependency installation and CLI scoring; currently blocked | BrainIO; isolated installation environment needed |
+| `language-installation` | Installed scoring with `yes`/`no` dependency preferences and the CLI | BrainIO |
 | `native-text` | CLIP/GPT-2 extraction and `BrainScoreModel.process()` dispatch | Hugging Face |
 | `native-vlm` | Qwen image features, patch grouping and `process()` dispatch on CUDA | Hugging Face |
 | `behavioral-roar` | Fixed splits, CLIP readout and score structure | Hugging Face; authorized Yeatman2021 BrainIO build |
@@ -30,6 +29,18 @@ when a change crosses these boundaries.
 
 These profiles complement [scientific parity and release qualification](release_test_matrix.md).
 They do not qualify every plugin, trained DROID, or audio/video scoring.
+
+## Installation coverage
+
+`language-installation` runs the installed command from outside the source tree.
+Its reference plugins have no extra requirements: the profile checks scoring
+under `yes` and `no`, not pip dependency resolution. Core separately tests that
+plugin installation uses the current Python interpreter and stops on pip errors.
+
+**Fresh Conda environments remain unqualified.** The old `newenv` case passed
+`conda_active=True`, bypassing environment creation. A replacement must create
+and clean up a disposable environment, preserve all four candidate wheels, and
+run the reference score. The manifest tracks this separately in `unqualified_paths`.
 
 ## Prepare a run
 
