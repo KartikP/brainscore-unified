@@ -172,8 +172,7 @@
         "Pereira2018.243sentences-linear-shuffle"
       ],
       "assets": [
-        "Conda executable",
-        "Pereira2018.243sentences reference data"
+        "Pereira2018.243sentences reference data and stored ceilings"
       ],
       "owner_role": "Language and CI maintainers",
       "environment": "Ubuntu 24.04 / Python 3.11 / CPU",
@@ -181,20 +180,18 @@
         "timeout_minutes": 45,
         "memory_gib": 16
       },
-      "acceptance": "Three dependency-installation modes plus CLI scoring; adapt source CLI path and verify candidate peers survive dependency installation.",
+      "acceptance": "Installed scoring with dependency preferences yes/no plus the installed CLI matches the reference score; candidate wheel identity must remain unchanged. These plugins have no extra requirements, so this does not qualify dependency resolution or fresh Conda environments.",
       "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
-        "tests/test_integration.py::test_score_with_install_dependencies[randomembedding-100-Pereira2018.243sentences-linear-shuffle-expected_score0-newenv]",
-        "tests/test_integration.py::test_score_with_install_dependencies[randomembedding-100-Pereira2018.243sentences-linear-shuffle-expected_score1-yes]",
-        "tests/test_integration.py::test_score_with_install_dependencies[randomembedding-100-Pereira2018.243sentences-linear-shuffle-expected_score2-no]",
+        "tests/test_integration.py::test_score_with_install_dependencies[randomembedding-100-Pereira2018.243sentences-linear-shuffle-expected_score0-yes]",
+        "tests/test_integration.py::test_score_with_install_dependencies[randomembedding-100-Pereira2018.243sentences-linear-shuffle-expected_score1-no]",
         "tests/test_integration.py::test_commandline_score"
       ],
-      "expected_count": 4,
+      "expected_count": 3,
       "device": "cpu",
       "required_caches": [
         "brainio"
-      ],
-      "blocked_reason": "Installation/CLI tests must preserve candidate peers and use installed entry points before this profile can run."
+      ]
     },
     {
       "id": "native-text",
@@ -339,6 +336,14 @@
       "language": "b6777fe5252bf430da897b736a503fa60800da01",
       "unified": "78074cbf7a9bbfacde09bb21abcc95981a51d060"
     },
-    "note": "Historical source-only baseline. Updated 53-case selection rechecked against candidate wheels in this change; see PR validation."
-  }
+    "note": "Historical source-only 53-case baseline. The current selection removes the misleading newenv case; fresh Conda environment qualification remains separate."
+  },
+  "unqualified_paths": [
+    {
+      "id": "language-newenv",
+      "owner_role": "Language and CI maintainers",
+      "reason": "The previous newenv case passed conda_active=True and never created an environment. CondaScore still assumes a source checkout and editable installation.",
+      "acceptance": "Create a disposable Conda environment, install the four pinned candidate wheels, score the reference pair, verify all four imported package identities, and remove the environment on success or failure."
+    }
+  ]
 }
