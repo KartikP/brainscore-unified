@@ -48,6 +48,25 @@ def test_candidate_records_hash_version_and_installed_files(candidate, tmp_path)
     assert result['wheel_sha256'] == hashlib.sha256(wheel.read_bytes()).hexdigest()
 
 
+def test_package_replacement_during_tests_fails(candidate, tmp_path, monkeypatch):
+    _, module, _, _ = candidate
+    identity = tmp_path / 'identity.json'
+    monkeypatch.setattr(sys, 'argv', ['installed', '--stage', str(tmp_path),
+                                    '--wheels', str(tmp_path), '--identity', str(identity)])
+
+    def test_run(*args, **kwargs):
+        module.write_text('replaced = True\n')
+        return 0
+
+    monkeypatch.setattr(installed.pytest, 'main', test_run)
+    # main() adds the copied test directory to sys.path.
+    monkeypatch.setattr(sys, 'path', sys.path.copy())
+    assert installed.main() == 1
+    report = json.loads(identity.read_text())
+    assert not report['complete']
+    assert 'differs from candidate wheel' in report['error']
+
+
 @pytest.mark.parametrize('defect', ['changed_file', 'missing_file', 'editable', 'version', 'source_import', 'duplicate', 'outside_site'])
 def test_rejects_wrong_installation(candidate, tmp_path, monkeypatch, defect):
     package, module, wheel, distribution = candidate

@@ -21,7 +21,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 @pytest.fixture(scope='module')
-def qwen_vision_wrapper():
+def qwen_vision_wrapper(request):
     """VLMVisionWrapper wrapping Qwen's vision encoder."""
     import torch
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
@@ -32,7 +32,7 @@ def qwen_vision_wrapper():
     )
     qwen_processor = AutoProcessor.from_pretrained('Qwen/Qwen2.5-VL-3B-Instruct')
 
-    return VLMVisionWrapper(
+    wrapper = VLMVisionWrapper(
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier='qwen2.5-vl-3b-vision-test',
@@ -42,6 +42,9 @@ def qwen_vision_wrapper():
         layer_aggregation='mean_patches',
         batch_size=2,
     )
+    from brainscore.validation.integration_checks import record_placement
+    record_placement(request.config, wrapper._model, identifier='Qwen vision encoder', dtype='torch.float16')
+    return wrapper
 
 
 _img_counter = 0
@@ -172,12 +175,7 @@ class TestCaching:
 
 class TestVLMVisionWrapperIntegration:
     def test_works_as_brainscore_model_preprocessor(self, qwen_vision_wrapper, image_stimuli):
-        """VLMVisionWrapper used as the vision preprocessor in BrainScoreModel.
-
-        BrainScoreModel.process() duck-types the preprocessor — anything with
-        an `identifier` attribute is treated as a full extractor and called
-        with (stimuli, layers=[...]).
-        """
+        """The public model call preserves the wrapper's per-image features."""
         model = BrainScoreModel(
             identifier='qwen2.5-vl-3b-test',
             model=None,
@@ -186,7 +184,10 @@ class TestVLMVisionWrapperIntegration:
         )
         model.start_recording('IT')
 
-        # Direct wrapper call (mimics how BrainScoreModel.process() invokes it)
-        result = qwen_vision_wrapper(image_stimuli, layers=['blocks.28'])
+        result = model.process(image_stimuli)
+        direct = qwen_vision_wrapper(image_stimuli, layers=['blocks.28'])
+        np.testing.assert_array_equal(result.values, direct.values)
+        assert list(result['stimulus_id'].values) == list(direct['stimulus_id'].values)
         assert result.dims == ('presentation', 'neuroid')
         assert result.shape[0] == 3
+        model.reset()

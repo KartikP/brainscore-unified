@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "status": "proposal; not consumed by CI",
+  "status": "executable locally; asset-backed qualification and CI scheduling pending",
   "matrix_rows": [
     "I1",
     "I2"
   ],
-  "execution": "Existing pytest and plugin runners; no new worker or schedule",
+  "execution": "python -I -m brainscore.validation.integration",
   "candidate_requirements": [
     "Four exact repository revisions and built-wheel hashes",
     "Immutable model/processor snapshots and dataset builds in the execution manifest",
@@ -36,11 +36,15 @@
         "memory_gib": 32
       },
       "acceptance": "One pixels/public-IT reference score within the existing test tolerance; no claim of trained-model parity.",
-      "activation": "pending asset pins, collection lock and bounded qualification",
+      "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
         "tests/test_integration.py::test_model_benchmark_score[pixels-MajajHong2015public.IT-pls-expected_score0]"
       ],
-      "expected_count": 1
+      "expected_count": 1,
+      "device": "cpu",
+      "required_caches": [
+        "brainio"
+      ]
     },
     {
       "id": "vision-layer-mapping",
@@ -66,14 +70,19 @@
         "memory_gib": 32
       },
       "acceptance": "All four structure, score-range, selected-layer and saved-file checks execute; this is not final score parity.",
-      "activation": "pending asset pins, collection lock and bounded qualification",
+      "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
         "tests/test_layer_mapping_explorer.py::TestExploreLayerMappingIntegration::test_returns_correct_structure",
         "tests/test_layer_mapping_explorer.py::TestExploreLayerMappingIntegration::test_scores_are_plausible",
         "tests/test_layer_mapping_explorer.py::TestExploreLayerMappingIntegration::test_suggest_mapping_from_real_scores",
         "tests/test_layer_mapping_explorer.py::TestExploreLayerMappingIntegration::test_full_pipeline_saves_files"
       ],
-      "expected_count": 4
+      "expected_count": 4,
+      "device": "cpu",
+      "required_caches": [
+        "brainio",
+        "torch"
+      ]
     },
     {
       "id": "language-public-score",
@@ -100,11 +109,16 @@
         "memory_gib": 16
       },
       "acceptance": "Exactly the DistilGPT-2/Futrell reference case; exclude unrelated large models and SyntaxGym cases.",
-      "activation": "pending asset pins, collection lock and bounded qualification",
+      "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
         "tests/test_integration.py::test_score[distilgpt2-Futrell2018-pearsonr-expected_score0]"
       ],
-      "expected_count": 1
+      "expected_count": 1,
+      "device": "cpu",
+      "required_caches": [
+        "huggingface",
+        "brainio"
+      ]
     },
     {
       "id": "language-readout",
@@ -129,7 +143,7 @@
         "memory_gib": 16
       },
       "acceptance": "Reading-time outputs match existing assertions; the excluded XLM-R case is not qualified.",
-      "activation": "pending asset pins, collection lock and bounded qualification",
+      "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
         "tests/test_model_helpers/test_huggingface.py::TestReadingTimes::test_single_word",
         "tests/test_model_helpers/test_huggingface.py::TestReadingTimes::test_multiple_words",
@@ -138,7 +152,11 @@
         "tests/test_model_helpers/test_huggingface.py::TestReadingTimes::test_multiword_list_input",
         "tests/test_model_helpers/test_huggingface.py::TestReadingTimes::test_punct"
       ],
-      "expected_count": 6
+      "expected_count": 6,
+      "device": "cpu",
+      "required_caches": [
+        "huggingface"
+      ]
     },
     {
       "id": "language-installation",
@@ -164,14 +182,19 @@
         "memory_gib": 16
       },
       "acceptance": "Three dependency-installation modes plus CLI scoring; adapt source CLI path and verify candidate peers survive dependency installation.",
-      "activation": "pending asset pins, collection lock and bounded qualification",
+      "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
         "tests/test_integration.py::test_score_with_install_dependencies[randomembedding-100-Pereira2018.243sentences-linear-shuffle-expected_score0-newenv]",
         "tests/test_integration.py::test_score_with_install_dependencies[randomembedding-100-Pereira2018.243sentences-linear-shuffle-expected_score1-yes]",
         "tests/test_integration.py::test_score_with_install_dependencies[randomembedding-100-Pereira2018.243sentences-linear-shuffle-expected_score2-no]",
         "tests/test_integration.py::test_commandline_score"
       ],
-      "expected_count": 4
+      "expected_count": 4,
+      "device": "cpu",
+      "required_caches": [
+        "brainio"
+      ],
+      "blocked_reason": "Installation/CLI tests must preserve candidate peers and use installed entry points before this profile can run."
     },
     {
       "id": "native-text",
@@ -195,8 +218,8 @@
         "timeout_minutes": 30,
         "memory_gib": 16
       },
-      "acceptance": "All encoder/causal/per-token wrapper checks execute; repeated outputs are not proof of a cache hit; direct-wrapper Integration class does not qualify Subject dispatch.",
-      "activation": "pending asset pins, collection lock and bounded qualification",
+      "acceptance": "Encoder/causal/per-token checks and CLIP/GPT-2 process() dispatch execute on CPU; repeated outputs alone do not prove a cache hit.",
+      "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
         "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_returns_neuroid_assembly",
         "tests/test_text_wrapper.py::TestTextWrapperEncoderMode::test_shape",
@@ -219,9 +242,14 @@
         "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_token_length_coord_attached",
         "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_long_input_is_chunked_not_truncated",
         "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_padding_is_nan_past_token_length",
-        "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_per_token_features_differ_across_positions"
+        "tests/test_text_wrapper.py::TestTextWrapperPerToken::test_per_token_features_differ_across_positions",
+        "tests/test_text_wrapper.py::TestTextWrapperCausalMode::test_process_matches_wrapper"
       ],
-      "expected_count": 22
+      "expected_count": 23,
+      "device": "cpu",
+      "required_caches": [
+        "huggingface"
+      ]
     },
     {
       "id": "native-vlm",
@@ -238,14 +266,14 @@
         "Images generated by test fixtures"
       ],
       "owner_role": "Model/tool maintainer",
-      "environment": "Ubuntu 24.04 / Python 3.11 / NVIDIA CUDA; fixture placement assertions required before activation",
+      "environment": "Ubuntu 24.04 / Python 3.11 / NVIDIA CUDA",
       "proposed_limits": {
         "timeout_minutes": 60,
         "memory_gib": 32,
         "gpu_memory_gib": 24
       },
-      "acceptance": "Per-image output and patch grouping checks execute; record actual fixture placement and float16 precision; no CUDA qualification without explicit placement assertions.",
-      "activation": "pending asset pins, collection lock and bounded qualification",
+      "acceptance": "Per-image outputs, patch grouping and process() dispatch pass with the extracted vision module on CUDA in float16.",
+      "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
         "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_returns_neuroid_assembly",
         "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperBasic::test_shape_is_per_image",
@@ -257,7 +285,11 @@
         "tests/test_vlm_vision_wrapper.py::TestCaching::test_second_call_hits_cache",
         "tests/test_vlm_vision_wrapper.py::TestVLMVisionWrapperIntegration::test_works_as_brainscore_model_preprocessor"
       ],
-      "expected_count": 9
+      "expected_count": 9,
+      "device": "cuda",
+      "required_caches": [
+        "huggingface"
+      ]
     },
     {
       "id": "behavioral-roar",
@@ -282,7 +314,7 @@
         "memory_gib": 32
       },
       "acceptance": "All five split, leakage, human-reference, threshold and CLIP score checks pass; retain the raw score separately from ceiling-adjusted score.",
-      "activation": "pending asset pins, collection lock and bounded qualification",
+      "activation": "pending pinned assets and bounded Linux qualification",
       "expected_collection": [
         "tests/test_roar_benchmark.py::TestRoarYeatman2021::test_split_sizes",
         "tests/test_roar_benchmark.py::TestRoarYeatman2021::test_no_train_test_leakage",
@@ -290,7 +322,12 @@
         "tests/test_roar_benchmark.py::TestRoarYeatman2021::test_dyslexia_threshold",
         "tests/test_roar_benchmark.py::TestRoarYeatman2021::test_score_clip"
       ],
-      "expected_count": 5
+      "expected_count": 5,
+      "device": "cpu",
+      "required_caches": [
+        "huggingface",
+        "brainio"
+      ]
     }
   ],
   "collection_baseline": {
@@ -301,6 +338,7 @@
       "vision": "a9ab5a6fa1dc5f6b8086e31bebe3bf3016d1c962",
       "language": "b6777fe5252bf430da897b736a503fa60800da01",
       "unified": "78074cbf7a9bbfacde09bb21abcc95981a51d060"
-    }
+    },
+    "note": "Historical source-only baseline. Updated 53-case selection rechecked against candidate wheels in this change; see PR validation."
   }
 }
