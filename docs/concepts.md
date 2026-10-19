@@ -131,13 +131,13 @@ Paths are relative to that module. A VLM wrapper may wrap only its vision tower,
 
 A **modality** is an input domain, such as vision, text, or audio. A **channel** names an input or output and its payload schema, including outputs such as `neural:IT`.
 
-For `BrainScoreModel`, the keys of `activations_model` declare input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly: a custom session label such as `image` is not automatically an alias of `vision`; its producer and consumer must agree on the name and payload.
+For `BrainScoreModel`, the keys of `activations_model` declare input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly. Use catalog names such as `vision` and `behavior`, or register a custom family with `register_channel`. Experiments warn about unregistered names; benchmark scoring rejects them. A label such as `image` is not automatically an alias of `vision`.
 
 ## Preprocessor vs. `activations_model`
 
 A **preprocessor** prepares inputs: resize images, tokenize text, or resample audio. An **extraction wrapper** runs the model, records selected layers, and packages responses.
 
-Configure the wrapper with its preparation function or tokenizer, then pass it as `activations_model={'vision': wrapper}` or `activations_model={'text': wrapper}`. The call is always `wrapper(stimuli, layers=...)`. Multiple entries connect separate towers; different modalities can also share the same wrapper. No identity preprocessor is needed.
+Configure the wrapper with its preparation function or tokenizer, then pass it as `activations_model={'vision': wrapper}` or `activations_model={'text': wrapper}`. The call is always `wrapper(stimuli, layers=...)`. Multiple entries connect separate towers; different modalities can also share the same wrapper. No identity preprocessor is needed. Output-only models can declare `supported_modalities` directly; that declaration does not provide access to internal activity.
 
 See [Getting started](getting_started.md#choose-an-extraction-wrapper) for wrapper imports and the [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) for a multimodal example.
 

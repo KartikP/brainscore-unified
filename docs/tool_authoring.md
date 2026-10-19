@@ -27,7 +27,7 @@ Use the [UMI vocabulary and conventions](conventions.md) across integrations. Th
 | Measure internal activity | `ActivationWindow` / `PerceptWindow` | Supported model module and selected layers |
 | Change model activity | `intervene` and `StateChange` | Model-supported perturbation and condition design |
 | Estimate and verify unit influence | `TorchInstrumentation.attribute`, `PatchActivity` | Paired inputs, differentiable objective, independent validation and controls; [guide](attribution_patching.md) |
-| Add a sensory domain | `register_channel(..., columns=...)` and a preprocessor | Payload validation, materialization and model extraction |
+| Add a sensory domain | `register_channel(..., columns=...)` and an extraction wrapper | Payload validation, materialization and model extraction |
 | Add an output or session | `Capability` with `StreamEvent` | Schema, channel declarations, dispatch and lifecycle |
 | Evaluate a robotics policy | `ActionSpec`, `droid_steps`, `evaluate_droid_episode` | Action semantics, policy, data and scientific protocol |
 | Drive a controlled environment | `EnvironmentSession` | Environment reset/step, action validation, timing and safety |
@@ -156,7 +156,7 @@ register_channel(CatalogEntry(
 ), columns=['tactile_sample'])
 ```
 
-Add a `tactile` preprocessor to BrainScoreModel. The column is now recognized
+Pass the wrapper as `activations_model={'tactile': wrapper}` to `BrainScoreModel`; configure input preparation in the wrapper. The column is now recognized
 without changing the built-in mapping. Register channel **families**; addressed
 instances use `family:address` and require an addressing policy. Duplicate channel,
 column and capability registrations require explicit replacement. Stock legacy
@@ -168,8 +168,8 @@ Use `model.capability_config` for configuration and
 `model.capability_state(self.identifier)` for per-model state. Declare
 `input_channels`/`output_channels`; enable the capability only on configured
 models. Return a registered `StreamEvent` for extension outputs. StreamEvent
-payloads are validated in both directions. A preprocessor must validate/materialize
-its own StimulusSet cells; column registration alone does not validate files.
+payloads are validated in both directions. The wrapper and its preparation callable must validate/materialize
+their own StimulusSet cells; column registration alone does not validate files.
 
 Implement `setup` and `reset` when allocating state or resources. Reset is followed
 by setup on the next execution. `supports_session(model, channels)` accepts a

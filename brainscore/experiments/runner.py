@@ -11,6 +11,7 @@ import uuid
 
 from brainscore.instrumentation import ObservedSession, observe
 from brainscore.run_record import PayloadCodec, RunRecord
+from brainscore_core.compatibility import validate_channels
 
 
 # These data fields affect built-in session evaluation. Never serialize a live
@@ -100,6 +101,15 @@ class SessionProtocol:
             raise TypeError('SessionProtocol requires subject.interact(session)')
         if not callable(getattr(subject, 'reset', None)):
             raise TypeError('SessionProtocol requires subject.reset()')
+        # Use scoring's channel rules; exploratory names remain usable with a warning.
+        for channels, direction, owner in (
+            (subject.in_channels, 'input', 'subject inputs'),
+            (subject.out_channels, 'output', 'subject outputs'),
+            (getattr(subject, 'required_channels', ()), 'input', 'subject required inputs'),
+            (self.input_channels, 'input', 'protocol inputs'),
+            (self.output_channels, 'output', 'protocol outputs'),
+        ):
+            validate_channels(set(channels), direction, owner, allow_unregistered=True)
         if (not self.conditions or any(not isinstance(c, str) or not c for c in self.conditions)
                 or len(set(self.conditions)) != len(self.conditions)):
             raise ValueError('Use nonempty, distinct condition names')

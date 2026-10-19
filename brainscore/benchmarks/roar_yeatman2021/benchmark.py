@@ -173,7 +173,10 @@ def _project_to_modality(stimulus_set: StimulusSet, modality: str) -> StimulusSe
 class Yeatman2021LexicalDecision(BenchmarkBase):
     """ROAR lexical decision — paper-replication (Honarmand et al. 2026).
 
-    Train on 400 stimuli (200 real + 200 pseudo), test on 100 (50/50).
+    Test on 100 stimuli (50 real + 50 pseudo). Readout fits on 400 separate
+    stimuli; generation answers the instruction without fitting. The default
+    ``prefer_path='auto'`` uses generation when available and readout otherwise.
+    Explicit paths get distinct benchmark identifiers.
     Metric: model accuracy on test set, ceiling-normalized by human
     mean accuracy on the same test stimuli.
 
@@ -190,7 +193,10 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
 
     SUPPORTED_MODALITIES = SUPPORTED_MODALITIES
 
-    def __init__(self, modality: str = 'vision'):
+    def __init__(self, modality: str = 'vision', *, prefer_path: str = 'auto'):
+        if prefer_path not in ('auto', 'generation', 'readout'):
+            raise ValueError("prefer_path must be 'auto', 'generation', or 'readout'.")
+        self.prefer_path = prefer_path
         assert modality in self.SUPPORTED_MODALITIES, (
             f"modality must be one of {self.SUPPORTED_MODALITIES}; "
             f"got {modality!r}")
@@ -210,6 +216,8 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         self._human_accuracy = _human_accuracy_on_stimuli(self._human_ds, test_ids)
 
         suffix = _MODALITY_TO_SUFFIX[modality]
+        if prefer_path != 'auto':
+            suffix += f'-{prefer_path}'
         super().__init__(
             identifier=f'Yeatman2021-lexical_decision-{suffix}',
             version=2,
@@ -219,12 +227,13 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         )
 
     def __call__(self, candidate) -> Score:
-        # Fit behavioral readout on the 400-item train set
+        # The task declares how to answer; auto preserves the registered variants.
         task_context = TaskContext(
             task_type='probabilities',
             fitting_stimuli=self._train_stimuli,
             label_set=['real', 'pseudo'],
             instruction='Is this a real word or a pseudo word?',
+            prefer_path=self.prefer_path,
         )
         candidate.start_task(task_context)
 
@@ -255,6 +264,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         score.attrs['raw'] = Score(raw_accuracy)
         score.attrs['ceiling'] = ceiling_value
         score.attrs['n_test_stimuli'] = len(stim_ids)
+        score.attrs['requested_behavioral_path'] = self.prefer_path
         score.attrs['dyslexia_threshold'] = DYSLEXIA_THRESHOLD
         score.attrs['dyslexic'] = bool(raw_accuracy < DYSLEXIA_THRESHOLD)
         # Breakdown by stimulus class
