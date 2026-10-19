@@ -87,6 +87,7 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | Connect a robotics evaluator | [DROID](droid_integration.md), [LIBERO](robotics_benchmark_integration.md) | — | [LIBERO bridge and evaluator](../examples/libero/README.md) |
 | Use CogGym with UMI tools | [CogGym registration and runner](coggym.md) | — | [Recorded calls, intervention and replay](../examples/coggym_toolbox.py) |
 | Use EWoK with UMI tools | [EWoK](ewok.md) and [local data builders](local_data.md) | — | Native-file preparation and recorded scoring examples in the guide |
+| Test word relationships through vision | [Rendered-word retrieval](rendered_word_semantics.md) | — | [DINO experiment](../examples/rendered_word_semantics.py); trained-model replication requires local data and qualification |
 | Add a tool or domain | [Tool authoring](tool_authoring.md), [extension guide](../EXTENDING.md) | — | [External package](../examples/partner_tool/README.md), [custom experiment tool](../examples/experiment_toolbox/partner_tool.py) |
 
 See the [notebook index](../notebooks/README.md) for downloads, compute requirements, and whether each example uses synthetic, measured, or saved results.
