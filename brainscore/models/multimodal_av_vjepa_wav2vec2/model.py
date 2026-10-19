@@ -2,7 +2,7 @@
 multimodal Brain-Score model.
 
 Built specifically to exercise the M12-full unified-interface APIs:
-- Two preprocessors (`video` + `audio`), one BrainScoreModel
+- Two extraction wrappers (`video` + `audio`), one BrainScoreModel
 - ``region_modality_map`` routing IT to the video tower and A1 to the
   audio tower in cross-tower extraction
 - Multi-modality scoring against a multimodal benchmark
@@ -22,7 +22,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.model_interface import BrainScoreModel, LayerSelector
 
 
 # ── Audio tower config ─────────────────────────────────────────────
@@ -172,13 +172,14 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=None,
-        region_layer_map=REGION_LAYER_MAP,
-        region_modality_map=REGION_MODALITY_MAP,
-        preprocessors={
+        region_layer_map={
+            region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
+            for region, layer in REGION_LAYER_MAP.items()
+        },
+        activations_model={
             'video': video_wrapper,
             'audio': audio_wrapper,
         },
         required_modalities={'video', 'audio'},
-        activations_model=None,
         visual_degrees=8,
     )

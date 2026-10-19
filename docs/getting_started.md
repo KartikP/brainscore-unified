@@ -85,7 +85,7 @@ Use these when your integration needs model activity extraction:
 
 `VisionWrapper` selects an image, VLM, or video wrapper from the architecture. Check its choice and choose recorded layers using benchmark evidence.
 
-For image models, `activations_model` usually holds the extraction wrapper. Text paths put a complete wrapper in `preprocessors['text']`. See the [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) for a working multimodal configuration.
+Use `activations_model={'vision': wrapper}` for images, `{'text': wrapper}` for text, and the same pattern for audio or video. Configure input preparation inside the wrapper. See the [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) for two towers connected through this same pattern.
 
 ## Share a model or tool
 

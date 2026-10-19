@@ -39,7 +39,7 @@ For a typical neural-recording integration:
 3. The wrapper prepares inputs, runs the network, and collects activity.
 4. The subject supplies those responses to the benchmark, which calculates a score.
 
-Not every subject needs a wrapper: it can call a robotics policy or remote service directly. Not every wrapper goes in `activations_model`: a text integration can put a complete `TextWrapper` in `preprocessors['text']`.
+Not every subject needs an extraction wrapper: it can call a robotics policy or remote service directly. When extraction is needed, put the wrapper in `activations_model`, regardless of modality.
 
 ### Where do sessions and `model_interface` fit?
 
@@ -65,6 +65,8 @@ Existing Brain-Score vision and language models can use adapters; compatibility 
 A **session** delivers inputs and collects outputs. In `interact(session)`, a subject reads `session.next_input()` until it returns `None`, and sends responses through `session.emit(event)`.
 
 A **channel** identifies what an event carries, such as `text` or `neural:IT`. A `StreamEvent` contains a channel, payload, timestamp (`t_ms`), and optional metadata. Input and output declarations let experiments check compatibility before running.
+
+For fixed inputs, use `InMemorySession(inputs=..., requested_output_channels=...)`. It also accepts `stimulus_set=` or `task_context=` and collects responses. Use `EnvironmentSession` when responses change the next input; use windowed/live sessions when delivery timing matters. Specialized stimulus and behavior helpers remain available, but are not additional contracts to learn.
 
 Use an external package to add channels, capabilities, or experiment tools. See [Build tools and integrations](tool_authoring.md).
 
@@ -101,7 +103,7 @@ For neural recording, this map selects the model units used to represent a brain
 region_layer_map = {'V4': 'layer3', 'IT': 'layer4'}
 ```
 
-On a `BrainScoreModel`, `start_recording('IT')` then selects `layer4`. Choose the mapping using benchmark evidence; it is not automatically a scientifically validated match. Composite selections can combine units from several layers; see the [API reference](umi_api_reference.md#record-a-region).
+On a `BrainScoreModel`, `start_recording('IT')` then selects `layer4`. Choose the mapping using benchmark evidence; it is not automatically a scientifically validated match. Add `modality='text'` or `modality='vision'` to a `LayerSelector` or `CompositeSelector` when routing between towers. The same mapping holds the layer and its source. Composite selections can combine units from several layers; see the [API reference](umi_api_reference.md#record-a-region).
 
 ## Selections
 
@@ -113,7 +115,7 @@ On a `BrainScoreModel`, `start_recording('IT')` then selects `layer4`. Choose th
 | `LayerSelector` | One layer in a region mapping; a string layer path is shorthand |
 | `CompositeSelector` | Units from several layers grouped into one region mapping |
 
-These are different roles, not interchangeable names. Extraction selectors index recorded units; PyTorch interventions index the last output axis. On a convolutional output that axis is usually image width, so inspect the shape before selecting units.
+A recipe chooses units; a resolved `Selection` identifies them. Use the same resolved selection for recording and intervention. `axis=-1` indexes the last tensor axis; `axis=1` can select CNN channels; `axis=None` flattens non-batch dimensions. Functional localizers preserve spatial coordinates when available and reject ambiguous spatial subsets. Extraction and instrumentation must refer to the same module root and output layout.
 
 ## Layer path
 
@@ -129,13 +131,13 @@ Paths are relative to that module. A VLM wrapper may wrap only its vision tower,
 
 A **modality** is an input domain, such as vision, text, or audio. A **channel** names an input or output and its payload schema, including outputs such as `neural:IT`.
 
-For `BrainScoreModel`, preprocessors describe input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly: a custom session label such as `image` is not automatically an alias of `vision`; its producer and consumer must agree on the name and payload.
+For `BrainScoreModel`, the keys of `activations_model` declare input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly: a custom session label such as `image` is not automatically an alias of `vision`; its producer and consumer must agree on the name and payload.
 
 ## Preprocessor vs. `activations_model`
 
 A **preprocessor** prepares inputs: resize images, tokenize text, or resample audio. An **extraction wrapper** runs the model, records selected layers, and packages responses.
 
-Image models commonly put a callable in `preprocessors['vision']` and a wrapper in `activations_model`. Text paths put the complete `TextWrapper` in `preprocessors['text']`; a tokenizer alone is insufficient. When the extraction wrapper already preprocesses, an identity preprocessor avoids doing the work twice.
+Configure the wrapper with its preparation function or tokenizer, then pass it as `activations_model={'vision': wrapper}` or `activations_model={'text': wrapper}`. The call is always `wrapper(stimuli, layers=...)`. Multiple entries connect separate towers; different modalities can also share the same wrapper. No identity preprocessor is needed.
 
 See [Getting started](getting_started.md#choose-an-extraction-wrapper) for wrapper imports and the [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) for a multimodal example.
 

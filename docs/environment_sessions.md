@@ -58,7 +58,7 @@ subject = BrainScoreModel(
 def session_factory(trial):
     with EnvironmentSession(
         GridGameEnvironment(GridGameEnv(size=4)),
-        seed=trial,
+        seed=trial.identifier,
         require_specs=True,
     ) as session:
         yield session

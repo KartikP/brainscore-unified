@@ -109,6 +109,8 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         def _apply(tensor):
             if not isinstance(tensor, torch.Tensor):
                 return tensor  # don't touch non-tensors
+            from brainscore.model_helpers.selection import selection_view
+            view, axis = selection_view(tensor, selection)
             if indices is None:
                 # ablate the whole layer
                 if kind == 'zero':
@@ -121,23 +123,23 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     raise ValueError(
                         f"Unsupported Perturbation kind for whole-layer "
                         f"ablation: {kind!r}. Expected 'zero', 'scale', or 'drive'.")
-            # ablate at the last (feature) axis at the named indices
-            modified = tensor.clone()
+            # Use the same coordinates as recording; never reinterpret indices.
+            modified = view.clone()
             idx = torch.tensor(indices, dtype=torch.long, device=tensor.device)
             if kind == 'zero':
-                modified.index_fill_(-1, idx, 0)
+                modified.index_fill_(axis, idx, 0)
             elif kind == 'scale':
-                vals = modified.index_select(-1, idx) * scale
+                vals = modified.index_select(axis, idx) * scale
                 # in-place scatter back
-                modified.index_copy_(-1, idx, vals)
+                modified.index_copy_(axis, idx, vals)
             elif kind == 'drive':
-                vals = modified.index_select(-1, idx) + amount
-                modified.index_copy_(-1, idx, vals)
+                vals = modified.index_select(axis, idx) + amount
+                modified.index_copy_(axis, idx, vals)
             else:
                 raise ValueError(
                     f"Unsupported Perturbation kind for index-ablation: "
                     f"{kind!r}. Expected 'zero', 'scale', or 'drive'.")
-            return modified
+            return modified.reshape(tensor.shape)
 
         return hook
 
@@ -176,7 +178,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
             # validated against the wrong axis. Layers with no last-axis width
             # attr are validated at forward time.
             n_units = (getattr(layer, 'out_features', None)
-                       or getattr(layer, 'num_features', None))
+                       if state_change.target.axis == -1 else None)
             if n_units is not None and norm and max(norm) >= n_units:
                 raise ValueError(
                     f"Selection index {max(norm)} is out of range for layer "

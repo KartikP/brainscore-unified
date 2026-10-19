@@ -52,8 +52,8 @@ def test_registered_and_loads():
 def test_supported_modalities():
     import brainscore
     model = brainscore.load_model('your-model')
-    # supported_modalities is DERIVED from preprocessors.keys() — never hasattr.
-    assert 'vision' in model.supported_modalities   # TODO: match your preprocessors
+    # supported_modalities is derived from the extractor mapping.
+    assert 'vision' in model.supported_modalities   # TODO: match your extractor mapping
 
 
 def test_start_recording_accepts_known_region():

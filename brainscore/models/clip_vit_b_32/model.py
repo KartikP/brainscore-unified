@@ -17,7 +17,7 @@ from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.model_interface import BrainScoreModel, LayerSelector
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.hf_compat import pin_image_processor
 
@@ -82,14 +82,17 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=clip_model,
-        region_layer_map=REGION_LAYER_MAP,
-        region_modality_map={region: ('text' if region == 'language_system' else 'vision')
-                             for region in REGION_LAYER_MAP},
-        preprocessors={
-            'vision': preprocessing,
+        region_layer_map={
+            region: LayerSelector(
+                name=layer,
+                modality='text' if region == 'language_system' else 'vision',
+            )
+            for region, layer in REGION_LAYER_MAP.items()
+        },
+        activations_model={
+            'vision': activations_model,
             'text': text_wrapper,
         },
-        activations_model=activations_model,
         visual_degrees=8,
         # Behavioral readout uses the final vision encoder block (matches
         # the 'IT' layer convention). Behavioral benchmarks like Ferguson2024

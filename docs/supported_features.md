@@ -66,7 +66,7 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | `replay_sessions` / `replay_calls` | Send saved inputs through a model again | Explicit new execution; does not regenerate simulator feedback |
 | `context.import_artifact` | Copy external videos/reports with producer metadata | Keeps evaluator-produced artifacts with the experiment |
 
-`Selection` uses the same layer paths across recording and intervention tools. For PyTorch interventions, unit indices address the **last output axis**; on a convolutional output that is usually image width, not channels.
+`Selection` uses the same layer paths and tensor coordinates for recording and intervention. Set `axis=-1` for the last feature axis, `axis=1` for CNN channels, or `axis=None` for flattened spatial features. Functional localizers retain spatial coordinates when available; ambiguous subsets are rejected. OpenPI and attribution/patching currently require last-axis selections.
 
 ## Guides, tutorials and examples
 

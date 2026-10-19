@@ -251,6 +251,8 @@ class RemoteOpenPIInstrumentation:
     @staticmethod
     def _scope(operation, targets):
         selections = [Selection(layer=t) if isinstance(t, str) else t for t in targets]
+        if any(s.axis != -1 or s.expected_shape is not None for s in selections):
+            raise ValueError('OpenPI instrumentation supports last-axis selections without a fixed shape.')
         return {'operation': operation, 'targets': [
             {'layer': s.layer, 'indices': None if s.indices is None else list(s.indices)}
             for s in selections]}

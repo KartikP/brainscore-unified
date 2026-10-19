@@ -23,7 +23,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.model_interface import BrainScoreModel, LayerSelector
 
 
 from ._ids import SUPPORTED_IDENTIFIERS
@@ -108,13 +108,14 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=None,
-        region_layer_map=REGION_LAYER_MAP,
-        region_modality_map=REGION_MODALITY_MAP,
-        preprocessors={
-            'vision': preprocessing,
+        region_layer_map={
+            region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
+            for region, layer in REGION_LAYER_MAP.items()
+        },
+        activations_model={
+            'vision': activations_model,
             'audio': audio_wrapper,
         },
-        activations_model=activations_model,
         required_modalities={'vision', 'audio'},
         visual_degrees=8,
     )

@@ -169,7 +169,8 @@ def _selection(target):
 def _describe_target(target):
     if isinstance(target, str):
         return target
-    return {'layer': target.layer, 'indices': target.indices}
+    return {'layer': target.layer, 'indices': target.indices,
+            'axis': target.axis, 'expected_shape': target.expected_shape}
 
 
 class ObserveCalls(Tool):
@@ -200,8 +201,8 @@ class TorchInstrumentation:
     """Expose model layer paths or explicitly named modules to experiment tools.
 
     Recording uses ActivationWindow; ablation uses build_pytorch_ablation_fn.
-    Selection.indices refers to the last output axis, just as in StateChange.
-    It is not automatically the channel axis of a convolutional output.
+    Selection.axis uses the same coordinates for recording and intervention.
+    The default -1 indexes the last axis; None flattens non-batch dimensions.
     """
     def __init__(self, model_or_targets):
         import torch
@@ -213,7 +214,7 @@ class TorchInstrumentation:
                 'targets': {name: type(module).__module__ + '.' + type(module).__qualname__
                             for name, module in self.targets.items()},
                 'operations': ['record', 'ablate', 'scale', 'attribute', 'patch'],
-                'selection': 'layer path; optional last-axis indices'}
+                'selection': 'layer path; optional indices and explicit axis'}
 
     def validate(self, operation, targets):
         import operator
@@ -227,6 +228,8 @@ class TorchInstrumentation:
         if len(set(names)) != len(names):
             raise ValueError('Select distinct layers; combine unit indices in one Selection')
         for selection in selections:
+            if operation in ('attribute', 'patch') and (selection.axis != -1 or selection.expected_shape is not None):
+                raise ValueError('Attribution and patching require last-axis selections without a fixed shape.')
             if (selection.layer not in self.targets
                     or not isinstance(self.targets[selection.layer], torch.nn.Module)):
                 raise ValueError(f'Unknown or invalid PyTorch target: {selection.layer}')
@@ -248,8 +251,12 @@ class TorchInstrumentation:
                     tensor = _first_tensor_out(output)
                     if tensor is None:
                         raise TypeError('Activity target must expose a tensor')
+                    from brainscore.model_helpers.selection import selection_view
+                    tensor, axis = selection_view(tensor, selection)
                     if selection.indices is not None:
-                        tensor = tensor[..., selection.indices]
+                        import torch
+                        indices = torch.tensor(selection.indices, device=tensor.device, dtype=torch.long)
+                        tensor = tensor.index_select(axis, indices)
                     return tensor
                 def capture(value, selection=selection):
                     import torch
@@ -257,7 +264,8 @@ class TorchInstrumentation:
                     if snapshot.dtype == torch.bfloat16:
                         snapshot = snapshot.float()
                     receive(selection.layer, {'array': snapshot.numpy(), 'dtype': value.dtype,
-                                              'device': value.device, 'indices': selection.indices})
+                                              'device': value.device, 'indices': selection.indices,
+                                              'axis': selection.axis, 'expected_shape': selection.expected_shape})
                 stack.enter_context(ActivationWindow(self.targets[selection.layer],
                     select_output=select, on_capture=capture, retain=False, max_captures=None))
             yield
@@ -317,7 +325,8 @@ class TorchInstrumentation:
                 root = torch.nn.ModuleDict({'target': module})
                 apply = build_pytorch_ablation_fn(root)
                 _, cleanup = apply(StateChange(kind='ablation',
-                    target=Selection(layer='target', indices=selection.indices),
+                    target=Selection(layer='target', indices=selection.indices,
+                                     axis=selection.axis, expected_shape=selection.expected_shape),
                     perturbation=perturbation))
                 stack.callback(cleanup)
             yield

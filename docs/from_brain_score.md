@@ -39,8 +39,9 @@ activations = PytorchWrapper(
     identifier='my-cnn', model=net, preprocessing=preprocess,
 )
 model = BrainScoreModel(
-    'my-cnn', model=net, activations_model=activations,
-    preprocessors={'vision': preprocess},
+    identifier='my-cnn',
+    model=net,
+    activations_model={'vision': activations},
     region_layer_map={'V4': 'layer3', 'IT': 'layer4'},
 )
 ```
