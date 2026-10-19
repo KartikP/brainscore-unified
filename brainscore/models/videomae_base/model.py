@@ -124,13 +124,9 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=videomae,
         region_layer_map=REGION_LAYER_MAP,
-        preprocessors={
-            # 'video' modality routes a stimulus set with ``video_path``
-            # column to this VideoWrapper (see BrainScoreModel.COLUMN_TO_MODALITY).
-            # The wrapper handles frame sampling + forward pass + hook + packaging.
+        activations_model={
             'video': video_wrapper,
         },
         required_modalities={'video'},
-        activations_model=None,  # VideoWrapper IS the activations_model
         visual_degrees=8,
     )

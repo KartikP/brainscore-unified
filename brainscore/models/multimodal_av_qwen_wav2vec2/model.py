@@ -11,7 +11,7 @@ already cover the four signal/null permutations).
 """
 import torch
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.model_interface import BrainScoreModel, LayerSelector
 from brainscore_core.hf_compat import pin_image_processor
 
 
@@ -73,9 +73,11 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=qwen_model,
-        region_layer_map=REGION_LAYER_MAP,
-        region_modality_map=REGION_MODALITY_MAP,
-        preprocessors={
+        region_layer_map={
+            region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
+            for region, layer in REGION_LAYER_MAP.items()
+        },
+        activations_model={
             'vision': vision_wrapper,
             'audio': audio_wrapper,
         },

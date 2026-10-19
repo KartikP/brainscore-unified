@@ -61,11 +61,20 @@ print(assembly.dims)
 model.reset()
 ~~~
 
-The region must be present in the model's region_layer_map. Use
-start_recording("all") only when that mapping is non-empty.
+A target can name a mapped region or a raw layer path; unknown region names
+produce a warning. Strings and lists use the same rule. `start_recording("all")`
+means all mapped regions, not all network layers.
 
-For separate towers with relative layer names, declare `region_modality_map`,
-for example `{'IT': 'vision', 'language_system': 'text'}`. The same layer string
+For separate towers, keep routing in the selector:
+
+```python
+from brainscore_core.model_interface import LayerSelector
+
+region_layer_map = {
+    'IT': LayerSelector(name='encoder.layers.10', modality='vision'),
+    'language_system': LayerSelector(name='encoder.layers.10', modality='text'),
+}
+``` The same layer string
 can then identify different layers in different towers. Recording regions from
 several modalities requires `process(stimuli, multi_modality=True)` and inputs
 for every requested tower. Composite regions retain per-layer `unit_index`
@@ -200,3 +209,20 @@ Large models and full benchmark runs require suitable compute and staged data. A
 **Feature branch:** `OpenPIInstrumentation(policy, checkpoint=..., steps=...)` connects the same activity/ablation tools to three named sites in the pinned Pi0/Pi0.5 JAX sampler. `RemoteOpenPIInstrumentation(client)` uses `OpenPIPolicyClient` and `OpenPIToolServer` for request-scoped remote access. See [policy instrumentation](policy_instrumentation.md) for targets and qualification limits.
 
 **Feature branch:** `RecordReasoning` saves exposed reasoning in `reasoning/`, read with `RunRecord(result.directory / 'reasoning')`. `build_trace_subject(..., streaming=True)` emits intermediate response traces during sessions and parses only the final answer. See [reasoning recording](reasoning_recording.md).
+
+## Compatibility forms
+
+Simple `region_layer_map` entries still read back as strings. Entries with unit
+subsets or routing read back as selectors, preserving all settings when copied.
+Use `model.region_layer_selectors[region].layer_path` when a consumer needs only
+one layer path; use `CompositeSelector.layer_paths` for all composite layers.
+The separate `region_modality_map` argument is accepted and normalized into selectors.
+
+Existing registrations with wrappers in `preprocessors` remain accepted at the
+constructor boundary. New registrations put every extraction wrapper in
+`activations_model`, and configure preprocessing in the wrapper itself.
+
+`SessionProtocol` factories receive `Trial(condition, identifier)`, including when
+conditions are omitted. An ID-only factory can opt into `factory_argument='identifier'`.
+The default condition is `'default'`. Session helper constructors and factory
+aliases remain available; new examples use `InMemorySession` for fixed inputs.

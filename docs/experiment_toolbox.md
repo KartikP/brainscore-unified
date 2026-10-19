@@ -43,17 +43,21 @@ from brainscore.experiments import SessionProtocol
 def make_session(trial):
     # trial.condition names the setting; trial.identifier identifies the repetition.
     # Supply already prepared inputs and collect the model's responses.
-    yield InMemorySession([StreamEvent('image', images.copy(), t_ms=0)])
+    yield InMemorySession(
+        inputs=[StreamEvent(channel='vision', payload=images.copy(), t_ms=0)],
+        requested_output_channels=['prediction'],
+    )
 
 protocol = SessionProtocol(
-    'compare-conditions', make_session,
+    identifier='compare-conditions',
+    session_factory=make_session,
     conditions=['normal', 'silenced', 'restored'],
     trials=[0],  # One repetition of each condition.
-    input_channels=['image'], output_channels=['prediction'],
+    input_channels=['vision'], output_channels=['prediction'],
 )
 ```
 
-Supply `images` and a subject with matching channels. The protocol resets the subject before and after each trial. The factory creates a fresh session and closes any resources it owns. `@contextmanager` lets Python manage that setup and cleanup around `yield`.
+The factory always receives a `Trial`, whether or not conditions are specified. Use `trial.identifier` for a repetition ID or seed. Supply `images` and a subject with matching channels. The protocol resets the subject before and after each trial. The factory creates a fresh session and closes any resources it owns. `@contextmanager` lets Python manage that setup and cleanup around `yield`.
 
 Each entry in `result.value` is the session's `collect()` result. Built-in neural sessions return an assembly for one requested region, or a dictionary keyed by channel for several regions. Use `session.collect(channel='neural:IT')` to select one. Behavioral sessions return their behavioral assembly.
 
@@ -121,13 +125,13 @@ Use the same dotted layer paths throughout UMI, such as `layer3.0.bn2`. To selec
 ```python
 from brainscore_core.events import Selection
 
-selected = Selection('encoder', indices=[0, 3])
-# These indices address the last output axis, as they do in StateChange.
+selected = Selection(layer='encoder', indices=[0, 3], axis=-1)
+# Record and change exactly the same positions on the chosen axis.
 activity = RecordActivity([selected])
 ablation = Ablate([selected], conditions=['silenced'])
 ```
 
-For a linear layer, the last axis contains its units. For a convolutional output, it is usually image width, **not channels**. Check the output shape before choosing indices.
+For a linear layer, use `axis=-1`. For `(batch, channels, height, width)` output, use `axis=1` for channels or `axis=None` for flattened spatial features. A functional localizer returns a resolved selection; reuse that object rather than copying only its indices. Spatial selections carry an expected shape and reject a different layout. Pass the same module root to extraction and instrumentation. Attribution/patching and OpenPI currently accept last-axis selections only and reject other coordinate systems.
 
 `TorchInstrumentation` records tensor outputs, the first tensor in a tuple/list, or supported transformer output fields. Ablation supports tensors and tuples beginning with a tensor; other tuple entries are unchanged. Unsupported outputs raise errors when encountered. This does not provide weight editing or internal access to a remote model.
 

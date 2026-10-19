@@ -81,11 +81,10 @@ def get_model():
         identifier='your-model',
         model=backbone,                       # nn.Module, or None for output-only
         region_layer_map={'IT': 'blocks.16'}, # brain region -> layer path
-        preprocessors={'vision': preprocess},  # modality -> callable (defines supported_modalities)
-        activations_model=wrapper,            # PytorchWrapper / Text / VLMVision / Video / Audio
+        activations_model={'vision': wrapper},  # wrapper owns input preparation and recording
         # optional capability slots:
         # generation_fn=..., action_fn=..., state_change_fn=...,
-        # behavioral_readout_layer=..., region_modality_map=..., backbone_id=...,
+        # behavioral_readout_layer=..., backbone_id=...,
     )
 
 model_registry['your-model'] = get_model

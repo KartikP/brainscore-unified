@@ -47,23 +47,15 @@ def get_model() -> BrainScoreModel:
         model=backbone,
         preprocessing=lambda paths: load_preprocess_images(paths, image_size=64))
 
-    # TODO: simple per-modality callables (resize/normalize, tokenize, resample).
-    #   preprocessors.keys() IS the model's supported_modalities — there is no separate
-    #   declaration to keep in sync, and no hasattr check anywhere in the codebase.
-    # Identity is right when the wrapper already does the preprocessing, as here.
-    preprocessors = {'vision': lambda stimuli: stimuli}
-
     return BrainScoreModel(
         identifier=IDENTIFIER,
         model=backbone,
         region_layer_map={'IT': '2'},   # brain region -> layer to record. TODO: yours.
-        preprocessors=preprocessors,
-        activations_model=activations_model,
+        activations_model={'vision': activations_model},
         # --- optional capability slots (see templates/new_capability/) ---
         # generation_fn=...,
         # action_fn=...,
         # state_change_fn=...,
         # behavioral_readout_layer='TODO.layer',
-        # region_modality_map={'IT': 'vision', 'A1': 'audio'},  # multimodal routing
         # backbone_id='shared-backbone-id',                     # share a feature cache
     )

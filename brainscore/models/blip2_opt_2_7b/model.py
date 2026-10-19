@@ -177,11 +177,10 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=blip_model,
         region_layer_map=REGION_LAYER_MAP,
-        preprocessors={
-            'vision': preprocessing,
+        activations_model={
+            'vision': activations_model,
             'text': text_wrapper,
         },
-        activations_model=activations_model,
         visual_degrees=8,
         generation_fn=generation_fn,
         # Readout path also available — PCA-1000 features from 'IT' layer.

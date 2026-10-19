@@ -240,8 +240,9 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=model,
         region_layer_map=REGION_LAYER_MAP,
-        preprocessors={'video': video_wrapper},
+        activations_model={
+            'video': video_wrapper,
+        },
         required_modalities={'video'},
-        activations_model=None,
         visual_degrees=8,
     )

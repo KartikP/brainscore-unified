@@ -428,7 +428,7 @@ def local_candidate(case, route, *, language_precision='float32', execution_obse
                                  identifier='parity-resnet18', batch_size=4)
         if route == 'native':
             return finish(BrainScoreModel('parity-native', model=net, region_layer_map=mapping,
-                preprocessors={'vision': wrapper}, visual_degrees=8), net)
+                activations_model={'vision': wrapper}, visual_degrees=8), net)
         legacy = ModelCommitment('parity-legacy', wrapper, layers=list(mapping.values()),
                                  region_layer_map=mapping, visual_degrees=8)
         return finish(VisionModelAdapter(legacy) if route == 'adapter' else legacy, net)
@@ -449,6 +449,6 @@ def local_candidate(case, route, *, language_precision='float32', execution_obse
     if route == 'native':
         wrapper = TextWrapper(net, tokenizer, identifier='parity-native', max_length=1024, batch_size=1)
         return finish(BrainScoreModel('parity-native', model=net, region_layer_map=mapping,
-                               preprocessors={'text': wrapper}), net)
+                               activations_model={'text': wrapper}), net)
     legacy = HuggingfaceSubject('parity-legacy', mapping, model=net, tokenizer=tokenizer)
     return finish(LanguageModelAdapter(legacy) if route == 'adapter' else legacy, net)

@@ -12,7 +12,7 @@ Use these terms across code, guides, and notebooks. Explain a term once, then us
 | Wrapper | Adapts a model or extractor to an expected interface. It can include preprocessing. |
 | Activations | Internal values produced by the model. “Activity” is the plain-language name for these measurements. |
 | Layer path | The model's own name for a component, such as `layer3.0.bn2`. |
-| Selection | A layer path and optional unit indices. For PyTorch interventions, indices address the last output axis. |
+| Selection | A layer path, optional unit indices, and their tensor axis. Reuse the same selection for recording and intervention. |
 | Region mapping | A proposed correspondence between brain regions and model layers. A mapping alone is not evidence of biological similarity. |
 | Assembly | An array with labels describing its samples, units, and other axes. |
 | Neuroid | An entry on a recorded-unit axis: a model feature or biological recording site, depending on the data. |
@@ -53,3 +53,13 @@ Use ordinary Python and explicit variables. Avoid compressed imports, semicolon-
 Figures need a descriptive title, labeled axes and units, and a legend or colorbar where needed. Use blue for baseline/model, orange for intervention, green for restored, and gray for controls. Use shared color scales when comparing panels; label any deliberate scale differences. Identify synthetic, measured, and previously saved results explicitly.
 
 State what a result supports. A demonstration is not a qualification; a selected example is not an aggregate result; an output change is not evidence about biological causality. Avoid promising a direction of effect before measuring it.
+
+## Reuse one setup pattern
+
+- Configure input preparation inside the extraction wrapper. Pass wrappers as
+  `activations_model={'vision': wrapper}`; text, audio, and video use the same role.
+- Keep a region's layer, units, and optional modality together in its selector.
+- Use `InMemorySession` for fixed inputs and `EnvironmentSession` for feedback.
+  Delivery/window/deadline adapters add behavior; factory aliases add no contract.
+- Session factories receive a `Trial`. Read `trial.condition` and `trial.identifier`.
+- Name parameters in teaching examples. Prefer the main API over convenience aliases.

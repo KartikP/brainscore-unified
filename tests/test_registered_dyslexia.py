@@ -101,7 +101,7 @@ def test_registered_model_benchmark_path_and_hook_cleanup(registered_toy):
     net, stimuli = registered_toy
     candidate = brainscore.load_model('qwen2.5-vl-3b-vwfa')
     benchmark = brainscore.load_benchmark('Yeatman2021-induced_dyslexia-image')
-    assert candidate.region_layer_map['VWFA'] == 'blocks.28'
+    assert candidate.region_layer_selectors['VWFA'].layer_path == 'blocks.28'
     score = benchmark(candidate)
     assert np.isfinite(float(score))
     assert set(('baseline_accuracy', 'lesioned_accuracy', 'random_control_accuracy')).issubset(score.attrs)

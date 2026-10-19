@@ -103,7 +103,7 @@ def test_session_tools_record_applied_actions_and_replay_saved_observations(tmp_
     @contextmanager
     def factory(trial):
         with EnvironmentSession(
-            GridGameEnvironment(GridGameEnv(size=4)), seed=trial, require_specs=True,
+            GridGameEnvironment(GridGameEnv(size=4)), seed=trial.identifier, require_specs=True,
         ) as session:
             sessions.append(session)
             yield session

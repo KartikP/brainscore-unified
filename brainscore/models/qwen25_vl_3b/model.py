@@ -164,7 +164,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=qwen_model,
         region_layer_map=region_layer_map,
-        preprocessors={
+        activations_model={
             'vision': vision_wrapper,
             'text': text_wrapper,
         },
