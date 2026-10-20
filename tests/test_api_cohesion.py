@@ -173,3 +173,131 @@ def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_pat
     restored = subject.process(stimuli)
     np.testing.assert_array_equal(restored.values, baseline.values)
     assert not network[0]._forward_hooks
+
+
+def test_experiment_warns_about_unregistered_channels_before_running():
+    from brainscore_core.compatibility import CompatibilityWarning, CompatibilityError
+    subject = SimpleNamespace(
+        in_channels={'unregistered_input'}, out_channels={'behavior'},
+        interact=lambda session: None, reset=lambda: None,
+    )
+    protocol = SessionProtocol(
+        identifier='exploratory', session_factory=lambda trial: None,
+        input_channels=['unregistered_input'], output_channels=['behavior'],
+    )
+    with pytest.warns(CompatibilityWarning, match='benchmark scoring requires'):
+        protocol.validate(subject)
+    subject.in_channels = {'behavior'}
+    with pytest.raises(CompatibilityError, match='registry marks'):
+        protocol.validate(subject)
+
+
+def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
+    """Execute the notebook's actual adapter with a tiny network, without weights."""
+    import ast
+    import json
+    from pathlib import Path
+    from brainscore import score
+    from brainscore_core import Benchmark, Score, Subject
+    from brainscore_core.streaming import StreamEvent
+    from brainscore.experiments import Experiment
+    notebook = json.loads((Path(__file__).parents[1] / 'notebooks/18_resnet_experiment_toolbox.ipynb').read_text())
+    source = next(''.join(cell['source']) for cell in notebook['cells']
+                  if 'class ImageSubject(Subject):' in ''.join(cell.get('source', [])))
+    tree = ast.parse(source)
+    adapter = next(node for node in tree.body if isinstance(node, ast.ClassDef))
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    namespace = dict(Subject=Subject, torch=torch, np=np, StreamEvent=StreamEvent,
+                     BehavioralAssembly=BehavioralAssembly)
+    exec(compile(ast.Module(body=[adapter], type_ignores=[]), '<notebook-adapter>', 'exec'), namespace)
+    subject = namespace['ImageSubject'](torch.nn.Linear(3, 2).eval())
+    inputs = np.array([[1., 2., 3.]], dtype=np.float32)
+    def session():
+        return InMemorySession(
+            inputs=[StreamEvent(channel='vision', payload=inputs.copy(), t_ms=0)],
+            requested_output_channels=['behavior'],
+        )
+    class SessionBenchmark(Benchmark):
+        identifier = 'notebook-channel-transfer'
+        parent = 'behavioral'
+        uses_session = True
+        required_input_channels = {'vision'}
+        requested_output_channels = {'behavior'}
+        def __call__(self, candidate):
+            run = session()
+            candidate.interact(run)
+            return Score(float(run.collect(channel='behavior').sum()))
+    result = score(subject, SessionBenchmark(), check_mem=False)
+    assert float(result) == pytest.approx(1)
+    experiment = Experiment(
+        subject=subject,
+        protocol=SessionProtocol(
+            identifier='notebook-channels', session_factory=lambda trial: nullcontext(session()),
+            input_channels=['vision'], output_channels=['behavior'],
+        ),
+        output_dir=tmp_path / 'experiment',
+    )
+    assert experiment.run().manifest['status'] == 'complete'
+
+
+@pytest.mark.parametrize('prefer_path', ['auto', 'generation', 'readout'])
+def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefer_path):
+    from brainscore.benchmarks.roar_yeatman2021 import benchmark as module
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    ids = [f's{i}' for i in range(500)]
+    labels = ['real'] * 250 + ['pseudo'] * 250
+    stimuli = StimulusSet({'stimulus_id': ids, 'sentence': ids, 'image_label': labels})
+    stimuli.identifier = 'synthetic-roar'
+    stimuli.stimulus_paths = {sid: sid for sid in ids}
+    human = xr.Dataset({
+        'data': ('presentation', np.ones(500)),
+        'correct': ('presentation', np.ones(500)),
+        'stimulus_id': ('presentation', ids),
+    })
+    monkeypatch.setattr(module, 'load_stimulus_set', lambda identifier: stimuli)
+    monkeypatch.setattr(module, 'load_dataset', lambda identifier: human)
+    benchmark = module.Yeatman2021LexicalDecision(modality='text', prefer_path=prefer_path)
+    suffix = '' if prefer_path == 'auto' else f'-{prefer_path}'
+    assert benchmark.identifier == f'Yeatman2021-lexical_decision-text{suffix}'
+    tasks = []
+    def predict(stimuli):
+        return BehavioralAssembly(
+            np.array([[1, 0] if label == 'real' else [0, 1] for label in stimuli.image_label]),
+            dims=('presentation', 'choice'),
+            coords={'stimulus_id': ('presentation', list(stimuli.stimulus_id)),
+                    'stimulus_index': ('presentation', np.arange(len(stimuli))),
+                    'choice': ('choice', ['real', 'pseudo'])},
+        )
+    result = benchmark(SimpleNamespace(start_task=tasks.append, process=predict))
+    assert tasks[0].prefer_path == prefer_path
+    assert float(result) == 1
+    assert result.attrs['requested_behavioral_path'] == prefer_path
+    assert not set(benchmark._train_stimuli.stimulus_id) & set(benchmark._test_stimuli.stimulus_id)
+
+
+def test_new_model_template_supports_public_recording_workflow(tmp_path):
+    import importlib.util
+    from pathlib import Path
+    from PIL import Image
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    path = Path(__file__).parents[1] / 'templates/new_model/model.py'
+    spec = importlib.util.spec_from_file_location('umi_example_model', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    subject = module.get_model()
+    image = tmp_path / 'image.png'
+    Image.fromarray(np.zeros((64, 64, 3), dtype=np.uint8)).save(image)
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'image_path': [str(image)]})
+    stimuli.identifier = 'template-smoke'
+    stimuli.stimulus_paths = {'s0': image}
+    assert subject.supported_modalities == {'vision'}
+    subject.start_recording('IT')
+    result = subject.process(stimuli)
+    assert result.sizes['presentation'] == 1 and result.sizes['neuroid'] > 0
+    # The template's raw-layer example must agree with the public API.
+    for target in ('2', ['2']):
+        with pytest.warns(UserWarning, match='raw layer path'):
+            subject.start_recording(target)
+        np.testing.assert_array_equal(subject.process(stimuli).values, result.values)
+    subject.reset()

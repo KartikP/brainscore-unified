@@ -60,10 +60,11 @@ def test_start_recording_accepts_known_region():
     import brainscore
     model = brainscore.load_model('your-model')
     model.start_recording('IT')                      # TODO: a region in your region_layer_map
-    # A single unknown STRING is an escape hatch (treated as a raw layer path),
-    # so it does NOT raise. The LIST form validates against region_layer_map:
-    with pytest.raises(Exception):
-        model.start_recording(['NotARegion'])        # unknown region fails fast
+    # Unknown names are raw layer paths, with the same rule for strings and lists.
+    for target in ('NotARegion', ['NotARegion']):
+        with pytest.warns(UserWarning, match='raw layer path'):
+            model.start_recording(target)
+
 
 
 def test_process_returns_an_assembly(tiny_stimuli):

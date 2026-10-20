@@ -74,18 +74,39 @@ A native `Subject` does not need `process()` or a layer map. `BrainScoreModel` p
 
 Use these when your integration needs model activity extraction:
 
-| Input | Wrapper import |
-| --- | --- |
-| Images, visual towers, or video | `from brainscore.model_helpers.vision_wrapper import VisionWrapper` |
-| Standard image CNN or ViT | `from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper` |
-| Text | `from brainscore.model_helpers.text_wrapper import TextWrapper` |
-| Flattened-patch visual tower | `from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper` |
-| Temporal video | `from brainscore.model_helpers.video_wrapper import VideoWrapper` |
-| Audio | `from brainscore.model_helpers.audio_wrapper import AudioWrapper` |
+| Input | Wrapper | Input preparation | Activity aggregation |
+| --- | --- | --- | --- |
+| Images | `VisionWrapper(kind='frame')` | `preprocessing=` callable | Spatial units are retained; no `layer_aggregation` setting. |
+| Flattened-patch visual tower | `VisionWrapper(kind='vlm')` | `processor=` | `mean_patches`, `first_patch`, or `none` |
+| Temporal video | `VisionWrapper(kind='temporal')` | `preprocessing=` callable | `post_hook_fn` handles the model's layout; `hook_time_axis` identifies time. |
+| Text | `TextWrapper` | `tokenizer=` | `last_token`, `mean_tokens`, or `per_token` |
+| Audio | `AudioWrapper` | `processor=` | `mean_time` or `time_series` |
 
-`VisionWrapper` selects an image, VLM, or video wrapper from the architecture. Check its choice and choose recorded layers using benchmark evidence.
+```python
+from brainscore.model_helpers.vision_wrapper import VisionWrapper
+from brainscore.model_helpers.text_wrapper import TextWrapper
+from brainscore.model_helpers.audio_wrapper import AudioWrapper
+```
 
-Use `activations_model={'vision': wrapper}` for images, `{'text': wrapper}` for text, and the same pattern for audio or video. Configure input preparation inside the wrapper. See the [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) for two towers connected through this same pattern.
+Aggregation combines a model's token, patch, or time positions into features. These axes differ, so their options differ. Use the model's expected preprocessing and retain any time or spatial information your benchmark needs.
+
+`VisionWrapper` can infer its strategy when `kind` is omitted. Inspect `wrapper.kind`; set `kind` explicitly if needed. The underlying `PytorchWrapper`, `VLMVisionWrapper`, and `VideoWrapper` remain available for direct configuration and existing registrations.
+
+Use `activations_model={'vision': wrapper}` for image/video extraction, `{'text': wrapper}` for text, and `{'audio': wrapper}` for audio. Configure input preparation inside the wrapper. The [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) connects two towers through this same mapping.
+
+An output-only model has no extraction wrapper:
+
+```python
+from brainscore_core.model_interface import BrainScoreModel
+
+subject = BrainScoreModel(
+    identifier='my-model',
+    supported_modalities={'text'},
+    generation_fn=answer,  # Your callable returns one allowed answer per stimulus row.
+)
+```
+
+This enables behavioral tasks, not neural recording. The generation callable accepts `stimulus_row`, `instruction`, and `label_set`.
 
 ## Share a model or tool
 

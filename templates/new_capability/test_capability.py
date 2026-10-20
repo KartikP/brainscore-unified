@@ -15,8 +15,7 @@ def _stub_action_fn():
 
 
 def test_action_fn_dispatches_through_process():
-    model = BrainScoreModel(identifier='cap-demo', model=None,
-                            region_layer_map={}, preprocessors={},
+    model = BrainScoreModel(identifier='cap-demo',
                             action_fn=_stub_action_fn())
     step = EnvironmentStep(observation={'frame': np.zeros((4, 4, 3), 'uint8'),
                                         'instruction': 'go', 'legal_actions': {0: 'up'}},
@@ -28,8 +27,7 @@ def test_action_fn_dispatches_through_process():
 
 def test_missing_capability_fails_clearly():
     import pytest
-    model = BrainScoreModel(identifier='no-cap', model=None,
-                            region_layer_map={}, preprocessors={})   # no action_fn
+    model = BrainScoreModel(identifier='no-cap')   # no action_fn
     step = EnvironmentStep(observation={}, step_num=0)
     with pytest.raises(NotImplementedError):
         model.process(step)

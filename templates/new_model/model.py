@@ -19,7 +19,8 @@ import torch.nn as nn
 
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import (
-    PytorchWrapper, load_preprocess_images)
+    load_preprocess_images)
+from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
 IDENTIFIER = 'your-model'
 
@@ -39,10 +40,9 @@ def get_model() -> BrainScoreModel:
     # TODO: pick the wrapper that matches your model. One of:
     #   VisionWrapper (any vision: image / VLM / video — dispatches internally; pass kind= to force)
     #   TextWrapper (LM) · AudioWrapper (HF audio encoder)
-    # VisionWrapper fronts PytorchWrapper / VLMVisionWrapper / VideoWrapper, so a vision
-    # model usually needs only that one surface. PytorchWrapper is used directly here to
-    # keep the example's moving parts visible.
-    activations_model = PytorchWrapper(
+    # Configure input preparation on the wrapper; the subject uses the same
+    # activations_model mapping for every modality.
+    activations_model = VisionWrapper(
         identifier=IDENTIFIER,
         model=backbone,
         preprocessing=lambda paths: load_preprocess_images(paths, image_size=64))

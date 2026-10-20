@@ -251,7 +251,7 @@ def _meta_signal(meta: Dict[str, Any]) -> str:
 
 def _base_modality(modality: str) -> str:
     """Collapse the wrapper-level modality to the dispatch modality used by
-    ``BrainScoreModel.preprocessors`` keys and ``required_modalities``."""
+    ``BrainScoreModel.activations_model`` keys and ``required_modalities``."""
     return {'vision_flat': 'vision', 'text_causal': 'text',
             'text_encoder': 'text'}.get(modality, modality)
 
@@ -487,13 +487,14 @@ def scaffold_registration(profile: ModelProfile, hf_id: Optional[str] = None,
                  'AudioWrapper': 'audio_wrapper'}[w]
         imports.append(f"from brainscore.model_helpers.{snake} import {w}")
 
-    req = profile.required_modalities()
-    req_line = (f"        required_modalities={req!r},\n" if req else "")
+    modalities = sorted({_base_modality(rec.modality) for rec in profile.recommendations})
+    extractor_entries = ", ".join(
+        f"{modality!r}: {modality}_wrapper" for modality in modalities)
     agg = primary.layer_aggregation if primary else None
     agg_hint = (f"\n    # wrapper aggregation: layer_aggregation={agg!r}"
                 if agg else "")
 
-    warns = "\n".join(f"#   ⚠ {w}" for w in profile.warnings)
+    warns = "\n".join(f"#   {w}" for w in profile.warnings)
     warns_block = (f"\n# Auto-register warnings:\n{warns}\n" if warns else "")
 
     return textwrap.dedent(f'''\
@@ -524,6 +525,12 @@ def get_model(identifier: str) -> BrainScoreModel:
     #   hf_model = AutoModel.from_pretrained({hf!r})
     #   processor = AutoProcessor.from_pretrained({hf!r})
     raise NotImplementedError("fill in the loader for {key!r}")
+    # Configure each wrapper above with its preparation callable or tokenizer.
+    # return BrainScoreModel(
+    #     identifier=identifier,
+    #     region_layer_map=REGION_LAYER_MAP,
+    #     activations_model={{{extractor_entries}}},
+    # )
 
 
 model_registry[{key!r}] = lambda: get_model({key!r})
@@ -583,12 +590,15 @@ def auto_register(model: Any,
         from brainscore.model_helpers.vision_wrapper import VisionWrapper
         activations_model = VisionWrapper(
             model=model, preprocessing=preprocessing, identifier=identifier)
-        preprocessors = {'vision': preprocessing}
         return BrainScoreModel(
-            identifier=identifier, model=model,
-            region_layer_map=region_layer_map, preprocessors=preprocessors,
-            activations_model=activations_model, visual_degrees=visual_degrees,
-            required_modalities={base_modality}, **brainscore_model_kwargs)
+            identifier=identifier,
+            model=model,
+            region_layer_map=region_layer_map,
+            activations_model={'vision': activations_model},
+            visual_degrees=visual_degrees,
+            required_modalities={base_modality},
+            **brainscore_model_kwargs,
+        )
 
     if rec.modality in ('text_causal', 'text_encoder'):
         if tokenizer is None:
@@ -598,10 +608,13 @@ def auto_register(model: Any,
             model=model, tokenizer=tokenizer, identifier=identifier,
             layer_aggregation=rec.layer_aggregation or 'last_token')
         return BrainScoreModel(
-            identifier=identifier, model=model,
+            identifier=identifier,
+            model=model,
             region_layer_map=region_layer_map,
-            preprocessors={'text': text_wrapper},
-            required_modalities={base_modality}, **brainscore_model_kwargs)
+            activations_model={'text': text_wrapper},
+            required_modalities={base_modality},
+            **brainscore_model_kwargs,
+        )
 
     raise NotImplementedError(
         f"auto_register cannot yet auto-wire a {rec.modality!r} tower "

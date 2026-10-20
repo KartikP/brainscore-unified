@@ -31,12 +31,14 @@ For a `BrainScoreModel`, configure a backbone, wrapper, and region mapping. Buil
 
 ```python
 from brainscore_core.model_interface import BrainScoreModel
-from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
 # Supply your network and preprocessing function.
 net = backbone()
-activations = PytorchWrapper(
-    identifier='my-cnn', model=net, preprocessing=preprocess,
+activations = VisionWrapper(
+    identifier='my-cnn',
+    model=net,
+    preprocessing=preprocess,
 )
 model = BrainScoreModel(
     identifier='my-cnn',

@@ -45,7 +45,7 @@ def make_session(trial):
     # Supply already prepared inputs and collect the model's responses.
     yield InMemorySession(
         inputs=[StreamEvent(channel='vision', payload=images.copy(), t_ms=0)],
-        requested_output_channels=['prediction'],
+        requested_output_channels=['behavior'],
     )
 
 protocol = SessionProtocol(
@@ -53,7 +53,8 @@ protocol = SessionProtocol(
     session_factory=make_session,
     conditions=['normal', 'silenced', 'restored'],
     trials=[0],  # One repetition of each condition.
-    input_channels=['vision'], output_channels=['prediction'],
+    input_channels=['vision'],
+    output_channels=['behavior'],
 )
 ```
 
@@ -62,6 +63,8 @@ The factory always receives a `Trial`, whether or not conditions are specified. 
 Each entry in `result.value` is the session's `collect()` result. Built-in neural sessions return an assembly for one requested region, or a dictionary keyed by channel for several regions. Use `session.collect(channel='neural:IT')` to select one. Behavioral sessions return their behavioral assembly.
 
 `session.next_input()` returns `None` only when the session has ended. Inputs may be images, text, robot observations, or other documented payloads; channel names alone do not define their shape or units.
+
+Use catalog channel names in both subject and protocol. Unknown families produce a warning during experiment validation and must be registered before benchmark scoring. Known families still require matching payload formats; channel checks do not convert images or tensors.
 
 For an existing evaluator:
 

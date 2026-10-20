@@ -39,8 +39,10 @@ def policy_model(policy, identifier):
     """Wrap a bare ``(observation, history) -> action`` policy as a scorable
     candidate (the same shape a real model takes: ``action_fn`` on a
     ``BrainScoreModel``). Used for the oracle ceiling + random floor."""
-    return BrainScoreModel(identifier, None, {}, {}, None,
-                           action_fn=PolicyWrapper(policy, max_history=4))
+    return BrainScoreModel(
+        identifier=identifier,
+        action_fn=PolicyWrapper(policy, max_history=4),
+    )
 
 
 class GridGameBenchmark(BenchmarkBase):
