@@ -116,7 +116,7 @@ SUITES = {
 
 def stage_tests(checkout: Path, destination: Path) -> None:
     """Copy test inputs without making repository packages importable."""
-    for name in ('tests', 'examples', 'install', '.github'):
+    for name in ('tests', 'examples', 'notebooks', 'templates', 'install', '.github'):
         source = checkout / name
         if source.is_dir():
             shutil.copytree(source, destination / name,
