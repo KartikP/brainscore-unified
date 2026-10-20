@@ -61,11 +61,22 @@ print(assembly.dims)
 model.reset()
 ~~~
 
-The region must be present in the model's region_layer_map. Use
-start_recording("all") only when that mapping is non-empty.
+A target can name a mapped region or a raw layer path; unknown region names
+produce a warning. Strings and lists use the same rule. `start_recording("all")`
+means all mapped regions, not all network layers.
 
-For separate towers with relative layer names, declare `region_modality_map`,
-for example `{'IT': 'vision', 'language_system': 'text'}`. The same layer string
+For separate towers, keep routing in the selector:
+
+```python
+from brainscore_core.model_interface import LayerSelector
+
+region_layer_map = {
+    'IT': LayerSelector(name='encoder.layers.10', modality='vision'),
+    'language_system': LayerSelector(name='encoder.layers.10', modality='text'),
+}
+```
+
+The same layer string
 can then identify different layers in different towers. Recording regions from
 several modalities requires `process(stimuli, multi_modality=True)` and inputs
 for every requested tower. Composite regions retain per-layer `unit_index`
@@ -162,22 +173,26 @@ The environment wrapper declares observations and actions. See
 execution records, and clocks. `run_environment` returns applied actions and
 closes the environment; its caller owns subject reset.
 
-## Streaming helpers
+## Sessions and convenience functions
 
-brainscore_core.streaming_helpers exports:
+Start with `InMemorySession(stimulus_set=..., requested_output_channels=...)` for fixed inputs. Add `task_context` for behavior or `streaming=True` for row-by-row delivery. Run it with `subject.interact(session)`.
 
-- neural_response for open-loop neural recording
-- behavioral_response for behavioral sessions
-- apply_state_change for perturbation sessions
-- run_environment for compatible reset/step environments
+| Session | Distinct behavior |
+| --- | --- |
+| `InMemorySession` | Fixed inputs; collect the responses. |
+| `EnvironmentSession` | Each action determines the next observation. |
+| `StreamingStimulusSetSession` | Build events lazily from a stimulus table; bounded input-event buffering. |
+| `WindowedStreamSession` | Group frames into bounded windows. |
+| `RealTimeStreamSession` | Apply a clock and a late-input policy. |
 
-`brainscore.score` accepts registry identifiers or model/benchmark objects. Use `neural_response` for direct neural measurement without a benchmark.
+For a single operation, `brainscore_core.streaming_helpers` also provides `neural_response`, `behavioral_response`, `apply_state_change`, and `run_environment`. Always name the target when recording, for example `neural_response(subject=subject, stimulus_set=stimuli, record='V4')`.
+
+`StimulusSetSession`, `BehavioralSession`, `StateChangeSession`, and their factory aliases remain compatibility conveniences. New integrations do not need to learn these alternatives. Their historical default recording target, including `neural_response`'s default, remains `IT`; use an explicit target to avoid an unintended measurement.
 
 ## Model helper imports
 
 See [getting_started.md](getting_started.md) for the wrapper import table and
-the current distinction between vision preprocessing and wrapper-backed
-modalities.
+the input preparation and aggregation options for each wrapper.
 
 ## Existing Brain-Score models
 
@@ -200,3 +215,36 @@ Large models and full benchmark runs require suitable compute and staged data. A
 **Feature branch:** `OpenPIInstrumentation(policy, checkpoint=..., steps=...)` connects the same activity/ablation tools to three named sites in the pinned Pi0/Pi0.5 JAX sampler. `RemoteOpenPIInstrumentation(client)` uses `OpenPIPolicyClient` and `OpenPIToolServer` for request-scoped remote access. See [policy instrumentation](policy_instrumentation.md) for targets and qualification limits.
 
 **Feature branch:** `RecordReasoning` saves exposed reasoning in `reasoning/`, read with `RunRecord(result.directory / 'reasoning')`. `build_trace_subject(..., streaming=True)` emits intermediate response traces during sessions and parses only the final answer. See [reasoning recording](reasoning_recording.md).
+
+## Compatibility forms
+
+Simple `region_layer_map` entries still read back as strings. Entries with unit
+subsets or routing read back as selectors, preserving all settings when copied.
+Use `model.region_layer_selectors[region].layer_path` when a consumer needs only
+one layer path; use `CompositeSelector.layer_paths` for all composite layers.
+The separate `region_modality_map` argument is accepted and normalized into selectors.
+
+Existing registrations with wrappers in `preprocessors` remain accepted at the
+constructor boundary. New registrations put every extraction wrapper in
+`activations_model`, and configure preprocessing in the wrapper itself.
+
+`SessionProtocol` factories receive `Trial(condition, identifier)`, including when
+conditions are omitted. An ID-only factory can opt into `factory_argument='identifier'`.
+The default condition is `'default'`. Session helper constructors and factory
+aliases remain available; new examples use `InMemorySession` for fixed inputs.
+
+## Choose how a behavioral answer is obtained
+
+`TaskContext.prefer_path` determines the procedure before inputs are evaluated:
+
+| Value | Procedure |
+| --- | --- |
+| `readout` | Fit a classifier on `fitting_stimuli`, then predict from recorded features. |
+| `generation` | Use `instruction` and `label_set` with the model's generation function. No classifier is fitted. |
+| `auto` or omitted | Prefer generation when available; otherwise fit a readout. Warn if both are available. |
+
+These are different scientific measurements. A benchmark claiming one procedure should select it explicitly. ROAR retains its automatic registered variants; controlled comparisons can construct `Yeatman2021LexicalDecision(modality='text', prefer_path='readout')` or `prefer_path='generation'`. Those explicit choices add `-readout` or `-generation` to the benchmark identifier. Scores record the requested path; the scoring entry point also records the selected behavioral capability.
+
+## Extend event handling
+
+Register a `Capability` to add event handling to `BrainScoreModel`; see [tool authoring](tool_authoring.md). The older `register_input_handler` hook remains callable with a deprecation warning. Tools that only observe or intervene in experiments implement `Tool` and do not need a capability.

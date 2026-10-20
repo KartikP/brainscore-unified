@@ -113,6 +113,6 @@ The [remote qualification script](../examples/libero/qualify_remote_tools.py) te
 
 ## Add another backend
 
-Implement `describe()`, `validate(operation, targets)`, `record(targets, receive)` and `ablate(targets)`. Both context managers must restore their changes after errors. `Selection.indices` selects the last output axis. Deliver supported arrays/mappings to `receive(target, value)`. Researchers keep using the same experiment tools; no new `Subject` method is needed.
+Implement `describe()`, `validate(operation, targets)`, `record(targets, receive)` and `ablate(targets)`. Both context managers must restore their changes after errors. `Selection.axis` declares how indices address the output. OpenPI supports `axis=-1`; reject other coordinate systems explicitly rather than reinterpreting their indices. Deliver supported arrays/mappings to `receive(target, value)`. Researchers keep using the same experiment tools; no new `Subject` method is needed.
 
 [LIBERO integration](robotics_benchmark_integration.md) · [Experiment toolbox](experiment_toolbox.md)

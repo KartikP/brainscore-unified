@@ -48,21 +48,6 @@ REGISTRY = {
 _CACHE_ROOT = '~/.brainscore/api_behavioral_cache'
 
 
-def _behavioral_only_preprocessor(modality: str):
-    """Nominal preprocessor: declares modality support for the pre-flight
-    compatibility check but is never called on the behavioral generation path.
-    If a NEURAL benchmark tries to extract activations from a closed API model,
-    this fires with a clear, honest error rather than a confusing crash."""
-    def _raise(*_args, **_kwargs):
-        raise NotImplementedError(
-            f"This is a closed-weight API model: it answers behavioral tasks "
-            f"via generation, but exposes no internal activations, so it cannot "
-            f"run activation-based neural-encoding benchmarks (modality "
-            f"'{modality}'). Use it on behavioral / instruction-following "
-            f"benchmarks instead.")
-    return _raise
-
-
 def get_model(identifier: str) -> BrainScoreModel:
     if identifier not in REGISTRY:
         raise ValueError(f"unknown closed-API model '{identifier}'; "
@@ -76,10 +61,6 @@ def get_model(identifier: str) -> BrainScoreModel:
     )
     return BrainScoreModel(
         identifier=identifier,
-        model=None,                 # no local weights — output-only
-        region_layer_map={},        # no neural recording targets
-        preprocessors={m: _behavioral_only_preprocessor(m)
-                       for m in cfg['modalities']},
-        activations_model=None,
+        supported_modalities=set(cfg['modalities']),
         generation_fn=generation_fn,
     )

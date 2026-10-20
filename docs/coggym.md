@@ -110,7 +110,7 @@ When scoring without `output_dir`, temporary recordings are deleted on success, 
 
 Run separate `Experiment`s for baseline, intervention, and restoration. Keep prompts, model, and generation settings fixed; use a new output directory each time.
 
-Add `Ablate([selection])` to zero selected activity, or `ScaleActivity(targets, factor=0.5)` to halve it. Both use `TorchInstrumentation`. A `Selection` names a layer and optional unit indices along its last output axis. Zeroing half of one layer is not zeroing half the model.
+Add `Ablate([selection])` to zero selected activity, or `ScaleActivity(targets, factor=0.5)` to halve it. Both use `TorchInstrumentation`. A `Selection` names a layer, optional unit indices, and their axis (`axis=-1` by default). Reuse the same selection for recording and intervention. Zeroing half of one layer is not zeroing half the model.
 
 For a model exposing `model.language_model.layers`, this selects every fifth full block:
 

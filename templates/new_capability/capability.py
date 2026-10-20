@@ -45,8 +45,8 @@ def build_state_change_fn(model, **cfg):
     return state_change_fn
 
 
-# --- wire it into a model (capabilities have no registry; they live on the model) ---
+# Wire the action callable into a model. Custom event handlers use Capability.
 # from brainscore_core.model_interface import BrainScoreModel
 # model = BrainScoreModel(identifier='your-model', model=backbone,
-#                         region_layer_map=..., preprocessors=...,
+#                         region_layer_map=...,
 #                         action_fn=build_action_fn(...))   # <- the slot you filled

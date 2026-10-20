@@ -16,7 +16,7 @@ audio contribution.
 import numpy as np
 import torch
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.model_interface import BrainScoreModel, LayerSelector
 
 
 AUDIO_HF_ID = 'facebook/wav2vec2-base'
@@ -74,10 +74,13 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=None,
-        region_layer_map=REGION_LAYER_MAP,
-        region_modality_map=REGION_MODALITY_MAP,
-        preprocessors={'audio': audio_wrapper},
+        region_layer_map={
+            region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
+            for region, layer in REGION_LAYER_MAP.items()
+        },
+        activations_model={
+            'audio': audio_wrapper,
+        },
         required_modalities={'audio'},
-        activations_model=None,
         visual_degrees=8,
     )

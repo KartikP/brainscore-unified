@@ -5,10 +5,9 @@ callable and pass it to a `BrainScoreModel` constructor slot; `process()`
 reaches it through UMI's existing framework capability registry. You do not
 register the callable itself.
 
-This is distinct from adding a new framework capability. That core-level task
+This is distinct from adding a new framework capability. That extension
 subclasses `brainscore_core.capabilities.Capability` and calls
-`register_capability`; it changes Python source and is not what this template
-does. See `EXTENDING.md` (Seam 4).
+`register_capability` from an external package; it needs no core edit. This template only configures existing callables. See `EXTENDING.md` (Seam 4).
 
 | Slot | Fires on | Returns |
 |------|----------|---------|
@@ -25,9 +24,9 @@ does. See `EXTENDING.md` (Seam 4).
 
 ## The boundary
 
-Filling an existing slot needs **no core change**. A genuinely new input/output
-event or dispatch path is a core framework contribution and belongs in the
-class-based capability registry instead of this callable template.
+Filling an existing slot needs **no core change**. A new input/output family or dispatch path uses `register_channel` and the
+class-based capability registry from an external package. See the
+[tool-authoring guide](../../docs/tool_authoring.md).
 
 ## Worked references (read these)
 

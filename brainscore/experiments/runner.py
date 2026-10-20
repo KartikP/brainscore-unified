@@ -11,14 +11,14 @@ import uuid
 
 from brainscore.instrumentation import ObservedSession, observe
 from brainscore.run_record import PayloadCodec, RunRecord
+from brainscore_core.compatibility import validate_channels
 
 
 # These data fields affect built-in session evaluation. Never serialize a live
 # environment, iterator, callback, or clock when recording a replay request.
-_SESSION_CONTEXT_FIELDS = (
-    'requested_output_channels', 'stimulus_set', 'task_context', 'time_bins',
-    'streaming',
-)
+from brainscore_core.streaming import Session
+
+_SESSION_CONTEXT_FIELDS = Session.context_fields
 
 
 def _identity(value):
@@ -71,17 +71,21 @@ class SessionProtocol:
     The protocol owns trial progression and resets. The factory owns session
     resource cleanup. Channel declarations describe the protocol, not a modality.
 
-    With explicit conditions, the factory receives Trial(condition, identifier).
-    Omitting conditions preserves the single-condition factory(trial_id) form.
+    The factory always receives Trial(condition, identifier). Adding conditions
+    does not change its argument. For a factory written to accept only an ID,
+    set factory_argument='identifier' explicitly.
 
     """
     def __init__(self, identifier, session_factory, *, conditions=None, trials=(0,),
-                 input_channels=(), output_channels=(), metadata=None):
+                 input_channels=(), output_channels=(), metadata=None,
+                 factory_argument='trial'):
         self.identifier = identifier
         self.session_factory = session_factory
         self.trials = tuple(trials)
         self.conditions = tuple(conditions) if conditions is not None else ('default',)
-        self._legacy_factory = conditions is None
+        if factory_argument not in ('trial', 'identifier'):
+            raise ValueError("factory_argument must be 'trial' or 'identifier'.")
+        self.factory_argument = factory_argument
         self.input_channels = frozenset(input_channels)
         self.output_channels = frozenset(output_channels)
         self.metadata = dict(metadata or {})
@@ -89,6 +93,7 @@ class SessionProtocol:
     def describe(self):
         return {'conditions': self.conditions, 'trials': self.trials, 'input_channels': sorted(self.input_channels),
                 'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
+                'factory_argument': self.factory_argument,
                 'reset_policy': 'before and after each trial; tools attach after initial reset'}
 
     def validate(self, subject):
@@ -96,6 +101,15 @@ class SessionProtocol:
             raise TypeError('SessionProtocol requires subject.interact(session)')
         if not callable(getattr(subject, 'reset', None)):
             raise TypeError('SessionProtocol requires subject.reset()')
+        # Use scoring's channel rules; exploratory names remain usable with a warning.
+        for channels, direction, owner in (
+            (subject.in_channels, 'input', 'subject inputs'),
+            (subject.out_channels, 'output', 'subject outputs'),
+            (getattr(subject, 'required_channels', ()), 'input', 'subject required inputs'),
+            (self.input_channels, 'input', 'protocol inputs'),
+            (self.output_channels, 'output', 'protocol outputs'),
+        ):
+            validate_channels(set(channels), direction, owner, allow_unregistered=True)
         if (not self.conditions or any(not isinstance(c, str) or not c for c in self.conditions)
                 or len(set(self.conditions)) != len(self.conditions)):
             raise ValueError('Use nonempty, distinct condition names')
@@ -112,7 +126,7 @@ class SessionProtocol:
         results = []
         for condition in self.conditions:
             for trial in self.trials:
-                request = trial if self._legacy_factory else Trial(condition, trial)
+                request = trial if self.factory_argument == 'identifier' else Trial(condition, trial)
                 try:
                     subject.reset()
                     with context.trial(trial, condition=condition), self.session_factory(request) as session:

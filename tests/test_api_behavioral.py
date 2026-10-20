@@ -332,10 +332,10 @@ class TestRegistration:
     def test_neural_extraction_raises_clear_error(self):
         from brainscore.models.api_closed.model import get_model
         m = get_model('claude-opus-behavioral')
-        # The nominal preprocessor exists only to declare modality support; if a
-        # neural benchmark tries to extract activations it must fail clearly.
-        with pytest.raises(NotImplementedError, match='closed-weight API model'):
-            m._preprocessors['vision'](m._model, None, recording_layer=None)
+        from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+        # A behavioral-only model declares its inputs without pretending to extract activity.
+        with pytest.raises(NotImplementedError, match='no activation extractor'):
+            m.process(StimulusSet({'image_path': ['unused.png'], 'stimulus_id': ['s0']}))
 
     def test_unknown_identifier_raises(self):
         from brainscore.models.api_closed.model import get_model

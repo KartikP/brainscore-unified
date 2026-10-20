@@ -17,6 +17,7 @@ import tempfile
 # Keep offline selections explicit: mixed files contain real-model/data tests.
 SUITES = {
     'core': [
+        'tests/test_api_cohesion.py',
         'tests/test_external_extensions.py',
         'tests/test_capabilities.py',
         'tests/test_model_interface.py',
@@ -115,7 +116,7 @@ SUITES = {
 
 def stage_tests(checkout: Path, destination: Path) -> None:
     """Copy test inputs without making repository packages importable."""
-    for name in ('tests', 'examples', 'install', '.github'):
+    for name in ('tests', 'examples', 'notebooks', 'templates', 'install', '.github'):
         source = checkout / name
         if source.is_dir():
             shutil.copytree(source, destination / name,

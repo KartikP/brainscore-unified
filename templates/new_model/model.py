@@ -19,7 +19,8 @@ import torch.nn as nn
 
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import (
-    PytorchWrapper, load_preprocess_images)
+    load_preprocess_images)
+from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
 IDENTIFIER = 'your-model'
 
@@ -39,31 +40,22 @@ def get_model() -> BrainScoreModel:
     # TODO: pick the wrapper that matches your model. One of:
     #   VisionWrapper (any vision: image / VLM / video — dispatches internally; pass kind= to force)
     #   TextWrapper (LM) · AudioWrapper (HF audio encoder)
-    # VisionWrapper fronts PytorchWrapper / VLMVisionWrapper / VideoWrapper, so a vision
-    # model usually needs only that one surface. PytorchWrapper is used directly here to
-    # keep the example's moving parts visible.
-    activations_model = PytorchWrapper(
+    # Configure input preparation on the wrapper; the subject uses the same
+    # activations_model mapping for every modality.
+    activations_model = VisionWrapper(
         identifier=IDENTIFIER,
         model=backbone,
         preprocessing=lambda paths: load_preprocess_images(paths, image_size=64))
-
-    # TODO: simple per-modality callables (resize/normalize, tokenize, resample).
-    #   preprocessors.keys() IS the model's supported_modalities — there is no separate
-    #   declaration to keep in sync, and no hasattr check anywhere in the codebase.
-    # Identity is right when the wrapper already does the preprocessing, as here.
-    preprocessors = {'vision': lambda stimuli: stimuli}
 
     return BrainScoreModel(
         identifier=IDENTIFIER,
         model=backbone,
         region_layer_map={'IT': '2'},   # brain region -> layer to record. TODO: yours.
-        preprocessors=preprocessors,
-        activations_model=activations_model,
+        activations_model={'vision': activations_model},
         # --- optional capability slots (see templates/new_capability/) ---
         # generation_fn=...,
         # action_fn=...,
         # state_change_fn=...,
         # behavioral_readout_layer='TODO.layer',
-        # region_modality_map={'IT': 'vision', 'A1': 'audio'},  # multimodal routing
         # backbone_id='shared-backbone-id',                     # share a feature cache
     )
