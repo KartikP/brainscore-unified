@@ -137,7 +137,7 @@ cache hit; cache performance remains a separate qualification task.
 ## Remaining activation work
 
 - Supply reviewed asset manifests and run the Linux CPU/CUDA pilots.
-- Repair the installed language CLI/dependency-installation profile.
+- Qualify fresh Conda environment creation separately from the installed language scoring/CLI profile.
 - Add explicit audio/video profiles and scientific reference outputs.
 - Review supported scope under #6 before deploying scheduled Jenkins jobs.
 

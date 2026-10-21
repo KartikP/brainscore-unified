@@ -6,19 +6,18 @@ This matrix defines the checks for [#18](https://github.com/brain-score/unified-
 
 ## Current validation
 
-The October 13 source baseline below passed locally on macOS CPU. F2/F3 are now merged, and [hosted Linux/macOS checks passed](https://github.com/KartikP/brainscore-unified/actions/runs/38578586361). Counts below describe that historical selection; current reports record the exact tests run.
+[Post-merge CI at `cdb5eb1`](https://github.com/KartikP/brainscore-unified/actions/runs/39424650356) passed on October 20, 2026. Both Ubuntu 24.04 and macOS 14 ran the four installed packages outside their source checkouts.
 
-| Profile | Passing tests | Scope |
-| --- | --- | --- |
-| Core source | 741 | Contracts, shared utilities, dispatch, metrics and preflight |
-| Vision source | 233 | Adapters, cache, transformations, layer mapping and plugin checks |
-| Language source | 67 | Adapters, legacy scoring, preprocessing and metadata checks |
-| Unified source | 1,133 | Offline unit/integration tests; 43 explicit skips, 61 slow cases deselected |
-| OpenPI client | 42 | Real loopback transport with fixture policies; zero skips |
+| Installed package | Passing tests on each platform | Scope |
+| --- | ---: | --- |
+| Core | 791 | Contracts, shared utilities, dispatch, metrics and preflight |
+| Vision | 238 | Adapters, cache, transformations, layer mapping and plugin checks |
+| Language | 68 | Adapters, legacy scoring, preprocessing and metadata checks |
+| Unified | 1,301 | Offline checks; 43 allowed skips and 62 deselected cases |
 
-The four-repository profile totals **2,174 passes**. The client profile overlaps it by 15 cases; do not add the two totals as unique tests. This change promotes 511 existing offline cases and adds two skip-enforcement cases and four CPU-profile cases. It does not measure a new coverage percentage or qualify trained models.
+Each platform passed **2,398 tests**, with no failures or unexpected skips. The dedicated OpenPI client and local instrumentation jobs also passed 42 and 25 tests respectively, with no skips. Those jobs overlap the offline selection; do not add their counts as unique tests. These are automated interface and installation checks, not real-model qualification or a new coverage measurement.
 
-F1 now runs the same required selection against installed wheels, with copied tests outside the checkouts. It verifies installed files against wheel hashes, checks module import locations during tests, and records versions and skip reasons. Each suite uses a temporary home and cache directories. Candidate reports identify whether execution used source or installed packages; earlier source results do not qualify later wheels.
+F1 verifies installed files against wheel hashes, checks module import locations, and records versions and skip reasons. Each suite uses temporary home and cache directories. Reports identify the exact revisions and wheels tested; earlier source results do not qualify later wheels. The 31 integration-runner and 14 installation-check tests passed on each platform.
 
 ## Capability acceptance
 
@@ -64,7 +63,7 @@ The [September candidate](qualification/2026-09-16-candidate.md) contains real v
 | F2 — Additional shared and legacy tests | Explicit assembly, readout, unit selection, memory, streaming, metric, preprocessing and plugin-selection checks; offline classes selected from mixed files; ROAR registry tests separated from data tests | GitHub Actions, extension to F1 on both CPU platforms | No network, private data or model download. Record selected IDs and timings before promotion; retain needed cases in integration profiles if they cannot run offline | **Implemented**; core/domain maintainers |
 | F3 — Remote policy protocol | `tests/test_openpi_remote.py`: loopback requests, timeouts, disconnects, invalid responses, cleanup, concurrent-client handling | GitHub Actions, dedicated Linux CPU job on unified PRs and v2 pushes | Install [pinned client dependencies](../install/openpi-client-tests.txt) and pinned core. All 42 selected cases run, including the 27 skipped in F1. No skip exemptions; local sockets only, no trained weights/JAX/Torch; 15-minute job, 30-second test limit | **Implemented**; robotics/tool maintainer |
 | I1 — Changed-plugin integration | Existing vision/language plugin selectors, plus shared plugin installation/import/environment tests. Model PR: declared smoke benchmark; benchmark PR: representative compatible models. Shared-code changes: representative pairs in both domains | Jenkins, relevant PR head; scheduled sweep for shared changes | Coordinated revisions, plugin dependencies, data/checkpoint access and CPU/GPU sizing. Assert nonempty expected tests for changed plugins; setup, OOM, timeout and failed tests cannot qualify a change | Existing domain runners; [targeted integration runner](integration_tests.md), qualification/deployment pending; domain + CI maintainers |
-| I2 — Real-model and data integration | Legacy vision transformation/integration tests; language embedding/Hugging Face/container/localization tests; unified `test_text_wrapper.py`, `test_vlm_vision_wrapper.py`, `test_roar_benchmark.py`; representative audio/video adapters | Jenkins, relevant PRs plus scheduled CPU/GPU jobs | Pre-staged, identified weights/data; licensed access where required. Verify loading, output shape/semantics, repeated calls and recorded expected results. Use GPU for cases that require it, not the whole tier | [Eight profiles](../install/integration-tests.json); seven executable, installation profile blocked; qualification pending; domain maintainers |
+| I2 — Real-model and data integration | Legacy vision transformation/integration tests; language embedding/Hugging Face/container/localization tests; unified `test_text_wrapper.py`, `test_vlm_vision_wrapper.py`, `test_roar_benchmark.py`; representative audio/video adapters | Jenkins, relevant PRs plus scheduled CPU/GPU jobs | Pre-staged, identified weights/data; licensed access where required. Verify loading, output shape/semantics, repeated calls and recorded expected results. Use GPU for cases that require it, not the whole tier | [Eight profiles](../install/integration-tests.json); all eight executable; asset-backed qualification and scheduling pending; domain maintainers |
 | I3 — Submission and storage integration | Core/vision/language submission tests, metadata-only flows, compatible/incompatible/failed score persistence | Jenkins, relevant PRs and candidate runs | Disposable database/service fixtures and test credentials. Verify score provenance and failure/N/A behavior; no production writes. Move pure mocked cases to F2 | Existing tests; **isolated coordinated profile proposed**; scoring/database maintainers; #22 |
 | I4 — Local policy instrumentation and transport | `test_openpi_instrumentation.py`, `test_libero_transport.py`; OpenPI/JAX internal recording, interventions and reference/UMI transport | Dedicated pinned CPU environment in GitHub Actions; PRs, v2 pushes and candidate runs | Pinned OpenPI source/JAX dependencies. Remove the two collection/case skip exceptions in this profile. Small-model tests must run and clean up correctly; this is not trained-policy success | **Implemented CPU automation**; robotics/tool maintainer |
 | I5 — Atlas-dependent checks | Five skipped LanA tests in `test_lebel2023_language_mask.py` | Jenkins data job, relevant changes and candidate if mask support is selected | Licensed/available atlas, checksum, declared mask convention. All five tests run; missing atlas fails this profile | **Proposed**; language/data maintainer |
@@ -81,7 +80,7 @@ A new model needs targeted integration with existing benchmarks. A new benchmark
 
 The 43 allowed skips in F1 consist of **27 remote OpenPI cases (F3), one local OpenPI module and one LIBERO transport case (I4), five LanA cases (I5), and nine operational entries (O1)**. A module-level skip can hide multiple tests; one reported skip is not one qualified behavior.
 
-The 61 deselected cases span `test_benchmark_parity_slow.py`, `test_regression_baselines.py`, `test_roar_benchmark.py`, `test_text_wrapper.py` and `test_vlm_vision_wrapper.py`. Route parity/baselines to Q1 and real-wrapper/ROAR cases to I2. ROAR registry assertions now run in F2; model/data cases remain in I2.
+The 62 deselected cases in the October 20 run span `test_benchmark_parity_slow.py`, `test_regression_baselines.py`, `test_roar_benchmark.py`, `test_text_wrapper.py` and `test_vlm_vision_wrapper.py`. Route parity/baselines to Q1 and real-wrapper/ROAR cases to I2. ROAR registry assertions now run in F2; model/data cases remain in I2.
 
 For each promoted selection, store exact test IDs, dependencies, environment, expected collection and an owner role. A supported case may be excluded from the fast profile only when its other required profile is identified. In that required profile, missing assets and skips fail; an explicit unsupported scope decision is different from a passing test.
 
@@ -98,14 +97,14 @@ For each promoted selection, store exact test IDs, dependencies, environment, ex
 
 1. F1/F2 installed-package checks, F3 client checks and I4 local instrumentation are required in all four v2 repositories. Keep caller pins and required status names aligned when changing the workflow.
 2. Jenkins coordination and maintainer-only automation controls are complete under #16. Preserve their deployed behavior when adding integration selections.
-3. Run the [targeted I1/I2 runner](integration_tests.md) with pinned assets and repair the blocked installation profile. I4 is automated; I3/I5 remain separate integration work.
+3. Run the [eight targeted I1/I2 profiles](integration_tests.md) with pinned assets before scheduling repeat jobs. The installed language scoring/CLI profile is executable; fresh Conda environment creation remains unqualified. I4 is automated; I3/I5 remain separate integration work.
 4. After #6 scope approval, bind each required capability/environment to these rows and run Q1–Q3 on the final candidate (#19/#20).
 
 The workflow implements F1–F3, I4 and the offline part of D1; other rows retain their stated qualification requirements. This document launches no compute and authorizes no publication. Release execution remains manual and owned by Kartik.
 
 ## New-user acceptance — separate pre-release task
 
-Track the independent trial under [#2](https://github.com/brain-score/unified-model-interface/issues/2), with evidence reused by #19. Schedule it after package installation and the guide are stable; it does not block implementation of F1.
+Track the final release-package trial under [#40](https://github.com/brain-score/unified-model-interface/issues/40), with evidence reused by #19. The earlier getting-started guide review is #2. Schedule the final trial after package installation and the guide are stable; it does not block implementation of F1.
 
 - Start with a new environment and empty application caches, without editable installs or private cached data.
 - Follow the guide to install the candidate, obtain or prepare an authorized dataset, and complete a first benchmark run.
