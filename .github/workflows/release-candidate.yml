@@ -59,6 +59,8 @@ jobs:
           for repo in core vision language unified; do
             python -m build --wheel --outdir wheels "$repo"
           done
+      - name: Check package contents and notices
+        run: python unified/brainscore/validation/package_contents.py --wheels wheels --out qualification/package-contents.json
       - name: Install the coordinated wheel set and check dependencies
         run: |
           unified_wheels=(wheels/brainscore-*.whl)

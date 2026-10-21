@@ -72,6 +72,7 @@ SUITES = {
         'tests/test_unit_selection.py',
     ],
     'vision': [
+        'tests/test_package_contents.py',
         'tests/test_unified_adapter.py',
         'tests/test_preflight.py',
         'tests/test_subject_conformance.py',

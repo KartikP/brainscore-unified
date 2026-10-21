@@ -132,7 +132,7 @@ def main():
                         help="Which task names to include (default: test + train).")
     parser.add_argument('--upload-to-s3', action='store_true')
     parser.add_argument('--checkpoint-path', type=Path,
-                        default=Path('/home/ubuntu/lahner2024_prep/run_records.pkl'),
+                        default=Path('lahner2024_prep/run_records.pkl'),
                         help='Pickle of run_records — saved after extraction so '
                              'a downstream failure does not require re-downloading.')
     parser.add_argument('--from-checkpoint', action='store_true',

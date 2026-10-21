@@ -1,0 +1,104 @@
+[
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/benchmarks/laion_fmri/usage_examples.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/06_scientific_validation.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/surface/01_surface_data_exploration.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/surface/02_surface_data_preparation.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/surface/03_surface_packaging_prep.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/surface/04_surface_smoke_test.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/surface/05_surface_assembly_validation.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/volumetric/01_nsd_data_exploration.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/volumetric/02_nsd_data_preparation.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/volumetric/03a_nsd_packaging_prep.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/volumetric/03b_nsd_stimulus_packaging.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/volumetric/04_nsd_benchmark_smoke_test.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/allen2022_fmri/data_packaging/notebooks/volumetric/05_nsd_assembly_validation.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/data/li2026/data_packaging/notebooks/li2026_validation.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "vision",
+    "path": "brainscore_vision/models/voneresnet_50_non_stochastic/vonenet/vonenet_tutorial-activations.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "language",
+    "path": "brainscore_language/benchmarks/pereira2018/compute_ridge_ceilings.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  },
+  {
+    "repository": "language",
+    "path": "brainscore_language/models/oasm/validation/oasm_reproduction.ipynb",
+    "decision": "retain",
+    "qualification": "setup and source inspected; real-data execution not performed"
+  }
+]
