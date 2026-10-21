@@ -114,3 +114,5 @@ filterwarnings = [
 
 [tool.setuptools.package-data]
 brainscore = ["benchmarks/rajalingham2018_2afc/*.csv"]
+
+"brainscore.models.vjepa_v1.backbone" = ["LICENSE", "NOTICE.md"]
