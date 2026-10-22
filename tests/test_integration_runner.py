@@ -88,7 +88,8 @@ def test_assets_are_copied_and_content_changes_are_rejected(tmp_path):
 
 
 def test_environment_discards_credentials_cache_overrides_and_pytest_filters(tmp_path, monkeypatch):
-    for key in ('AWS_ACCESS_KEY_ID', 'HF_TOKEN', 'PYTHONPATH', 'PYTEST_ADDOPTS', 'TRANSFORMERS_CACHE'):
+    for key in ('AWS_ACCESS_KEY_ID', 'HF_TOKEN', 'PYTHONPATH', 'PYTEST_ADDOPTS',
+                'TRANSFORMERS_CACHE', 'MT_IMAGENET_PATH', 'MT_HOME'):
         monkeypatch.setenv(key, 'inherited-value')
     env = integration.child_environment(tmp_path, 'cpu')
     assert all(key not in env for key in ('AWS_ACCESS_KEY_ID', 'HF_TOKEN', 'PYTHONPATH',
@@ -96,6 +97,45 @@ def test_environment_discards_credentials_cache_overrides_and_pytest_filters(tmp
     assert env['HOME'] == str(tmp_path)
     assert env['RESULTCACHING_HOME'].startswith(str(tmp_path))
     assert env['HF_HUB_OFFLINE'] == '1'
+    assert env['MT_HOME'] == str(tmp_path / 'model_tools')
+    assert 'MT_IMAGENET_PATH' not in env
+
+
+@pytest.mark.parametrize('defect', ['missing', 'not-hdf5', 'missing-dataset', 'too-short', 'valid'])
+def test_pca_input_is_validated_before_any_assets_are_copied(tmp_path, monkeypatch, defect):
+    import h5py
+
+    source = tmp_path / 'source'
+    source.mkdir()
+    path = source / 'imagenet2012.hdf5'
+    if defect == 'not-hdf5':
+        path.write_bytes(b'not a dataset')
+    elif defect != 'missing':
+        with h5py.File(path, 'w') as handle:
+            if defect != 'missing-dataset':
+                handle.create_dataset('val/images', shape=(50_000 if defect == 'valid' else 1, 1, 1, 3),
+                                      dtype='uint8')
+    # Keep the directory nonempty so a missing HDF5 gets a useful PCA error.
+    (source / 'README').write_text('synthetic input fixture')
+    record = {'profile': 'vision-layer-mapping', 'assets': {'model_tools': {
+        'path': str(source), 'sha256': integration.fingerprint(source)[0], 'build': 'synthetic'}}}
+    profile = {'id': 'vision-layer-mapping', 'required_caches': ['model_tools']}
+    home = tmp_path / 'home'
+    home.mkdir()
+    if defect == 'valid':
+        integration.prepare_assets(record, profile, home)
+        assert (home / 'model_tools' / path.name).read_bytes() == path.read_bytes()
+    else:
+        monkeypatch.setattr(integration.shutil, 'copytree', lambda *args: pytest.fail('copied invalid inputs'))
+        with pytest.raises(ValueError, match='PCA input'):
+            integration.prepare_assets(record, profile, home)
+
+
+def test_layer_mapping_manifest_requires_pca_inputs():
+    manifest = Path(__file__).resolve().parents[1] / 'install' / 'integration-tests.json'
+    profile = next(item for item in json.loads(manifest.read_text())['profiles']
+                   if item['id'] == 'vision-layer-mapping')
+    assert 'model_tools' in profile['required_caches']
 
 
 @pytest.mark.parametrize('limit, reason', [(0.3, 'timeout'), (30, 'memory_limit')])

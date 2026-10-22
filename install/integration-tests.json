@@ -61,7 +61,8 @@
       ],
       "assets": [
         "AlexNet checkpoint",
-        "MajajHong2015 public V4/IT assemblies and matching images"
+        "MajajHong2015 public V4/IT assemblies and matching images",
+        "Authorized ImageNet validation HDF5 (val/images, 50000 images) for cold PCA fitting"
       ],
       "owner_role": "Vision maintainer",
       "environment": "Ubuntu 24.04 / Python 3.11 / CPU",
@@ -81,7 +82,8 @@
       "device": "cpu",
       "required_caches": [
         "brainio",
-        "torch"
+        "torch",
+        "model_tools"
       ]
     },
     {

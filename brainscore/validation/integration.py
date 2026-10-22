@@ -23,7 +23,26 @@ from .revisions import REPOSITORIES, verify
 from .workspace import stage_tests
 
 
-CACHE_PATHS = {'huggingface': 'HF_HOME', 'brainio': 'BRAINIO_HOME', 'torch': 'TORCH_HOME'}
+CACHE_PATHS = {
+    'huggingface': 'HF_HOME', 'brainio': 'BRAINIO_HOME', 'torch': 'TORCH_HOME',
+    'model_tools': 'MT_HOME',
+}
+
+
+def validate_pca_assets(directory: Path) -> None:
+    """Check the ImageNet input used to fit legacy vision PCA, without downloading."""
+    import h5py
+
+    path = directory / 'imagenet2012.hdf5'
+    if not path.is_file():
+        raise ValueError(f'Missing PCA input: {path}. Stage your authorized ImageNet HDF5 file here.')
+    try:
+        with h5py.File(path, 'r') as handle:
+            images = handle['val/images']
+            if not isinstance(images, h5py.Dataset) or images.ndim == 0 or len(images) < 50_000:
+                raise ValueError('Expected the 50,000-image validation set at val/images')
+    except (OSError, KeyError, ValueError) as error:
+        raise ValueError(f'Invalid PCA input {path}: {error}') from error
 
 
 def fingerprint(directory: Path) -> tuple[str, int]:
@@ -59,6 +78,8 @@ def prepare_assets(record: dict, profile: dict, home: Path) -> dict:
     for name, asset in assets.items():
         if name not in CACHE_PATHS or not asset.get('build'):
             raise ValueError('Each supported cache needs a checkpoint or dataset build description')
+        if name == 'model_tools':
+            validate_pca_assets(Path(asset['path']))
         digest, size = fingerprint(Path(asset['path']))
         if digest != asset['sha256']:
             raise ValueError(f'Asset content differs from its pin: {name}')
