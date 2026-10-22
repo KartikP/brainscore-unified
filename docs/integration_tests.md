@@ -5,15 +5,19 @@ The [selection file](../install/integration-tests.json) defines eight profiles
 with 52 test IDs. All eight have an executable runner. Each run checks the
 four installed candidate packages before and after testing.
 
-**Qualification is pending.** The runner has offline regression tests; the
-asset-backed Linux CPU/CUDA profiles have not been qualified or scheduled.
+**CPU qualification is partial.** The October 22 fresh-Conda pilot passed
+`language-readout`, `language-installation` and `native-text`. A corrected
+fresh-Conda rerun also passed all four `vision-layer-mapping` checks;
+`vision-public-score` then passed in 37 minutes 50 seconds with an extended
+diagnostic limit. Its profile now allows 60 minutes. See the [pilot results](qualification/2026-10-22-cpu-pilot.md).
+Other profiles and CUDA remain unqualified.
 
 ## Choose a profile
 
 | Profile | What it checks | Prepared caches |
 | --- | --- | --- |
 | `vision-public-score` | Pixels model on public MajajHong IT data | BrainIO |
-| `vision-layer-mapping` | AlexNet layer selection, scores and saved mappings | Torch; BrainIO |
+| `vision-layer-mapping` | AlexNet layer selection, scores and saved mappings | Torch; BrainIO; ImageNet for PCA |
 | `language-public-score` | DistilGPT-2/Futrell reference score | Hugging Face; BrainIO |
 | `language-readout` | Reading-time outputs and token handling | Hugging Face |
 | `language-installation` | Installed scoring with `yes`/`no` dependency preferences and the CLI | BrainIO |
@@ -37,7 +41,9 @@ Its reference plugins have no extra requirements: the profile checks scoring
 under `yes` and `no`, not pip dependency resolution. Core separately tests that
 plugin installation uses the current Python interpreter and stops on pip errors.
 
-**Fresh Conda environments remain unqualified.** The old `newenv` case passed
+The October 22 pilot manually created a fresh Conda environment and passed
+installed language scoring. **Automatic Conda creation by the scoring API remains
+unqualified.** The old `newenv` case passed
 `conda_active=True`, bypassing environment creation. A replacement must create
 and clean up a disposable environment, preserve all four candidate wheels, and
 run the reference score. The manifest tracks this separately in `unqualified_paths`.
@@ -85,6 +91,37 @@ The required cache names are listed in `required_caches` for each profile. Give
 each its own path, digest and build description. The runner verifies and copies
 them; it does not download assets or modify the prepared originals. Cache hashes
 pin the bytes actually tested, including model-name references.
+
+## ImageNet input for vision layer mapping
+
+Legacy layer selection fits PCA on ImageNet images to reduce activation size.
+The layer-mapping profile preserves that procedure; it does not reuse fitted PCA
+or score caches. ImageNet is not a requirement for every UMI model or benchmark.
+
+Alongside the `brainio` and `torch` entries, add a `model_tools` entry to the asset
+manifest. Put your authorized ImageNet validation HDF5 in that directory as
+`imagenet2012.hdf5`. It must contain the 50,000-image dataset at `val/images`.
+Record its origin/build and compute the directory digest with `fingerprint()`.
+A differently named local file can be copied to this filename; no upload or
+redistribution is required.
+
+```json
+"model_tools": {
+  "path": "/prepared/vision/model_tools",
+  "sha256": "CONTENT_DIGEST",
+  "build": "ImageNet validation HDF5; record the source and file SHA-256"
+}
+```
+
+The runner checks the HDF5 before copying inputs or running any model. It sets
+`MT_HOME` to the private copy and discards inherited `MT_HOME` and
+`MT_IMAGENET_PATH` overrides. Keep enough disk space for both the prepared file
+and its disposable copy. The Brain-Score HDF5 currently occupies about 9.83 GB.
+The runner does not obtain ImageNet access for you or download the file.
+
+The four mapping tests share one fresh six-combination sweep. They still check
+structure, score ranges, best-layer selection and saved files. This avoids
+repeating the same expensive scoring solely for separate assertions.
 
 ## Execute
 
