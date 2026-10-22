@@ -3,6 +3,15 @@ import json
 import sys
 from pathlib import Path
 
+
+def _paired_or_synth(A):
+    """Use the cross-participant block if the run finished, else synthesize it from the per-participant entries."""
+    if A.get('paired_across_subjects'):
+        return A['paired_across_subjects']
+    subs = list(A['subjects'])
+    conds = [c for c in ('video', 'audio', 'text', 'video+audio', 'video+audio+text', 'concat') if all(c in A['subjects'][s] for s in subs)]
+    return {'subjects': subs, 'per_subject_median_r': {c: [A['subjects'][s][c]['median_r'] for s in subs] for c in conds}, 'partial': True}
+
 D = Path(sys.argv[1]); algo_path = Path(sys.argv[2]) if len(sys.argv) > 2 else None
 R = json.load(open(D / 'metrics' / 'results_main.json'))
 M = json.load(open(D / 'MANIFEST.json'))
@@ -32,7 +41,7 @@ lines.append('Shuffled-clip null (training labels permuted, fitted penalties kep
 lines.append('Auditory ROI (same protocol): ' + '; '.join(f"{c}: {r(c, 'auditory'):.3f}" for c in ('video', 'audio', 'both')) + '. Whole cortex: ' + '; '.join(f"{c}: {r(c, 'whole'):.3f}" for c in ('video', 'audio', 'both')) + '.')
 lines.append("Model table (left): Brain-Score benchmark 'Lahner2024-fMRI-naturalistic-visualROI', ceiling-normalized per-vertex scores measured 2026-07-31 on EC2 with the registered protocol (ridge alpha=1, 5-fold); this is a DIFFERENT fitting protocol from the experiment above (inner-CV alpha), so the two sets of numbers are deliberately kept in separate panels and are not comparable to each other.")
 if algo_path and algo_path.exists():
-    A = json.load(open(algo_path)); P = A['paired_across_subjects']; ps = P['per_subject_median_r']
+    A = json.load(open(algo_path)); P = _paired_or_synth(A); ps = P['per_subject_median_r']
     lines.append(f"Experiment B, Friends (Courtois NeuroMod, Algonauts 2025 release), participants {', '.join('sub-' + s for s in P['subjects'])}, Schaefer-1000 parcels, TR 1.49 s, watched WITH sound. Fixed extractors: CLIP ViT-B/32 (video frame at each TR), Wav2Vec2-base (audio), all-MiniLM-L6-v2 (transcript); 5-TR window, 3-TR HRF delay for every modality; outer 5-fold CV over whole runs, inner run-held-out penalty selection; raw median r over parcels per participant: " + '; '.join(f"{c}: " + ', '.join(f'{v:.3f}' for v in ps[c]) for c in ps) + '. Paired across participants: ' + '; '.join(f"{k}: {v['mean_diff']:+.4f} (range {v['min']:+.4f}..{v['max']:+.4f}, {v['n_positive']}/{v['n']} positive)" for k, v in P.items() if '_minus_' in k) + '. Timing-shift null per participant in results_algonauts.json. No noise ceiling is available for these training runs, so only raw correlations are shown.')
 lines.append('LIMITS. Models are instruments, not copies of people; a prediction correlation says how much variance model features share with a BOLD estimate, not how the brain works. The modality comparison is about information available to an encoding model; nobody had a sense withheld. Vertex correlations are not independent replications; uncertainty is given across clips/runs and across participants. The Friends result uses one still-image video extractor and four participants. Nothing here establishes human mechanisms, medical outcomes, or AI-alignment outcomes, and there is no funding ask on this slide. Stimulus frames are research-licensed clips; confirm display rights before public use.')
 lines.append('EDITABLE vs RENDERED. Editable: every text box, the model table, the bar panels and their values, the four stage headings. Rendered media: the measured replay (embedded MP4, autoplay + loop set in the slide timing XML); its frame-to-data mapping is in replay/frame_map.csv. Native PowerPoint playback status is described in the account document.')

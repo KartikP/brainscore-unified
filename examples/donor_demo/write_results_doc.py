@@ -3,6 +3,15 @@ import json
 import sys
 from pathlib import Path
 
+
+def _paired_or_synth(A):
+    """Use the cross-participant block if the run finished, else synthesize it from the per-participant entries."""
+    if A.get('paired_across_subjects'):
+        return A['paired_across_subjects']
+    subs = list(A['subjects'])
+    conds = [c for c in ('video', 'audio', 'text', 'video+audio', 'video+audio+text', 'concat') if all(c in A['subjects'][s] for s in subs)]
+    return {'subjects': subs, 'per_subject_median_r': {c: [A['subjects'][s][c]['median_r'] for s in subs] for c in conds}, 'partial': True}
+
 D = Path(sys.argv[1]); OUT = Path(sys.argv[2]); algo_path = Path(sys.argv[3]) if len(sys.argv) > 3 else None
 R = json.load(open(D / 'metrics' / 'results_main.json')); M = json.load(open(D / 'MANIFEST.json'))
 sel = json.load(open(D / 'demo' / 'selection.json'))
@@ -77,10 +86,10 @@ L.append('- The PCA-256 matched-budget versions reproduce the pattern, so the vi
 L.append('- Across participants the ordering video > soundtrack holds in every participant; both - video is indistinguishable from zero.')
 L.append('- This is the correct answer for a silent experiment, and it is the point of the panel: the toolbox reports a null where there should be one.')
 if algo_path and algo_path.exists():
-    A = json.load(open(algo_path)); P = A['paired_across_subjects']; ps = P['per_subject_median_r']; pr = A['protocol']
-    L.append('\n## Experiment B: Friends with sound (Courtois NeuroMod / Algonauts 2025), four participants\n')
+    A = json.load(open(algo_path)); P = _paired_or_synth(A); ps = P['per_subject_median_r']; pr = A['protocol']
+    L.append('\n## Experiment B: Friends with sound (Courtois NeuroMod / Algonauts 2025)' + (' (PARTIAL: run still in progress)' if P.get('partial') else '') + '\n')
     L.append(f"- Data: Schaefer-1000 parcel BOLD, TR 1.49 s, Friends S1-S6 + Movie10 training runs, participants {', '.join('sub-' + s for s in P['subjects'])}; audiovisual viewing with dialogue.")
-    L.append(f"- Features (fixed extractors, pre-existing per-clip caches; video cache sha1 `{A['manifest']['feature_cache_sha1_video_npz'][:12]}...`): {pr['features']['video']}; {pr['features']['audio']}; {pr['features']['text']}. Stimulus window {pr['stimulus_window_TRs']} TRs, HRF delay {pr['hrf_delay_TRs']} TRs, identical for all modalities; first window+delay TRs of each run excluded.")
+    L.append(f"- Features (fixed extractors, pre-existing per-clip caches; video cache sha1 `{A.get('manifest', {}).get('feature_cache_sha1_video_npz', 'recorded at run end')[:12]}...`): {pr['features']['video']}; {pr['features']['audio']}; {pr['features']['text']}. Stimulus window {pr['stimulus_window_TRs']} TRs, HRF delay {pr['hrf_delay_TRs']} TRs, identical for all modalities; first window+delay TRs of each run excluded.")
     L.append(f"- Fitting: outer {pr['outer_folds_over_runs']}-fold CV over whole runs; penalty chosen on {pr['inner_validation_cells_per_outer_fold']} inner run-held-out cells (single-modality grid {list(pr['alpha_grid_single'])}, banded grid {list(pr['alpha_grid_banded'])} per modality); raw Pearson r per parcel, median over 1000 parcels. Null: {pr['null']}. No noise ceiling (no repeated runs in the training set).")
     L.append('\n| condition | ' + ' | '.join('sub-' + s for s in P['subjects']) + ' | mean |')
     L.append('|---|' + '---|' * (len(P['subjects']) + 1))

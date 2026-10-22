@@ -38,6 +38,15 @@ PAD_PX, COL_PX = 24, (1680 - 5 * 24) // 4
 REPLAY_BOX = (0.8, 1.98, 18.4, 18.4 * REPLAY_PX[1] / REPLAY_PX[0])   # x, y, w, h inches
 
 
+
+def _paired_or_synth(A):
+    """Use the cross-participant block if the run finished, else synthesize it from the per-participant entries."""
+    if A.get('paired_across_subjects'):
+        return A['paired_across_subjects']
+    subs = list(A['subjects'])
+    conds = [c for c in ('video', 'audio', 'text', 'video+audio', 'video+audio+text', 'concat') if all(c in A['subjects'][s] for s in subs)]
+    return {'subjects': subs, 'per_subject_median_r': {c: [A['subjects'][s][c]['median_r'] for s in subs] for c in conds}, 'partial': True}
+
 def rgb(hexstr):
     h = hexstr.lstrip('#')
     return RGBColor(int(h[:2], 16), int(h[2:4], 16), int(h[4:], 16))
@@ -240,18 +249,27 @@ def main():
     # 3. test & predict — Friends with sound (if available)
     x = gaps[2]
     add_text(s, 'Section 3 heading', x, by, sec_w, 0.35, 'Test explanations, make predictions', 17, INK, bold=True)
-    if algo and algo.get('paired_across_subjects'):
-        ps = algo['paired_across_subjects']['per_subject_median_r']
+    if algo and algo.get('subjects'):
+        PA = _paired_or_synth(algo)
+        ps = PA['per_subject_median_r']
+        subs = PA['subjects']
         import statistics as st
         def m(c): return st.mean(ps[c])
-        def rng_(c): return (min(ps[c]), max(ps[c]))
+        if len(subs) >= 2:
+            def tick(c): return (min(ps[c]), max(ps[c]))
+            unit = (f'Held-out correlation, median over 1000 brain parcels; mean of {len(subs)} participants, '
+                    f'ticks = participant range (Friends, Courtois NeuroMod).')
+        else:
+            rb = algo['subjects'][subs[0]]['run_bootstrap']
+            def tick(c): return tuple(rb[c]['median_r_ci95'])
+            unit = ('Held-out correlation, median over 1000 brain parcels, one participant; '
+                    'ticks = 95% interval over runs (Friends, Courtois NeuroMod).')
         add_text(s, 'Section 3 caption', x, by + 0.34, sec_w, 0.4,
                  'Same method, a TV show watched with sound: sound and words each add to what video predicts. '
                  'That tells us which brain experiment to run next.', 10.5, MUTED)
-        rows3 = [('Video', m('video'), rng_('video'), BLUE), ('Sound', m('audio'), rng_('audio'), ORANGE),
-                 ('Words', m('text'), rng_('text'), AQUA), ('All three', m('video+audio+text'), rng_('video+audio+text'), GREY_BAR)]
-        bar_panel(s, 'Panel 3', x, by + 0.86, sec_w, 1.24, rows3, 0.35,
-                  f'Held-out prediction correlation, median over 1000 brain parcels; mean of {len(algo["paired_across_subjects"]["subjects"])} participants, ticks = participant range. Friends episodes (Courtois NeuroMod).')
+        rows3 = [('Video', m('video'), tick('video'), BLUE), ('Sound', m('audio'), tick('audio'), ORANGE),
+                 ('Words', m('text'), tick('text'), AQUA), ('All three', m('video+audio+text'), tick('video+audio+text'), GREY_BAR)]
+        bar_panel(s, 'Panel 3', x, by + 0.86, sec_w, 1.24, rows3, 0.35, unit)
     else:
         add_text(s, 'Section 3 caption', x, by + 0.34, sec_w, 1.4,
                  'The same measurements can be repeated with parts of the model switched off, or with a sense withheld, '
