@@ -6,8 +6,10 @@ with 52 test IDs. All eight have an executable runner. Each run checks the
 four installed candidate packages before and after testing.
 
 **CPU qualification is partial.** The October 22 fresh-Conda pilot passed
-`language-readout`, `language-installation` and `native-text`. Both vision
-profiles failed; see the [pilot results](qualification/2026-10-22-cpu-pilot.md).
+`language-readout`, `language-installation` and `native-text`. A corrected
+fresh-Conda rerun also passed all four `vision-layer-mapping` checks;
+`vision-public-score` then passed in 37 minutes 50 seconds with an extended
+diagnostic limit. Its profile now allows 60 minutes. See the [pilot results](qualification/2026-10-22-cpu-pilot.md).
 Other profiles and CUDA remain unqualified.
 
 ## Choose a profile
