@@ -41,7 +41,7 @@ def policy_model(policy, identifier):
     ``BrainScoreModel``). Used for the oracle ceiling + random floor."""
     return BrainScoreModel(
         identifier=identifier,
-        action_fn=PolicyWrapper(policy, max_history=4),
+        policy=PolicyWrapper(policy, max_history=4),
     )
 
 

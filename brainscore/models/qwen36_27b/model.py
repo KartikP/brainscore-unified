@@ -78,7 +78,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=text_model,
         region_layer_map=REGION_LAYER_MAP,
-        activations_model={
+        extractor={
             'text': wrapper,
         },
         required_modalities={'text'},

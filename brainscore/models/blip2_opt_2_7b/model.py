@@ -177,12 +177,12 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=blip_model,
         region_layer_map=REGION_LAYER_MAP,
-        activations_model={
+        extractor={
             'vision': activations_model,
             'text': text_wrapper,
         },
         visual_degrees=8,
-        generation_fn=generation_fn,
+        answer=generation_fn,
         # Readout path also available — PCA-1000 features from 'IT' layer.
         behavioral_readout_layer='encoder.layers.34',
     )

@@ -39,7 +39,7 @@ class Bridge:
             socket.send(codec.packb({'experiment_tools': self.mode}))
             with OpenPIPolicyClient(self.upstream) as client:
                 subject = BrainScoreModel(
-                    'pi05-libero', action_fn=LiberoChunkPolicy(client)
+                    'pi05-libero', policy=LiberoChunkPolicy(client)
                 )
 
                 def evaluate(model, context):

@@ -92,7 +92,7 @@ Aggregation combines a model's token, patch, or time positions into features. Th
 
 `VisionWrapper` can infer its strategy when `kind` is omitted. Inspect `wrapper.kind`; set `kind` explicitly if needed. The underlying `PytorchWrapper`, `VLMVisionWrapper`, and `VideoWrapper` remain available for direct configuration and existing registrations.
 
-Use `activations_model={'vision': wrapper}` for image/video extraction, `{'text': wrapper}` for text, and `{'audio': wrapper}` for audio. Configure input preparation inside the wrapper. The [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) connects two towers through this same mapping.
+Use `extractor={'vision': wrapper}` for image/video extraction, `{'text': wrapper}` for text, and `{'audio': wrapper}` for audio. Configure input preparation inside the wrapper. The [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) connects two towers through this same mapping.
 
 An output-only model has no extraction wrapper:
 
@@ -102,7 +102,7 @@ from brainscore_core.model_interface import BrainScoreModel
 subject = BrainScoreModel(
     identifier='my-model',
     supported_modalities={'text'},
-    generation_fn=answer,  # Your callable returns one allowed answer per stimulus row.
+    answer=answer,  # Your callable returns one allowed answer per stimulus row.
 )
 ```
 

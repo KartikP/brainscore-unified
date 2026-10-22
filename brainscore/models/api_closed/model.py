@@ -62,5 +62,5 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         supported_modalities=set(cfg['modalities']),
-        generation_fn=generation_fn,
+        answer=generation_fn,
     )

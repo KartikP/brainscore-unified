@@ -6,6 +6,8 @@ must snapshot them in on_start. Observation failures propagate explicitly.
 Use distinct subject instances for concurrent experiments.
 """
 
+from brainscore_core.streaming import StreamEvent
+
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import threading
@@ -122,13 +124,18 @@ class ObservedSession:
             self.sink.record('input', event)
         return event
 
-    def emit(self, event):
+    def emit(self, event: StreamEvent) -> None:
+        """Compatibility entry point for existing subjects."""
+        return self.respond(event)
+
+    def respond(self, event: StreamEvent) -> None:
+        respond = getattr(self.session, 'respond', None) or self.session.emit
         if not getattr(self.session, 'records_action_execution', False):
             self.sink.record('output', event)
-            return self.session.emit(event)
+            return respond(event)
         try:
             with self.session.observe_actions(lambda saved: self.sink.record('output', saved)):
-                return self.session.emit(event)
+                return respond(event)
         except BaseException as error:
             on_error = getattr(self.sink, 'on_error', None)
             if callable(on_error):

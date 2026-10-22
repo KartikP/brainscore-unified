@@ -50,7 +50,7 @@ from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 
 subject = BrainScoreModel(
     "grid-oracle",
-    action_fn=PolicyWrapper(greedy_oracle_policy),
+    policy=PolicyWrapper(greedy_oracle_policy),
 )
 
 # A context manager closes the environment even if the trial fails.

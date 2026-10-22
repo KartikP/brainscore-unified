@@ -43,7 +43,7 @@ activations = VisionWrapper(
 model = BrainScoreModel(
     identifier='my-cnn',
     model=net,
-    activations_model={'vision': activations},
+    extractor={'vision': activations},
     region_layer_map={'V4': 'layer3', 'IT': 'layer4'},
 )
 ```

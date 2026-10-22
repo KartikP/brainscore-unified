@@ -36,14 +36,14 @@ For sessions, name the **conditions** you want to compare and the **trials** tha
 
 ```python
 from contextlib import contextmanager
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import BufferedSession, StreamEvent
 from brainscore.experiments import SessionProtocol
 
 @contextmanager
 def make_session(trial):
     # trial.condition names the setting; trial.identifier identifies the repetition.
     # Supply already prepared inputs and collect the model's responses.
-    yield InMemorySession(
+    yield BufferedSession(
         inputs=[StreamEvent(channel='vision', payload=images.copy(), t_ms=0)],
         requested_output_channels=['behavior'],
     )
@@ -72,8 +72,8 @@ For an existing evaluator:
 from brainscore.experiments import CallableProtocol
 
 protocol = CallableProtocol(
-    'existing-benchmark',
-    lambda subject, context: benchmark(subject),
+    identifier='existing-benchmark',
+    evaluate=lambda subject, context: benchmark(subject),
     methods=['look_at'],  # Select the public calls to observe.
 )
 ```
@@ -211,3 +211,15 @@ For existing method observers, use `ObserveCalls(observer, methods=['process'])`
 The [five CPU examples](../examples/experiment_toolbox/run.py) exercise image, text, image-plus-text, feedback-control, and recurrent activity/behavior with synthetic data. They verify integration, not scientific performance. Notebooks 17 and 18 add trained image-model demonstrations.
 
 The [OpenPI example](../examples/libero/toolbox_calls.py) uses saved LIBERO requests and a policy server. Its websocket test uses a synthetic policy. The trained LIBERO qualification uses the separate bridge; it does not qualify internal policy ablation. The feature-branch [OpenPI providers](policy_instrumentation.md) also have [trained L4 and ten-task LIBERO checks](qualification/2026-10-06-openpi-tools.md), including exact recording-only actions under controlled compiler settings.
+
+## Trial boundaries
+
+A `Trial` is one independent repetition of a condition. `SessionProtocol`
+resets the subject, opens a fresh session, runs it to completion, and resets the
+subject again, including after an error. That session may contain several
+stimuli or an entire environment episode. State can persist between inputs
+inside the session, but not between these independent repetitions.
+
+`CallableProtocol` leaves these boundaries to the external evaluator. Use it
+when preserving another package's experimental procedure. It is not a different
+kind of subject or a replacement for the session contract.

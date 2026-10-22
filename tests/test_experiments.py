@@ -486,3 +486,52 @@ def test_activity_callback_snapshot_survives_inplace_operations():
         output = layer(torch.ones(2))
         output.add_(10)
     np.testing.assert_array_equal(captures[0]['array'], [1, 1])
+
+
+def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
+    """One Trial contains multiple inputs; resets separate independent sessions."""
+    from brainscore_core.streaming import BufferedSession
+
+    class StatefulSubject(Subject):
+        identifier = 'stateful'
+        in_channels = {'text'}
+        out_channels = {'behavior'}
+
+        def __init__(self):
+            self.state = 0
+            self.resets = 0
+
+        def reset(self):
+            self.state = 0
+            self.resets += 1
+
+        def interact(self, session):
+            while (event := session.next_input()) is not None:
+                self.state += 1
+                session.respond(StreamEvent(channel='behavior', payload=self.state, t_ms=event.t_ms))
+
+    sessions = []
+    @contextmanager
+    def factory(trial):
+        session = BufferedSession(inputs=[
+            StreamEvent(channel='text', payload='first', t_ms=0),
+            StreamEvent(channel='text', payload='second', t_ms=1),
+        ])
+        sessions.append(session)
+        yield session
+
+    subject = StatefulSubject()
+    result = Experiment(
+        subject=subject,
+        protocol=SessionProtocol(identifier='two-trials', session_factory=factory,
+                                 trials=(0, 1), input_channels=('text',),
+                                 output_channels=('behavior',)),
+        tools=[RecordInputsOutputs()],
+        output_dir=tmp_path / 'respond',
+    ).run()
+    assert len(sessions) == 2 and sessions[0] is not sessions[1]
+    assert [[event.payload for event in session.collect()] for session in sessions] == [[1, 2], [1, 2]]
+    outputs = [event for event in rows(result.directory) if event['kind'] == 'output']
+    assert [event['payload'].payload for event in outputs] == [1, 2, 1, 2]
+    assert [event['trial_id'] for event in outputs] == [0, 0, 1, 1]
+    assert subject.resets == 4 and subject.state == 0

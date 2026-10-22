@@ -23,7 +23,7 @@ class RecordedPolicy:
         self.policy = policy
         self.route = route
         self.recorder = recorder
-        self.subject = BrainScoreModel('pi05-libero', action_fn=LiberoChunkPolicy(policy))
+        self.subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy))
         self.calls = 0
 
     def infer(self, request):

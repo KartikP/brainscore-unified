@@ -45,7 +45,7 @@ whole chunk. The official evaluator decides how many commands to execute before
 asking again. Changing that schedule would change the experiment.
 
 `BrainScoreModel` supplies the existing UMI machinery here; the policy adapter
-is supplied through `action_fn`. We did not change the core contract. This route
+is supplied through `policy`. We did not change the core contract. This route
 uses `process()` and does not test the `EnvironmentSession` driver.
 
 ## How we built it
@@ -92,13 +92,13 @@ from brainscore_core.model_interface import BrainScoreModel
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
 
 # policy is an initialized OpenPI policy or its websocket client.
-subject = BrainScoreModel('pi05-libero', action_fn=LiberoChunkPolicy(policy))
+subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy))
 # step is an EnvironmentStep with the fields described above.
 response = subject.process(step)
 ```
 
 For a partner integration, the adapter can live in your own package. Supplying
-it as `action_fn` does not require modifying the UMI core or registering a new
+it as `policy` does not require modifying the UMI core or registering a new
 built-in capability.
 
 ### 4. Connect the evaluator and retain evidence

@@ -32,7 +32,7 @@ allow managed CI/EC2 downloads without that guard; see
 ## Subject lifecycle
 
 A native subject consumes inputs with `session.next_input()` and returns events
-with `session.emit(event)` inside `interact(session)`. It does not need model
+with `session.respond(event)` inside `interact(session)`. It does not need model
 layers, modality properties, or `process()`. Call `reset()`
 between independent evaluations when state must be cleared.
 
@@ -175,11 +175,11 @@ closes the environment; its caller owns subject reset.
 
 ## Sessions and convenience functions
 
-Start with `InMemorySession(stimulus_set=..., requested_output_channels=...)` for fixed inputs. Add `task_context` for behavior or `streaming=True` for row-by-row delivery. Run it with `subject.interact(session)`.
+Start with `BufferedSession(stimulus_set=..., requested_output_channels=...)` for fixed inputs. Add `task_context` for behavior or `streaming=True` for row-by-row delivery. Run it with `subject.interact(session)`.
 
 | Session | Distinct behavior |
 | --- | --- |
-| `InMemorySession` | Fixed inputs; collect the responses. |
+| `BufferedSession` | Fixed inputs; collect the responses. |
 | `EnvironmentSession` | Each action determines the next observation. |
 | `StreamingStimulusSetSession` | Build events lazily from a stimulus table; bounded input-event buffering. |
 | `WindowedStreamSession` | Group frames into bounded windows. |
@@ -226,12 +226,12 @@ The separate `region_modality_map` argument is accepted and normalized into sele
 
 Existing registrations with wrappers in `preprocessors` remain accepted at the
 constructor boundary. New registrations put every extraction wrapper in
-`activations_model`, and configure preprocessing in the wrapper itself.
+`extractor`, and configure preprocessing in the wrapper itself.
 
 `SessionProtocol` factories receive `Trial(condition, identifier)`, including when
 conditions are omitted. An ID-only factory can opt into `factory_argument='identifier'`.
 The default condition is `'default'`. Session helper constructors and factory
-aliases remain available; new examples use `InMemorySession` for fixed inputs.
+aliases remain available; new examples use `BufferedSession` for fixed inputs.
 
 ## Choose how a behavioral answer is obtained
 

@@ -124,7 +124,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=videomae,
         region_layer_map=REGION_LAYER_MAP,
-        activations_model={
+        extractor={
             'video': video_wrapper,
         },
         required_modalities={'video'},
