@@ -164,12 +164,12 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=qwen_model,
         region_layer_map=region_layer_map,
-        activations_model={
+        extractor={
             'vision': vision_wrapper,
             'text': text_wrapper,
         },
         visual_degrees=8,
-        generation_fn=generation_fn,
+        answer=generation_fn,
         # Also enable the readout path so Qwen can be compared on the same
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',

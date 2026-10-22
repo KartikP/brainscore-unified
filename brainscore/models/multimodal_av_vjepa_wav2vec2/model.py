@@ -176,7 +176,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
             for region, layer in REGION_LAYER_MAP.items()
         },
-        activations_model={
+        extractor={
             'video': video_wrapper,
             'audio': audio_wrapper,
         },

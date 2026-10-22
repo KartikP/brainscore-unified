@@ -89,7 +89,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             )
             for region, layer in REGION_LAYER_MAP.items()
         },
-        activations_model={
+        extractor={
             'vision': activations_model,
             'text': text_wrapper,
         },

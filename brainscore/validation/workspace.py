@@ -18,6 +18,7 @@ import tempfile
 SUITES = {
     'core': [
         'tests/test_api_cohesion.py',
+        'tests/test_lab_vocabulary.py',
         'tests/test_external_extensions.py',
         'tests/test_capabilities.py',
         'tests/test_model_interface.py',

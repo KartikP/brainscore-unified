@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from brainscore_core.contract import Subject
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import BufferedSession, StreamEvent
 from brainscore.experiments import (Experiment, SessionProtocol, RecordInputsOutputs,
     RecordActivity, Ablate, TorchInstrumentation, replay_sessions, compare_outputs)
 
@@ -35,11 +35,11 @@ class DemonstrationSubject(Subject):
             with torch.no_grad():
                 activity = self.population(features + self.memory)
                 self.memory = activity * .1 if self.recurrent else torch.zeros(2)
-            session.emit(StreamEvent('neural', activity.numpy().copy(), event.t_ms))
-            session.emit(StreamEvent('behavior', float(activity.sum()), event.t_ms))
+            session.respond(StreamEvent('neural', activity.numpy().copy(), event.t_ms))
+            session.respond(StreamEvent('behavior', float(activity.sum()), event.t_ms))
 
 
-class FeedbackSession(InMemorySession):
+class FeedbackSession(BufferedSession):
     """Toy controlled environment; not LIBERO, MuJoCo or a robotics qualification."""
     def __init__(self):
         super().__init__()
@@ -48,8 +48,8 @@ class FeedbackSession(InMemorySession):
         if self.step == 3:
             return None
         return StreamEvent('observation', {'position': self.position, 'goal': 1.}, self.step * 50)
-    def emit(self, event):
-        super().emit(event)
+    def respond(self, event):
+        super().respond(event)
         if event.channel == 'behavior':
             self.position += event.payload * .1
             self.step += 1
@@ -72,7 +72,7 @@ def run(directory):
             if name == 'robotics':
                 yield FeedbackSession()
             else:
-                yield InMemorySession([StreamEvent('observation', payload, t) for t in (0, 20, 40)])
+                yield BufferedSession([StreamEvent('observation', payload, t) for t in (0, 20, 40)])
         protocol = SessionProtocol(name, factory, conditions=['normal', 'silenced'],
             input_channels=['observation'], output_channels=['behavior', 'neural'],
             metadata={'evidence': 'synthetic demonstration'})

@@ -25,7 +25,7 @@ def run_calls(policy, source, output_dir):
     for inp, out in zip(events[::2], events[1::2]):
         if inp['kind'] != 'input' or out['kind'] != 'output':
             raise ValueError('Expected alternating OpenPI input/output pairs')
-    subject = BrainScoreModel('pi05-libero', action_fn=LiberoChunkPolicy(policy))
+    subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy))
     def evaluate(model, context):
         differences = []
         for i, (inp, out) in enumerate(zip(events[::2], events[1::2])):

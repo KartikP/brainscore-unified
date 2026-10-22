@@ -7,7 +7,7 @@ Use these terms across code, guides, and notebooks. Explain a term once, then us
 | Model | The network or service performing the computation. |
 | Subject | The interface through which an experiment or benchmark uses a model. `BrainScoreModel` is a configurable implementation. |
 | Adapter | Connects an existing interface to another; name the interfaces, such as `VisionModelAdapter` bridging a vision plugin to UMI. |
-| Environment harness | Connects an external environment's observations, actions and lifecycle to the subject. |
+| Environment adapter | Connects an external environment's observations, actions and lifecycle to the subject. |
 | Preprocessor | Prepares an input in the format a model expects. |
 | Wrapper | Adapts a model or extractor to an expected interface. It can include preprocessing. |
 | Activations | Internal values produced by the model. “Activity” is the plain-language name for these measurements. |
@@ -22,7 +22,7 @@ Use these terms across code, guides, and notebooks. Explain a term once, then us
 | Session | The exchange of inputs and outputs. `None` from `next_input()` means it has ended. |
 | Protocol | The procedure that supplies inputs and controls the experiment. |
 | Condition | A setting being compared, such as normal or silenced. |
-| Trial | One repetition within a condition. |
+| Trial | One independent protocol repetition, with a fresh session and resets before and after it. It can contain several stimuli or an entire episode. |
 | Experiment | One execution combining a subject, protocol, tools, and output location. |
 | Tool | A component that observes a run or changes selected model behavior. |
 | Instrumentation | The backend connection that lets tools record or change internal model activity; `TorchInstrumentation` supplies it for PyTorch. |
@@ -57,9 +57,9 @@ State what a result supports. A demonstration is not a qualification; a selected
 ## Reuse one setup pattern
 
 - Configure input preparation inside the extraction wrapper. Pass wrappers as
-  `activations_model={'vision': wrapper}`; text, audio, and video use the same role.
+  `extractor={'vision': wrapper}`; text, audio, and video use the same role.
 - Keep a region's layer, units, and optional modality together in its selector.
-- Use `InMemorySession` for fixed inputs and `EnvironmentSession` for feedback.
+- Use `BufferedSession` for fixed inputs and `EnvironmentSession` for feedback.
   Delivery/window/deadline adapters add behavior; factory aliases add no contract.
 - Session factories receive a `Trial`. Read `trial.condition` and `trial.identifier`.
 - Name parameters in teaching examples. Prefer the main API over convenience aliases.

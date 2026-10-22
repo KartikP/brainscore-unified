@@ -156,7 +156,7 @@ register_channel(CatalogEntry(
 ), columns=['tactile_sample'])
 ```
 
-Pass the wrapper as `activations_model={'tactile': wrapper}` to `BrainScoreModel`; configure input preparation in the wrapper. The column is now recognized
+Pass the wrapper as `extractor={'tactile': wrapper}` to `BrainScoreModel`; configure input preparation in the wrapper. The column is now recognized
 without changing the built-in mapping. Register channel **families**; addressed
 instances use `family:address` and require an addressing policy. Duplicate channel,
 column and capability registrations require explicit replacement. Stock legacy
@@ -212,7 +212,7 @@ with intervene(model, change) as applied:
     perturbed_score = benchmark(model)
 ```
 
-The model must already implement the relevant `state_change_fn`. The context
+The model must already implement the relevant `intervention`. The context
 removes only its own handle on success or failure. Record baseline and perturbed
 conditions separately, including selector, intervention, model revision and
 protocol. Do not infer a scientific causal result from the fact that a hook ran.

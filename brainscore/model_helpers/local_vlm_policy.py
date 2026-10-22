@@ -294,8 +294,8 @@ def build_grid_player(policy, max_history=4):
     from brainscore.model_helpers.policy_wrapper import PolicyWrapper
     return BrainScoreModel(
         identifier='grid-player', model=None, region_layer_map={},
-        preprocessors={}, activations_model=None,
-        action_fn=PolicyWrapper(policy, max_history=max_history))
+        preprocessors={}, extractor=None,
+        policy=PolicyWrapper(policy, max_history=max_history))
 
 
 def run_grid_episodes(policy, n_episodes, size, max_steps, base_seed):

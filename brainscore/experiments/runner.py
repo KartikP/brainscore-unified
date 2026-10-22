@@ -60,7 +60,12 @@ class Tool:
 
 @dataclass(frozen=True)
 class Trial:
-    """One repetition within an experimental condition."""
+    """One independent repetition within an experimental condition.
+
+    SessionProtocol creates one fresh session for this repetition, resetting
+    the subject before and after it. A session may contain many stimuli or an
+    entire environment episode; Trial does not mean one input event.
+    """
     condition: str
     identifier: object
 
