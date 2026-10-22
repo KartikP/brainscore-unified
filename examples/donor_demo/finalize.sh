@@ -3,9 +3,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 PY=/opt/anaconda3/envs/analytics-2026/bin/python
-P=/Volumes/Samsung9100/Brain-Score-Donor-Demo/presentation
-E=/Volumes/Samsung9100/Brain-Score-Donor-Demo/experiment
-V=/Volumes/Samsung9100/Brain-Score-Donor-Demo/visualization-data/lahner2024_vjepa1_wav2vec2
+ROOT=${OUT_ROOT:-/Volumes/Samsung9100/Brain-Score-Donor-Demo}
+P=$ROOT/presentation
+E=$ROOT/experiment
+V=$ROOT/visualization-data/lahner2024_vjepa1_wav2vec2
+mkdir -p $P $E $V
 ALGO=${1:-}
 TABLE="/Users/kartik/Brain-Score Unified/unified/scripts/ec2_results_2026_07_31/task7d_cis.json"
 $PY make_notes.py stage_full $ALGO >/dev/null
