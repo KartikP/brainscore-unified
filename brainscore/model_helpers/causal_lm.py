@@ -4,7 +4,8 @@ One registration gives:
 
 - ``process(StimulusSet)`` -> recorded activations (``TextWrapper``; layer names
   accept the ``':input'`` site, e.g. ``'model.layers.14.mlp.down_proj:input'``),
-- ``process(StateChange)`` -> interventions (``build_pytorch_ablation_fn``),
+- ``process(StateChange)`` -> interventions (``build_pytorch_ablation_fn``; use
+  ``brainscore.instrumentation.intervene`` to apply one and undo only it),
 - ``process(StreamEvent('generation_request', ...))`` -> generated text,
 - ``process(StreamEvent('conditional_logprob_request', ...))`` -> log p(target | context).
 
@@ -138,9 +139,9 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
     return BrainScoreModel(
         identifier,
         region_layer_map=dict(region_layer_map or {}),
-        activations_model={'text': TextWrapper(model, tokenizer, identifier=identifier,
+        extractor={'text': TextWrapper(model, tokenizer, identifier=identifier,
                                                layer_aggregation=layer_aggregation, batch_size=batch_size)},
-        state_change_fn=build_pytorch_ablation_fn(model),
+        intervention=build_pytorch_ablation_fn(model),
         capability_config={generation.identifier: dict(provider=provider.generate, parse=str, **config),
                            logprob.identifier: dict(provider=provider.logprobs, parse=json.loads, **config)},
     )
