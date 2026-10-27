@@ -63,8 +63,11 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
     ``getattr(getattr(getattr(model, 'a'), 'b'), 'c')``. Standard PyTorch
     ``Module.named_modules()`` paths work directly.
 
-    The hook is a pre-output hook: it modifies the forward output, so
-    downstream layers see the lesioned activations. For multi-tensor
+    The hook modifies the layer's forward output, so downstream layers see
+    the lesioned activations. Set ``Selection.metadata['site'] = 'input'`` to
+    modify the layer's first input instead (a forward pre-hook) -- needed for
+    values computed inline that no module outputs, such as the gated MLP
+    activation entering a transformer's ``down_proj``. For multi-tensor
     outputs (some attention layers return tuples), the hook ablates the
     first element and leaves the rest untouched — adequate for typical
     transformer blocks.
@@ -96,6 +99,11 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         kind = perturbation.kind
         scale = perturbation.scale
         amount = perturbation.amount
+
+        def pre_hook(_module, args):
+            # site='input': perturb the first positional input, e.g. the gated
+            # MLP activation entering down_proj, which no module outputs.
+            return (_apply(args[0]), *args[1:])
 
         def hook(_module, _inputs, output):
             # Some layers return tuples (e.g., MultiheadAttention).
@@ -141,7 +149,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     f"{kind!r}. Expected 'zero', 'scale', or 'drive'.")
             return modified.reshape(tensor.shape)
 
-        return hook
+        return pre_hook if selection.metadata.get('site') == 'input' else hook
 
     def state_change_fn(
         state_change: StateChange,
@@ -177,7 +185,9 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
             # not range-check conv here — a conv channel index would otherwise be
             # validated against the wrong axis. Layers with no last-axis width
             # attr are validated at forward time.
-            n_units = (getattr(layer, 'out_features', None)
+            width = ('in_features' if state_change.target.metadata.get('site') == 'input'
+                     else 'out_features')
+            n_units = (getattr(layer, width, None)
                        if state_change.target.axis == -1 else None)
             if n_units is not None and norm and max(norm) >= n_units:
                 raise ValueError(
@@ -186,7 +196,12 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     f"(valid 0..{n_units - 1})."
                 )
         hook = _make_hook(state_change.target, state_change.perturbation)
-        handle = layer.register_forward_hook(hook)
+        if state_change.target.metadata.get('site', 'output') not in ('input', 'output'):
+            raise ValueError(f"Selection.metadata['site'] must be 'input' or 'output', "
+                             f"got {state_change.target.metadata['site']!r}.")
+        handle = (layer.register_forward_pre_hook(hook)
+                  if state_change.target.metadata.get('site') == 'input'
+                  else layer.register_forward_hook(hook))
 
         applied = PerturbationApplied(
             handle_id=str(uuid.uuid4()),
