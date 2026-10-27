@@ -19,6 +19,19 @@ REQUEST_CHANNELS = {
     'context_choice_request': 'Constrained choice between two contexts for each target',
 }
 
+# Request keys a provider may rely on. Providers ignore keys they do not use.
+PAYLOAD_CONTRACTS = {
+    'generation_request': (
+        "dict: messages (list of {role, content}) for one conversation, or conversations "
+        "(list of message lists) for a batch; optional system, temperature (0 = greedy), "
+        "top_p, max_tokens, seed. Raw response: text (a batch also returns texts), "
+        "reasoning, token_usage."),
+    'conditional_logprob_request': (
+        "dict: targets and contexts (equal-length lists of str), scoring log p(target | context); "
+        "optional reduction ('sum', default, or 'mean' over target tokens) and context_format "
+        "('raw', default, or 'chat': each context is a user turn). Answer: one float per target."),
+}
+
 
 class ResponseTraceCapability(Capability):
     identifier = 'response-trace'
@@ -156,7 +169,7 @@ def register_trace_channels() -> None:
         direction = 'output' if name == 'response_trace' else 'input'
         if not io_catalog.has(name):
             register_channel(CatalogEntry(name, direction, 'StreamEvent',
-                'dict; see response_trace module',
+                PAYLOAD_CONTRACTS.get(name, 'dict; see response_trace module'),
                 REQUEST_CHANNELS.get(name, 'Provider response with raw text and parsed answer'),
                 owner='brainscore.response_trace',
                 shape_validator=lambda value: isinstance(value, dict)))

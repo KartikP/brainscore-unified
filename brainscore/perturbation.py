@@ -57,13 +57,9 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
     - ``'zero'``: zero out the selected units (or the entire layer if
       ``indices`` is None).
     - ``'scale'``: multiply the selected units by ``perturbation.scale``.
-    - ``'drive'``: add ``perturbation.amount``. With ``indices=None`` the
-      amount may be a tensor broadcastable to the layer's output, e.g. a
-      residual-space direction.
-    - ``'drive_norm'``: drive each selected input unit of a ``Linear`` layer
-      so that the layer's OUTPUT changes by a vector of L2 norm
-      ``perturbation.amount`` (delta_n = amount / ||W[:, n]||). This equalizes
-      the injected magnitude across units without the caller reading weights.
+    - ``'drive'``: add ``perturbation.amount`` (a number). With
+      ``indices=None`` it may instead be a tensor broadcastable to the layer's
+      output, e.g. a residual-space direction.
 
     For ``kind='ablation'`` (the canonical case), the hook is installed on
     the layer named by ``state_change.target.layer``. The layer path is
@@ -103,7 +99,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                 layer = getattr(layer, part)
         return layer
 
-    def _make_hook(selection: Selection, perturbation: Perturbation, deltas=None):
+    def _make_hook(selection: Selection, perturbation: Perturbation):
         indices = selection.indices
         kind = perturbation.kind
         scale = perturbation.scale
@@ -157,13 +153,10 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
             elif kind == 'drive':
                 vals = modified.index_select(axis, idx) + _amount_like(tensor)
                 modified.index_copy_(axis, idx, vals)
-            elif kind == 'drive_norm':
-                vals = modified.index_select(axis, idx) + deltas.to(device=tensor.device, dtype=tensor.dtype)
-                modified.index_copy_(axis, idx, vals)
             else:
                 raise ValueError(
                     f"Unsupported Perturbation kind for index-ablation: "
-                    f"{kind!r}. Expected 'zero', 'scale', 'drive', or 'drive_norm'.")
+                    f"{kind!r}. Expected 'zero', 'scale', or 'drive'.")
             return modified.reshape(tensor.shape)
 
         return pre_hook if split_site(selection.layer)[1] == 'input' else hook
@@ -212,17 +205,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     f"'{state_change.target.layer}' with {n_units} units "
                     f"(valid 0..{n_units - 1})."
                 )
-        deltas = None
-        if state_change.perturbation.kind == 'drive_norm':
-            weight = getattr(layer, 'weight', None)
-            if (site != 'input' or indices is None or state_change.target.axis != -1
-                    or not isinstance(layer, torch.nn.Linear)):
-                raise ValueError("'drive_norm' needs an indexed ':input' site on a Linear layer "
-                                 "(last axis), where W[:, n] is unit n's output vector.")
-            with torch.no_grad():
-                deltas = (state_change.perturbation.amount
-                          / weight[:, list(indices)].float().norm(dim=0))
-        hook = _make_hook(state_change.target, state_change.perturbation, deltas)
+        hook = _make_hook(state_change.target, state_change.perturbation)
         handle = (layer.register_forward_pre_hook(hook) if site == 'input'
                   else layer.register_forward_hook(hook))
 
@@ -230,7 +213,6 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
             handle_id=str(uuid.uuid4()),
             target=state_change.target,
             perturbation=state_change.perturbation,
-            metadata={} if deltas is None else {'unit_deltas': deltas.tolist()},
         )
 
         def cleanup() -> None:

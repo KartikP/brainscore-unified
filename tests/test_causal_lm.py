@@ -101,9 +101,25 @@ def test_intervention_changes_scores_and_reset_restores_them(subject):
     model, _, _ = subject
     req = {'contexts': ['the cat', 'the dog'], 'targets': ['sat', 'ran'], 'context_format': 'chat'}
     before = _ask(model, 'conditional_logprob_request', req)['answer']
-    model.process(StateChange(kind='steer', perturbation=Perturbation(kind='drive_norm', amount=10.0),
+    model.process(StateChange(kind='steer', perturbation=Perturbation(kind='drive', amount=10.0),
                               target=Selection(layer=NEURON_IN, indices=[4])))
     during = _ask(model, 'conditional_logprob_request', req)['answer']
     model.reset()
     after = _ask(model, 'conditional_logprob_request', req)['answer']
     assert during != before and after == before
+
+
+def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
+    """Record-then-perturb (FunctionalSelection) works on ':input' sites end to end."""
+    from brainscore_core.selection import FunctionalSelection
+    model, net, _ = subject
+    localizer = StimulusSet({'stimulus_id': list('abcd'), 'sentence': ['the cat', 'the dog', 'cat sat', 'dog ran'],
+                             'label': ['x', 'x', 'y', 'y']})
+    localizer.identifier = 'causal-lm-localizer'
+    target = FunctionalSelection(recording_target='mlp_in', localizer_stimuli=localizer,
+                                 contrast=(['x'], ['y']), n_units=3, sign='abs')
+    assert target.resolve(model).layer == NEURON_IN
+    req = {'contexts': ['the cat'], 'targets': ['sat'], 'context_format': 'chat'}
+    before = _ask(model, 'conditional_logprob_request', req)['answer']
+    model.process(StateChange(kind='lesion', target=target, perturbation=Perturbation(kind='drive', amount=50.0)))
+    assert _ask(model, 'conditional_logprob_request', req)['answer'] != before

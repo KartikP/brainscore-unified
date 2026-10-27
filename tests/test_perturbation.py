@@ -349,23 +349,6 @@ class TestInputSite:
         bs.reset()
         assert torch.equal(net(x).detach(), baseline)
 
-    def test_drive_norm_sets_output_change_norm(self):
-        net = _GatedMLP()
-        bs = self._bs(net)
-        x = torch.randn(2, 5, 6)
-        baseline = net(x).detach().clone()
-        applied = self._steer(bs, 'down_proj:input', Perturbation(kind='drive_norm', amount=3.0), [2, 7])
-        change = net(x).detach() - baseline
-        w = net.down_proj.weight.detach()
-        expected = 3.0 * (w[:, 2] / w[:, 2].norm() + w[:, 7] / w[:, 7].norm())
-        assert torch.allclose(change, expected.expand_as(change), atol=1e-5)
-        assert len(applied.metadata['unit_deltas']) == 2
-
-    def test_drive_norm_requires_indexed_linear_input(self):
-        net = _GatedMLP()
-        with pytest.raises(ValueError, match='drive_norm'):
-            self._steer(self._bs(net), 'down_proj', Perturbation(kind='drive_norm', amount=1.0), [2])
-
     def test_whole_layer_vector_drive(self):
         net = _GatedMLP()
         bs = self._bs(net)

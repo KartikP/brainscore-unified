@@ -8,10 +8,10 @@ One registration gives:
 - ``process(StreamEvent('generation_request', ...))`` -> generated text,
 - ``process(StreamEvent('conditional_logprob_request', ...))`` -> log p(target | context).
 
-The request schemas follow the existing response-trace contract: generation takes
-CogGym's ``{system, messages, temperature, max_tokens}`` (plus ``conversations`` for
-a batch, ``top_p`` and ``seed``); log-probabilities take EWoK's
-``{targets, contexts}`` (plus ``reduction`` and ``context_format``).
+Request keys are listed in ``response_trace.PAYLOAD_CONTRACTS`` (also in the I/O
+catalog): generation takes CogGym's ``{system, messages, temperature, max_tokens}``
+plus ``conversations``, ``top_p`` and ``seed``; log-probabilities take EWoK's
+``{targets, contexts}`` plus ``reduction`` and ``context_format``.
 """
 import json
 from typing import Any, Mapping, Optional
