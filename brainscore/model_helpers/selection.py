@@ -20,3 +20,21 @@ def selection_view(tensor: Any, selection: Selection) -> tuple[Any, int]:
     if not -tensor.ndim <= axis < tensor.ndim or (tensor.ndim > 1 and axis % tensor.ndim == 0):
         raise ValueError('Selection axis must address a non-batch tensor dimension.')
     return tensor, axis
+
+
+INPUT_SITE = ':input'
+
+
+def split_site(layer: str) -> tuple[str, str]:
+    """``'a.b:input'`` -> ``('a.b', 'input')``; a bare path is the module output.
+
+    The input site addresses a module's first positional input, for values
+    computed inline that no module outputs (e.g. the gated MLP activation
+    entering a transformer's ``down_proj``). Recording and intervention both
+    parse layer names here, so one string names the same tensor in both.
+    """
+    if layer.endswith(INPUT_SITE):
+        return layer[:-len(INPUT_SITE)], 'input'
+    if ':' in layer:
+        raise ValueError(f"Unknown layer site in {layer!r}; only '{INPUT_SITE}' is supported.")
+    return layer, 'output'

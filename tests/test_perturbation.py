@@ -328,8 +328,11 @@ class TestInputSite:
 
     def _bs(self, net):
         return BrainScoreModel(identifier='gated-mlp-test', model=net, region_layer_map={},
-                               preprocessors={'text': lambda x: x},
-                               state_change_fn=build_pytorch_ablation_fn(net))
+                               preprocessors={}, state_change_fn=build_pytorch_ablation_fn(net))
+
+    def _steer(self, bs, layer, perturbation, indices=None):
+        return bs.process(StateChange(kind='steer', perturbation=perturbation,
+                                      target=Selection(layer=layer, indices=indices)))
 
     def test_drive_down_proj_input_adds_weight_column(self):
         net = _GatedMLP()
@@ -338,11 +341,7 @@ class TestInputSite:
         baseline = net(x).detach().clone()
 
         n, delta = 7, 2.5
-        bs.process(StateChange(
-            kind='steer',
-            target=Selection(layer='down_proj', indices=[n], metadata={'site': 'input'}),
-            perturbation=Perturbation(kind='drive', amount=delta),
-        ))
+        self._steer(bs, 'down_proj:input', Perturbation(kind='drive', amount=delta), [n])
         # every token's output moves by exactly delta * W_down[:, n]
         expected = baseline + delta * net.down_proj.weight[:, n].detach()
         assert torch.allclose(net(x).detach(), expected, atol=1e-6)
@@ -350,18 +349,38 @@ class TestInputSite:
         bs.reset()
         assert torch.equal(net(x).detach(), baseline)
 
+    def test_drive_norm_sets_output_change_norm(self):
+        net = _GatedMLP()
+        bs = self._bs(net)
+        x = torch.randn(2, 5, 6)
+        baseline = net(x).detach().clone()
+        applied = self._steer(bs, 'down_proj:input', Perturbation(kind='drive_norm', amount=3.0), [2, 7])
+        change = net(x).detach() - baseline
+        w = net.down_proj.weight.detach()
+        expected = 3.0 * (w[:, 2] / w[:, 2].norm() + w[:, 7] / w[:, 7].norm())
+        assert torch.allclose(change, expected.expand_as(change), atol=1e-5)
+        assert len(applied.metadata['unit_deltas']) == 2
+
+    def test_drive_norm_requires_indexed_linear_input(self):
+        net = _GatedMLP()
+        with pytest.raises(ValueError, match='drive_norm'):
+            self._steer(self._bs(net), 'down_proj', Perturbation(kind='drive_norm', amount=1.0), [2])
+
+    def test_whole_layer_vector_drive(self):
+        net = _GatedMLP()
+        bs = self._bs(net)
+        x = torch.randn(2, 5, 6)
+        baseline = net(x).detach().clone()
+        direction = torch.arange(6, dtype=torch.float64)  # dtype is matched to the layer
+        self._steer(bs, 'down_proj', Perturbation(kind='drive', amount=direction))
+        assert torch.allclose(net(x).detach(), baseline + direction.float(), atol=1e-6)
+
     def test_input_site_validates_against_in_features(self):
         net = _GatedMLP()
         with pytest.raises(ValueError, match='out of range'):
-            self._bs(net).process(StateChange(
-                kind='steer',
-                target=Selection(layer='down_proj', indices=[10], metadata={'site': 'input'}),
-                perturbation=Perturbation(kind='drive', amount=1.0)))
+            self._steer(self._bs(net), 'down_proj:input', Perturbation(kind='drive', amount=1.0), [10])
 
     def test_unknown_site_rejected(self):
         net = _GatedMLP()
         with pytest.raises(ValueError, match='site'):
-            self._bs(net).process(StateChange(
-                kind='steer',
-                target=Selection(layer='down_proj', metadata={'site': 'middle'}),
-                perturbation=Perturbation(kind='drive', amount=1.0)))
+            self._steer(self._bs(net), 'down_proj:middle', Perturbation(kind='drive', amount=1.0))
