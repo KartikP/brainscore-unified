@@ -16,6 +16,7 @@ EXCLUDED = {
     '04_multiregion_geometry.ipynb': 'Pretrained ResNet-50 download',
     '16_whole_brain_encoding.ipynb': 'LeBel data and GPT-2 scientific rerun',
     '18_resnet_experiment_toolbox.ipynb': 'Pretrained ResNet-18 download',
+    '20_steer_a_language_model.ipynb': 'Qwen3.5-4B download and GPU run',
 }
 SELECTED = (
     '01_quickstart_layer_mapping.ipynb', '02_behavioral_and_nulls.ipynb',
@@ -25,7 +26,7 @@ SELECTED = (
     '11_state_change_ablation.ipynb', '12_embodied_vlm_game.ipynb',
     '13_temporal_multimodal.ipynb', '14_intervention_spectrum.ipynb',
     '15_streaming_delivery.ipynb', '17_experiment_toolbox.ipynb',
-    '19_openpi_experiment_toolbox.ipynb', '20_steer_a_language_model.ipynb',
+    '19_openpi_experiment_toolbox.ipynb',
 )
 
 
