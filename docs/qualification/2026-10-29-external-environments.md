@@ -16,18 +16,27 @@ October 29, 2026. This work strengthens the existing external-evaluator and nati
 - Core: `b61263c5d47672bfa733424803dd720e1a5cc8b1`.
 - Vision: `dc5553c72225f045a417f85c4e73d60f4196327c`.
 - Language: `88c2e08712d7b53e20792aadc8511b9ac7c40fae`.
-- Unified installed-package checks: `1489698fb1dc206538540ca7cb44f842f1001eaa`.
+- Unified installed-package checks: `d1ee26d6299e006b58eab21f91ff5ec3fb6b9b1a`.
 - Final unified shutdown correction: `b77f740`; the full offline suite and installed transport checks were rerun with this correction. It changes the standalone bridge and its tests, not installed package modules.
+
+## Contract cleanup
+
+The native-environment example records each generated answer, parsing outcome and
+fallback action, and carries model provenance in responses and experiment metadata.
+Actions are unchanged. Qualification utilities are shared with the CogGym example
+through an environment-neutral module; output storage checks share one internal
+implementation. The source and installed suites below include these changes at
+`d1ee26d`, following the helper cleanup in `17124c1`.
 
 ## Tests
 
 | Check | Result | Scope |
 | --- | --- | --- |
-| Source unified offline suite | 1,596 passed; 17 optional skips; 63 slow tests deselected | Unit and fixture integration tests |
+| Source unified offline suite | 1,602 passed; 17 optional skips; 63 slow tests deselected | Unit and fixture integration tests |
 | Installed core | 821 passed | Required offline profile |
 | Installed vision | 239 passed | Required offline profile |
 | Installed language | 70 passed | Required offline profile |
-| Installed unified | 1,597 passed; 16 optional skips; 63 slow tests deselected | Full offline profile; no unexpected skips or source-import violations |
+| Installed unified | 1,603 passed; 16 optional skips; 63 slow tests deselected | Full offline profile; no unexpected skips or source-import violations |
 | Installed LIBERO/OpenPI transport | 209 passed | Fixture policies; actual separate Python 3.8 evaluator and Python 3.11 bridge |
 | Installed external partner example | 14 passed | Adapter/tool conformance, not a human usability trial |
 
