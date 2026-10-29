@@ -752,3 +752,88 @@ def test_record_failure_keeps_original_error_and_fails_run(tmp_path, caught):
     else:
         assert experiment['error']['type'] == 'TypeError'
     assert [e['kind'] for e in rows(tmp_path/'run')] == ['trial_start']  # nothing after the loss
+
+
+def test_output_preflight_fails_before_subject_or_session(tmp_path, monkeypatch):
+    subject = FixtureSubject()
+    calls = []
+    def denied(*args, **kwargs):
+        calls.append(kwargs['dir'])
+        raise PermissionError('Output is not writable')
+    monkeypatch.setattr('brainscore.experiments.runner.tempfile.TemporaryFile', denied)
+    experiment = Experiment(
+        subject=subject, protocol=protocol(), output_dir=tmp_path / 'new' / 'run',
+    )
+    with pytest.raises(PermissionError, match='not writable'):
+        experiment.validate()
+    assert calls == [tmp_path]
+    assert subject.resets == subject.state == 0
+    assert not (tmp_path / 'new').exists()
+
+
+def test_output_preflight_leaves_no_files(tmp_path):
+    experiment = Experiment(
+        subject=FixtureSubject(), protocol=protocol(),
+        output_dir=tmp_path / 'new' / 'run',
+    )
+    experiment.validate()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_output_preflight_rejects_file_parent(tmp_path):
+    parent = tmp_path / 'file'
+    parent.write_text('occupied')
+    subject = FixtureSubject()
+    experiment = Experiment(
+        subject=subject, protocol=protocol(), output_dir=parent / 'run',
+    )
+    with pytest.raises(NotADirectoryError):
+        experiment.validate()
+    assert subject.resets == 0
+
+
+def test_tool_bridge_checks_storage_before_connecting(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+    source = Path(__file__).parents[1] / 'examples/libero/serve_tool_bridge.py'
+    spec = importlib.util.spec_from_file_location('preflight_bridge', source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setitem(sys.modules, 'openpi_client', SimpleNamespace(msgpack_numpy=object()))
+    connections, closes = [], []
+    monkeypatch.setattr(module, 'OpenPIPolicyClient', lambda *a: connections.append(a))
+    monkeypatch.setattr(module.socket_deadline, 'close', lambda *a, **k: closes.append(a))
+    def denied(*args, **kwargs):
+        raise PermissionError('No recording storage')
+    monkeypatch.setattr(module.tempfile, 'TemporaryFile', denied)
+    bridge = module.Bridge(
+        'ws://unused', tmp_path / 'new', 'baseline',
+        suite='libero_spatial', trials_per_task=1, horizon=5,
+    )
+    with pytest.raises(PermissionError, match='No recording storage'):
+        bridge.handler(object())
+    assert connections == []
+    assert len(closes) == 1 and not bridge.lock.locked()
+
+
+def test_tool_bridge_rejects_reused_directory_before_connecting(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+    source = Path(__file__).parents[1] / 'examples/libero/serve_tool_bridge.py'
+    spec = importlib.util.spec_from_file_location('collision_bridge', source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setitem(sys.modules, 'openpi_client', SimpleNamespace(msgpack_numpy=object()))
+    connections = []
+    monkeypatch.setattr(module, 'OpenPIPolicyClient', lambda *a: connections.append(a))
+    monkeypatch.setattr(module.socket_deadline, 'close', lambda *a, **k: None)
+    (tmp_path / 'connection-1').mkdir()
+    bridge = module.Bridge(
+        'ws://unused', tmp_path, 'baseline', suite='libero_spatial',
+        trials_per_task=1, horizon=5,
+    )
+    with pytest.raises(FileExistsError):
+        bridge.handler(object())
+    assert connections == [] and bridge.connection == 0 and not bridge.lock.locked()

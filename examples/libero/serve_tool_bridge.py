@@ -16,6 +16,7 @@ import logging
 import math
 from pathlib import Path
 import threading
+import tempfile
 from brainscore.experiments import (
     Experiment,
     CallableProtocol,
@@ -144,6 +145,16 @@ class Bridge:
             return
         state = {}
         try:
+            # Check local recording storage before connecting to a remote policy.
+            destination = self.output / f'connection-{self.connection + 1}'
+            if destination.exists():
+                raise FileExistsError(destination)
+            parent = self.output.absolute()
+            while not parent.exists():
+                parent = parent.parent
+            with tempfile.TemporaryFile(dir=parent) as probe:
+                probe.write(b'UMI output check')
+                probe.flush()
             self.connection += 1
             with OpenPIPolicyClient(self.upstream) as client:
                 subject = BrainScoreModel(

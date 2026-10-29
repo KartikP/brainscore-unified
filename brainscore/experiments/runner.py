@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import shutil
 import time
+import tempfile
 import uuid
 
 from brainscore.instrumentation import ObservedSession, observe
@@ -362,6 +363,17 @@ class Experiment:
     def validate(self):
         if self.output_dir.exists():
             raise FileExistsError(self.output_dir)
+        # Probe the nearest existing parent without leaving a run directory.
+        parent = self.output_dir.absolute().parent
+        while not parent.exists():
+            parent = parent.parent
+        try:
+            with tempfile.TemporaryFile(dir=parent) as probe:
+                probe.write(b'UMI output check')
+                probe.flush()
+        except OSError as error:
+            raise type(error)(error.errno, f'Cannot write experiment output: {error}',
+                              str(self.output_dir)) from error
         self.protocol.validate(self.subject)
         names = [tool.name for tool in self.tools]
         if len(set(names)) != len(names):
