@@ -128,11 +128,16 @@ class SessionProtocol:
     The factory always receives Trial(condition, identifier). Adding conditions
     does not change its argument. For a factory written to accept only an ID,
     set factory_argument='identifier' explicitly.
+    Set collect_outputs=False to return None instead of collecting session history.
+    Attach a recording tool if the episode's events must be kept.
 
     """
     def __init__(self, identifier, session_factory, *, conditions=None, trials=(0,),
                  input_channels=(), output_channels=(), metadata=None,
-                 factory_argument='trial'):
+                 factory_argument='trial', collect_outputs: bool = True):
+        if not isinstance(collect_outputs, bool):
+            raise TypeError('collect_outputs must be a bool')
+        self.collect_outputs = collect_outputs
         self.identifier = identifier
         self.session_factory = session_factory
         self.trials = tuple(trials)
@@ -148,7 +153,8 @@ class SessionProtocol:
         return {'conditions': self.conditions, 'trials': self.trials, 'input_channels': sorted(self.input_channels),
                 'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
                 'factory_argument': self.factory_argument,
-                'reset_policy': 'before and after each trial; tools attach after initial reset'}
+                'reset_policy': 'before and after each trial; tools attach after initial reset',
+                **({} if self.collect_outputs else {'collect_outputs': False})}
 
     def validate(self, subject):
         if not callable(getattr(subject, 'interact', None)):
@@ -194,10 +200,11 @@ class SessionProtocol:
                         subject.interact(ObservedSession(session, context))
                         if getattr(session, 'complete', True) is False:
                             raise RuntimeError('Environment session ended before episode completion')
-                        results.append(session.collect() if callable(getattr(session, 'collect', None)) else None)
+                        if self.collect_outputs:
+                            results.append(session.collect() if callable(getattr(session, 'collect', None)) else None)
                 finally:
                     subject.reset()
-        return results
+        return results if self.collect_outputs else None
 
 
 class CallableProtocol:

@@ -175,3 +175,52 @@ def test_early_subject_return_cannot_complete_an_episode(tmp_path):
             protocol=SessionProtocol('grid', factory),
             tools=[RecordInputsOutputs()], output_dir=tmp_path/'early',
         ).run()
+
+
+@pytest.mark.parametrize('history_limit', [0, 2])
+def test_record_episode_without_collecting_retained_history(tmp_path, history_limit):
+    sessions = []
+    @contextmanager
+    def factory(trial):
+        with EnvironmentSession(
+            GridGameEnvironment(GridGameEnv(), max_steps=20),
+            seed=7,
+            require_specs=True,
+            history_limit=history_limit,
+        ) as session:
+            sessions.append(session)
+            yield session
+    result = Experiment(
+        subject=subject(),
+        protocol=SessionProtocol(
+            'record-episode', factory,
+            input_channels=('observation',),
+            output_channels=('motor',),
+            collect_outputs=False,
+        ),
+        tools=[RecordInputsOutputs(max_bytes=2_000_000)],
+        output_dir=tmp_path / 'episode',
+    ).run()
+    assert result.value is None and result.manifest['status'] == 'complete'
+    assert result.manifest['plan']['protocol']['config']['collect_outputs'] is False
+    session, = sessions
+    assert session.complete
+    assert len(session.input_events) <= history_limit
+    assert len(session.emitted) <= history_limit
+    assert len(session.action_events) <= history_limit
+    events = list(result.record.events())
+    applied = [e for e in events if e['kind'] == 'output'
+               and e['payload'].meta.get('action_status') == 'applied']
+    proposed = [e for e in events if e['kind'] == 'output'
+                and e['payload'].meta.get('action_status') == 'proposed']
+    inputs = [e for e in events if e['kind'] == 'input']
+    assert len(applied) == len(proposed) == len(inputs) - 1
+    assert len(applied) > len(session.emitted)
+    with pytest.raises(RuntimeError, match='history_limit'):
+        session.collect()
+
+
+@pytest.mark.parametrize('value', [0, 1, None, 'false'])
+def test_collection_setting_rejects_ambiguous_values(value):
+    with pytest.raises(TypeError, match='collect_outputs'):
+        SessionProtocol('invalid', lambda trial: None, collect_outputs=value)

@@ -135,3 +135,19 @@ are different measurements. Each benchmark declares its target and metric.
 Generic action specifications do not establish support for a new robot.
 
 For externally managed evaluation, see the [LIBERO integration](robotics_benchmark_integration.md).
+
+## Long episodes
+
+Use `EnvironmentSession(environment, history_limit=0)` to keep no in-memory history,
+or a positive limit to keep only the latest entries in each history list. The
+model and recording tools still receive every event. The default keeps all history.
+`collect()` raises once applied actions have been dropped; it never returns a
+partial episode as if it were complete.
+
+With `SessionProtocol`, set `collect_outputs=False` and attach
+`RecordInputsOutputs(max_bytes=...)`. The experiment saves events to disk and
+returns `None` instead of collecting session outputs. Without a recording tool,
+the episode events are not saved. Completion checks, resets
+and cleanup still run. Limits count entries, not payload bytes; use the recorder's
+byte budget separately. A policy's own internal history is not bounded by these
+settings.
