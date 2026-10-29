@@ -146,3 +146,166 @@ def test_invalid_experiment_envelope_rejected(tmp_path, payload):
     (root / 'experiment.json').write_text(json.dumps({'schema_version': 1, 'status': 'complete'}))
     with pytest.raises(ValueError, match='event envelope'):
         list(RunRecord(root).events())
+
+
+def long_recording(directory, count, width=0):
+    with RunRecorder(directory, metadata={}) as recorder:
+        for index in range(count):
+            recorder.record('output', [index, 'x' * width])
+    return directory
+
+
+def damage_last_byte(directory):
+    path = directory / 'events.jsonl'
+    blob = bytearray(path.read_bytes())
+    blob[-3] = ord('9') if blob[-3] != ord('9') else ord('8')
+    path.write_bytes(bytes(blob))
+
+
+def truncate_last_json(directory):
+    """Make the last line invalid JSON while keeping checksum and count consistent."""
+    path = directory / 'events.jsonl'
+    lines = path.read_bytes().splitlines(keepends=True)
+    lines[-1] = b'{"sequence": 49, \n'
+    path.write_bytes(b''.join(lines))
+    manifest_path = directory / 'manifest.json'
+    manifest = json.loads(manifest_path.read_text())
+    manifest['events_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+    manifest_path.write_text(json.dumps(manifest))
+
+
+@pytest.mark.parametrize('damage,message', [
+    (damage_last_byte, 'checksum mismatch'),
+    (lambda d: rewrite_events(d, lambda rows: rows.pop()), 'count mismatch'),
+    (lambda d: rewrite_events(d, lambda rows: rows.__setitem__(slice(-2, None), rows[:-3:-1])),
+     'order mismatch'),
+    (truncate_last_json, 'Expecting'),
+])
+def test_damage_late_in_log_fails_before_first_event(tmp_path, damage, message):
+    directory = long_recording(tmp_path / 'record', 50)
+    damage(directory)
+    with pytest.raises(ValueError, match=message):
+        next(RunRecord(directory).events())
+
+
+def test_closed_record_hash_and_values_are_exact(tmp_path):
+    directory = long_recording(tmp_path / 'record', 5, width=3)
+    manifest = RunRecord(directory).manifest
+    assert manifest['events_sha256'] == hashlib.sha256((directory / 'events.jsonl').read_bytes()).hexdigest()
+    assert manifest['event_count'] == 5
+    assert list(RunRecord(directory).outputs()) == [[index, 'xxx'] for index in range(5)]
+
+
+def test_empty_log_reads_as_no_events(tmp_path):
+    with RunRecorder(tmp_path / 'record', metadata={}):
+        pass
+    record = RunRecord(tmp_path / 'record')
+    assert record.manifest['events_sha256'] == hashlib.sha256(b'').hexdigest()
+    assert record.manifest['event_count'] == 0
+    assert list(record.events()) == []
+
+
+def test_open_record_reads_validated_prefix_and_stays_unscorable(tmp_path):
+    recorder = RunRecorder(tmp_path / 'record', metadata={})
+    recorder.record('output', 1)
+    recorder.record('output', 2)
+    record = RunRecord(recorder.directory)
+    events = record.outputs()
+    assert next(events) == 1
+    recorder.record('output', 3)  # a live recorder may append; the reader keeps its prefix
+    assert list(events) == [2]
+    with pytest.raises(ValueError, match='completed run'):
+        record.evaluate(lambda actual, target: actual, None)
+
+
+def test_closed_log_changed_during_iteration_is_rejected(tmp_path):
+    directory = long_recording(tmp_path / 'record', 3)
+    events = RunRecord(directory).outputs()
+    assert next(events) == [0, '']
+    with (directory / 'events.jsonl').open('a') as handle:
+        handle.write('{}\n')
+    with pytest.raises(ValueError, match='changed while reading'):
+        next(events)
+
+
+def test_restored_mtime_edit_is_rejected_before_affected_output(tmp_path):
+    """Restoring mtime with utime still changes ctime, which the reader checks before each yield."""
+    import os
+    directory = long_recording(tmp_path / 'record', 3)
+    path = directory / 'events.jsonl'
+    events = RunRecord(directory).outputs()
+    assert next(events) == [0, '']
+    status = path.stat()
+    with path.open('r+b') as handle:
+        handle.seek(path.read_bytes().index(b'[1, '))
+        handle.write(b'[7, ')
+    os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns))
+    # Allow coarse filesystem clocks to advance without skipping a required check.
+    import time
+    deadline = time.monotonic() + 2
+    while path.stat().st_ctime_ns == status.st_ctime_ns and time.monotonic() < deadline:
+        time.sleep(0.02)
+        os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns))
+    assert path.stat().st_ctime_ns != status.st_ctime_ns
+    with pytest.raises(ValueError, match='changed while reading'):
+        next(events)
+
+
+@pytest.mark.parametrize('call,message', [
+    (1, 'checksum mismatch'),  # before validation: the change is validated and rejected
+    (2, 'changed while reading'),  # between validation and iteration
+    (3, 'changed while reading'),  # after decoding, immediately before the first yield
+])
+def test_ordinary_write_at_each_stamp_is_rejected(tmp_path, monkeypatch, call, message):
+    from brainscore import run_record
+    directory = long_recording(tmp_path / 'record', 1)
+    path = directory / 'events.jsonl'
+    stamp, calls = run_record._stamp, []
+
+    def write_at_call(handle):
+        calls.append(None)
+        if len(calls) == call:
+            path.write_bytes(path.read_bytes().replace(b'[0, ', b'[9, '))
+        return stamp(handle)
+    monkeypatch.setattr(run_record, '_stamp', write_at_call)
+    yielded = []
+    with pytest.raises(ValueError, match=message):
+        for output in RunRecord(directory).outputs():
+            yielded.append(output)
+    assert yielded == []
+
+
+def test_replaced_closed_log_fails_closed(tmp_path):
+    """Rename-over drops a link from the open inode, changing its ctime."""
+    import os
+    directory = long_recording(tmp_path / 'record', 3)
+    events = RunRecord(directory).outputs()
+    assert next(events) == [0, '']
+    replacement = directory / 'replacement'
+    replacement.write_text('')
+    os.replace(replacement, directory / 'events.jsonl')
+    with pytest.raises(ValueError, match='changed while reading'):
+        next(events)
+
+
+def test_finalize_and_read_memory_do_not_scale_with_log_length(tmp_path):
+    import tracemalloc
+    peaks = {}
+    for count in (200, 20000):
+        directory = tmp_path / str(count)
+        recorder = RunRecorder(directory, metadata={})
+        for index in range(count):
+            recorder.record('output', [index, 'x' * 500])
+        tracemalloc.start()
+        recorder.close()
+        close_peak = tracemalloc.get_traced_memory()[1]
+        tracemalloc.reset_peak()
+        assert sum(1 for _ in RunRecord(directory).events()) == count
+        peaks[count] = (close_peak, tracemalloc.get_traced_memory()[1])
+        tracemalloc.stop()
+    size = (tmp_path / '20000' / 'events.jsonl').stat().st_size
+    assert size > 10_000_000
+    for small, large in zip(peaks[200], peaks[20000]):
+        assert large < 2 * small + 100_000, peaks
+        assert large < size / 20, peaks
+    print(f'log bytes={size} peaks(close, read)={peaks}')

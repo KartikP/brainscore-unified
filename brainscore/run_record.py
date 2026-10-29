@@ -11,6 +11,7 @@ import hashlib
 import io
 import json
 import math
+import os
 from pathlib import Path
 import uuid
 
@@ -27,6 +28,13 @@ def _event_types():
         'CameraFrame', 'Proprioception', 'EnvironmentStep', 'EnvironmentResponse',
         'Message', 'StateChange', 'Perturbation', 'PerturbationApplied', 'Selection')]
     return {t.__name__: t for t in [*types, TaskContext, StreamEvent]}
+
+
+def _stamp(handle):
+    # ctime changes on any write, link change or utime call, and cannot be set by the writer.
+    status = os.fstat(handle.fileno())
+    return (status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns,
+            status.st_ctime_ns)
 
 
 class PayloadCodec:
@@ -246,7 +254,8 @@ class RunRecorder:
             event_file = self.directory / 'events.jsonl'
             if not event_file.exists():
                 event_file.write_text('')
-            self.manifest['events_sha256'] = hashlib.sha256(event_file.read_bytes()).hexdigest()
+            with event_file.open('rb') as handle:
+                self.manifest['events_sha256'] = hashlib.file_digest(handle, 'sha256').hexdigest()
             self._write_manifest()
             self._closed = True
 
@@ -276,28 +285,79 @@ class RunRecord:
         self.metadata = self.codec.decode(self.manifest['metadata'])
 
     def events(self):
-        blob = (self.directory / 'events.jsonl').read_bytes()
+        """Yield events after the whole log passes checksum, JSON, count and order checks.
+
+        Two passes over one open file: memory is bounded by the largest event line,
+        not by log length. Callers that collect events into a list are not bounded.
+        """
         expected = self.manifest.get('events_sha256')
-        if expected and hashlib.sha256(blob).hexdigest() != expected:
-            raise ValueError('Run event checksum mismatch')
-        rows = [json.loads(line) for line in blob.splitlines()]
-        if self.manifest.get('event_count', len(rows)) != len(rows):
-            raise ValueError('Run event count mismatch')
-        for index, row in enumerate(rows):
-            if row['sequence'] != index:
-                raise ValueError('Run event order mismatch')
-            for key in ('args', 'kwargs', 'payload'):
-                if key in row:
-                    row[key] = self.codec.decode(row[key])
-            if self.experiment_manifest is not None:
-                # Experiment records carry lifecycle and condition metadata in an envelope.
-                # Standalone RunRecord callers retain their original representation.
-                envelope = row['payload']
-                if not isinstance(envelope, dict) or 'kind' not in envelope:
-                    raise ValueError('Invalid experiment event envelope')
-                yield envelope
-            else:
-                yield row
+        with (self.directory / 'events.jsonl').open('rb') as handle:
+            # Concurrency limit: no lock or snapshot copy. For a closed record, the file's
+            # identity, size, mtime and ctime are taken before validation and rechecked after
+            # it and before each yield, so any write the filesystem timestamps fails closed.
+            # This does not defend against a writer who can forge ctime (clock or root
+            # access) or whose write lands within the filesystem's timestamp resolution of
+            # the previous change. Open records are read as an unchecked diagnostic prefix.
+            initial = _stamp(handle) if expected else None
+
+            def check_unchanged():
+                if initial and _stamp(handle) != initial:
+                    raise ValueError('Run event log changed while reading')
+
+            digest, size, count, parse_error, order_error = hashlib.sha256(), 0, 0, None, None
+            for chunk in iter(handle.readline, b''):
+                digest.update(chunk)
+                size += len(chunk)
+                for line in chunk.splitlines():
+                    if parse_error is None:
+                        try:
+                            row = json.loads(line)
+                        except ValueError as error:  # reported after the checksum, as before
+                            parse_error = error
+                        else:
+                            try:
+                                if order_error is None and row['sequence'] != count:
+                                    order_error = ValueError('Run event order mismatch')
+                            except (KeyError, TypeError) as error:
+                                order_error = error
+                    count += 1
+            verified = digest.hexdigest()
+            if expected and verified != expected:
+                raise ValueError('Run event checksum mismatch')
+            if parse_error is not None:
+                raise parse_error
+            if self.manifest.get('event_count', count) != count:
+                raise ValueError('Run event count mismatch')
+            if order_error is not None:
+                raise order_error
+            check_unchanged()
+            handle.seek(0)
+            digest, index = hashlib.sha256(), 0
+            while size:
+                chunk = handle.readline(size)
+                if not chunk:
+                    break
+                size -= len(chunk)
+                digest.update(chunk)
+                for line in chunk.splitlines():
+                    row = json.loads(line)
+                    if row['sequence'] != index:
+                        raise ValueError('Run event log changed while reading')
+                    index += 1
+                    for key in ('args', 'kwargs', 'payload'):
+                        if key in row:
+                            row[key] = self.codec.decode(row[key])
+                    if self.experiment_manifest is not None:
+                        # Experiment records carry lifecycle and condition metadata in an envelope.
+                        # Standalone RunRecord callers retain their original representation.
+                        envelope = row['payload']
+                        if not isinstance(envelope, dict) or 'kind' not in envelope:
+                            raise ValueError('Invalid experiment event envelope')
+                        row = envelope
+                    check_unchanged()
+                    yield row
+            if index != count or digest.hexdigest() != verified:
+                raise ValueError('Run event log changed while reading')
 
     def outputs(self):
         """Replay saved measurements into downstream analyses."""

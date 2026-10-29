@@ -103,6 +103,17 @@ imported payload classes are used. An exception marks the run failed, including
 model exceptions caught by the calling experiment. Interrupted records remain
 `open` and are diagnostic evidence, not completed experiments.
 
+`RunRecord.events()` checks the whole event log (checksum, JSON, count and order)
+before yielding the first event, then streams it. Memory grows with the largest
+single event, not with the number of events; collecting events into a list
+(`list(record.events())`) still holds them all. Do not modify, replace or link a
+closed record while reading it. The reader stops with an error if the log file's
+identity, size, modification time or change time differs from when reading
+began. This catches ordinary writes, including a write that restores the
+modification time. It is not a defense against someone who can forge file
+timestamps, or whose write falls within the filesystem's timestamp resolution.
+Open (interrupted) records are read as an unchecked prefix for diagnosis only.
+
 Pass local file assets as `pathlib.Path` objects to copy and hash their contents;
 StimulusSet `stimulus_paths` are copied automatically. Arbitrary strings remain
 strings and are not assumed to be file paths. A raw path string in another
