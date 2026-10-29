@@ -113,6 +113,14 @@ and adds trial records, initial-state hashes, error reporting, and distinct vide
 filenames. These additions make the result inspectable without redefining its
 score. Failed and interrupted trials must remain visible.
 
+With [`serve_tool_bridge.py`](../examples/libero/serve_tool_bridge.py), the
+evaluator and bridge also exchange a start message, per-call annotations, a
+final receipt and an acknowledgment sent only after the UMI records are saved.
+`compare.py --umi-experiment` joins those records to the report. `serve_bridge.py`
+records remain transport-only: they can be marked complete after a disconnect,
+a known gap tracked separately. See the
+[LIBERO README](../examples/libero/README.md#use-the-official-evaluator-with-tools).
+
 Check reset behavior explicitly. OpenPI's websocket client does not reset the
 server's random state, so we restart the policy server for matched runs. This
 integration does not establish support for recurrent policies that need a

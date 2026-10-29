@@ -24,7 +24,7 @@ OPTIONAL_SKIPS = {
         'tests/test_lebel2023_language_mask.py::TestAgainstTheAtlas::test_probabilities_are_a_probability': 'LanA atlas not present; set BRAINSCORE_LANA_ATLAS (osf.io/kzwbh)',
         'tests/test_lebel2023_language_mask.py::TestAgainstTheAtlas::test_downsampling_takes_the_leading_ico5_block': 'LanA atlas not present; set BRAINSCORE_LANA_ATLAS (osf.io/kzwbh)',
         'tests/test_lebel2023_language_mask.py::TestLanguageMaskVariant::test_variant_reports_the_masked_mean': 'LanA atlas not present; set BRAINSCORE_LANA_ATLAS (osf.io/kzwbh)',
-        'tests/test_libero_transport.py::test_reference_and_umi_over_real_websocket_with_record_replay': 'Requires pinned OpenPI source',
+        'tests/test_libero_transport.py': 'Requires pinned OpenPI source',
         'tests/test_openpi_remote.py::test_loopback_record_ablate_ack_and_cleanup': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
         'tests/test_openpi_remote.py::test_disconnect_during_inference_cleans_before_next_request': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
         'tests/test_openpi_remote.py::test_record_budget_failure_removes_hooks': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
