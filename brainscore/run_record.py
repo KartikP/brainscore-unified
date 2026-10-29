@@ -14,7 +14,9 @@ import json
 import math
 import os
 from pathlib import Path
+from typing import Any, Iterator
 import uuid
+import warnings
 
 import numpy as np
 
@@ -36,6 +38,16 @@ def _stamp(handle):
     status = os.fstat(handle.fileno())
     return (status.st_dev, status.st_ino, status.st_size, status.st_mtime_ns,
             status.st_ctime_ns)
+
+
+def _invalid_closed_manifest(manifest):
+    """Why a closed manifest cannot be verified, or None if its checksum and count are usable."""
+    digest, count = manifest.get('events_sha256'), manifest.get('event_count')
+    if (not isinstance(digest, str) or len(digest) != 64
+            or any(c not in '0123456789abcdef' for c in digest)
+            or type(count) is not int or count < 0):
+        return 'Closed run record lacks a valid event checksum or count'
+    return None
 
 
 class RecordingBudgetExceeded(RuntimeError):
@@ -345,6 +357,177 @@ class RunRecord:
         self.codec = PayloadCodec(self.directory)
         self.metadata = self.codec.decode(self.manifest['metadata'])
 
+    @classmethod
+    def inspect(cls, directory: str | os.PathLike) -> dict[str, Any]:
+        """Summarize what survives in a record without trusting or repairing it.
+
+        Returns a small JSON-serializable dict; never the log itself. Reads only.
+        status is one of:
+          complete    closed complete, checksum/count/order/payloads verified, and any
+                      experiment.json wrapper is complete too
+          failed      closed failed record or failed experiment; log otherwise intact
+          incomplete  never closed (forced death, setup death, or a writer that is still
+                      running; this does not tell them apart) or experiment still 'running'
+          corrupt     a closed record failing checks, a malformed event before the end of
+                      the log, or inconsistent record/experiment states
+        valid_events/valid_bytes cover the decodable prefix that unverified_prefix()
+        yields; it stops at the first bad line and never resumes after it. An
+        unterminated final line, even one that parses, is reported in torn_tail_bytes
+        and excluded. checksum is match/mismatch for closed records, not_recorded
+        otherwise
+        ('invalid' if a closed manifest's checksum/count is malformed). A log that shrinks while being read is corrupt. Unreadable
+        manifests, metadata assets or logs are reported as corrupt; a readable manifest
+        with an unknown schema version raises ValueError, as in RunRecord(). Memory is
+        bounded by the largest event, not the log length.
+        """
+        directory = Path(directory)
+        if not directory.is_dir():
+            raise FileNotFoundError(directory)
+        report = {'status': None, 'record_status': None, 'experiment_status': None,
+                  'valid_events': 0, 'valid_bytes': 0, 'log_bytes': None,
+                  'event_count_recorded': None, 'checksum': 'not_recorded',
+                  'torn_tail_bytes': 0, 'error': None}
+
+        def corrupt(error):
+            report.update(status='corrupt', error=f'{type(error).__name__}: {error}')
+            return report
+
+        def read_versioned(path, expected, name):
+            # Unreadable JSON is corruption; a readable but unknown schema is rejected.
+            try:
+                manifest = json.loads(path.read_text())
+                version = manifest.get('schema_version')
+            except (OSError, ValueError, AttributeError) as error:
+                return None, error
+            if version != expected:
+                raise ValueError(f'Unsupported {name} schema version')
+            return manifest, None
+
+        record_directory = directory
+        if (directory / 'experiment.json').is_file():
+            experiment, error = read_versioned(directory / 'experiment.json', 1, 'experiment')
+            if error:
+                return corrupt(error)
+            report['experiment_status'] = experiment.get('status')
+            record_directory = directory / 'inputs_outputs'
+            try:
+                tools = [tool.get('name') for tool in experiment['plan']['tools']]
+            except (KeyError, TypeError, AttributeError) as error:
+                return corrupt(error)
+            if 'inputs_outputs' not in tools:
+                raise ValueError('Experiment was not configured with RecordInputsOutputs')
+        log = record_directory / 'events.jsonl'
+        if (record_directory / 'manifest.json').is_file():
+            manifest, error = read_versioned(record_directory / 'manifest.json', SCHEMA_VERSION,
+                                             'run-record')
+            if error:
+                return corrupt(error)
+            report['record_status'] = manifest.get('status')
+            try:
+                for _ in cls(directory)._prefix(report):
+                    pass
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                # Metadata assets or the event log are missing or damaged.
+                return corrupt(error)
+        elif log.is_file() and log.stat().st_size:
+            report.update(record_status='missing', status='corrupt',
+                          error='Events exist but manifest.json is missing')
+        else:
+            # The cause cannot be known: setup died, the manifest was lost, or this was
+            # never a record. Any assets left here are unverified.
+            report.update(record_status='missing', status='incomplete',
+                          error='No manifest.json and no events: recorder setup did not '
+                                'finish, the manifest was lost, or this is not a run record')
+        experiment = report['experiment_status']
+        if experiment is not None and report['status'] != 'corrupt':
+            if experiment == 'running':
+                report['status'] = 'incomplete'
+            elif experiment == 'failed':
+                report['status'] = 'failed'
+            elif experiment != 'complete' or report['status'] != 'complete':
+                report['status'] = 'corrupt'
+                report['error'] = report['error'] or (
+                    f'Experiment status {experiment!r} conflicts with record status '
+                    f'{report["record_status"]!r}')
+        return report
+
+    def unverified_prefix(self) -> Iterator[dict[str, Any]]:
+        """DIAGNOSTIC ONLY: yield decoded events from the start of the log until the first
+        torn, malformed, out-of-order or undecodable line, without checksum or count checks.
+
+        Use for records that inspect() reports as incomplete. The events may come from a
+        run that never finished (or a tampered log) and are not a measurement; evaluate(),
+        outputs() and replay never use this path. Emits a RuntimeWarning when started.
+        """
+        warnings.warn(f'Reading an unverified prefix of {self.directory}; these events are '
+                      'not checked as a complete run. See RunRecord.inspect().',
+                      RuntimeWarning, stacklevel=2)
+        yield from self._prefix({})
+
+    def _prefix(self, report):
+        status = self.manifest.get('status')
+        report.update(record_status=status, event_count_recorded=self.manifest.get('event_count'))
+        expected = self.manifest.get('events_sha256')
+        digest, index, valid_bytes, error = hashlib.sha256(), 0, 0, None
+        with (self.directory / 'events.jsonl').open('rb') as handle:
+            # A live writer may append after this snapshot; those bytes are not read.
+            remaining = report['log_bytes'] = os.fstat(handle.fileno()).st_size
+            shrank = False
+            while remaining:
+                line = handle.readline(remaining)
+                if not line:
+                    shrank, error = True, f'Event log shrank by {remaining} bytes while reading'
+                    break
+                remaining -= len(line)
+                digest.update(line)
+                if error is not None:
+                    continue  # hash the rest; never resume after a bad line
+                if not line.endswith(b'\n'):
+                    report['torn_tail_bytes'] = len(line)
+                    error = f'Unterminated final line ({len(line)} bytes) excluded'
+                    continue
+                try:
+                    row = json.loads(line)
+                    if type(row) is not dict or type(row.get('sequence')) is not int \
+                            or row['sequence'] != index:
+                        raise ValueError('Run event order mismatch')
+                    for key in ('args', 'kwargs', 'payload'):
+                        if key in row:
+                            row[key] = self.codec.decode(row[key])
+                    if self.experiment_manifest is not None:
+                        row = row['payload']
+                        if not isinstance(row, dict) or 'kind' not in row:
+                            raise ValueError('Invalid experiment event envelope')
+                except Exception as problem:
+                    error = f'Event {index}: {type(problem).__name__}: {problem}'
+                    continue
+                index += 1
+                valid_bytes += len(line)
+                report.update(valid_events=index, valid_bytes=valid_bytes)
+                yield row
+        torn = report.get('torn_tail_bytes', 0)
+        if shrank:
+            report['status'] = 'corrupt'
+        elif status == 'open' and (error is None or torn):
+            report['status'] = 'incomplete'
+        elif status in ('complete', 'failed'):
+            report['checksum'] = 'match' if digest.hexdigest() == expected else 'mismatch'
+            # A failed record may end in the partial line whose write failed.
+            if _invalid_closed_manifest(self.manifest):
+                report['checksum'] = 'invalid'
+                error = _invalid_closed_manifest(self.manifest)
+            elif report['checksum'] == 'mismatch':
+                error = 'Run event checksum mismatch'
+            elif self.manifest.get('event_count') != index:
+                error = error if error and not torn else 'Run event count mismatch'
+            elif torn and status == 'failed':
+                error = None
+            report['status'] = status if error is None else 'corrupt'
+        else:
+            report['status'] = 'corrupt'
+            error = error or f'Unexpected record status {status!r}'
+        report['error'] = error
+
     def events(self):
         """Yield events after the whole log passes checksum, JSON, count and order checks.
 
@@ -352,6 +535,13 @@ class RunRecord:
         not by log length. Callers that collect events into a list are not bounded.
         """
         expected = self.manifest.get('events_sha256')
+        status = self.manifest.get('status')
+        if status in ('complete', 'failed'):
+            invalid = _invalid_closed_manifest(self.manifest)
+            if invalid:
+                raise ValueError(invalid)
+        elif status != 'open':
+            raise ValueError(f'Unknown run-record status: {status!r}')
         with (self.directory / 'events.jsonl').open('rb') as handle:
             # Concurrency limit: no lock or snapshot copy. For a closed record, the file's
             # identity, size, mtime and ctime are taken before validation and rechecked after
@@ -432,7 +622,11 @@ class RunRecord:
                 or (self.experiment_manifest is not None
                     and self.experiment_manifest.get("status") != "complete")):
             raise ValueError("Measurement replay requires a completed run")
+        # Read to the end so every validation check runs before the metric does.
+        found, selected = False, None
         for index, output in enumerate(self.outputs()):
             if index == output_index:
-                return metric(output, target)
-        raise IndexError(output_index)
+                found, selected = True, output
+        if not found:
+            raise IndexError(output_index)
+        return metric(selected, target)
