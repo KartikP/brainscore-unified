@@ -34,7 +34,7 @@ The same experiment tools work across domains when the subject exposes the requi
 | Assemble an experiment | `Experiment` | Combines a subject, protocol, tools and a new output folder; validates declarations and storage before execution |
 | Choose the procedure | `SessionProtocol`, `CallableProtocol` | Sessions manage conditions/trials; an existing evaluator keeps its own procedure |
 | Control delivery | Sessions and streaming helpers | Batches, individual inputs, windows, and clock policies; no hard real-time guarantee |
-| Bound long-run storage | `EnvironmentSession(history_limit=...)`, `SessionProtocol(collect_outputs=False)`, `RecordInputsOutputs(max_bytes=...)` | History limits count entries; the recorder fails explicitly at its byte budget. Policies may retain their own state |
+| Limit history and call recordings | `EnvironmentSession(history_limit=...)`, `SessionProtocol(collect_outputs=False)`, `RecordInputsOutputs(max_bytes=...)` | History limits count entries; the recorder fails explicitly at its byte budget. Other artifacts and policy state need separate limits |
 | Inspect an interrupted record | `RunRecord.inspect`, `unverified_prefix` | Read-only diagnostic prefix; incomplete or corrupt runs cannot be scored as completed measurements |
 
 ## Ready-to-use experiment tools
@@ -122,3 +122,5 @@ Install the four packages together using the [peer revisions and constraints](..
 Use the [numerical policy](numerical_policy.md) for exactness and error budgets. Use separate subject/tool instances for concurrent experiments; the experiment runner is synchronous. Custom object serialization, physical-robot safety, distributed scheduling, a replay UI and automatic circuit discovery are not built-in guarantees.
 
 [Release requirements](production_release.md) · [Qualification records](qualification/) · [Shared vocabulary](conventions.md)
+
+See the [external-environment qualification report](qualification/2026-10-29-external-environments.md) for installed-package tests, long-run fixtures and trained-model qualification limits.

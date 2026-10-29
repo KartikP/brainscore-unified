@@ -2,7 +2,7 @@
 
 **Transport results:** both routes passed 10/10 smoke trials and 221 saved requests matched exactly. The full Spatial run later completed: reference 496/500 successes, UMI 488/500. Those closed-loop outcomes were not equivalent.
 
-**Internal tools (on the v2 branch):** a separate ten-task check passed after a GPU recording fix. Baseline, recording and ablation each succeeded on 10/10 tasks; baseline and recording matched all 223 observations/action chunks exactly. See the [qualification report](../../docs/qualification/2026-10-06-openpi-tools.md).
+**Historical internal-tools check (October 6, 2026):** a separate ten-task check passed after a GPU recording fix. Baseline, recording and ablation each succeeded on 10/10 tasks; baseline and recording matched all 223 observations/action chunks exactly. See the [qualification report](../../docs/qualification/2026-10-06-openpi-tools.md).
 
 For the design and steps to reuse in another benchmark, read
 [Connect a robotics benchmark](../../docs/robotics_benchmark_integration.md).
