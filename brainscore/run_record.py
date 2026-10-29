@@ -364,8 +364,11 @@ class RunRecord:
         Returns a small JSON-serializable dict; never the log itself. Reads only.
         status is one of:
           complete    closed complete, checksum/count/order/payloads verified, and any
-                      experiment.json wrapper is complete too
-          failed      closed failed record or failed experiment; log otherwise intact
+                      experiment.json wrapper is complete too. The experiment's
+                      result.json and other artifacts are not checked.
+          failed      closed failed record with an intact log, or a failed experiment.
+                      If that experiment's record was never closed, its log is
+                      unverified (checksum not_recorded); only the prefix was read.
           incomplete  never closed (forced death, setup death, or a writer that is still
                       running; this does not tell them apart) or experiment still 'running'
           corrupt     a closed record failing checks, a malformed event before the end of
@@ -373,9 +376,9 @@ class RunRecord:
         valid_events/valid_bytes cover the decodable prefix that unverified_prefix()
         yields; it stops at the first bad line and never resumes after it. An
         unterminated final line, even one that parses, is reported in torn_tail_bytes
-        and excluded. checksum is match/mismatch for closed records, not_recorded
-        otherwise
-        ('invalid' if a closed manifest's checksum/count is malformed). A log that shrinks while being read is corrupt. Unreadable
+        and excluded. checksum is match/mismatch for closed records, invalid if a
+        closed manifest's checksum/count is malformed, and not_recorded otherwise.
+        A log that shrinks while being read is corrupt. Unreadable
         manifests, metadata assets or logs are reported as corrupt; a readable manifest
         with an unknown schema version raises ValueError, as in RunRecord(). Memory is
         bounded by the largest event, not the log length.

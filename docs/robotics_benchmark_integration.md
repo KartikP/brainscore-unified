@@ -159,10 +159,12 @@ do not assume the saved tuning file works on another GPU or software stack.
 
 With cached autotuning, the trained-policy smoke test completed **10/10 tasks on
 both routes**, and **221 saved inference requests matched exactly** through UMI.
-The full Spatial evaluation is still running at the time of writing. This is a
-candidate integration, not a completed full-suite qualification.
+This historical smoke test is not full-suite qualification. The hardened
+completion and failure paths also have model-free transport tests; those tests
+do not establish trained-policy parity on a new source revision.
 
-This example does not demonstrate internal activation recording, interventions,
-physical robot control, or a trained DROID evaluation. Each needs its own
-integration and evidence. Use the [DROID guide](droid_integration.md) for the
+The original transport smoke test did not exercise internal tools. Separate
+[OpenPI tool qualification](qualification/2026-10-06-openpi-tools.md) covers
+recording, ablation and restoration at three supported sampler sites. Neither
+report establishes physical robot control or trained DROID qualification. Use the [DROID guide](droid_integration.md) for the
 recorded-episode path.

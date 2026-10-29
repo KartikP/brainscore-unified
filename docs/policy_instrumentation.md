@@ -5,8 +5,8 @@ Use the same `RecordActivity`, `Ablate`, and `Selection` tools used for other mo
 | Policy | Provider | Scope |
 | --- | --- | --- |
 | Local PyTorch | `TorchInstrumentation(network)` | The network's named modules |
-| Local OpenPI/JAX | `OpenPIInstrumentation(policy, checkpoint=...)` | Three sites in the pinned Pi0/Pi0.5 sampler; **feature branch** |
-| Remote OpenPI/JAX | `RemoteOpenPIInstrumentation(client)` | Same sites through `OpenPIToolServer`; **feature branch** |
+| Local OpenPI/JAX | `OpenPIInstrumentation(policy, checkpoint=...)` | Three sites in the pinned Pi0/Pi0.5 sampler; pinned OpenPI sampler only |
+| Remote OpenPI/JAX | `RemoteOpenPIInstrumentation(client)` | Same sites through `OpenPIToolServer`; pinned OpenPI sampler only |
 | Other JAX policies | Custom provider | No general JAX layer-hook API is included |
 | Actions-only service | `RecordInputsOutputs` | Requests and actions; no internal access |
 

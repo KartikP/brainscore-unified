@@ -151,3 +151,20 @@ the episode events are not saved. Completion checks, resets
 and cleanup still run. Limits count entries, not payload bytes; use the recorder's
 byte budget separately. A policy's own internal history is not bounded by these
 settings.
+
+
+## Check your adapter
+
+Call `Experiment.validate()` before running. It checks declared channels, tools,
+and whether the output parent accepts a temporary file, without resetting a
+subject or stepping an environment. Storage can still fail later; this is not a
+space reservation. `EnvironmentSession(require_specs=True)` checks observation
+and action specifications before the first policy call. Shapes and units that
+an adapter does not declare remain unknown.
+
+Use the [external-package conformance tests](../examples/partner_tool/tests/test_conformance.py)
+as a starting point. The [CPU lifecycle example](../examples/external_environment_checks/README.md)
+checks long episodes, independent workers, intervention and recovery after failure.
+It uses a fixed-weight fixture, not a trained robot policy. Give each worker its
+own subject, environment, random state, server and output directory. Recording
+observations does not save simulator state or enable mid-episode recovery.
