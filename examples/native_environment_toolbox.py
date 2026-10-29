@@ -16,19 +16,22 @@ model is small and the episodes are short.
 
 The snapshot must already be staged locally; nothing here downloads. Before
 loading, every loader file is checked against the pinned Hub listing
-(coggym_toolbox.SMOLVLM_MANIFEST); a missing, changed or extra file fails:
+(example_qualification.SMOLVLM_MANIFEST); a missing, changed or extra file fails:
 
     python examples/native_environment_toolbox.py \\
       --model-path /path/to/SmolVLM-256M-Instruct/snapshot --output-dir new-results
 
 qualification.json is written on success and on failure (status, error, hashes).
+Every policy response carries the run's provenance in its metadata, and the
+SmolVLM policy also keeps its generated answer and whether it parsed.
 """
 import argparse
 from contextlib import contextmanager
+from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
-import numpy as np
 import torch
 
 from brainscore.experiments import (
@@ -38,21 +41,60 @@ from brainscore.experiments import (
 from brainscore.harnesses.grid_game import GridGameEnv, GridGameEnvironment
 from brainscore.model_helpers.local_vlm_policy import VISUAL_PROMPT, parse_directional_action
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-from brainscore_core.events import Selection
+from brainscore_core.events import EnvironmentResponse, Selection
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore_core.streaming_helpers import EnvironmentSession
 
-from coggym_toolbox import (
-    SMOLVLM_MANIFEST, check_ablation, environment, qualification_report, require,
-    snapshot_digest, verify_model_identity,
+from example_qualification import (
+    SMOLVLM_MANIFEST,
+    check_ablation,
+    environment,
+    qualification_report,
+    require,
+    snapshot_digest,
+    verify_model_identity,
 )
 
 MODEL_ID = SMOLVLM_MANIFEST['repository']
 MODEL_REVISION = SMOLVLM_MANIFEST['revision']
 LAYER = 'model.text_model.layers.0.mlp.up_proj'
+# An answer naming no direction is applied as 'up', so every run stays deterministic.
+UNPARSED_ACTION = 0
 
 
-def load_smolvlm_policy(model_path: Path, max_new_tokens: int):
+def answer_response(answer: str) -> EnvironmentResponse:
+    """Turn a generated answer into an action, keeping the answer and the parse result."""
+    parsed = parse_directional_action(answer, prefer_last=True)
+    valid = parsed >= 0
+    return EnvironmentResponse(
+        action=parsed if valid else UNPARSED_ACTION,
+        metadata={
+            'answer': answer,
+            'valid': valid,
+            'parse_error': None if valid else 'no direction word in the answer',
+            'fallback_action': None if valid else UNPARSED_ACTION,
+        },
+    )
+
+
+def with_provenance(policy: Callable, *, provenance: dict[str, Any]) -> Callable:
+    """Wrap a policy so every response carries provenance in its metadata.
+
+    The policy may return an EnvironmentResponse or a bare action.
+    """
+    def respond(observation, history) -> EnvironmentResponse:
+        result = policy(observation, history)
+        if not isinstance(result, EnvironmentResponse):
+            result = EnvironmentResponse(action=result)
+        return replace(result, metadata={
+            **result.metadata,
+            'provenance': deepcopy({**result.metadata.get('provenance', {}), **provenance}),
+        })
+
+    return respond
+
+
+def load_smolvlm_policy(model_path: Path, max_new_tokens: int) -> tuple[Callable, Any]:
     """Return (policy, torch model) for a local SmolVLM snapshot.
 
     build_visual_policy is not reused: it loads the Qwen class whenever that
@@ -75,9 +117,7 @@ def load_smolvlm_policy(model_path: Path, max_new_tokens: int):
         with torch.inference_mode():
             output = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         answer = processor.decode(output[0, inputs['input_ids'].shape[-1]:], skip_special_tokens=True)
-        action = parse_directional_action(answer, prefer_last=True)
-        # ponytail: an unparsed answer maps to 'up' so every run stays deterministic.
-        return 0 if action < 0 else action
+        return answer_response(answer)
 
     return policy, model
 
@@ -96,12 +136,16 @@ class _LoggedGrid(GridGameEnvironment):
 
 
 def direct_episode(policy: Callable, seed: int, *, size: int, max_steps: int) -> dict:
-    """Reference loop: no session, subject, recorder or hooks."""
+    """Reference loop: no session, subject, recorder or hooks.
+
+    The policy may return an EnvironmentResponse or a bare action.
+    """
     env = GridGameEnv(size=size, seed=seed, max_steps=max_steps)
     observation = env.reset(seed=seed)
     actions, total = [], 0.
     for _ in range(max_steps):
-        action = int(policy(observation, ()))
+        result = policy(observation, ())
+        action = int(result.action if isinstance(result, EnvironmentResponse) else result)
         observation, reward, done, _ = env.step(action)
         actions.append(action)
         total += reward
@@ -120,6 +164,8 @@ def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | No
     load() returns (policy, torch model); it runs inside the report so a
     loading failure is reported too. asset_dir, if given, is hashed first. With
     a manifest, asset_dir must match it (verify_model_identity) before load().
+    The report's provenance is copied into every policy response and into the
+    metadata of every Experiment.
     """
     output_dir.mkdir(parents=True, exist_ok=False)
     report = {
@@ -136,7 +182,9 @@ def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | No
             report['provenance']['model_identity'] = verify_model_identity(asset_dir, manifest)
         if asset_dir is not None:
             report['provenance']['model_sha256'] = snapshot_digest(asset_dir)
-        policy, model = load()
+        loaded_policy, model = load()
+        response_provenance = deepcopy(report['provenance'])
+        policy = with_provenance(loaded_policy, provenance=response_provenance)
         module = dict(model.named_modules())[layer]
         generator = torch.Generator().manual_seed(7)
         indices = sorted(torch.randperm(module.out_features, generator=generator)
@@ -164,7 +212,8 @@ def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | No
                 tools=tools,
                 instrumentation=instrumentation if tools else None,
                 output_dir=output_dir / name,
-                metadata={'purpose': report['purpose'], 'condition': name},
+                metadata={'purpose': report['purpose'], 'condition': name,
+                          'provenance': response_provenance},
             ).run()
             require(result.manifest['status'] == 'complete', f'{name} run completed')
             require(not any(m._forward_hooks or m._forward_pre_hooks for m in model.modules()),
@@ -214,7 +263,7 @@ def main() -> None:
         parser.error('Use positive limits and distinct seeds')
     report = qualify(
         args.output_dir,
-        lambda: load_smolvlm_policy(args.model_path, args.max_new_tokens),
+        lambda: load_smolvlm_policy(args.model_path, max_new_tokens=args.max_new_tokens),
         asset_dir=args.model_path,
         seeds=tuple(args.seeds),
         max_steps=args.max_steps,

@@ -168,3 +168,15 @@ checks long episodes, independent workers, intervention and recovery after failu
 It uses a fixed-weight fixture, not a trained robot policy. Give each worker its
 own subject, environment, random state, server and output directory. Recording
 observations does not save simulator state or enable mid-episode recovery.
+
+## Keep answers interpretable
+
+When a policy parses generated text into an action, keep the original answer,
+`valid`, `parse_error` and any fallback action in `EnvironmentResponse.metadata`.
+Keep the model revision and inference settings under its `provenance` key and
+include them in the experiment metadata. A saved action then remains interpretable
+when copied separately from the qualification report.
+
+The [native-environment example](../examples/native_environment_toolbox.py) shows
+this without adding a method to the model interface. Its fallback to “up” remains
+a qualification-fixture choice, not a default for other policies.

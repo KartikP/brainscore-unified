@@ -32,10 +32,19 @@ def _optimized(code: str, *args: str) -> subprocess.CompletedProcess:
                           capture_output=True, text=True, env=env, timeout=110)
 
 
-def _tiny_fixture(drift_after: int | None = None):
+# Fixture "generated answers": one per action, and one that names no direction.
+FIXTURE_ANSWERS = ('Action: up', 'I would go down.', 'left', 'go right')
+UNSURE_ANSWER = 'not sure'
+
+
+def _tiny_fixture(drift_after: int | None = None, *, answers: bool = False):
     """A fixed-weight one-layer policy over the mean frame colour.
 
     With drift_after=n, calls after the first n choose a different action.
+    With answers=True, the policy returns an EnvironmentResponse built from a
+    fixture answer, like the SmolVLM policy, instead of a bare integer. While
+    the player is in the left column it answers UNSURE_ANSWER, so the
+    fallback is exercised too.
     """
     import torch
 
@@ -50,7 +59,12 @@ def _tiny_fixture(drift_after: int | None = None):
         with torch.no_grad():
             scores = model(x)[:4]
         drifted = drift_after is not None and len(calls) > drift_after
-        return int(scores.argmin() if drifted else scores.argmax())
+        choice = int(scores.argmin() if drifted else scores.argmax())
+        if answers:
+            from native_environment_toolbox import answer_response
+            unsure = any(row.startswith('P') for row in observation['ascii'].splitlines())
+            return answer_response(UNSURE_ANSWER if unsure else FIXTURE_ANSWERS[choice])
+        return choice
 
     return policy, model
 
@@ -72,7 +86,7 @@ qualify(out, lambda: _tiny_fixture(drift_after=calls), asset_dir=assets, layer='
 @pytest.mark.timeout(120)
 def test_gates_raise_under_python_optimize():
     result = _optimized(
-        'import coggym_toolbox as t\n'
+        'import example_qualification as t\n'
         'from types import SimpleNamespace\n'
         'import numpy as np\n'
         'event = lambda when, x: {"kind": "activity", "payload": {"when": when, "value": {"array": x}}}\n'
@@ -118,6 +132,94 @@ def test_native_tiny_fixture_passes_and_restores(tmp_path):
     assert not any(m._forward_hooks for m in model.modules())
 
 
+@pytest.mark.parametrize('answer, action, valid', [
+    ('Action: left', 2, True),
+    ('up, then right', 3, True),
+    ('I cannot tell from this image.', 0, False),
+    ('', 0, False),
+])
+def test_answer_response_keeps_answer_and_fallback(answer, action, valid):
+    """The applied action is unchanged; the answer and the parse result are kept."""
+    from brainscore.model_helpers.local_vlm_policy import parse_directional_action
+    from native_environment_toolbox import UNPARSED_ACTION, answer_response
+
+    response = answer_response(answer)
+    parsed = parse_directional_action(answer, prefer_last=True)
+    assert response.action == action == (parsed if parsed >= 0 else UNPARSED_ACTION)
+    assert response.metadata['answer'] == answer
+    assert response.metadata['valid'] is valid
+    assert (response.metadata['parse_error'] is None) is valid
+    assert response.metadata['fallback_action'] == (None if valid else UNPARSED_ACTION)
+
+
+def test_with_provenance_accepts_responses_and_bare_actions():
+    from brainscore_core.events import EnvironmentResponse
+    from native_environment_toolbox import answer_response, direct_episode, with_provenance
+
+    provenance = {'model_sha256': 'f' * 64}
+    bare = with_provenance(lambda observation, history: 3, provenance=provenance)
+    answered = with_provenance(lambda observation, history: answer_response('Action: down'),
+                               provenance=provenance)
+    assert bare(None, ()) == EnvironmentResponse(action=3, metadata={'provenance': provenance})
+    response = answered(None, ())
+    assert response.action == 1
+    assert response.metadata['provenance'] == provenance
+    assert response.metadata['answer'] == 'Action: down' and response.metadata['valid']
+    response.metadata['provenance']['model_sha256'] = 'changed by a consumer'
+    assert answered(None, ()).metadata['provenance'] == provenance
+    # The direct loop applies the same actions for both policy return types.
+    for seed in (0, 1):
+        plain = direct_episode(lambda o, h: 1, seed, size=4, max_steps=6)
+        wrapped = direct_episode(lambda o, h: EnvironmentResponse(action=1), seed, size=4, max_steps=6)
+        assert plain == wrapped
+
+
+def _responses(directory):
+    """The EnvironmentResponses the environment applied, from one Experiment's record."""
+    from brainscore.run_record import RunRecord
+    from brainscore_core.events import EnvironmentResponse
+    return [event['payload'].payload for event in RunRecord(directory).events()
+            if event['kind'] == 'output'
+            and isinstance(getattr(event['payload'], 'payload', None), EnvironmentResponse)
+            and event['payload'].meta.get('action_status') == 'applied']
+
+
+def test_native_records_response_provenance_and_answers(tmp_path):
+    """Recorded responses keep provenance and the generated answer; actions are unchanged."""
+    from native_environment_toolbox import answer_response, qualify
+    assets = tmp_path / 'assets'
+    assets.mkdir()
+    (assets / 'weights.bin').write_bytes(b'fixture')
+    policy, model = _tiny_fixture(answers=True)
+    report = qualify(tmp_path / 'run', lambda: (policy, model), asset_dir=assets, layer='proj',
+                     identifier='tiny-fixture', provenance={'fixture': True})
+    assert report['status'] == 'passed', report.get('error')
+    provenance = report['provenance']
+    assert provenance['fixture'] is True and len(provenance['model_sha256']) == 64
+
+    seen_valid = set()
+    for condition in ('recorded', 'ablated', 'restored'):
+        plan = json.loads((tmp_path / 'run' / condition / 'experiment.json').read_text())['plan']
+        assert plan['metadata']['provenance'] == json.loads(json.dumps(provenance, default=str))
+        if condition == 'restored':
+            continue  # No RecordInputsOutputs in the restored run.
+        responses = _responses(tmp_path / 'run' / condition)
+        actions = [a for seed in map(str, (0, 1)) for a in (
+            report['direct'][seed]['actions'] if condition == 'recorded'
+            else report['ablation']['actions'][seed])]
+        assert [r.action for r in responses] == actions
+        for response in responses:
+            assert response.metadata['provenance'] == provenance
+            answer = response.metadata['answer']
+            assert answer in (*FIXTURE_ANSWERS, UNSURE_ANSWER)
+            expected = answer_response(answer)
+            assert response.action == expected.action
+            for key in ('valid', 'parse_error', 'fallback_action'):
+                assert response.metadata[key] == expected.metadata[key]
+            seen_valid.add(response.metadata['valid'])
+    assert seen_valid == {True, False}, 'the fixture exercises both a parsed answer and the fallback'
+
+
 @pytest.mark.timeout(120)
 def test_native_mismatch_fails_under_optimize_and_keeps_provenance(tmp_path):
     assets = tmp_path / 'assets'
@@ -158,7 +260,7 @@ def test_coggym_missing_assets_write_failed_report(tmp_path, missing):
 @pytest.mark.slow
 def test_native_trained_smolvlm_qualification(tmp_path, request):
     from huggingface_hub import snapshot_download
-    from coggym_toolbox import SMOLVLM_MANIFEST
+    from example_qualification import SMOLVLM_MANIFEST
     from native_environment_toolbox import MODEL_ID, MODEL_REVISION, load_smolvlm_policy, qualify
     from brainscore.validation.integration_checks import record_placement
 
@@ -222,7 +324,7 @@ def _cache_snapshot(root, revision=FIXTURE_REVISION):
 
 
 def test_git_blob_hash_matches_git():
-    from coggym_toolbox import file_hash
+    from example_qualification import file_hash
     import tempfile
     with tempfile.TemporaryDirectory() as directory:
         path = Path(directory) / 'hello'
@@ -233,7 +335,7 @@ def test_git_blob_hash_matches_git():
 
 @pytest.mark.parametrize('layout', ['local_dir', 'cache'])
 def test_staged_snapshot_identity_is_verified(tmp_path, layout):
-    from coggym_toolbox import verify_model_identity
+    from example_qualification import verify_model_identity
     path = _local_dir(tmp_path / 'm') if layout == 'local_dir' else _cache_snapshot(tmp_path / 'hub')
     identity = verify_model_identity(path, _fixture_manifest())
     assert identity['revision'] == FIXTURE_REVISION
@@ -249,7 +351,7 @@ def test_staged_snapshot_identity_is_verified(tmp_path, layout):
     ('snapshot', 'is not the pinned revision'),
 ])
 def test_wrong_identity_fails(tmp_path, defect, message):
-    from coggym_toolbox import verify_model_identity
+    from example_qualification import verify_model_identity
     if defect == 'snapshot':
         path = _cache_snapshot(tmp_path / 'hub', revision='b' * 40)
     else:
@@ -270,7 +372,7 @@ def test_wrong_identity_fails(tmp_path, defect, message):
 
 
 def test_pinned_manifest_lists_the_loader_files():
-    from coggym_toolbox import SMOLVLM_MANIFEST
+    from example_qualification import SMOLVLM_MANIFEST
     from native_environment_toolbox import MODEL_REVISION
     assert SMOLVLM_MANIFEST['revision'] == MODEL_REVISION == '7e3e67edbbed1bf9888184d9df282b700a323964'
     files = SMOLVLM_MANIFEST['files']
