@@ -1,7 +1,9 @@
 """Offline contract checks; these are not trained-policy qualification."""
+from contextlib import contextmanager
 import importlib.util
 import json
 import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -93,20 +95,53 @@ def test_invalid_observations_do_not_reach_policy(key, value):
     assert not policy.requests
 
 
-def test_recorded_replay_checks_every_call_and_detects_changed_actions(tmp_path):
-    bridge, replay = example_module('serve_bridge'), example_module('replay')
-    with RunRecorder(tmp_path / 'record', metadata={}) as recorder:
-        policy = bridge.RecordedPolicy(FixturePolicy(), route='umi', recorder=recorder)
-        for _ in range(3):
+def capture(directory, calls, *, route='reference'):
+    """A transport capture as serve_bridge.py writes it, with completed calls only."""
+    bridge = example_module('serve_bridge')
+    with RunRecorder(directory, metadata=bridge.capture_metadata(route, {})) as recorder:
+        policy = bridge.RecordedPolicy(FixturePolicy(), route=route, recorder=recorder)
+        for _ in range(calls):
             policy.infer(request())
-    assert replay.compare_record(tmp_path / 'record', FixturePolicy())['passed']
+    return directory
+
+
+def evaluator_report(directory, calls=(2, 1), *, route='reference', rows=None, **changes):
+    """A completed evaluate.py report: one trial per task, each ending in success."""
+    evaluate = example_module('evaluate')
+    rows = rows if rows is not None else [
+        {'task': f'task-{i}', 'trial': 0, 'steps': 10 + 5 * (n - 1) + 2, 'success': True,
+         'errors': [], 'calls': n, 'full_calls': n - 1, 'last_executed': 2,
+         'executed_total': 5 * (n - 1) + 2, 'wait_steps': 10, 'prefix_match': True,
+         'execution_unknown': False, 'ended_by': 'success', 'initial_state_sha256': str(i)}
+        for i, n in enumerate(calls)]
+    report = {'status': 'complete', 'route': route, 'suite': 'libero_spatial',
+              'trials_per_task': 1, 'episodes': len(rows), 'expected_episodes': len(rows),
+              'successes': sum(row['success'] for row in rows), 'success_rate': 1.0,
+              'errors': [], 'cleanup_errors': [], 'execution_horizon': 5, 'num_steps_wait': 10,
+              'max_steps': 220, 'bridge': None, 'openpi_revision': evaluate.OPENPI_REVISION,
+              'libero_revision': evaluate.LIBERO_REVISION, 'evaluator_sha256': '0' * 64,
+              'settings': {'task_suite_name': 'libero_spatial', 'num_trials_per_task': 1,
+                           'replan_steps': 5, 'num_steps_wait': 10, 'seed': 7}}
+    report.update(changes)
+    directory.mkdir()
+    (directory / 'report.json').write_text(json.dumps(report))
+    (directory / 'trials.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
+    return directory
+
+
+def test_recorded_replay_checks_every_call_and_detects_changed_actions(tmp_path):
+    replay = example_module('replay')
+    record, report = capture(tmp_path / 'record', 3), evaluator_report(tmp_path / 'eval')
+    result = replay.compare_record(record, FixturePolicy(), report=report,
+                                   suite='libero_spatial', trials_per_task=1)
+    assert result['passed'] and result['calls'] == result['source']['calls'] == 3
 
     class ChangedPolicy(FixturePolicy):
         def infer(self, observation):
             output = super().infer(observation)
             output['actions'][0, 0] += 0.25
             return output
-    result = replay.compare_record(tmp_path / 'record', ChangedPolicy())
+    result = replay.compare_record(record, ChangedPolicy(), report=report)
     assert result['failed_calls'] == 3 and not result['passed']
     assert result['max_absolute_error'] == 0.25
 
@@ -116,13 +151,250 @@ def test_policy_failure_marks_record_failed_and_replay_refuses_it(tmp_path):
     class FailedPolicy:
         def infer(self, observation):
             raise RuntimeError('inference failed')
-    with RunRecorder(tmp_path / 'record', metadata={}) as recorder:
-        policy = bridge.RecordedPolicy(FailedPolicy(), route='umi', recorder=recorder)
+    metadata = bridge.capture_metadata('reference', {})
+    with RunRecorder(tmp_path / 'record', metadata=metadata) as recorder:
+        policy = bridge.RecordedPolicy(FailedPolicy(), route='reference', recorder=recorder)
         with pytest.raises(RuntimeError, match='inference failed'):
             policy.infer(request())
     assert RunRecord(tmp_path / 'record').manifest['status'] == 'failed'
     with pytest.raises(ValueError, match='completed'):
-        replay.compare_record(tmp_path / 'record', FixturePolicy())
+        replay.compare_record(tmp_path / 'record', FixturePolicy(),
+                              report=evaluator_report(tmp_path / 'eval', (1,)))
+
+
+def test_interrupted_call_fails_the_capture_immediately(tmp_path):
+    # The bridge's own stop handler raises KeyboardInterrupt inside the blocked call.
+    bridge = example_module('serve_bridge')
+    class Interrupted:
+        def infer(self, observation):
+            raise KeyboardInterrupt
+    recorder = RunRecorder(tmp_path / 'record', metadata=bridge.capture_metadata('reference', {}))
+    policy = bridge.RecordedPolicy(Interrupted(), route='reference', recorder=recorder)
+    with pytest.raises(KeyboardInterrupt):
+        policy.infer(request())
+    manifest = RunRecord(tmp_path / 'record').manifest
+    assert manifest['status'] == 'failed' and manifest['event_count'] == 1  # input, no reply
+    recorder.close()  # a later clean close cannot turn it into a success
+    assert RunRecord(tmp_path / 'record').manifest['status'] == 'failed'
+
+
+def _partial_chunks(rows):
+    rows[1]['executed_total'] = 1  # counts that no whole-chunk schedule can produce
+    return rows
+
+
+def _missing_field(rows):
+    return [{k: v for k, v in row.items() if k != 'wait_steps'} for row in rows]
+
+
+@pytest.mark.parametrize('change,message', [
+    ({'status': 'failed'}, 'completed transport'),
+    ({'route': 'umi'}, 'completed transport'),
+    ({'bridge': {'receipt_protocol': 'x'}}, 'completed transport'),
+    ({'errors': ['inference failed']}, 'reported errors'),
+    ({'cleanup_errors': ['environment: x']}, 'reported errors'),
+    ({'openpi_revision': '0' * 40}, 'pinned evaluator'),
+    ({'max_steps': 300}, 'inconsistent'),
+    ({'settings': {'task_suite_name': 'libero_spatial', 'num_trials_per_task': 1,
+                   'replan_steps': 4, 'num_steps_wait': 10}}, 'inconsistent'),
+    ({'expected_episodes': 3}, 'totals'),
+    ({'successes': 1}, 'totals'),
+    ({'calls': (2, 2)}, 'accounts for 4 calls'),
+    ({'calls': (1, 1)}, 'accounts for 2 calls'),
+    ({'mutate': _partial_chunks}, 'whole chunks'),
+    ({'mutate': _missing_field}, 'Malformed'),
+])
+def test_capture_needs_a_matching_completed_evaluator_report(tmp_path, change, message):
+    replay = example_module('replay')
+    record = capture(tmp_path / 'record', 3)
+    calls, mutate = change.pop('calls', (2, 1)), change.pop('mutate', None)
+    rows = None
+    if mutate is not None:
+        good = evaluator_report(tmp_path / 'good', calls)
+        rows = mutate([json.loads(line) for line in (good / 'trials.jsonl').read_text().splitlines()])
+    report = evaluator_report(tmp_path / 'eval', calls, rows=rows, **change)
+    with pytest.raises(ValueError, match=message):
+        replay.compare_record(record, FixturePolicy(), report=report)
+
+
+def test_capture_refuses_requested_settings_missing_reports_and_old_or_unpaired_records(tmp_path):
+    bridge, replay = example_module('serve_bridge'), example_module('replay')
+    record, report = capture(tmp_path / 'record', 3), evaluator_report(tmp_path / 'eval')
+    with pytest.raises(ValueError, match='suite or trials'):
+        replay.compare_record(record, FixturePolicy(), report=report, suite='libero_goal')
+    with pytest.raises(ValueError, match='suite or trials'):
+        replay.compare_record(record, FixturePolicy(), report=report, trials_per_task=50)
+    with pytest.raises(FileNotFoundError):
+        replay.compare_record(record, FixturePolicy(), report=tmp_path / 'absent')
+    with pytest.raises(TypeError):
+        replay.compare_record(record, FixturePolicy())  # the report is required
+    # A capture from the bridge before this check could not detect interrupted calls.
+    with RunRecorder(tmp_path / 'old', metadata={'route': 'reference'}) as recorder:
+        policy = bridge.RecordedPolicy(FixturePolicy(), route='reference', recorder=recorder)
+        for _ in range(3):
+            policy.infer(request())
+    with pytest.raises(ValueError, match='older captures'):
+        replay.compare_record(tmp_path / 'old', FixturePolicy(), report=report)
+    # Right event count and status, but not request/reply pairs.
+    with RunRecorder(tmp_path / 'unpaired', metadata=bridge.capture_metadata('reference', {})) as recorder:
+        for direction in ('input', 'input', 'output', 'output', 'input', 'output'):
+            recorder.record(direction, request())
+    with pytest.raises(ValueError, match='alternating'):
+        replay.compare_record(tmp_path / 'unpaired', FixturePolicy(), report=report)
+
+
+def test_malformed_pair_beyond_a_selected_prefix_is_refused(tmp_path):
+    # qualify_*.py take only the first requests; verify_capture must still read every pair.
+    bridge, replay = example_module('serve_bridge'), example_module('replay')
+    metadata = bridge.capture_metadata('reference', {})
+    with RunRecorder(tmp_path / 'record', metadata=metadata) as recorder:
+        for direction in ('input', 'output', 'input', 'output', 'output', 'input'):
+            recorder.record(direction, request())
+    with pytest.raises(ValueError, match='alternating'):
+        replay.verify_capture(RunRecord(tmp_path / 'record'), evaluator_report(tmp_path / 'eval'))
+
+
+class UnitPolicy:
+    """Hidden unit 0 is recorded and can be ablated; actions use only unit 1."""
+    _rng = 0
+
+    def __init__(self, ablation_works=True):
+        self.scopes, self.ablation_works = [], ablation_works
+
+    def infer(self, observation, **kwargs):
+        hidden = np.array([1 + observation['observation/state'][0], 2], dtype=np.float32)
+        for operation, receive in self.scopes:
+            if operation == 'ablate' and self.ablation_works:
+                hidden[0] = 0
+            elif operation == 'record':
+                receive('action_out_proj', {'array': hidden[:1].copy(), 'denoising_step': 0})
+        return {'actions': np.full((10, 7), hidden[1], dtype=np.float32)}
+
+
+class UnitInstrumentation:
+    """Stands in for OpenPIInstrumentation; scopes apply in attachment order."""
+
+    def __init__(self, policy, *, checkpoint, steps=None):
+        self.policy, self.checkpoint = policy, checkpoint
+
+    def describe(self):
+        return {'provider': 'unit-fixture', 'checkpoint': self.checkpoint}
+
+    def validate(self, operation, targets):
+        if operation not in ('record', 'ablate'):
+            raise ValueError('Unsupported operation')
+
+    @contextmanager
+    def _scope(self, operation, receive=None):
+        self.policy.scopes.append((operation, receive))
+        try:
+            yield
+        finally:
+            self.policy.scopes.pop()
+
+    def record(self, targets, receive):
+        return self._scope('record', receive)
+
+    def ablate(self, targets):
+        return self._scope('ablate')
+
+
+@pytest.mark.parametrize('ablation_works', [True, False])
+def test_unchanged_actions_after_ablation_are_reported_not_gated(tmp_path, monkeypatch, ablation_works):
+    import brainscore.experiments as experiments
+    monkeypatch.setattr(experiments, 'OpenPIInstrumentation', UnitInstrumentation)
+    report = example_module('qualify_tools').qualify(
+        UnitPolicy(ablation_works), [request(), request()], tmp_path / 'q',
+        checkpoint='unit-fixture', steps=[0])
+    assert report['effects'] == {'intervention_changed_actions': False}
+    assert report['recording_preserves_actions'] and report['cleanup_restores_actions']
+    assert report['selected_activity_zeroed'] is ablation_works
+    assert report['status'] == ('passed' if ablation_works else 'failed')
+    assert json.loads((tmp_path / 'q/qualification.json').read_text())['status'] == report['status']
+
+
+RUN_TOOLS = Path(__file__).parents[1] / 'examples' / 'libero' / 'run_tools.sh'
+
+
+def run_tools(tmp_path, *arguments, **environment):
+    import subprocess
+    import sys
+    (tmp_path / 'openpi').mkdir(exist_ok=True)
+    (tmp_path / 'checkpoint').mkdir(exist_ok=True)
+    env = {'PATH': os.environ['PATH'], 'UMI_POLICY_PYTHON': sys.executable,
+           'UMI_BRIDGE_PYTHON': sys.executable, 'UMI_EVALUATOR_PYTHON': sys.executable,
+           'UMI_POLICY_PORT': str(free_port()), 'UMI_BRIDGE_PORT': str(free_port())}
+    env.update(environment)
+    command = ['bash', str(RUN_TOOLS), str(tmp_path / 'openpi'), str(tmp_path / 'checkpoint'),
+               str(tmp_path / 'evidence'), *arguments]
+    return subprocess.run(command, env={k: v for k, v in env.items() if v is not None},
+                          capture_output=True, text=True, timeout=120)
+
+
+def free_port():
+    import socket
+    with socket.socket() as sock:
+        sock.bind(('127.0.0.1', 0))
+        return sock.getsockname()[1]
+
+
+def test_tool_route_driver_parses():
+    import subprocess
+    subprocess.run(['bash', '-n', str(RUN_TOOLS)], check=True)
+
+
+@pytest.mark.parametrize('arguments,environment,message', [
+    ((), {}, 'Usage'),
+    (('libero_spatial', '1', '60'), {'UMI_BRIDGE_PYTHON': None}, 'UMI_BRIDGE_PYTHON'),
+    (('libero_90', '1', '60'), {}, 'Unknown suite'),
+    (('libero_spatial', '51', '60'), {}, '1 to 50'),
+    (('libero_spatial', '1', '0'), {}, 'CONDITION_SECONDS'),
+    (('libero_spatial', '1', '60', 'baseline'), {}, 'Unknown mode'),
+    (('libero_spatial', '1', '60'), {'UMI_READY_SECONDS': 'soon'}, 'UMI_READY_SECONDS'),
+    (('libero_spatial', '1', '60', 'recording', 'recording'), {}, 'each mode only once'),
+    (('libero_spatial', '1', '60'), {'UMI_POLICY_PORT': '8000', 'UMI_BRIDGE_PORT': '8000'}, 'distinct ports'),
+    (('libero_spatial', '1', '60'), {'UMI_POLICY_PORT': '0'}, 'distinct ports'),
+    (('libero_spatial', '1', '60'), {'UMI_BRIDGE_PORT': 'invalid'}, 'distinct ports'),
+])
+def test_tool_route_driver_rejects_invalid_settings_before_starting_anything(
+        tmp_path, arguments, environment, message):
+    result = run_tools(tmp_path, *arguments, **environment)
+    assert result.returncode == 2 and message in result.stderr
+    assert not (tmp_path / 'evidence').exists()
+
+
+def test_tool_route_driver_never_reuses_evidence(tmp_path):
+    (tmp_path / 'evidence').mkdir()
+    (tmp_path / 'evidence' / 'keep').write_text('earlier run')
+    result = run_tools(tmp_path, 'libero_spatial', '1', '60')
+    assert result.returncode != 0
+    assert [p.name for p in (tmp_path / 'evidence').iterdir()] == ['keep']
+
+
+def test_tool_route_driver_stops_when_the_policy_server_exits_before_ready(tmp_path):
+    # A policy "interpreter" that exits at once: no bridge or evaluator may start.
+    result = run_tools(tmp_path, 'libero_spatial', '1', '60', UMI_POLICY_PYTHON='false')
+    assert result.returncode != 0 and 'exited before it was ready' in result.stderr
+    evidence = tmp_path / 'evidence'
+    assert (evidence / 'baseline-policy.log').exists() and (evidence / 'revisions.txt').exists()
+    assert not (evidence / 'baseline-bridge.log').exists()
+    assert not (evidence / 'baseline-eval').exists()
+
+
+def test_qualification_gates_survive_python_optimization():
+    import ast
+    import subprocess
+    import sys
+    root = Path(__file__).parents[1] / 'examples' / 'libero'
+    for name in ('serve_bridge', 'replay', 'toolbox_calls', 'qualify_tools', 'qualify_remote_tools'):
+        tree = ast.parse((root / (name + '.py')).read_text())
+        assert not [node for node in ast.walk(tree) if isinstance(node, ast.Assert)], name
+    script = ('import importlib.util, sys; spec = importlib.util.spec_from_file_location('
+              '"q", sys.argv[1]); m = importlib.util.module_from_spec(spec); '
+              'spec.loader.exec_module(m); m._check(False, "gate ran")')
+    result = subprocess.run([sys.executable, '-O', '-c', script, str(root / 'qualify_remote_tools.py')],
+                            capture_output=True, text=True)
+    assert result.returncode != 0 and 'gate ran' in result.stderr
 
 
 def test_trial_audit_keeps_failed_trials_in_denominator(tmp_path):

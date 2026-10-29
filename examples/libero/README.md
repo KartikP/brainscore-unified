@@ -2,7 +2,7 @@
 
 **Transport results:** both routes passed 10/10 smoke trials and 221 saved requests matched exactly. The full Spatial run later completed: reference 496/500 successes, UMI 488/500. Those closed-loop outcomes were not equivalent.
 
-**Internal tools (feature branch):** a separate ten-task check passed after a GPU recording fix. Baseline, recording and ablation each succeeded on 10/10 tasks; baseline and recording matched all 223 observations/action chunks exactly. See the [qualification report](../../docs/qualification/2026-10-06-openpi-tools.md).
+**Internal tools (on the v2 branch):** a separate ten-task check passed after a GPU recording fix. Baseline, recording and ablation each succeeded on 10/10 tasks; baseline and recording matched all 223 observations/action chunks exactly. See the [qualification report](../../docs/qualification/2026-10-06-openpi-tools.md).
 
 For the design and steps to reuse in another benchmark, read
 [Connect a robotics benchmark](../../docs/robotics_benchmark_integration.md).
@@ -68,8 +68,10 @@ bash unified/examples/libero/run_pair.sh "$PWD/openpi" "$PWD/smoke-results" libe
 ```
 
 Use a dedicated host with ports 8000 and 8001 free. Keep the policy port blocked
-from external access. The bridge binds to localhost. Run only one client per
-server. The policy server holds its random state across requests.
+from external access. The bridge binds to localhost. Each `serve_bridge.py`
+process serves one evaluator connection and refuses any later one (close code
+1013); concurrent clients are not supported. Run one client per policy server:
+it holds its random state across requests.
 
 One trial per task is a smoke test, not a benchmark reproduction. After reviewing
 it, repeat with a new output directory and `50` trials per task: 500 episodes per
@@ -95,8 +97,24 @@ checkout and evaluation code unchanged; save the resulting dependency freeze.
 - `comparison.json`: paired outcome differences and descriptive success intervals.
 - `*-checkpoint.json`: content hashes, required to agree across the three runs.
 - `*-record/`: inputs and full action chunks in checksum-verified UMI records.
+  These are transport captures (see below), not evidence that an evaluation finished.
 - `*/videos/`: a distinct video for each completed trial.
 - `*.log`, `*-freeze.txt`, `images.json`, `nvidia-smi.txt`: execution evidence.
+
+**Transport captures.** A `serve_bridge.py` record closes `complete` only if its
+one evaluator connection was closed by the evaluator before the bridge stopped,
+and every request has its recorded reply. A stop during a call, a stop while the
+evaluator is still connected, no connection at all, or a policy failure closes it
+`failed`; a failed call is never retried. An evaluator that crashes still closes
+its connection, so `complete` means "capture complete", not "evaluation complete".
+`replay.py`, `toolbox_calls.py`, `qualify_tools.py` and `qualify_remote_tools.py`
+therefore take `--report`, the evaluator output directory of the same run, and
+refuse a record unless that report is complete, matches the record's route, uses
+the pinned revisions and settings, covers every declared episode in order with a
+success or step-limit ending (the tool bridge's receipt rules), and accounts for
+exactly the record's calls, which must alternate request and reply. Records from
+the bridge before this check are refused. No run identifier links the two on this
+route, so keep each run's evaluator output and record together.
 
 The evaluator writes a failed report if upstream logs an error, even though the
 original evaluation loop catches inference exceptions. Interrupted runs and
@@ -128,13 +146,15 @@ it with complete-cache enforcement. Keep it with the GPU/runtime provenance;
 it is not a portable cache for arbitrary devices or software versions.
 
 To repeat the smaller smoke corpus alongside a full benchmark run, set
-`UMI_REPLAY_RECORD=/path/to/smoke-results/reference-record`. This saves inference
+`UMI_REPLAY_RECORD=/path/to/smoke-results/reference-record` together with
+`UMI_REPLAY_REPORT=/path/to/smoke-results/reference`, that run's evaluator output.
+The script refuses the override without it. This saves inference
 time without reducing benchmark trials. `replay-source.txt` and `replay.json`
 identify the selected corpus and call count. Do not describe that result as a
 replay of every full-benchmark request. Use the same checkpoint and saved tuning
 profile that produced the selected corpus.
 
-## Internal policy tools (feature branch)
+## Internal policy tools
 
 `serve_tools.py` adds the common `RecordActivity` and `Ablate` tools to the pinned
 OpenPI JAX sampler. `qualify_tools.py` compares baseline, recorded, ablated and
@@ -160,7 +180,49 @@ through OpenPI's own policy factory.
 
 ### Use the official evaluator with tools
 
-Start `serve_tools.py` on port 8000 with `--steps 0 1`. In the UMI/OpenPI client environment, run:
+Who owns what on each route:
+
+| Route | Loop, resets, scheduling, scoring | Inference and its random state | Recording and internal tools |
+|---|---|---|---|
+| `run_pair.sh` (`serve_bridge.py`) | LIBERO evaluator (`evaluate.py`) | upstream policy server | bridge records requests and chunks only; no internal tools |
+| `run_tools.sh` (`serve_tool_bridge.py`) | LIBERO evaluator (`evaluate.py`) | `serve_tools.py` | bridge runs `Experiment` with `RecordInputsOutputs`, `RecordActivity`, `Ablate`; tools act inside each inference request |
+| `qualify_tools.py` / `qualify_remote_tools.py` | the script (saved requests, no simulator) | local or `serve_tools.py` policy | same tools, on identical inputs |
+
+**Closed-loop inputs are not matched after an intervention.** On the tool route the
+simulator responds to the actions the policy returns. Once an ablation changes an
+action, every later observation differs from the baseline run, so per-call
+comparison of internals or actions across conditions is not meaningful there.
+`compare.py` then reports a descriptive difference in task outcomes, which is not a
+parity check. Use `qualify_tools.py` or `qualify_remote_tools.py` for same-input
+comparisons. They gate on exact action parity of the recording and restored runs,
+on zeroed selected units that were nonzero before ablation, and on finite
+outputs; whether the ablation changed actions is reported under `effects`, not
+required. A recording-only closed-loop run sees the baseline inputs only while its
+actions stay identical.
+
+`run_tools.sh` drives this route from pre-staged inputs. It downloads nothing and
+starts no cloud resources:
+
+```bash
+UMI_POLICY_PYTHON=/path/to/openpi-runtime/bin/python \
+UMI_BRIDGE_PYTHON=/path/to/umi-env/bin/python \
+UMI_EVALUATOR_PYTHON=/path/to/libero-runtime/bin/python \
+bash unified/examples/libero/run_tools.sh /path/to/openpi /path/to/local/pi05_libero \
+  /path/to/new-evidence libero_spatial 1 7200 recording ablation
+```
+
+The sixth argument bounds each evaluator run in seconds; the run is stopped and the
+script fails when it is exceeded. `UMI_READY_SECONDS` (default 1200) bounds server
+start-up. For each condition (baseline first) it starts a fresh `serve_tools.py`
+and bridge, runs `evaluate.py`, then stops both; it compares each tool condition
+with the baseline using `compare.py`. On exit or interruption it stops only the
+processes it started. The evidence directory must not exist. Interpreter versions,
+dependency freezes and revisions are saved alongside the logs. The checkpoint
+directory must already contain the weights and normalization files.
+
+The manual steps it performs:
+
+Start `serve_tools.py --port 8000 --steps 0 1` (its default port, 8001, is the bridge's). In the UMI/OpenPI client environment, run:
 
 ```bash
 python examples/libero/serve_tool_bridge.py \
@@ -189,7 +251,7 @@ The bridge acknowledges `complete` only after `Experiment.run` has saved its rec
 
 - When a limit runs out, the connection is terminated and nothing is resent. A stalled close cannot keep the bridge locked.
 - These limits cover transport only. They do not cancel an inference already running on the policy server, and a request that timed out may still have been processed there. Nothing bounds model inference, record or artifact writing, or a whole experiment.
-- `evaluate.py` and the helper it loads are checked for Python 3.8 syntax only; they have not been run under Python 3.8.
+- `evaluate.py` and the helper it loads are checked for Python 3.8 syntax only; they have not been run under Python 3.8. To run the evaluator subprocess tests with another interpreter, set `UMI_EVALUATOR_PYTHON` (default: the test interpreter). It receives only the pinned `openpi-client` on `PYTHONPATH` and needs numpy, pytest, websockets, msgpack and Pillow.
 
 Qualify a tool-bridge run in the UMI environment, passing each tool run's experiment directory:
 
@@ -201,8 +263,13 @@ python examples/libero/compare.py --reference baseline-eval --umi recording-eval
 
 This verifies the manifests, artifact hashes, call record, receipt and report digest, and joins every recorded call to its episode. If the bridge record is complete but the acknowledgment was lost, the run is refused unless `--reconcile-unacknowledged` is given; the result is then labelled `tool-bridge-reconciled-unacknowledged`. Reports from `serve_bridge.py` are labelled `transport`.
 
-**Known gap in `serve_bridge.py`.** The plain recording bridge still marks its record complete when the evaluator disconnects or the bridge receives SIGTERM, whether or not the evaluator finished. Its records show transport only, not that an evaluation completed; rely on the evaluator's `report.json` for that. Correcting it is a separate follow-up.
+`compare.py` reads only the evaluator reports for `transport` sides; it does not open `serve_bridge.py` captures.
 
 For matched GPU processes, preserve baseline compilation choices with `XLA_FLAGS=--xla_gpu_dump_autotune_results_to=/path/to/autotune.textproto`. Subsequent conditions load that file with `--xla_gpu_load_autotune_results_from=/path/to/autotune.textproto --xla_gpu_require_complete_aot_autotune_results=true`. Set these before starting the policy process and retain the file with the run evidence.
 
-`qualify_remote_tools.py` takes the same `--checkpoint`, `--record`, and `--out` paths as the local qualification script, and tests direct-versus-remote inference before simulator use.
+`qualify_remote_tools.py` takes the same `--checkpoint`, `--record`, `--report` and `--out` paths as the local qualification script, and tests direct-versus-remote inference before simulator use. Both scripts record the checkpoint content hash and the source evidence, write `qualification.json` with `status: failed` and the error when a check fails, and use explicit checks that still run under `python -O`.
+
+The `run_tools.sh` baseline is the UMI tool route **without tools**, not the native
+reference from `run_pair.sh`. Its intervention targets unit 0 of `action_out_proj`
+at denoising iterations 0 and 1 of the default ten iterations. Closed-loop outcome
+differences are descriptive; use the same-input checks to establish action parity.

@@ -69,63 +69,148 @@ def server(command, port, env, log):
                 process.wait()
 
 
-def test_reference_and_umi_over_real_websocket_with_record_replay(tmp_path, monkeypatch):
-    root = Path(__file__).parents[1]
-    openpi = Path(os.environ['OPENPI_SOURCE']).resolve()
-    for path in (openpi / 'src', openpi / 'packages/openpi-client/src'):
-        monkeypatch.syspath_prepend(str(path))
-    from openpi_client.websocket_client_policy import WebsocketClientPolicy
-    env = dict(os.environ)
-    env['PYTHONPATH'] = os.pathsep.join([str(openpi / 'src'), str(openpi / 'packages/openpi-client/src'),
-                                       *sys.path])
-    policy_port, bridge_port = free_port(), free_port()
-    fixture = '''
+POLICY_FIXTURE = '''
+import sys, time
 import numpy as np
 from openpi.serving.websocket_policy_server import WebsocketPolicyServer
 class Policy:
     def infer(self, request):
-        value = request['observation/state'][0]
-        return {'actions': np.arange(21, dtype=np.float32).reshape(3,7) + value}
-WebsocketPolicyServer(Policy(), host='127.0.0.1', port=%d).serve_forever()
-''' % policy_port
-    requests = [{'observation/image': np.full((4, 4, 3), i, dtype=np.uint8),
-                 'observation/wrist_image': np.zeros((4, 4, 3), dtype=np.uint8),
-                 'observation/state': np.full(8, i, dtype=np.float32), 'prompt': 'task'}
-                for i in range(3)]
-    with server([sys.executable, '-c', fixture], policy_port, env, tmp_path / 'policy.log'):
+        if sys.argv[2] == 'block':
+            time.sleep(60)
+        value = float(request['observation/state'][0])
+        return {'actions': np.arange(70, dtype=np.float32).reshape(10, 7) / 128 + value}
+WebsocketPolicyServer(Policy(), host='127.0.0.1', port=int(sys.argv[1])).serve_forever()
+'''
+
+
+def transport_env(monkeypatch):
+    for path in (OPENPI / 'src', OPENPI / 'packages/openpi-client/src'):
+        monkeypatch.syspath_prepend(str(path))
+    env = dict(os.environ)
+    env['PYTHONPATH'] = os.pathsep.join([str(OPENPI / 'src'), str(OPENPI / 'packages/openpi-client/src'),
+                                       *sys.path])
+    return env
+
+
+@contextmanager
+def policy_server(env, tmp_path, mode='answer'):
+    port = free_port()
+    with server([sys.executable, '-c', POLICY_FIXTURE, str(port), mode], port, env,
+                tmp_path / ('policy-%s.log' % mode)):
+        yield port
+
+
+@contextmanager
+def capture_bridge(env, tmp_path, name, route, upstream_port):
+    port, log = free_port(), tmp_path / (name + '.log')
+    command = [sys.executable, str(ROOT / 'examples/libero/serve_bridge.py'), '--route', route,
+               '--upstream-port', str(upstream_port), '--port', str(port), '--out', str(tmp_path / name)]
+    with server(command, port, env, log):
+        yield port, log
+    # server() has stopped the bridge with SIGTERM, as docker stop does.
+
+
+def sessions_closed(log, count=1):
+    return lambda: len(re.findall(r'Connection from .* closed', log.read_text())) >= count
+
+
+def capture_manifest(path):
+    from brainscore.run_record import RunRecord
+    return RunRecord(path).manifest
+
+
+def test_reference_and_umi_captures_need_the_evaluators_report(tmp_path, monkeypatch):
+    env = transport_env(monkeypatch)
+    from openpi_client.websocket_client_policy import WebsocketClientPolicy
+    replay, toolbox = example('replay'), example('toolbox_calls')
+    with policy_server(env, tmp_path) as policy_port:
         for route in ('reference', 'umi'):
-            command = [sys.executable, str(root / 'examples/libero/serve_bridge.py'), '--route', route,
-                       '--upstream-port', str(policy_port), '--port', str(bridge_port),
-                       '--out', str(tmp_path / route)]
-            with server(command, bridge_port, env, tmp_path / (route + '.log')):
-                client = WebsocketClientPolicy('127.0.0.1', bridge_port)
-                try:
-                    for i, request in enumerate(requests):
-                        actual = client.infer(request)['actions']
-                        np.testing.assert_array_equal(actual, np.arange(21).reshape(3, 7) + i)
-                    if route == 'umi':
-                        path = root / 'examples/libero/replay.py'
-                        spec = importlib.util.spec_from_file_location('libero_replay_transport', path)
-                        module = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(module)
-                        assert module.compare_record(tmp_path / 'reference', client)['passed']
-                finally:
-                    client._ws.close()
+            with capture_bridge(env, tmp_path, route + '-record', route, policy_port) as (port, log):
+                # The pinned evaluator loop with a fake simulator: 2 + 2 + 44 calls.
+                assert evaluate_in_process(tmp_path / (route + '-eval'), port, route=route) == 0
+                wait_until(sessions_closed(log))
+            assert capture_manifest(tmp_path / (route + '-record'))['status'] == 'complete'
+        record, report = tmp_path / 'reference-record', tmp_path / 'reference-eval'
+        with capture_bridge(env, tmp_path, 'replay-record', 'umi', policy_port) as (port, log):
+            client = WebsocketClientPolicy('127.0.0.1', port)
+            try:
+                with pytest.raises(ValueError, match='completed transport'):
+                    replay.compare_record(record, client, report=tmp_path / 'umi-eval')
+                result = replay.compare_record(record, client, report=report,
+                                               suite='libero_spatial', trials_per_task=1)
+                assert result['passed'] and result['calls'] == 48 and result['max_absolute_error'] == 0
+            finally:
+                client._ws.close()
+            wait_until(sessions_closed(log))
+        assert capture_manifest(tmp_path / 'replay-record')['event_count'] == 96
         # The same external policy is also usable through the common toolbox runner.
-        path = root / 'examples/libero/toolbox_calls.py'
-        spec = importlib.util.spec_from_file_location('toolbox_calls_transport', path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
         client = WebsocketClientPolicy('127.0.0.1', policy_port)
         try:
-            result = module.run_calls(client, tmp_path / 'reference', tmp_path / 'toolbox')
-            assert result.value['calls'] == 3 and result.value['exact']
-            assert result.manifest['status'] == 'complete'
+            outcome = toolbox.run_calls(client, record, tmp_path / 'toolbox', report=report)
+            assert outcome.value['calls'] == 48 and outcome.value['exact']
+            assert outcome.manifest['status'] == 'complete'
         finally:
             client._ws.close()
-    from brainscore.run_record import RunRecord
-    assert RunRecord(tmp_path / 'reference').manifest['status'] == 'complete'
-    assert RunRecord(tmp_path / 'umi').manifest['status'] == 'complete'
+
+
+def test_stop_during_a_call_fails_the_capture(tmp_path, monkeypatch):
+    env = transport_env(monkeypatch)
+    from openpi_client.websocket_client_policy import WebsocketClientPolicy
+    with policy_server(env, tmp_path, 'block') as policy_port:
+        with capture_bridge(env, tmp_path, 'record', 'reference', policy_port) as (port, log):
+            client = WebsocketClientPolicy('127.0.0.1', port)
+            threading.Thread(target=lambda: client.infer(libero_request()), daemon=True).start()
+            events = tmp_path / 'record/events.jsonl'
+            wait_until(lambda: events.read_bytes().count(b'\n') == 1)  # input saved; reply pending
+    manifest = capture_manifest(tmp_path / 'record')
+    assert manifest['status'] == 'failed' and manifest['event_count'] == 1
+
+
+@pytest.mark.parametrize('state', ['no_session', 'evaluator_connected'])
+def test_stop_without_a_closed_session_fails_the_capture(tmp_path, monkeypatch, state):
+    env = transport_env(monkeypatch)
+    from openpi_client.websocket_client_policy import WebsocketClientPolicy
+    with policy_server(env, tmp_path) as policy_port:
+        with capture_bridge(env, tmp_path, 'record', 'reference', policy_port) as (port, log):
+            if state == 'evaluator_connected':
+                client = WebsocketClientPolicy('127.0.0.1', port)
+                client.infer(libero_request())  # one full exchange, then the stop
+    manifest = capture_manifest(tmp_path / 'record')
+    assert manifest['status'] == 'failed'
+    assert manifest['event_count'] == (2 if state == 'evaluator_connected' else 0)
+
+
+def test_capture_serves_one_evaluator_session(tmp_path, monkeypatch):
+    env = transport_env(monkeypatch)
+    import websockets
+    from openpi_client.websocket_client_policy import WebsocketClientPolicy
+    with policy_server(env, tmp_path) as policy_port:
+        with capture_bridge(env, tmp_path, 'record', 'reference', policy_port) as (port, log):
+            first = WebsocketClientPolicy('127.0.0.1', port)
+            first.infer(libero_request())
+            with pytest.raises(websockets.ConnectionClosed) as refused:
+                WebsocketClientPolicy('127.0.0.1', port)  # while the first is connected
+            assert refused.value.rcvd.code == 1013
+            first.infer(libero_request())  # the first session is unaffected
+            first._ws.close()
+            wait_until(sessions_closed(log))
+            with pytest.raises(websockets.ConnectionClosed):
+                WebsocketClientPolicy('127.0.0.1', port)  # and after it ended
+    manifest = capture_manifest(tmp_path / 'record')
+    assert manifest['status'] == 'complete' and manifest['event_count'] == 4
+
+
+def test_remote_qualification_reports_unchanged_actions_without_gating_them(tmp_path, monkeypatch):
+    from tests.test_libero_policy import UnitInstrumentation, UnitPolicy, request
+    import brainscore.experiments as experiments
+    monkeypatch.setattr(experiments, 'OpenPIInstrumentation', UnitInstrumentation)
+    module = example('qualify_remote_tools')
+    report = module.qualify(UnitPolicy(), [request(), request()], tmp_path / 'q', 'unit-fixture')
+    assert report['status'] == 'passed' and report['effects'] == {'ablation_changed_actions': False}
+    assert report['selected_unit_zeroed'] and report['selected_unit_was_nonzero']
+    with pytest.raises(RuntimeError, match='not silenced'):
+        module.qualify(UnitPolicy(ablation_works=False), [request()], tmp_path / 'broken', 'unit-fixture')
+    assert json.loads((tmp_path / 'broken/qualification.json').read_text())['status'] == 'failed'
 
 
 # Completion protocol between evaluate.py and serve_tool_bridge.py.
@@ -145,8 +230,20 @@ TASKS = {'a': 7, 'b': 10, 'c': None}  # done after this many policy steps; None:
 
 @contextmanager
 def listening(handler):
+    """Serve handler; on exit, also wait for every connection handler to finish.
+
+    websockets' shutdown() neither tracks nor joins connection threads, so a
+    handler may still be closing its socket (under a deadline timer) after the
+    client is gone. Joining them makes cleanup checks deterministic.
+    """
     from websockets.sync.server import serve
-    with serve(handler, '127.0.0.1', 0, compression=None, max_size=64 * 1024 * 1024,
+    connections = []
+
+    def tracked(websocket):
+        connections.append(threading.current_thread())
+        handler(websocket)
+
+    with serve(tracked, '127.0.0.1', 0, compression=None, max_size=64 * 1024 * 1024,
                logger=QUIET) as server:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
@@ -155,6 +252,11 @@ def listening(handler):
         finally:
             server.shutdown()
             thread.join(timeout=10)
+            deadline = time.monotonic() + 15
+            for connection in connections:
+                connection.join(timeout=max(deadline - time.monotonic(), 0))
+            alive = [connection.name for connection in connections if connection.is_alive()]
+            assert not alive, 'Connection handlers still running after 15 s: %s' % alive
 
 
 class ChunkPolicy:
@@ -242,9 +344,9 @@ def upstream_module(fail_at=None, delay=0.0):
     return module, path
 
 
-def evaluate_in_process(out, port, **upstream):
+def evaluate_in_process(out, port, route='umi', **upstream):
     module, source = upstream_module(**upstream)
-    args = Namespace(out=out, route='umi', suite='libero_spatial', trials=1, port=port,
+    args = Namespace(out=out, route=route, suite='libero_spatial', trials=1, port=port,
                      connect_timeout=60.0, infer_timeout=30.0, control_timeout=30.0,
                      finish_timeout=60.0)
     try:
@@ -603,10 +705,18 @@ def bridge_process(tmp_path, upstream, port):
     return subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT)
 
 
+# A separately prepared interpreter (e.g. Python 3.8 with numpy, pytest, websockets,
+# msgpack and Pillow) can run the evaluator side; the default is this interpreter.
+EVALUATOR_PYTHON = os.environ.get('UMI_EVALUATOR_PYTHON') or sys.executable
+
+
 def evaluator_process(tmp_path, port, mode):
-    env = dict(os.environ, PYTHONPATH=os.pathsep.join(sys.path))
+    # The evaluator never imports brainscore; another interpreter gets only the pinned client.
+    path = (sys.path if EVALUATOR_PYTHON == sys.executable
+            else [str(OPENPI / 'packages/openpi-client/src')])
+    env = dict(os.environ, PYTHONPATH=os.pathsep.join(path))
     log = (tmp_path / 'evaluator.log').open('w')
-    return subprocess.Popen([sys.executable, __file__, str(tmp_path / 'eval'), str(port), mode],
+    return subprocess.Popen([EVALUATOR_PYTHON, __file__, str(tmp_path / 'eval'), str(port), mode],
                             env=env, stdout=log, stderr=subprocess.STDOUT)
 
 
@@ -641,6 +751,9 @@ def test_separate_evaluator_and_bridge_processes(tmp_path, mode):
     evaluation, experiment = tmp_path / 'eval', tmp_path / 'bridge/connection-1'
     if mode == 'clean':
         assert manifest(tmp_path)['status'] == 'complete'
+        version = subprocess.check_output([EVALUATOR_PYTHON, '-c', 'import sys; print(sys.version)'],
+                                          text=True).strip()
+        assert json.loads((evaluation / 'report.json').read_text())['python'] == version
         assert compare.compare(evaluation, evaluation, reference_experiment=experiment,
                                umi_experiment=experiment)['scope']['umi'] == 'tool-bridge'
     else:
@@ -722,7 +835,8 @@ def test_stalled_send_fails_the_run_and_releases_the_bridge(tmp_path):
         assert [list(message)[0] for message in evaluator.sent] == ['experiment_tools', 'umi/finish_ack']
         assert evaluator.sent[1]['umi/finish_ack'] == 'failed' and evaluator.closes == 1
         assert manifest(tmp_path)['status'] == 'failed' and policy.observations == []
-        assert timers() == []
+    # After the fixture has joined its connection handlers, including their bounded closes.
+    assert timers() == []
 
 
 def test_unresponsive_close_releases_the_bridge_and_keeps_the_run_error(tmp_path, monkeypatch):
@@ -749,4 +863,5 @@ def test_unresponsive_close_releases_the_bridge_and_keeps_the_run_error(tmp_path
             assert busy.closes == 1 and busy.shut.is_set() and busy.sent == []
         finally:
             bridge.lock.release()
-        assert timers() == []
+    # After the fixture has joined its connection handlers, including their bounded closes.
+    assert timers() == []

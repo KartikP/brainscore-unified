@@ -1,4 +1,13 @@
-"""Serve a recorded reference or UMI route using OpenPI's websocket protocol."""
+"""Serve a recorded reference or UMI route using OpenPI's websocket protocol.
+
+The record is a transport capture, not evidence that an evaluation finished.
+It closes 'complete' only if exactly one evaluator session connected and closed
+its connection before the bridge was stopped, and every request it sent has a
+recorded reply. Anything else (no session, an evaluator still connected, or a
+stop, crash or policy failure during a call) closes it 'failed'. An evaluator
+that crashes still closes its connection, so qualification also requires that
+run's completed report; see replay.verify_capture.
+"""
 import argparse
 from copy import deepcopy
 import logging
@@ -8,6 +17,14 @@ from brainscore_core.events import EnvironmentStep
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
 from brainscore.run_record import RunRecorder
+
+CAPTURE = 'brainscore.libero.transport-capture.v1'
+
+
+def capture_metadata(route, upstream):
+    return {'route': route, 'upstream': upstream, 'capture': CAPTURE,
+            'completion': 'transport capture only; evaluator completion requires its report',
+            'evaluation': 'unqualified-libero-candidate'}
 
 
 class RecordedPolicy:
@@ -29,7 +46,8 @@ class RecordedPolicy:
     def infer(self, request):
         try:
             return self._infer(request)
-        except Exception:
+        except BaseException:
+            # Includes a stop during a call: the input may have no reply. Never retried.
             self.recorder.close(failed=True)
             raise
 
@@ -58,20 +76,46 @@ def main():
     args = parser.parse_args()
     from openpi_client.websocket_client_policy import WebsocketClientPolicy
     from openpi.serving.websocket_policy_server import WebsocketPolicyServer
+
+    class OneSession(WebsocketPolicyServer):
+        """Serve one evaluator connection per capture; refuse every later one.
+
+        Overrides the per-connection handler of the pinned upstream server
+        (OPENPI_REVISION in evaluate.py). Health checks never reach it.
+        """
+        sessions = 0
+        connected = False
+
+        async def _handler(self, websocket):
+            if self.sessions:
+                await websocket.close(code=1013, reason='This capture already served its evaluator')
+                return
+            self.sessions, self.connected = 1, True
+            await super()._handler(websocket)
+            # Reached only when the client closed the connection: not on a policy
+            # error, and not when a stop cancels this handler.
+            self.connected = False
+
     upstream = WebsocketClientPolicy('127.0.0.1', args.upstream_port)
-    metadata = {'route': args.route, 'upstream': upstream.get_server_metadata(),
-                'evaluation': 'unqualified-libero-candidate'}
-    with RunRecorder(args.out, metadata=metadata) as recorder:
-        policy = RecordedPolicy(upstream, route=args.route, recorder=recorder)
-        # Bind to localhost. Run one evaluator or replay client at a time.
-        def stop(*_):
-            raise KeyboardInterrupt
-        signal.signal(signal.SIGTERM, stop)
-        try:
-            WebsocketPolicyServer(policy, host='127.0.0.1', port=args.port,
-                                  metadata=metadata).serve_forever()
-        except KeyboardInterrupt:
-            pass
+    metadata = capture_metadata(args.route, upstream.get_server_metadata())
+    recorder = RunRecorder(args.out, metadata=metadata)
+    policy = RecordedPolicy(upstream, route=args.route, recorder=recorder)
+    server = OneSession(policy, host='127.0.0.1', port=args.port, metadata=metadata)
+
+    def stop(*_):
+        raise KeyboardInterrupt
+
+    # Also replaces asyncio's SIGINT handling, which would close the connection
+    # first and make an interrupted session look like one the client ended.
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    failed = True
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        failed = server.sessions != 1 or server.connected
+    finally:
+        recorder.close(failed=failed)
 
 
 if __name__ == '__main__':

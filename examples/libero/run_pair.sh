@@ -130,13 +130,19 @@ cleanup
 # A fresh policy process restores the initial RNG stream before corpus replay.
 phase=replay
 start_servers umi
+# A capture qualifies only with the completed evaluator report of the same run.
+replay_args=(--suite "$suite" --trials-per-task "$trials")
+if [[ -n ${UMI_REPLAY_RECORD:-} ]]; then
+  [[ -n ${UMI_REPLAY_REPORT:-} ]] || { echo "UMI_REPLAY_RECORD needs UMI_REPLAY_REPORT" >&2; exit 2; }
+  replay_args=()  # the corpus's own suite and trials, checked against its report
+fi
 replay_source=${UMI_REPLAY_RECORD:-"$evidence_dir/reference-record"}
-printf '%s\n' "$replay_source" >"$evidence_dir/replay-source.txt"
+replay_report=${UMI_REPLAY_REPORT:-"$evidence_dir/reference"}
+printf '%s\n%s\n' "$replay_source" "$replay_report" >"$evidence_dir/replay-source.txt"
 docker run --rm --network host -v "$openpi_dir:/openpi:ro" -v "$evidence_dir:/evidence" \
-  -v "$replay_source:/replay-source:ro" \
-  -v "$script_dir/replay.py:/replay.py:ro" \
-  umi-libero-bridge python /replay.py --record /replay-source \
-  --out /evidence/replay.json --atol 0
+  -v "$replay_source:/replay-source:ro" -v "$replay_report:/replay-report:ro" \
+  umi-libero-bridge python examples/libero/replay.py --record /replay-source \
+  --report /replay-report ${replay_args[@]+"${replay_args[@]}"} --out /evidence/replay.json --atol 0
 cleanup
 
 phase=umi
