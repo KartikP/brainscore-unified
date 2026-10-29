@@ -17,8 +17,13 @@ Install the four UMI packages in a separate experiment environment, then pin Cog
 ```bash
 git clone https://github.com/lance-ying/coggym.git
 git -C coggym checkout a1cd9df1118fec80eba7463de237d1497d77e041
-python -m pip install -r coggym/evaluation/requirements.txt
+# Keep UMI's pinned numpy, pandas, torch and transformers; stop if CogGym needs others.
+python -m pip install -c /path/to/unified/install/v2-constraints.txt \
+  -r coggym/evaluation/requirements.txt
+python -m pip check
 ```
+
+If pip reports a conflict, do not drop the constraints: record the conflict and qualify that combination separately.
 
 CogGym imports the Google SDK even for local models; installing it requires no API key. See the [data README](../brainscore/data/coggym/README.md) for the data layout and checks without inference. Loading a benchmark checks the reference revision and prompts, rejects tracked evaluator or data edits, and does not download data.
 
@@ -190,7 +195,18 @@ python examples/coggym_toolbox.py \
   --trials 3
 ```
 
-This small check verifies tool behavior, not leaderboard performance.
+This small check verifies tool behavior, not leaderboard performance. Stage both inputs first; the script never downloads, and with `HF_HUB_OFFLINE=1` a missing snapshot fails instead of fetching one:
+
+```bash
+HF_HUB_OFFLINE=0 huggingface-cli download HuggingFaceTB/SmolVLM-256M-Instruct \
+  --revision 7e3e67edbbed1bf9888184d9df282b700a323964 --local-dir /path/to/SmolVLM-256M-Instruct/snapshot
+```
+
+`qualification.json` is written whether the run passes or fails. It holds `status`, the first `error`, a SHA-256 of the model snapshot, the CogGym and unified Git commits (with a tracked-edits flag), and package versions. Every check raises an explicit error, so `python -O` cannot skip it. Treat only `status: passed` as a qualification.
+
+The same model also drives the [native-environment check](../examples/native_environment_toolbox.py): it compares a direct `GridGameEnv` loop with recorded, ablated and restored `Experiment` runs on the same seeds. Restored and recorded actions and rewards must equal the direct loop; changes after ablation are reported, not required.
+
+Neither run is a registered integration profile yet for CogGym: the profile runner stages only model and data caches, not a CogGym checkout, so the CogGym run stays a direct command. The native check is registered as the `native-environment-smolvlm` profile in `install/integration-tests.json`.
 
 ## Score identity and leaderboard policy
 

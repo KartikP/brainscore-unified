@@ -13,3 +13,6 @@ datasets==5.0.0
 importlib-metadata==4.13.0
 torch==2.13.0
 torchvision==0.28.0
+# Native environment versions resolved in a fresh qualification environment.
+gymnasium==1.4.0
+minigrid==3.2.0

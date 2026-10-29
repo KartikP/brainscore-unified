@@ -1,0 +1,173 @@
+"""Qualification scripts fail loudly, also under python -O, and always leave a report.
+
+The fast tests use a tiny fixed-weight torch module, not a trained model.
+test_native_trained_smolvlm_qualification is the trained-model check; it is
+marked slow and runs only in the native-environment-smolvlm integration
+profile, with the snapshot pre-staged in the Hugging Face cache.
+"""
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
+
+EXAMPLES = Path(__file__).resolve().parents[1] / 'examples'
+
+
+@pytest.fixture(autouse=True)
+def examples_on_path(monkeypatch):
+    """Import the example scripts for this test only; sys.path is restored after."""
+    monkeypatch.syspath_prepend(str(EXAMPLES))
+
+
+def _optimized(code: str, *args: str) -> subprocess.CompletedProcess:
+    """Run code with python -O, where assert statements are removed."""
+    env = dict(os.environ)
+    paths = [str(EXAMPLES), str(Path(__file__).resolve().parent), env.get('PYTHONPATH')]
+    env['PYTHONPATH'] = os.pathsep.join(filter(None, paths))
+    return subprocess.run([sys.executable, '-O', *(['-c', code] if code else []), *args],
+                          capture_output=True, text=True, env=env, timeout=110)
+
+
+def _tiny_fixture(drift_after: int | None = None):
+    """A fixed-weight one-layer policy over the mean frame colour.
+
+    With drift_after=n, calls after the first n choose a different action.
+    """
+    import torch
+
+    torch.manual_seed(0)
+    model = torch.nn.Sequential()
+    model.add_module('proj', torch.nn.Linear(3, 8))
+    calls = []
+
+    def policy(observation, history):
+        calls.append(1)
+        x = torch.from_numpy(observation['frame'].mean(axis=(0, 1)) / 255).float()
+        with torch.no_grad():
+            scores = model(x)[:4]
+        drifted = drift_after is not None and len(calls) > drift_after
+        return int(scores.argmin() if drifted else scores.argmax())
+
+    return policy, model
+
+
+DRIFT_RUN = '''
+import sys
+from pathlib import Path
+from test_external_qualification import _tiny_fixture
+from native_environment_toolbox import direct_episode, qualify
+out, assets = Path(sys.argv[1]), Path(sys.argv[2])
+# Drift right after the direct loop, so the recorded run must disagree with it.
+reference = _tiny_fixture()[0]
+calls = sum(len(direct_episode(reference, s, size=4, max_steps=6)['actions']) for s in (0, 1))
+qualify(out, lambda: _tiny_fixture(drift_after=calls), asset_dir=assets, layer='proj',
+        identifier='tiny-fixture', provenance={'fixture': True})
+'''
+
+
+@pytest.mark.timeout(120)
+def test_gates_raise_under_python_optimize():
+    result = _optimized(
+        'import coggym_toolbox as t\n'
+        'from types import SimpleNamespace\n'
+        'import numpy as np\n'
+        'event = lambda when, x: {"kind": "activity", "payload": {"when": when, "value": {"array": x}}}\n'
+        'record = SimpleNamespace(events=lambda: [event("before", np.ones(4)), event("after", np.ones(4))])\n'
+        't.check_ablation(record, [0, 1], 4)\n')
+    assert result.returncode != 0
+    assert 'Qualification check failed: selected units are zero' in result.stderr
+
+
+@pytest.mark.parametrize('max_steps', [1, 3, 40])
+def test_direct_loop_and_session_end_on_the_same_step(max_steps):
+    """Goal reached and step limit both stop the direct loop and the session alike."""
+    from brainscore.harnesses.grid_game import GridGameEnv, greedy_oracle_policy, play_game
+    from brainscore.model_helpers.policy_wrapper import PolicyWrapper
+    from brainscore_core.model_interface import BrainScoreModel
+    from native_environment_toolbox import direct_episode
+
+    for seed in (0, 1, 5):
+        direct = direct_episode(greedy_oracle_policy, seed, size=4, max_steps=max_steps)
+        subject = BrainScoreModel(identifier='oracle', policy=PolicyWrapper(greedy_oracle_policy))
+        session = play_game(subject, GridGameEnv(size=4, seed=seed, max_steps=max_steps), seed=seed)
+        assert session['actions'] == direct['actions']
+        assert session['total_reward'] == round(direct['total_reward'], 4)
+        assert len(direct['actions']) == min(max_steps, session['optimal_steps'])
+
+
+def test_native_tiny_fixture_passes_and_restores(tmp_path):
+    from native_environment_toolbox import qualify
+    assets = tmp_path / 'assets'
+    assets.mkdir()
+    (assets / 'weights.bin').write_bytes(b'fixture')
+    policy, model = _tiny_fixture()
+    report = qualify(tmp_path / 'run', lambda: (policy, model), asset_dir=assets, layer='proj',
+                     identifier='tiny-fixture', provenance={'fixture': True})
+    saved = json.loads((tmp_path / 'run' / 'qualification.json').read_text())
+    assert saved == json.loads(json.dumps(report, default=str))
+    assert saved['status'] == 'passed'
+    assert saved['recording_preserves_actions_rewards'] and saved['restored_actions_match']
+    assert saved['ablation']['units'] == 4 and saved['ablation']['selected_outputs_zero']
+    assert len(saved['provenance']['model_sha256']) == 64
+    packages = saved['provenance']['environment']['packages']
+    assert {'gymnasium', 'minigrid', 'torch'} <= set(packages)
+    assert not any(m._forward_hooks for m in model.modules())
+
+
+@pytest.mark.timeout(120)
+def test_native_mismatch_fails_under_optimize_and_keeps_provenance(tmp_path):
+    assets = tmp_path / 'assets'
+    assets.mkdir()
+    (assets / 'weights.bin').write_bytes(b'fixture')
+    result = _optimized(DRIFT_RUN, str(tmp_path / 'run'), str(assets))
+    assert result.returncode != 0
+    report = json.loads((tmp_path / 'run' / 'qualification.json').read_text())
+    assert report['status'] == 'failed'
+    assert report['error'].startswith('RuntimeError: Qualification check failed')
+    assert report['provenance']['fixture'] is True
+    assert len(report['provenance']['model_sha256']) == 64
+    assert report['direct']  # Evidence gathered before the failure is kept.
+    assert 'restored_actions_match' not in report
+
+
+@pytest.mark.timeout(120)
+@pytest.mark.parametrize('missing', ['model', 'checkout'])
+def test_coggym_missing_assets_write_failed_report(tmp_path, missing):
+    model = tmp_path / 'model'
+    if missing != 'model':
+        model.mkdir()
+        (model / 'config.json').write_text('{}')
+    out = tmp_path / 'out'
+    result = _optimized('', str(EXAMPLES / 'coggym_toolbox.py'), '--checkout', str(tmp_path / 'coggym'),
+                        '--model-path', str(model), '--output-dir', str(out))
+    assert result.returncode != 0
+    report = json.loads((out / 'qualification.json').read_text())
+    assert report['status'] == 'failed'
+    assert report['error'].startswith('FileNotFoundError: Stage')
+    assert report['leaderboard_reproduction'] is False
+    assert ('model_sha256' in report['provenance']) == (missing == 'checkout')
+    assert 'unified_source' in report['provenance']['environment']
+
+
+@pytest.mark.slow
+def test_native_trained_smolvlm_qualification(tmp_path, request):
+    from huggingface_hub import snapshot_download
+    from native_environment_toolbox import MODEL_ID, MODEL_REVISION, load_smolvlm_policy, qualify
+    from brainscore.validation.integration_checks import record_placement
+
+    # Resolve the exact pinned commit from the staged cache before any inference.
+    path = Path(snapshot_download(MODEL_ID, revision=MODEL_REVISION, local_files_only=True))
+    assert path.name == MODEL_REVISION
+
+    def load():
+        policy, model = load_smolvlm_policy(path, max_new_tokens=32)
+        record_placement(request.config, model, identifier=MODEL_ID, dtype='torch.float32')
+        return policy, model
+
+    report = qualify(tmp_path / 'run', load, asset_dir=path, provenance={
+        'model_id': MODEL_ID, 'revision': MODEL_REVISION, 'dtype': 'float32',
+        'device': 'cpu', 'decoding': 'greedy', 'max_new_tokens': 32})
+    assert report['status'] == 'passed', report.get('error')
