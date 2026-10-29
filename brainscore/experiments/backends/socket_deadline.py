@@ -18,12 +18,13 @@ import logging
 import math
 import threading
 import time
+from typing import Any, Callable, Iterator, Optional
 
 # Conservative wait for a closing handshake; matches websockets' own default.
 CLOSE_TIMEOUT = 10.0
 
 
-def positive_seconds(seconds):
+def positive_seconds(seconds: float) -> float:
     """Return seconds if it is a positive, finite int or float; else raise ValueError."""
     if not (type(seconds) in (int, float) and math.isfinite(seconds) and seconds > 0):
         raise ValueError('Timeouts must be positive, finite numbers of seconds')
@@ -31,7 +32,7 @@ def positive_seconds(seconds):
 
 
 @contextmanager
-def deadline(connection, seconds):
+def deadline(connection: Any, seconds: float) -> Iterator[Callable[[], float]]:
     """Bound the block; yields remaining(), the seconds left for a recv timeout.
 
     If the time runs out first, the connection is terminated and TimeoutError
@@ -72,7 +73,7 @@ def deadline(connection, seconds):
         raise TimeoutError('Connection deadline of %g s exceeded' % seconds)
 
 
-def close(connection, seconds=None, **kwargs):
+def close(connection: Any, seconds: Optional[float] = None, **kwargs: Any) -> bool:
     """Close within seconds (default CLOSE_TIMEOUT); True if clean. Never raises an Exception.
 
     Errors are logged rather than raised so cleanup never replaces the error

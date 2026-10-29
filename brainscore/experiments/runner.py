@@ -7,11 +7,11 @@ import json
 from pathlib import Path
 import shutil
 import time
-import tempfile
 import uuid
 
 from brainscore.instrumentation import ObservedSession, observe
 from brainscore.run_record import PayloadCodec, RunRecord
+from brainscore.experiments._storage import check_output_directory
 from brainscore_core.compatibility import validate_channels
 
 
@@ -361,19 +361,7 @@ class Experiment:
         self.metadata = dict(metadata or {})
 
     def validate(self):
-        if self.output_dir.exists():
-            raise FileExistsError(self.output_dir)
-        # Probe the nearest existing parent without leaving a run directory.
-        parent = self.output_dir.absolute().parent
-        while not parent.exists():
-            parent = parent.parent
-        try:
-            with tempfile.TemporaryFile(dir=parent) as probe:
-                probe.write(b'UMI output check')
-                probe.flush()
-        except OSError as error:
-            raise type(error)(error.errno, f'Cannot write experiment output: {error}',
-                              str(self.output_dir)) from error
+        check_output_directory(self.output_dir)
         self.protocol.validate(self.subject)
         names = [tool.name for tool in self.tools]
         if len(set(names)) != len(names):

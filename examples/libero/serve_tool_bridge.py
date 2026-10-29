@@ -16,7 +16,7 @@ import logging
 import math
 from pathlib import Path
 import threading
-import tempfile
+from typing import Any
 from brainscore.experiments import (
     Experiment,
     CallableProtocol,
@@ -27,8 +27,9 @@ from brainscore.experiments import (
     RemoteOpenPIInstrumentation,
 )
 from brainscore.experiments.backends import socket_deadline
+from brainscore.experiments._storage import check_output_directory
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.model_interface import BrainScoreModel, UnifiedModel
 from brainscore_core.events import EnvironmentStep, Selection
 
 RECEIPT_PROTOCOL = 'brainscore.libero.receipt.v1'
@@ -51,7 +52,8 @@ def _count(value, low=0, high=None):
     return type(value) is int and value >= low and (high is None or value <= high)
 
 
-def check_start(start, *, run_id, suite, trials_per_task, horizon):
+def check_start(start: dict[str, Any], *, run_id: str, suite: str,
+                trials_per_task: int, horizon: int) -> list[tuple[str, int]]:
     """Return the episode keys the evaluator declared, in evaluation order.
 
     Suite, trials and horizon are checked against the bridge's own settings.
@@ -74,7 +76,8 @@ def check_start(start, *, run_id, suite, trials_per_task, horizon):
     return [(task, trial) for task in tasks for trial in range(trials_per_task)]
 
 
-def check_receipt(receipt, *, run_id, start, keys, calls, horizon):
+def check_receipt(receipt: dict[str, Any], *, run_id: str, start: dict[str, Any],
+                  keys: list[tuple[str, int]], calls: list[int], horizon: int) -> None:
     """Reject a receipt unless every episode completed consistently with our calls.
 
     calls[i] is the bridge's own count of chunks sent for keys[i].
@@ -137,7 +140,7 @@ class Bridge:
         self.lock = threading.Lock()
         self.connection = 0
 
-    def handler(self, socket):
+    def handler(self, socket: Any) -> None:
         from openpi_client import msgpack_numpy as codec
 
         if not self.lock.acquire(blocking=False):
@@ -147,18 +150,11 @@ class Bridge:
         try:
             # Check local recording storage before connecting to a remote policy.
             destination = self.output / f'connection-{self.connection + 1}'
-            if destination.exists():
-                raise FileExistsError(destination)
-            parent = self.output.absolute()
-            while not parent.exists():
-                parent = parent.parent
-            with tempfile.TemporaryFile(dir=parent) as probe:
-                probe.write(b'UMI output check')
-                probe.flush()
+            check_output_directory(destination)
             self.connection += 1
             with OpenPIPolicyClient(self.upstream) as client:
                 subject = BrainScoreModel(
-                    'pi05-libero',
+                    identifier='pi05-libero',
                     policy=LiberoChunkPolicy(client, execution_horizon=self.horizon),
                 )
                 target = Selection(layer='action_out_proj', indices=[0])
@@ -175,8 +171,8 @@ class Bridge:
                 experiment = Experiment(
                     subject=subject,
                     protocol=CallableProtocol(
-                        'libero-evaluator',
-                        lambda model, context: self.serve(socket, codec, model, context, state),
+                        identifier='libero-evaluator',
+                        evaluate=lambda model, context: self.serve(socket, codec, model, context, state),
                     ),
                     tools=tools,
                     instrumentation=RemoteOpenPIInstrumentation(client),
@@ -212,7 +208,8 @@ class Bridge:
             finally:
                 self.lock.release()
 
-    def serve(self, socket, codec, model, context, state):
+    def serve(self, socket: Any, codec: Any, model: UnifiedModel,
+              context: Any, state: dict[str, Any]) -> dict[str, Any]:
         """Serve one evaluation; a disconnect or timeout before the receipt fails the run.
 
         Each wait for the evaluator and each send to it is bounded by idle_timeout.

@@ -760,12 +760,14 @@ def test_output_preflight_fails_before_subject_or_session(tmp_path, monkeypatch)
     def denied(*args, **kwargs):
         calls.append(kwargs['dir'])
         raise PermissionError('Output is not writable')
-    monkeypatch.setattr('brainscore.experiments.runner.tempfile.TemporaryFile', denied)
+    monkeypatch.setattr('brainscore.experiments._storage.tempfile.TemporaryFile', denied)
     experiment = Experiment(
         subject=subject, protocol=protocol(), output_dir=tmp_path / 'new' / 'run',
     )
-    with pytest.raises(PermissionError, match='not writable'):
+    with pytest.raises(PermissionError, match='Cannot write experiment output') as raised:
         experiment.validate()
+    assert 'not writable' in str(raised.value.__cause__)
+    assert raised.value.filename == str(experiment.output_dir)
     assert calls == [tmp_path]
     assert subject.resets == subject.state == 0
     assert not (tmp_path / 'new').exists()
@@ -806,13 +808,15 @@ def test_tool_bridge_checks_storage_before_connecting(tmp_path, monkeypatch):
     monkeypatch.setattr(module.socket_deadline, 'close', lambda *a, **k: closes.append(a))
     def denied(*args, **kwargs):
         raise PermissionError('No recording storage')
-    monkeypatch.setattr(module.tempfile, 'TemporaryFile', denied)
+    monkeypatch.setattr('brainscore.experiments._storage.tempfile.TemporaryFile', denied)
     bridge = module.Bridge(
         'ws://unused', tmp_path / 'new', 'baseline',
         suite='libero_spatial', trials_per_task=1, horizon=5,
     )
-    with pytest.raises(PermissionError, match='No recording storage'):
+    with pytest.raises(PermissionError, match='Cannot write experiment output') as raised:
         bridge.handler(object())
+    assert 'No recording storage' in str(raised.value.__cause__)
+    assert raised.value.filename == str(tmp_path / 'new' / 'connection-1')
     assert connections == []
     assert len(closes) == 1 and not bridge.lock.locked()
 
