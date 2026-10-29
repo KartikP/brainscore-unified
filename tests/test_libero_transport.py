@@ -18,6 +18,7 @@ from pathlib import Path
 import pathlib
 import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -59,7 +60,12 @@ def server(command, port, env, log):
                     if time.monotonic() >= deadline:
                         raise TimeoutError(log.read_text())
                     time.sleep(0.1)
-            yield
+            yield process
+        except BaseException as error:
+            failure = error
+            raise
+        else:
+            failure = None
         finally:
             process.terminate()
             try:
@@ -67,6 +73,12 @@ def server(command, port, env, log):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
+                # A forced kill is never a clean stop: say so, with the server's own log.
+                message = ('%s did not exit within 10 s of SIGTERM and was killed; log tail:\n%s'
+                           % (Path(command[1]).name, log.read_text()[-4000:]))
+                if failure is None:
+                    raise AssertionError(message)
+                failure.add_note(message)
 
 
 POLICY_FIXTURE = '''
@@ -100,12 +112,39 @@ def policy_server(env, tmp_path, mode='answer'):
         yield port
 
 
+# Runs serve_bridge.py so that GET /stop-in-finalizer delivers SIGTERM to the bridge while
+# Python is inside a weakref callback, where an exception raised by the signal handler is
+# discarded ("Exception ignored"). This reproduces a CI failure on Linux at random timing.
+STOP_IN_FINALIZER = '''
+import os, runpy, signal, sys, weakref
+import openpi.serving.websocket_policy_server as upstream
+health = upstream._health_check
+class Finalized:
+    pass
+def check(connection, request):
+    if request.path == '/stop-in-finalizer':
+        def callback(_):
+            os.kill(os.getpid(), signal.SIGTERM)
+            sum(range(100000))  # the Python signal handler runs during these bytecodes
+            print('stop signal handled inside a weakref callback', file=sys.stderr, flush=True)
+        item = Finalized()
+        reference = weakref.ref(item, callback)
+        del item
+    return health(connection, request)
+upstream._health_check = check
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+'''
+
+
 @contextmanager
-def capture_bridge(env, tmp_path, name, route, upstream_port):
+def capture_bridge(env, tmp_path, name, route, upstream_port, prefix=(), process=None):
     port, log = free_port(), tmp_path / (name + '.log')
-    command = [sys.executable, str(ROOT / 'examples/libero/serve_bridge.py'), '--route', route,
+    command = [sys.executable, *prefix, str(ROOT / 'examples/libero/serve_bridge.py'), '--route', route,
                '--upstream-port', str(upstream_port), '--port', str(port), '--out', str(tmp_path / name)]
-    with server(command, port, env, log):
+    with server(command, port, env, log) as started:
+        if process is not None:
+            process.append(started)
         yield port, log
     # server() has stopped the bridge with SIGTERM, as docker stop does.
 
@@ -198,6 +237,121 @@ def test_capture_serves_one_evaluator_session(tmp_path, monkeypatch):
                 WebsocketClientPolicy('127.0.0.1', port)  # and after it ended
     manifest = capture_manifest(tmp_path / 'record')
     assert manifest['status'] == 'complete' and manifest['event_count'] == 4
+
+
+def test_stop_signal_lost_in_a_finalizer_still_saves_the_capture(tmp_path, monkeypatch):
+    env = transport_env(monkeypatch)
+    from openpi_client.websocket_client_policy import WebsocketClientPolicy
+    record = tmp_path / 'record'
+    with policy_server(env, tmp_path) as policy_port:
+        with capture_bridge(env, tmp_path, 'record', 'reference', policy_port,
+                            prefix=('-c', STOP_IN_FINALIZER)) as (port, log):
+            client = WebsocketClientPolicy('127.0.0.1', port)
+            client.infer(libero_request())
+            client._ws.close()
+            wait_until(sessions_closed(log))
+            try:
+                urllib.request.urlopen('http://127.0.0.1:%d/stop-in-finalizer' % port, timeout=5).close()
+            except OSError:
+                pass  # not a websocket request; only the signal matters
+            wait_until(lambda: capture_manifest(record)['status'] != 'open', timeout=8)
+            assert 'stop signal handled inside a weakref callback' in log.read_text()
+    manifest = capture_manifest(record)
+    assert manifest['status'] == 'complete' and manifest['event_count'] == 2
+
+
+def test_server_helper_reports_a_forced_kill(tmp_path):
+    ignores_sigterm = (
+        'import http.server, signal, sys\n'
+        'signal.signal(signal.SIGTERM, signal.SIG_IGN)\n'
+        'class Health(http.server.BaseHTTPRequestHandler):\n'
+        '    def do_GET(self):\n'
+        '        self.send_response(200); self.end_headers()\n'
+        'http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), Health).serve_forever()\n')
+    port = free_port()
+    with pytest.raises(AssertionError, match='did not exit within 10 s of SIGTERM and was killed'):
+        with server([sys.executable, '-c', ignores_sigterm, str(port)], port, dict(os.environ),
+                    tmp_path / 'stubborn.log'):
+            pass
+
+
+# Runs serve_bridge.py with injected shutdown faults, selected by BRIDGE_FAULT:
+#   close-hangs   saving the record never returns
+#   close-fails   saving the record raises OSError
+#   slow-upstream closing the upstream socket takes 1 s (a window after the loop closed)
+# Each step it reaches is printed, so a test can see what ran.
+BRIDGE_FAULTS = '''
+import os, runpy, sys, time
+from brainscore.run_record import RunRecorder
+import websockets.sync.connection as connection
+fault, close, close_socket = os.environ['BRIDGE_FAULT'], RunRecorder.close, connection.Connection.close_socket
+def record_close(self, **kwargs):
+    if fault == 'close-hangs':
+        time.sleep(60)
+    if fault == 'close-fails':
+        raise OSError('injected record failure')
+    return close(self, **kwargs)
+def upstream_close(self):
+    print('upstream socket closed', file=sys.stderr, flush=True)
+    if fault == 'slow-upstream':
+        time.sleep(1)
+    return close_socket(self)
+RunRecorder.close, connection.Connection.close_socket = record_close, upstream_close
+sys.argv = sys.argv[1:]
+runpy.run_path(sys.argv[0], run_name='__main__')
+'''
+
+
+@contextmanager
+def faulty_bridge_session(tmp_path, monkeypatch, fault):
+    """One complete evaluator session on a bridge with an injected fault; yields the process."""
+    env = dict(transport_env(monkeypatch), BRIDGE_FAULT=fault)
+    from openpi_client.websocket_client_policy import WebsocketClientPolicy
+    process = []
+    with policy_server(env, tmp_path) as policy_port:
+        with capture_bridge(env, tmp_path, 'record', 'reference', policy_port,
+                            prefix=('-c', BRIDGE_FAULTS), process=process) as (port, log):
+            client = WebsocketClientPolicy('127.0.0.1', port)
+            client.infer(libero_request())
+            client._ws.close()
+            wait_until(sessions_closed(log))
+            yield process[0], log
+
+
+def test_emergency_exit_is_unconditional_when_saving_the_record_hangs(tmp_path, monkeypatch):
+    from brainscore.run_record import RunRecord
+    with faulty_bridge_session(tmp_path, monkeypatch, 'close-hangs') as (process, log):
+        started = time.monotonic()
+        process.send_signal(signal.SIGTERM)
+        assert process.wait(timeout=9) == 3  # the stop budget, then exit; nothing else ran
+        assert 4 < time.monotonic() - started < 9
+    assert capture_manifest(tmp_path / 'record')['status'] == 'open'
+    assert RunRecord.inspect(tmp_path / 'record')['status'] == 'incomplete'
+
+
+def test_record_failure_still_closes_upstream_without_emergency_exit(tmp_path, monkeypatch):
+    with faulty_bridge_session(tmp_path, monkeypatch, 'close-fails') as (process, log):
+        started = time.monotonic()
+        process.send_signal(signal.SIGTERM)
+        code = process.wait(timeout=9)
+        elapsed = time.monotonic() - started
+    text = log.read_text()
+    assert 'upstream socket closed' in text and 'OSError: injected record failure' in text
+    assert code == 1 and elapsed < 3  # the error propagates; no emergency exit
+    assert capture_manifest(tmp_path / 'record')['status'] == 'open'
+
+
+def test_repeated_stop_after_the_loop_closed_is_ignored(tmp_path, monkeypatch):
+    with faulty_bridge_session(tmp_path, monkeypatch, 'slow-upstream') as (process, log):
+        process.send_signal(signal.SIGTERM)
+        wait_until(lambda: 'upstream socket closed' in log.read_text(), timeout=5)
+        process.send_signal(signal.SIGTERM)  # while main() is cleaning up; the loop is closed
+        process.send_signal(signal.SIGINT)
+        assert process.wait(timeout=9) == 0
+    text = log.read_text()
+    assert 'Traceback' not in text and 'Event loop is closed' not in text, text
+    manifest = capture_manifest(tmp_path / 'record')
+    assert manifest['status'] == 'complete' and manifest['event_count'] == 2
 
 
 def test_remote_qualification_reports_unchanged_actions_without_gating_them(tmp_path, monkeypatch):
