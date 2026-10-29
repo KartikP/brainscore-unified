@@ -31,9 +31,11 @@ The same experiment tools work across domains when the subject exposes the requi
 | Check storage and data early | `score()`, `python -m brainscore.doctor` | Scoring checks cache storage before loading benchmarks/models; unified also checks declared local assets. Lazy or remote failures can occur later |
 | Map activity to brain regions | `region_layer_map`, recording helpers | One layer, composite selections, or all layers; the benchmark determines fitting/scoring |
 | Reuse legacy models | `look_at`, `digest_text`, adapters | Existing vision/language task and recording workflows |
-| Assemble an experiment | `Experiment` | Combines a subject, one protocol, tools, and an output folder |
+| Assemble an experiment | `Experiment` | Combines a subject, protocol, tools and a new output folder; validates declarations and storage before execution |
 | Choose the procedure | `SessionProtocol`, `CallableProtocol` | Sessions manage conditions/trials; an existing evaluator keeps its own procedure |
 | Control delivery | Sessions and streaming helpers | Batches, individual inputs, windows, and clock policies; no hard real-time guarantee |
+| Limit history and call recordings | `EnvironmentSession(history_limit=...)`, `SessionProtocol(collect_outputs=False)`, `RecordInputsOutputs(max_bytes=...)` | History limits count entries; the recorder fails explicitly at its byte budget. Other artifacts and policy state need separate limits |
+| Inspect an interrupted record | `RunRecord.inspect`, `unverified_prefix` | Read-only diagnostic prefix; incomplete or corrupt runs cannot be scored as completed measurements |
 
 ## Ready-to-use experiment tools
 
@@ -61,7 +63,7 @@ Use these to connect a model or build a tool. They also underpin the tools above
 | `observe` | Notify callbacks about method starts, results, and errors | Used by `ObserveCalls`; does not save anything by itself |
 | `ActivationWindow` / `intervene` | Scoped activity capture / intervention | The direct mechanisms behind activity and intervention workflows |
 | `RunRecorder` | Write records, arrays, files, and metadata | Storage used by recording tools |
-| `RunRecord` | Read saved measurements and apply metrics | Shared reader; no model execution |
+| `RunRecord` | Read saved measurements, inspect failures and apply metrics | Checks completed records before scoring; diagnostic prefixes are unverified; no model execution |
 | `build_trace_subject` | Adapt a provider and answer parser into a subject | Produces raw responses, streamed fragments, and parsed answers for recorders |
 | `replay_sessions` / `replay_calls` | Send saved inputs through a model again | Explicit new execution; does not regenerate simulator feedback |
 | `context.import_artifact` | Copy external videos/reports with producer metadata | Keeps evaluator-produced artifacts with the experiment |
@@ -120,3 +122,5 @@ Install the four packages together using the [peer revisions and constraints](..
 Use the [numerical policy](numerical_policy.md) for exactness and error budgets. Use separate subject/tool instances for concurrent experiments; the experiment runner is synchronous. Custom object serialization, physical-robot safety, distributed scheduling, a replay UI and automatic circuit discovery are not built-in guarantees.
 
 [Release requirements](production_release.md) · [Qualification records](qualification/) · [Shared vocabulary](conventions.md)
+
+See the [external-environment qualification report](qualification/2026-10-29-external-environments.md) for installed-package tests, long-run fixtures and trained-model qualification limits.

@@ -1,8 +1,8 @@
 # Targeted integration tests
 
 These profiles test real models and datasets outside the short offline suite.
-The [selection file](../install/integration-tests.json) defines eight profiles
-with 52 test IDs. All eight have an executable runner. Each run checks the
+The [selection file](../install/integration-tests.json) defines nine profiles
+with 53 test IDs. All nine have an executable runner. Each run checks the
 four installed candidate packages before and after testing.
 
 **CPU qualification is partial.** The October 22 fresh-Conda pilot passed
@@ -24,6 +24,7 @@ Other profiles and CUDA remain unqualified.
 | `native-text` | CLIP/GPT-2 extraction and `BrainScoreModel.process()` dispatch | Hugging Face |
 | `native-vlm` | Qwen image features, patch grouping and `process()` dispatch on CUDA | Hugging Face |
 | `behavioral-roar` | Fixed splits, CLIP readout and score structure | Hugging Face; authorized Yeatman2021 BrainIO build |
+| `native-environment-smolvlm` | SmolVLM-256M on `GridGameEnvironment`: direct loop vs recorded, ablated and restored `Experiment` runs; tool behavior, not navigation skill | Hugging Face (snapshot `7e3e67e`) |
 
 Model changes also need that plugin's tests and a declared compatible benchmark.
 Benchmark changes need a representative model and a cheap baseline where useful.

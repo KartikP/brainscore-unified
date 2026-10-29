@@ -1,6 +1,8 @@
 """Qualify CogGym recording and intervention with a cached, small trained model.
 
 This CPU smoke run uses Hu2023Fine/exp1; it is not a leaderboard reproduction.
+It needs a local CogGym checkout and model snapshot and never downloads.
+qualification.json is written on success and on failure (status, error, hashes).
 For the shorter registered-benchmark walkthrough, see docs/coggym.md.
 """
 import argparse
@@ -25,6 +27,17 @@ from brainscore.experiments import (
 from brainscore.harnesses.coggym import CogGymRunner
 from brainscore.model_helpers.response_trace import build_trace_subject
 from brainscore_core.events import Selection
+
+from example_qualification import (
+    SMOLVLM_MANIFEST,
+    check_ablation,
+    environment,
+    qualification_report,
+    require,
+    snapshot_digest,
+    source_revision,
+    verify_model_identity,
+)
 
 
 class LocalTextProvider:
@@ -101,27 +114,6 @@ def _read_trials(directory: Path) -> list[dict[str, Any]]:
     return json.loads((directory / 'run-001.json').read_text())['trials']
 
 
-def _check_ablation(record, indices: list[int], total_units: int) -> None:
-    """Check that only the selected unit outputs were zeroed."""
-    events = list(record.events())
-    before = [
-        event['payload']['value']['array'] for event in events
-        if event['kind'] == 'activity' and event['payload']['when'] == 'before'
-    ]
-    after = [
-        event['payload']['value']['array'] for event in events
-        if event['kind'] == 'activity' and event['payload']['when'] == 'after'
-    ]
-    assert before and len(before) == len(after)
-    assert any((array[..., indices] != 0).any() for array in before)
-    assert all((array[..., indices] == 0).all() for array in after)
-    unselected = sorted(set(range(total_units)) - set(indices))
-    assert all(
-        (original[..., unselected] == changed[..., unselected]).all()
-        for original, changed in zip(before, after)
-    )
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--checkout', type=Path, required=True)
@@ -132,8 +124,35 @@ def main() -> None:
     if args.trials < 1:
         parser.error('--trials must be positive')
 
+    # Create the output first so any later failure leaves a failed report.
+    args.output_dir.mkdir(parents=True, exist_ok=False)
+    model_id = SMOLVLM_MANIFEST['repository']
+    report = {
+        'purpose': 'trained-model CPU tool qualification; not a leaderboard reproduction',
+        'leaderboard_reproduction': False,
+        'provenance': {
+            'model_id': model_id,
+            'model_path': str(args.model_path.resolve()),
+            'checkout': str(args.checkout.resolve()),
+            'environment': environment(),
+        },
+    }
+    with qualification_report(args.output_dir / 'qualification.json', report):
+        qualify(args, model_id, report)
+    print(json.dumps(report, indent=2, default=str))
+
+
+def qualify(args, model_id: str, report: dict[str, Any]) -> None:
+    # Require pre-staged assets; nothing here downloads.
+    provenance = report['provenance']
+    if not args.checkout.is_dir():
+        raise FileNotFoundError(f'Stage the pinned CogGym checkout first: {args.checkout}')
+    # The model is identified by content before anything loads it.
+    provenance['model_identity'] = verify_model_identity(args.model_path, SMOLVLM_MANIFEST)
+    provenance['model_sha256'] = snapshot_digest(args.model_path)
+    provenance['coggym_source'] = source_revision(args.checkout)
+
     # Prepare a small question subset before loading the model.
-    model_id = 'HuggingFaceTB/SmolVLM-256M-Instruct'
     prepared = CogGymRunner(
         args.checkout,
         model=model_id,
@@ -141,7 +160,7 @@ def main() -> None:
         max_tokens=32,
     )
     if args.trials > len(prepared.trial_ids):
-        parser.error('--trials exceeds the canonical selection')
+        raise ValueError('--trials exceeds the canonical selection')
     runner = CogGymRunner(
         args.checkout,
         model=model_id,
@@ -149,16 +168,17 @@ def main() -> None:
         max_tokens=32,
         trial_ids=prepared.trial_ids[:args.trials],
     )
-    args.output_dir.mkdir(parents=True, exist_ok=False)
+    report['scope'] = runner.describe()
 
     # Connect the provider to the same subject interface used by other UMI tools.
     provider = LocalTextProvider(args.model_path)
     subject = build_trace_subject(
-        model_id,
+        identifier=model_id,
         provider=lambda request: provider.complete_with_metadata(**request),
         parse=str,  # CogGym's own parser interprets answers later.
         provenance={
             'model_path': str(args.model_path.resolve()),
+            'model_sha256': provenance['model_sha256'],
             'dtype': 'float32',
             'device': 'cpu',
             'decoding': 'greedy',
@@ -172,7 +192,7 @@ def main() -> None:
     generator = torch.Generator().manual_seed(7)
     shuffled = torch.randperm(module.out_features, generator=generator)
     indices = sorted(shuffled[:module.out_features // 2].tolist())
-    selected = Selection(layer, indices=indices)
+    selected = Selection(layer=layer, indices=indices)
     instrumentation = TorchInstrumentation(provider.model)  # Connect layer hooks.
 
     def execute(name, ablate=False):
@@ -197,7 +217,8 @@ def main() -> None:
                 'temperature': 0,
             },
         ).run()
-        assert not any(layer._forward_hooks for layer in provider.model.modules())
+        require(not any(layer._forward_hooks for layer in provider.model.modules()),
+                f'no forward hooks remain after {name}')
         return result
 
     # Verify that recording preserves requests, answers, parsing, and scoring.
@@ -208,16 +229,20 @@ def main() -> None:
     )
     direct_requests = deepcopy(provider.requests)
     recorded = execute('recorded')
-    assert provider.requests == direct_requests
-    assert direct == recorded.value
+    require(provider.requests == direct_requests, 'recorded requests match direct requests')
+    require(direct == recorded.value, 'recorded score matches direct score')
     original_trials = _read_trials(args.output_dir / 'direct')
-    assert original_trials == _read_trials(recorded.directory / 'coggym')
+    require(original_trials == _read_trials(recorded.directory / 'coggym'),
+            'recorded trials match direct trials')
+    report['recording_preserves_requests_outputs_parsing_scores'] = True
 
     # Use separate runs: CogGym question IDs are metadata, not UMI trial filters.
     intervened = execute('ablated', ablate=True)
-    _check_ablation(intervened.record, indices, module.out_features)
+    check_ablation(intervened.record, indices, module.out_features)
     restored = execute('restored')
-    assert original_trials == _read_trials(restored.directory / 'coggym')
+    require(original_trials == _read_trials(restored.directory / 'coggym'),
+            'restored trials match direct trials')
+    report['restored_outputs_match'] = True
 
     # Replay sends the saved model calls again; it does not rerun CogGym.
     replay = Experiment(
@@ -231,35 +256,26 @@ def main() -> None:
         output_dir=args.output_dir / 'replay',
     ).run()
     comparison = compare_outputs(recorded.directory, replay.directory)
-    assert comparison['equal']
+    report['replay'] = comparison
+    require(comparison['equal'], 'replayed outputs match recorded outputs')
 
     # Save the verification results separately from the scientific trial records.
     altered_trials = _read_trials(intervened.directory / 'coggym')
-    report = {
-        'status': 'passed',
-        'scope': runner.describe(),
-        'recording_preserves_requests_outputs_parsing_scores': True,
-        'restored_outputs_match': True,
-        'replay': comparison,
-        'ablation': {
-            'layer': layer,
-            'units': len(indices),
-            'total_units': module.out_features,
-            'selected_outputs_zero': True,
-            'unselected_outputs_unchanged': True,
-            'changed_responses': sum(
-                original['response'] != changed['response']
-                for original, changed in zip(original_trials, altered_trials)
-            ),
-            'changed_parsed_answers': sum(
-                original['parsed'] != changed['parsed']
-                for original, changed in zip(original_trials, altered_trials)
-            ),
-        },
-        'leaderboard_reproduction': False,
+    report['ablation'] = {
+        'layer': layer,
+        'units': len(indices),
+        'total_units': module.out_features,
+        'selected_outputs_zero': True,
+        'unselected_outputs_unchanged': True,
+        'changed_responses': sum(
+            original['response'] != changed['response']
+            for original, changed in zip(original_trials, altered_trials)
+        ),
+        'changed_parsed_answers': sum(
+            original['parsed'] != changed['parsed']
+            for original, changed in zip(original_trials, altered_trials)
+        ),
     }
-    (args.output_dir / 'qualification.json').write_text(json.dumps(report, indent=2) + '\n')
-    print(json.dumps(report, indent=2))
 
 
 if __name__ == '__main__':

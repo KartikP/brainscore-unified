@@ -58,6 +58,7 @@ def test_session_intervention_order_reset_and_cleanup(tmp_path):
     np.testing.assert_equal(outputs[1]['payload'].payload, [0, 0])
     assert [e['payload'].meta['state'] for e in outputs] == [1, 1]
     assert [e['trial_id'] for e in outputs] == ['baseline', 'ablation']
+    assert not {'error', 'error_chain'} & set(result.manifest)
     activity = [e for e in events if e['kind'] == 'activity' and e['trial_id'] == 'ablation']
     np.testing.assert_equal(activity[0]['payload']['value']['array'], [1, 2])
     np.testing.assert_equal(activity[1]['payload']['value']['array'], [0, 0])
@@ -247,6 +248,8 @@ def test_cancellation_and_resource_cleanup(tmp_path, exception):
             output_dir=tmp_path/'run').run()
     assert closed == [True] and subject.resets == 2
     assert not subject.layer._forward_hooks
+    saved = json.loads((tmp_path/'run/experiment.json').read_text())
+    assert saved['error_chain'][0]['type'] == type(exception).__name__
     assert RunRecord(tmp_path/'run/inputs_outputs').manifest['status'] == 'failed'
 
 
@@ -535,3 +538,306 @@ def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
     assert [event['payload'].payload for event in outputs] == [1, 2, 1, 2]
     assert [event['trial_id'] for event in outputs] == [0, 0, 1, 1]
     assert subject.resets == 4 and subject.state == 0
+
+
+def _saved_chain(path):
+    manifest = json.loads((path/'experiment.json').read_text())
+    return manifest['error'], [(e['type'], e['message'], e['parent'], e['relation'])
+                               for e in manifest['error_chain']]
+
+
+@pytest.mark.parametrize('cleanup', ['reset', 'trial_end_listener', 'tool_exit'])
+def test_cleanup_failure_keeps_original_failure_on_disk(tmp_path, cleanup):
+    class Subject(FixtureSubject):
+        def interact(self, session):
+            raise ValueError('trial failed')
+        def reset(self):
+            super().reset()
+            if cleanup == 'reset' and self.resets == 2:
+                raise RuntimeError('cleanup failed')
+    class Failing(Tool):
+        name = 'failing'
+        phase = 'observe' if cleanup == 'trial_end_listener' else 'after_intervention'
+        def on_event(self, event):
+            if event['kind'] == 'trial_end':
+                raise RuntimeError('cleanup failed')
+        @contextmanager
+        def attach(self, context):
+            if cleanup == 'trial_end_listener':
+                with context.subscribe(self.on_event):
+                    yield
+                return
+            try:
+                yield
+            finally:
+                raise RuntimeError('cleanup failed')
+    subject = Subject()
+    tools = [RecordInputsOutputs()] + ([] if cleanup == 'reset' else [Failing()])
+    p = protocol()
+    p.trials = ('only',)
+    with pytest.raises(RuntimeError, match='cleanup failed') as raised:
+        Experiment(subject=subject, protocol=p, tools=tools, output_dir=tmp_path/'run').run()
+    assert isinstance(raised.value.__context__, ValueError)  # Python's own chain is unchanged.
+    assert subject.resets == 2
+    assert RunRecord(tmp_path/'run/inputs_outputs').manifest['status'] == 'failed'
+    error, chain = _saved_chain(tmp_path/'run')
+    assert error == {'type': 'RuntimeError', 'message': 'cleanup failed'}
+    assert chain == [('RuntimeError', 'cleanup failed', None, None),
+                     ('ValueError', 'trial failed', 0, 'context')]
+
+
+def _cause():
+    try:
+        raise KeyError('handled')
+    except KeyError:
+        raise RuntimeError('outer') from ValueError('root')
+
+
+def _suppressed():
+    try:
+        raise KeyError('hidden')
+    except KeyError:
+        raise RuntimeError('outer') from None
+
+
+def _cycle():
+    first, second = RuntimeError('outer'), KeyError('inner')
+    first.__context__, second.__context__ = second, first
+    raise first
+
+
+def _group():
+    try:
+        raise OSError('disk')
+    except OSError as nested:
+        shared = ValueError('shared')
+        raise ExceptionGroup('outer', [shared, TypeError('t'), shared]) from nested
+
+
+@pytest.mark.parametrize('raise_error, expected', [
+    (_cause, [('RuntimeError', 'outer', None, None), ('ValueError', 'root', 0, 'cause')]),
+    (_suppressed, [('RuntimeError', 'outer', None, None)]),
+    (_cycle, [('RuntimeError', 'outer', None, None), ('KeyError', "'inner'", 0, 'context'),
+              ('RuntimeError', 'outer', 1, 'context')]),
+    (_group, [('ExceptionGroup', 'outer (3 sub-exceptions)', None, None),
+              ('OSError', 'disk', 0, 'cause'), ('ValueError', 'shared', 0, 'group'),
+              ('TypeError', 't', 0, 'group'), ('ValueError', 'shared', 0, 'group')]),
+])
+def test_error_chain_shapes(tmp_path, raise_error, expected):
+    def evaluate(subject, context):
+        raise_error()
+    with pytest.raises(BaseException):
+        Experiment(subject=SimpleNamespace(process=lambda x: x),
+                   protocol=CallableProtocol('fails', evaluate), output_dir=tmp_path/'run').run()
+    manifest = json.loads((tmp_path/'run/experiment.json').read_text())
+    assert _saved_chain(tmp_path/'run')[1] == expected
+    repeats = {i: e['same_as'] for i, e in enumerate(manifest['error_chain']) if 'same_as' in e}
+    assert repeats == {'_cycle': {2: 0}, '_group': {4: 2}}.get(raise_error.__name__, {})
+
+
+def _run_failing(tmp_path, error, name='run'):
+    def evaluate(subject, context):
+        raise error
+    with pytest.raises(BaseException) as raised:
+        Experiment(subject=SimpleNamespace(process=lambda x: x),
+                   protocol=CallableProtocol('fails', evaluate), output_dir=tmp_path/name).run()
+    assert raised.value is error
+    return json.loads((tmp_path/name/'experiment.json').read_text())
+
+
+def test_error_chain_is_bounded(tmp_path):
+    from brainscore.experiments import runner
+    deep = KeyError('innermost')
+    for index in range(10_000):  # Deeper than the recursion limit.
+        outer = KeyError(index)
+        outer.__context__, deep = deep, outer
+    wide = ExceptionGroup('wide', [ValueError(i) for i in range(1000)])
+    for error, name in ((deep, 'deep'), (wide, 'wide')):
+        chain = _run_failing(tmp_path, error, name)['error_chain']
+        assert len(chain) == runner._ERROR_CHAIN_LIMIT
+        assert any(e.get('truncated') for e in chain)
+
+
+@pytest.mark.parametrize('diagnostic', ['formatter', 'chain_helper'])
+@pytest.mark.parametrize('raised', [RuntimeError, KeyboardInterrupt, SystemExit])
+def test_failing_diagnostics_never_replace_the_original(tmp_path, monkeypatch, diagnostic, raised):
+    from brainscore.experiments import runner
+    if diagnostic == 'formatter':
+        class Original(Exception):
+            def __str__(self):
+                raise raised('broken __str__')
+        manifest = _run_failing(tmp_path, Original())
+        assert manifest['error'] == {'type': 'Original', 'message': '<unprintable Original>'}
+        assert manifest['error_chain'][0]['message'] == '<unprintable Original>'
+    else:
+        def broken(error):
+            raise raised('diagnostics failed')
+        monkeypatch.setattr(runner, '_error_chain', broken)
+        manifest = _run_failing(tmp_path, ValueError('original'))
+        assert manifest['error'] == {'type': 'ValueError', 'message': 'original'}
+        assert 'error_chain' not in manifest
+    assert manifest['status'] == 'failed'
+
+
+def test_final_manifest_write_failure_keeps_original_in_python_chain(tmp_path, monkeypatch):
+    from brainscore.experiments import runner
+    write = runner._write
+    def full_disk(path, value):
+        if value.get('status') == 'failed':
+            raise OSError('no space left')
+        write(path, value)
+    monkeypatch.setattr(runner, '_write', full_disk)
+    def evaluate(subject, context):
+        raise ValueError('original')
+    with pytest.raises(OSError) as raised:
+        Experiment(subject=SimpleNamespace(process=lambda x: x),
+                   protocol=CallableProtocol('fails', evaluate), output_dir=tmp_path/'run').run()
+    assert str(raised.value.__context__) == 'original'
+
+
+def test_record_budget_covers_activity_and_fails_experiment_with_cleanup(tmp_path):
+    from brainscore.run_record import RecordingBudgetExceeded
+
+    def tools(max_bytes):
+        return [RecordInputsOutputs(max_bytes=max_bytes), RecordActivity(['population'])]
+
+    subject = FixtureSubject()
+    result = Experiment(subject=subject, protocol=protocol(), tools=tools(10 ** 6),
+        instrumentation=TorchInstrumentation({'population': subject.layer}),
+        output_dir=tmp_path/'fits').run()
+    record = json.loads((result.directory/'inputs_outputs'/'manifest.json').read_text())
+    assert result.manifest['status'] == record['status'] == 'complete'
+    assert result.manifest['plan']['tools'][0]['config'] == {'max_bytes': 10 ** 6}
+    assert any(e['kind'] == 'activity' for e in rows(result.directory))
+    # Envelopes carry elapsed times, so the size varies slightly between runs.
+    cap = record['budget']['reserved_bytes'] // 2
+
+    subject = FixtureSubject()
+    with pytest.raises(RecordingBudgetExceeded):
+        Experiment(subject=subject, protocol=protocol(), tools=tools(cap),
+            instrumentation=TorchInstrumentation({'population': subject.layer}),
+            output_dir=tmp_path/'short').run()
+    experiment = json.loads((tmp_path/'short'/'experiment.json').read_text())
+    record = json.loads((tmp_path/'short'/'inputs_outputs'/'manifest.json').read_text())
+    assert experiment['status'] == record['status'] == 'failed'
+    assert experiment['error']['type'] == 'RecordingBudgetExceeded'
+    assert record['budget']['reserved_bytes'] <= cap and record['budget']['exceeded']
+    assert {a['path'] for a in experiment['artifacts']} == {
+        'inputs_outputs/manifest.json', 'inputs_outputs/events.jsonl'}
+    assert len(subject.layer._forward_hooks) == 0 and subject.state == 0
+
+
+def test_default_record_tool_config_is_unchanged():
+    assert RecordInputsOutputs().describe() == {}
+
+
+@pytest.mark.parametrize('caught', [False, True])
+def test_record_failure_keeps_original_error_and_fails_run(tmp_path, caught):
+    def evaluate(subject, context):
+        try:
+            context.record('output', object())
+        except TypeError:
+            if not caught:
+                raise
+        context.record('output', 'after the loss')
+    with pytest.raises(RuntimeError if caught else TypeError):
+        Experiment(subject=SimpleNamespace(process=lambda x: x),
+                   protocol=CallableProtocol('lossy', evaluate),
+                   tools=[RecordInputsOutputs()], output_dir=tmp_path/'run').run()
+    experiment = json.loads((tmp_path/'run'/'experiment.json').read_text())
+    record = json.loads((tmp_path/'run'/'inputs_outputs'/'manifest.json').read_text())
+    assert experiment['status'] == record['status'] == 'failed'
+    if caught:
+        assert 'caught model or tool error' in experiment['error']['message']
+    else:
+        assert experiment['error']['type'] == 'TypeError'
+    assert [e['kind'] for e in rows(tmp_path/'run')] == ['trial_start']  # nothing after the loss
+
+
+def test_output_preflight_fails_before_subject_or_session(tmp_path, monkeypatch):
+    subject = FixtureSubject()
+    calls = []
+    def denied(*args, **kwargs):
+        calls.append(kwargs['dir'])
+        raise PermissionError('Output is not writable')
+    monkeypatch.setattr('brainscore.experiments._storage.tempfile.TemporaryFile', denied)
+    experiment = Experiment(
+        subject=subject, protocol=protocol(), output_dir=tmp_path / 'new' / 'run',
+    )
+    with pytest.raises(PermissionError, match='Cannot write experiment output') as raised:
+        experiment.validate()
+    assert 'not writable' in str(raised.value.__cause__)
+    assert raised.value.filename == str(experiment.output_dir)
+    assert calls == [tmp_path]
+    assert subject.resets == subject.state == 0
+    assert not (tmp_path / 'new').exists()
+
+
+def test_output_preflight_leaves_no_files(tmp_path):
+    experiment = Experiment(
+        subject=FixtureSubject(), protocol=protocol(),
+        output_dir=tmp_path / 'new' / 'run',
+    )
+    experiment.validate()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_output_preflight_rejects_file_parent(tmp_path):
+    parent = tmp_path / 'file'
+    parent.write_text('occupied')
+    subject = FixtureSubject()
+    experiment = Experiment(
+        subject=subject, protocol=protocol(), output_dir=parent / 'run',
+    )
+    with pytest.raises(NotADirectoryError):
+        experiment.validate()
+    assert subject.resets == 0
+
+
+def test_tool_bridge_checks_storage_before_connecting(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+    source = Path(__file__).parents[1] / 'examples/libero/serve_tool_bridge.py'
+    spec = importlib.util.spec_from_file_location('preflight_bridge', source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setitem(sys.modules, 'openpi_client', SimpleNamespace(msgpack_numpy=object()))
+    connections, closes = [], []
+    monkeypatch.setattr(module, 'OpenPIPolicyClient', lambda *a: connections.append(a))
+    monkeypatch.setattr(module.socket_deadline, 'close', lambda *a, **k: closes.append(a))
+    def denied(*args, **kwargs):
+        raise PermissionError('No recording storage')
+    monkeypatch.setattr('brainscore.experiments._storage.tempfile.TemporaryFile', denied)
+    bridge = module.Bridge(
+        'ws://unused', tmp_path / 'new', 'baseline',
+        suite='libero_spatial', trials_per_task=1, horizon=5,
+    )
+    with pytest.raises(PermissionError, match='Cannot write experiment output') as raised:
+        bridge.handler(object())
+    assert 'No recording storage' in str(raised.value.__cause__)
+    assert raised.value.filename == str(tmp_path / 'new' / 'connection-1')
+    assert connections == []
+    assert len(closes) == 1 and not bridge.lock.locked()
+
+
+def test_tool_bridge_rejects_reused_directory_before_connecting(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+    source = Path(__file__).parents[1] / 'examples/libero/serve_tool_bridge.py'
+    spec = importlib.util.spec_from_file_location('collision_bridge', source)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.setitem(sys.modules, 'openpi_client', SimpleNamespace(msgpack_numpy=object()))
+    connections = []
+    monkeypatch.setattr(module, 'OpenPIPolicyClient', lambda *a: connections.append(a))
+    monkeypatch.setattr(module.socket_deadline, 'close', lambda *a, **k: None)
+    (tmp_path / 'connection-1').mkdir()
+    bridge = module.Bridge(
+        'ws://unused', tmp_path, 'baseline', suite='libero_spatial',
+        trials_per_task=1, horizon=5,
+    )
+    with pytest.raises(FileExistsError):
+        bridge.handler(object())
+    assert connections == [] and bridge.connection == 0 and not bridge.lock.locked()

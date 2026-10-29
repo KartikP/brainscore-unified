@@ -5,7 +5,9 @@ Use --mode installed --wheels /path/to/wheels for installed-package checks.
 Neither mode replaces scientific or first-use qualification.
 """
 import argparse
+import base64
 import hashlib
+from importlib import metadata
 import json
 import os
 from pathlib import Path
@@ -127,6 +129,34 @@ def stage_tests(checkout: Path, destination: Path) -> None:
         source = checkout / name
         if source.is_file():
             shutil.copy2(source, destination / name)
+    if (destination / 'examples/libero/evaluate.py').is_file():
+        _stage_installed_file(checkout, destination, EVALUATOR_HELPER)
+
+
+# The Python 3.8 LIBERO evaluator loads this standard-library helper by path from
+# ../../ without importing brainscore, so the stage needs the installed copy there.
+EVALUATOR_HELPER = 'brainscore/experiments/backends/socket_deadline.py'
+
+
+def _stage_installed_file(checkout: Path, destination: Path, name: str) -> None:
+    """Copy one file of the installed brainscore distribution, verified against its RECORD.
+
+    No __init__.py is staged, so the installed regular package still wins imports.
+    """
+    distribution = metadata.distribution('brainscore')
+    entry = next((path for path in distribution.files or () if str(path) == name), None)
+    if entry is None or entry.hash is None or entry.hash.mode != 'sha256':
+        raise ValueError(f'Installed brainscore does not record {name}')
+    source = Path(distribution.locate_file(entry)).resolve()
+    if source.is_relative_to(Path(checkout).resolve()):
+        raise ValueError(f'{name} resolves to the source checkout, not an installed package')
+    data = source.read_bytes()
+    digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).decode().rstrip('=')
+    if digest != entry.hash.value:
+        raise ValueError(f'Installed {name} differs from its RECORD')
+    target = destination / name
+    target.parent.mkdir(parents=True)
+    target.write_bytes(data)
 
 
 def qualify(root, out, *, mode='source', wheels=None):

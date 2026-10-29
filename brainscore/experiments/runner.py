@@ -11,6 +11,7 @@ import uuid
 
 from brainscore.instrumentation import ObservedSession, observe
 from brainscore.run_record import PayloadCodec, RunRecord
+from brainscore.experiments._storage import check_output_directory
 from brainscore_core.compatibility import validate_channels
 
 
@@ -24,6 +25,55 @@ _SESSION_CONTEXT_FIELDS = Session.context_fields
 def _identity(value):
     cls = type(value)
     return f'{cls.__module__}.{cls.__qualname__}'
+
+
+_ERROR_CHAIN_LIMIT = 50
+
+
+def _message(error):
+    # Only called while a failure is already propagating. BaseException is
+    # deliberate: an interrupt raised by a broken __str__ must not replace it.
+    try:
+        return str(error)
+    except BaseException:
+        return f'<unprintable {type(error).__name__}>'
+
+
+def _error_chain(error, limit=_ERROR_CHAIN_LIMIT):
+    """Flatten an exception graph, outermost first, without recursion.
+
+    Each entry names its parent entry and how it relates: 'cause' (raise ...
+    from), 'context' (raised while handling, unless suppressed) or 'group'
+    (a member of an ExceptionGroup). An exception reached twice (a cycle or a
+    shared child) is recorded once more with 'same_as' and not expanded. An
+    entry whose links were not followed because of the limit has 'truncated'.
+    """
+    chain, seen, pending = [], {}, [(error, None, None)]
+    while pending:
+        current, parent, relation = pending.pop()
+        if len(chain) >= limit:
+            chain[parent]['truncated'] = True
+            continue
+        entry = {'type': type(current).__name__, 'message': _message(current),
+                 'parent': parent, 'relation': relation}
+        chain.append(entry)
+        if id(current) in seen:
+            entry['same_as'] = seen[id(current)]
+            continue
+        seen[id(current)] = index = len(chain) - 1
+        links = []
+        if current.__cause__ is not None:
+            links.append((current.__cause__, 'cause'))
+        elif current.__context__ is not None and not current.__suppress_context__:
+            links.append((current.__context__, 'context'))
+        if isinstance(current, BaseExceptionGroup):
+            members = current.exceptions
+            links.extend((member, 'group') for member in members[:limit])
+            if len(members) > limit:
+                entry['truncated'] = True
+        # Stack is last-in first-out: push in reverse so links are visited in order.
+        pending.extend((child, index, kind) for child, kind in reversed(links))
+    return chain
 
 
 def _write(path, value):
@@ -79,11 +129,16 @@ class SessionProtocol:
     The factory always receives Trial(condition, identifier). Adding conditions
     does not change its argument. For a factory written to accept only an ID,
     set factory_argument='identifier' explicitly.
+    Set collect_outputs=False to return None instead of collecting session history.
+    Attach a recording tool if the episode's events must be kept.
 
     """
     def __init__(self, identifier, session_factory, *, conditions=None, trials=(0,),
                  input_channels=(), output_channels=(), metadata=None,
-                 factory_argument='trial'):
+                 factory_argument='trial', collect_outputs: bool = True):
+        if not isinstance(collect_outputs, bool):
+            raise TypeError('collect_outputs must be a bool')
+        self.collect_outputs = collect_outputs
         self.identifier = identifier
         self.session_factory = session_factory
         self.trials = tuple(trials)
@@ -99,7 +154,8 @@ class SessionProtocol:
         return {'conditions': self.conditions, 'trials': self.trials, 'input_channels': sorted(self.input_channels),
                 'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
                 'factory_argument': self.factory_argument,
-                'reset_policy': 'before and after each trial; tools attach after initial reset'}
+                'reset_policy': 'before and after each trial; tools attach after initial reset',
+                **({} if self.collect_outputs else {'collect_outputs': False})}
 
     def validate(self, subject):
         if not callable(getattr(subject, 'interact', None)):
@@ -145,10 +201,11 @@ class SessionProtocol:
                         subject.interact(ObservedSession(session, context))
                         if getattr(session, 'complete', True) is False:
                             raise RuntimeError('Environment session ended before episode completion')
-                        results.append(session.collect() if callable(getattr(session, 'collect', None)) else None)
+                        if self.collect_outputs:
+                            results.append(session.collect() if callable(getattr(session, 'collect', None)) else None)
                 finally:
                     subject.reset()
-        return results
+        return results if self.collect_outputs else None
 
 
 class CallableProtocol:
@@ -304,8 +361,7 @@ class Experiment:
         self.metadata = dict(metadata or {})
 
     def validate(self):
-        if self.output_dir.exists():
-            raise FileExistsError(self.output_dir)
+        check_output_directory(self.output_dir)
         self.protocol.validate(self.subject)
         names = [tool.name for tool in self.tools]
         if len(set(names)) != len(names):
@@ -356,7 +412,14 @@ class Experiment:
         except BaseException as error:
             context.failed = True
             manifest['status'] = 'failed'
-            manifest['error'] = {'type': type(error).__name__, 'message': str(error)}
+            manifest['error'] = {'type': type(error).__name__, 'message': _message(error)}
+            # Narrow and deliberate: this only builds diagnostics for a failure
+            # that is already propagating. Anything it raises, including an
+            # interrupt, is dropped so the original exception is the one raised.
+            try:
+                manifest['error_chain'] = _error_chain(error)
+            except BaseException:
+                pass
             raise
         finally:
             manifest['finished_utc'] = datetime.now(timezone.utc).isoformat()

@@ -107,7 +107,7 @@ jobs:
           python -m brainscore.doctor
           python "$GITHUB_WORKSPACE/unified/examples/partner_integration.py" --out "$RUNNER_TEMP/partner-demo"
           python -m umi_partner_tool --out "$RUNNER_TEMP/external-tool-demo"
-          python -m pytest "$GITHUB_WORKSPACE/unified/tests/test_production_tools.py" "$GITHUB_WORKSPACE/unified/tests/test_droid_policy.py" -q --import-mode=importlib -p no:cacheprovider
+          python -m pytest "$GITHUB_WORKSPACE/unified/tests/test_production_tools.py" "$GITHUB_WORKSPACE/unified/tests/test_droid_policy.py" "$GITHUB_WORKSPACE/unified/examples/partner_tool/tests/test_conformance.py" -q --import-mode=importlib -p no:cacheprovider
       - name: Test the four installed packages
         working-directory: ${{ runner.temp }}
         run: |
