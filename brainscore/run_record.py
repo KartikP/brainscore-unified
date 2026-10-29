@@ -6,6 +6,7 @@ metadata. A record preserves observations; it does not promise deterministic
 re-execution of a model or environment.
 """
 
+from contextlib import contextmanager
 from dataclasses import fields, is_dataclass
 import hashlib
 import io
@@ -37,9 +38,15 @@ def _stamp(handle):
             status.st_ctime_ns)
 
 
+class RecordingBudgetExceeded(RuntimeError):
+    """A RunRecorder write would exceed its max_bytes; the record is marked failed."""
+
+
 class PayloadCodec:
-    def __init__(self, directory):
+    def __init__(self, directory, *, reserve=None):
         self.directory = Path(directory)
+        # Called with a new asset's byte count before the asset file is created.
+        self._reserve = reserve or (lambda size: None)
 
     def encode(self, value):
         if value is None or isinstance(value, (str, bool, int)):
@@ -58,6 +65,8 @@ class PayloadCodec:
             assets = self.directory / 'arrays'
             assets.mkdir(exist_ok=True)
             path = assets / f'{digest}.npy'
+            if not path.exists():
+                self._reserve(len(blob))
             try:
                 with path.open('xb') as handle:
                     handle.write(blob)
@@ -75,6 +84,7 @@ class PayloadCodec:
                 if destination.read_bytes() != blob:
                     raise ValueError('File artifact checksum mismatch')
             else:
+                self._reserve(len(blob))
                 destination.write_bytes(blob)
             return {'$file': digest, 'name': value.name}
         if isinstance(value, tuple):
@@ -200,17 +210,35 @@ class RunRecorder:
     Each record is flushed when appended. Inputs are serialized before inference
     so model mutations cannot rewrite history. Incomplete/error runs remain
     explicitly marked and readable for diagnosis.
+
+    Any failure while encoding or writing an event (codec error, I/O error, budget)
+    is re-raised unchanged, marks the record failed and stops recording, even if
+    the caller catches it. Later calls raise without writing; nothing is retried.
+
+    max_bytes optionally caps the bytes reserved for events.jsonl plus the unique
+    array/file assets this recorder stores (metadata assets included). Bytes are
+    reserved before each write, so stored bytes never exceed the cap; a failed
+    write may reserve more than it stored. A write that would exceed the cap raises
+    RecordingBudgetExceeded and writes nothing. Assets already stored for a failed
+    event stay on disk and reserved. The manifest is outside this limit; disk
+    errors can still prevent saving it. This is a disk cap for one record, not a
+    memory limit (an event is fully serialized in memory before the check) and not
+    an experiment quota.
     """
 
-    def __init__(self, directory, *, metadata):
+    def __init__(self, directory, *, metadata, max_bytes: int | None = None):
+        if max_bytes is not None and (type(max_bytes) is not int or max_bytes <= 0):
+            raise ValueError('max_bytes must be a positive integer or None')
+        self.max_bytes, self._reserved_bytes, self._stop = max_bytes, 0, None
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=False)
-        self.codec = PayloadCodec(self.directory)
+        self._failed = False
+        self.codec = PayloadCodec(self.directory, reserve=self._reserve)
+        # A failure here raises before any manifest exists, so no record is left.
         self.manifest = {'schema_version': SCHEMA_VERSION, 'run_id': uuid.uuid4().hex,
                          'metadata': self.codec.encode(metadata), 'status': 'open'}
         self._sequence = 0
         self._closed = False
-        self._failed = False
         (self.directory / 'events.jsonl').touch()
         self._write_manifest()
 
@@ -219,38 +247,71 @@ class RunRecorder:
         temporary.write_text(json.dumps(self.manifest, indent=2, allow_nan=False) + '\n')
         temporary.replace(self.directory / 'manifest.json')
 
-    def _append(self, record):
+    def _reserve(self, size):
+        if self.max_bytes is not None and self._reserved_bytes + size > self.max_bytes:
+            raise RecordingBudgetExceeded(
+                f'Recording byte budget exceeded: writing {size} bytes would exceed '
+                f'max_bytes={self.max_bytes} ({self._reserved_bytes} bytes already reserved)')
+        self._reserved_bytes += size
+
+    @contextmanager
+    def _writing(self):
         if self._closed:
             raise RuntimeError('RunRecorder is closed')
+        if self._stop is not None:
+            kind = RecordingBudgetExceeded if isinstance(
+                self._stop, RecordingBudgetExceeded) else RuntimeError
+            raise kind(f'Recording stopped after an earlier failure: '
+                       f'{type(self._stop).__name__}: {self._stop}') from self._stop
+        try:
+            yield
+        except BaseException as error:
+            # A partial asset or log line may be on disk; never retry or continue past it.
+            self._failed, self._stop = True, error
+            raise
+
+    def _append(self, record):
         record['sequence'] = self._sequence
-        with (self.directory / 'events.jsonl').open('a') as handle:
-            handle.write(json.dumps(record, allow_nan=False) + '\n')
+        # json.dumps escapes non-ASCII, so these are the exact bytes on every platform.
+        line = (json.dumps(record, allow_nan=False) + '\n').encode()
+        self._reserve(len(line))
+        with (self.directory / 'events.jsonl').open('ab') as handle:
+            handle.write(line)
         self._sequence += 1
 
     def on_start(self, call):
-        self._append({'kind': 'call', 'event_id': call.event_id, 'method': call.method,
-                      'started_ns': call.started_ns, 'args': self.codec.encode(call.args),
-                      'kwargs': self.codec.encode(call.kwargs)})
+        with self._writing():
+            self._append({'kind': 'call', 'event_id': call.event_id, 'method': call.method,
+                          'started_ns': call.started_ns, 'args': self.codec.encode(call.args),
+                          'kwargs': self.codec.encode(call.kwargs)})
 
     def on_result(self, call, result):
-        self._append({'kind': 'result', 'event_id': call.event_id,
-                      'duration_s': call.duration_s, 'payload': self.codec.encode(result)})
+        with self._writing():
+            self._append({'kind': 'result', 'event_id': call.event_id,
+                          'duration_s': call.duration_s, 'payload': self.codec.encode(result)})
 
     def on_error(self, call, error):
         self._failed = True
-        self._append({'kind': 'error', 'event_id': call.event_id,
-                      'duration_s': call.duration_s,
-                      'error': {'type': type(error).__name__, 'message': str(error)}})
+        with self._writing():
+            self._append({'kind': 'error', 'event_id': call.event_id,
+                          'duration_s': call.duration_s,
+                          'error': {'type': type(error).__name__, 'message': str(error)}})
 
     def record(self, direction, event):
         if direction not in ('input', 'output'):
             raise ValueError('direction must be input or output')
-        self._append({'kind': direction, 'payload': self.codec.encode(event)})
+        with self._writing():
+            self._append({'kind': direction, 'payload': self.codec.encode(event)})
 
     def close(self, *, failed=False):
         if not self._closed:
             self.manifest['status'] = 'failed' if failed or self._failed else 'complete'
             self.manifest['event_count'] = self._sequence
+            if self.max_bytes is not None:
+                exceeded = isinstance(self._stop, RecordingBudgetExceeded)
+                self.manifest['budget'] = {'max_bytes': self.max_bytes,
+                                           'reserved_bytes': self._reserved_bytes,
+                                           'exceeded': str(self._stop) if exceeded else None}
             event_file = self.directory / 'events.jsonl'
             if not event_file.exists():
                 event_file.write_text('')

@@ -693,3 +693,62 @@ def test_final_manifest_write_failure_keeps_original_in_python_chain(tmp_path, m
         Experiment(subject=SimpleNamespace(process=lambda x: x),
                    protocol=CallableProtocol('fails', evaluate), output_dir=tmp_path/'run').run()
     assert str(raised.value.__context__) == 'original'
+
+
+def test_record_budget_covers_activity_and_fails_experiment_with_cleanup(tmp_path):
+    from brainscore.run_record import RecordingBudgetExceeded
+
+    def tools(max_bytes):
+        return [RecordInputsOutputs(max_bytes=max_bytes), RecordActivity(['population'])]
+
+    subject = FixtureSubject()
+    result = Experiment(subject=subject, protocol=protocol(), tools=tools(10 ** 6),
+        instrumentation=TorchInstrumentation({'population': subject.layer}),
+        output_dir=tmp_path/'fits').run()
+    record = json.loads((result.directory/'inputs_outputs'/'manifest.json').read_text())
+    assert result.manifest['status'] == record['status'] == 'complete'
+    assert result.manifest['plan']['tools'][0]['config'] == {'max_bytes': 10 ** 6}
+    assert any(e['kind'] == 'activity' for e in rows(result.directory))
+    # Envelopes carry elapsed times, so the size varies slightly between runs.
+    cap = record['budget']['reserved_bytes'] // 2
+
+    subject = FixtureSubject()
+    with pytest.raises(RecordingBudgetExceeded):
+        Experiment(subject=subject, protocol=protocol(), tools=tools(cap),
+            instrumentation=TorchInstrumentation({'population': subject.layer}),
+            output_dir=tmp_path/'short').run()
+    experiment = json.loads((tmp_path/'short'/'experiment.json').read_text())
+    record = json.loads((tmp_path/'short'/'inputs_outputs'/'manifest.json').read_text())
+    assert experiment['status'] == record['status'] == 'failed'
+    assert experiment['error']['type'] == 'RecordingBudgetExceeded'
+    assert record['budget']['reserved_bytes'] <= cap and record['budget']['exceeded']
+    assert {a['path'] for a in experiment['artifacts']} == {
+        'inputs_outputs/manifest.json', 'inputs_outputs/events.jsonl'}
+    assert len(subject.layer._forward_hooks) == 0 and subject.state == 0
+
+
+def test_default_record_tool_config_is_unchanged():
+    assert RecordInputsOutputs().describe() == {}
+
+
+@pytest.mark.parametrize('caught', [False, True])
+def test_record_failure_keeps_original_error_and_fails_run(tmp_path, caught):
+    def evaluate(subject, context):
+        try:
+            context.record('output', object())
+        except TypeError:
+            if not caught:
+                raise
+        context.record('output', 'after the loss')
+    with pytest.raises(RuntimeError if caught else TypeError):
+        Experiment(subject=SimpleNamespace(process=lambda x: x),
+                   protocol=CallableProtocol('lossy', evaluate),
+                   tools=[RecordInputsOutputs()], output_dir=tmp_path/'run').run()
+    experiment = json.loads((tmp_path/'run'/'experiment.json').read_text())
+    record = json.loads((tmp_path/'run'/'inputs_outputs'/'manifest.json').read_text())
+    assert experiment['status'] == record['status'] == 'failed'
+    if caught:
+        assert 'caught model or tool error' in experiment['error']['message']
+    else:
+        assert experiment['error']['type'] == 'TypeError'
+    assert [e['kind'] for e in rows(tmp_path/'run')] == ['trial_start']  # nothing after the loss

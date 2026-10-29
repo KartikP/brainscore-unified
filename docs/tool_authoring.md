@@ -103,6 +103,32 @@ imported payload classes are used. An exception marks the run failed, including
 model exceptions caught by the calling experiment. Interrupted records remain
 `open` and are diagnostic evidence, not completed experiments.
 
+A recording failure (an unsupported payload, an I/O error, a damaged existing
+asset, or an exceeded budget) is raised unchanged and marks the record `failed`,
+even if the caller catches it. Later calls refuse to record; nothing is retried.
+
+To cap a record's size on disk, pass `max_bytes`:
+
+```python
+RunRecorder('new-run-directory', metadata={...}, max_bytes=500_000_000)
+Experiment(..., tools=[RecordInputsOutputs(max_bytes=500_000_000)], ...)
+```
+
+The cap covers `events.jsonl` plus the unique array and file assets the record
+stores, including assets in its metadata. A duplicate asset is counted once.
+Bytes are reserved before each write, so stored bytes never exceed the cap. A
+write that would exceed it raises `RecordingBudgetExceeded` and writes nothing.
+The manifest reports `budget: {max_bytes, reserved_bytes, exceeded}`.
+`reserved_bytes` can exceed the bytes actually stored when a write failed
+partway, and assets kept from a failed event stay reserved. Under `Experiment`
+the run fails and normal cleanup runs.
+
+The manifest is outside this limit; disk errors can still prevent saving it.
+The cap does not limit memory: each event is fully serialized in memory before
+it is checked. It is also not an experiment-wide quota. `result.json`,
+`external/`, `experiment.json` and other tools' directories (such as
+`reasoning/`) are not counted.
+
 `RunRecord.events()` checks the whole event log (checksum, JSON, count and order)
 before yielding the first event, then streams it. Memory grows with the largest
 single event, not with the number of events; collecting events into a list
