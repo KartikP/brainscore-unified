@@ -26,6 +26,55 @@ def _identity(value):
     return f'{cls.__module__}.{cls.__qualname__}'
 
 
+_ERROR_CHAIN_LIMIT = 50
+
+
+def _message(error):
+    # Only called while a failure is already propagating. BaseException is
+    # deliberate: an interrupt raised by a broken __str__ must not replace it.
+    try:
+        return str(error)
+    except BaseException:
+        return f'<unprintable {type(error).__name__}>'
+
+
+def _error_chain(error, limit=_ERROR_CHAIN_LIMIT):
+    """Flatten an exception graph, outermost first, without recursion.
+
+    Each entry names its parent entry and how it relates: 'cause' (raise ...
+    from), 'context' (raised while handling, unless suppressed) or 'group'
+    (a member of an ExceptionGroup). An exception reached twice (a cycle or a
+    shared child) is recorded once more with 'same_as' and not expanded. An
+    entry whose links were not followed because of the limit has 'truncated'.
+    """
+    chain, seen, pending = [], {}, [(error, None, None)]
+    while pending:
+        current, parent, relation = pending.pop()
+        if len(chain) >= limit:
+            chain[parent]['truncated'] = True
+            continue
+        entry = {'type': type(current).__name__, 'message': _message(current),
+                 'parent': parent, 'relation': relation}
+        chain.append(entry)
+        if id(current) in seen:
+            entry['same_as'] = seen[id(current)]
+            continue
+        seen[id(current)] = index = len(chain) - 1
+        links = []
+        if current.__cause__ is not None:
+            links.append((current.__cause__, 'cause'))
+        elif current.__context__ is not None and not current.__suppress_context__:
+            links.append((current.__context__, 'context'))
+        if isinstance(current, BaseExceptionGroup):
+            members = current.exceptions
+            links.extend((member, 'group') for member in members[:limit])
+            if len(members) > limit:
+                entry['truncated'] = True
+        # Stack is last-in first-out: push in reverse so links are visited in order.
+        pending.extend((child, index, kind) for child, kind in reversed(links))
+    return chain
+
+
 def _write(path, value):
     temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(value, indent=2, allow_nan=False) + '\n')
@@ -356,7 +405,14 @@ class Experiment:
         except BaseException as error:
             context.failed = True
             manifest['status'] = 'failed'
-            manifest['error'] = {'type': type(error).__name__, 'message': str(error)}
+            manifest['error'] = {'type': type(error).__name__, 'message': _message(error)}
+            # Narrow and deliberate: this only builds diagnostics for a failure
+            # that is already propagating. Anything it raises, including an
+            # interrupt, is dropped so the original exception is the one raised.
+            try:
+                manifest['error_chain'] = _error_chain(error)
+            except BaseException:
+                pass
             raise
         finally:
             manifest['finished_utc'] = datetime.now(timezone.utc).isoformat()

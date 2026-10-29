@@ -164,6 +164,38 @@ For external videos or reports, use `context.import_artifact(path, name='trial.m
 
 Failed runs remain readable for diagnosis but cannot be replayed as completed measurements. Use a new output directory and separate subject/tools for each experiment. This synchronous runner does not support concurrent reuse or distributed execution. Keep recordings bounded; the codec materializes individual assets in memory.
 
+### Errors in failed runs
+
+A failed run's `experiment.json` has two error fields. `error` is the error that ended the run. `error_chain` also lists the errors behind it, so a failure during cleanup (subject reset, a `trial_end` listener, tool detach) does not hide the failure that came first. Successful runs have neither field.
+
+```json
+{
+  "status": "failed",
+  "error": {"type": "RuntimeError", "message": "reset failed"},
+  "error_chain": [
+    {"type": "RuntimeError", "message": "reset failed", "parent": null, "relation": null},
+    {"type": "ValueError", "message": "trial failed", "parent": 0, "relation": "context"}
+  ]
+}
+```
+
+`error_chain` lists the error that ended the run first. Each entry has these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `type`, `message` | Exception class name and message. |
+| `parent` | Index of the entry this error is linked to; `null` for the first entry. |
+| `relation` | How this entry led to its parent. `cause`: the parent was raised `from` it. `context`: it was being handled when the parent was raised; not listed if the parent used `from None`. `group`: it is a member of the parent `ExceptionGroup`, in order. |
+| `same_as` | Present when an error appears again, for example in a loop; points to its first entry and is not repeated further. |
+| `truncated` | Present when some of this entry's linked errors were not saved. |
+
+Limits:
+
+- At most 50 entries are saved, and tracebacks are not saved.
+- A message that cannot be turned into text is saved as `<unprintable TypeName>`.
+- If building `error_chain` fails, the field is left out. The original error is still the one raised.
+- If writing `experiment.json` itself fails (for example, a full disk), the file may still say `running`. The write error carries the original error as its `__context__`.
+
 ## Replay saved inputs
 
 ```python
