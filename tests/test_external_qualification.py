@@ -8,6 +8,7 @@ profile, with the snapshot pre-staged in the Hugging Face cache.
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -148,13 +149,16 @@ def test_coggym_missing_assets_write_failed_report(tmp_path, missing):
     assert report['status'] == 'failed'
     assert report['error'].startswith('FileNotFoundError: Stage')
     assert report['leaderboard_reproduction'] is False
-    assert ('model_sha256' in report['provenance']) == (missing == 'checkout')
+    # Nothing is hashed or attributed to the pinned model before both inputs are staged.
+    assert 'model_sha256' not in report['provenance']
+    assert 'model_identity' not in report['provenance']
     assert 'unified_source' in report['provenance']['environment']
 
 
 @pytest.mark.slow
 def test_native_trained_smolvlm_qualification(tmp_path, request):
     from huggingface_hub import snapshot_download
+    from coggym_toolbox import SMOLVLM_MANIFEST
     from native_environment_toolbox import MODEL_ID, MODEL_REVISION, load_smolvlm_policy, qualify
     from brainscore.validation.integration_checks import record_placement
 
@@ -167,7 +171,143 @@ def test_native_trained_smolvlm_qualification(tmp_path, request):
         record_placement(request.config, model, identifier=MODEL_ID, dtype='torch.float32')
         return policy, model
 
-    report = qualify(tmp_path / 'run', load, asset_dir=path, provenance={
+    report = qualify(tmp_path / 'run', load, asset_dir=path, manifest=SMOLVLM_MANIFEST, provenance={
         'model_id': MODEL_ID, 'revision': MODEL_REVISION, 'dtype': 'float32',
         'device': 'cpu', 'decoding': 'greedy', 'max_new_tokens': 32})
     assert report['status'] == 'passed', report.get('error')
+
+
+# Model identity: a tiny fixture snapshot and a manifest built for it.
+
+FIXTURE_FILES = {'config.json': b'{"model_type": "fixture"}\n',
+                 'tokenizer.json': b'{"version": "1.0"}\n',
+                 'model.safetensors': b'fixture weights'}
+FIXTURE_REVISION = 'a' * 40
+
+
+def _fixture_manifest():
+    import hashlib
+    files = {}
+    for name, content in FIXTURE_FILES.items():
+        if name.endswith('.safetensors'):
+            files[name] = {'size': len(content), 'sha256': hashlib.sha256(content).hexdigest()}
+        else:
+            blob = b'blob %d\0' % len(content) + content
+            files[name] = {'size': len(content), 'git_sha1': hashlib.sha1(blob).hexdigest()}
+    return {'repository': 'fixture/model', 'revision': FIXTURE_REVISION, 'files': files,
+            'ignored': ['README.md', 'onnx', '.cache']}
+
+
+def _local_dir(root, *, record_revision=FIXTURE_REVISION):
+    """The layout huggingface-cli download --local-dir writes."""
+    root.mkdir()
+    records = root / '.cache' / 'huggingface' / 'download'
+    records.mkdir(parents=True)
+    for name, content in FIXTURE_FILES.items():
+        (root / name).write_bytes(content)
+        (records / f'{name}.metadata').write_text(f'{record_revision}\netag\n1700000000.0\n')
+    (root / 'README.md').write_text('not read by the loader')
+    return root
+
+
+def _cache_snapshot(root, revision=FIXTURE_REVISION):
+    """The Hugging Face cache layout: snapshots/<commit>/<file> links into blobs/."""
+    blobs, snapshot = root / 'blobs', root / 'snapshots' / revision
+    blobs.mkdir(parents=True)
+    snapshot.mkdir(parents=True)
+    for index, (name, content) in enumerate(FIXTURE_FILES.items()):
+        (blobs / str(index)).write_bytes(content)
+        (snapshot / name).symlink_to(Path('..', '..', 'blobs', str(index)))
+    return snapshot
+
+
+def test_git_blob_hash_matches_git():
+    from coggym_toolbox import file_hash
+    import tempfile
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / 'hello'
+        path.write_bytes(b'hello\n')
+        # `printf 'hello\n' | git hash-object --stdin`
+        assert file_hash(path, 'git_sha1') == 'ce013625030ba8dba906f756967f9e9ca394464a'
+
+
+@pytest.mark.parametrize('layout', ['local_dir', 'cache'])
+def test_staged_snapshot_identity_is_verified(tmp_path, layout):
+    from coggym_toolbox import verify_model_identity
+    path = _local_dir(tmp_path / 'm') if layout == 'local_dir' else _cache_snapshot(tmp_path / 'hub')
+    identity = verify_model_identity(path, _fixture_manifest())
+    assert identity['revision'] == FIXTURE_REVISION
+    assert identity['verified_files'] == sorted(FIXTURE_FILES)
+
+
+@pytest.mark.parametrize('defect, message', [
+    ('missing', 'tokenizer.json is missing'),
+    ('tampered', 'model.safetensors does not match'),
+    ('resized', 'config.json has the wrong size'),
+    ('extra', "unexpected files in the model snapshot: ['adapter_config.json']"),
+    ('record', 'download record for config.json names another revision'),
+    ('snapshot', 'is not the pinned revision'),
+])
+def test_wrong_identity_fails(tmp_path, defect, message):
+    from coggym_toolbox import verify_model_identity
+    if defect == 'snapshot':
+        path = _cache_snapshot(tmp_path / 'hub', revision='b' * 40)
+    else:
+        path = _local_dir(tmp_path / 'm')
+    if defect == 'missing':
+        (path / 'tokenizer.json').unlink()
+    elif defect == 'tampered':
+        (path / 'model.safetensors').write_bytes(b'fixture weightz')  # same size
+    elif defect == 'resized':
+        (path / 'config.json').write_bytes(b'{}')
+    elif defect == 'extra':
+        (path / 'adapter_config.json').write_text('{}')  # could change what loads
+    elif defect == 'record':
+        record = path / '.cache' / 'huggingface' / 'download' / 'config.json.metadata'
+        record.write_text('b' * 40 + '\netag\n0\n')
+    with pytest.raises(RuntimeError, match='Qualification check failed: .*' + re.escape(message)):
+        verify_model_identity(path, _fixture_manifest())
+
+
+def test_pinned_manifest_lists_the_loader_files():
+    from coggym_toolbox import SMOLVLM_MANIFEST
+    from native_environment_toolbox import MODEL_REVISION
+    assert SMOLVLM_MANIFEST['revision'] == MODEL_REVISION == '7e3e67edbbed1bf9888184d9df282b700a323964'
+    files = SMOLVLM_MANIFEST['files']
+    assert {'config.json', 'model.safetensors', 'preprocessor_config.json', 'processor_config.json',
+            'tokenizer.json', 'tokenizer_config.json', 'chat_template.json'} <= set(files)
+    assert all(len(f.get('sha256', '')) == 64 or len(f.get('git_sha1', '')) == 40
+               for f in files.values())
+    assert 'sha256' in files['model.safetensors']
+
+
+def test_native_identity_mismatch_fails_before_load(tmp_path):
+    from native_environment_toolbox import qualify
+    path = _local_dir(tmp_path / 'm')
+    (path / 'config.json').write_bytes(b'{"model_type": "fixturX"}\n')
+    loads = []
+    with pytest.raises(RuntimeError, match='config.json does not match'):
+        qualify(tmp_path / 'run', lambda: loads.append(1), asset_dir=path,
+                manifest=_fixture_manifest(), identifier='tiny-fixture')
+    report = json.loads((tmp_path / 'run' / 'qualification.json').read_text())
+    assert report['status'] == 'failed' and loads == []
+    assert 'model_identity' not in report['provenance']
+    assert 'model_sha256' not in report['provenance']
+
+
+@pytest.mark.timeout(120)
+def test_coggym_unverified_model_fails_under_optimize(tmp_path):
+    """A directory that is not the pinned snapshot is refused, also under python -O."""
+    (tmp_path / 'coggym').mkdir()
+    model = tmp_path / 'model'
+    model.mkdir()
+    (model / 'config.json').write_text('{}')
+    out = tmp_path / 'out'
+    result = _optimized('', str(EXAMPLES / 'coggym_toolbox.py'), '--checkout', str(tmp_path / 'coggym'),
+                        '--model-path', str(model), '--output-dir', str(out))
+    assert result.returncode != 0
+    report = json.loads((out / 'qualification.json').read_text())
+    assert report['status'] == 'failed'
+    assert report['error'].startswith('RuntimeError: Qualification check failed: model file')
+    assert 'model_identity' not in report['provenance']
+    assert 'model_sha256' not in report['provenance'] and 'coggym_source' not in report['provenance']

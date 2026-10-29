@@ -202,9 +202,11 @@ HF_HUB_OFFLINE=0 huggingface-cli download HuggingFaceTB/SmolVLM-256M-Instruct \
   --revision 7e3e67edbbed1bf9888184d9df282b700a323964 --local-dir /path/to/SmolVLM-256M-Instruct/snapshot
 ```
 
-`qualification.json` is written whether the run passes or fails. It holds `status`, the first `error`, a SHA-256 of the model snapshot, the CogGym and unified Git commits (with a tracked-edits flag), and package versions. Every check raises an explicit error, so `python -O` cannot skip it. Treat only `status: passed` as a qualification.
+Before loading, the script checks the model directory against the pinned Hub listing for that commit (`SMOLVLM_MANIFEST` in the example). Each file the loader reads (weights, config, processor and tokenizer files) must exist with the listed size and hash, computed from the bytes on disk: the LFS SHA-256 for the weights and the Git blob SHA-1 for small files. The directory may be a `--local-dir` download as above, or a cached snapshot (`.../models--HuggingFaceTB--SmolVLM-256M-Instruct/snapshots/7e3e67e...`). A missing or changed file, any extra top-level file other than `README.md`, `.gitattributes`, `onnx/` and `.cache/`, a cache snapshot of another commit, or a download record naming another commit fails the run before the model loads. The `onnx/` files are not used or verified.
 
-The same model also drives the [native-environment check](../examples/native_environment_toolbox.py): it compares a direct `GridGameEnv` loop with recorded, ablated and restored `Experiment` runs on the same seeds. Restored and recorded actions and rewards must equal the direct loop; changes after ablation are reported, not required.
+`qualification.json` is written whether the run passes or fails. It holds `status`, the first `error`, the verified model identity, a SHA-256 of the whole model directory, the CogGym and unified Git commits (with a tracked-edits flag), and package versions. Every check raises an explicit error, so `python -O` cannot skip it. Treat only `status: passed` as a qualification.
+
+The same model, checked the same way, also drives the [native-environment check](../examples/native_environment_toolbox.py): it compares a direct `GridGameEnv` loop with recorded, ablated and restored `Experiment` runs on the same seeds. Restored and recorded actions and rewards must equal the direct loop; changes after ablation are reported, not required.
 
 Neither run is a registered integration profile yet for CogGym: the profile runner stages only model and data caches, not a CogGym checkout, so the CogGym run stays a direct command. The native check is registered as the `native-environment-smolvlm` profile in `install/integration-tests.json`.
 

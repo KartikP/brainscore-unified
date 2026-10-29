@@ -14,7 +14,9 @@ selected units must be zero and the others unchanged; changed actions are
 reported, not required. This checks tool behavior, not task performance: the
 model is small and the episodes are short.
 
-The snapshot must already be staged locally; nothing here downloads:
+The snapshot must already be staged locally; nothing here downloads. Before
+loading, every loader file is checked against the pinned Hub listing
+(coggym_toolbox.SMOLVLM_MANIFEST); a missing, changed or extra file fails:
 
     python examples/native_environment_toolbox.py \\
       --model-path /path/to/SmolVLM-256M-Instruct/snapshot --output-dir new-results
@@ -41,11 +43,12 @@ from brainscore_core.model_interface import BrainScoreModel
 from brainscore_core.streaming_helpers import EnvironmentSession
 
 from coggym_toolbox import (
-    check_ablation, environment, qualification_report, require, snapshot_digest,
+    SMOLVLM_MANIFEST, check_ablation, environment, qualification_report, require,
+    snapshot_digest, verify_model_identity,
 )
 
-MODEL_ID = 'HuggingFaceTB/SmolVLM-256M-Instruct'
-MODEL_REVISION = '7e3e67edbbed1bf9888184d9df282b700a323964'
+MODEL_ID = SMOLVLM_MANIFEST['repository']
+MODEL_REVISION = SMOLVLM_MANIFEST['revision']
 LAYER = 'model.text_model.layers.0.mlp.up_proj'
 
 
@@ -110,11 +113,13 @@ def direct_episode(policy: Callable, seed: int, *, size: int, max_steps: int) ->
 def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | None = None,
             layer: str = LAYER, seeds=(0, 1), size: int = 4, max_steps: int = 6,
             identifier: str = MODEL_ID, provenance: dict | None = None,
-            max_record_bytes: int = 512 * 1024**2) -> dict[str, Any]:
+            max_record_bytes: int = 512 * 1024**2,
+            manifest: dict | None = None) -> dict[str, Any]:
     """Run the four conditions and write qualification.json, even on failure.
 
     load() returns (policy, torch model); it runs inside the report so a
-    loading failure is reported too. asset_dir, if given, is hashed first.
+    loading failure is reported too. asset_dir, if given, is hashed first. With
+    a manifest, asset_dir must match it (verify_model_identity) before load().
     """
     output_dir.mkdir(parents=True, exist_ok=False)
     report = {
@@ -126,6 +131,9 @@ def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | No
         'provenance': {**(provenance or {}), 'environment': environment()},
     }
     with qualification_report(output_dir / 'qualification.json', report):
+        if manifest is not None:
+            require(asset_dir is not None, 'a manifest needs the asset directory it describes')
+            report['provenance']['model_identity'] = verify_model_identity(asset_dir, manifest)
         if asset_dir is not None:
             report['provenance']['model_sha256'] = snapshot_digest(asset_dir)
         policy, model = load()
@@ -210,7 +218,8 @@ def main() -> None:
         asset_dir=args.model_path,
         seeds=tuple(args.seeds),
         max_steps=args.max_steps,
-        provenance={'model_id': MODEL_ID, 'expected_revision': MODEL_REVISION,
+        manifest=SMOLVLM_MANIFEST,
+        provenance={'model_id': MODEL_ID, 'revision': MODEL_REVISION,
                     'model_path': str(args.model_path.resolve()),
                     'dtype': 'float32', 'device': 'cpu', 'decoding': 'greedy',
                     'max_new_tokens': args.max_new_tokens, 'unparsed_action': 'up'},
