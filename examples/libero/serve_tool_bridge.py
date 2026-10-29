@@ -25,6 +25,7 @@ from brainscore.experiments import (
     OpenPIPolicyClient,
     RemoteOpenPIInstrumentation,
 )
+from brainscore.experiments.backends import socket_deadline
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
 from brainscore_core.model_interface import BrainScoreModel
 from brainscore_core.events import EnvironmentStep, Selection
@@ -107,10 +108,16 @@ def check_receipt(receipt, *, run_id, start, keys, calls, horizon):
                      and total == start['max_steps']), 'Episode did not end by success or step limit')
 
 
-def _best_effort(socket, codec, message):
+def _send(socket, codec, message, timeout):
+    """Send once within timeout; on timeout the connection is shut down."""
+    with socket_deadline.deadline(socket, timeout):
+        socket.send(codec.packb(message))
+
+
+def _best_effort(socket, codec, message, timeout):
     """Send once; a lost acknowledgment never changes the saved record."""
     try:
-        socket.send(codec.packb(message))
+        _send(socket, codec, message, timeout)
     except Exception as error:
         logging.warning('Could not send %s: %r', message, error)
 
@@ -133,7 +140,7 @@ class Bridge:
         from openpi_client import msgpack_numpy as codec
 
         if not self.lock.acquire(blocking=False):
-            socket.close(code=1013, reason='Dedicated evaluator already connected')
+            socket_deadline.close(socket, code=1013, reason='Dedicated evaluator already connected')
             return
         state = {}
         try:
@@ -178,24 +185,27 @@ class Bridge:
                     if 'run_id' in state:
                         _best_effort(socket, codec, {'umi/finish_ack': 'failed',
                                                      'run_id': state['run_id'],
-                                                     'error_type': type(error).__name__})
+                                                     'error_type': type(error).__name__},
+                                     self.idle_timeout)
                     raise
             # Experiment.run has returned: records and the final manifest are saved.
             manifest = (experiment.output_dir / 'experiment.json').read_bytes()
             _best_effort(socket, codec, {'umi/finish_ack': 'complete', 'run_id': state['run_id'],
-                                         'manifest_sha256': hashlib.sha256(manifest).hexdigest()})
+                                         'manifest_sha256': hashlib.sha256(manifest).hexdigest()},
+                         self.idle_timeout)
         finally:
-            # A failed close must neither keep the bridge locked nor replace the
-            # run's own error. By then the record is final and any ack was sent.
+            # A failed or stalled close must neither keep the bridge locked nor
+            # replace the run's own error: it is bounded and never raises.
             try:
-                socket.close()
-            except Exception:
-                logging.exception('Could not close the evaluator connection')
+                socket_deadline.close(socket)
             finally:
                 self.lock.release()
 
     def serve(self, socket, codec, model, context, state):
-        """Serve one evaluation; a disconnect or timeout before the receipt fails the run."""
+        """Serve one evaluation; a disconnect or timeout before the receipt fails the run.
+
+        Each wait for the evaluator and each send to it is bounded by idle_timeout.
+        """
 
         def receive():
             message = codec.unpackb(socket.recv(timeout=self.idle_timeout))
@@ -203,17 +213,17 @@ class Bridge:
             return message
 
         run_id = state['run_id'] = context.manifest['run_id']
-        socket.send(codec.packb({'experiment_tools': self.mode, 'receipt_protocol': RECEIPT_PROTOCOL,
-                                 'umi_run_id': run_id, 'suite': self.suite,
-                                 'trials_per_task': self.trials_per_task,
-                                 'execution_horizon': self.horizon}))
+        _send(socket, codec, {'experiment_tools': self.mode, 'receipt_protocol': RECEIPT_PROTOCOL,
+                              'umi_run_id': run_id, 'suite': self.suite,
+                              'trials_per_task': self.trials_per_task,
+                              'execution_horizon': self.horizon}, self.idle_timeout)
         message = receive()
         _require(set(message) == {'umi/start'}, 'Expected the evaluator start message')
         start = message['umi/start']
         context.publish('evaluator_start', start)
         keys = check_start(start, run_id=run_id, suite=self.suite,
                            trials_per_task=self.trials_per_task, horizon=self.horizon)
-        socket.send(codec.packb({'umi/start_ack': 'accepted', 'run_id': run_id}))
+        _send(socket, codec, {'umi/start_ack': 'accepted', 'run_id': run_id}, self.idle_timeout)
         calls, position, served = [0] * len(keys), -1, 0
         while True:
             message = receive()
@@ -242,7 +252,7 @@ class Bridge:
                 )
             )
             result = dict(response.metadata['policy_output'], actions=response.action)
-            socket.send(codec.packb(result))
+            _send(socket, codec, result, self.idle_timeout)
             calls[position] += 1
             served += 1
 
@@ -267,7 +277,8 @@ if __name__ == '__main__':
     p.add_argument('--suite', choices=SUITES, required=True)
     p.add_argument('--trials-per-task', type=int, required=True)
     p.add_argument('--execution-horizon', type=int, required=True)
-    # Must exceed evaluate.py's --infer-timeout; an operational default, not a budget.
+    # Bounds each wait for and send to the evaluator. Must exceed evaluate.py's
+    # --infer-timeout; an operational default, not a budget.
     p.add_argument('--idle-timeout', type=_seconds, default=900)
     a = p.parse_args()
     if not 1 <= a.trials_per_task <= 50 or a.execution_horizon < 1:

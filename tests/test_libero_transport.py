@@ -285,10 +285,10 @@ def acknowledgments(module, monkeypatch, tmp_path, drop=()):
     """Record each acknowledgment with the experiment status at the moment it is sent."""
     sent, send = [], module._best_effort
 
-    def spy(socket, codec, message):
+    def spy(socket, codec, message, timeout):
         sent.append((message['umi/finish_ack'], manifest(tmp_path)['status']))
         if message['umi/finish_ack'] not in drop:
-            send(socket, codec, message)
+            send(socket, codec, message, timeout)
     monkeypatch.setattr(module, '_best_effort', spy)
     return sent
 
@@ -655,3 +655,98 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.WARNING)
     out, bridge_port, run_mode = sys.argv[1:]
     sys.exit(evaluate_in_process(Path(out), int(bridge_port), delay=0.05 if run_mode == 'killed' else 0.0))
+
+
+# Bounded writes and closes on the evaluator connection.
+
+def test_evaluator_request_to_a_stalled_bridge_is_bounded_and_never_resent():
+    from openpi_client import msgpack_numpy
+    from tests.test_openpi_remote import assert_one_blocked_write, counted_sends, stalled_peer, timers
+    evaluate = example('evaluate')
+    with stalled_peer(msgpack_numpy.packb({})) as uri:
+        client = evaluate.BoundedClient(uri, connect_timeout=5, infer_timeout=1.0, close_timeout=1.0)
+        sends = counted_sends(client._ws)
+        with pytest.raises(TimeoutError):
+            client.infer(dict(libero_request(), **{'observation/image': np.zeros(4 << 20, np.uint8)}))
+        assert_one_blocked_write(sends, 1.0)
+        assert client.broken and not client._ws.recv_events_thread.is_alive()
+        with pytest.raises(RuntimeError, match='not resent'):
+            client.infer(libero_request())
+        assert len(sends) == 1 and timers() == []
+    for value in (0, -1.0, float('inf'), float('nan'), True):
+        with pytest.raises(ValueError):
+            evaluate.BoundedClient(uri, connect_timeout=5, infer_timeout=5, close_timeout=value)
+
+
+class StalledEvaluator:
+    """An evaluator that stopped reading: a send blocks until the socket is shut down.
+
+    With stall_close, close blocks the same way; otherwise it returns at once.
+    """
+
+    def __init__(self, stall_close=False):
+        self.shut = threading.Event()
+        self.close_socket = self.shut.set  # the deadline's termination step
+        self.sent, self.closes, self.stall_close = [], 0, stall_close
+
+    def _block(self):
+        if not self.shut.wait(timeout=30):
+            raise AssertionError('deadline never fired')
+        raise OSError('socket shut down')
+
+    def send(self, data):
+        from openpi_client import msgpack_numpy
+        self.sent.append(msgpack_numpy.unpackb(data))
+        self._block()
+
+    def recv(self, timeout=None):
+        raise TimeoutError('evaluator idle')
+
+    def close(self, **kwargs):
+        self.closes += 1
+        if self.stall_close:
+            self._block()
+
+
+def test_stalled_send_fails_the_run_and_releases_the_bridge(tmp_path):
+    from tests.test_openpi_remote import timers
+    module = example('serve_tool_bridge')
+    with tool_server() as (policy, upstream):
+        bridge = module.Bridge(upstream, tmp_path / 'bridge', 'baseline', suite='libero_spatial',
+                               trials_per_task=1, horizon=5, idle_timeout=0.3)
+        evaluator, started = StalledEvaluator(), time.monotonic()
+        with pytest.raises(TimeoutError, match='deadline'):
+            bridge.handler(evaluator)
+        assert time.monotonic() - started < 10 and not bridge.lock.locked()
+        # The hello blocked once; the failed acknowledgment was attempted once, never resent.
+        assert [list(message)[0] for message in evaluator.sent] == ['experiment_tools', 'umi/finish_ack']
+        assert evaluator.sent[1]['umi/finish_ack'] == 'failed' and evaluator.closes == 1
+        assert manifest(tmp_path)['status'] == 'failed' and policy.observations == []
+        assert timers() == []
+
+
+def test_unresponsive_close_releases_the_bridge_and_keeps_the_run_error(tmp_path, monkeypatch):
+    from brainscore.experiments.backends import socket_deadline
+    from tests.test_openpi_remote import timers
+    monkeypatch.setattr(socket_deadline, 'CLOSE_TIMEOUT', 0.3)
+    module = example('serve_tool_bridge')
+    with tool_server() as (policy, upstream):
+        bridge = module.Bridge(upstream, tmp_path / 'bridge', 'baseline', suite='libero_spatial',
+                               trials_per_task=1, horizon=5)
+        evaluator = StalledEvaluator(stall_close=True)
+        evaluator.send = lambda data: evaluator.sent.append(data)  # sends go through
+        started = time.monotonic()
+        with pytest.raises(TimeoutError, match='evaluator idle'):  # not the close timeout
+            bridge.handler(evaluator)
+        assert time.monotonic() - started < 10 and not bridge.lock.locked()
+        assert evaluator.closes == 1 and evaluator.shut.is_set()
+        assert manifest(tmp_path)['status'] == 'failed'
+        # A second evaluator arriving while the bridge is busy is turned away within the bound.
+        bridge.lock.acquire()
+        try:
+            busy = StalledEvaluator(stall_close=True)
+            bridge.handler(busy)
+            assert busy.closes == 1 and busy.shut.is_set() and busy.sent == []
+        finally:
+            bridge.lock.release()
+        assert timers() == []

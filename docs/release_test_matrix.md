@@ -78,7 +78,7 @@ A new model needs targeted integration with existing benchmarks. A new benchmark
 
 ## Close the skip and selection gaps
 
-The 43 allowed skips in F1 consist of **27 remote OpenPI cases (F3), one local OpenPI module and one LIBERO transport module (I4), five LanA cases (I5), and nine operational entries (O1)**. A module-level skip can hide multiple tests; one reported skip is not one qualified behavior.
+The current 47 allowed skips in F1 consist of **31 remote OpenPI cases (F3), one local OpenPI module and one LIBERO transport module (I4), five LanA cases (I5), and nine operational entries (O1)**. A module-level skip can hide multiple tests; one reported skip is not one qualified behavior.
 
 The 62 deselected cases in the October 20 run span `test_benchmark_parity_slow.py`, `test_regression_baselines.py`, `test_roar_benchmark.py`, `test_text_wrapper.py` and `test_vlm_vision_wrapper.py`. Route parity/baselines to Q1 and real-wrapper/ROAR cases to I2. ROAR registry assertions now run in F2; model/data cases remain in I2.
 

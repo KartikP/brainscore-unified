@@ -170,11 +170,26 @@ python examples/libero/serve_tool_bridge.py \
   --out /path/to/new/experiment-records
 ```
 
-Add `--suite`, `--trials-per-task` and `--execution-horizon 5` (the evaluator's `replan_steps`); the bridge refuses an evaluator whose start message disagrees. Run the evaluator only through `evaluate.py` on port 8001. The bridge uses the same `LiberoChunkPolicy` and common experiment tools; LIBERO still owns physics, observations, scheduling and success scoring. `--mode baseline` omits internal tools; `--mode ablation` additionally silences projection unit 0. Restart the policy server for each matched condition.
+Add `--suite`, `--trials-per-task` and `--execution-horizon 5` (the evaluator's `replan_steps`); the bridge refuses an evaluator whose start message disagrees. Run the evaluator only through `evaluate.py` on port 8001, from a unified checkout: it loads the standard-library `brainscore/experiments/backends/socket_deadline.py` by path, without installing brainscore (`run_pair.sh` mounts the checkout read-only). The bridge uses the same `LiberoChunkPolicy` and common experiment tools; LIBERO still owns physics, observations, scheduling and success scoring. `--mode baseline` omits internal tools; `--mode ablation` additionally silences projection unit 0. Restart the policy server for each matched condition.
 
 **Completion.** On one connection the bridge sends a hello naming its UMI run, the evaluator declares its suite, tasks and step limits, and each request carries its call index and episode. After writing `report.json`, the evaluator sends a receipt: per episode, chunks received, actions whose `env.step` returned, wait steps, errors and how it ended. The bridge accepts it only if every episode in the declared order ended by success or the step limit, its calls match the calls served, and executed actions fill whole chunks except possibly the last. A receipt is evaluator testimony, checked for consistency; it is not independent proof. A served chunk is not evidence that its actions ran.
 
-The bridge acknowledges `complete` only after `Experiment.run` has saved its records; the evaluator writes the answer to `finish.json` and exits 0 only for a complete report and acknowledgment. A disconnect, idle timeout (`--idle-timeout`, 900 s), rejected receipt or failed save marks the bridge record failed. A lost or late inference reply closes the evaluator connection; nothing is resent, and the remaining episodes fail. Only connecting and waiting for replies are bounded: `--connect-timeout`, `--infer-timeout`, `--control-timeout` and `--finish-timeout` on the evaluator, `--idle-timeout` on the bridge, and the 300 s reply wait of the bridge's upstream `OpenPIPolicyClient`. These defaults are operational choices, not measured budgets. Sends are not bounded on either connection, and closing the policy connection does not stop an inference already running on the server, so neither a single wait nor a whole run has a guaranteed upper bound. Enforcing send and close limits is a separate transport-hardening task.
+The bridge acknowledges `complete` only after `Experiment.run` has saved its records; the evaluator writes the answer to `finish.json` and exits 0 only for a complete report and acknowledgment. A disconnect, idle timeout (`--idle-timeout`, 900 s), rejected receipt or failed save marks the bridge record failed. A lost or late inference reply closes the evaluator connection; nothing is resent, and the remaining episodes fail.
+
+**Transport limits.** Operational defaults, not measured budgets.
+
+| Connection | Limit | Default |
+|---|---|---|
+| Evaluator → bridge | `--connect-timeout`: connecting | 120 s |
+| | `--infer-timeout`, `--control-timeout`, `--finish-timeout`: one whole exchange (send plus reply) | 600 / 60 / 600 s |
+| Bridge → evaluator | `--idle-timeout`: each wait for, and each send to, the evaluator | 900 s |
+| Bridge → policy (`OpenPIPolicyClient`) | connecting, and each whole request | 300 s |
+| Policy server (`serve_tools.py`) | each reply send | 300 s |
+| Any close | separate cleanup allowance, added after the limit above | about 10 s |
+
+- When a limit runs out, the connection is terminated and nothing is resent. A stalled close cannot keep the bridge locked.
+- These limits cover transport only. They do not cancel an inference already running on the policy server, and a request that timed out may still have been processed there. Nothing bounds model inference, record or artifact writing, or a whole experiment.
+- `evaluate.py` and the helper it loads are checked for Python 3.8 syntax only; they have not been run under Python 3.8.
 
 Qualify a tool-bridge run in the UMI environment, passing each tool run's experiment directory:
 

@@ -14,6 +14,8 @@ trials=$4
 mkdir "$evidence_dir"
 evidence_dir=$(cd "$evidence_dir" && pwd)
 script_dir=$(cd "$(dirname "$0")" && pwd)
+# evaluate.py loads brainscore/experiments/backends/socket_deadline.py from this checkout.
+unified_dir=$(cd "$script_dir/../.." && pwd)
 run_id="umi-libero-$(date +%s)-$$"
 policy_name="$run_id-policy"
 bridge_name="$run_id-bridge"
@@ -108,8 +110,8 @@ evaluate() {
   docker run --rm --network host --gpus all \
     -e MUJOCO_GL=egl -e MUJOCO_EGL_DEVICE_ID=0 \
     -e NVIDIA_DRIVER_CAPABILITIES=all -e PYOPENGL_PLATFORM=egl \
-    -v "$openpi_dir:/app:ro" -v "$script_dir:/umi:ro" -v "$evidence_dir:/evidence" \
-    umi-libero-runtime /.venv/bin/python /umi/evaluate.py \
+    -v "$openpi_dir:/app:ro" -v "$unified_dir:/umi:ro" -v "$evidence_dir:/evidence" \
+    umi-libero-runtime /.venv/bin/python /umi/examples/libero/evaluate.py \
     --openpi /app --out "/evidence/$phase" --route "$phase" \
     --suite "$suite" --trials "$trials" --port 8001
 }

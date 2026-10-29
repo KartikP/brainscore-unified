@@ -5,16 +5,20 @@ bridge process. Task logic, initial states, preprocessing, and scoring are
 provided by the upstream evaluator, not reimplemented here.
 
 The upstream websocket client is replaced by BoundedClient: identical request
-bytes and reply parsing, but bounded connect and receive waits and no resend
-after an uncertain exchange. Sends are not bounded (see BoundedClient). With serve_tool_bridge.py it also exchanges a start message, per-call
-annotations, a receipt and a finish acknowledgment (see the README).
+bytes and reply parsing, but bounded connect, exchange (send plus reply) and
+close, and no resend after an uncertain exchange. With serve_tool_bridge.py it
+also exchanges a start message, per-call annotations, a receipt and a finish
+acknowledgment (see the README).
+
+Deadlines come from brainscore/experiments/backends/socket_deadline.py, loaded
+by path from the same unified checkout (standard library only), so the
+brainscore package is not imported here.
 """
 import argparse
 import hashlib
 import importlib.util
 import json
 import logging
-import math
 from pathlib import Path
 import subprocess
 import sys
@@ -32,6 +36,17 @@ MAX_STEPS = {'libero_spatial': 220, 'libero_object': 280, 'libero_goal': 300,
 # Per-episode fields sent in the receipt, plus an error count.
 LEDGER_FIELDS = ('task', 'trial', 'calls', 'full_calls', 'last_executed', 'executed_total',
                  'wait_steps', 'success', 'ended_by', 'prefix_match', 'execution_unknown')
+
+
+def _load_socket_deadline():
+    path = Path(__file__).resolve().parents[2] / 'brainscore/experiments/backends/socket_deadline.py'
+    spec = importlib.util.spec_from_file_location('umi_socket_deadline', str(path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+socket_deadline = _load_socket_deadline()
 
 
 class TrialAudit:
@@ -152,21 +167,25 @@ class ErrorAudit(logging.Handler):
 
 
 class BoundedClient:
-    """Upstream WebsocketClientPolicy bytes and parsing; connect and receive waits bounded.
+    """Upstream WebsocketClientPolicy bytes and parsing, with bounded waits.
 
     Connection refusals are retried until the deadline, before any inference.
-    After any failed exchange the connection is closed and never reused, so a
-    late reply cannot be read as the answer to another request. A send to a
-    stalled peer is not bounded here; it ends only when that peer closes.
+    Each exchange (send plus reply) has one deadline; when it runs out the
+    socket is shut down, so a peer that stops reading cannot hold a send. After
+    any failed exchange the connection is closed and never reused, so a late
+    reply cannot be read as the answer to another request. Closing is bounded
+    by close_timeout. Inference already running on the peer is not cancelled.
     """
 
-    def __init__(self, uri, *, connect_timeout, infer_timeout):
+    def __init__(self, uri, *, connect_timeout, infer_timeout,
+                 close_timeout=socket_deadline.CLOSE_TIMEOUT):
         _positive(connect_timeout)
         _positive(infer_timeout)
+        _positive(close_timeout)
         from openpi_client import msgpack_numpy
         import websockets.sync.client
         self._codec, self._packer = msgpack_numpy, msgpack_numpy.Packer()
-        self.infer_timeout = infer_timeout
+        self.infer_timeout, self.close_timeout = infer_timeout, close_timeout
         self.broken = False
         deadline = time.monotonic() + connect_timeout
         while True:
@@ -175,7 +194,8 @@ class BoundedClient:
                 raise TimeoutError('Policy server unavailable at ' + uri)
             try:
                 self._ws = websockets.sync.client.connect(
-                    uri, compression=None, max_size=None, open_timeout=remaining)
+                    uri, compression=None, max_size=None, open_timeout=remaining,
+                    close_timeout=close_timeout)
                 break
             except ConnectionRefusedError:
                 time.sleep(min(1.0, remaining))
@@ -194,9 +214,10 @@ class BoundedClient:
         if self.broken:
             raise RuntimeError('Connection closed after a failed exchange; requests are not resent')
         try:
-            if data is not None:
-                self._ws.send(data)
-            reply = self._ws.recv(timeout=timeout)
+            with socket_deadline.deadline(self._ws, timeout) as remaining:
+                if data is not None:
+                    self._ws.send(data)
+                reply = self._ws.recv(timeout=remaining())
             if isinstance(reply, str):
                 raise RuntimeError('Error in inference server:\n' + reply)
             return self._codec.unpackb(reply)
@@ -219,17 +240,13 @@ class BoundedClient:
         return self._exchange(self._packer.pack(message), timeout)
 
     def close(self):
-        self.broken = True
-        try:
-            self._ws.close()
-        except Exception:
-            pass
+        """Bounded and never raises; repeated calls do nothing."""
+        if not self.broken:
+            self.broken = True
+            socket_deadline.close(self._ws, self.close_timeout)
 
 
-def _positive(seconds):
-    if not (type(seconds) in (int, float) and math.isfinite(seconds) and seconds > 0):
-        raise ValueError('Timeouts must be positive, finite numbers of seconds')
-    return seconds
+_positive = socket_deadline.positive_seconds
 
 
 def _seconds(value):

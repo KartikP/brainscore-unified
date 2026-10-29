@@ -480,6 +480,24 @@ def test_evaluator_side_scripts_parse_as_python_38(name):
     ast.parse(path.read_text(), feature_version=(3, 8))
 
 
+def test_evaluator_deadline_helper_parses_as_python_38_and_loads_without_brainscore():
+    # Syntax only: no Python 3.8 interpreter runs here.
+    import ast
+    import subprocess
+    import sys
+    root = Path(__file__).parents[1]
+    helper = root / 'brainscore/experiments/backends/socket_deadline.py'
+    ast.parse(helper.read_text(), feature_version=(3, 8))
+    check = ("import importlib.util, sys\n"
+             "spec = importlib.util.spec_from_file_location('evaluate', sys.argv[1])\n"
+             "module = importlib.util.module_from_spec(spec)\n"
+             "spec.loader.exec_module(module)\n"
+             "assert module.socket_deadline.__file__ == sys.argv[2]\n"
+             "assert not [m for m in sys.modules if m.split('.')[0] == 'brainscore'], 'imported brainscore'\n")
+    subprocess.run([sys.executable, '-c', check, str(root / 'examples/libero/evaluate.py'),
+                    str(helper.resolve())], check=True, cwd=str(root / 'examples'))
+
+
 @pytest.mark.parametrize('changes', [
     {'mode': 'other'}, {'suite': 'libero_90'}, {'trials_per_task': True}, {'trials_per_task': 0},
     {'trials_per_task': 51}, {'horizon': True}, {'horizon': 0}, {'horizon': 1.5},

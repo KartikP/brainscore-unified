@@ -52,5 +52,9 @@ OPTIONAL_SKIPS = {
         'tests/test_openpi_remote.py::test_oversized_response_cleans_tools_before_reporting_error': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
         'tests/test_openpi_remote.py::test_detach_failure_preserves_original_error_and_clears_scope[False]': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
         'tests/test_openpi_remote.py::test_detach_failure_preserves_original_error_and_clears_scope[True]': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
+        'tests/test_openpi_remote.py::test_client_request_to_a_stalled_server_is_bounded_and_never_resent': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
+        'tests/test_openpi_remote.py::test_close_meets_its_deadline_while_the_receive_queue_is_full': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
+        'tests/test_openpi_remote.py::test_completed_request_deadline_does_not_affect_the_next_request': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
+        'tests/test_openpi_remote.py::test_server_reply_to_a_client_that_stops_reading_is_bounded_and_frees_the_policy': "could not import 'openpi_client.msgpack_numpy': No module named 'openpi_client'",
     },
 }
