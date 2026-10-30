@@ -13,6 +13,7 @@ from brainscore.instrumentation import ObservedSession, observe
 from brainscore.run_record import PayloadCodec, RunRecord
 from brainscore.experiments._storage import check_output_directory
 from brainscore_core.compatibility import validate_channels
+from brainscore_core.contract import Subject
 
 
 # These data fields affect built-in session evaluation. Never serialize a live
@@ -158,15 +159,13 @@ class SessionProtocol:
                 **({} if self.collect_outputs else {'collect_outputs': False})}
 
     def validate(self, subject):
-        if not callable(getattr(subject, 'interact', None)):
-            raise TypeError('SessionProtocol requires subject.interact(session)')
-        if not callable(getattr(subject, 'reset', None)):
-            raise TypeError('SessionProtocol requires subject.reset()')
+        if not isinstance(subject, Subject):
+            raise TypeError('SessionProtocol requires a Subject (interact, reset and channels)')
         # Use scoring's channel rules; exploratory names remain usable with a warning.
         for channels, direction, owner in (
             (subject.in_channels, 'input', 'subject inputs'),
             (subject.out_channels, 'output', 'subject outputs'),
-            (getattr(subject, 'required_channels', ()), 'input', 'subject required inputs'),
+            (subject.required_channels, 'input', 'subject required inputs'),
             (self.input_channels, 'input', 'protocol inputs'),
             (self.output_channels, 'output', 'protocol outputs'),
         ):
@@ -177,7 +176,7 @@ class SessionProtocol:
         if not self.trials or len(set(self.trials)) != len(self.trials):
             raise ValueError('Use nonempty, distinct, hashable trial IDs')
         missing = self.input_channels - set(subject.in_channels)
-        missing_required = set(getattr(subject, 'required_channels', ())) - self.input_channels
+        missing_required = set(subject.required_channels) - self.input_channels
         missing_outputs = self.output_channels - set(subject.out_channels)
         if missing or missing_required or missing_outputs:
             raise ValueError(f'Incompatible channels: unsupported inputs={missing}, '
@@ -191,6 +190,8 @@ class SessionProtocol:
                 try:
                     subject.reset()
                     with context.trial(trial, condition=condition), self.session_factory(request) as session:
+                        if not isinstance(session, Session):
+                            raise TypeError('Session factories must return a Session')
                         settings = {
                             name: getattr(session, name)
                             for name in _SESSION_CONTEXT_FIELDS
@@ -199,10 +200,10 @@ class SessionProtocol:
                         if settings:
                             context.publish('session_context', settings)
                         subject.interact(ObservedSession(session, context))
-                        if getattr(session, 'complete', True) is False:
+                        if not session.complete:
                             raise RuntimeError('Environment session ended before episode completion')
                         if self.collect_outputs:
-                            results.append(session.collect() if callable(getattr(session, 'collect', None)) else None)
+                            results.append(session.collect())
                 finally:
                     subject.reset()
         return results if self.collect_outputs else None
@@ -228,6 +229,8 @@ class CallableProtocol:
     def validate(self, subject):
         if not self.methods or len(set(self.methods)) != len(self.methods):
             raise ValueError('Select distinct methods to observe')
+        # The external evaluator names the methods it calls, so checking for them is
+        # checking its request, not discovering what the subject can do.
         for method in self.methods:
             if not callable(getattr(subject, method, None)):
                 raise ValueError(f'Subject does not expose {method}')
