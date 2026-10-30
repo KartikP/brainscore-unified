@@ -39,7 +39,9 @@ from brainscore.experiments import (
     TorchInstrumentation,
 )
 from brainscore.harnesses.grid_game import GridGameEnv, GridGameEnvironment
-from brainscore.model_helpers.local_vlm_policy import VISUAL_PROMPT, parse_directional_action
+from brainscore.model_helpers.local_vlm_policy import (
+    parse_directional_action, response_for_answer, visual_policy,
+)
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore_core.events import EnvironmentResponse, Selection
 from brainscore_core.model_interface import BrainScoreModel
@@ -64,17 +66,8 @@ UNPARSED_ACTION = 0
 
 def answer_response(answer: str) -> EnvironmentResponse:
     """Turn a generated answer into an action, keeping the answer and the parse result."""
-    parsed = parse_directional_action(answer, prefer_last=True)
-    valid = parsed >= 0
-    return EnvironmentResponse(
-        action=parsed if valid else UNPARSED_ACTION,
-        metadata={
-            'answer': answer,
-            'valid': valid,
-            'parse_error': None if valid else 'no direction word in the answer',
-            'fallback_action': None if valid else UNPARSED_ACTION,
-        },
-    )
+    return response_for_answer(answer, parse_directional_action(answer, prefer_last=True),
+                               lambda: UNPARSED_ACTION)
 
 
 def with_provenance(policy: Callable, *, provenance: dict[str, Any]) -> Callable:
@@ -97,28 +90,17 @@ def with_provenance(policy: Callable, *, provenance: dict[str, Any]) -> Callable
 def load_smolvlm_policy(model_path: Path, max_new_tokens: int) -> tuple[Callable, Any]:
     """Return (policy, torch model) for a local SmolVLM snapshot.
 
-    build_visual_policy is not reused: it loads the Qwen class whenever that
-    class is importable and keeps the model private, so it cannot be hooked.
-    The prompt and the action parser are the shared ones.
+    The model is loaded here so its files are local and it can be hooked; the
+    prompt, generation and answer parsing are the shared visual_policy.
     """
-    from PIL import Image
     from transformers import AutoProcessor, Idefics3ForConditionalGeneration
 
     processor = AutoProcessor.from_pretrained(model_path, local_files_only=True)
     model = Idefics3ForConditionalGeneration.from_pretrained(
         model_path, local_files_only=True, dtype=torch.float32,
     ).eval()
-    chat = [{'role': 'user', 'content': [{'type': 'image'}, {'type': 'text', 'text': VISUAL_PROMPT}]}]
-    text = processor.apply_chat_template(chat, add_generation_prompt=True, tokenize=False)
-
-    def policy(observation, history):
-        image = Image.fromarray(observation['frame']).resize((320, 320), Image.NEAREST)
-        inputs = processor(text=text, images=[image], return_tensors='pt')
-        with torch.inference_mode():
-            output = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
-        answer = processor.decode(output[0, inputs['input_ids'].shape[-1]:], skip_special_tokens=True)
-        return answer_response(answer)
-
+    policy, _ = visual_policy(model, processor, max_new_tokens=max_new_tokens,
+                              fallback=lambda: UNPARSED_ACTION)
     return policy, model
 
 
