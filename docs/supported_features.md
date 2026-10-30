@@ -113,7 +113,7 @@ Install the four packages together using the [peer revisions and constraints](..
 | Environment | Current coverage | Boundary |
 | --- | --- | --- |
 | Ubuntu 24.04 x86_64, CPU | Coordinated installation and offline integration CI; fresh-Conda language scoring/readout, native text extraction, AlexNet mapping and pixels/public IT scoring in an Ubuntu container | Pixels/public IT scoring took about 38 minutes; its profile now allows 60. Other scientific profiles need separate qualification. [Results](qualification/2026-10-22-cpu-pilot.md) |
-| macOS 14 ARM64, CPU | Coordinated installation and offline integration CI | Other macOS versions need separate evidence |
+| macOS 26 ARM64, CPU | Coordinated installation and offline integration CI (macOS 14 until its runner image retirement on November 2, 2026) | Other macOS versions need separate evidence |
 | Ubuntu 22.04, NVIDIA L4, CUDA 13.0, FP32 | Recorded scientific candidate comparisons | Historical profile; final-artifact requalification remains required |
 | macOS, Apple MPS | Selected measured runs, including GPT-2/LeBel | Experimental backend; one result is not general numerical qualification |
 | Robotics policy servers | Integration-specific environments, separated from UMI when necessary | Follow the pinned evaluator/policy instructions |
