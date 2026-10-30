@@ -158,7 +158,9 @@ settings.
 Call `Experiment.validate()` before running. It checks declared channels, tools,
 and whether the output parent accepts a temporary file, without resetting a
 subject or stepping an environment. Storage can still fail later; this is not a
-space reservation. `EnvironmentSession(require_specs=True)` checks observation
+space reservation. `SessionProtocol` accepts only a `Subject` and session
+factories that yield a `Session`; it reads the declared `Session.complete`, which
+an environment adapter keeps `False` until the episode ends. `EnvironmentSession(require_specs=True)` checks observation
 and action specifications before the first policy call. Shapes and units that
 an adapter does not declare remain unknown.
 
@@ -175,7 +177,10 @@ When a policy parses generated text into an action, keep the original answer,
 `valid`, `parse_error` and any fallback action in `EnvironmentResponse.metadata`.
 Keep the model revision and inference settings under its `provenance` key and
 include them in the experiment metadata. A saved action then remains interpretable
-when copied separately from the qualification report.
+when copied separately from the qualification report. The `motor` channel lists
+these keys (`io_catalog.get('motor').meta_keys`), and the grid-game and MiniGrid
+builders in `local_vlm_policy` return them. Use `visual_policy(model, processor)`
+when you load the model yourself.
 
 The [native-environment example](../examples/native_environment_toolbox.py) shows
 this without adding a method to the model interface. Its fallback to “up” remains
