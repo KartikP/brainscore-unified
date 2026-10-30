@@ -50,6 +50,7 @@ If scoring reports a cache-storage error, see [cache troubleshooting](../docs/ge
 | 17 | [Experiment with digits](17_experiment_toolbox.ipynb) | Train, record, ablate, restore, and replay. | Real bundled digits; CPU, no download. |
 | 18 | [Experiment with ResNet-18](18_resnet_experiment_toolbox.ipynb) | Attach the same tools to a pretrained image model. | Real bundled photos; CPU, ~45 MB weight download. |
 | 19 | [Inspect an OpenPI policy](19_openpi_experiment_toolbox.ipynb) | Read internal measurements and compare predicted actions; optionally attach tools remotely. | Saved trained-policy GPU results; reading needs no GPU. Live use requires the OpenPI tool server and matching inputs. |
+| 20 | [Steer a language model](20_steer_a_language_model.ipynb) | Push one MLP neuron, compare with random-neuron controls, and rank neurons by three methods. | Runs Qwen3.5-4B live: GPU (~16 GB), `transformers>=5`, ~10 GB download, ~15 min on an L4. |
 
 In the PyTorch notebooks, `Ablate` uses the same intervention implementation as notebooks 11 and 14. `RecordActivity` uses `ActivationWindow`, demonstrated directly in 05 and 12. These are composition and direct-control entry points to the same components.
 

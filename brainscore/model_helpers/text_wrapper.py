@@ -212,7 +212,10 @@ class TextWrapper:
 
         Args:
             stimuli: StimulusSet with 'sentence' or 'text' column, or list of strings.
-            layers: List of layer name strings to extract from.
+            layers: List of layer name strings to extract from. Suffix a name
+                with ``':input'`` to record the module's first input instead of
+                its output, e.g. ``'model.layers.14.mlp.down_proj:input'`` for
+                a transformer's MLP neurons (the same name a perturbation uses).
             stimuli_identifier: Identifier for caching. None to use stimulus_set.identifier.
 
         Returns:
@@ -533,8 +536,9 @@ class TextWrapper:
         return layer_results
 
     def _get_layer(self, layer_name):
+        from brainscore.model_helpers.selection import split_site
         module = self._model
-        for part in layer_name.split('.'):
+        for part in split_site(layer_name)[0].split('.'):
             module = getattr(module, part, None)
             if module is None:
                 raise ValueError(
@@ -542,6 +546,8 @@ class TextWrapper:
         return module
 
     def _register_hook(self, layer, layer_name, target_dict):
+        from brainscore.model_helpers.selection import split_site
+
         def hook_fn(_module, _input, output, name=layer_name):
             if isinstance(output, (tuple, list)):
                 output = output[0]
@@ -555,6 +561,11 @@ class TextWrapper:
                 activations = activations.float()
             target_dict[name] = activations.numpy()
 
+        if split_site(layer_name)[1] == 'input':
+            # ':input' records the module's first input, the same tensor a
+            # ':input' perturbation modifies (see brainscore.perturbation).
+            return layer.register_forward_pre_hook(
+                lambda module, args: hook_fn(module, args, args[0]))
         return layer.register_forward_hook(hook_fn)
 
     def _package(self, layer_activations, texts):

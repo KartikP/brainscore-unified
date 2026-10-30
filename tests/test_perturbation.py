@@ -305,3 +305,65 @@ def test_perturbation_positional_api_preserved():
     p = Perturbation('replace', 0.25, 'payload')
     assert (p.kind, p.scale, p.replacement, p.amount) == ('replace', 0.25, 'payload', 0.0)
     assert Perturbation(kind='drive', amount=8.0).amount == 8.0
+
+
+# ── Input site (forward pre-hook) ────────────────────────────────────
+
+class _GatedMLP(torch.nn.Module):
+    """SwiGLU MLP shaped like Qwen/LLaMA: down(silu(gate(x)) * up(x)).
+    The down_proj input is computed inline, so only a pre-hook reaches it."""
+
+    def __init__(self, d=6, h=10):
+        super().__init__()
+        torch.manual_seed(0)
+        self.gate_proj = torch.nn.Linear(d, h, bias=False)
+        self.up_proj = torch.nn.Linear(d, h, bias=False)
+        self.down_proj = torch.nn.Linear(h, d, bias=False)
+
+    def forward(self, x):
+        return self.down_proj(torch.nn.functional.silu(self.gate_proj(x)) * self.up_proj(x))
+
+
+class TestInputSite:
+
+    def _bs(self, net):
+        return BrainScoreModel(identifier='gated-mlp-test', model=net, region_layer_map={},
+                               preprocessors={}, state_change_fn=build_pytorch_ablation_fn(net))
+
+    def _steer(self, bs, layer, perturbation, indices=None):
+        return bs.process(StateChange(kind='steer', perturbation=perturbation,
+                                      target=Selection(layer=layer, indices=indices)))
+
+    def test_drive_down_proj_input_adds_weight_column(self):
+        net = _GatedMLP()
+        bs = self._bs(net)
+        x = torch.randn(2, 5, 6)  # (batch, tokens, d)
+        baseline = net(x).detach().clone()
+
+        n, delta = 7, 2.5
+        self._steer(bs, 'down_proj:input', Perturbation(kind='drive', amount=delta), [n])
+        # every token's output moves by exactly delta * W_down[:, n]
+        expected = baseline + delta * net.down_proj.weight[:, n].detach()
+        assert torch.allclose(net(x).detach(), expected, atol=1e-6)
+
+        bs.reset()
+        assert torch.equal(net(x).detach(), baseline)
+
+    def test_whole_layer_vector_drive(self):
+        net = _GatedMLP()
+        bs = self._bs(net)
+        x = torch.randn(2, 5, 6)
+        baseline = net(x).detach().clone()
+        direction = torch.arange(6, dtype=torch.float64)  # dtype is matched to the layer
+        self._steer(bs, 'down_proj', Perturbation(kind='drive', amount=direction))
+        assert torch.allclose(net(x).detach(), baseline + direction.float(), atol=1e-6)
+
+    def test_input_site_validates_against_in_features(self):
+        net = _GatedMLP()
+        with pytest.raises(ValueError, match='out of range'):
+            self._steer(self._bs(net), 'down_proj:input', Perturbation(kind='drive', amount=1.0), [10])
+
+    def test_unknown_site_rejected(self):
+        net = _GatedMLP()
+        with pytest.raises(ValueError, match='site'):
+            self._steer(self._bs(net), 'down_proj:middle', Perturbation(kind='drive', amount=1.0))
