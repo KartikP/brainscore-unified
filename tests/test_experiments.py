@@ -841,3 +841,18 @@ def test_tool_bridge_rejects_reused_directory_before_connecting(tmp_path, monkey
     with pytest.raises(FileExistsError):
         bridge.handler(object())
     assert connections == [] and bridge.connection == 0 and not bridge.lock.locked()
+
+
+def test_session_protocol_relies_on_the_declared_contract(tmp_path):
+    duck = SimpleNamespace(identifier='duck', in_channels={'stimulus'}, out_channels={'behavior'},
+                           interact=lambda session: None, reset=lambda: None)
+    with pytest.raises(TypeError, match='requires a Subject'):
+        protocol().validate(duck)
+
+    @contextmanager
+    def factory(trial):
+        yield SimpleNamespace(next_input=lambda: None)
+    undeclared = SessionProtocol('fixture', factory, input_channels=('stimulus',),
+                                 output_channels=('behavior',))
+    with pytest.raises(TypeError, match='must return a Session'):
+        Experiment(subject=FixtureSubject(), protocol=undeclared, output_dir=tmp_path / 'run').run()

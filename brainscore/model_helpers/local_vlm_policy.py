@@ -2,8 +2,10 @@
 
 The local-weights twin of ``api_behavioral.build_api_action_fn``: turn a HF
 vision-language or text model into a one-tick game policy
-``policy(observation, history) -> action_index`` that ``PolicyWrapper``
-drives through ``process(EnvironmentStep)``. These builders were consolidated
+``policy(observation, history) -> EnvironmentResponse`` that ``PolicyWrapper``
+drives through ``process(EnvironmentStep)``. Each response keeps the model's
+answer and whether it parsed (``answer``, ``valid``, ``parse_error``,
+``fallback_action``; see ``io_catalog.RESPONSE_META_KEYS``). These builders were consolidated
 here from several duplicated, cross-importing copies.
 
 Two action vocabularies, two parsers:
@@ -12,8 +14,10 @@ Two action vocabularies, two parsers:
 - MiniGrid (``harnesses.gymnasium_harness``): N numbered actions; the model
   emits ``Action: <number>`` → ``parse_indexed_action``.
 
-The builders load heavy weights and are not unit-tested here; the two parsers
-are pure and carry the coverage. Builders return ``(policy, stats)`` where
+The builders load heavy weights and are not unit-tested here; the parsers,
+``response_for_answer`` and ``visual_policy`` (with a fake model) carry the
+coverage. An answer that does not parse is played with a seeded random action,
+as before, and marked invalid rather than passed off as the model's choice. Builders return ``(policy, stats)`` where
 ``stats`` is ``{'calls', 'parse_miss'}``; ``del policy`` drops the only
 reference to the loaded model so a ``gc.collect()`` frees the GPU between
 runs of a model ladder.
@@ -21,6 +25,7 @@ runs of a model ladder.
 import re
 
 import numpy as np
+from brainscore_core.events import EnvironmentResponse
 from brainscore_core.hf_compat import pin_image_processor
 
 WORD_TO_ACTION = {'up': 0, 'down': 1, 'left': 2, 'right': 3}
@@ -86,12 +91,30 @@ def parse_indexed_action(text, n_actions, rng=None):
     return int(m[-1].group(1)) % n_actions
 
 
+def response_for_answer(answer, action, fallback, stats=None):
+    """Keep the answer and whether it parsed; a parser miss (-1) plays fallback()."""
+    valid = action >= 0
+    if not valid:
+        action = fallback()
+        if stats is not None:
+            stats['parse_miss'] += 1
+    return EnvironmentResponse(action=action, metadata={
+        'answer': answer, 'valid': valid,
+        'parse_error': None if valid else 'the answer names no action',
+        'fallback_action': None if valid else action,
+    })
+
+
+def _random_fallback(n_actions):
+    rng = np.random.RandomState(0)
+    return lambda: int(rng.randint(0, n_actions))
+
+
 # ── grid-game policy builders (4 directional actions) ──────────────
 
 def build_visual_policy(model_id, *, prompt=VISUAL_PROMPT, max_new_tokens=200):
     """Qwen2.5-VL-style policy that reads the rendered RGB frame."""
     import torch
-    from PIL import Image
     from transformers import AutoProcessor
     try:
         from transformers import Qwen2_5_VLForConditionalGeneration as VLM
@@ -99,7 +122,6 @@ def build_visual_policy(model_id, *, prompt=VISUAL_PROMPT, max_new_tokens=200):
         # AutoModelForVision2Seq was removed in transformers 5; the
         # ImageTextToText auto-class is its replacement and exists in 4.57 too.
         from transformers import AutoModelForImageTextToText as VLM
-    from brainscore.harnesses.grid_game import ACTIONS
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     processor = AutoProcessor.from_pretrained(model_id)
@@ -107,8 +129,24 @@ def build_visual_policy(model_id, *, prompt=VISUAL_PROMPT, max_new_tokens=200):
     model = VLM.from_pretrained(
         model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
         device_map=device).eval()
+    return visual_policy(model, processor, prompt=prompt, max_new_tokens=max_new_tokens)
+
+
+def visual_policy(model, processor, *, prompt=VISUAL_PROMPT, max_new_tokens=200,
+                  fallback=None):
+    """Grid-game policy over an image-text model you have already loaded.
+
+    Load the model yourself when you need its class, files or dtype, or to keep
+    it for recording and interventions. fallback() picks the action for an
+    answer that names no direction; the default is a seeded random action.
+    Returns (policy, stats).
+    """
+    import torch
+    from PIL import Image
+    from brainscore.harnesses.grid_game import ACTIONS
+
     stats = {'parse_miss': 0, 'calls': 0}
-    rng = np.random.RandomState(0)
+    fallback = fallback or _random_fallback(len(ACTIONS))
 
     def policy(observation, history):
         stats['calls'] += 1
@@ -117,16 +155,13 @@ def build_visual_policy(model_id, *, prompt=VISUAL_PROMPT, max_new_tokens=200):
             {'type': 'image'}, {'type': 'text', 'text': prompt}]}]
         text = processor.apply_chat_template(messages, tokenize=False,
                                              add_generation_prompt=True)
-        inputs = processor(text=[text], images=[img], return_tensors='pt').to(device)
+        inputs = processor(text=[text], images=[img], return_tensors='pt').to(model.device)
         with torch.no_grad():
             out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         ans = processor.decode(out[0][inputs['input_ids'].shape[1]:],
                                skip_special_tokens=True)
-        a = parse_directional_action(ans, prefer_last=True)
-        if a < 0:
-            stats['parse_miss'] += 1
-            return int(rng.randint(0, len(ACTIONS)))
-        return a
+        return response_for_answer(ans, parse_directional_action(ans, prefer_last=True),
+                                   fallback, stats)
 
     return policy, stats
 
@@ -143,7 +178,7 @@ def build_thinking_policy(model_id, *, max_new_tokens=1024):
         model_id, torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
         device_map=device).eval()
     stats = {'parse_miss': 0, 'calls': 0}
-    rng = np.random.RandomState(0)
+    fallback = _random_fallback(len(ACTIONS))
 
     def policy(observation, history):
         stats['calls'] += 1
@@ -161,11 +196,8 @@ def build_thinking_policy(model_id, *, max_new_tokens=1024):
             out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         ans = tok.decode(out[0][inputs['input_ids'].shape[1]:],
                          skip_special_tokens=True)
-        a = parse_directional_action(ans, prefer_last=True)
-        if a < 0:
-            stats['parse_miss'] += 1
-            return int(rng.randint(0, len(ACTIONS)))
-        return a
+        return response_for_answer(ans, parse_directional_action(ans, prefer_last=True),
+                                   fallback, stats)
 
     return policy, stats
 
@@ -190,7 +222,7 @@ def build_gemma_visual_policy(model_id, *, prompt=VISUAL_PROMPT, max_new_tokens=
         dtype=torch.bfloat16).eval()
     device = next(model.parameters()).device
     stats = {'parse_miss': 0, 'calls': 0}
-    rng = np.random.RandomState(0)
+    fallback = _random_fallback(len(ACTIONS))
 
     def policy(observation, history):
         stats['calls'] += 1
@@ -204,11 +236,8 @@ def build_gemma_visual_policy(model_id, *, prompt=VISUAL_PROMPT, max_new_tokens=
             out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         ans = processor.decode(out[0][inputs['input_ids'].shape[1]:],
                                skip_special_tokens=True)
-        a = parse_directional_action(ans, prefer_last=True)
-        if a < 0:
-            stats['parse_miss'] += 1
-            return int(rng.randint(0, len(ACTIONS)))
-        return a
+        return response_for_answer(ans, parse_directional_action(ans, prefer_last=True),
+                                   fallback, stats)
 
     return policy, stats
 
@@ -243,7 +272,8 @@ def build_minigrid_qwen_policy(model_id, *, max_new_tokens=220):
         with torch.no_grad():
             out = model.generate(**inp, max_new_tokens=max_new_tokens, do_sample=False)
         ans = proc.decode(out[0][inp['input_ids'].shape[1]:], skip_special_tokens=True)
-        return parse_indexed_action(ans, n, rng)
+        return response_for_answer(ans, parse_indexed_action(ans, n),
+                                   lambda: int(rng.randint(0, n)), stats)
 
     return policy, stats
 
@@ -281,7 +311,8 @@ def build_minigrid_gemma_policy(model_id, *, max_new_tokens=256, revision=None):
         with torch.no_grad():
             out = model.generate(**inp, max_new_tokens=max_new_tokens, do_sample=False)
         ans = proc.decode(out[0][inp['input_ids'].shape[1]:], skip_special_tokens=True)
-        return parse_indexed_action(ans, n, rng)
+        return response_for_answer(ans, parse_indexed_action(ans, n),
+                                   lambda: int(rng.randint(0, n)), stats)
 
     return policy, stats
 
