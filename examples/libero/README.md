@@ -220,6 +220,42 @@ processes it started. The evidence directory must not exist. Interpreter version
 dependency freezes and revisions are saved alongside the logs. The checkpoint
 directory must already contain the weights and normalization files.
 
+### Pair randomness when comparing tools
+
+For controlled recording or ablation comparisons, add `UMI_PAIRED_SEED=7` to
+that command. When starting the bridge directly, use `--paired-seed 7`.
+Leave it unset for upstream benchmark replication.
+
+| Mode | Sampling randomness | Use |
+|---|---|---|
+| Default | OpenPI's random sequence continues across episodes | Replicate upstream evaluation settings |
+| Paired tools | Each task, trial and call gets reproducible noise | Compare tools without earlier episodes shifting later randomness |
+
+A fresh server per condition is not enough to match later episodes: if one
+episode needs an extra policy call, OpenPI's random sequence advances an extra
+step. In the November 1 diagnostic, matching the starting random state made
+recording off/on identical on the previously failed task. Changing that state
+reproduced the success or failure regardless of recording. See the
+[controlled investigation](../../docs/qualification/2026-11-01-libero-recording-randomness.md).
+
+Paired mode supplies explicit noise through OpenPI's existing `noise=` input.
+It uses SHA-256-derived PCG64 seeds and float32 normal samples. This deliberately
+differs from OpenPI's default JAX sampling and is **not a leaderboard replication
+profile**. The shape is fixed to the pinned `pi05_libero` configuration: 10 × 32
+in model space, before OpenPI converts it to seven robot action components.
+
+The experiment and evaluator reports record the mode, seed, algorithm and NumPy
+version. Each input and output records the task/trial/call identity and noise
+checksum. `compare.py` rejects different randomness settings. Calls are numbered
+within each episode, so its length cannot affect the next episode's noise.
+
+Matched noise does not force matched observations after an intervention or
+simulator divergence. Continue to use saved-input replay for exact output
+checks. Preserve the checkpoint, compiler settings and environment versions.
+The new paired-noise launcher is covered by offline and transport tests; a
+trained-policy run of this launcher is still required before claiming it is
+qualified. The earlier diagnostic reset JAX random state directly instead.
+
 The manual steps it performs:
 
 Start `serve_tools.py --port 8000 --steps 0 1` (its default port, 8001, is the bridge's). In the UMI/OpenPI client environment, run:

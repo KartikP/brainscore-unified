@@ -115,6 +115,9 @@ def compare(reference_dir, umi_dir, *, reference_experiment=None, umi_experiment
                  if k not in ('host', 'port', 'video_out_path')} for report in reports]
     if settings[0] != settings[1] or trials[0].keys() != trials[1].keys():
         raise ValueError('Unmatched trials or settings')
+    randomness = [(report.get('bridge') or {}).get('policy_randomness', {'mode': 'upstream'})
+                  for report in reports]
+    _check(randomness[0] == randomness[1], 'Unmatched policy randomness settings')
     reference_only = umi_only = 0
     for key in trials[0]:
         first, second = trials[0][key], trials[1][key]
@@ -126,6 +129,7 @@ def compare(reference_dir, umi_dir, *, reference_experiment=None, umi_experiment
     result = {'episodes_per_route': n, 'suite': reports[0]['suite'], 'scope': scopes,
               'reference_only_successes': reference_only, 'umi_only_successes': umi_only,
               'success_rate_difference': (umi_only - reference_only) / n,
+              'policy_randomness': randomness[0],
               'interpretation': 'descriptive comparison; not proof of equivalence',
               'interval_note': '95% Wilson interval pooled across trials; task dependence is not modeled'}
     for label, report in zip(('reference', 'umi'), reports):
