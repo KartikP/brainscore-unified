@@ -161,7 +161,7 @@ class SessionProtocol:
     def validate(self, subject):
         if not isinstance(subject, Subject):
             raise TypeError('SessionProtocol requires a Subject (interact, reset and channels)')
-        # Use scoring's channel rules; exploratory names remain usable with a warning.
+        # Experiments and scoring use the same registered channel declarations.
         for channels, direction, owner in (
             (subject.in_channels, 'input', 'subject inputs'),
             (subject.out_channels, 'output', 'subject outputs'),
@@ -169,13 +169,14 @@ class SessionProtocol:
             (self.input_channels, 'input', 'protocol inputs'),
             (self.output_channels, 'output', 'protocol outputs'),
         ):
-            validate_channels(set(channels), direction, owner, allow_unregistered=True)
+            validate_channels(set(channels), direction, owner)
         if (not self.conditions or any(not isinstance(c, str) or not c for c in self.conditions)
                 or len(set(self.conditions)) != len(self.conditions)):
             raise ValueError('Use nonempty, distinct condition names')
         if not self.trials or len(set(self.trials)) != len(self.trials):
             raise ValueError('Use nonempty, distinct, hashable trial IDs')
-        missing = self.input_channels - set(subject.in_channels)
+        consumed = self.input_channels & set(subject.in_channels)
+        missing = bool(self.input_channels) and not consumed
         missing_required = set(subject.required_channels) - self.input_channels
         missing_outputs = self.output_channels - set(subject.out_channels)
         if missing or missing_required or missing_outputs:
@@ -199,7 +200,8 @@ class SessionProtocol:
                         }
                         if settings:
                             context.publish('session_context', settings)
-                        subject.interact(ObservedSession(session, context))
+                        from brainscore_core.session_view import InputSession
+                        subject.interact(InputSession(ObservedSession(session, context), subject.in_channels))
                         if not session.complete:
                             raise RuntimeError('Environment session ended before episode completion')
                         if self.collect_outputs:

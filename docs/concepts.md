@@ -46,6 +46,8 @@ Not every subject needs an extraction wrapper: it can call a robotics policy or 
 - **Session:** the exchange between experiment and subject. It supplies inputs and accepts responses. The subject handles it through `interact(session)`.
 - **`model_interface`:** the Python module from which you import class definitions. Calls do not pass through it as another runtime layer.
 
+See [The subject contract](contract.md) for compatibility, payload validation and lifecycle rules.
+
 ## Subject
 
 A **subject** is the interface through which an experiment or benchmark uses a model. Import these classes from `brainscore_core.model_interface`:
@@ -53,7 +55,7 @@ A **subject** is the interface through which an experiment or benchmark uses a m
 | Class | Use it for |
 | --- | --- |
 | `Subject` | A new integration that handles a session directly. Declare `identifier`, `in_channels`, and `out_channels`; implement `interact(session)`. |
-| `UnifiedModel` | A `Subject` base with `process`, task/recording setup, layer maps, and modality declarations. |
+| `UnifiedModel` | A compatibility base for existing typed implementations; new subjects implement `interact`. |
 | `BrainScoreModel` | A ready-made implementation combining extraction wrappers and capabilities. It extends `UnifiedModel`. |
 
 A native `Subject` needs no layer map or `process()` method. Stateful subjects implement `reset()` to clear state between independent runs. `required_channels` can declare inputs that must be present.
@@ -131,7 +133,7 @@ Paths are relative to that module. A VLM wrapper may wrap only its vision tower,
 
 A **modality** is an input domain, such as vision, text, or audio. A **channel** names an input or output and its payload schema, including outputs such as `neural:IT`.
 
-For `BrainScoreModel`, the keys of `extractor` declare input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly. Use catalog names such as `vision` and `behavior`, or register a custom family with `register_channel`. Experiments warn about unregistered names; benchmark scoring rejects them. A label such as `image` is not automatically an alias of `vision`.
+For `BrainScoreModel`, the keys of `extractor` declare input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly. Use catalog names such as `vision` and `behavior`, or register a custom family with `register_channel`. Experiments and benchmark scoring reject unregistered names before running. A label such as `image` is not automatically an alias of `vision`.
 
 ## Preprocessor vs. `extractor`
 

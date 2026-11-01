@@ -19,6 +19,8 @@ import tempfile
 # Keep offline selections explicit: mixed files contain real-model/data tests.
 SUITES = {
     'core': [
+        'tests/test_contract_v3.py',
+        'tests/test_legacy_benchmark_facade.py',
         'tests/test_api_cohesion.py',
         'tests/test_lab_vocabulary.py',
         'tests/test_external_extensions.py',

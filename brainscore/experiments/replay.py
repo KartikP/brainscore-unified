@@ -67,14 +67,19 @@ def replay_sessions(directory):
         from copy import deepcopy
         key = (trial.condition, trial.identifier)
         saved = deepcopy(inputs[key])
-        session = InMemorySession(saved)
+        environment_inputs = any(isinstance(event, EnvironmentStep) for event in saved)
+        if environment_inputs:
+            from brainscore_core.legacy_sessions import EnvironmentReplaySession
+            session = EnvironmentReplaySession(saved)
+        else:
+            session = InMemorySession(saved)
         for name, value in deepcopy(settings[key]).items():
             setattr(session, name, value)
         if 'requested_output_channels' not in settings[key] and trial_outputs[key]:
             # Older records have no request metadata. Keep the observed channel
             # names scoped to this trial rather than mixing different trials.
             session.requested_output_channels = tuple(sorted(trial_outputs[key]))
-        if any(isinstance(event, EnvironmentStep) for event in saved):
+        if environment_inputs:
             if not all(isinstance(event, EnvironmentStep) for event in saved):
                 raise ValueError('Cannot mix environment and ordinary stream inputs in a trial')
             session.requested_output_channels = ('motor',)

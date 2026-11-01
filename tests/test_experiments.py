@@ -10,13 +10,12 @@ from brainscore.experiments import (Experiment, SessionProtocol, CallableProtoco
 from brainscore.run_record import RunRecord
 from brainscore_core.contract import Subject
 from brainscore_core.streaming import InMemorySession, StreamEvent
-pytestmark = pytest.mark.unit
 
 
 class FixtureSubject(Subject):
     identifier = 'fixture'
     in_channels = {'stimulus'}
-    out_channels = {'behavior', 'activity'}
+    out_channels = {'behavior'}
     def __init__(self):
         self.layer = torch.nn.Linear(2, 2, bias=False)
         with torch.no_grad():
@@ -163,7 +162,7 @@ def test_preflight_has_no_output_or_inference(tmp_path, failure):
         provider = TorchInstrumentation({'known': subject.layer})
     elif failure == 'channel':
         tools = []
-        p.input_channels = {'unsupported'}
+        p.input_channels = {'audio'}
     elif failure == 'missing_method':
         tools = []
         p = CallableProtocol('bad', lambda s, c: None, methods=['absent'])
@@ -856,3 +855,6 @@ def test_session_protocol_relies_on_the_declared_contract(tmp_path):
                                  output_channels=('behavior',))
     with pytest.raises(TypeError, match='must return a Session'):
         Experiment(subject=FixtureSubject(), protocol=undeclared, output_dir=tmp_path / 'run').run()
+
+
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("declared_fixture_channels")]

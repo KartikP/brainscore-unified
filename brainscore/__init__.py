@@ -242,14 +242,16 @@ def score(model_identifier, benchmark_identifier,
                     else _resolve_identifier(benchmark, 'custom-benchmark'))
     requested_channels = requested_output_channels_for_score(benchmark)
 
-    check_compatibility(model, benchmark)
-    check_channel_compatibility(model, benchmark)
+    match = check_compatibility(model, benchmark)
     if check_mem:
         check_memory(model, benchmark)
 
+    from brainscore_core.legacy_benchmark import subject_for_benchmark
+    candidate = subject_for_benchmark(model, benchmark)
     _t0 = _time.time()
     with weight_fingerprint_scope():
-        result = benchmark(model)
+        result = benchmark(candidate)
+    match.stamp(result)
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
     # Benchmarks can supply a qualified identity for settings or data subsets.

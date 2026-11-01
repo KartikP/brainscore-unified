@@ -11,8 +11,18 @@ from brainscore.experiments import (Experiment, SessionProtocol, RecordInputsOut
     RecordActivity, Ablate, TorchInstrumentation, replay_sessions, compare_outputs)
 
 
+# This synthetic example uses its own declared input, not a robot observation.
+from brainscore_core.io_catalog import CatalogEntry, INPUT, register
+register(CatalogEntry(
+    name='toolbox_demo', kind=INPUT, carried_by='StreamEvent',
+    payload_contract='Toy array, sentence or mapping',
+    payload_type=(np.ndarray, str, dict), handled_by='DemonstrationSubject',
+    owner='experiment_toolbox example',
+))
+
+
 class DemonstrationSubject(Subject):
-    in_channels = {'observation'}
+    in_channels = {'toolbox_demo'}
     out_channels = {'behavior', 'neural'}
 
     def __init__(self, identifier, encode, *, recurrent=False):
@@ -47,7 +57,7 @@ class FeedbackSession(BufferedSession):
     def next_input(self):
         if self.step == 3:
             return None
-        return StreamEvent('observation', {'position': self.position, 'goal': 1.}, self.step * 50)
+        return StreamEvent('toolbox_demo', {'position': self.position, 'goal': 1.}, self.step * 50)
     def respond(self, event):
         super().respond(event)
         if event.channel == 'behavior':
@@ -72,9 +82,9 @@ def run(directory):
             if name == 'robotics':
                 yield FeedbackSession()
             else:
-                yield BufferedSession([StreamEvent('observation', payload, t) for t in (0, 20, 40)])
+                yield BufferedSession([StreamEvent('toolbox_demo', payload, t) for t in (0, 20, 40)])
         protocol = SessionProtocol(name, factory, conditions=['normal', 'silenced'],
-            input_channels=['observation'], output_channels=['behavior', 'neural'],
+            input_channels=['toolbox_demo'], output_channels=['behavior', 'neural'],
             metadata={'evidence': 'synthetic demonstration'})
         result = Experiment(subject=subject, protocol=protocol,
             tools=[RecordInputsOutputs(), Ablate(['population'], conditions=['silenced']),

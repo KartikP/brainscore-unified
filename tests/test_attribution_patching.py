@@ -15,7 +15,6 @@ from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
 from brainscore_core.streaming import InMemorySession, StreamEvent
 
-pytestmark = pytest.mark.unit
 
 
 class LinearModel(torch.nn.Module):
@@ -331,3 +330,6 @@ def test_low_precision_reference_can_be_patched_without_dtype_changes(dtype):
         value = model(torch.ones(3, dtype=dtype))
     assert value.dtype == dtype and value.item() == 5
     assert_clean(model)
+
+
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("declared_fixture_channels")]

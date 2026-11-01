@@ -48,7 +48,7 @@ class TestPreflightInScore:
         mock_load_model.return_value = model
         mock_load_benchmark.return_value = benchmark
 
-        with pytest.raises(CompatibilityError, match="does not support modalities required"):
+        with pytest.raises(CompatibilityError, match="no overlapping input channels"):
             brainscore.score('test-model', 'test-bench', check_mem=False)
 
     @patch('brainscore.load_benchmark')

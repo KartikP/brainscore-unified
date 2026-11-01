@@ -12,7 +12,9 @@ score = brainscore.score('alexnet', 'MajajHong2015.IT-pls')
 
 The loaders check unified, then the vision and language registries. `score` also accepts already-built model and benchmark objects.
 
-Compatibility applies to tested model, benchmark, and environment combinations. See the [support matrix](supported_features.md) and [numerical policy](numerical_policy.md).
+Legacy benchmarks loaded from the domain registries receive a `LegacyBenchmarkFacade`; it translates their methods into sessions. Native benchmarks with explicit channel declarations keep their session interface.
+
+Qualification applies to tested model, benchmark, and environment combinations. See the [support matrix](supported_features.md) and [numerical policy](numerical_policy.md).
 
 ## Choose the interface
 

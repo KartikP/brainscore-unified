@@ -16,7 +16,7 @@ Use Python 3.11 and install the four repositories together. Follow the [pinned-r
 | Combine recording and intervention tools | `Experiment`; [notebook 18](../notebooks/18_resnet_experiment_toolbox.ipynb) |
 | Connect a robotics evaluator | [DROID](droid_integration.md) or [LIBERO](robotics_benchmark_integration.md) |
 
-`BrainScoreModel` implements `Subject`. Choose helpers that fit your task; a session-native subject does not need a region mapping. The benchmark still determines which inputs, outputs, and methods it requires.
+`BrainScoreModel` implements `Subject`. Choose helpers that fit your task; a session-native subject does not need a region mapping. The benchmark declares its inputs and requested outputs. [Compatibility](contract.md#declarations) checks those declarations before running.
 
 ## Run a first example
 

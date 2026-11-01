@@ -29,3 +29,21 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if not any(item.get_closest_marker(t) for t in _TIERS):
             item.add_marker(pytest.mark.unit)
+
+
+@pytest.fixture
+def declared_fixture_channels(monkeypatch):
+    """Declare synthetic inputs locally; restore the catalog after each test."""
+    import numpy as np
+    from brainscore_core import io_catalog
+    monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
+    for name, direction, types in (
+        ('stimulus', io_catalog.INPUT, (list, np.ndarray)),
+        ('custom_input', io_catalog.INPUT, (dict, np.ndarray)),
+        ('custom_output', io_catalog.OUTPUT, (dict, np.ndarray)),
+    ):
+        io_catalog.register(io_catalog.CatalogEntry(
+            name=name, kind=direction, carried_by='StreamEvent',
+            payload_contract='Synthetic fixture input', handled_by='test subject',
+            payload_type=types, owner='unified tests',
+        ))

@@ -8,6 +8,18 @@ import xarray as xr
 from brainscore.experiments import SessionProtocol, Trial, TorchInstrumentation
 from brainscore_core.model_interface import FunctionalSelection, Selection
 from brainscore_core.streaming import InMemorySession
+from brainscore_core.contract import Subject
+
+
+class EmptySubject(Subject):
+    """No-input subject for testing how protocols construct sessions."""
+
+    identifier = 'empty'
+    in_channels = set()
+    out_channels = set()
+
+    def interact(self, session):
+        pass
 
 
 @pytest.mark.parametrize('axis,expected_count', [(None, 1), (-1, 6), (1, 12)])
@@ -62,7 +74,7 @@ def test_factory_argument_does_not_change_when_conditions_are_added(conditions):
         requests.append(trial)
         yield InMemorySession()
     protocol = SessionProtocol(identifier='stable', session_factory=factory, conditions=conditions)
-    subject = SimpleNamespace(reset=lambda: None, interact=lambda session: None)
+    subject = EmptySubject()
     context = SimpleNamespace(trial=lambda *a, **k: nullcontext(), publish=lambda *a: None)
     protocol.run(subject, context)
     assert all(isinstance(request, Trial) and request.identifier == 0 for request in requests)
@@ -75,7 +87,7 @@ def test_identifier_factory_is_an_explicit_compatibility_option():
         requests.append(identifier)
         yield InMemorySession()
     protocol = SessionProtocol(identifier='old', session_factory=factory, factory_argument='identifier')
-    protocol.run(SimpleNamespace(reset=lambda: None, interact=lambda session: None),
+    protocol.run(EmptySubject(),
                  SimpleNamespace(trial=lambda *a, **k: nullcontext(), publish=lambda *a: None))
     assert requests == [0]
 
@@ -175,7 +187,7 @@ def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_pat
     assert not network[0]._forward_hooks
 
 
-def test_experiment_warns_about_unregistered_channels_before_running():
+def test_experiment_rejects_unregistered_channels_before_running():
     from brainscore_core.compatibility import CompatibilityWarning, CompatibilityError
     from brainscore_core.contract import Subject
 
@@ -192,7 +204,7 @@ def test_experiment_warns_about_unregistered_channels_before_running():
         identifier='exploratory', session_factory=lambda trial: None,
         input_channels=['unregistered_input'], output_channels=['behavior'],
     )
-    with pytest.warns(CompatibilityWarning, match='benchmark scoring requires'):
+    with pytest.raises(CompatibilityError, match='unknown channel'):
         protocol.validate(subject)
     subject.in_channels = {'behavior'}
     with pytest.raises(CompatibilityError, match='registry marks'):
@@ -217,8 +229,11 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     namespace = dict(Subject=Subject, torch=torch, np=np, StreamEvent=StreamEvent,
                      BehavioralAssembly=BehavioralAssembly)
     exec(compile(ast.Module(body=[adapter], type_ignores=[]), '<notebook-adapter>', 'exec'), namespace)
-    subject = namespace['ImageSubject'](torch.nn.Linear(3, 2).eval())
-    inputs = np.array([[1., 2., 3.]], dtype=np.float32)
+    subject = namespace['ImageSubject'](
+        model=torch.nn.Linear(3, 2).eval(),
+        prepare=lambda pixels: torch.from_numpy(pixels.reshape(1, 3)).float(),
+    )
+    inputs = np.array([[[[1, 2, 3]]]], dtype=np.uint8)
     def session():
         return InMemorySession(
             inputs=[StreamEvent(channel='vision', payload=inputs.copy(), t_ms=0)],

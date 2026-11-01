@@ -14,7 +14,6 @@ from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
 from brainscore_core.streaming import InMemorySession, StreamEvent
 
-pytestmark = pytest.mark.unit
 
 
 @pytest.mark.parametrize('tool_class', [Ablate, ScaleActivity])
@@ -128,3 +127,6 @@ def test_all_targets_validated_before_any_attachment():
         with TorchInstrumentation({'layer': layer}).scale(['layer', 'missing'], factor=0.5):
             pass
     assert not layer._forward_hooks
+
+
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("declared_fixture_channels")]
