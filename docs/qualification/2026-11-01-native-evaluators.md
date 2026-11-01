@@ -71,3 +71,10 @@ and simulator assets are not committed or redistributed here.
    expanding to published-score replication.
 
 New diagnostic probes are prepared but have not yet been GPU-qualified.
+
+## Follow-up completed
+
+The [native repeatability investigation](2026-11-01-molmospaces-repeatability.md)
+reproduced kernel-selection and multisample-rendering variation independently
+of UMI. It documents the tested controls and their limits; full-rollout
+equivalence and published-score replication are still not established.
