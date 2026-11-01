@@ -153,7 +153,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         variant_kwargs = dict(
             # Selection paths are relative to the extraction root. The same
             # visual module is also used by the full model's generate().
-            state_change_fn=build_pytorch_ablation_fn(qwen_model.model.visual),
+            intervention=build_pytorch_ablation_fn(qwen_model.model.visual),
             region_modality_map={
                 region: 'text' if region == 'language_system' else 'vision'
                 for region in region_layer_map
