@@ -19,6 +19,7 @@ class FittedActivityTransform(Ablate):
     """Share artifacts and attachment; concrete methods supply their numerical maps."""
     operation = 'transform'
     identifier: str
+    application_keys: frozenset[str] = frozenset()
 
     def __init__(self, target: str | Selection, *, name: str | None = None,
                  conditions: Any = None, trials: Any = None) -> None:
@@ -74,9 +75,16 @@ class FittedActivityTransform(Ablate):
 
     def _payload(self) -> dict:
         self._require_fitted()
-        return {'format': 'brainscore.activity-transform', 'schema_version': 1,
-                'method': self.identifier, 'target': asdict(self.target),
-                'parameters': deepcopy(self._parameters), 'provenance': self.provenance}
+        payload = {'format': 'brainscore.activity-transform', 'schema_version': 1,
+                   'method': self.identifier, 'target': asdict(self.target),
+                   'parameters': deepcopy(self._parameters), 'provenance': self.provenance}
+        configuration = self._application_configuration()
+        if configuration:
+            payload['application_defaults'] = configuration
+        return payload
+
+    def _application_configuration(self) -> dict:
+        return {}
 
     def save(self, path: str | PathLike) -> None:
         """Save fitted parameters and provenance without pickle or overwriting."""
@@ -101,16 +109,20 @@ class FittedActivityTransform(Ablate):
             target.indices = tuple(target.indices)
         cls._validate_parameters(payload['parameters'], len(target.indices or ()))
         settings = cls._constructor_settings(payload['parameters'])
+        defaults = payload.get('application_defaults', {})
+        if not isinstance(defaults, dict) or set(defaults) - cls.application_keys:
+            raise ValueError('Invalid transform application defaults')
+        configuration = {**defaults, **configuration}
         if set(settings) & set(configuration):
             raise TypeError('Fitting settings are fixed by the artifact; fit a new tool to change them')
         tool = cls(target, name=name, conditions=conditions, trials=trials, **settings, **configuration)
         tool._install(payload['parameters'], payload['provenance'])
         return tool
 
-    def _numpy(self, values: np.ndarray) -> np.ndarray:
+    def _numpy(self, values: np.ndarray, configuration: dict) -> np.ndarray:
         raise NotImplementedError
 
-    def _torch(self, values: Any, parameters: dict) -> Any:
+    def _torch(self, values: Any, parameters: dict, configuration: dict) -> Any:
         raise NotImplementedError
 
     def transform(self, activity: NeuroidAssembly) -> NeuroidAssembly:
@@ -119,7 +131,8 @@ class FittedActivityTransform(Ablate):
         values, _ = _activity(activity, self.target, label=self.identifier)
         if activity.dtype.kind != 'f':
             raise ValueError('Activity transforms require floating-point activity')
-        transformed = self._numpy(values)
+        configuration = deepcopy(self._application_configuration())
+        transformed = self._numpy(values, configuration)
         if transformed.shape != values.shape or not np.isfinite(transformed).all():
             raise ValueError('An activity transform produced invalid values or shape')
         cast = transformed.astype(activity.dtype)
@@ -127,16 +140,20 @@ class FittedActivityTransform(Ablate):
             raise ValueError('Transformed values overflow the activity dtype')
         result = NeuroidAssembly(activity.copy(deep=True))
         result.data = cast
+        application = {'backend': 'numpy', 'numpy_version': np.__version__,
+                       'calculation_dtype': 'float64', 'dtype': str(activity.dtype)}
+        if configuration:
+            application['configuration'] = configuration
         result.attrs = {**deepcopy(activity.attrs), 'transform': self.identifier,
                         'tool_sha256': _checksum(self._payload()), 'fitting_provenance': self.provenance,
-                        'application_provenance': {'backend': 'numpy', 'numpy_version': np.__version__,
-                                                   'calculation_dtype': 'float64', 'dtype': str(activity.dtype)}}
+                        'application_provenance': application}
         return result
 
     def describe(self) -> dict:
         return {**super().describe(), 'operation': self.identifier,
                 'artifact_sha256': _checksum(self._payload()), 'provenance': self.provenance,
-                'application_dtype': 'activity dtype', 'positions': 'each position independently'}
+                'application_dtype': 'activity dtype', 'positions': 'each position independently',
+                **self._application_configuration()}
 
     def validate(self, experiment: Any) -> None:
         self._require_fitted()
@@ -145,9 +162,13 @@ class FittedActivityTransform(Ablate):
     @contextmanager
     def attach(self, context: Any) -> Iterator[None]:
         self._require_fitted()
-        context.publish('tool_artifact', self._payload(), source=self.name)
-        if ((self.conditions is not None and context.condition not in self.conditions)
-                or (self.trials is not None and context.trial_id not in self.trials)):
+        source, targets = self.name, deepcopy(self.targets)
+        configuration = deepcopy(self._application_configuration())
+        description = self.describe()
+        conditions, trials = self.conditions, self.trials
+        context.publish('tool_artifact', self._payload(), source=source)
+        if ((conditions is not None and context.condition not in conditions)
+                or (trials is not None and context.trial_id not in trials)):
             yield
             return
         import torch
@@ -158,19 +179,22 @@ class FittedActivityTransform(Ablate):
             if key not in cache:
                 cache[key] = {name: torch.tensor(array, device=tensor.device, dtype=tensor.dtype)
                               for name, array in self._arrays.items()}
-            result = self._torch(tensor, cache[key])
-            context.publish('intervention_application', {
+            result = self._torch(tensor, cache[key], configuration)
+            application = {
                 'shape': list(tensor.shape), 'dtype': str(tensor.dtype), 'device': str(tensor.device),
                 'torch_version': str(torch.__version__),
-            }, source=self.name)
+            }
+            if configuration:
+                application['configuration'] = configuration
+            context.publish('intervention_application', application, source=source)
             return result
 
         try:
-            with context.experiment.instrumentation.transform(self.targets, apply=apply):
-                context.publish('intervention_start', self.describe(), source=self.name)
+            with context.experiment.instrumentation.transform(targets, apply=apply):
+                context.publish('intervention_start', description, source=source)
                 try:
                     yield
                 finally:
-                    context.publish('intervention_end', self.describe(), source=self.name)
+                    context.publish('intervention_end', description, source=source)
         finally:
             cache.clear()

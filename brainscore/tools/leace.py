@@ -79,8 +79,8 @@ class LEACE(FittedActivityTransform):
     def _constructor_settings(cls, parameters: dict) -> dict:
         return dict(parameters['settings'])
 
-    def _numpy(self, values: np.ndarray) -> np.ndarray:
+    def _numpy(self, values: np.ndarray, configuration: dict) -> np.ndarray:
         return values - ((values - self._arrays['bias']) @ self._arrays['proj_right'].T) @ self._arrays['proj_left'].T
 
-    def _torch(self, values: Any, parameters: dict) -> Any:
+    def _torch(self, values: Any, parameters: dict, configuration: dict) -> Any:
         return values - ((values - parameters['bias']) @ parameters['proj_right'].T) @ parameters['proj_left'].T

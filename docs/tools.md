@@ -15,6 +15,7 @@ lesion = load_tool("ablate", targets=["language"], name="language_lesion")
 | Identifier | Implementation | Configuration |
 | --- | --- | --- |
 | `ablate` | Existing `Ablate` tool | `targets`, optional `conditions`, `trials`, `name` |
+| `contrastive-steering` | Fitted positive-minus-negative activity direction | `target`, optional `strength`, or `artifact`; [guide](contrastive_steering.md) |
 | `linear-probe` | Fitted logistic readout | `target` and fitting settings, or `artifact`; [guide](linear_probe.md) |
 | `leace` | Fitted categorical linear concept erasure | `target` and fitting settings, or `artifact`; [guide](leace.md) |
 | `observe-calls` | Existing `ObserveCalls` adapter | `observer`, optional `methods`, `name` |

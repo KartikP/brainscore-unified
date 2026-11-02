@@ -27,8 +27,11 @@ trials retain their current meanings. Backend support is explicit.
 LEACE delegates fitting to the reference `concept-erasure` library. Its
 covariance shrinkage, SVD threshold and trace constraint are recorded settings;
 they are not guarantees of erasing every representation of a concept.
-Contrastive steering will use an explicit difference of group means, with
+Contrastive steering uses an explicit difference of group means, with
 optional declared normalization and a separately configurable application dose.
+Save the default dose with the artifact and allow an explicit loading override.
+Snapshot that dose at attachment so parameters and recorded events agree for
+the entire scope. Distinct named instances support protocol dose sweeps.
 
 Require original feature addresses and explicit labels. Preserve assembly
 coordinates and source provenance. Artifacts contain parameters, target,

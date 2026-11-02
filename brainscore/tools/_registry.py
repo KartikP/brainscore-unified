@@ -52,8 +52,16 @@ def _leace(**configuration: Any) -> Any:
     return LEACE(**configuration)
 
 
+def _contrastive_steering(**configuration: Any) -> Any:
+    from .contrastive_steering import ContrastiveSteering
+    if 'artifact' in configuration:
+        return ContrastiveSteering.load(configuration.pop('artifact'), **configuration)
+    return ContrastiveSteering(**configuration)
+
+
 _FACTORIES: dict[str, Callable[..., Any]] = {
     'ablate': _ablate,
+    'contrastive-steering': _contrastive_steering,
     'linear-probe': _linear_probe,
     'leace': _leace,
     'observe-calls': _observe_calls,

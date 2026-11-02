@@ -51,6 +51,7 @@ Pass these in `Experiment(tools=[...])`.
 | `ObserveCalls` / `load_tool("observe-calls")` | Include an existing call observer in the experiment | Observer callbacks and explicitly selected public methods; [tool catalog](tools.md) |
 | `load_tool("linear-probe", ...)` | Fit/save/load a logistic probe and decode activity before or after interventions | Original unit coordinates; instrumentation supporting `record`; [guide](linear_probe.md) |
 | `load_tool("leace", ...)` | Fit/save/load categorical concept erasure and apply it offline or inside a model | Reference fitter optional extra; `TorchInstrumentation` for live transforms; [guide](leace.md) |
+| `load_tool("contrastive-steering", ...)` | Fit/save/load a group-mean direction and apply signed activation additions | Explicit discovery labels; `TorchInstrumentation` for live transforms; [guide](contrastive_steering.md) |
 | `RecordReasoning` / `load_tool("record-reasoning")` | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
 
 ## Adapters and building blocks
@@ -59,7 +60,7 @@ Use these to connect a model or build a tool. They also underpin the tools above
 
 | Component | Responsibility | Relationship to experiment tools |
 | --- | --- | --- |
-| `TorchInstrumentation` | Access the actual PyTorch network's named layers | Recording, ablation, scaling, paired-input attribution and exact patches; attribution needs a differentiable forward call; [patching guide](attribution_patching.md), [policy backends](policy_instrumentation.md) |
+| `TorchInstrumentation` | Access the actual PyTorch network's named layers | Recording, ablation, scaling, fitted transforms, paired-input attribution and exact patches; attribution needs a differentiable forward call; [patching guide](attribution_patching.md), [policy backends](policy_instrumentation.md) |
 | `OpenPIInstrumentation` | Record/ablate three sites in the pinned Pi0/Pi0.5 JAX sampler | Selected units and denoising iterations; [trained L4 and ten-task smoke checks](qualification/2026-10-06-openpi-tools.md) |
 | `RemoteOpenPIInstrumentation` | Use the same tools through `OpenPIToolServer` and `OpenPIPolicyClient` | Request-scoped cleanup and separate activity delivery; [guide](policy_instrumentation.md) |
 | `observe` | Notify callbacks about method starts, results, and errors | Used by `ObserveCalls`; does not save anything by itself |
