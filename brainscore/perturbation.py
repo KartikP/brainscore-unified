@@ -38,7 +38,10 @@ Usage::
 """
 
 from typing import Any, Callable, Tuple
+import dataclasses
 import uuid
+
+import numpy as np
 
 from brainscore.model_helpers.selection import split_site
 from brainscore_core.model_interface import (
@@ -57,9 +60,13 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
     - ``'zero'``: zero out the selected units (or the entire layer if
       ``indices`` is None).
     - ``'scale'``: multiply the selected units by ``perturbation.scale``.
-    - ``'drive'``: add ``perturbation.amount`` (a number). With
-      ``indices=None`` it may instead be a tensor broadcastable to the layer's
-      output, e.g. a residual-space direction.
+    - ``'drive'``: add ``perturbation.amount``. A Python number is added
+      as is. A NumPy array or torch tensor is cast to the activity's dtype
+      and device first. With ``indices=None`` the array may be a vector, e.g.
+      a residual-space direction, but it must broadcast to exactly the
+      activity's shape: it never adds batch, token or feature dimensions.
+      With ``indices`` set, the amount must be a scalar (a number or a
+      zero-dimensional array).
 
     For ``kind='ablation'`` (the canonical case), the hook is installed on
     the layer named by ``state_change.target.layer``. The layer path is
@@ -106,9 +113,18 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         amount = perturbation.amount
 
         def _amount_like(tensor):
-            if isinstance(amount, torch.Tensor):
-                return amount.to(device=tensor.device, dtype=tensor.dtype)
-            return amount
+            if not isinstance(amount, torch.Tensor):
+                return amount  # a Python number: unchanged scalar arithmetic
+            value = amount.to(device=tensor.device, dtype=tensor.dtype)
+            try:
+                fits = torch.broadcast_shapes(value.shape, tensor.shape) == tensor.shape
+            except RuntimeError:
+                fits = False
+            if not fits:
+                raise ValueError(
+                    f"drive amount of shape {tuple(value.shape)} does not broadcast to "
+                    f"the activity's shape {tuple(tensor.shape)} without changing it.")
+            return value
 
         def pre_hook(_module, args):
             # site='input': perturb the first positional input, e.g. the gated
@@ -161,6 +177,25 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
 
         return pre_hook if split_site(selection.layer)[1] == 'input' else hook
 
+    def _normalized(state_change: StateChange) -> Perturbation:
+        # Arrays become tensors once, here, so a NumPy amount neither promotes
+        # the activity's dtype nor breaks gradients or devices at forward time.
+        perturbation = state_change.perturbation
+        amount = perturbation.amount
+        if perturbation.kind != 'drive' or isinstance(amount, (int, float)):
+            return perturbation
+        if isinstance(amount, (np.ndarray, np.generic)):
+            amount = torch.tensor(np.asarray(amount))  # a copy: later edits do not leak in
+        elif not isinstance(amount, torch.Tensor):
+            raise TypeError(
+                f"drive amount must be a number, NumPy array or torch tensor; "
+                f"got {type(amount).__name__}.")
+        if state_change.target.indices is not None and amount.ndim != 0:
+            raise ValueError(
+                "drive with Selection.indices takes a scalar amount; a vector amount "
+                "is only supported for the whole layer (indices=None).")
+        return dataclasses.replace(perturbation, amount=amount)
+
     def state_change_fn(
         state_change: StateChange,
     ) -> Tuple[PerturbationApplied, Callable[[], None]]:
@@ -172,6 +207,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
             )
         path, site = split_site(state_change.target.layer)
         layer = _resolve_layer(path)
+        perturbation = _normalized(state_change)
         # Validate indices at apply-time, not cryptically mid-forward-pass.
         indices = state_change.target.indices
         if indices is not None:
@@ -205,7 +241,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     f"'{state_change.target.layer}' with {n_units} units "
                     f"(valid 0..{n_units - 1})."
                 )
-        hook = _make_hook(state_change.target, state_change.perturbation)
+        hook = _make_hook(state_change.target, perturbation)
         handle = (layer.register_forward_pre_hook(hook) if site == 'input'
                   else layer.register_forward_hook(hook))
 

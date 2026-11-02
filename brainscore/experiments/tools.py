@@ -264,6 +264,15 @@ class TorchInstrumentation:
         if len(set(names)) != len(names):
             raise ValueError('Select distinct layers; combine unit indices in one Selection')
         for selection in selections:
+            if isinstance(selection.layer, str) and ':' in selection.layer:
+                # Every operation here hooks a module's output. An input-site
+                # name would label output activity as input, so it is refused
+                # before any hook or file exists, even as an explicit alias.
+                raise ValueError(
+                    f'{selection.layer!r}: TorchInstrumentation reads and changes module '
+                    f"outputs only; input sites (':input') and other site suffixes are not "
+                    f'supported here. Use TextWrapper recording or a StateChange through '
+                    f'intervene() for input sites.')
             if operation in ('attribute', 'patch') and (selection.axis != -1 or selection.expected_shape is not None):
                 raise ValueError('Attribution and patching require last-axis selections without a fixed shape.')
             if (selection.layer not in self.targets

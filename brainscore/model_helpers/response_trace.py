@@ -29,7 +29,9 @@ PAYLOAD_CONTRACTS = {
     'conditional_logprob_request': (
         "dict: targets and contexts (equal-length lists of str), scoring log p(target | context); "
         "optional reduction ('sum', default, or 'mean' over target tokens) and context_format "
-        "('raw', default, or 'chat': each context is a user turn). Answer: one float per target."),
+        "('raw', default, or 'chat': each context is a user turn). Every context and target must "
+        "tokenize to at least one token (no BOS is added; an empty raw context is rejected). "
+        "Answer: one float per target."),
 }
 
 

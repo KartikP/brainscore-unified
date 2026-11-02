@@ -67,6 +67,13 @@ This intervention zeros units 0 and 3 only in that condition and trial. Omit
 unit indices zeros the whole selected output. `Selection.axis` and
 `expected_shape` keep their existing coordinate meanings.
 
+`TorchInstrumentation` records and changes module outputs only. A name with
+a site suffix such as `':input'`, including an explicit alias like
+`{"projection:input": module}`, is rejected when the experiment is validated,
+before any hook is installed or any file is written. To record or perturb a
+module's first input, use `TextWrapper` recording or a `StateChange` applied
+with `brainscore.instrumentation.intervene`.
+
 Loading `ablate` constructs the existing `Ablate`, not a second implementation.
 Existing `Ablate(...)` calls retain their defaults and behavior. The optional
 `name` distinguishes multiple instances, including disjoint unit selections

@@ -367,3 +367,119 @@ class TestInputSite:
         net = _GatedMLP()
         with pytest.raises(ValueError, match='site'):
             self._steer(self._bs(net), 'down_proj:middle', Perturbation(kind='drive', amount=1.0))
+
+
+# ── Array drive amounts never grow the activity ──────────────────────
+
+def _drive(net, amount, layer='0', indices=None):
+    return build_pytorch_ablation_fn(net)(StateChange(
+        kind='steer', target=Selection(layer=layer, indices=indices),
+        perturbation=Perturbation(kind='drive', amount=amount)))
+
+
+class TestArrayDrive:
+
+    @pytest.mark.parametrize('amount', [torch.arange(3.), torch.arange(3.)[None],
+                                        np.arange(3.), torch.tensor(2.), np.float32(2.)])
+    def test_broadcastable_amounts_add_in_place(self, amount):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        x = torch.ones(2, 4, 3)
+        _, cleanup = _drive(net, amount)
+        try:
+            out = net(x)
+            assert out.shape == x.shape and out.dtype == x.dtype
+            assert torch.equal(out, x + torch.as_tensor(np.asarray(amount), dtype=x.dtype))
+        finally:
+            cleanup()
+        assert torch.equal(net(x), x)
+
+    @pytest.mark.parametrize('shape', [(2, 3), (4,), (1, 1, 3), (2, 1, 3)])
+    def test_amounts_that_would_change_the_shape_are_rejected(self, shape):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        _, cleanup = _drive(net, torch.ones(shape))
+        try:
+            with pytest.raises(ValueError, match='does not broadcast'):
+                net(torch.ones(1, 3))
+        finally:
+            cleanup()
+
+    def test_numpy_float64_follows_the_activity_dtype(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        direction = np.array([0.1, 0.2, 0.3])
+        for dtype in (torch.float32, torch.bfloat16):
+            _, cleanup = _drive(net, direction)
+            x = torch.ones(2, 3, dtype=dtype)
+            out = net(x)
+            assert out.dtype == dtype
+            assert torch.equal(out, x + torch.from_numpy(direction).to(dtype))
+            cleanup()
+
+    def test_caller_edits_after_apply_do_not_change_a_numpy_amount(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        direction = np.ones(3)
+        _, cleanup = _drive(net, direction)
+        direction[:] = 100.
+        assert torch.equal(net(torch.zeros(1, 3)), torch.ones(1, 3))
+        cleanup()
+
+    def test_gradients_flow_to_activity_and_to_a_tensor_amount(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        x = torch.ones(2, 3, requires_grad=True)
+        _, cleanup = _drive(net, np.arange(3.))
+        net(x).sum().backward()
+        assert torch.equal(x.grad, torch.ones(2, 3))
+        cleanup()
+        amount = torch.zeros(3, dtype=torch.float64, requires_grad=True)
+        _, cleanup = _drive(net, amount)
+        net(torch.ones(2, 3)).sum().backward()
+        assert torch.equal(amount.grad, torch.full((3,), 2., dtype=torch.float64))
+        cleanup()
+
+    def test_indexed_drive_takes_only_a_scalar(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        with pytest.raises(ValueError, match='scalar amount'):
+            _drive(net, np.ones(2), indices=[0, 1])
+        assert not net[0]._forward_hooks
+        _, cleanup = _drive(net, np.array(2.), indices=[1])  # 0-d is a scalar
+        assert torch.equal(net(torch.zeros(1, 3)), torch.tensor([[0., 2., 0.]]))
+        cleanup()
+
+    def test_other_amount_types_are_rejected(self):
+        with pytest.raises(TypeError, match='drive amount'):
+            _drive(torch.nn.Sequential(torch.nn.Identity()), [1., 2., 3.])
+
+    def test_python_scalars_keep_their_arithmetic(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        applied, cleanup = _drive(net, 2)
+        x = torch.arange(3)  # an integer activity stays integer with an int amount
+        assert torch.equal(net(x[None]), x[None] + 2) and applied.perturbation.amount == 2
+        cleanup()
+
+
+# ── Strict site parser ───────────────────────────────────────────────
+
+from brainscore.model_helpers.selection import split_site
+
+
+@pytest.mark.parametrize('layer, expected', [
+    ('fc1', ('fc1', 'output')), ('model.layers.14.mlp.down_proj', ('model.layers.14.mlp.down_proj', 'output')),
+    ('model.layers.14.mlp.down_proj:input', ('model.layers.14.mlp.down_proj', 'input')),
+    ('0', ('0', 'output')), ('0:input', ('0', 'input')),
+])
+def test_split_site_accepts_paths_and_one_input_suffix(layer, expected):
+    assert split_site(layer) == expected
+
+
+@pytest.mark.parametrize('layer', ['', ':input', ':', 'fc1:', 'fc1:output', 'fc1:middle:input',
+                                   'fc1:input:input', 'fc1::input', 'fc1:Input'])
+def test_split_site_rejects_malformed_addresses(layer):
+    with pytest.raises(ValueError):
+        split_site(layer)
+
+
+@pytest.mark.parametrize('layer', [':input', 'fc1:middle:input', 'fc1:input:input'])
+def test_perturbation_rejects_malformed_sites_before_hooking(layer):
+    net = _TwoLayerNet()
+    with pytest.raises(ValueError):
+        _drive(net, 1.0, layer=layer)
+    assert not any(m._forward_hooks or m._forward_pre_hooks for m in net.modules())

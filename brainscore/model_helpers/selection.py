@@ -32,9 +32,17 @@ def split_site(layer: str) -> tuple[str, str]:
     computed inline that no module outputs (e.g. the gated MLP activation
     entering a transformer's ``down_proj``). Recording and intervention both
     parse layer names here, so one string names the same tensor in both.
+
+    Strict: the path must be nonempty and at most one ``':input'`` suffix may
+    follow it; any other colon (``'a:b'``, ``'a:b:input'``,
+    ``'a:input:input'``) is rejected rather than guessed at.
     """
-    if layer.endswith(INPUT_SITE):
-        return layer[:-len(INPUT_SITE)], 'input'
-    if ':' in layer:
-        raise ValueError(f"Unknown layer site in {layer!r}; only '{INPUT_SITE}' is supported.")
-    return layer, 'output'
+    path, colon, site = layer.partition(':')
+    if not path:
+        raise ValueError(f"Layer name {layer!r} has an empty module path.")
+    if not colon:
+        return path, 'output'
+    if site != INPUT_SITE[1:]:
+        raise ValueError(f"Unknown layer site in {layer!r}; only a single trailing "
+                         f"'{INPUT_SITE}' is supported.")
+    return path, 'input'

@@ -16,6 +16,7 @@ plus ``conversations``, ``top_p`` and ``seed``; log-probabilities take EWoK's
 ``{targets, contexts}`` plus ``reduction`` and ``context_format``.
 """
 import json
+from copy import deepcopy
 from typing import Any, Mapping, Optional
 
 from brainscore_core.capabilities.registry import register_capability
@@ -89,21 +90,49 @@ class CausalLMProvider:
         which treats each context as a user message and scores the target as
         the assistant's reply. Context and target are tokenized separately and
         concatenated, so the scored tokens are exactly the target's tokens.
+
+        Every target token is predicted from at least one preceding token, so
+        a context must tokenize to at least one token and a target to at least
+        one token. No beginning-of-sequence token is added: a raw empty
+        context (``''``) is rejected rather than scored, since its first
+        target token would have no prediction. To score a target
+        unconditionally, pass the tokenizer's BOS text (if the model has one)
+        as the context. The whole request is checked before any forward pass.
         """
+        import numpy as np
         import torch
+        for key in ('targets', 'contexts'):
+            # A string or mapping would otherwise be read as a batch of its
+            # characters or keys; only list-like batches are accepted.
+            value = request[key]
+            if not (isinstance(value, (list, tuple)) or (isinstance(value, np.ndarray) and value.ndim == 1)):
+                raise TypeError(f'conditional_logprob_request {key} must be a list, tuple or 1-d array '
+                                f'of strings; got {type(value).__name__}')
         targets, contexts = list(request['targets']), list(request['contexts'])
         if len(targets) != len(contexts):
             raise ValueError('conditional_logprob_request needs one context per target')
+        if any(not isinstance(text, str) for text in targets + contexts):
+            raise TypeError('conditional_logprob_request contexts and targets must be strings')
         reduction = request.get('reduction', 'sum')
         if reduction not in ('sum', 'mean'):
             raise ValueError("reduction must be 'sum' or 'mean'")
-        if request.get('context_format', 'raw') == 'chat':
+        context_format = request.get('context_format', 'raw')
+        if context_format not in ('raw', 'chat'):
+            raise ValueError(f"context_format must be 'raw' or 'chat'; got {context_format!r}")
+        if context_format == 'chat':
             contexts = [self.format([{'role': 'user', 'content': c}]) for c in contexts]
+        encoded = [(self.tokenizer(c, add_special_tokens=False)['input_ids'],
+                    self.tokenizer(t, add_special_tokens=False)['input_ids'])
+                   for c, t in zip(contexts, targets)]
+        for index, (c, t) in enumerate(encoded):
+            if not c:
+                raise ValueError(f'item {index}: the context has no tokens to condition on, so the '
+                                 'first target token cannot be scored; pass a nonempty context')
+            if not t:
+                raise ValueError(f'item {index}: the target has no tokens to score')
         values = []
-        for start in range(0, len(targets), self.batch_size):
-            pairs = [(self.tokenizer(c, add_special_tokens=False)['input_ids'],
-                      self.tokenizer(t, add_special_tokens=False)['input_ids'])
-                     for c, t in zip(contexts[start:start + self.batch_size], targets[start:start + self.batch_size])]
+        for start in range(0, len(encoded), self.batch_size):
+            pairs = encoded[start:start + self.batch_size]
             width = max(len(c) + len(t) for c, t in pairs)
             pad = self.tokenizer.pad_token_id
             ids = torch.tensor([c + t + [pad] * (width - len(c) - len(t)) for c, t in pairs], device=self.device)
@@ -127,8 +156,10 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
                             batch_size: int = 8) -> BrainScoreModel:
     """A ``BrainScoreModel`` for a Hugging Face causal LM: record, intervene, generate, score.
 
-    Put model revision and settings in ``provenance``; it is attached to every
-    response. ``region_layer_map`` names the regions that can be recorded.
+    Put model revision and settings in ``provenance``; a copy is attached to
+    every response: ``payload['provenance']`` on a ``response_trace`` and
+    ``attrs['provenance']`` on a recorded ``NeuroidAssembly``.
+    ``region_layer_map`` names the regions that can be recorded.
     """
     provider = CausalLMProvider(model, tokenizer, chat_template_kwargs, batch_size)
     register_trace_channels()
@@ -136,14 +167,16 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
     # response_trace has exactly one handler; each channel keeps its own provider.
     text = _capability(('conditional_logprob_request', 'generation_request'))
     register_capability(text)
-    provenance = {'identifier': identifier, **dict(provenance or {})}
+    # A deep copy: later edits to the caller's dict do not change recorded provenance.
+    provenance = {'identifier': identifier, **deepcopy(dict(provenance or {}))}
     channels = {'generation_request': dict(provider=provider.generate, parse=str),
                 'conditional_logprob_request': dict(provider=provider.logprobs, parse=json.loads)}
     return BrainScoreModel(
         identifier,
         region_layer_map=dict(region_layer_map or {}),
         extractor={'text': TextWrapper(model, tokenizer, identifier=identifier,
-                                               layer_aggregation=layer_aggregation, batch_size=batch_size)},
+                                       layer_aggregation=layer_aggregation, batch_size=batch_size,
+                                       provenance=provenance)},
         intervention=build_pytorch_ablation_fn(model),
         capability_config={text.identifier: dict(channels=channels, provenance=provenance,
                                                  streaming=False, reset=None)},
