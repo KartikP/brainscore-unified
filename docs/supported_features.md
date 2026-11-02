@@ -50,6 +50,7 @@ Pass these in `Experiment(tools=[...])`.
 | `PatchActivity` / `load_tool("patch-activity")` | Replace selected outputs with recorded values from a paired input | `TorchInstrumentation`, `RecordInputsOutputs`, aligned shapes and one invocation per target; [guide](attribution_patching.md) |
 | `ObserveCalls` / `load_tool("observe-calls")` | Include an existing call observer in the experiment | Observer callbacks and explicitly selected public methods; [tool catalog](tools.md) |
 | `load_tool("linear-probe", ...)` | Fit/save/load a logistic probe and decode activity before or after interventions | Original unit coordinates; instrumentation supporting `record`; [guide](linear_probe.md) |
+| `load_tool("leace", ...)` | Fit/save/load categorical concept erasure and apply it offline or inside a model | Reference fitter optional extra; `TorchInstrumentation` for live transforms; [guide](leace.md) |
 | `RecordReasoning` / `load_tool("record-reasoning")` | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
 
 ## Adapters and building blocks

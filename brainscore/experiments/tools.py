@@ -249,13 +249,13 @@ class TorchInstrumentation:
         return {'provider': 'TorchInstrumentation',
                 'targets': {name: type(module).__module__ + '.' + type(module).__qualname__
                             for name, module in self.targets.items()},
-                'operations': ['record', 'ablate', 'scale', 'attribute', 'patch'],
+                'operations': ['record', 'ablate', 'scale', 'attribute', 'patch', 'transform'],
                 'selection': 'layer path; optional indices and explicit axis'}
 
     def validate(self, operation, targets):
         import operator
         import torch
-        if operation not in ('record', 'ablate', 'scale', 'attribute', 'patch'):
+        if operation not in ('record', 'ablate', 'scale', 'attribute', 'patch', 'transform'):
             raise ValueError(f'Unsupported operation: {operation}')
         selections = [_selection(t) for t in targets]
         if not selections or any(not isinstance(s, Selection) for s in selections):
@@ -341,6 +341,11 @@ class TorchInstrumentation:
         """Temporarily replace activity during one forward call."""
         from .attribution import patch
         return patch(self, targets, reference)
+
+    def transform(self, targets: Any, *, apply: Callable[[Any], Any]) -> ContextManager[None]:
+        """Temporarily transform selected floating activity on every forward call."""
+        from .transforms import transform
+        return transform(self, targets, apply)
 
     @contextmanager
     def _perturb(self, targets, perturbation):

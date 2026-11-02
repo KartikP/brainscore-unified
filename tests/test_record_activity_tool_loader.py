@@ -149,6 +149,7 @@ def test_loading_all_tools_does_not_import_model_or_fitting_dependencies():
         'load_tool("record-io"); '
         'load_tool("record-activity", targets=["population"]); '
         'load_tool("linear-probe", target="population"); '
+        'load_tool("leace", target="population"); '
         'assert not ({"torch", "transformers", "sklearn"} & set(sys.modules))'],
         capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

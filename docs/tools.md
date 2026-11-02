@@ -16,6 +16,7 @@ lesion = load_tool("ablate", targets=["language"], name="language_lesion")
 | --- | --- | --- |
 | `ablate` | Existing `Ablate` tool | `targets`, optional `conditions`, `trials`, `name` |
 | `linear-probe` | Fitted logistic readout | `target` and fitting settings, or `artifact`; [guide](linear_probe.md) |
+| `leace` | Fitted categorical linear concept erasure | `target` and fitting settings, or `artifact`; [guide](leace.md) |
 | `observe-calls` | Existing `ObserveCalls` adapter | `observer`, optional `methods`, `name` |
 | `patch-activity` | Existing `PatchActivity` replacement | `targets`, `reference`, optional `conditions`, `trials`, `name` |
 | `record-activity` | Existing `RecordActivity` internal recorder | `targets`, optional `when` (`before`/`after`) and `name` |

@@ -45,9 +45,17 @@ def _record_reasoning(**configuration: Any) -> Any:
     return RecordReasoning(**configuration)
 
 
+def _leace(**configuration: Any) -> Any:
+    from .leace import LEACE
+    if 'artifact' in configuration:
+        return LEACE.load(configuration.pop('artifact'), **configuration)
+    return LEACE(**configuration)
+
+
 _FACTORIES: dict[str, Callable[..., Any]] = {
     'ablate': _ablate,
     'linear-probe': _linear_probe,
+    'leace': _leace,
     'observe-calls': _observe_calls,
     'patch-activity': _patch_activity,
     'record-activity': _record_activity,
