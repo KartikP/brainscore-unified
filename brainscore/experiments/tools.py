@@ -2,7 +2,7 @@
 from contextlib import contextmanager, ExitStack
 import copy
 import math
-from typing import Any, Callable, ContextManager, Iterator
+from typing import Any, Callable, ContextManager, Iterator, Sequence
 from brainscore.run_record import RunRecorder
 from brainscore_core.events import Selection, Perturbation, StateChange
 from brainscore.instrumentation import observe
@@ -62,9 +62,12 @@ class RecordInputsOutputs(Tool):
 
 
 class RecordActivity(Tool):
-    def __init__(self, targets, *, when='after', name='activity'):
+    def __init__(self, targets: Sequence[str | Selection], *, when: str = 'after',
+                 name: str = 'activity') -> None:
         if when not in ('before', 'after'):
             raise ValueError('when must be before or after')
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError('Tool name must be a nonempty string')
         self.targets, self.when, self.name = tuple(targets), when, name
         self.phase = 'before_intervention' if when == 'before' else 'after_intervention'
 
@@ -93,7 +96,12 @@ class Ablate(Tool):
     phase = 'intervene'
     operation = 'ablate'
 
-    def __init__(self, targets, *, conditions=None, trials=None):
+    def __init__(self, targets: Sequence[str | Selection], *,
+                 conditions: Sequence[str] | None = None, trials: Sequence[Any] | None = None,
+                 name: str | None = None) -> None:
+        self.name = self.name if name is None else name
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError('Tool name must be a nonempty string')
         self.targets = tuple(targets)
         self.conditions = None if conditions is None else tuple(conditions)
         self.trials = None if trials is None else tuple(trials)
@@ -135,8 +143,10 @@ class ScaleActivity(Ablate):
     name = 'scale_activity'
     operation = 'scale'
 
-    def __init__(self, targets, *, factor, conditions=None, trials=None):
-        super().__init__(targets, conditions=conditions, trials=trials)
+    def __init__(self, targets: Sequence[str | Selection], *, factor: float,
+                 conditions: Sequence[str] | None = None, trials: Sequence[Any] | None = None,
+                 name: str | None = None) -> None:
+        super().__init__(targets, conditions=conditions, trials=trials, name=name)
         if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not math.isfinite(factor):
             raise ValueError('factor must be a finite number')
         self.factor = float(factor)
@@ -158,8 +168,8 @@ class PatchActivity(Ablate):
     operation = 'patch'
 
     def __init__(self, targets: Any, *, reference: dict,
-                 conditions: Any = None, trials: Any = None) -> None:
-        super().__init__(targets, conditions=conditions, trials=trials)
+                 conditions: Any = None, trials: Any = None, name: str | None = None) -> None:
+        super().__init__(targets, conditions=conditions, trials=trials, name=name)
         self.reference = copy.deepcopy(reference)
 
     def describe(self) -> dict:
@@ -202,7 +212,10 @@ class ObserveCalls(Tool):
     Native session tools use on_event instead; a session event is not a method
     call. This adapter preserves existing observers without inventing call data.
     """
-    def __init__(self, observer, *, methods=('process',), name='call_observer'):
+    def __init__(self, observer: Any, *, methods: Sequence[str] = ('process',),
+                 name: str = 'call_observer') -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError('Tool name must be a nonempty string')
         self.observer, self.methods, self.name = observer, tuple(methods), name
 
     def describe(self):
@@ -236,13 +249,13 @@ class TorchInstrumentation:
         return {'provider': 'TorchInstrumentation',
                 'targets': {name: type(module).__module__ + '.' + type(module).__qualname__
                             for name, module in self.targets.items()},
-                'operations': ['record', 'ablate', 'scale', 'attribute', 'patch'],
+                'operations': ['record', 'ablate', 'scale', 'attribute', 'patch', 'transform'],
                 'selection': 'layer path; optional indices and explicit axis'}
 
     def validate(self, operation, targets):
         import operator
         import torch
-        if operation not in ('record', 'ablate', 'scale', 'attribute', 'patch'):
+        if operation not in ('record', 'ablate', 'scale', 'attribute', 'patch', 'transform'):
             raise ValueError(f'Unsupported operation: {operation}')
         selections = [_selection(t) for t in targets]
         if not selections or any(not isinstance(s, Selection) for s in selections):
@@ -328,6 +341,11 @@ class TorchInstrumentation:
         """Temporarily replace activity during one forward call."""
         from .attribution import patch
         return patch(self, targets, reference)
+
+    def transform(self, targets: Any, *, apply: Callable[[Any], Any]) -> ContextManager[None]:
+        """Temporarily transform selected floating activity on every forward call."""
+        from .transforms import transform
+        return transform(self, targets, apply)
 
     @contextmanager
     def _perturb(self, targets, perturbation):
