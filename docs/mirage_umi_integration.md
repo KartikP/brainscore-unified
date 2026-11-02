@@ -47,7 +47,7 @@ its runtime paths and trained subject head must be supplied explicitly.
   clip. Vision and audio reference the same container, as the native API requires.
   Text is the joined transcript, with validated word/onset/duration metadata;
   an empty transcript is explicit. Unconsumed channels are ignored.
-- `interact(session)` responds after each complete clip. Inference uses the
+- `participate(session)` responds after each complete clip. Inference uses the
   unmodified upstream `InferenceRequest` and `run_inference` API.
 - `neural:Schaefer1000` carries a `NeuroidAssembly` of predicted BOLD, with
   native TR and parcel ordering, clip identity, trained subject identity and

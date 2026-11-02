@@ -109,7 +109,7 @@ class MirageSubject(Subject):
     def identifier(self) -> str:
         return f'mirage-{self.subject}'
 
-    def interact(self, session: Session) -> None:
+    def participate(self, session: Session) -> None:
         requested = session.requested_output_channels
         if requested is not None and set(requested) != self.out_channels:
             raise ValueError(f'Request exactly {OUTPUT_CHANNEL}')

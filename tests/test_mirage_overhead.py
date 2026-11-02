@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.unit
 
 spec = importlib.util.spec_from_file_location(
     'measure_mirage_overhead',
