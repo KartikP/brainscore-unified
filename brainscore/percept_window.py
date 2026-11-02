@@ -30,6 +30,7 @@ the recorder and the pure reconstruction functions need only numpy + torch.
 """
 import json
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -170,12 +171,14 @@ def _first_tensor(args, kwargs):
     return None
 
 
-def _resolve_targets(target) -> List[Tuple[str, torch.nn.Module]]:
+def _resolve_targets(target, _containers=()) -> List[Tuple[str, torch.nn.Module]]:
     """Resolve a PerceptWindow target into ``[(name, module), ...]``.
 
-    Accepts a torch Module, a list of Modules, a wrapper exposing ``._model``,
-    or a BrainScoreModel (taps ``_activations_model._model`` plus any
-    wrapper-valued preprocessors). De-duplicates by module identity.
+    Accepts a torch Module, a list of Modules, a ``{name: target}`` mapping, a
+    wrapper exposing ``._model``, or a BrainScoreModel (taps
+    ``_activations_model._model`` plus any wrapper-valued preprocessors, then
+    every root in its public ``extractor`` mapping that those missed).
+    De-duplicates by module identity; a list/mapping containing itself raises.
     """
     found: List[Tuple[str, torch.nn.Module]] = []
     seen: set = set()
@@ -188,18 +191,27 @@ def _resolve_targets(target) -> List[Tuple[str, torch.nn.Module]]:
     if isinstance(target, torch.nn.Module):
         add(getattr(target, '__class__').__name__, target)
         return found
+    if isinstance(target, (list, tuple, Mapping)):
+        if id(target) in _containers:
+            raise ValueError("PerceptWindow target list/mapping contains itself")
+        _containers += (id(target),)
     if isinstance(target, (list, tuple)):
         for i, t in enumerate(target):
-            for nm, m in _resolve_targets(t):
+            for nm, m in _resolve_targets(t, _containers):
                 add(f"{i}:{nm}", m)
+        return found
+    if isinstance(target, Mapping):
+        for key, t in target.items():
+            for nm, m in _resolve_targets(t, _containers):
+                add(f"{key}:{nm}", m)
         return found
     # a wrapper with ._model
     inner = getattr(target, '_model', None)
     if isinstance(inner, torch.nn.Module):
         add(getattr(target, 'identifier', 'model'), inner)
-    # a BrainScoreModel: activations_model + preprocessors
+    # a BrainScoreModel: activations_model + preprocessors (legacy names/order)
     am = getattr(target, '_activations_model', None)
-    if am is not None:
+    if am is not None and not isinstance(am, Mapping):  # mappings: see extractor below
         for nm, m in _resolve_targets(am):
             add(f"activations:{nm}", m)
     preprocs = getattr(target, '_preprocessors', None)
@@ -207,6 +219,12 @@ def _resolve_targets(target) -> List[Tuple[str, torch.nn.Module]]:
         for modality, pp in preprocs.items():
             for nm, m in _resolve_targets(pp):
                 add(f"{modality}:{nm}", m)
+    # the public, normalized extractor mapping: adds the roots missed above
+    # (e.g. extractor={'vision': ..., 'text': ...}); found ones are skipped
+    extractors = getattr(target, 'extractor', None)
+    if isinstance(extractors, Mapping):
+        for nm, m in _resolve_targets(extractors):
+            add(nm, m)
     return found
 
 
@@ -215,8 +233,9 @@ def _resolve_targets(target) -> List[Tuple[str, torch.nn.Module]]:
 class PerceptWindow:
     """Capture and reconstruct the tensors a model actually ingests.
 
-    :param target: a torch Module, a list of them, an activations wrapper, or a
-        BrainScoreModel (auto-resolves the wrapped module(s) to hook).
+    :param target: a torch Module, a list or ``{name: module}`` mapping of
+        them, an activations wrapper, or a BrainScoreModel (auto-resolves the
+        wrapped module(s) to hook, including every ``extractor`` tower).
     :param modality: force a modality for every capture ('vision'|'text'|
         'audio'); default ``None`` infers per tensor.
     :param denorm: ``(mean, std)`` for vision de-normalization, ``'auto'`` to
@@ -234,8 +253,8 @@ class PerceptWindow:
         if not self.targets:
             raise ValueError(
                 "PerceptWindow found no torch module to hook on the target. Pass "
-                "a torch.nn.Module, a wrapper exposing ._model, or a "
-                "BrainScoreModel with an activations_model.")
+                "a torch.nn.Module (or a list/mapping of them), a wrapper "
+                "exposing ._model, or a BrainScoreModel with an extractor.")
         self.modality = modality
         self._denorm_spec = denorm
         self.every = max(1, int(every))
@@ -260,6 +279,12 @@ class PerceptWindow:
             candidates.extend(preprocs.values())
         for attr in ('_image_processor', 'image_processor', 'preprocess', '_preprocess'):
             candidates.append(getattr(target, attr, None))
+        # then modern extractors' public preprocessing (rendering only)
+        extractors = target if isinstance(target, Mapping) else getattr(target, 'extractor', None)
+        if isinstance(extractors, Mapping):
+            for ex in extractors.values():
+                for attr in ('processor', 'preprocess', 'preprocessing'):
+                    candidates.append(getattr(ex, attr, None))
         for c in candidates:
             ms = find_normalization(c)
             if ms is not None:
@@ -285,9 +310,13 @@ class PerceptWindow:
                     tensor=t, shape=tuple(t.shape), dtype=str(t.dtype)))
             return hook
 
-        for name, module in self.targets:
-            self._handles.append(
-                module.register_forward_pre_hook(make_hook(name), with_kwargs=True))
+        try:
+            for name, module in self.targets:
+                self._handles.append(
+                    module.register_forward_pre_hook(make_hook(name), with_kwargs=True))
+        except BaseException:
+            self.__exit__()  # remove hooks already attached, then re-raise
+            raise
         return self
 
     def __exit__(self, *exc):

@@ -71,7 +71,7 @@ concurrent experiment. Observer failures propagate; an incomplete record must
 not silently become a valid result. A tool that needs immutable inputs must copy
 them in `on_start`, before inference can mutate them.
 
-For native `interact` implementations, pass `ObservedSession(session, recorder)`
+For native `participate` implementations, pass `ObservedSession(session, recorder)`
 to observe input/output events. `observe` records only calls made on the object
 to which it is attached. Methods with arbitrary custom names can be included via
 the `methods` argument.
@@ -210,7 +210,7 @@ their own StimulusSet cells; column registration alone does not validate files.
 
 Implement `setup` and `reset` when allocating state or resources. Reset is followed
 by setup on the next execution. `supports_session(model, channels)` accepts a
-complete output combination; `interact(model, session)` executes it. Multiple
+complete output combination; `participate(model, session)` executes it. Multiple
 handlers accepting the same combination are rejected. Catalog declarations alone
 do not implement execution. See the working `response_trace.py` implementation
 and `core/tests/test_external_extensions.py` for complete examples.
@@ -239,6 +239,15 @@ Use `ActivationWindow(network, layers=['layer.path'])` around the experiment to
 capture actual forward-hook outputs; `PerceptWindow` captures model input tensors.
 Closed API models cannot expose these internals unless their provider explicitly
 supports them. Attach to an accessible module, not an invented neural channel.
+
+Prefer passing the network or modules explicitly, as `TorchInstrumentation`
+does: `PerceptWindow({'vision': image_net, 'text': text_net})`. Given a
+`BrainScoreModel`, `PerceptWindow` also hooks every root in its read-only
+`model.extractor` mapping (one entry per modality, as registered), so each
+tower is captured without an extra forward pass. Tools that render inputs can
+call `model.detect_modalities(stimuli)`. Neither is part of the subject
+contract; a subject without them still runs, it just exposes less to tools.
+Do not read private attributes such as `_extractors` or `_preprocessors`.
 
 ```python
 from brainscore.instrumentation import intervene
