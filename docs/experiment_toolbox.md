@@ -6,6 +6,9 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 
 ## How the pieces fit
 
+For a short overview and diagram, see
+[instrumentation, tools and experiments](tools_and_experiments.md).
+
 | Part | Responsibility |
 | --- | --- |
 | `Experiment` | Run the subject with one protocol and the selected tools; save results and clean up. |
@@ -18,7 +21,14 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 
 `ObserveCalls` wraps `observe` for experiments. `RecordActivity` uses `ActivationWindow` through instrumentation. `RecordInputsOutputs` writes through `RunRecorder`. These are shared implementations at different levels of control.
 
+Use [the tool catalog](tools.md) to load supported tools by name and compose
+multiple named instances in a protocol or direct attachment scope.
+
 For closed-loop episodes, see [environment sessions](environment_sessions.md).
+
+For fitted readouts that can be saved and reused alongside other tools, see
+[linear probes](linear_probe.md). Multiple named probes can observe activity
+before and after an intervention without changing model responses.
 
 For exposed CoT and streamed responses, see [reasoning recording](reasoning_recording.md). For policies, see [robotics instrumentation](policy_instrumentation.md).
 
