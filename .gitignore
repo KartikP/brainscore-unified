@@ -62,6 +62,7 @@ scripts/
 experiments/
 
 # Dev-process markdown: runbooks, audits, assessments, validation protocols
+docs/plans/
 INTERFACE-HARMONIZATION.md
 *-ASSESSMENT.md
 *-READINESS.md
@@ -77,3 +78,6 @@ FRICTION-LOG*.md
 # Public experiment composition API (not local experiment output).
 !brainscore/experiments/
 !brainscore/experiments/*.py
+
+# MIRAGE weights and generated experiment artifacts stay outside the repository.
+/mirage-umi-output/

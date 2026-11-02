@@ -1,0 +1,69 @@
+{
+  "date_utc": "2026-11-02",
+  "scope": "integration fidelity; no human-data score",
+  "source_revision": "c594e3124e2a9cb7b8a26a750b373e583a7fb297",
+  "checkpoint_revision": "b38a252c28e5416336423f4eda0c42d7e1df4e9c",
+  "checkpoint_sha256": "8ee898b4d83466a72192577a492e89bececdd563d0b2fd82f1679dfd1dbce69d",
+  "backbone_revision": "2f443cfc4c54b14a815c0e2bb9a9d6cbcd9a748b",
+  "config_sha256": "5e34c4508125ca455dd1b33c2fc498b2b1505732e0f96cf30e08a4ea31b8732c",
+  "umi_base_revision": "abf74bd55a48bd6585d08ccd3320dd30a1e9ceca",
+  "integration_sha256": {
+    "model.py": "7be5f8f99964d82e63ce7c08f9f7575d2e176a5734db2d18517cc451ba348537",
+    "runtime.py": "f33037370a266078f36ae300abd50f75903c5aa4f724914ba99263c90d9c144c",
+    "worker.py": "9409ba9e7eb26e7ed90ccbe77a615f81bb32142149122e4083d0a42d5b63579e"
+  },
+  "settings": {
+    "device": "cuda",
+    "batch_size": 1,
+    "output_dtype": "float32",
+    "python": "3.12.3",
+    "packages": {
+      "numpy": "1.26.4",
+      "torch": "2.7.1+cu128",
+      "transformers": "4.57.6",
+      "x-transformers": "2.11.15",
+      "safetensors": "0.6.2",
+      "pydantic": "2.12.3"
+    },
+    "cuda_version": "12.8",
+    "cuda_device": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "tf32_matmul": false,
+    "tf32_cudnn": true,
+    "umi_host": {
+      "python": "3.11.14",
+      "numpy": "1.26.4",
+      "xarray": "2022.3.0"
+    }
+  },
+  "cases": [
+    {
+      "case": "public audiovisual clip; no transcript",
+      "subject": "sub-01",
+      "direct_equals_umi_exactly": true,
+      "replay_equals_original_exactly": true,
+      "shape": [
+        3,
+        1000
+      ],
+      "dtype": "float32",
+      "native_array_sha256": "329a3d81608b62310f03b8e7c58a30b54d99151a1fa8e2e0144cf6c20e55dfb1",
+      "video_sha256": "0b353317419d5e02b44eb164a9444968a89c1e354b41a0db7ab9e42463fc59e2",
+      "transcript_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "case": "synthetic green square and speech; timed transcript",
+      "subject": "sub-02",
+      "direct_equals_umi_exactly": true,
+      "replay_equals_original_exactly": true,
+      "shape": [
+        3,
+        1000
+      ],
+      "dtype": "float32",
+      "native_array_sha256": "96179bfcc211b302a9e45a15f70e2ff4477b71982d5fac7c332ec48267451a9e",
+      "video_sha256": "28eac1b31026c9039e64399553495d3dcdd64e32a8d842556492319a0644f375",
+      "transcript_sha256": "c769d43b057a468f102b01647992222d1643f0d287d59f460ce861c1edf6042b"
+    }
+  ],
+  "evidence_archive_sha256": "3cc9ad9c0fa8b7dfe99db57c99b5daae763390ab23d67f99b2103eec3039e5df"
+}

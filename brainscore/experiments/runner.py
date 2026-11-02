@@ -8,6 +8,7 @@ from pathlib import Path
 import shutil
 import time
 import uuid
+from typing import Iterator
 
 from brainscore.instrumentation import ObservedSession, observe
 from brainscore.run_record import PayloadCodec, RunRecord
@@ -391,7 +392,13 @@ class Experiment:
         json.dumps(plan, allow_nan=False)
         return plan
 
-    def run(self):
+    @contextmanager
+    def open(self) -> Iterator[RunContext]:
+        """Attach run observers while a caller or protocol owns execution.
+
+        Enter ``context.trial`` to attach trial tools. This scope never runs
+        the subject or resets it; the caller retains those responsibilities.
+        """
         plan = self.validate()
         self.output_dir.mkdir(parents=True, exist_ok=False)
         manifest = {'schema_version': 1, 'run_id': uuid.uuid4().hex, 'status': 'running',
@@ -404,13 +411,9 @@ class Experiment:
                 for tool in self.tools:
                     if tool.phase == 'observe':
                         stack.enter_context(tool.attach(context))
-                value = self.protocol.run(self.subject, context)
+                yield context
                 if context.failed:
                     raise RuntimeError('Experiment encountered a caught model or tool error')
-                encoded = context.codec.encode(value)
-                _write(self.output_dir / 'result.json', encoded)
-                context.artifact(self.output_dir / 'result.json', producer='protocol',
-                                 description='Protocol return value, RunRecord payload encoding')
             manifest['status'] = 'complete'
         except BaseException as error:
             context.failed = True
@@ -428,4 +431,14 @@ class Experiment:
             manifest['finished_utc'] = datetime.now(timezone.utc).isoformat()
             manifest['event_count'] = context.sequence
             _write(self.output_dir / 'experiment.json', manifest)
+
+    def run(self):
+        with self.open() as context:
+            value = self.protocol.run(self.subject, context)
+            if context.failed:
+                raise RuntimeError('Experiment encountered a caught model or tool error')
+            encoded = context.codec.encode(value)
+            _write(self.output_dir / 'result.json', encoded)
+            context.artifact(self.output_dir / 'result.json', producer='protocol',
+                             description='Protocol return value, RunRecord payload encoding')
         return ExperimentResult(self.output_dir, value)

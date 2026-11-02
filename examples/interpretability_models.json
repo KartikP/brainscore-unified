@@ -1,0 +1,81 @@
+{
+  "gpt2": {
+    "repository": "openai-community/gpt2",
+    "revision": "607a30d783dfa663caf39e06633721c8d4cfcd7e",
+    "files": {
+      "config.json": {
+        "size": 665,
+        "git_sha1": "10c66461e4c109db5a2196bff4bb59be30396ed8"
+      },
+      "merges.txt": {
+        "size": 456318,
+        "git_sha1": "226b0752cac7789c48f0cb3ec53eda48b7be36cc"
+      },
+      "model.safetensors": {
+        "size": 548105171,
+        "sha256": "248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707"
+      },
+      "tokenizer.json": {
+        "size": 1355256,
+        "git_sha1": "4b988bccc9dc5adacd403c00b4704976196548f8"
+      },
+      "tokenizer_config.json": {
+        "size": 26,
+        "git_sha1": "be4d21d94f3b4687e5a54d84bf6ab46ed0f8defd"
+      },
+      "vocab.json": {
+        "size": 1042301,
+        "git_sha1": "1f1d9aaca301414e7f6c9396df506798ff4eb9a6"
+      }
+    },
+    "layer": "ln_f",
+    "ignored": [
+      ".gitattributes",
+      "README.md",
+      "onnx",
+      ".cache"
+    ]
+  },
+  "clip": {
+    "repository": "openai/clip-vit-base-patch32",
+    "revision": "3d74acf9a28c67741b2f4f2ea7635f0aaf6f0268",
+    "files": {
+      "config.json": {
+        "size": 4186,
+        "git_sha1": "a2a88b96561196777ca173b15309ea859f4d2ce0"
+      },
+      "merges.txt": {
+        "size": 524657,
+        "git_sha1": "bbfec752c9a675946c6dce106def6f35c882dcc2"
+      },
+      "pytorch_model.bin": {
+        "size": 605247071,
+        "sha256": "a63082132ba4f97a80bea76823f544493bffa8082296d62d71581a4feff1576f"
+      },
+      "special_tokens_map.json": {
+        "size": 389,
+        "git_sha1": "9bfb42aa97dcd61e89f279ccaee988bccb4fabae"
+      },
+      "tokenizer.json": {
+        "size": 2224041,
+        "git_sha1": "564c0ebd5ce29c4ee4864004aee693deadd3128c"
+      },
+      "tokenizer_config.json": {
+        "size": 592,
+        "git_sha1": "4fdaf6842dd5a725b940c92b6b692490ce59d548"
+      },
+      "vocab.json": {
+        "size": 862328,
+        "git_sha1": "182766ce89b439768edadda342519f33802f5364"
+      }
+    },
+    "layer": "text_model.final_layer_norm",
+    "ignored": [
+      ".gitattributes",
+      "README.md",
+      "preprocessor_config.json",
+      "onnx",
+      ".cache"
+    ]
+  }
+}
