@@ -23,10 +23,13 @@ the paper and the actual worker API. Its
 dependency. The isolated worker environment pins `memo-lang==1.3.3`,
 `jax==0.12.0.1`, and `jaxlib==0.12.0.1`. Unified pins Python 3.11, so the only
 memo/JAX code runs in a small persistent Python 3.12+ JSON-lines worker. The
-worker forces the JAX CPU backend, batches utterances, uses a finite request
-timeout, reports worker errors, and kills/cleans up after timeouts or protocol
-failures. `MemoSubject.reset()` shuts the worker down. Memo/JAX are not core or
-unified dependencies.
+worker forces the JAX CPU backend and accepts batched utterances for native
+calls. The subject responds to each utterance before asking the session for its
+next input, so reactive sessions can advance on the response. Each transport
+request has a finite deadline covering nonblocking writes and reads through the
+complete response line. Partial replies and blocked writes trigger forced child
+cleanup; worker errors are reported explicitly. `MemoSubject.reset()` shuts the
+worker down. Memo/JAX are not core or unified dependencies.
 
 ## Paper task and fidelity contract
 
@@ -88,7 +91,11 @@ loads and re-presents recorded events to the subject, so memo runs again; the
 recorded responses are not fed back as outputs. It records settings and runtime
 provenance on the experiment and each response, including model depth, beta,
 worker and host Python versions, memo and JAX versions, JAX backend, and the UMI
-base and sibling revisions plus the reviewed memo source revision. Depth 0
+base and sibling revisions plus the reviewed memo source revision. Each response
+also records SHA-256 checksums of the subject, transport, worker, and memo model
+source files; host NumPy version; output dtype; actual inference dtype; JAXLIB
+version; JAX x64 and matrix precision settings; and CPU device details. Source
+checksums identify this implementation independently of its Git commit. Depth 0
 versus depth 1 uses identical input events and is described only as a
 model-configuration comparison.
 
@@ -105,7 +112,7 @@ All 10 code cells executed successfully with the isolated Python 3.11 UMI and
 Python 3.12 memo runtimes. Both implementations preserved native predictions
 and replay outputs exactly. At depth 1, their maximum absolute difference was
 `1.772241542408625e-08`, reported without a tolerance-based pass/fail claim.
-The focused memo and Python reference tests passed (28 tests); the reference
+The focused memo and Python reference tests passed (38 tests); the reference
 checks include the literal table, an analytical depth-1 posterior, unambiguous
 choices, symmetry, and zero speaker rationality.
 
@@ -180,7 +187,7 @@ Run the end-to-end example as documented in [the example README](../examples/mem
 
 The latest full documented offline tier (`pytest -m "unit or
 integration" -q -ra --tb=short --timeout=60 -p no:cacheprovider`) passed:
-**1,625 passed, 48 skipped, 63 deselected**. It used a new temporary Python 3.11
+**1,635 passed, 48 skipped, 63 deselected**. It used a new temporary Python 3.11
 environment inheriting the existing environment read-only, with scikit-learn
 1.7.2, pytest-check 3.0.3, and pytest-timeout 2.4.0 installed locally. The exact
 pinned sibling sources were exported into temporary directories and supplied on
@@ -192,6 +199,37 @@ run had none. Skips covered optional OpenPI source/client packages, maintainer
 tools, protected EWoK archives, and the unavailable LanA atlas. Slow tests were
 deselected. This remains offline testing, separate from facade regression
 qualification.
+
+The contract-review follow-up adds reactive-session tests for both notebook
+implementations and transport regressions for partial startup/prediction replies,
+blocked writes, fragmented successful replies, and invalid deadlines. A valid
+utterance is answered immediately; a later invalid input fails before inference
+for that input and leaves earlier responses available in the experiment record.
+The scene instruction must precede utterances. The task remains restricted to
+this scene and its four utterances: channel compatibility alone establishes an
+interface match, not support for arbitrary tasks. Native batched calls and the
+per-utterance session path retain exactly equal predictions.
+
+The follow-up focused tests and example were run with:
+
+```sh
+MEMO_PYTHON=/private/tmp/memo-rsa-py312/bin/python \
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=/private/tmp/memo-core-pin:/private/tmp/umi-memo-demo \
+/private/tmp/memo-pr-py311/bin/python -m pytest -p no:cacheprovider \
+  tests/test_memo_umi.py tests/test_python_rsa_reference.py -q --timeout=20
+
+MEMO_PYTHON=/private/tmp/memo-rsa-py312/bin/python \
+PYTHONDONTWRITEBYTECODE=1 \
+PYTHONPATH=/private/tmp/memo-core-pin:/private/tmp/umi-memo-demo \
+/private/tmp/memo-pr-py311/bin/python examples/memo_umi/run.py \
+  --out /private/tmp/memo-umi-contract-fixes
+```
+
+The pinned-core subject/streaming/catalog/compatibility tests were also rerun:
+**71 passed**. The refreshed probability summary adds provenance and retains
+exactly the same probabilities as its previous version. No contract changes
+were needed.
 
 ## Scientific limits
 

@@ -106,6 +106,11 @@ def main():
             'native_probabilities': table,
             'umi_probabilities': table,
             'native_runtime': native_provenance,
+            'umi_provenance': next(
+                event['payload'].meta['provenance']
+                for event in read_events(recorded.directory)
+                if event['kind'] == 'output'
+            ),
             'record': str(recorded.directory),
             'replay': str(replayed.directory),
             'replay_mode': 'saved inputs; memo rerun; exact outputs verified',

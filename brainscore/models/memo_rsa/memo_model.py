@@ -37,7 +37,8 @@ def L[u: U, r: R](beta, depth):
     return Pr[listener.r_pick == r]
 
 
-def predict(*, depth, beta, utterances):
+def predict(*, depth: int, beta: float,
+            utterances: list[str]) -> tuple[list[list[float]], str]:
     if type(depth) is not int or depth < 0:
         raise ValueError('depth must be a nonnegative integer')
     if isinstance(beta, bool) or not isinstance(beta, (int, float)):
@@ -47,5 +48,6 @@ def predict(*, depth, beta, utterances):
                              for item in utterances):
         raise ValueError('utterances must be known nonempty utterance labels')
     table = jax.device_get(L(float(beta), depth))
-    return [table[U[name.upper()].value.bit_length() - 1].tolist()
+    rows = [table[U[name.upper()].value.bit_length() - 1].tolist()
             for name in utterances]
+    return rows, str(table.dtype)

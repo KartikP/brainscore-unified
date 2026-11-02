@@ -22,6 +22,12 @@ MEMO_PYTHON=/private/tmp/memo-rsa-py312/bin/python \
   python examples/memo_umi/run.py --out /private/tmp/memo-umi-runs
 ```
 
+The subject answers each utterance before requesting the next input, including
+in reactive sessions. The worker retains a batched API for direct calls. Response
+provenance records source checksums, inference/output dtypes, JAX precision
+settings, package versions, and CPU device details. Transport deadlines cover
+complete reads and writes, with forced cleanup on timeout.
+
 The script evaluates literal depth 0 and recursive depth 1 at beta 1.0 on the
 same utterances. It writes exact direct-memo and UMI tables, worker/runtime
 versions, configuration, UMI input/output recordings, and input-replay results

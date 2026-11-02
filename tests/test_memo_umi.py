@@ -1,10 +1,14 @@
 """Contract and recording fidelity tests; model inference stays in memo's worker."""
 
+import hashlib
 import json
+from pathlib import Path
 import os
+import runpy
 import subprocess
 import sys
 import textwrap
+import time
 
 import numpy as np
 import pytest
@@ -13,7 +17,7 @@ from brainscore.experiments import (
     Experiment, RecordInputsOutputs, SessionProtocol, Trial, compare_outputs,
     read_events, replay_sessions,
 )
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import BufferedSession, Session, StreamEvent
 
 from brainscore.models.memo_rsa import (
     MemoConfig, MemoSubject, MemoWorker, MemoWorkerError, MemoWorkerTimeout,
@@ -175,6 +179,10 @@ def test_experiment_recording_and_input_replay_preserve_probabilities(monkeypatc
     outputs = [event['payload'] for event in events if event['kind'] == 'output']
     assert len(outputs) == 4
     assert outputs[0].meta['provenance']['beta'] == 1.0
+    assert set(outputs[0].meta['provenance']['implementation_sha256']) == {
+        'model.py', 'worker.py', 'memo_worker.py', 'memo_model.py',
+    }
+    assert outputs[0].meta['provenance']['output_dtype'] == 'float64'
     assert outputs[0].meta['label_set'] == CHOICES
     assert outputs[0].meta['stimulus_id'] == 'green'
     np.testing.assert_array_equal(original.value[0].values, RECURSIVE)
@@ -289,4 +297,139 @@ def test_direct_memo_and_umi_tables_are_exact_and_match_published_rounding():
         umi_rows = session.collect('behavior').values
         np.testing.assert_array_equal(direct_rows, umi_rows)
         np.testing.assert_array_equal(np.round(direct_rows, 2), published)
+        provenance = session.emitted[0].meta['provenance']
+        runtime = provenance['runtime']
+        assert runtime['inference_dtype'] in {'float32', 'float64'}
+        assert isinstance(runtime['jax_enable_x64'], bool)
+        assert runtime['jaxlib_version']
+        assert 'jax_default_matmul_precision' in runtime
+        assert runtime['devices'] and runtime['devices'][0]['platform'] == 'cpu'
+        assert provenance['output_dtype'] == str(umi_rows.dtype)
+        import brainscore.models.memo_rsa as memo_package
+        for name, checksum in provenance['implementation_sha256'].items():
+            assert checksum == hashlib.sha256(
+                Path(memo_package.__file__).with_name(name).read_bytes()).hexdigest()
         subject.reset()
+
+
+@pytest.mark.parametrize('implementation', ['memo', 'python'])
+def test_reactive_session_receives_each_answer_before_next_utterance(monkeypatch, implementation):
+    class ReactiveSession(Session):
+        requested_output_channels = ('behavior',)
+
+        def __init__(self):
+            self.emitted = []
+            self.position = 0
+            self.complete = False
+
+        def next_input(self):
+            if self.position == 0:
+                self.position += 1
+                return StreamEvent('instruction', SCENE, None)
+            assert len(self.emitted) == self.position - 1, 'next input needs previous response'
+            if self.position > len(UTTERANCES):
+                self.complete = True
+                return None
+            label = UTTERANCES[self.position - 1]
+            self.position += 1
+            return StreamEvent('text', label, None, {'stimulus_id': label})
+
+        def respond(self, event):
+            assert event.meta['stimulus_id'] == UTTERANCES[len(self.emitted)]
+            self.emitted.append(event)
+
+    if implementation == 'memo':
+        subject = make_subject(monkeypatch, depth=0)
+    else:
+        example = Path(__file__).resolve().parents[1] / 'examples/memo_umi'
+        notebook = json.loads((example / 'comparison.ipynb').read_text())
+        reference = runpy.run_path(str(example / 'python_rsa.py'))
+        from brainscore_core.contract import Subject
+        namespace = dict(Subject=Subject, Session=Session, StreamEvent=StreamEvent,
+                         np=np, sys=sys, SCENE=SCENE, UTTERANCES=UTTERANCES,
+                         CHOICES=CHOICES, listener_table=reference['listener_table'])
+        cell = next(cell for cell in notebook['cells']
+                    if cell['cell_type'] == 'code'
+                    and ''.join(cell['source']).startswith('class PythonRSASubject'))
+        exec(''.join(cell['source']), namespace)
+        subject = namespace['PythonRSASubject'](depth=0, beta=1.0)
+    session = ReactiveSession()
+    try:
+        subject.interact(session)
+        assert session.complete
+        np.testing.assert_array_equal([event.payload for event in session.emitted], LITERAL)
+    finally:
+        subject.reset()
+
+
+@pytest.mark.parametrize('mode', ['partial_hello', 'partial_prediction', 'blocked_write'])
+def test_worker_deadline_covers_partial_lines_and_blocked_writes(tmp_path, monkeypatch, mode):
+    script = fake_worker_script(tmp_path, f'''
+        import json, sys, time
+        mode = {mode!r}
+        json.loads(sys.stdin.readline())
+        if mode == 'partial_hello':
+            sys.stdout.write('{{"ok":')
+            sys.stdout.flush()
+            time.sleep(5)
+        else:
+            print(json.dumps({{'ok': True, 'python_major_minor': [3, 12],
+                'memo_version': 'fixture', 'jax_version': 'fixture'}}), flush=True)
+            if mode == 'partial_prediction':
+                sys.stdin.readline()
+                sys.stdout.write('{{"ok":')
+                sys.stdout.flush()
+            time.sleep(5)
+    ''')
+    children = []
+    original_popen = subprocess.Popen
+
+    def capture_child(*args, **kwargs):
+        child = original_popen(*args, **kwargs)
+        children.append(child)
+        return child
+
+    monkeypatch.setattr(subprocess, 'Popen', capture_child)
+    worker = MemoWorker(sys.executable, timeout_s=0.2, worker_script=script)
+    started = time.monotonic()
+    try:
+        with pytest.raises(MemoWorkerTimeout):
+            worker.predict(depth=0, beta=1, utterances=['green'] * 100000)
+        assert time.monotonic() - started < 2.0
+        assert worker._process is None
+        assert children and all(child.poll() is not None for child in children)
+    finally:
+        worker.close(force=True)
+
+
+@pytest.mark.parametrize('timeout_s', [float('inf'), float('nan'), 0, -1])
+def test_worker_rejects_nonfinite_or_nonpositive_deadlines(timeout_s):
+    with pytest.raises(ValueError, match='positive'):
+        MemoWorker(sys.executable, timeout_s=timeout_s)
+
+
+def test_worker_accepts_complete_response_delivered_in_fragments(tmp_path):
+    script = fake_worker_script(tmp_path, '''
+        import json, sys, time
+        for line in sys.stdin:
+            request = json.loads(line)
+            if request['op'] == 'shutdown': break
+            if request['op'] == 'hello':
+                response = {'ok': True, 'python_major_minor': [3, 12],
+                            'memo_version': 'fixture', 'jax_version': 'fixture'}
+            else:
+                response = {'ok': True, 'runtime': {'backend': 'cpu'},
+                            'probabilities': [[0.5, 0.5, 0.0]]}
+            text = json.dumps(response) + '\\n'
+            for start in range(0, len(text), 7):
+                sys.stdout.write(text[start:start + 7])
+                sys.stdout.flush()
+                time.sleep(0.001)
+    ''')
+    worker = MemoWorker(sys.executable, timeout_s=2, worker_script=script)
+    try:
+        for _ in range(2):
+            assert worker.predict(depth=0, beta=1, utterances=['green']) == [[0.5, 0.5, 0.0]]
+    finally:
+        worker.close()
+    assert worker._process is None

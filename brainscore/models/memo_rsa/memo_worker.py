@@ -20,6 +20,7 @@ def _run():
         return
 
     import jax
+    import jaxlib
     from memo import __version__ as memo_version
     from memo_model import predict
 
@@ -28,6 +29,11 @@ def _run():
         'python_major_minor': list(sys.version_info[:2]),
         'memo_version': memo_version,
         'jax_version': jax.__version__,
+        'jaxlib_version': jaxlib.__version__,
+        'jax_enable_x64': bool(jax.config.jax_enable_x64),
+        'jax_default_matmul_precision': jax.config.jax_default_matmul_precision,
+        'devices': [{'platform': device.platform, 'device_kind': device.device_kind,
+                     'id': device.id} for device in jax.devices()],
         'backend': jax.default_backend(),
     }
     for line in sys.stdin:
@@ -39,11 +45,12 @@ def _run():
             if operation == 'hello':
                 response = {'ok': True, **runtime}
             elif operation == 'predict':
-                rows = predict(
+                rows, inference_dtype = predict(
                     depth=request['depth'], beta=request['beta'],
                     utterances=request['utterances'],
                 )
-                response = {'ok': True, 'runtime': runtime, 'probabilities': rows}
+                response = {'ok': True, 'runtime': {**runtime, 'inference_dtype': inference_dtype},
+                            'probabilities': rows}
             else:
                 raise ValueError(f'unknown operation {operation!r}')
         except Exception as error:
