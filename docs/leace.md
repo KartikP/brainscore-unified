@@ -90,3 +90,7 @@ Use real, uncached forwards when measuring interventions. A scope that never
 executes its target fails explicitly. Invalid maps and nonfinite results fail
 and detach hooks. Check held-out probe behavior and unrelated-task controls;
 reference-library parity and fixture checks are not human causal validation.
+
+[Pretrained-model qualification](qualification/2026-11-02-interpretability-tools.md)
+also checks held-out and live transforms on GPT-2 and CLIP text, including
+artifact reuse, composition and exact restoration on CPU float32.

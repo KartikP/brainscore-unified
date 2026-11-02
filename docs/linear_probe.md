@@ -146,5 +146,7 @@ new probe measurements; this tool does not change global cache settings.
 Tests cover binary/multiclass predictions against an independent scikit-learn
 reference on held-out examples, artifact integrity, original unit coordinates,
 position axes, two probes alongside recording/ablation, and cleanup after
-failure or interruption. These are fixture checks, not real-model scientific
-qualification. No other new interpretation methods are included in this change.
+failure or interruption. Separate [pretrained-model qualification](qualification/2026-11-02-interpretability-tools.md)
+checks GPT-2 and CLIP text on CPU float32 against an independent sklearn
+reference, including two hooked probes around interventions. Neither fixture
+checks nor that qualification establish that the model uses decoded information.

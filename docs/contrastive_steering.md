@@ -100,3 +100,7 @@ effective parameters; application events retain actual shape, dtype, device,
 package version and signed dose. Nonfinite outputs fail and detach hooks.
 Use held-out evaluation, opposite-sign, zero-dose and unrelated-task controls
 when testing a scientific hypothesis.
+
+[Pretrained-model qualification](qualification/2026-11-02-interpretability-tools.md)
+checks signed and zero doses on GPT-2 and CLIP text against native float32
+addition, including composition with scaling and exact restoration.
