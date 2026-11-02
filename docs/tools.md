@@ -16,6 +16,7 @@ lesion = load_tool("ablate", targets=["language"], name="language_lesion")
 | --- | --- | --- |
 | `ablate` | Existing `Ablate` tool | `targets`, optional `conditions`, `trials`, `name` |
 | `linear-probe` | Fitted logistic readout | `target` and fitting settings, or `artifact`; [guide](linear_probe.md) |
+| `record-activity` | Existing `RecordActivity` internal recorder | `targets`, optional `when` (`before`/`after`) and `name` |
 | `record-io` | Existing `RecordInputsOutputs` event writer | Optional `max_bytes` |
 
 The registry is explicit. An external package may call
@@ -36,8 +37,10 @@ result = Experiment(
     protocol=protocol,
     tools=[
         load_tool("record-io"),
+        load_tool("record-activity", targets=["language"], name="before", when="before"),
         load_tool("ablate", targets=[Selection("language", [0, 3])],
                   conditions=["lesioned"], trials=[1], name="language_lesion"),
+        load_tool("record-activity", targets=["language"], name="after"),
     ],
     instrumentation=instrumentation,
     output_dir="runs/loaded-ablation",
@@ -109,3 +112,31 @@ this budget. The existing writer's serialization and memory limits still apply.
 `attach_tools` supplies tool measurements and lifecycle events; it does not
 automatically observe calls inside its body. Loading the writer does not grant
 access to hidden activity or change these recording boundaries.
+
+## Internal activity recording
+
+`load_tool("record-activity", targets=[...])` constructs `RecordActivity` and
+requires both instrumentation supporting `record` and a `record-io` writer in
+the same collection. Loading a tool does not discover or unwrap private models.
+Bind instrumentation explicitly to the network or named population mapping.
+
+Use distinct names for multiple recorders and `when="before"` or `"after"` to
+choose their attachment phase. These phases describe activity before/after the
+interventions in this collection, not an extra model execution. Both can record
+the same site in one forward pass. Existing `Selection` coordinates, axes and
+expected shapes are preserved; no pooling or token alignment is added.
+
+Measurements are `activity` events in the shared record. Each retains its tool
+name in `source`, condition/trial context, target, position relative to the
+intervention, values, dtype/device and unit-selection coordinates. The recorder
+does not alter tensors or replace subject outputs. Hooks detach on normal exit,
+failure or interruption. Existing model hooks remain installed.
+
+For a runnable CPU fixture composing loaded recording, ablation and fitted probes:
+
+```bash
+python examples/linear_probe.py --out /tmp/new-loaded-tools-demo
+```
+
+This demonstrates tool integration on a fixed synthetic encoder; it is not a
+real-model qualification or evidence of a biological mechanism.

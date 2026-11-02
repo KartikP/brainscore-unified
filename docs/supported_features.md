@@ -44,7 +44,7 @@ Pass these in `Experiment(tools=[...])`.
 | Tool | What it does | Requires |
 | --- | --- | --- |
 | `RecordInputsOutputs` / `load_tool("record-io")` | Save inputs, outputs, activity, errors, and lifecycle events | Supported payloads; [tool catalog](tools.md) |
-| `RecordActivity` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation |
+| `RecordActivity` / `load_tool("record-activity")` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation; [tool catalog](tools.md) |
 | `Ablate` | Temporarily zero selected outputs, optionally in selected conditions/trials | Instrumentation |
 | `ScaleActivity` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged |
 | `PatchActivity` | Replace selected outputs with recorded values from a paired input | `TorchInstrumentation`, `RecordInputsOutputs`, aligned shapes and one invocation per target; [guide](attribution_patching.md) |

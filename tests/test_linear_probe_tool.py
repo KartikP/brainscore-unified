@@ -11,7 +11,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
 from brainscore.experiments import (
-    Ablate, Experiment, RecordActivity, RecordInputsOutputs,
+    Experiment, RecordInputsOutputs,
     SessionProtocol, TorchInstrumentation,
 )
 from brainscore.run_record import RunRecord
@@ -139,7 +139,7 @@ def test_two_probes_recording_and_ablation_share_one_protocol_without_changing_o
         subject=subject, protocol=protocol(),
         tools=[RecordInputsOutputs(), fitted(name='before', when='before'),
                load_tool('ablate', targets=[Selection('population', [0])], conditions=['lesioned']),
-               fitted(name='after'), RecordActivity(['population'])],
+               fitted(name='after'), load_tool('record-activity', targets=['population'])],
         instrumentation=TorchInstrumentation({'population': subject.layer}),
         output_dir=tmp_path / 'probed',
     ).run()
@@ -320,3 +320,4 @@ def test_documented_cpu_example_runs_without_downloads(tmp_path):
     assert 'Restored baseline exactly' in result.stdout
     events = list(RunRecord(tmp_path / 'demo' / 'experiment').events())
     assert len([event for event in events if event['kind'] == 'probe']) == 4
+    assert len([event for event in events if event['kind'] == 'activity']) == 4

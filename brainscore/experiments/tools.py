@@ -62,9 +62,12 @@ class RecordInputsOutputs(Tool):
 
 
 class RecordActivity(Tool):
-    def __init__(self, targets, *, when='after', name='activity'):
+    def __init__(self, targets: Sequence[str | Selection], *, when: str = 'after',
+                 name: str = 'activity') -> None:
         if when not in ('before', 'after'):
             raise ValueError('when must be before or after')
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError('Tool name must be a nonempty string')
         self.targets, self.when, self.name = tuple(targets), when, name
         self.phase = 'before_intervention' if when == 'before' else 'after_intervention'
 

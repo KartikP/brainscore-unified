@@ -20,9 +20,15 @@ def _record_io(**configuration: Any) -> Any:
     return RecordInputsOutputs(**configuration)
 
 
+def _record_activity(**configuration: Any) -> Any:
+    from brainscore.experiments import RecordActivity
+    return RecordActivity(**configuration)
+
+
 _FACTORIES: dict[str, Callable[..., Any]] = {
     'ablate': _ablate,
     'linear-probe': _linear_probe,
+    'record-activity': _record_activity,
     'record-io': _record_io,
 }
 
