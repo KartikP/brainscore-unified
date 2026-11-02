@@ -51,9 +51,9 @@ class FakeWorker:
 
 
 def inputs():
-    return [StreamEvent('instruction', SCENE, 0.0)] + [
-        StreamEvent('text', utterance, float(index + 1), {'stimulus_id': utterance})
-        for index, utterance in enumerate(UTTERANCES)
+    return [StreamEvent('instruction', SCENE, None)] + [
+        StreamEvent('text', utterance, None, {'stimulus_id': utterance})
+        for utterance in UTTERANCES
     ]
 
 

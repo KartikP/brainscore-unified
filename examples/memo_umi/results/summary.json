@@ -68,8 +68,6 @@
       "jax_version": "0.12.0.1",
       "backend": "cpu"
     },
-    "record": "/private/tmp/memo-umi-runs-final4/depth-0",
-    "replay": "/private/tmp/memo-umi-runs-final4/depth-0-replay",
     "replay_mode": "saved inputs; memo rerun; exact outputs verified"
   },
   "depth_1": {
@@ -127,9 +125,11 @@
       "jax_version": "0.12.0.1",
       "backend": "cpu"
     },
-    "record": "/private/tmp/memo-umi-runs-final4/depth-1",
-    "replay": "/private/tmp/memo-umi-runs-final4/depth-1-replay",
     "replay_mode": "saved inputs; memo rerun; exact outputs verified"
   },
-  "input_comparison": "identical recorded events at both depths"
+  "input_comparison": "identical recorded events at both depths",
+  "recordings": {
+    "included": false,
+    "regenerate_with": "examples/memo_umi/run.py or comparison.ipynb"
+  }
 }

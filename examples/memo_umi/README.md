@@ -32,8 +32,27 @@ values are illustrative summaries. The script writes the full runtime values.
 This is a model-configuration comparison, not a human-data fit or a claim about
 human cognition.
 
-The checked-in [results](results/summary.json) were produced with the pinned
+The checked-in [probability summary](results/summary.json) was produced with the pinned
 worker requirements. At depth 1, for utterance `green`, the full output is
 `P(green square)=0.43022581934928894`,
-`P(green circle)=0.5697741508483887`, and `P(pink circle)=0.0`. The saved UMI
-records contain the same outputs and inputs for both depths and their replays.
+`P(green circle)=0.5697741508483887`, and `P(pink circle)=0.0`.
+
+The complete recordings are generated locally. Their `.npy` files contain the
+arrays referenced by the recording manifests and are needed to load or replay
+that run. They are not versioned; the readable summary preserves the observed
+tables and settings without dozens of generated files.
+
+## Comparison notebook
+
+Open [comparison.ipynb](comparison.ipynb) with a Python 3.11 UMI kernel and
+`MEMO_PYTHON` set as above. It shows memo's model beside a small independent
+[plain Python RSA reference](python_rsa.py), compares both full probability
+tables, and runs both models through the same UMI experiment and input replay.
+The notebook has executed outputs and generates fresh full recordings in a
+temporary directory when rerun.
+
+Python uses binary64 arithmetic; the pinned memo worker defaults to JAX
+binary32. The notebook displays their measured differences without imposing a
+cross-implementation tolerance. Each model must preserve its own native
+predictions exactly through UMI and replay. The task has no physical clock, so
+its events use `t_ms=None`.

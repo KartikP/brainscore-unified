@@ -22,10 +22,10 @@ from brainscore.memo_umi.subject import CHOICES, SCENE, UTTERANCES
 
 @contextmanager
 def session_factory(_trial: Trial):
-    events = [StreamEvent('instruction', SCENE, 0.0)]
+    events = [StreamEvent('instruction', SCENE, None)]
     events.extend(
-        StreamEvent('text', utterance, float(index + 1), {'stimulus_id': utterance})
-        for index, utterance in enumerate(UTTERANCES)
+        StreamEvent('text', utterance, None, {'stimulus_id': utterance})
+        for utterance in UTTERANCES
     )
     yield BufferedSession(events, requested_output_channels=('behavior',))
 

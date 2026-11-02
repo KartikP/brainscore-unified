@@ -11,6 +11,8 @@ build/
 
 # Testing
 .pytest_cache/
+/memo-umi-output/
+/examples/memo_umi/results/*/
 .coverage
 htmlcov/
 

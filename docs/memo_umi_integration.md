@@ -87,6 +87,23 @@ base and sibling revisions plus the reviewed memo source revision. Depth 0
 versus depth 1 uses identical input events and is described only as a
 model-configuration comparison.
 
+The follow-up [comparison notebook](../examples/memo_umi/comparison.ipynb)
+adds an independent plain Python RSA implementation at the user's request.
+Both models use the same denotations, uniform prior, and success-probability
+speaker utility. Each preserves its native predictions exactly through UMI and
+saved-input replay, with identical experimental inputs. Python's binary64 and
+memo's default JAX binary32 outputs are compared by reporting their measured
+difference, without a cross-implementation tolerance test. The notebook's
+15 cells include executed probability tables, source code, provenance, and
+replay results. Its events use `t_ms=None` because the task has no physical clock.
+All 10 code cells executed successfully with the isolated Python 3.11 UMI and
+Python 3.12 memo runtimes. Both implementations preserved native predictions
+and replay outputs exactly. At depth 1, their maximum absolute difference was
+`1.772241542408625e-08`, reported without a tolerance-based pass/fail claim.
+The focused memo and Python reference tests passed (28 tests); the reference
+checks include the literal table, an analytical depth-1 posterior, unambiguous
+choices, symmetry, and zero speaker rationality.
+
 ## Environment and commands
 
 The source tree is isolated at `/private/tmp/umi-memo-demo` on branch
@@ -148,14 +165,17 @@ Run the end-to-end example as documented in [the example README](../examples/mem
 - No focused integration or pinned-core tests were skipped with the memo worker configured.
 - Full precision live memo inference, exact direct/UMI equality, and the
   end-to-end recorded-input replay ran successfully on CPU. Reproduction output
-  and all four experiment records are checked in under `examples/memo_umi/results/`.
+  is summarized in `examples/memo_umi/results/summary.json`. Full experiment
+  records and their referenced NumPy arrays are generated locally by the example
+  or notebook. They are omitted from version control; the original recordings
+  were preserved locally when removing the generated files from the PR.
 - The selected test environment emitted a warning that its scikit-learn 1.5.1
   is outside unified's declared range. The memo/session tests do not score a
   benchmark; this warning is retained as an environment limitation.
 
-Before opening the PR, the full documented offline tier (`pytest -m "unit or
+The latest full documented offline tier (`pytest -m "unit or
 integration" -q -ra --tb=short --timeout=60 -p no:cacheprovider`) passed:
-**1,612 passed, 48 skipped, 63 deselected**. It used a new temporary Python 3.11
+**1,625 passed, 48 skipped, 63 deselected**. It used a new temporary Python 3.11
 environment inheriting the existing environment read-only, with scikit-learn
 1.7.2, pytest-check 3.0.3, and pytest-timeout 2.4.0 installed locally. The exact
 pinned sibling sources were exported into temporary directories and supplied on
