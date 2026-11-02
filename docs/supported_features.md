@@ -46,7 +46,7 @@ Pass these in `Experiment(tools=[...])`.
 | `RecordInputsOutputs` / `load_tool("record-io")` | Save inputs, outputs, activity, errors, and lifecycle events | Supported payloads; [tool catalog](tools.md) |
 | `RecordActivity` / `load_tool("record-activity")` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation; [tool catalog](tools.md) |
 | `Ablate` | Temporarily zero selected outputs, optionally in selected conditions/trials | Instrumentation |
-| `ScaleActivity` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged |
+| `ScaleActivity` / `load_tool("scale-activity")` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged; [tool catalog](tools.md) |
 | `PatchActivity` | Replace selected outputs with recorded values from a paired input | `TorchInstrumentation`, `RecordInputsOutputs`, aligned shapes and one invocation per target; [guide](attribution_patching.md) |
 | `ObserveCalls` | Include an existing call observer in the experiment | Observer callbacks and selected subject methods |
 | `load_tool("linear-probe", ...)` | Fit/save/load a logistic probe and decode activity before or after interventions | Original unit coordinates; instrumentation supporting `record`; [guide](linear_probe.md) |

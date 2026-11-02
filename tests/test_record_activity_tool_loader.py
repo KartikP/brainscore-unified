@@ -142,6 +142,7 @@ def test_loading_all_tools_does_not_import_model_or_fitting_dependencies():
     result = subprocess.run([sys.executable, '-c',
         'import sys; from brainscore.tools import load_tool; '
         'load_tool("ablate", targets=["population"]); '
+        'load_tool("scale-activity", targets=["population"], factor=0.5); '
         'load_tool("record-io"); '
         'load_tool("record-activity", targets=["population"]); '
         'load_tool("linear-probe", target="population"); '

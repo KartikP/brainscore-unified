@@ -143,8 +143,10 @@ class ScaleActivity(Ablate):
     name = 'scale_activity'
     operation = 'scale'
 
-    def __init__(self, targets, *, factor, conditions=None, trials=None):
-        super().__init__(targets, conditions=conditions, trials=trials)
+    def __init__(self, targets: Sequence[str | Selection], *, factor: float,
+                 conditions: Sequence[str] | None = None, trials: Sequence[Any] | None = None,
+                 name: str | None = None) -> None:
+        super().__init__(targets, conditions=conditions, trials=trials, name=name)
         if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not math.isfinite(factor):
             raise ValueError('factor must be a finite number')
         self.factor = float(factor)

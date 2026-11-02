@@ -18,6 +18,7 @@ lesion = load_tool("ablate", targets=["language"], name="language_lesion")
 | `linear-probe` | Fitted logistic readout | `target` and fitting settings, or `artifact`; [guide](linear_probe.md) |
 | `record-activity` | Existing `RecordActivity` internal recorder | `targets`, optional `when` (`before`/`after`) and `name` |
 | `record-io` | Existing `RecordInputsOutputs` event writer | Optional `max_bytes` |
+| `scale-activity` | Existing `ScaleActivity` intervention | `targets`, `factor`, optional `conditions`, `trials`, `name` |
 
 The registry is explicit. An external package may call
 `register_tool(identifier, factory)` without changing the runner. Import its
@@ -140,3 +141,22 @@ python examples/linear_probe.py --out /tmp/new-loaded-tools-demo
 
 This demonstrates tool integration on a fixed synthetic encoder; it is not a
 real-model qualification or evidence of a biological mechanism.
+
+## Scale activity
+
+```python
+scale = load_tool("scale-activity", targets=[Selection("language", [0, 3])],
+                  factor=0.5, conditions=["damped"], name="damp_language")
+```
+
+Pass this tool between before/after measurements in an `Experiment`, or inside
+`attach_tools`. It multiplies selected activity during real forward passes;
+it does not modify trained weights. Conditions/trials and `Selection` coordinates
+have the same meanings as for ablation. The protocol must declare any filtered
+condition or trial.
+
+Named instances may affect different or overlapping selections. Scales on the
+same units multiply in list order, so two factors of 0.5 give a factor of 0.25.
+Zero and negative factors are allowed; nonfinite factors fail during loading.
+The backend must support `scale` (currently `TorchInstrumentation`); recording
+access alone does not imply scaling support. Cleanup removes only these hooks.
