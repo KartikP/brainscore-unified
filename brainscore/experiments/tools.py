@@ -2,7 +2,7 @@
 from contextlib import contextmanager, ExitStack
 import copy
 import math
-from typing import Any, Callable, ContextManager, Iterator
+from typing import Any, Callable, ContextManager, Iterator, Sequence
 from brainscore.run_record import RunRecorder
 from brainscore_core.events import Selection, Perturbation, StateChange
 from brainscore.instrumentation import observe
@@ -93,7 +93,12 @@ class Ablate(Tool):
     phase = 'intervene'
     operation = 'ablate'
 
-    def __init__(self, targets, *, conditions=None, trials=None):
+    def __init__(self, targets: Sequence[str | Selection], *,
+                 conditions: Sequence[str] | None = None, trials: Sequence[Any] | None = None,
+                 name: str | None = None) -> None:
+        self.name = self.name if name is None else name
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError('Tool name must be a nonempty string')
         self.targets = tuple(targets)
         self.conditions = None if conditions is None else tuple(conditions)
         self.trials = None if trials is None else tuple(trials)

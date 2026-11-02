@@ -1,4 +1,4 @@
-"""Explicit, lazy factories for reusable interpretation tools."""
+"""Explicit, lazy factories for experiment and interpretation tools."""
 from typing import Any, Callable
 
 
@@ -10,7 +10,15 @@ def _linear_probe(**configuration: Any) -> Any:
     return LinearProbe(**configuration)
 
 
-_FACTORIES: dict[str, Callable[..., Any]] = {'linear-probe': _linear_probe}
+def _ablate(**configuration: Any) -> Any:
+    from brainscore.experiments import Ablate
+    return Ablate(**configuration)
+
+
+_FACTORIES: dict[str, Callable[..., Any]] = {
+    'ablate': _ablate,
+    'linear-probe': _linear_probe,
+}
 
 
 def list_tools() -> tuple[str, ...]:

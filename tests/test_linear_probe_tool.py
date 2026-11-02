@@ -138,7 +138,7 @@ def test_two_probes_recording_and_ablation_share_one_protocol_without_changing_o
     result = Experiment(
         subject=subject, protocol=protocol(),
         tools=[RecordInputsOutputs(), fitted(name='before', when='before'),
-               Ablate([Selection('population', [0])], conditions=['lesioned']),
+               load_tool('ablate', targets=[Selection('population', [0])], conditions=['lesioned']),
                fitted(name='after'), RecordActivity(['population'])],
         instrumentation=TorchInstrumentation({'population': subject.layer}),
         output_dir=tmp_path / 'probed',
