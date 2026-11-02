@@ -9,8 +9,8 @@ needs to carry context across them.
 ``PolicyWrapper`` provides that state. It wraps a per-step policy callable,
 maintains a rolling history of recent (observation, action) pairs, clears the
 history when ``EnvironmentStep.is_first`` is set, and exposes an
-``action_fn``-compatible ``__call__`` so it plugs straight into
-``BrainScoreModel(action_fn=...)``. The model contract is unchanged: this is a
+``policy``-compatible ``__call__`` so it plugs straight into
+``BrainScoreModel(policy=...)``. The model contract is unchanged: this is a
 harness around the policy, not a new method on the interface.
 """
 from collections import deque

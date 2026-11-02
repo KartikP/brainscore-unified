@@ -12,6 +12,8 @@ score = brainscore.score('alexnet', 'MajajHong2015.IT-pls')
 
 The loaders check unified, then the vision and language registries. `score` also accepts already-built model and benchmark objects.
 
+A legacy vision or language benchmark calls `look_at` or `digest_text` on its candidate. Scoring hands such a benchmark a permanent facade that records each of those calls, presents the stimuli as a session carrying the task, recording target, time bins and trial count, and runs it through the subject's `interact`. Any subject takes part this way: a `BrainScoreModel`, an adapted legacy model, or a `Subject` that only implements `interact`. A vision subject reports its field of view through `visual_degrees()`; one without it cannot run a legacy vision benchmark, and scoring says so instead of inventing a value.
+
 Compatibility applies to tested model, benchmark, and environment combinations. See the [support matrix](supported_features.md) and [numerical policy](numerical_policy.md).
 
 ## Choose the interface
