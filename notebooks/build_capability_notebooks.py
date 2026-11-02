@@ -114,11 +114,10 @@ NB03 = [
              "torch.manual_seed(0)\n"
              "net = nn.Sequential(nn.Linear(8, 16), nn.ReLU(), nn.Linear(16, 4))\n"
              "net.eval()"),
-    ('md', "## Wrap with a state_change_fn and ablate a population\n"
+    ('md', "## Wrap with an intervention and ablate a population\n"
            "Layer `'0'` is the first Linear (16 output units); we zero its first 8."),
     ('code', "bs = BrainScoreModel(identifier='toy', model=net, region_layer_map={'R': '0'},\n"
-             "                     preprocessors={}, activations_model=None,\n"
-             "                     state_change_fn=build_pytorch_ablation_fn(net))\n"
+             "                     intervention=build_pytorch_ablation_fn(net))\n"
              "x = torch.randn(5, 8)\n"
              "baseline = net(x).detach().numpy()\n"
              "applied = bs.process(StateChange(kind='ablation',\n"
@@ -156,8 +155,7 @@ NB04 = [
              "from brainscore_core.model_interface import BrainScoreModel\n"
              "from brainscore.model_helpers.policy_wrapper import PolicyWrapper\n"
              "def make_model(policy):\n"
-             "    return BrainScoreModel('player', None, {}, {}, None,\n"
-             "                           action_fn=PolicyWrapper(policy, max_history=4))"),
+             "    return BrainScoreModel('player', policy=PolicyWrapper(policy, max_history=4))"),
     ('md', "## Oracle vs random null over 25 boards"),
     ('code', "mk = lambda p: make_model(p)\n"
              "oracle = evaluate_policy(mk, greedy_oracle_policy, n_episodes=25)\n"

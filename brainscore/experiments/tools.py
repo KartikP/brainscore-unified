@@ -10,17 +10,40 @@ from .runner import Tool
 
 
 class RecordInputsOutputs(Tool):
-    """Snapshot events with trial IDs, call IDs, source and elapsed time."""
+    """Snapshot events with trial IDs, call IDs, source and elapsed time.
+
+    max_bytes caps this tool's record (events plus its stored arrays/files); see
+    RunRecorder. Exceeding it fails the experiment. Other outputs are not counted.
+    """
     name = 'inputs_outputs'
+
+    def __init__(self, *, max_bytes: int | None = None):
+        if max_bytes is not None and (type(max_bytes) is not int or max_bytes <= 0):
+            raise ValueError('max_bytes must be a positive integer or None')
+        self.max_bytes = max_bytes
+
+    def describe(self):
+        return {} if self.max_bytes is None else {'max_bytes': self.max_bytes}
 
     @contextmanager
     def attach(self, context):
         path = context.directory / self.name
         try:
             with RunRecorder(path, metadata={'experiment': context.manifest['run_id'],
-                                            'plan': context.manifest['plan']}) as recorder:
+                                            'plan': context.manifest['plan']},
+                             max_bytes=self.max_bytes) as recorder:
+                stopped = []
+
                 def record(event):
-                    recorder.record('input' if event['kind'] == 'input' else 'output', event)
+                    # After a recording failure, the first exception already failed the
+                    # run; skipping later events (e.g. trial_end) keeps it the one raised.
+                    if stopped:
+                        return
+                    try:
+                        recorder.record('input' if event['kind'] == 'input' else 'output', event)
+                    except BaseException:
+                        stopped.append(True)
+                        raise
                 try:
                     with context.subscribe(record):
                         yield

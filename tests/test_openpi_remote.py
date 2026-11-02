@@ -1,6 +1,7 @@
 """Remote scope lifecycle tests; no trained policy or paid compute required."""
 from contextlib import contextmanager
 import threading
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -454,3 +455,274 @@ def test_detach_failure_preserves_original_error_and_clears_scope(body_fails):
                 if body_fails:
                     raise ValueError('experiment failed')
         assert client._scopes == [] and client._closed
+
+
+# Transport deadlines (socket_deadline): sends, whole exchanges and closes.
+
+class FakeConnection:
+    """Stands in for a websockets connection whose peer stopped reading.
+
+    send/close block until the deadline shuts the socket down, like a blocked
+    sendall does, then fail the way the library does.
+    """
+    def __init__(self):
+        self.shut = threading.Event()
+        self.close_socket = self.shut.set  # the deadline's termination step
+        self.sends = self.closes = 0
+
+    def send(self, data):
+        self.sends += 1
+        self._block()
+
+    def close(self, **kwargs):
+        self.closes += 1
+        self._block()
+
+    def _block(self):
+        if not self.shut.wait(timeout=10):
+            raise AssertionError('deadline never fired')
+        raise OSError('socket shut down')
+
+
+def timers():
+    return [thread for thread in threading.enumerate() if isinstance(thread, threading.Timer)]
+
+
+@pytest.mark.parametrize('seconds', [0, -1, float('inf'), float('nan'), True, '1', None])
+def test_invalid_timeouts_are_rejected_before_any_io(seconds):
+    # Runs without websockets installed: validation precedes optional imports.
+    from brainscore.experiments.backends import socket_deadline
+    connection = FakeConnection()
+    with pytest.raises(ValueError):
+        with socket_deadline.deadline(connection, seconds):
+            connection.send(b'never')
+    assert connection.sends == 0 and timers() == []
+    for kwargs in ({'timeout': seconds}, {'close_timeout': seconds}):
+        with pytest.raises(ValueError):
+            OpenPIPolicyClient('ws://127.0.0.1:1', **kwargs)
+    policy = FixturePolicy()
+    with pytest.raises(ValueError):
+        OpenPIToolServer(policy, FixtureInstrumentation(policy), idle_timeout=seconds)
+
+
+def test_deadline_aborts_a_blocked_send_once_and_chains_its_error():
+    from brainscore.experiments.backends import socket_deadline
+    connection, started = FakeConnection(), time.monotonic()
+    with pytest.raises(TimeoutError) as raised:
+        with socket_deadline.deadline(connection, 0.05):
+            connection.send(b'request')
+    assert isinstance(raised.value.__cause__, OSError)
+    assert connection.sends == 1 and time.monotonic() - started < 5 and timers() == []
+
+
+def test_finished_deadline_never_fires_later_and_keeps_unrelated_errors():
+    from brainscore.experiments.backends import socket_deadline
+    connection = FakeConnection()
+    with socket_deadline.deadline(connection, 0.05) as remaining:
+        assert 0 < remaining() <= 0.05
+    with pytest.raises(KeyError):
+        with socket_deadline.deadline(connection, 0.05):
+            raise KeyError('unrelated')
+    time.sleep(0.2)
+    assert not connection.shut.is_set() and timers() == []
+
+
+def test_exchange_finishing_as_the_deadline_fires_counts_as_timed_out():
+    # The socket may already be shut down, so the connection cannot be reused.
+    from brainscore.experiments.backends import socket_deadline
+    connection = FakeConnection()
+    with pytest.raises(TimeoutError):
+        with socket_deadline.deadline(connection, 0.05):
+            assert connection.shut.wait(timeout=5)  # reply 'arrives' just after the abort
+    assert timers() == []
+
+
+def test_close_is_bounded_and_never_raises():
+    from brainscore.experiments.backends import socket_deadline
+    stalled, started = FakeConnection(), time.monotonic()
+    assert socket_deadline.close(stalled, 0.05) is False
+    assert stalled.shut.is_set() and time.monotonic() - started < 5
+    shut = []
+
+    def fail(**kwargs):
+        raise OSError('close failed')
+    failing = SimpleNamespace(close=fail, close_socket=lambda: shut.append(True))
+    assert socket_deadline.close(failing, 5) is False and shut == [True] and timers() == []
+
+
+@contextmanager
+def stalled_peer(hello, buffer=4096):
+    """A real loopback websocket server that sends hello and then never reads.
+
+    Sans-I/O over a raw socket: a websockets connection object would keep
+    reading in its receiver thread. Small buffers make a few-MB message block
+    the sender quickly.
+    """
+    import socket
+    from websockets.server import ServerProtocol
+    listener = socket.socket()
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, buffer)
+    listener.bind(('127.0.0.1', 0))
+    listener.listen()
+    release, accepted = threading.Event(), []
+
+    def serve():
+        connection = listener.accept()[0]
+        accepted.append(connection)
+        protocol = ServerProtocol(max_size=None)
+        while not (events := protocol.events_received()):
+            protocol.receive_data(connection.recv(65536))
+        protocol.send_response(protocol.accept(events[0]))
+        protocol.send_binary(hello)
+        connection.sendall(b''.join(protocol.data_to_send()))
+        release.wait(timeout=30)  # never reads again
+
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    try:
+        yield f'ws://127.0.0.1:{listener.getsockname()[1]}'
+    finally:
+        release.set()
+        thread.join(timeout=5)
+        for connection in accepted + [listener]:
+            connection.close()
+
+
+@contextmanager
+def stalled_client(port, message, buffer=4096):
+    """A raw loopback websocket client that sends one message and never reads."""
+    import socket
+    from websockets.client import ClientProtocol
+    from websockets.uri import parse_uri
+    connection = socket.socket()
+    connection.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, buffer)
+    connection.connect(('127.0.0.1', port))
+    try:
+        protocol = ClientProtocol(parse_uri(f'ws://127.0.0.1:{port}'), max_size=None)
+        protocol.send_request(protocol.connect())
+        connection.sendall(b''.join(protocol.data_to_send()))
+        while not protocol.events_received():
+            protocol.receive_data(connection.recv(1024))
+        protocol.send_binary(message)
+        connection.sendall(b''.join(protocol.data_to_send()))
+        yield
+    finally:
+        connection.close()
+
+
+def counted_sends(connection, buffer=4096):
+    """Shrink the send buffer and record (size, seconds, returned) for each send.
+
+    returned is False when the send raised: it never completed its write.
+    """
+    import socket
+    connection.socket.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, buffer)
+    sends, send = [], connection.send
+
+    def counted(data):
+        started, returned = time.monotonic(), False
+        try:
+            send(data)
+            returned = True
+        finally:
+            sends.append((len(data), time.monotonic() - started, returned))
+    connection.send = counted
+    return sends
+
+
+def assert_one_blocked_write(sends, timeout):
+    # Exactly one send; it was still writing when the deadline cut it off.
+    assert len(sends) == 1
+    size, seconds, returned = sends[0]
+    assert size > 4 << 20 and not returned and timeout * 0.9 <= seconds < timeout + 4
+
+
+def test_client_request_to_a_stalled_server_is_bounded_and_never_resent():
+    codec = load_codec()
+    with stalled_peer(codec.packb({'protocol': PROTOCOL, 'instrumentation': {}})) as uri:
+        client = OpenPIPolicyClient(uri, timeout=1.0, close_timeout=1.0)
+        sends = counted_sends(client._socket)
+        with pytest.raises(TimeoutError):
+            client.infer({'value': np.zeros(4 << 20, dtype=np.uint8)})
+        assert_one_blocked_write(sends, 1.0)
+        assert client._closed and not client._socket.recv_events_thread.is_alive()
+        with pytest.raises(RuntimeError, match='closed'):
+            client.infer({'value': [1]})
+        assert len(sends) == 1 and timers() == []
+
+
+def test_close_meets_its_deadline_while_the_receive_queue_is_full():
+    # A full queue pauses the receiver; websockets' own close_timeout is much longer.
+    load_codec()
+    from brainscore.experiments.backends import socket_deadline
+    from websockets.sync.client import connect
+    from websockets.sync.server import serve
+    flooded, stop = threading.Event(), threading.Event()
+
+    def handler(websocket):
+        for _ in range(20):
+            websocket.send(b'x')
+        flooded.set()
+        stop.wait(timeout=10)
+
+    with serve(handler, '127.0.0.1', 0, close_timeout=0.2) as websocket_server:
+        thread = threading.Thread(target=websocket_server.serve_forever, daemon=True)
+        thread.start()
+        connection = connect(f'ws://127.0.0.1:{websocket_server.socket.getsockname()[1]}',
+                             max_queue=1, close_timeout=5)
+        try:
+            assert flooded.wait(timeout=5)
+            time.sleep(0.1)
+            started = time.monotonic()
+            assert socket_deadline.close(connection, 0.1) is False
+            assert time.monotonic() - started < 0.8
+            connection.recv_events_thread.join(timeout=1)
+            assert not connection.recv_events_thread.is_alive() and timers() == []
+        finally:
+            stop.set()
+            websocket_server.shutdown()
+            thread.join(timeout=5)
+
+
+def test_completed_request_deadline_does_not_affect_the_next_request(server):
+    with listening(server) as uri, OpenPIPolicyClient(uri, timeout=0.5) as client:
+        np.testing.assert_array_equal(client.infer({'value': [1, 2]})['actions'], [1, 2])
+        time.sleep(0.8)  # past the first request's deadline
+        np.testing.assert_array_equal(client.infer({'value': [3, 4]})['actions'], [3, 4])
+        assert timers() == []
+
+
+def test_server_reply_to_a_client_that_stops_reading_is_bounded_and_frees_the_policy(server):
+    import socket
+    codec = load_codec()
+    from websockets.sync.server import serve
+    server.idle_timeout = 0.5
+    finished, sends = threading.Event(), []
+
+    def handler(websocket):
+        sends.append(counted_sends(websocket))
+        try:
+            server.handler(websocket)
+        finally:
+            finished.set()
+
+    with serve(handler, '127.0.0.1', 0, compression=None,
+               max_size=server.max_message_bytes) as websocket_server:
+        thread = threading.Thread(target=websocket_server.serve_forever, daemon=True)
+        thread.start()
+        port = websocket_server.socket.getsockname()[1]
+        # The 4 MB float32 reply cannot fit in the buffers; the client never reads it.
+        message = codec.packb(dict(request(), observation={'value': np.zeros(1 << 20, np.uint8)}))
+        try:
+            with stalled_client(port, message):
+                started = time.monotonic()
+                assert finished.wait(timeout=10) and time.monotonic() - started < 5
+                hello, *replies = sends[0]
+                assert hello[2]  # the small hello went out; the reply never completed
+                assert_one_blocked_write(replies, 0.5)
+                assert not server._lock.locked() and timers() == []
+                with OpenPIPolicyClient(f'ws://127.0.0.1:{port}') as client:
+                    np.testing.assert_array_equal(client.infer({'value': [5]})['actions'], [5])
+        finally:
+            websocket_server.shutdown()
+            thread.join(timeout=5)

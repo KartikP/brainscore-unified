@@ -1,0 +1,258 @@
+{
+  "date": "2026-11-02",
+  "status": "complete-with-maintainer-accepted-malania-exclusion",
+  "candidate_unified": "b8880276242296c6857363777b4bd12a02ab5213",
+  "focused_passes": {
+    "core": 138,
+    "vision": 59,
+    "language": 46,
+    "unified": 15
+  },
+  "candidate_slow_parity": {
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "base_slow_parity": {
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed_seconds": 13119.662432193756
+  },
+  "candidate_baselines": {
+    "tests": 11,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "elapsed_seconds": 6391.48379611969
+  },
+  "baseline_deselected": 2,
+  "matrix": [
+    {
+      "model": "alexnet",
+      "benchmark": "MajajHong2015.IT-pls",
+      "production": 0.507981726565102,
+      "candidate": 0.41747309548349826,
+      "base": 0.41747309548349826,
+      "delta": 0.0
+    },
+    {
+      "model": "alexnet",
+      "benchmark": "MajajHong2015.V4-pls",
+      "production": 0.549648440736093,
+      "candidate": 0.49191369552332914,
+      "base": 0.49191369552332914,
+      "delta": 0.0
+    },
+    {
+      "model": "alexnet",
+      "benchmark": "Allen2022_fmri_surface.IT-rdm",
+      "production": null,
+      "candidate": 0.380785274537124,
+      "base": 0.380785274537124,
+      "delta": 0.0
+    },
+    {
+      "model": "alexnet",
+      "benchmark": "Rajalingham2018-i2n",
+      "production": 0.370170184162182,
+      "candidate": 0.37019382595706984,
+      "base": 0.37019382595706984,
+      "delta": 0.0
+    },
+    {
+      "model": "alexnet",
+      "benchmark": "Ferguson2024color-value_delta",
+      "production": 0.718509519332506,
+      "candidate": 0.7185095193325057,
+      "base": 0.7185095193325057,
+      "delta": 0.0
+    },
+    {
+      "model": "alexnet",
+      "benchmark": "Malania2007.short2-threshold_elevation",
+      "production": null,
+      "candidate": 0.0,
+      "base": null,
+      "delta": null
+    },
+    {
+      "model": "hmax",
+      "benchmark": "MajajHong2015.IT-pls",
+      "production": 0.122333554350851,
+      "candidate": 0.04745275573430901,
+      "base": 0.04745275573430901,
+      "delta": 0.0
+    },
+    {
+      "model": "hmax",
+      "benchmark": "MajajHong2015.V4-pls",
+      "production": 0.179449539438207,
+      "candidate": 0.03265216069352088,
+      "base": 0.03265216069352088,
+      "delta": 0.0
+    },
+    {
+      "model": "hmax",
+      "benchmark": "Rajalingham2018-i2n",
+      "production": null,
+      "candidate": -0.046380463698292435,
+      "base": -0.046380463698292435,
+      "delta": 0.0
+    },
+    {
+      "model": "pixels",
+      "benchmark": "MajajHong2015.IT-pls",
+      "production": 0.0153805342555769,
+      "candidate": 0.012640346863273495,
+      "base": 0.012640346863273495,
+      "delta": 0.0
+    },
+    {
+      "model": "pixels",
+      "benchmark": "MajajHong2015.V4-pls",
+      "production": 0.0683486242085278,
+      "candidate": 0.06117406569325342,
+      "base": 0.06117406569325342,
+      "delta": 0.0
+    },
+    {
+      "model": "compact_vgg19_V4",
+      "benchmark": "MajajHong2015.IT-pls",
+      "production": null,
+      "candidate": 0.25413549232253335,
+      "base": 0.25413549232253335,
+      "delta": 0.0
+    },
+    {
+      "model": "compact_vgg19_V4",
+      "benchmark": "MajajHong2015.V4-pls",
+      "production": null,
+      "candidate": 0.638880653822547,
+      "base": 0.638880653822547,
+      "delta": 0.0
+    },
+    {
+      "model": "compact_vgg19_V4",
+      "benchmark": "Rajalingham2018-i2n",
+      "production": null,
+      "candidate": 0.029997578701006493,
+      "base": 0.029997578701006493,
+      "delta": 0.0
+    },
+    {
+      "model": "compact_vgg19_V4",
+      "benchmark": "Ferguson2024color-value_delta",
+      "production": null,
+      "candidate": 0.5789276099179909,
+      "base": 0.5789276099179909,
+      "delta": 0.0
+    }
+  ],
+  "parity": [
+    {
+      "benchmark": "MajajHong2015.IT-pls-unified",
+      "route_records_exact": true,
+      "base": 0.38977962292028295,
+      "candidate": 0.38977962292028295,
+      "delta": 0.0
+    },
+    {
+      "benchmark": "MajajHong2015.V4-pls-unified",
+      "route_records_exact": true,
+      "base": 0.5124659940384678,
+      "candidate": 0.5124659940384678,
+      "delta": 0.0
+    },
+    {
+      "benchmark": "MajajHong2015public.IT-pls-unified",
+      "route_records_exact": true,
+      "base": 0.38771015493162714,
+      "candidate": 0.38771015493162714,
+      "delta": 0.0
+    },
+    {
+      "benchmark": "MajajHong2015public.V4-pls-unified",
+      "route_records_exact": true,
+      "base": 0.5054701253162602,
+      "candidate": 0.5054701253162602,
+      "delta": 0.0
+    },
+    {
+      "benchmark": "Pereira2018.243sentences-linear-unified",
+      "route_records_exact": true,
+      "base": 0.8712618939410148,
+      "candidate": 0.8712618939410148,
+      "delta": 0.0
+    },
+    {
+      "benchmark": "Pereira2018.384sentences-linear-unified",
+      "route_records_exact": true,
+      "base": 0.8292698976046283,
+      "candidate": 0.8292698976046283,
+      "delta": 0.0
+    }
+  ],
+  "malania": {
+    "response_arrays_exact": true,
+    "threshold_fit_valid": false,
+    "coordinate_fidelity_verified": false,
+    "full_call_comparison_exact": false,
+    "disposition": "excluded-from-this-review-by-maintainer",
+    "counted_as_pass": false,
+    "decision_date": "2026-11-02"
+  },
+  "workers_stopped": true,
+  "handoff_branch": "feat/contract-v3-qualified",
+  "ci_integration_followup": {
+    "merged_peers": {
+      "core": "0fbb419ff0ba461e6b1e217c845e0fc61d8096a1",
+      "vision": "1cdda82f38ae49b331fcc4b7257263aca802ea43",
+      "language": "a9e572d0a93945f01ed49255a4a8ffd6b37ad2a7"
+    },
+    "language_runtime_fix": "7d3ca103eec874b2eb600bb399d3d33364f0ba49",
+    "language_test_followup": "5c458749e995f1e9e3f8e04e1da22d34aeaf7313",
+    "infrastructure_merge": "93370d022f1490671582a1118cd2ef0258d4884b",
+    "jenkins": {
+      "vision_nonplugins": {
+        "build": 3121,
+        "passed": 522,
+        "deselected": 6,
+        "result": "SUCCESS"
+      },
+      "vision_plugins": {
+        "build": 3206,
+        "passed": 18,
+        "skipped": 1,
+        "result": "SUCCESS"
+      },
+      "language_nonplugins": {
+        "build": 398,
+        "passed": 134,
+        "deselected": 12,
+        "result": "SUCCESS"
+      },
+      "language_plugins": {
+        "build": 363,
+        "passed": 8,
+        "skipped": 0,
+        "result": "SUCCESS"
+      },
+      "language_integration": {
+        "build": 336,
+        "passed": 3,
+        "deselected": 35,
+        "result": "SUCCESS"
+      }
+    },
+    "local_language_offline": {
+      "passed": 97,
+      "result_caching": "disabled",
+      "environment": "fresh lightweight Python 3.11"
+    },
+    "exact_response_comparisons": "random embeddings: direct legacy, facade and typed sessions",
+    "final_coordinated_checks": "https://github.com/KartikP/brainscore-unified/pull/43"
+  }
+}

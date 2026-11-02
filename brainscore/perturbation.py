@@ -21,7 +21,7 @@ Usage::
         identifier='clip-with-ablation',
         model=clip_model,
         ...,
-        state_change_fn=build_pytorch_ablation_fn(clip_model),
+        intervention=build_pytorch_ablation_fn(clip_model),
     )
 
     # Apply: zero units 0-99 at the last text-encoder block
@@ -79,7 +79,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
 
     :param model: The torch ``nn.Module`` whose layers will be ablated.
     :returns: A ``state_change_fn`` suitable for
-        ``BrainScoreModel(state_change_fn=...)``.
+        ``BrainScoreModel(intervention=...)``.
     """
     import torch  # local import: keeps this module's import-time cheap
 

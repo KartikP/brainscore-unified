@@ -9,6 +9,7 @@ import threading
 import uuid
 
 from brainscore_core.events import Selection
+from brainscore.experiments.backends import socket_deadline
 
 PROTOCOL = 'brainscore.openpi.tools.v1'
 MAX_MESSAGE_BYTES = 64 * 1024 * 1024
@@ -35,12 +36,15 @@ class OpenPIToolServer:
 
     No authentication/TLS or physical-robot safety is provided here. Closing a
     connection does not cancel a JAX computation already running. Its scopes are
-    still removed before another request can use the policy.
+    still removed before another request can use the policy. Each reply send is
+    bounded by idle_timeout and the close by socket_deadline.CLOSE_TIMEOUT; a
+    client that stops reading loses its connection, never the policy lock.
     """
     def __init__(self, policy, instrumentation, *, idle_timeout=300,
                  max_message_bytes=MAX_MESSAGE_BYTES):
         if instrumentation.policy is not policy:
             raise ValueError('Server and instrumentation must use the same policy')
+        socket_deadline.positive_seconds(idle_timeout)
         self.policy, self.instrumentation = policy, instrumentation
         self.idle_timeout, self.max_message_bytes = idle_timeout, max_message_bytes
         self._lock = threading.Lock()
@@ -105,9 +109,14 @@ class OpenPIToolServer:
     def handler(self, websocket):
         from websockets.exceptions import ConnectionClosed
         codec = _codec()
-        websocket.send(codec.packb({'protocol': PROTOCOL,
-                                    'instrumentation': self.instrumentation.describe()}))
+
+        def send(data):
+            with socket_deadline.deadline(websocket, self.idle_timeout):
+                websocket.send(data)
+
         try:
+            send(codec.packb({'protocol': PROTOCOL,
+                              'instrumentation': self.instrumentation.describe()}))
             while True:
                 raw = websocket.recv(timeout=self.idle_timeout)
                 request = None
@@ -119,20 +128,18 @@ class OpenPIToolServer:
                     packed = codec.packb(reply)
                     if len(packed) > self.max_message_bytes:
                         raise ValueError('Response exceeds the message budget')
-                    websocket.send(packed)
-                except ConnectionClosed:
-                    raise
                 except Exception as error:
                     # Do not send tracebacks or server paths to the client.
-                    websocket.send(codec.packb({
+                    packed = codec.packb({
                         'protocol': PROTOCOL,
                         'request_id': request.get('request_id') if isinstance(request, dict) else None,
                         'error': f'{type(error).__name__}: {error}',
-                    }))
+                    })
+                send(packed)
         except (ConnectionClosed, TimeoutError):
             pass
         finally:
-            websocket.close()
+            socket_deadline.close(websocket)
 
     def serve(self, host='127.0.0.1', port=8001):
         from websockets.sync.server import serve
@@ -146,12 +153,19 @@ class OpenPIPolicyClient:
 
     Use one connection per experiment thread. Requests are never retried: retrying
     would advance a stateful policy's RNG and could repeat a robot action.
+
+    timeout bounds connecting and each whole request (send plus reply);
+    close_timeout bounds closing. A request that runs out of time closes the
+    connection without cancelling inference already running on the server.
     """
-    def __init__(self, uri, *, timeout=300, max_message_bytes=MAX_MESSAGE_BYTES):
+    def __init__(self, uri, *, timeout=300, max_message_bytes=MAX_MESSAGE_BYTES,
+                 close_timeout=socket_deadline.CLOSE_TIMEOUT):
+        socket_deadline.positive_seconds(timeout)
+        socket_deadline.positive_seconds(close_timeout)
         from websockets.sync.client import connect
         self._socket = connect(uri, compression=None, max_size=max_message_bytes,
-                               open_timeout=timeout)
-        self.timeout = timeout
+                               open_timeout=timeout, close_timeout=close_timeout)
+        self.timeout, self.close_timeout = timeout, close_timeout
         self._closed = False
         self._owner = threading.get_ident()
         self._scopes = []
@@ -180,8 +194,10 @@ class OpenPIPolicyClient:
         request = dict(payload, protocol=PROTOCOL, request_id=request_id, operation=operation)
         self._busy = True
         try:
-            self._socket.send(_codec().packb(request))
-            reply = _codec().unpackb(self._socket.recv(timeout=self.timeout))
+            with socket_deadline.deadline(self._socket, self.timeout) as remaining:
+                self._socket.send(_codec().packb(request))
+                raw = self._socket.recv(timeout=remaining())
+            reply = _codec().unpackb(raw)
             if reply.get('protocol') != PROTOCOL or reply.get('request_id') != request_id:
                 raise RuntimeError('Mismatched response; connection closed')
             if 'error' in reply:
@@ -222,9 +238,10 @@ class OpenPIPolicyClient:
         return response['output']
 
     def close(self):
+        """Close within close_timeout; logs rather than raises, so errors are kept."""
         if not self._closed:
             self._closed = True
-            self._socket.close()
+            socket_deadline.close(self._socket, self.close_timeout)
 
     def __enter__(self):
         return self

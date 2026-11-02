@@ -164,6 +164,52 @@ For external videos or reports, use `context.import_artifact(path, name='trial.m
 
 Failed runs remain readable for diagnosis but cannot be replayed as completed measurements. Use a new output directory and separate subject/tools for each experiment. This synchronous runner does not support concurrent reuse or distributed execution. Keep recordings bounded; the codec materializes individual assets in memory.
 
+### Inspect an interrupted record
+
+A record left by a killed process or a torn final write is never closed, so `events()`, `outputs()`, `evaluate()` and replay keep refusing or failing on it. To see what survived:
+
+```python
+report = RunRecord.inspect('runs/my-experiment')  # also accepts a standalone record directory
+# {'status': 'incomplete', 'valid_events': 41, 'torn_tail_bytes': 87, 'checksum': 'not_recorded', ...}
+events = list(RunRecord('runs/my-experiment').unverified_prefix())  # warns; diagnostic only
+```
+
+`status` is `complete`, `failed`, `incomplete` (never closed, or `experiment.json` still `running`; this does not distinguish a dead writer from a live one) or `corrupt` (a closed record failing its checksum/count/order checks, a malformed event before the end of the log, or contradictory record and experiment states). A truncated closed record stays `corrupt`. `unverified_prefix()` yields decoded events up to the first torn, malformed, out-of-order or undecodable line and never resumes after it; an unterminated last line is excluded even if it parses. Both read only, never repair a file, and use memory bounded by the largest event. Neither verifies that a prefix is a measurement, and neither says whether data reached stable storage. A log that shrinks during inspection, or an unreadable manifest, metadata asset or log, reports `corrupt`; a readable manifest with an unknown schema version raises. With no manifest and no events, the cause cannot be known (setup died, the manifest was lost, or the directory is not a record), so it reports `incomplete` with `record_status: 'missing'`; events without a manifest are `corrupt`. `RunRecord()` itself still requires the manifest.
+
+The strict readers also refuse a closed record whose manifest lacks a 64-character lowercase hex checksum or a non-negative integer event count, or has an unknown status. `evaluate()` reads the whole log, including its final checks, before it calls the metric.
+
+### Errors in failed runs
+
+A failed run's `experiment.json` has two error fields. `error` is the error that ended the run. `error_chain` also lists the errors behind it, so a failure during cleanup (subject reset, a `trial_end` listener, tool detach) does not hide the failure that came first. Successful runs have neither field.
+
+```json
+{
+  "status": "failed",
+  "error": {"type": "RuntimeError", "message": "reset failed"},
+  "error_chain": [
+    {"type": "RuntimeError", "message": "reset failed", "parent": null, "relation": null},
+    {"type": "ValueError", "message": "trial failed", "parent": 0, "relation": "context"}
+  ]
+}
+```
+
+`error_chain` lists the error that ended the run first. Each entry has these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `type`, `message` | Exception class name and message. |
+| `parent` | Index of the entry this error is linked to; `null` for the first entry. |
+| `relation` | How this entry led to its parent. `cause`: the parent was raised `from` it. `context`: it was being handled when the parent was raised; not listed if the parent used `from None`. `group`: it is a member of the parent `ExceptionGroup`, in order. |
+| `same_as` | Present when an error appears again, for example in a loop; points to its first entry and is not repeated further. |
+| `truncated` | Present when some of this entry's linked errors were not saved. |
+
+Limits:
+
+- At most 50 entries are saved, and tracebacks are not saved.
+- A message that cannot be turned into text is saved as `<unprintable TypeName>`.
+- If building `error_chain` fails, the field is left out. The original error is still the one raised.
+- If writing `experiment.json` itself fails (for example, a full disk), the file may still say `running`. The write error carries the original error as its `__context__`.
+
 ## Replay saved inputs
 
 ```python

@@ -327,6 +327,37 @@
         "huggingface",
         "brainio"
       ]
+    },
+    {
+      "id": "native-environment-smolvlm",
+      "repository": "unified",
+      "pytest_args": [
+        "tests/test_external_qualification.py::test_native_trained_smolvlm_qualification"
+      ],
+      "models": [
+        "HuggingFaceTB/SmolVLM-256M-Instruct"
+      ],
+      "benchmarks": [],
+      "assets": [
+        "SmolVLM-256M-Instruct snapshot 7e3e67edbbed1bf9888184d9df282b700a323964 in the Hugging Face cache",
+        "GridGameEnvironment boards generated from seeds 0 and 1"
+      ],
+      "owner_role": "Model/tool maintainer",
+      "environment": "Ubuntu 24.04 / Python 3.11 / CPU",
+      "proposed_limits": {
+        "timeout_minutes": 30,
+        "memory_gib": 16
+      },
+      "acceptance": "On two seeded 4x4 boards of at most six steps, recorded and restored Experiment runs give the same applied actions and total rewards as a direct GridGameEnv loop; after Ablate on half of one MLP projection the selected outputs are zero and the others unchanged; no hooks remain. Changed actions are reported, not required. This qualifies tool and session behavior with a trained model, not navigation performance.",
+      "activation": "pending pinned assets and bounded Linux qualification",
+      "expected_collection": [
+        "tests/test_external_qualification.py::test_native_trained_smolvlm_qualification"
+      ],
+      "expected_count": 1,
+      "device": "cpu",
+      "required_caches": [
+        "huggingface"
+      ]
     }
   ],
   "collection_baseline": {
@@ -346,6 +377,12 @@
       "owner_role": "Language and CI maintainers",
       "reason": "The previous newenv case passed conda_active=True and never created an environment. CondaScore still assumes a source checkout and editable installation.",
       "acceptance": "Create a disposable Conda environment, install the four pinned candidate wheels, score the reference pair, verify all four imported package identities, and remove the environment on success or failure."
+    },
+    {
+      "id": "coggym-smolvlm",
+      "owner_role": "Behavioral benchmark maintainer",
+      "reason": "examples/coggym_toolbox.py needs a CogGym checkout at a1cd9df and its evaluation requirements. The profile runner stages only Hugging Face, BrainIO, Torch and model_tools caches, so a checkout cannot be pinned or copied as a profile asset without changing the runner.",
+      "acceptance": "Run the direct command in docs/coggym.md in a fresh environment with the constrained CogGym install and a clean pip check; keep qualification.json, which must report status passed, the model snapshot SHA-256 and the CogGym commit."
     }
   ]
 }
