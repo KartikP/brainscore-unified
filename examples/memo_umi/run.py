@@ -16,8 +16,8 @@ from brainscore.experiments import (
 )
 from brainscore_core.streaming import BufferedSession, StreamEvent
 
-from brainscore.memo_umi import MemoConfig, MemoSubject, MemoWorker
-from brainscore.memo_umi.subject import CHOICES, SCENE, UTTERANCES
+from brainscore.models.memo_rsa import MemoConfig, MemoSubject, MemoWorker
+from brainscore.models.memo_rsa.model import CHOICES, SCENE, UTTERANCES
 
 
 @contextmanager

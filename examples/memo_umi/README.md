@@ -5,6 +5,10 @@ the paper: a speaker chooses a referent from a green square, green circle, and
 pink circle, then says green, pink, square, or round. The subject returns a
 probability distribution over the three referents for each utterance.
 
+The model implementation lives in `brainscore/models/memo_rsa/`, including its
+isolated worker. This directory contains the experiment and comparison notebook.
+The example constructs the subject explicitly with a worker interpreter path.
+
 The native memo implementation stays inside a Python 3.12+ worker. UMI stays in
 its Python 3.11 environment. Install CPU JAX and `memo-lang` into a separate
 worker environment, then run from the UMI environment:

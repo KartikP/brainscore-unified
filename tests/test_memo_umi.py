@@ -15,8 +15,10 @@ from brainscore.experiments import (
 )
 from brainscore_core.streaming import BufferedSession, StreamEvent
 
-from brainscore.memo_umi import MemoConfig, MemoSubject, MemoWorker, MemoWorkerError, MemoWorkerTimeout
-from brainscore.memo_umi.subject import CHOICES, SCENE, UTTERANCES
+from brainscore.models.memo_rsa import (
+    MemoConfig, MemoSubject, MemoWorker, MemoWorkerError, MemoWorkerTimeout,
+)
+from brainscore.models.memo_rsa.model import CHOICES, SCENE, UTTERANCES
 
 
 LITERAL = np.array([
@@ -58,7 +60,7 @@ def inputs():
 
 
 def make_subject(monkeypatch, depth=1, beta=1.0):
-    import brainscore.memo_umi.subject as subject_module
+    import brainscore.models.memo_rsa.model as subject_module
     monkeypatch.setattr(subject_module, 'MemoWorker', FakeWorker)
     return MemoSubject(config=MemoConfig(depth=depth, beta=beta),
                        python_executable='unused-python')
@@ -134,7 +136,7 @@ def test_repeated_runs_and_reset_do_not_change_a_subject_configuration(monkeypat
 
 
 def test_invalid_worker_output_closes_worker_without_emitting_partial_rows(monkeypatch):
-    import brainscore.memo_umi.subject as subject_module
+    import brainscore.models.memo_rsa.model as subject_module
 
     class InvalidWorker(FakeWorker):
         def predict(self, *, depth, beta, utterances):
@@ -152,7 +154,7 @@ def test_invalid_worker_output_closes_worker_without_emitting_partial_rows(monke
 
 
 def test_experiment_recording_and_input_replay_preserve_probabilities(monkeypatch, tmp_path):
-    import brainscore.memo_umi.subject as subject_module
+    import brainscore.models.memo_rsa.model as subject_module
     monkeypatch.setattr(subject_module, 'MemoWorker', FakeWorker)
     output = tmp_path / 'original'
 

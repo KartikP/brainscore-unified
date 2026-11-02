@@ -69,6 +69,11 @@ At beta 1.0, the depth-1 green-utterance probabilities were exactly
 
 ## UMI integration and recording
 
+The RSA subject and its worker live in `brainscore/models/memo_rsa/`. The
+experiment and notebook live in `examples/memo_umi/`. The example constructs
+the subject explicitly with its worker interpreter; importing the model package
+does not start a worker or import memo/JAX into the host.
+
 `MemoSubject` is a plain `Subject` with declared `instruction` and `text` inputs,
 both required, and the existing `behavior` output. The task instruction describes
 the three-object scene; each text event is one utterance. The response is a
