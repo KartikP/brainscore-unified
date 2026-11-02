@@ -10,8 +10,8 @@ qualification of every supported model or environment.
 ## Revisions
 
 The tested runtime came from `feat/contract-v3-facade`. The handoff branch is
-`feat/contract-v3-qualified` in all four repositories; it preserves those runtime
-revisions and adds qualification documentation in unified.
+`feat/contract-v3-qualified` in all four repositories. The tables retain the exact
+scientific-gate revisions. Later CI repairs and merged peer pins are listed below.
 
 | Repository | Candidate tip | Runtime revision pinned by unified | Clean-v2 control |
 | --- | --- | --- | --- |
@@ -23,6 +23,48 @@ revisions and adds qualification documentation in unified.
 Core and domain candidate tips add CI pin changes above the runtime revisions.
 The unified revision above identifies the tested runtime; the commit adding this
 report changes documentation only.
+
+## CI integration follow-up
+
+Core [#201](https://github.com/brain-score/core/pull/201), vision
+[#2630](https://github.com/brain-score/vision/pull/2630) and language
+[#435](https://github.com/brain-score/language/pull/435) merged into v2 after their
+checks passed. Unified's peer manifest now selects these merged revisions:
+
+| Repository | Merged revision |
+| --- | --- |
+| core | `0fbb419ff0ba461e6b1e217c845e0fc61d8096a1` |
+| vision | `1cdda82f38ae49b331fcc4b7257263aca802ea43` |
+| language | `a9e572d0a93945f01ed49255a4a8ffd6b37ad2a7` |
+
+Infrastructure #84 corrected Jenkins installing an old core despite the candidate's
+pin. That repair exposed missing neural-output declarations on legacy embedding
+models. Language `7d3ca10` declares the three supported neural targets for both
+random embedding registrations and GloVe, without changing legacy implementations
+or inventing a layer map. These models no longer advertise behavioral outputs.
+Custom legacy subjects can supply explicit `out_channels`. Other defaults remain.
+Language `5c45874` updates the submission test to expect the earlier facade
+rejection, retaining its null-score, error and traceback checks.
+
+| Check | Result |
+| --- | --- |
+| Vision Jenkins non-plugins / plugins | 522 / 18 passed; 6 deselected / 1 skipped |
+| Language Jenkins non-plugins / plugins | 134 / 8 passed; 12 deselected / no skips |
+| Language public-scoring integration | 3 passed; 35 slow tests deselected |
+| Local language offline suite | 97 passed; fresh lightweight Python 3.11 environment, result caching disabled |
+| Both domain PRs' coordinated GitHub checks | Ubuntu/macOS installed packages and tutorials, both OpenPI jobs passed |
+
+Thirteen new cases fail before the embedding repair. Facade comparisons cover both
+random embedding models, all three declared targets and repeated measurements;
+their arrays match direct legacy output exactly. The typed neural helper also
+matches legacy values and retains stimulus metadata. GloVe declarations are checked
+without downloading its weights. The endpoint diagnostic also passes with temporary
+SQLite and a data-free reading task. These checks supplement the original gate;
+they do not requalify the whole model catalog. Existing CI score assertions retain
+their configured tolerances; the new exact claims concern response arrays.
+
+Final coordinated results for the merged peer set are attached to
+[unified #43](https://github.com/KartikP/brainscore-unified/pull/43).
 
 ## Results
 
@@ -157,7 +199,6 @@ was observed in the 14 comparable matrix cases or six parity variants. Malania i
 excluded with the limitations above. No source was merged or package released by
 this qualification.
 
-Next: open coordinated review PRs against `unified-model-interface-v2`, retain
-the accepted exclusion in their descriptions, and verify final merged peer pins
-with CI. Any runtime fix needs affected checks repeated against the corresponding
+Coordinated integration targets `unified-model-interface-v2` and retains the
+accepted exclusion. The CI follow-up above records merged peer pins and their checks. Any runtime fix needs affected checks repeated against the corresponding
 clean-v2 control. The broader release matrix remains separate roadmap work.

@@ -205,5 +205,54 @@
     "decision_date": "2026-11-02"
   },
   "workers_stopped": true,
-  "handoff_branch": "feat/contract-v3-qualified"
+  "handoff_branch": "feat/contract-v3-qualified",
+  "ci_integration_followup": {
+    "merged_peers": {
+      "core": "0fbb419ff0ba461e6b1e217c845e0fc61d8096a1",
+      "vision": "1cdda82f38ae49b331fcc4b7257263aca802ea43",
+      "language": "a9e572d0a93945f01ed49255a4a8ffd6b37ad2a7"
+    },
+    "language_runtime_fix": "7d3ca103eec874b2eb600bb399d3d33364f0ba49",
+    "language_test_followup": "5c458749e995f1e9e3f8e04e1da22d34aeaf7313",
+    "infrastructure_merge": "93370d022f1490671582a1118cd2ef0258d4884b",
+    "jenkins": {
+      "vision_nonplugins": {
+        "build": 3121,
+        "passed": 522,
+        "deselected": 6,
+        "result": "SUCCESS"
+      },
+      "vision_plugins": {
+        "build": 3206,
+        "passed": 18,
+        "skipped": 1,
+        "result": "SUCCESS"
+      },
+      "language_nonplugins": {
+        "build": 398,
+        "passed": 134,
+        "deselected": 12,
+        "result": "SUCCESS"
+      },
+      "language_plugins": {
+        "build": 363,
+        "passed": 8,
+        "skipped": 0,
+        "result": "SUCCESS"
+      },
+      "language_integration": {
+        "build": 336,
+        "passed": 3,
+        "deselected": 35,
+        "result": "SUCCESS"
+      }
+    },
+    "local_language_offline": {
+      "passed": 97,
+      "result_caching": "disabled",
+      "environment": "fresh lightweight Python 3.11"
+    },
+    "exact_response_comparisons": "random embeddings: direct legacy, facade and typed sessions",
+    "final_coordinated_checks": "https://github.com/KartikP/brainscore-unified/pull/43"
+  }
 }
