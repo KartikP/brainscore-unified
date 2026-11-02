@@ -1,4 +1,4 @@
-"""build_causal_lm_subject: record, intervene, generate and score, all through process()."""
+"""build_causal_lm_subject: record, intervene, generate and score, through interact() and process()."""
 import json
 
 import numpy as np
@@ -123,3 +123,47 @@ def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
     before = _ask(model, 'conditional_logprob_request', req)['answer']
     model.process(StateChange(kind='lesion', target=target, perturbation=Perturbation(kind='drive', amount=50.0)))
     assert _ask(model, 'conditional_logprob_request', req)['answer'] != before
+
+
+# Through interact(): the contract's only evaluation method.
+
+def _session_ask(model, channel, payload):
+    from brainscore_core.streaming import BufferedSession
+    session = BufferedSession([StreamEvent(channel, payload, None, {})],
+                              requested_output_channels=['response_trace'])
+    model.interact(session)
+    (response,) = session.emitted
+    assert response.channel == 'response_trace' and response.payload['valid'] is True
+    return response.payload
+
+
+def test_declares_what_it_can_do(subject):
+    model, _, _ = subject
+    assert {'text', 'generation_request', 'conditional_logprob_request'} <= model.in_channels
+    assert {'neural:mlp_in', 'neural:block1', 'response_trace'} <= model.out_channels
+
+
+def test_generate_and_score_through_interact_match_process(subject):
+    model, _, _ = subject
+    request = {'contexts': ['the cat', 'the dog ran is'], 'targets': ['sat', 'kind mean']}
+    assert _session_ask(model, 'conditional_logprob_request', request)['answer'] == \
+        _ask(model, 'conditional_logprob_request', request)['answer']
+    request = {'conversations': [[{'role': 'user', 'content': 'the cat'}]], 'max_tokens': 3}
+    assert _session_ask(model, 'generation_request', request)['raw']['texts'] == \
+        _ask(model, 'generation_request', request)['raw']['texts']
+
+
+def test_record_and_push_an_input_site_through_interact(subject):
+    from brainscore.instrumentation import intervene
+    from brainscore_core.streaming_helpers import neural_response
+    model, _, _ = subject
+    before = neural_response(model, _stimuli(), record='mlp_in')
+    push = StateChange(kind='steer', target=Selection(layer=NEURON_IN, indices=[5]),
+                       perturbation=Perturbation(kind='drive', amount=2.5))
+    with intervene(model, push):
+        after = neural_response(model, _stimuli(), record='mlp_in')
+    change = np.nan_to_num(after.values - before.values)
+    np.testing.assert_allclose(change[..., 5][~np.isnan(before.values[..., 5])], 2.5, atol=1e-5)
+    assert np.abs(np.delete(change, 5, axis=-1)).max() == 0
+    restored = neural_response(model, _stimuli(), record='mlp_in')
+    np.testing.assert_array_equal(np.nan_to_num(restored.values), np.nan_to_num(before.values))

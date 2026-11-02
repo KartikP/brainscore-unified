@@ -1,13 +1,14 @@
-"""Register a Hugging Face causal LM as one subject that does everything through ``process()``.
+"""Register a Hugging Face causal LM as one subject that records, can be pushed, writes and scores text.
 
-One registration gives:
+One registration declares, and answers through ``interact`` (or ``process``):
 
-- ``process(StimulusSet)`` -> recorded activations (``TextWrapper``; layer names
-  accept the ``':input'`` site, e.g. ``'model.layers.14.mlp.down_proj:input'``),
-- ``process(StateChange)`` -> interventions (``build_pytorch_ablation_fn``; use
+- recording: ``neural:<region>`` (``TextWrapper``; layer names accept the
+  ``':input'`` site, e.g. ``'model.layers.14.mlp.down_proj:input'``), e.g. via
+  ``brainscore_core.streaming_helpers.neural_response``,
+- interventions: ``lesion`` / ``stimulation`` (``build_pytorch_ablation_fn``; use
   ``brainscore.instrumentation.intervene`` to apply one and undo only it),
-- ``process(StreamEvent('generation_request', ...))`` -> generated text,
-- ``process(StreamEvent('conditional_logprob_request', ...))`` -> log p(target | context).
+- ``generation_request`` -> generated text, as a ``response_trace``,
+- ``conditional_logprob_request`` -> log p(target | context), as a ``response_trace``.
 
 Request keys are listed in ``response_trace.PAYLOAD_CONTRACTS`` (also in the I/O
 catalog): generation takes CogGym's ``{system, messages, temperature, max_tokens}``
@@ -127,21 +128,23 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
     """A ``BrainScoreModel`` for a Hugging Face causal LM: record, intervene, generate, score.
 
     Put model revision and settings in ``provenance``; it is attached to every
-    response. ``region_layer_map`` names what ``start_recording`` can record.
+    response. ``region_layer_map`` names the regions that can be recorded.
     """
     provider = CausalLMProvider(model, tokenizer, chat_template_kwargs, batch_size)
     register_trace_channels()
-    generation, logprob = _capability(('generation_request',)), _capability(('conditional_logprob_request',))
-    register_capability(generation)
-    register_capability(logprob)
+    # One capability serves both request channels, so a session asking for
+    # response_trace has exactly one handler; each channel keeps its own provider.
+    text = _capability(('conditional_logprob_request', 'generation_request'))
+    register_capability(text)
     provenance = {'identifier': identifier, **dict(provenance or {})}
-    config = dict(provenance=provenance, streaming=False, reset=None)
+    channels = {'generation_request': dict(provider=provider.generate, parse=str),
+                'conditional_logprob_request': dict(provider=provider.logprobs, parse=json.loads)}
     return BrainScoreModel(
         identifier,
         region_layer_map=dict(region_layer_map or {}),
         extractor={'text': TextWrapper(model, tokenizer, identifier=identifier,
                                                layer_aggregation=layer_aggregation, batch_size=batch_size)},
         intervention=build_pytorch_ablation_fn(model),
-        capability_config={generation.identifier: dict(provider=provider.generate, parse=str, **config),
-                           logprob.identifier: dict(provider=provider.logprobs, parse=json.loads, **config)},
+        capability_config={text.identifier: dict(channels=channels, provenance=provenance,
+                                                 streaming=False, reset=None)},
     )

@@ -49,14 +49,26 @@ class ResponseTraceCapability(Capability):
     def handles(self, model, event, **kwargs):
         return isinstance(event, StreamEvent) and event.channel in self.input_channels
 
+    @staticmethod
+    def _route(config, channel):
+        """The provider and parser for a request channel.
+
+        One capability can serve several request channels: ``config['channels']``
+        maps a channel to its own ``{provider, parse}``. Without it, every
+        channel uses ``config['provider']`` and ``config['parse']``.
+        """
+        route = config.get('channels', {}).get(channel, config)
+        return route['provider'], route['parse']
+
     def _response(self, model, event, raw, *, final=True):
         config = model.capability_config[self.identifier]
+        _, parse = self._route(config, event.channel)
         if not isinstance(raw, dict) or not isinstance(raw.get('text'), str):
             raise TypeError('Provider must return a dict containing text: str')
         answer, valid, error = None, None, None
         if final:
             try:
-                answer = config['parse'](raw['text'])
+                answer = parse(raw['text'])
                 valid = True
             except (ValueError, TypeError) as exc:
                 answer, valid, error = None, False, str(exc)
@@ -69,7 +81,7 @@ class ResponseTraceCapability(Capability):
     def _stream(self, model, event):
         from copy import deepcopy
         config = model.capability_config[self.identifier]
-        source = config['provider'](event.payload)
+        source = self._route(config, event.channel)[0](event.payload)
         final_seen = False
         try:
             for index, raw in enumerate(source):
@@ -93,7 +105,7 @@ class ResponseTraceCapability(Capability):
     def process(self, model, event, **kwargs):
         config = model.capability_config[self.identifier]
         if not config.get('streaming', False):
-            return self._response(model, event, config['provider'](event.payload))
+            return self._response(model, event, self._route(config, event.channel)[0](event.payload))
         # A direct call returns one result, retaining every raw stream fragment.
         responses = list(self._stream(model, event))
         final = responses[-1]
