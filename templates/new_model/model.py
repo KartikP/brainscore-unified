@@ -3,10 +3,10 @@
 A model is ONE BrainScoreModel construction. The optional slots you fill decide which
 dispatch branches process() can take (see
 https://brain-score.github.io/public/UMI/architecture.html for the full router):
-  - activations_model  -> neural encoding + behavioral readout
-  - generation_fn      -> behavioral generation (instruction-following)
-  - action_fn          -> embodied closed-loop (EnvironmentStep)
-  - state_change_fn    -> lesion/perturbation (StateChange)
+  - extractor     -> neural recording + behavioral readout
+  - answer        -> behavioral answers in words (instruction-following)
+  - policy        -> embodied closed loop (EnvironmentStep)
+  - intervention  -> lesion/perturbation (StateChange)
 Leave a slot as None if the model doesn't support that capability.
 
 **This file runs as-is.** It registers a small randomly-initialised CNN, so the whole
@@ -40,22 +40,23 @@ def get_model() -> BrainScoreModel:
     # TODO: pick the wrapper that matches your model. One of:
     #   VisionWrapper (any vision: image / VLM / video — dispatches internally; pass kind= to force)
     #   TextWrapper (LM) · AudioWrapper (HF audio encoder)
-    # Configure input preparation on the wrapper; the subject uses the same
-    # activations_model mapping for every modality.
-    activations_model = VisionWrapper(
+    # Configure input preparation on the wrapper; the subject routes each input
+    # kind (vision, text, audio) to the extractor registered for it.
+    vision_extractor = VisionWrapper(
         identifier=IDENTIFIER,
         model=backbone,
-        preprocessing=lambda paths: load_preprocess_images(paths, image_size=64))
+        preprocessing=lambda paths: load_preprocess_images(paths, image_size=64),
+    )
 
     return BrainScoreModel(
         identifier=IDENTIFIER,
         model=backbone,
         region_layer_map={'IT': '2'},   # brain region -> layer to record. TODO: yours.
-        activations_model={'vision': activations_model},
+        extractor={'vision': vision_extractor},
         # --- optional capability slots (see templates/new_capability/) ---
-        # generation_fn=...,
-        # action_fn=...,
-        # state_change_fn=...,
+        # answer=build_answer(...),
+        # policy=build_policy(...),
+        # intervention=build_intervention(...),
         # behavioral_readout_layer='TODO.layer',
         # backbone_id='shared-backbone-id',                     # share a feature cache
     )

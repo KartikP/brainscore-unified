@@ -1,7 +1,9 @@
 """TODO: one-line description — what measurements, which model capability, which metric.
 
-A benchmark drives the candidate model and returns a ceiled Score. It calls the model only
-through the unified interface (start_recording / start_task / process) — never legacy shims.
+A benchmark drives the candidate subject and returns a ceiled Score. It runs the subject
+through typed helpers such as `neural_response`, which hand it a session via
+`subject.participate(session)`. Any Subject can be scored, including one that implements
+only `participate` (no `start_recording` / `process`).
 
 **This file runs as-is, against a real model.** `_load_assembly()` builds a small synthetic
 target *with real image files on disk*, so `templates/new_model/` can be scored against it
@@ -20,10 +22,12 @@ import tempfile
 import numpy as np
 from PIL import Image
 
+from brainscore_core.assembly_builder import replace_presentation_coord
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from brainscore_core.streaming_helpers import neural_response
 from brainscore import benchmark_registry
 import brainscore_vision
 
@@ -92,6 +96,11 @@ def _ceiling() -> Score:
 
 
 class YourBenchmark(BenchmarkBase):
+    # What the benchmark shows and what it asks for, checked before any compute.
+    required_input_channels = {'vision'}
+    requested_output_channels = {'neural:IT'}   # TODO: your region
+    uses_session = True
+
     def __init__(self):
         super().__init__(identifier='your-benchmark',
                          ceiling=_ceiling(), version=1,
@@ -112,10 +121,21 @@ class YourBenchmark(BenchmarkBase):
         self._metric = brainscore_vision.load_metric('linear_predictivity')
 
     def __call__(self, candidate) -> Score:
-        # 1) tell the model what to record / which task to run
-        candidate.start_recording('IT', time_bins=[(70, 170)])   # TODO: your region/time-bins
-        # 2) run the model through the ONE evaluation method
-        predictions = candidate.process(self._stimulus_set)       # -> assembly
+        # 1) show the stimuli and record the subject's IT response, 70-170 ms after onset
+        predictions = neural_response(
+            subject=candidate,
+            stimulus_set=self._stimulus_set,
+            record='IT',            # TODO: your region
+            time_bins=[(70, 170)],    # TODO: your time window, in ms
+        )
+        # 2) label each response with its stimulus category, matched by stimulus_id;
+        #    the metric's cross-validation keeps categories balanced across folds
+        categories = dict(zip(self._stimulus_set['stimulus_id'], self._stimulus_set['object_name']))
+        predictions = replace_presentation_coord(
+            predictions,
+            coord_name='object_name',
+            values=[categories[stimulus_id] for stimulus_id in predictions['stimulus_id'].values],
+        )
         # 3) score against the target, then normalize by the ceiling
         raw = self._metric(predictions, self._assembly)
         score = Score(float(raw) / float(self.ceiling))

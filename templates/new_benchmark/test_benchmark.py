@@ -16,47 +16,54 @@ os.environ.setdefault('RESULTCACHING_DISABLE', '1')
 import numpy as np
 import pytest
 
+from brainscore_core.model_interface import Subject
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.streaming import StreamEvent
 
-class DummyCandidate:
-    """The smallest thing that satisfies the interface a benchmark calls.
 
-    A benchmark only ever touches a model through `start_recording` / `start_task` /
-    `process`, so this is enough to exercise one. It also documents the contract your
-    benchmark depends on: if you need more from a candidate than this, that is worth
-    knowing early, because every real model will have to provide it too.
+class DummyCandidate(Subject):
+    """The smallest subject this benchmark can score: it implements only participate.
+
+    A benchmark reaches a subject through a session (`neural_response` builds one and
+    calls `subject.participate(session)`), so this is enough to exercise one. No
+    start_recording, no process: if your benchmark needs more from a subject than
+    this, that is worth knowing early, because every subject will have to provide it.
     """
+
+    identifier = 'dummy-candidate'
+    in_channels = {'vision'}
+    out_channels = {'neural:IT'}
 
     def __init__(self, n_neuroids=16, seed=0):
         self.n_neuroids, self.seed = n_neuroids, seed
-        self.recorded = None
+        self.requested = None
 
-    def start_recording(self, recording_target, time_bins=None, **kwargs):
-        self.recorded = recording_target
-
-    def process(self, stimuli, **kwargs):
-        from brainscore_core.supported_data_standards.brainio.assemblies import (
-            NeuroidAssembly)
-        stimulus_ids = list(stimuli['stimulus_id'].values)
+    def participate(self, session):
+        self.requested = tuple(session.requested_output_channels)
         rng = np.random.RandomState(self.seed)
-
-        # Carry the stimulus set's presentation metadata onto the output. This is not
-        # decoration: cross-validated metrics STRATIFY their folds on a presentation
-        # coord (here `object_name`), and a prediction without it fails with
-        # "Expected stratification coordinate object_name". Real wrappers do this for
-        # you via _attach_stimulus_set_meta; a hand-rolled candidate must do it itself.
-        coords = {'stimulus_id': ('presentation', stimulus_ids),
-                  'presentation_index': ('presentation', list(range(len(stimulus_ids)))),
-                  # Two coords per neuroid dim on purpose — a single coord is not
-                  # promoted to a MultiIndex, and metrics then cannot find stimulus_id.
-                  'neuroid_id': ('neuroid', list(range(self.n_neuroids))),
-                  'region': ('neuroid', ['IT'] * self.n_neuroids)}
-        for column in stimuli.columns:
-            if column not in ('stimulus_id', 'image_file_name') and column not in coords:
-                coords[column] = ('presentation', list(stimuli[column].values))
-
-        return NeuroidAssembly(
-            rng.randn(len(stimulus_ids), self.n_neuroids),
-            coords=coords, dims=['presentation', 'neuroid'])
+        # One input event per stimulus; answer each with a one-stimulus response.
+        event = session.next_input()
+        while event is not None:
+            response = NeuroidAssembly(
+                rng.randn(1, self.n_neuroids),
+                coords={
+                    # which stimulus this row answers (two coords per axis, so
+                    # metrics can index them)
+                    'stimulus_id': ('presentation', [event.meta['stimulus_id']]),
+                    'stimulus_index': ('presentation', [event.meta['stimulus_index']]),
+                    # which recorded unit each column is
+                    'neuroid_id': ('neuroid', [f'IT.{unit}' for unit in range(self.n_neuroids)]),
+                    'region': ('neuroid', ['IT'] * self.n_neuroids),
+                },
+                dims=['presentation', 'neuroid'],
+            )
+            session.respond(StreamEvent(
+                channel='neural:IT',
+                payload=response,
+                t_ms=event.t_ms,
+                meta=dict(event.meta),
+            ))
+            event = session.next_input()
 
 
 def test_registered_and_loads():
@@ -77,14 +84,13 @@ def test_scores_a_candidate():
         'report the unceiled value and the ceiling used, so the number stays interpretable'
 
 
-def test_asks_the_candidate_to_record():
-    """The benchmark must configure the model before it processes anything."""
+def test_asks_the_candidate_for_its_region():
+    """The session must tell the subject which response to produce."""
     import brainscore
     candidate = DummyCandidate()
     brainscore.load_benchmark('your-benchmark')(candidate)
-    assert candidate.recorded is not None, \
-        'benchmark called process() without start_recording() — the model had no ' \
-        'active recording target'
+    assert candidate.requested == ('neural:IT',), \
+        'the session did not request the region this benchmark scores'
 
 
 def _model_template_candidate():
