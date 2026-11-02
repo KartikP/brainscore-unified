@@ -77,3 +77,6 @@ FRICTION-LOG*.md
 # Public experiment composition API (not local experiment output).
 !brainscore/experiments/
 !brainscore/experiments/*.py
+
+# MIRAGE weights and generated experiment artifacts stay outside the repository.
+/mirage-umi-output/

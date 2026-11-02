@@ -1,0 +1,238 @@
+{
+  "date_utc": "2026-11-02",
+  "scope": "Fresh native processes, initialized UMI host, warm filesystem cache; two four-second clips",
+  "successful_calls": 24,
+  "measured_calls": 18,
+  "excluded_successful_warmups": 6,
+  "failed_attempts_excluded": 1,
+  "repetitions_per_condition_per_case": 3,
+  "all_predictions_exact_to_original_qualification": true,
+  "timing_conditions": {
+    "direct": "Native CLI with shared benchmark timing launcher",
+    "umi": "Qualified Subject with BufferedSession, without Experiment",
+    "recorded": "Qualified Subject in Experiment with RecordInputsOutputs"
+  },
+  "results": {
+    "public": {
+      "direct": {
+        "n": 3,
+        "wall_s": {
+          "median": 52.378087454000024,
+          "min": 52.17597411599991,
+          "max": 52.77779203800003
+        },
+        "native_s": {
+          "median": 50.6244586119999,
+          "min": 50.43662257599999,
+          "max": 51.01162707200001
+        },
+        "imports_s": {
+          "median": 0.8791473280000446,
+          "min": 0.8790753979999408,
+          "max": 0.8831675970000106
+        },
+        "cuda_init_s": {
+          "median": 0.15756728799999564,
+          "min": 0.15626221200000145,
+          "max": 0.15807778400017014
+        },
+        "outside_worker_body_s": {
+          "median": 0.712854711999853,
+          "min": 0.7004794249999122,
+          "max": 0.7218987620000235
+        }
+      },
+      "umi": {
+        "n": 3,
+        "wall_s": {
+          "median": 55.133387685000116,
+          "min": 54.582489787999975,
+          "max": 55.534927543000094
+        },
+        "native_s": {
+          "median": 50.49771314900022,
+          "min": 49.925397344999965,
+          "max": 50.88176416800002
+        },
+        "imports_s": {
+          "median": 0.8835195490000842,
+          "min": 0.8811303370000587,
+          "max": 0.8839105440000594
+        },
+        "cuda_init_s": {
+          "median": 0.20168564799996602,
+          "min": 0.20067160400003559,
+          "max": 0.20206533300006413
+        },
+        "outside_worker_body_s": {
+          "median": 0.7248379060000616,
+          "min": 0.7187874000001102,
+          "max": 0.725728424999943
+        },
+        "host_outside_runtime_ms": {
+          "median": 3.088904999913211,
+          "min": 3.027057000053901,
+          "max": 3.1212100001312137
+        },
+        "checkpoint_verification_s": {
+          "median": 2.8123668699998916,
+          "min": 2.8050964730000487,
+          "max": 2.8156910000000153
+        },
+        "overhead_ratio_of_medians_percent": 5.260406335798118
+      },
+      "recorded": {
+        "n": 3,
+        "wall_s": {
+          "median": 55.04424751199997,
+          "min": 54.993974879999996,
+          "max": 55.49389836399996
+        },
+        "native_s": {
+          "median": 50.37981964500011,
+          "min": 50.35132348000002,
+          "max": 50.85490014800007
+        },
+        "imports_s": {
+          "median": 0.8820009449999588,
+          "min": 0.8774191970001084,
+          "max": 0.8845021569998153
+        },
+        "cuda_init_s": {
+          "median": 0.2002419010000267,
+          "min": 0.19865921799987518,
+          "max": 0.20259013800000503
+        },
+        "outside_worker_body_s": {
+          "median": 0.7309409520000827,
+          "min": 0.7163769450000927,
+          "max": 0.7380273499999248
+        },
+        "host_outside_runtime_ms": {
+          "median": 13.2032659998913,
+          "min": 13.015331000133301,
+          "max": 13.29062199999953
+        },
+        "checkpoint_verification_s": {
+          "median": 2.8078303719998985,
+          "min": 2.805434675000015,
+          "max": 2.8116706380000096
+        },
+        "overhead_ratio_of_medians_percent": 5.090220333725326
+      }
+    },
+    "synthetic": {
+      "direct": {
+        "n": 3,
+        "wall_s": {
+          "median": 46.06935240400003,
+          "min": 45.91906474799998,
+          "max": 46.16940746399996
+        },
+        "native_s": {
+          "median": 44.30472306900015,
+          "min": 44.16370985200001,
+          "max": 44.416949393000095
+        },
+        "imports_s": {
+          "median": 0.8768418110000766,
+          "min": 0.8766970019999007,
+          "max": 0.8795581159999983
+        },
+        "cuda_init_s": {
+          "median": 0.15679250200014394,
+          "min": 0.15658172000007653,
+          "max": 0.15940082900010566
+        },
+        "outside_worker_body_s": {
+          "median": 0.7156883580000795,
+          "min": 0.71539093399997,
+          "max": 0.7248567159999766
+        }
+      },
+      "umi": {
+        "n": 3,
+        "wall_s": {
+          "median": 48.82546137699978,
+          "min": 48.47829816900003,
+          "max": 48.926670619000106
+        },
+        "native_s": {
+          "median": 44.18844570600004,
+          "min": 43.85753860700015,
+          "max": 44.309231585999896
+        },
+        "imports_s": {
+          "median": 0.8815514039999925,
+          "min": 0.8774097319999328,
+          "max": 0.8832697989998906
+        },
+        "cuda_init_s": {
+          "median": 0.19973999299986644,
+          "min": 0.19950097299988556,
+          "max": 0.20017477600003986
+        },
+        "outside_worker_body_s": {
+          "median": 0.6977881420000358,
+          "min": 0.6942932140000266,
+          "max": 0.7233724459997575
+        },
+        "host_outside_runtime_ms": {
+          "median": 3.043112999648656,
+          "min": 3.0213530001219624,
+          "max": 3.0947899999773654
+        },
+        "checkpoint_verification_s": {
+          "median": 2.808598049000011,
+          "min": 2.8058769169999778,
+          "max": 2.813547942000014
+        },
+        "overhead_ratio_of_medians_percent": 5.9825216313664775
+      },
+      "recorded": {
+        "n": 3,
+        "wall_s": {
+          "median": 48.835191013999975,
+          "min": 48.788082927000005,
+          "max": 48.98577277300001
+        },
+        "native_s": {
+          "median": 44.169109973000104,
+          "min": 44.15701498999988,
+          "max": 44.33047328099997
+        },
+        "imports_s": {
+          "median": 0.8800469440000143,
+          "min": 0.8767957009999918,
+          "max": 0.8841625499999282
+        },
+        "cuda_init_s": {
+          "median": 0.20086284900003193,
+          "min": 0.2001513079999313,
+          "max": 0.2039072390000456
+        },
+        "outside_worker_body_s": {
+          "median": 0.7285918530001254,
+          "min": 0.7124582500000542,
+          "max": 0.7447586620000948
+        },
+        "host_outside_runtime_ms": {
+          "median": 12.658259999852817,
+          "min": 12.59320100007244,
+          "max": 12.708198999916931
+        },
+        "checkpoint_verification_s": {
+          "median": 2.8117898000000423,
+          "min": 2.8062689230000615,
+          "max": 2.81266120600003
+        },
+        "overhead_ratio_of_medians_percent": 6.003641175038088
+      }
+    }
+  },
+  "timing_source_sha256": {
+    "measure_overhead.py": "3af301d550b8afbb3a2d721096df1162e9e550121c58f39dbe213e00e2b3570c",
+    "timing_worker.py": "1c878a9d95a2bcebc6d9f8714e82e08e198f4bf9c0214b23f83d3347034c66b8"
+  },
+  "evidence_archive_sha256": "595bde7d7842b74f08e37ee7f383a17dcc210a151bddba2da03f173e6974db79"
+}
