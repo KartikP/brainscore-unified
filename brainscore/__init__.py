@@ -246,7 +246,7 @@ def score(model_identifier, benchmark_identifier,
         check_memory(model, benchmark)
 
     # A legacy domain benchmark (marked by its domain loader) receives the
-    # permanent facade, which runs its calls as sessions through interact.
+    # permanent facade, which runs its calls as sessions through participate.
     from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
     candidate = subject_for_benchmark(model, benchmark,
                                       visual_degrees=declared_visual_degrees(model))

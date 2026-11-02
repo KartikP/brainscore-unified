@@ -52,6 +52,15 @@ class TestReport:
         assert problems == 0
         assert '/nowhere' in text
 
+    def test_dependency_rows_come_from_the_public_environment_check(self, monkeypatch):
+        from brainscore_core import environment_check
+        monkeypatch.setattr(environment_check, 'describe_env',
+                            lambda: [('numpy', '3.0', '>=1.21,<2', False)])
+        monkeypatch.setattr(doctor, '_asset_rows', lambda: [])
+        text, problems = doctor.report()
+        assert problems == 1
+        assert '3.0' in text and 'outside' in text
+
     def test_exit_code_follows_the_verdict(self, monkeypatch):
         monkeypatch.setattr(doctor, '_dependency_rows',
                             lambda: [('numpy', '3.0', '>=1.21,<2', False)])
@@ -66,5 +75,5 @@ class TestAgainstTheRealEnvironment:
         assert problems == 0, 'this environment is outside the verified bounds'
 
     def test_describe_env_covers_every_bound(self):
-        from brainscore_core._env_check import _BOUNDS, describe_env
+        from brainscore_core.environment_check import _BOUNDS, describe_env
         assert len(describe_env()) == len(_BOUNDS)

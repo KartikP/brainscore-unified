@@ -25,7 +25,7 @@ class FixtureSubject(Subject):
     def reset(self):
         self.state = 0
         self.resets += 1
-    def interact(self, session):
+    def participate(self, session):
         while (event := session.next_input()) is not None:
             value = self.layer(torch.tensor(event.payload, dtype=torch.float32))
             self.state += 1
@@ -80,7 +80,7 @@ def test_identical_api_for_domain_payloads(tmp_path, domain, payload):
         identifier = domain
         in_channels = {'custom_input'}
         out_channels = {'custom_output'}
-        def interact(self, session):
+        def participate(self, session):
             while (event := session.next_input()) is not None:
                 session.emit(StreamEvent('custom_output', event.payload, event.t_ms))
     @contextmanager
@@ -139,7 +139,7 @@ def test_hook_cleanup_on_model_failure_and_original_hooks_retained(tmp_path):
     def fail(session):
         subject.layer(torch.ones(2))
         raise RuntimeError('trial failure')
-    subject.interact = fail
+    subject.participate = fail
     with pytest.raises(RuntimeError, match='trial failure'):
         Experiment(subject=subject, protocol=protocol(), tools=[RecordInputsOutputs(),
             Ablate(['x'])], instrumentation=TorchInstrumentation({'x': subject.layer}),
@@ -240,7 +240,7 @@ def test_cancellation_and_resource_cleanup(tmp_path, exception):
             yield InMemorySession([])
         finally:
             closed.append(True)
-    subject.interact = lambda session: (_ for _ in ()).throw(exception)
+    subject.participate = lambda session: (_ for _ in ()).throw(exception)
     with pytest.raises(type(exception)):
         Experiment(subject=subject, protocol=SessionProtocol('fail', factory),
             tools=[RecordInputsOutputs(), Ablate(['x'])],
@@ -306,7 +306,7 @@ def test_external_tool_uses_only_public_api(tmp_path):
 
 def test_snapshot_before_mutation_and_multiple_outputs(tmp_path):
     class Mutating(FixtureSubject):
-        def interact(self, session):
+        def participate(self, session):
             event = session.next_input()
             event.payload[:] = [9, 9]
             session.emit(StreamEvent('behavior', event.payload, 12))
@@ -508,7 +508,7 @@ def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
             self.state = 0
             self.resets += 1
 
-        def interact(self, session):
+        def participate(self, session):
             while (event := session.next_input()) is not None:
                 self.state += 1
                 session.respond(StreamEvent(channel='behavior', payload=self.state, t_ms=event.t_ms))
@@ -549,7 +549,7 @@ def _saved_chain(path):
 @pytest.mark.parametrize('cleanup', ['reset', 'trial_end_listener', 'tool_exit'])
 def test_cleanup_failure_keeps_original_failure_on_disk(tmp_path, cleanup):
     class Subject(FixtureSubject):
-        def interact(self, session):
+        def participate(self, session):
             raise ValueError('trial failed')
         def reset(self):
             super().reset()
@@ -845,7 +845,7 @@ def test_tool_bridge_rejects_reused_directory_before_connecting(tmp_path, monkey
 
 def test_session_protocol_relies_on_the_declared_contract(tmp_path):
     duck = SimpleNamespace(identifier='duck', in_channels={'stimulus'}, out_channels={'behavior'},
-                           interact=lambda session: None, reset=lambda: None)
+                           participate=lambda session: None, reset=lambda: None)
     with pytest.raises(TypeError, match='requires a Subject'):
         protocol().validate(duck)
 

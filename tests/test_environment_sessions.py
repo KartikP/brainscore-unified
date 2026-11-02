@@ -142,9 +142,9 @@ def test_caught_environment_failure_cannot_complete_an_experiment(tmp_path):
         def step(self, action):
             raise RuntimeError('connection lost')
     class Catches(BrainScoreModel):
-        def interact(self, session):
+        def participate(self, session):
             try:
-                super().interact(session)
+                super().participate(session)
             except RuntimeError:
                 pass
     @contextmanager
@@ -163,7 +163,7 @@ def test_caught_environment_failure_cannot_complete_an_experiment(tmp_path):
 
 def test_early_subject_return_cannot_complete_an_episode(tmp_path):
     class Early(BrainScoreModel):
-        def interact(self, session):
+        def participate(self, session):
             session.next_input()
     @contextmanager
     def factory(trial):

@@ -15,7 +15,7 @@ import sys
 
 
 def _dependency_rows():
-    from brainscore_core._env_check import describe_env
+    from brainscore_core.environment_check import describe_env
     return describe_env()
 
 

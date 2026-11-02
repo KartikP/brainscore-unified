@@ -182,7 +182,7 @@ def test_check_memory_probes_IT_with_a_frame_and_sizes_off_TR_count(tmp_path):
     from brainscore_core.model_interface import UnifiedModel
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
-    class _ImageOnlyModel(UnifiedModel):  # a typed subject: probed through interact
+    class _ImageOnlyModel(UnifiedModel):  # a typed subject: probed through participate
         identifier = 'img-only'
         region_layer_map = {'V1': 'early', 'IT': 'late'}  # IT is NOT first
         supported_modalities = {'vision'}

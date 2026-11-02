@@ -29,7 +29,7 @@ class DemonstrationSubject(Subject):
     def reset(self):
         self.memory = torch.zeros(2)
 
-    def interact(self, session):
+    def participate(self, session):
         while (event := session.next_input()) is not None:
             features = torch.tensor(self.encode(event.payload), dtype=torch.float32)
             with torch.no_grad():

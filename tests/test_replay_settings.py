@@ -15,7 +15,7 @@ class _TrialCounter(Subject):
     out_channels = {'behavior'}
     required_channels = set()
 
-    def interact(self, session):
+    def participate(self, session):
         while session.next_input() is not None:
             pass
         trials = (getattr(session, 'settings', None) or {}).get('number_of_trials', 1)

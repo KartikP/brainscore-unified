@@ -229,7 +229,7 @@ def test_patch_tool_records_reference_conditions_and_restoration(tmp_path):
         in_channels, out_channels = {'stimulus'}, {'behavior'}
         def __init__(self): self.model = LinearModel()
         def reset(self): pass
-        def interact(self, session):
+        def participate(self, session):
             event = session.next_input()
             value = self.model(torch.tensor(event.payload)).item()
             session.emit(StreamEvent('behavior', value, None))

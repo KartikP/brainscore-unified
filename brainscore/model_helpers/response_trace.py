@@ -90,7 +90,7 @@ class ResponseTraceCapability(Capability):
     def supports_session(self, model, channels):
         return set(channels) == {'response_trace'}
 
-    def interact(self, model, session):
+    def participate(self, model, session):
         while (event := session.next_input()) is not None:
             if not self.handles(model, event):
                 raise ValueError(f'Response trace session requires one of {sorted(self.input_channels)}')

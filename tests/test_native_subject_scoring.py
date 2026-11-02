@@ -17,7 +17,7 @@ class NativeSubject(Subject):
     out_channels = {"neural:language_network"}
     required_channels = {"text"}
 
-    def interact(self, session):
+    def participate(self, session):
         while (event := session.next_input()) is not None:
             session.emit(StreamEvent(
                 "neural:language_network", np.array([len(event.payload)]),
