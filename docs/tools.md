@@ -5,6 +5,9 @@ Load a fresh tool by identifier, then attach it directly or pass it to an
 and cleanup. `Experiment` owns the run; its protocol owns the procedure. Neither
 is itself a tool.
 
+See [instrumentation, tools and experiments](tools_and_experiments.md) for a
+short explanation of their responsibilities and a diagram.
+
 [Pretrained-model qualification](qualification/2026-11-02-interpretability-tools.md)
 covers GPT-2 and CLIP text on CPU float32, with independent numerical references,
 multiple tools and exact baseline restoration. Scientific causal claims require

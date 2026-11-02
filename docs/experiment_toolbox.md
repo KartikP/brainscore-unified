@@ -6,6 +6,9 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 
 ## How the pieces fit
 
+For a short overview and diagram, see
+[instrumentation, tools and experiments](tools_and_experiments.md).
+
 | Part | Responsibility |
 | --- | --- |
 | `Experiment` | Run the subject with one protocol and the selected tools; save results and clean up. |
