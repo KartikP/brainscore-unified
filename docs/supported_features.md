@@ -43,7 +43,7 @@ Pass these in `Experiment(tools=[...])`.
 
 | Tool | What it does | Requires |
 | --- | --- | --- |
-| `RecordInputsOutputs` | Save inputs, outputs, activity, errors, and lifecycle events | Supported payloads |
+| `RecordInputsOutputs` / `load_tool("record-io")` | Save inputs, outputs, activity, errors, and lifecycle events | Supported payloads; [tool catalog](tools.md) |
 | `RecordActivity` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation |
 | `Ablate` | Temporarily zero selected outputs, optionally in selected conditions/trials | Instrumentation |
 | `ScaleActivity` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged |

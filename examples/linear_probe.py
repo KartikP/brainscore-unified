@@ -7,7 +7,7 @@ import numpy as np
 import torch
 
 from brainscore.experiments import (
-    Ablate, Experiment, RecordInputsOutputs, SessionProtocol, TorchInstrumentation,
+    Ablate, Experiment, SessionProtocol, TorchInstrumentation,
 )
 from brainscore.tools import attach_tools, load_tool
 from brainscore_core.contract import Subject
@@ -71,7 +71,7 @@ def run(directory: Path) -> None:
         subject=subject,
         protocol=SessionProtocol('color-probe-demo', factory, conditions=['baseline', 'lesioned'],
                                  input_channels=['text'], output_channels=['neural:population']),
-        tools=[RecordInputsOutputs(), before,
+        tools=[load_tool('record-io'), before,
                Ablate(['population'], conditions=['lesioned']), after],
         instrumentation=provider, output_dir=directory / 'experiment',
     ).run()
@@ -79,7 +79,7 @@ def run(directory: Path) -> None:
         if event['kind'] == 'probe':
             print(event['source'], event['condition'], event['payload'].values.round(3).tolist())
 
-    with attach_tools(subject, tools=[RecordInputsOutputs(), after], instrumentation=provider,
+    with attach_tools(subject, tools=[load_tool('record-io'), after], instrumentation=provider,
                       output_dir=directory / 'direct'):
         subject.interact(make_session(['a red circle']))
 

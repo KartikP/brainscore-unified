@@ -15,9 +15,15 @@ def _ablate(**configuration: Any) -> Any:
     return Ablate(**configuration)
 
 
+def _record_io(**configuration: Any) -> Any:
+    from brainscore.experiments import RecordInputsOutputs
+    return RecordInputsOutputs(**configuration)
+
+
 _FACTORIES: dict[str, Callable[..., Any]] = {
     'ablate': _ablate,
     'linear-probe': _linear_probe,
+    'record-io': _record_io,
 }
 
 
