@@ -23,6 +23,7 @@ import logging
 import os
 import signal
 import threading
+import time
 
 from brainscore_core.events import EnvironmentStep
 from brainscore_core.model_interface import BrainScoreModel
@@ -129,6 +130,18 @@ def main():
     recorder = RunRecorder(args.out, metadata=metadata)
     policy = RecordedPolicy(upstream, route=args.route, recorder=recorder)
     server = OneSession(policy, host='127.0.0.1', port=args.port, metadata=metadata)
+    stopping, finished = threading.Event(), threading.Event()
+
+    def enforce_deadline():
+        stopping.wait()
+        deadline = stop.get('deadline')
+        if deadline is not None and not finished.wait(max(0, deadline - time.monotonic())):
+            os._exit(3)  # no I/O: an unfinished record stays open
+
+    # Start before installing signal handlers. Thread.start() waits for another
+    # thread; shutdown must not depend on starting one from a signal handler.
+    watchdog = threading.Thread(target=enforce_deadline, daemon=True)
+    watchdog.start()
 
     def finish():
         # Runs once, in the event loop: never inside a policy call or a record write.
@@ -146,10 +159,8 @@ def main():
         # the stop is scheduled on the event loop rather than relying on it.
         if not stop:
             stop['failed'] = server.sessions != 1 or server.connected
-            # The emergency exit does no I/O, so it cannot fail, block or race a write.
-            stop['watchdog'] = threading.Timer(STOP_GRACE_SECONDS, os._exit, args=(3,))
-            stop['watchdog'].daemon = True
-            stop['watchdog'].start()
+            stop['deadline'] = time.monotonic() + STOP_GRACE_SECONDS
+            stopping.set()
             if server.loop is not None and not server.loop.is_closed():
                 server.loop.call_soon_threadsafe(finish)
         if server.loop is None or policy.calling:
@@ -170,9 +181,9 @@ def main():
                 # interrupted call, and its connection threads must not delay exit.
                 upstream._ws.close_socket()
             finally:
-                if 'watchdog' in stop:
-                    stop['watchdog'].cancel()
-                    stop['watchdog'].join()
+                finished.set()
+                stopping.set()  # also release the watchdog after an unsignalled failure
+                watchdog.join()
 
 
 if __name__ == '__main__':

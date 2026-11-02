@@ -279,14 +279,18 @@ def test_server_helper_reports_a_forced_kill(tmp_path):
 #   close-hangs   saving the record never returns
 #   close-fails   saving the record raises OSError
 #   slow-upstream closing the upstream socket takes 1 s (a window after the loop closed)
+#   late-thread  a new thread cannot start after the evaluator has disconnected
+#   late-thread-close-hangs  combine blocked thread startup and a stuck record save
+#   serve-fails  the server raises before receiving a stop signal
 # Each step it reaches is printed, so a test can see what ran.
 BRIDGE_FAULTS = '''
-import os, runpy, sys, time
+import http, os, runpy, sys, threading, time
 from brainscore.run_record import RunRecorder
 import websockets.sync.connection as connection
+import openpi.serving.websocket_policy_server as upstream
 fault, close, close_socket = os.environ['BRIDGE_FAULT'], RunRecorder.close, connection.Connection.close_socket
 def record_close(self, **kwargs):
-    if fault == 'close-hangs':
+    if fault in ('close-hangs', 'late-thread-close-hangs'):
         time.sleep(60)
     if fault == 'close-fails':
         raise OSError('injected record failure')
@@ -297,6 +301,21 @@ def upstream_close(self):
         time.sleep(1)
     return close_socket(self)
 RunRecorder.close, connection.Connection.close_socket = record_close, upstream_close
+if fault in ('late-thread', 'late-thread-close-hangs'):
+    health = upstream._health_check
+    def blocked_start(self):
+        print('late thread start blocked', file=sys.stderr, flush=True)
+        time.sleep(60)
+    def check(connection, request):
+        if request.path == '/block-late-thread-start':
+            threading.Thread.start = blocked_start
+            return connection.respond(http.HTTPStatus.OK, 'Fault installed')
+        return health(connection, request)
+    upstream._health_check = check
+if fault == 'serve-fails':
+    def fail_serving(self):
+        raise RuntimeError('injected serving failure')
+    upstream.WebsocketPolicyServer.serve_forever = fail_serving
 sys.argv = sys.argv[1:]
 runpy.run_path(sys.argv[0], run_name='__main__')
 '''
@@ -329,6 +348,38 @@ def test_emergency_exit_is_unconditional_when_saving_the_record_hangs(tmp_path, 
     assert RunRecord.inspect(tmp_path / 'record')['status'] == 'incomplete'
 
 
+@pytest.mark.parametrize('save_hangs', [False, True])
+def test_stop_does_not_depend_on_starting_a_new_thread(tmp_path, monkeypatch, save_hangs):
+    fault = 'late-thread-close-hangs' if save_hangs else 'late-thread'
+    env = dict(transport_env(monkeypatch), BRIDGE_FAULT=fault)
+    from openpi_client.websocket_client_policy import WebsocketClientPolicy
+    process = []
+    with policy_server(env, tmp_path) as policy_port:
+        with capture_bridge(env, tmp_path, 'record', 'reference', policy_port,
+                            prefix=('-c', BRIDGE_FAULTS), process=process) as (port, log):
+            client = WebsocketClientPolicy('127.0.0.1', port)
+            client.infer(libero_request())
+            client._ws.close()
+            wait_until(sessions_closed(log))
+            # Simulate unavailable thread startup only after normal serving worked.
+            urllib.request.urlopen(
+                'http://127.0.0.1:%d/block-late-thread-start' % port, timeout=5).close()
+            started = time.monotonic()
+            process[0].send_signal(signal.SIGTERM)
+            assert process[0].wait(timeout=9) == (3 if save_hangs else 0)
+            if save_hangs:
+                assert 4 < time.monotonic() - started < 9
+    assert 'late thread start blocked' not in log.read_text()
+    manifest = capture_manifest(tmp_path / 'record')
+    assert manifest['status'] == ('open' if save_hangs else 'complete')
+    if save_hangs:
+        from brainscore.run_record import RunRecord
+        assert RunRecord.inspect(tmp_path / 'record')['status'] == 'incomplete'
+        assert (tmp_path / 'record/events.jsonl').read_bytes().count(b'\n') == 2
+    else:
+        assert manifest['event_count'] == 2
+
+
 def test_record_failure_still_closes_upstream_without_emergency_exit(tmp_path, monkeypatch):
     with faulty_bridge_session(tmp_path, monkeypatch, 'close-fails') as (process, log):
         started = time.monotonic()
@@ -339,6 +390,23 @@ def test_record_failure_still_closes_upstream_without_emergency_exit(tmp_path, m
     assert 'upstream socket closed' in text and 'OSError: injected record failure' in text
     assert code == 1 and elapsed < 3  # the error propagates; no emergency exit
     assert capture_manifest(tmp_path / 'record')['status'] == 'open'
+
+
+def test_server_failure_releases_the_idle_watchdog(tmp_path, monkeypatch):
+    env = dict(transport_env(monkeypatch), BRIDGE_FAULT='serve-fails')
+    with policy_server(env, tmp_path) as policy_port:
+        result = subprocess.run(
+            [sys.executable, '-c', BRIDGE_FAULTS,
+             str(ROOT / 'examples/libero/serve_bridge.py'), '--route', 'reference',
+             '--upstream-port', str(policy_port), '--port', str(free_port()),
+             '--out', str(tmp_path / 'record')],
+            env=env, capture_output=True, text=True, timeout=9,
+        )
+    assert result.returncode == 1
+    assert 'RuntimeError: injected serving failure' in result.stderr
+    assert 'upstream socket closed' in result.stderr
+    manifest = capture_manifest(tmp_path / 'record')
+    assert manifest['status'] == 'failed' and manifest['event_count'] == 0
 
 
 def test_repeated_stop_after_the_loop_closed_is_ignored(tmp_path, monkeypatch):
