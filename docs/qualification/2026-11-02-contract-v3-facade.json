@@ -1,6 +1,6 @@
 {
   "date": "2026-11-02",
-  "status": "compute-complete-malania-signoff-pending",
+  "status": "complete-with-maintainer-accepted-malania-exclusion",
   "candidate_unified": "b8880276242296c6857363777b4bd12a02ab5213",
   "focused_passes": {
     "core": 138,
@@ -199,7 +199,11 @@
     "response_arrays_exact": true,
     "threshold_fit_valid": false,
     "coordinate_fidelity_verified": false,
-    "full_call_comparison_exact": false
+    "full_call_comparison_exact": false,
+    "disposition": "excluded-from-this-review-by-maintainer",
+    "counted_as_pass": false,
+    "decision_date": "2026-11-02"
   },
-  "workers_stopped": true
+  "workers_stopped": true,
+  "handoff_branch": "feat/contract-v3-qualified"
 }

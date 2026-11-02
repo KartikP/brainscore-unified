@@ -1,6 +1,6 @@
 # Contract v3 facade: regression qualification
 
-November 2, 2026. **Compute completed; final Malania fidelity sign-off remains open.**
+November 2, 2026. **Scoped regression review complete; Malania excluded by maintainer decision.**
 
 The candidate combines the Contract v3 simplification with a permanent facade that
 runs legacy benchmark calls through `Subject.interact(session)`. This assessment
@@ -9,7 +9,9 @@ qualification of every supported model or environment.
 
 ## Revisions
 
-All candidate repositories use `feat/contract-v3-facade`.
+The tested runtime came from `feat/contract-v3-facade`. The handoff branch is
+`feat/contract-v3-qualified` in all four repositories; it preserves those runtime
+revisions and adds qualification documentation in unified.
 
 | Repository | Candidate tip | Runtime revision pinned by unified | Clean-v2 control |
 | --- | --- | --- | --- |
@@ -108,8 +110,12 @@ The serialized call comparison remains false. Presentation-coordinate tuples hav
 different ordering between processes, and the facade forwards the trial count
 positionally where the direct call uses a keyword. The probe did not save named
 MultiIndex levels, so coordinate fidelity remains unverified. Resolve that evidence
-gap before issuing a complete fidelity sign-off; do not discard coordinate checks
-or classify the difference as harmless without verifying it.
+gap remains unverified. Do not discard coordinate checks or classify the difference
+as harmless without verifying it.
+
+Kartik accepted Malania as outside the public benchmark scope for this review and
+closed this qualification work on November 2. It is an explicit exclusion, not a
+passing test. Revisit this evidence before making a support claim for Malania.
 
 ## Environment and execution
 
@@ -146,7 +152,12 @@ comparisons and test counts. Full logs, JUnit, package freezes, source revisions
 response arrays are retained privately by the maintainer; benchmark data and
 credentials are not included here.
 
-Finish the Malania coordinate/call-fidelity assessment, then record the final
-verdict. Any runtime fix needs affected checks repeated against the corresponding
-clean-v2 control. Current results establish no observed regression in the 14
-comparable matrix cases or six parity variants; the full gate is not signed off.
+This scoped regression review is complete by maintainer decision. No regression
+was observed in the 14 comparable matrix cases or six parity variants. Malania is
+excluded with the limitations above. No source was merged or package released by
+this qualification.
+
+Next: open coordinated review PRs against `unified-model-interface-v2`, retain
+the accepted exclusion in their descriptions, and verify final merged peer pins
+with CI. Any runtime fix needs affected checks repeated against the corresponding
+clean-v2 control. The broader release matrix remains separate roadmap work.
