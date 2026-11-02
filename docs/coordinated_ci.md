@@ -29,8 +29,8 @@ and requires branches to be up to date before merging.
 
 | Repository | Coordinated checks | Existing domain checks to retain |
 | --- | --- | --- |
-| Unified | `offline (ubuntu-24.04)`, `offline (macos-14)`, `OpenPI client protocol`, `OpenPI local instrumentation` | None |
-| Core | `UMI v2 / offline (ubuntu-24.04)`, `UMI v2 / offline (macos-14)`, `UMI v2 / OpenPI client protocol`, `UMI v2 / OpenPI local instrumentation` | `Core Unit tests (AWS Jenkins, AWS Execution)` |
+| Unified | `offline (ubuntu-24.04)`, `offline (macos-26)`, `OpenPI client protocol`, `OpenPI local instrumentation` | None |
+| Core | `UMI v2 / offline (ubuntu-24.04)`, `UMI v2 / offline (macos-26)`, `UMI v2 / OpenPI client protocol`, `UMI v2 / OpenPI local instrumentation` | `Core Unit tests (AWS Jenkins, AWS Execution)` |
 | Vision | Same four `UMI v2 / ...` checks | `Vision Unittests, Non-Plugins`, `Vision Unittests, Plugins` |
 | Language | Same four `UMI v2 / ...` checks | `Language Unittests, Non-Plugins`, `Language Unittests, Plugins`, `Language Integration Tests` |
 

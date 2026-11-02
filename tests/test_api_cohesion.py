@@ -177,10 +177,17 @@ def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_pat
 
 def test_experiment_warns_about_unregistered_channels_before_running():
     from brainscore_core.compatibility import CompatibilityWarning, CompatibilityError
-    subject = SimpleNamespace(
-        in_channels={'unregistered_input'}, out_channels={'behavior'},
-        interact=lambda session: None, reset=lambda: None,
-    )
+    from brainscore_core.contract import Subject
+
+    class Exploratory(Subject):
+        identifier = 'exploratory'
+        in_channels = {'unregistered_input'}
+        out_channels = {'behavior'}
+
+        def interact(self, session):
+            pass
+
+    subject = Exploratory()
     protocol = SessionProtocol(
         identifier='exploratory', session_factory=lambda trial: None,
         input_channels=['unregistered_input'], output_channels=['behavior'],

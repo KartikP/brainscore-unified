@@ -113,6 +113,14 @@ and adds trial records, initial-state hashes, error reporting, and distinct vide
 filenames. These additions make the result inspectable without redefining its
 score. Failed and interrupted trials must remain visible.
 
+With [`serve_tool_bridge.py`](../examples/libero/serve_tool_bridge.py), the
+evaluator and bridge also exchange a start message, per-call annotations, a
+final receipt and an acknowledgment sent only after the UMI records are saved.
+`compare.py --umi-experiment` joins those records to the report. `serve_bridge.py`
+records remain transport-only: they can be marked complete after a disconnect,
+a known gap tracked separately. See the
+[LIBERO README](../examples/libero/README.md#use-the-official-evaluator-with-tools).
+
 Check reset behavior explicitly. OpenPI's websocket client does not reset the
 server's random state, so we restart the policy server for matched runs. This
 integration does not establish support for recurrent policies that need a
@@ -151,10 +159,12 @@ do not assume the saved tuning file works on another GPU or software stack.
 
 With cached autotuning, the trained-policy smoke test completed **10/10 tasks on
 both routes**, and **221 saved inference requests matched exactly** through UMI.
-The full Spatial evaluation is still running at the time of writing. This is a
-candidate integration, not a completed full-suite qualification.
+This historical smoke test is not full-suite qualification. The hardened
+completion and failure paths also have model-free transport tests; those tests
+do not establish trained-policy parity on a new source revision.
 
-This example does not demonstrate internal activation recording, interventions,
-physical robot control, or a trained DROID evaluation. Each needs its own
-integration and evidence. Use the [DROID guide](droid_integration.md) for the
+The original transport smoke test did not exercise internal tools. Separate
+[OpenPI tool qualification](qualification/2026-10-06-openpi-tools.md) covers
+recording, ablation and restoration at three supported sampler sites. Neither
+report establishes physical robot control or trained DROID qualification. Use the [DROID guide](droid_integration.md) for the
 recorded-episode path.

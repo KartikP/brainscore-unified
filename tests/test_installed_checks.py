@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 import sys
 from types import SimpleNamespace
 import zipfile
@@ -126,6 +127,79 @@ def test_staging_keeps_fixtures_but_excludes_package_sources(tmp_path):
     assert (stage / 'templates/new_model/model.py').is_file()
     assert not (stage / 'brainscore').exists()
     assert not (stage / 'tests/__pycache__').exists()
+
+
+UNIFIED = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture
+def libero_checkout(tmp_path, monkeypatch):
+    """A checkout whose helper differs from a fake installed brainscore distribution."""
+    checkout = tmp_path / 'checkout'
+    evaluator = checkout / 'examples/libero/evaluate.py'
+    evaluator.parent.mkdir(parents=True)
+    evaluator.write_bytes((UNIFIED / 'examples/libero/evaluate.py').read_bytes())
+    source = checkout / workspace.EVALUATOR_HELPER
+    source.parent.mkdir(parents=True)
+    source.write_text('raise RuntimeError("source checkout helper")\n')
+    (checkout / 'brainscore/__init__.py').write_text('')
+    site = tmp_path / 'site-packages'
+    installed_helper = site / workspace.EVALUATOR_HELPER
+    installed_helper.parent.mkdir(parents=True)
+    content = (UNIFIED / workspace.EVALUATOR_HELPER).read_bytes() + b'INSTALLED = True\n'
+    installed_helper.write_bytes(content)
+    digest = base64.urlsafe_b64encode(hashlib.sha256(content).digest()).decode().rstrip('=')
+    dist_info = site / 'brainscore-1.0.dist-info'
+    dist_info.mkdir()
+    (dist_info / 'METADATA').write_text('Name: brainscore\nVersion: 1.0\n')
+    (dist_info / 'RECORD').write_text(f'{workspace.EVALUATOR_HELPER},sha256={digest},{len(content)}\n')
+    distribution = workspace.metadata.Distribution.at(dist_info)
+    monkeypatch.setattr(workspace.metadata, 'distribution',
+                        lambda name: distribution if name == 'brainscore' else None)
+    return checkout, installed_helper
+
+
+def test_staging_supplies_installed_evaluator_helper_without_package_source(tmp_path, libero_checkout):
+    checkout, installed_helper = libero_checkout
+    stage = tmp_path / 'stage'
+    stage.mkdir()
+    workspace.stage_tests(checkout, stage)
+    assert (stage / workspace.EVALUATOR_HELPER).read_bytes() == installed_helper.read_bytes()
+    assert sorted(str(p.relative_to(stage)) for p in (stage / 'brainscore').rglob('*')) == [
+        'brainscore/experiments', 'brainscore/experiments/backends', workspace.EVALUATOR_HELPER]
+    # The staged evaluator loads that copy by path and never imports brainscore.
+    probe = ('import importlib.util, sys\n'
+             f'spec = importlib.util.spec_from_file_location("evaluate", {str(stage / "examples/libero/evaluate.py")!r})\n'
+             'module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)\n'
+             'assert module.socket_deadline.INSTALLED\n'
+             'assert not [name for name in sys.modules if name.split(".")[0] == "brainscore"]\n'
+             'print(module.socket_deadline.__file__)\n')
+    run = subprocess.run([sys.executable, '-I', '-c', probe], cwd=tmp_path, capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    assert Path(run.stdout.strip()) == (stage / workspace.EVALUATOR_HELPER).resolve()
+
+
+def test_staging_rejects_helper_that_differs_from_its_record(tmp_path, libero_checkout):
+    checkout, installed_helper = libero_checkout
+    installed_helper.write_bytes(installed_helper.read_bytes() + b'# edited\n')
+    stage = tmp_path / 'stage'
+    stage.mkdir()
+    with pytest.raises(ValueError, match='differs from its RECORD'):
+        workspace.stage_tests(checkout, stage)
+
+
+def test_staging_rejects_helper_resolving_to_the_checkout(tmp_path, libero_checkout, monkeypatch):
+    checkout, _ = libero_checkout
+    # An editable or path install would locate the helper inside the source checkout.
+    class Entry(str):
+        hash = SimpleNamespace(mode='sha256', value='x')
+    monkeypatch.setattr(workspace.metadata, 'distribution', lambda name: SimpleNamespace(
+        files=[Entry(workspace.EVALUATOR_HELPER)],
+        locate_file=lambda entry: checkout / workspace.EVALUATOR_HELPER))
+    stage = tmp_path / 'stage'
+    stage.mkdir()
+    with pytest.raises(ValueError, match='source checkout'):
+        workspace.stage_tests(checkout, stage)
 
 
 @pytest.mark.parametrize('identity', [None, {'complete': False, 'returncode': 0},

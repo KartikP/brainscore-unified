@@ -23,7 +23,7 @@ If scoring reports a cache-storage error, see [cache troubleshooting](../docs/ge
 | --- | --- | --- | --- |
 | 01 | [Select layers](01_quickstart_layer_mapping.ipynb) | Register, score, and record one/all/composite mappings. | Synthetic stand-in; CPU, no download. |
 | 02 | [Compare with controls](02_behavioral_and_nulls.ipynb) | Interpret accuracy against random features. | Synthetic task; CPU. |
-| 07 | [Connect your model](07_bring_your_model.ipynb) | Inspect, wrap, extract, and generate a registration template. | Random-weight ResNet-18; CPU. |
+| 07 | [Connect your model](07_bring_your_model.ipynb) | Inspect, wrap, extract, generate a registration template, and run a legacy benchmark with an interact-only subject. | Random-weight ResNet-18; CPU. |
 | 09 | [Read saved scores](09_scaling_curves.ipynb) | Compare each saved result with its own controls. | Local saved results; no new scoring. |
 | 10 | [Compare with brain recordings](10_brain_alignment.ipynb) | Plot held-out predictions and measured IT responses. | Saved CLIP/MajajHong results; CPU to replot. |
 

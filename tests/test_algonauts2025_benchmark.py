@@ -178,9 +178,14 @@ def test_check_memory_probes_IT_with_a_frame_and_sizes_off_TR_count(tmp_path):
 
     recorded = {}
 
-    class _ImageOnlyModel:
+    import numpy as np
+    from brainscore_core.model_interface import UnifiedModel
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+
+    class _ImageOnlyModel(UnifiedModel):  # a typed subject: probed through interact
         identifier = 'img-only'
         region_layer_map = {'V1': 'early', 'IT': 'late'}  # IT is NOT first
+        supported_modalities = {'vision'}
         def start_recording(self, target, time_bins=None, recording_type=None):
             recorded['target'] = target
         def process(self, stimuli):
@@ -188,7 +193,9 @@ def test_check_memory_probes_IT_with_a_frame_and_sizes_off_TR_count(tmp_path):
             # the declared image frame, which it accepts
             if not hasattr(stimuli, 'stimulus_paths'):
                 raise RuntimeError("cannot process a raw video row")
-            return type('R', (), {'shape': (1, 768)})()
+            return NeuroidAssembly(np.zeros((1, 768)), dims=['presentation', 'neuroid'],
+                                   coords={'stimulus_id': ('presentation', [0]),
+                                           'neuroid_id': ('neuroid', list(range(768)))})
 
     b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
     assembly, n_trs, _ = _mock_assembly_two_runs(tr_per_run=20)

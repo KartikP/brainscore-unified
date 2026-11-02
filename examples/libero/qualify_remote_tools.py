@@ -11,7 +11,13 @@ import time
 import numpy as np
 
 
-def qualify(policy, requests, out, checkpoint):
+def _check(condition, message):
+    # An explicit raise, unlike assert, still runs under python -O.
+    if not condition:
+        raise RuntimeError(message)
+
+
+def qualify(policy, requests, out, checkpoint, *, source=None):
     from websockets.sync.server import serve
     from brainscore.experiments import (
         OpenPIInstrumentation,
@@ -43,6 +49,8 @@ def qualify(policy, requests, out, checkpoint):
     report = {
         'scope': 'trained same-input remote policy; no simulator',
         'calls': len(requests),
+        'checkpoint': checkpoint,
+        'source': source,
         'instrumentation': backend.describe(),
         'baseline_seconds': baseline_times,
     }
@@ -88,21 +96,29 @@ def qualify(policy, requests, out, checkpoint):
                             output_dir=out / name,
                         ).run()
                     report[name + '_seconds'] = timings
-                    equal = all(np.array_equal(a, b) for a, b in zip(baseline, outputs))
+                    equal = len(outputs) == len(baseline) and all(
+                        np.array_equal(a, b) for a, b in zip(baseline, outputs))
                     report[name + '_exact_baseline'] = equal
                     if name != 'ablation':
-                        assert equal, f'{name} actions differ from direct baseline'
+                        _check(equal, f'{name} actions differ from direct baseline')
                     else:
-                        assert not equal, 'Ablation had no action effect'
-                        values = [
-                            e['payload']['value']['array']
-                            for e in RunRecord(out / name).events()
-                            if e['kind'] == 'activity' and e['source'] == 'after'
-                        ]
-                        assert values and all(np.all(v == 0) for v in values), (
-                            'Selected unit not silenced'
-                        )
+                        # Informative only: an intervention need not change actions.
+                        report['effects'] = {'ablation_changed_actions': not equal}
+                        _check(len(outputs) == len(baseline)
+                               and all(np.isfinite(a).all() for a in outputs),
+                               'Ablation outputs are missing or nonfinite')
+                        activity = [e for e in RunRecord(out / name).events()
+                                    if e['kind'] == 'activity']
+                        after = [e['payload']['value']['array'] for e in activity
+                                 if e['source'] == 'after']
+                        before = [e['payload']['value']['array'] for e in activity
+                                  if e['source'] == 'before']
+                        _check(after and all(np.all(v == 0) for v in after),
+                               'Selected unit not silenced')
+                        _check(any(np.any(v != 0) for v in before),
+                               'Selected unit was already zero before ablation')
                         report['selected_unit_zeroed'] = True
+                        report['selected_unit_was_nonzero'] = True
                 report['status'] = 'passed'
             finally:
                 ws.shutdown()
@@ -120,18 +136,22 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint', required=True, type=Path)
     parser.add_argument('--record', required=True, type=Path)
+    parser.add_argument('--report', required=True, type=Path, help='evaluate.py output of the source run')
     parser.add_argument('--out', required=True, type=Path)
     args = parser.parse_args()
+    from itertools import islice
     from brainscore.run_record import RunRecord
+    from replay import pairs, verify_capture
     from serve_tools import checkpoint_digest, load_policy
 
     record = RunRecord(args.record)
-    assert record.manifest['status'] == 'complete'
-    requests = [r['payload'] for r in record.events() if r['kind'] == 'input'][:10]
+    source = verify_capture(record, args.report)
+    requests = [request for request, _ in islice(pairs(record, source['calls']), 10)]
     report = qualify(
         load_policy('pi05_libero', args.checkpoint),
         requests,
         args.out,
         'pi05_libero:sha256:' + checkpoint_digest(args.checkpoint),
+        source=source,
     )
     print(json.dumps(report, indent=2))
