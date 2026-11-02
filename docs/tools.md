@@ -20,6 +20,7 @@ lesion = load_tool("ablate", targets=["language"], name="language_lesion")
 | `patch-activity` | Existing `PatchActivity` replacement | `targets`, `reference`, optional `conditions`, `trials`, `name` |
 | `record-activity` | Existing `RecordActivity` internal recorder | `targets`, optional `when` (`before`/`after`) and `name` |
 | `record-io` | Existing `RecordInputsOutputs` event writer | Optional `max_bytes` |
+| `record-reasoning` | Existing `RecordReasoning` exposed-text recorder | Optional `extract`, `name`; requires `record-io` |
 | `scale-activity` | Existing `ScaleActivity` intervention | `targets`, `factor`, optional `conditions`, `trials`, `name` |
 
 The registry is explicit. An external package may call
@@ -202,3 +203,23 @@ observer, and exact prior instance attributes are restored after the scope.
 Observer failures propagate. Call arguments are live objects; callbacks that
 retain them must take their own snapshots. This adapter does not serialize
 callback results or turn arbitrary call arguments into session events.
+
+## Record exposed reasoning
+
+```python
+reasoning = load_tool("record-reasoning", name="reasoning")
+summaries = load_tool("record-reasoning", name="summaries", extract=extract_summary)
+```
+
+Put these observer tools after the shared `record-io` writer. The default reads
+the explicit reasoning field of `response_trace`; a custom `extract(output)`
+adapts another exposed format and returns text, text blocks, or `None`. Answer
+text is not automatically labeled reasoning, and hidden reasoning is not recovered.
+
+Each named instance writes its own directory, readable with
+`RunRecord(result.directory / name)`, linked to the shared inputs and original
+responses. Names must be single, unreserved directory components. Default naming,
+record schemas, unavailable-versus-empty distinctions, and streamed
+delta/snapshot formats remain unchanged. Failed extraction fails the run and
+leaves failed records for diagnosis. `record-io`'s byte budget does not cap these
+separate reasoning records. See [reasoning recording](reasoning_recording.md).

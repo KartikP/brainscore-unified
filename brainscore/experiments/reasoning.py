@@ -1,5 +1,6 @@
 """Record provider-exposed reasoning using the shared run-record format."""
 from contextlib import contextmanager
+from typing import Any, Callable
 
 from brainscore.run_record import RunRecorder
 from brainscore_core.streaming import StreamEvent
@@ -58,9 +59,15 @@ class RecordReasoning(Tool):
     """
     name = 'reasoning'
 
-    def __init__(self, extract=None):
+    def __init__(self, extract: Callable[[Any], Any] | None = None, *,
+                 name: str | None = None) -> None:
         if extract is not None and not callable(extract):
             raise TypeError('extract must be callable')
+        name = self.name if name is None else name
+        if (not isinstance(name, str) or not name.strip() or any(c in name for c in '/\\:\0')
+                or name in {'.', '..', 'inputs_outputs', 'arrays', 'files', 'experiment.json', 'result.json'}):
+            raise ValueError('Tool name must be a nonempty, unreserved directory name')
+        self.name = name
         self.extract = _trace_reasoning if extract is None else extract
 
     def describe(self):

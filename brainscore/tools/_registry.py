@@ -40,6 +40,11 @@ def _observe_calls(**configuration: Any) -> Any:
     return ObserveCalls(**configuration)
 
 
+def _record_reasoning(**configuration: Any) -> Any:
+    from brainscore.experiments import RecordReasoning
+    return RecordReasoning(**configuration)
+
+
 _FACTORIES: dict[str, Callable[..., Any]] = {
     'ablate': _ablate,
     'linear-probe': _linear_probe,
@@ -47,6 +52,7 @@ _FACTORIES: dict[str, Callable[..., Any]] = {
     'patch-activity': _patch_activity,
     'record-activity': _record_activity,
     'record-io': _record_io,
+    'record-reasoning': _record_reasoning,
     'scale-activity': _scale_activity,
 }
 
