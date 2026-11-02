@@ -92,3 +92,17 @@ scientific limits are in the
 
 Upstream: [source](https://github.com/epflneuroailab/mirage) and
 [released encoder](https://huggingface.co/epfl-neuroai/mirage).
+
+## Runtime overhead
+
+The [performance report](../../docs/mirage_umi_performance.md) measures native
+CLI, UMI session and recorded-experiment latency under matched execution settings.
+The current adapter adds approximately 5–6% on the two short clips. Its per-call
+encoder checkpoint verification takes about 2.81 s; host work outside the runtime
+call takes about 3 ms, or 13 ms with the experiment and recording tools.
+
+Use `measure_overhead.py --help` for the reproducible timing driver.
+`timing_worker.py` adds benchmark-only phase timers around the unchanged native
+CLI or qualified worker. [performance.json](performance.json) contains compact
+results; the full samples and recordings remain outside Git. The measurements
+use an initialized host and fresh native workers with warm filesystem caches.
