@@ -16,6 +16,7 @@ lesion = load_tool("ablate", targets=["language"], name="language_lesion")
 | --- | --- | --- |
 | `ablate` | Existing `Ablate` tool | `targets`, optional `conditions`, `trials`, `name` |
 | `linear-probe` | Fitted logistic readout | `target` and fitting settings, or `artifact`; [guide](linear_probe.md) |
+| `observe-calls` | Existing `ObserveCalls` adapter | `observer`, optional `methods`, `name` |
 | `patch-activity` | Existing `PatchActivity` replacement | `targets`, `reference`, optional `conditions`, `trials`, `name` |
 | `record-activity` | Existing `RecordActivity` internal recorder | `targets`, optional `when` (`before`/`after`) and `name` |
 | `record-io` | Existing `RecordInputsOutputs` event writer | Optional `max_bytes` |
@@ -181,3 +182,23 @@ Each active patch target must execute exactly once per trial/direct scope;
 missing or repeated calls fail and detach hooks. Autoregressive generation loops
 remain unsupported by this exact-patch scope. The backend must support `patch`
 (currently local PyTorch); this loader does not extend backend coverage.
+
+## Observe public calls
+
+```python
+observer_tool = load_tool("observe-calls", observer=my_observer,
+                          methods=["interact"], name="call_counts")
+```
+
+An observer implements any of `on_start(call)`, `on_result(call, result)` and
+`on_error(call, error)`. Use `methods=["interact"]` for a native subject, or
+explicit public methods exposed by an existing legacy evaluator. The default
+remains `("process",)` for compatibility; it is not required by `Subject`.
+There is no automatic method or capability discovery.
+
+Put observers before activity and intervention tools. Multiple named observers
+receive independent notifications. Nested selected methods count once per
+observer, and exact prior instance attributes are restored after the scope.
+Observer failures propagate. Call arguments are live objects; callbacks that
+retain them must take their own snapshots. This adapter does not serialize
+callback results or turn arbitrary call arguments into session events.

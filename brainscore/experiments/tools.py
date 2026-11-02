@@ -212,7 +212,10 @@ class ObserveCalls(Tool):
     Native session tools use on_event instead; a session event is not a method
     call. This adapter preserves existing observers without inventing call data.
     """
-    def __init__(self, observer, *, methods=('process',), name='call_observer'):
+    def __init__(self, observer: Any, *, methods: Sequence[str] = ('process',),
+                 name: str = 'call_observer') -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError('Tool name must be a nonempty string')
         self.observer, self.methods, self.name = observer, tuple(methods), name
 
     def describe(self):

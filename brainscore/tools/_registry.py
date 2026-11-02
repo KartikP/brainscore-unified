@@ -35,9 +35,15 @@ def _patch_activity(**configuration: Any) -> Any:
     return PatchActivity(**configuration)
 
 
+def _observe_calls(**configuration: Any) -> Any:
+    from brainscore.experiments import ObserveCalls
+    return ObserveCalls(**configuration)
+
+
 _FACTORIES: dict[str, Callable[..., Any]] = {
     'ablate': _ablate,
     'linear-probe': _linear_probe,
+    'observe-calls': _observe_calls,
     'patch-activity': _patch_activity,
     'record-activity': _record_activity,
     'record-io': _record_io,
