@@ -1,0 +1,175 @@
+{
+  "schema_version": 1,
+  "run_id": "1d36f71ee93742669a6f888283e88101",
+  "metadata": {
+    "$mapping": [
+      [
+        "experiment",
+        "311c33f72e0344ab85d4aa1559c04c79"
+      ],
+      [
+        "plan",
+        {
+          "$mapping": [
+            [
+              "subject",
+              "memo-rsa-depth-0-beta-1"
+            ],
+            [
+              "subject_type",
+              "brainscore.memo_umi.subject.MemoSubject"
+            ],
+            [
+              "protocol",
+              {
+                "$mapping": [
+                  [
+                    "identifier",
+                    "memo-rsa-green-pink-square-round"
+                  ],
+                  [
+                    "implementation",
+                    "brainscore.experiments.runner.SessionProtocol"
+                  ],
+                  [
+                    "config",
+                    {
+                      "$mapping": [
+                        [
+                          "conditions",
+                          {
+                            "$tuple": [
+                              "default"
+                            ]
+                          }
+                        ],
+                        [
+                          "trials",
+                          {
+                            "$tuple": [
+                              "all-four-utterances"
+                            ]
+                          }
+                        ],
+                        [
+                          "input_channels",
+                          [
+                            "instruction",
+                            "text"
+                          ]
+                        ],
+                        [
+                          "output_channels",
+                          [
+                            "behavior"
+                          ]
+                        ],
+                        [
+                          "metadata",
+                          {
+                            "$mapping": [
+                              [
+                                "utterance_order",
+                                {
+                                  "$tuple": [
+                                    "green",
+                                    "pink",
+                                    "square",
+                                    "round"
+                                  ]
+                                }
+                              ],
+                              [
+                                "choice_order",
+                                {
+                                  "$tuple": [
+                                    "green square",
+                                    "green circle",
+                                    "pink circle"
+                                  ]
+                                }
+                              ],
+                              [
+                                "scene",
+                                "Choose among three objects: a green square, a green circle, and a pink circle. A speaker chose one object and uttered one of green, pink, square, or round. Infer the intended referent."
+                              ]
+                            ]
+                          }
+                        ],
+                        [
+                          "factory_argument",
+                          "trial"
+                        ],
+                        [
+                          "reset_policy",
+                          "before and after each trial; tools attach after initial reset"
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "tools",
+              [
+                {
+                  "$mapping": [
+                    [
+                      "name",
+                      "inputs_outputs"
+                    ],
+                    [
+                      "implementation",
+                      "brainscore.experiments.tools.RecordInputsOutputs"
+                    ],
+                    [
+                      "phase",
+                      "observe"
+                    ],
+                    [
+                      "config",
+                      {
+                        "$mapping": []
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ],
+            [
+              "instrumentation",
+              null
+            ],
+            [
+              "metadata",
+              {
+                "$mapping": [
+                  [
+                    "comparison",
+                    "model_configuration_only"
+                  ],
+                  [
+                    "reasoning_depth",
+                    0
+                  ],
+                  [
+                    "beta",
+                    1.0
+                  ],
+                  [
+                    "python_executable",
+                    "/private/tmp/memo-rsa-py312/bin/python"
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    ]
+  },
+  "status": "complete",
+  "event_count": 12,
+  "events_sha256": "631abf3e5f776cb26a6e211c904e59fa0279cf428ce5929f039eed573731defd"
+}

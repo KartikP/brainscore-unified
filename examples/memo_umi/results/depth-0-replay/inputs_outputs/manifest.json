@@ -1,0 +1,158 @@
+{
+  "schema_version": 1,
+  "run_id": "193648d119574611bc2600c6d97e7aad",
+  "metadata": {
+    "$mapping": [
+      [
+        "experiment",
+        "79c887a738824f0da05127c1dca07d64"
+      ],
+      [
+        "plan",
+        {
+          "$mapping": [
+            [
+              "subject",
+              "memo-rsa-depth-0-beta-1"
+            ],
+            [
+              "subject_type",
+              "brainscore.memo_umi.subject.MemoSubject"
+            ],
+            [
+              "protocol",
+              {
+                "$mapping": [
+                  [
+                    "identifier",
+                    "saved-session-inputs"
+                  ],
+                  [
+                    "implementation",
+                    "brainscore.experiments.runner.SessionProtocol"
+                  ],
+                  [
+                    "config",
+                    {
+                      "$mapping": [
+                        [
+                          "conditions",
+                          {
+                            "$tuple": [
+                              "default"
+                            ]
+                          }
+                        ],
+                        [
+                          "trials",
+                          {
+                            "$tuple": [
+                              "all-four-utterances"
+                            ]
+                          }
+                        ],
+                        [
+                          "input_channels",
+                          [
+                            "instruction",
+                            "text"
+                          ]
+                        ],
+                        [
+                          "output_channels",
+                          [
+                            "behavior"
+                          ]
+                        ],
+                        [
+                          "metadata",
+                          {
+                            "$mapping": [
+                              [
+                                "source",
+                                "/private/tmp/memo-umi-runs-final4/depth-0"
+                              ],
+                              [
+                                "source_record_id",
+                                "1d36f71ee93742669a6f888283e88101"
+                              ],
+                              [
+                                "source_events_sha256",
+                                "631abf3e5f776cb26a6e211c904e59fa0279cf428ce5929f039eed573731defd"
+                              ],
+                              [
+                                "mode",
+                                "open_loop_saved_inputs"
+                              ]
+                            ]
+                          }
+                        ],
+                        [
+                          "factory_argument",
+                          "trial"
+                        ],
+                        [
+                          "reset_policy",
+                          "before and after each trial; tools attach after initial reset"
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ],
+            [
+              "tools",
+              [
+                {
+                  "$mapping": [
+                    [
+                      "name",
+                      "inputs_outputs"
+                    ],
+                    [
+                      "implementation",
+                      "brainscore.experiments.tools.RecordInputsOutputs"
+                    ],
+                    [
+                      "phase",
+                      "observe"
+                    ],
+                    [
+                      "config",
+                      {
+                        "$mapping": []
+                      }
+                    ]
+                  ]
+                }
+              ]
+            ],
+            [
+              "instrumentation",
+              null
+            ],
+            [
+              "metadata",
+              {
+                "$mapping": [
+                  [
+                    "purpose",
+                    "replay_saved_inputs_rerunning_memo"
+                  ],
+                  [
+                    "source_record",
+                    "/private/tmp/memo-umi-runs-final4/depth-0"
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      ]
+    ]
+  },
+  "status": "complete",
+  "event_count": 12,
+  "events_sha256": "8a5970bc1a0569e1f56b8de2736b35620becf2fb65e4726d1ab23eefb59f8af9"
+}

@@ -1,0 +1,85 @@
+{
+  "schema_version": 1,
+  "run_id": "5be1a8990d0b4333b3867201639284bd",
+  "status": "complete",
+  "started_utc": "2026-11-02T10:52:21.331176+00:00",
+  "plan": {
+    "subject": "memo-rsa-depth-1-beta-1",
+    "subject_type": "brainscore.memo_umi.subject.MemoSubject",
+    "protocol": {
+      "identifier": "memo-rsa-green-pink-square-round",
+      "implementation": "brainscore.experiments.runner.SessionProtocol",
+      "config": {
+        "conditions": [
+          "default"
+        ],
+        "trials": [
+          "all-four-utterances"
+        ],
+        "input_channels": [
+          "instruction",
+          "text"
+        ],
+        "output_channels": [
+          "behavior"
+        ],
+        "metadata": {
+          "utterance_order": [
+            "green",
+            "pink",
+            "square",
+            "round"
+          ],
+          "choice_order": [
+            "green square",
+            "green circle",
+            "pink circle"
+          ],
+          "scene": "Choose among three objects: a green square, a green circle, and a pink circle. A speaker chose one object and uttered one of green, pink, square, or round. Infer the intended referent."
+        },
+        "factory_argument": "trial",
+        "reset_policy": "before and after each trial; tools attach after initial reset"
+      }
+    },
+    "tools": [
+      {
+        "name": "inputs_outputs",
+        "implementation": "brainscore.experiments.tools.RecordInputsOutputs",
+        "phase": "observe",
+        "config": {}
+      }
+    ],
+    "instrumentation": null,
+    "metadata": {
+      "comparison": "model_configuration_only",
+      "reasoning_depth": 1,
+      "beta": 1.0,
+      "python_executable": "/private/tmp/memo-rsa-py312/bin/python"
+    }
+  },
+  "artifacts": [
+    {
+      "path": "result.json",
+      "producer": "protocol",
+      "description": "Protocol return value, RunRecord payload encoding",
+      "sha256": "4ecfb72981da08c90d28f54787f899870e409f45b38a1c5f542b7bd9296264c6",
+      "bytes": 1254
+    },
+    {
+      "path": "inputs_outputs/manifest.json",
+      "producer": "brainscore.RunRecorder",
+      "description": "Record manifest with event-log checksum",
+      "sha256": "ecd5c8c83d96a100503916bb4ee34903f377a09e1263882df7786218f7764a33",
+      "bytes": 5277
+    },
+    {
+      "path": "inputs_outputs/events.jsonl",
+      "producer": "brainscore.RunRecorder",
+      "description": "Events with content-addressed array/file references",
+      "sha256": "a596e1175b6692dc1a328566da2e2f607480ff24b77974b91577f0b1c272d6a3",
+      "bytes": 8738
+    }
+  ],
+  "finished_utc": "2026-11-02T10:52:21.793302+00:00",
+  "event_count": 12
+}

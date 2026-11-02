@@ -1,0 +1,68 @@
+[
+  {
+    "$assembly": "BehavioralAssembly",
+    "dims": [
+      "presentation",
+      "choice"
+    ],
+    "data": {
+      "$array": "b5305d4688c446edccc7bf6c00e7f1fcbad88b678a6ebbe715ef019f848ecb36"
+    },
+    "attrs": {
+      "$mapping": []
+    },
+    "name": null,
+    "multi_indexes": {
+      "presentation": [
+        "stimulus_id",
+        "stimulus_index"
+      ]
+    },
+    "coords": {
+      "choice": {
+        "dims": [
+          "choice"
+        ],
+        "data": {
+          "$array": "3a5b5f6639f200fea62ef17ed7b4b4193d3032bb3437d08d6050ecd0e52cfac2"
+        }
+      },
+      "presentation": {
+        "dims": [
+          "presentation"
+        ],
+        "data": {
+          "$object_array": [
+            {
+              "$tuple": [
+                "green",
+                0
+              ]
+            },
+            {
+              "$tuple": [
+                "pink",
+                1
+              ]
+            },
+            {
+              "$tuple": [
+                "square",
+                2
+              ]
+            },
+            {
+              "$tuple": [
+                "round",
+                3
+              ]
+            }
+          ],
+          "shape": [
+            4
+          ]
+        }
+      }
+    }
+  }
+]
