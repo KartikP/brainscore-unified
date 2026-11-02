@@ -18,6 +18,7 @@ Usage:
 import functools
 import logging
 from collections import OrderedDict
+from copy import deepcopy
 from typing import Callable, List, Optional, Union
 
 import numpy as np
@@ -147,13 +148,19 @@ class TextWrapper:
             'last_token' for causal models, 'mean_tokens' for encoders.
         max_length: Max token length for truncation.
         batch_size: Number of texts per forward pass.
+        provenance: Optional model provenance (revision, dtype, settings). When
+            given, a copy is set as ``attrs['provenance']`` on every returned
+            assembly. Like every constructor setting it is part of the
+            activation-cache fingerprint (``CACHE_FIELDS``), so registrations
+            with different provenance never share a cache entry. Default
+            (None): no attr is added.
     """
 
     VALID_AGGREGATIONS = ('last_token', 'mean_tokens', 'per_token')
 
     def __init__(self, model, tokenizer, identifier=None, backbone_id=None,
                  layer_aggregation='last_token', max_length=512,
-                 batch_size=32):
+                 batch_size=32, provenance=None):
         import torch
         if layer_aggregation not in self.VALID_AGGREGATIONS:
             raise ValueError(
@@ -194,6 +201,7 @@ class TextWrapper:
         # cache-key without disturbing log/telemetry identifiers.
         self._backbone_id = backbone_id or self._identifier
         self._stimuli_identifier = None
+        self._provenance = None if provenance is None else deepcopy(dict(provenance))
 
     @property
     def identifier(self):
@@ -212,7 +220,10 @@ class TextWrapper:
 
         Args:
             stimuli: StimulusSet with 'sentence' or 'text' column, or list of strings.
-            layers: List of layer name strings to extract from.
+            layers: List of layer name strings to extract from. Suffix a name
+                with ``':input'`` to record the module's first input instead of
+                its output, e.g. ``'model.layers.14.mlp.down_proj:input'`` for
+                a transformer's MLP neurons (the same name a perturbation uses).
             stimuli_identifier: Identifier for caching. None to use stimulus_set.identifier.
 
         Returns:
@@ -221,9 +232,12 @@ class TextWrapper:
             ``(presentation, time_bin, neuroid)`` for ``per_token``.
         """
         if isinstance(stimuli, StimulusSet):
-            return self._from_stimulus_set(stimuli, layers, stimuli_identifier)
+            assembly = self._from_stimulus_set(stimuli, layers, stimuli_identifier)
         else:
-            return self._from_texts(stimuli, layers, stimuli_identifier)
+            assembly = self._from_texts(stimuli, layers, stimuli_identifier)
+        if self._provenance is not None:
+            assembly.attrs['provenance'] = deepcopy(self._provenance)
+        return assembly
 
     def _from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
         if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
@@ -249,6 +263,7 @@ class TextWrapper:
         '_layer_aggregation',
         '_max_length',
         '_batch_size',
+        '_provenance',
     )
 
     def cache_config(self):
@@ -533,8 +548,9 @@ class TextWrapper:
         return layer_results
 
     def _get_layer(self, layer_name):
+        from brainscore.model_helpers.selection import split_site
         module = self._model
-        for part in layer_name.split('.'):
+        for part in split_site(layer_name)[0].split('.'):
             module = getattr(module, part, None)
             if module is None:
                 raise ValueError(
@@ -542,6 +558,8 @@ class TextWrapper:
         return module
 
     def _register_hook(self, layer, layer_name, target_dict):
+        from brainscore.model_helpers.selection import split_site
+
         def hook_fn(_module, _input, output, name=layer_name):
             if isinstance(output, (tuple, list)):
                 output = output[0]
@@ -555,6 +573,11 @@ class TextWrapper:
                 activations = activations.float()
             target_dict[name] = activations.numpy()
 
+        if split_site(layer_name)[1] == 'input':
+            # ':input' records the module's first input, the same tensor a
+            # ':input' perturbation modifies (see brainscore.perturbation).
+            return layer.register_forward_pre_hook(
+                lambda module, args: hook_fn(module, args, args[0]))
         return layer.register_forward_hook(hook_fn)
 
     def _package(self, layer_activations, texts):

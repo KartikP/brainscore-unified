@@ -19,6 +19,21 @@ REQUEST_CHANNELS = {
     'context_choice_request': 'Constrained choice between two contexts for each target',
 }
 
+# Request keys a provider may rely on. Providers ignore keys they do not use.
+PAYLOAD_CONTRACTS = {
+    'generation_request': (
+        "dict: messages (list of {role, content}) for one conversation, or conversations "
+        "(list of message lists) for a batch; optional system, temperature (0 = greedy), "
+        "top_p, max_tokens, seed. Raw response: text (a batch also returns texts), "
+        "reasoning, token_usage."),
+    'conditional_logprob_request': (
+        "dict: targets and contexts (equal-length lists of str), scoring log p(target | context); "
+        "optional reduction ('sum', default, or 'mean' over target tokens) and context_format "
+        "('raw', default, or 'chat': each context is a user turn). Every context and target must "
+        "tokenize to at least one token (no BOS is added; an empty raw context is rejected). "
+        "Answer: one float per target."),
+}
+
 
 class ResponseTraceCapability(Capability):
     identifier = 'response-trace'
@@ -36,14 +51,26 @@ class ResponseTraceCapability(Capability):
     def handles(self, model, event, **kwargs):
         return isinstance(event, StreamEvent) and event.channel in self.input_channels
 
+    @staticmethod
+    def _route(config, channel):
+        """The provider and parser for a request channel.
+
+        One capability can serve several request channels: ``config['channels']``
+        maps a channel to its own ``{provider, parse}``. Without it, every
+        channel uses ``config['provider']`` and ``config['parse']``.
+        """
+        route = config.get('channels', {}).get(channel, config)
+        return route['provider'], route['parse']
+
     def _response(self, model, event, raw, *, final=True):
         config = model.capability_config[self.identifier]
+        _, parse = self._route(config, event.channel)
         if not isinstance(raw, dict) or not isinstance(raw.get('text'), str):
             raise TypeError('Provider must return a dict containing text: str')
         answer, valid, error = None, None, None
         if final:
             try:
-                answer = config['parse'](raw['text'])
+                answer = parse(raw['text'])
                 valid = True
             except (ValueError, TypeError) as exc:
                 answer, valid, error = None, False, str(exc)
@@ -56,7 +83,7 @@ class ResponseTraceCapability(Capability):
     def _stream(self, model, event):
         from copy import deepcopy
         config = model.capability_config[self.identifier]
-        source = config['provider'](event.payload)
+        source = self._route(config, event.channel)[0](event.payload)
         final_seen = False
         try:
             for index, raw in enumerate(source):
@@ -80,7 +107,7 @@ class ResponseTraceCapability(Capability):
     def process(self, model, event, **kwargs):
         config = model.capability_config[self.identifier]
         if not config.get('streaming', False):
-            return self._response(model, event, config['provider'](event.payload))
+            return self._response(model, event, self._route(config, event.channel)[0](event.payload))
         # A direct call returns one result, retaining every raw stream fragment.
         responses = list(self._stream(model, event))
         final = responses[-1]
@@ -156,7 +183,7 @@ def register_trace_channels() -> None:
         direction = 'output' if name == 'response_trace' else 'input'
         if not io_catalog.has(name):
             register_channel(CatalogEntry(name, direction, 'StreamEvent',
-                'dict; see response_trace module',
+                PAYLOAD_CONTRACTS.get(name, 'dict; see response_trace module'),
                 REQUEST_CHANNELS.get(name, 'Provider response with raw text and parsed answer'),
                 owner='brainscore.response_trace',
                 shape_validator=lambda value: isinstance(value, dict)))
