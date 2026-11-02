@@ -38,12 +38,14 @@ with the constraint file. Do not run an unpinned pip upgrade in a scored experim
 
 ## Compatibility boundary
 
-Preserve `Subject.interact(session)`, the `UnifiedModel`/`BrainScoreModel` typed methods, task and recording setup, legacy `look_at`/`digest_text`,
+Preserve `Subject.participate(session)`, the `UnifiedModel`/`BrainScoreModel` typed methods, task and recording setup, legacy `look_at`/`digest_text`,
 legacy capability constructor forms (with existing deprecation warnings), and
 supported legacy benchmark protocols. Domain loaders continue returning adapters;
 concrete legacy object identity, isinstance checks against old classes, private
 attributes and arbitrary pickles are outside this boundary. Python is currently
 3.11 only. Do not claim that every plugin's dependencies fit one environment.
+Dated qualification reports written before the evaluation method was renamed call
+it by its provisional name, `interact`; they are kept unchanged as historical records.
 
 The new public extension, observation and record APIs are candidate interfaces
 until their gates pass. At general availability, incompatible changes require a

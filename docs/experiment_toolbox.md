@@ -29,7 +29,7 @@ inputs, see [attribution and activation patching](attribution_patching.md).
 
 | Protocol | Use it when | Who supplies the next input? |
 | --- | --- | --- |
-| `SessionProtocol` | Your subject implements `interact(session)` | The session, which can respond to model outputs. |
+| `SessionProtocol` | Your subject implements `participate(session)` | The session, which can respond to model outputs. |
 | `CallableProtocol` | You already have a benchmark or evaluator | The existing evaluator, with its scoring and reset rules. |
 
 For sessions, name the **conditions** you want to compare and the **trials** that repeat each condition:
@@ -110,7 +110,7 @@ This example assumes the session protocol above and a ResNet model. For recordin
 | Tool | Purpose |
 | --- | --- |
 | `RecordInputsOutputs` | Save input/output, activity, and lifecycle events with condition, trial, and call IDs. |
-| `RecordReasoning` (feature branch) | Save exposed reasoning and response context in a focused record; requires `RecordInputsOutputs`. |
+| `RecordReasoning` | Save exposed reasoning and response context in a focused record; requires `RecordInputsOutputs`. |
 | `RecordActivity` | Record selected layer outputs through `ActivationWindow`. Requires `RecordInputsOutputs`. |
 | `Ablate` | Zero selected outputs using the same implementation as `StateChange` interventions. |
 | `ScaleActivity` | Multiply selected outputs by a fixed factor, such as `0.5` to halve them. Currently supported by `TorchInstrumentation`. |
@@ -256,7 +256,7 @@ For existing method observers, use `ObserveCalls(observer, methods=['process'])`
 
 The [five CPU examples](../examples/experiment_toolbox/run.py) exercise image, text, image-plus-text, feedback-control, and recurrent activity/behavior with synthetic data. They verify integration, not scientific performance. Notebooks 17 and 18 add trained image-model demonstrations.
 
-The [OpenPI example](../examples/libero/toolbox_calls.py) uses saved LIBERO requests and a policy server. Its websocket test uses a synthetic policy. The trained LIBERO qualification uses the separate bridge; it does not qualify internal policy ablation. The feature-branch [OpenPI providers](policy_instrumentation.md) also have [trained L4 and ten-task LIBERO checks](qualification/2026-10-06-openpi-tools.md), including exact recording-only actions under controlled compiler settings.
+The [OpenPI example](../examples/libero/toolbox_calls.py) uses saved LIBERO requests and a policy server. Its websocket test uses a synthetic policy. The trained LIBERO qualification uses the separate bridge; it does not qualify internal policy ablation. The [OpenPI providers](policy_instrumentation.md) also have [trained L4 and ten-task LIBERO checks](qualification/2026-10-06-openpi-tools.md), including exact recording-only actions under controlled compiler settings.
 
 ## Trial boundaries
 
