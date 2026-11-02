@@ -183,6 +183,12 @@ def test_experiment_recording_and_input_replay_preserve_probabilities(monkeypatc
         'model.py', 'worker.py', 'memo_worker.py', 'memo_model.py',
     }
     assert outputs[0].meta['provenance']['output_dtype'] == 'float64'
+    assert outputs[0].meta['provenance']['umi_base_revision'] == (
+        'abf74bd55a48bd6585d08ccd3320dd30a1e9ceca')
+    assert outputs[0].meta['provenance']['umi_runtime_revision'] == (
+        'b8880276242296c6857363777b4bd12a02ab5213')
+    assert outputs[0].meta['provenance']['pinned_revisions'] == json.loads(
+        (Path(__file__).resolve().parents[1] / 'install/peer-revisions.json').read_text())
     assert outputs[0].meta['label_set'] == CHOICES
     assert outputs[0].meta['stimulus_id'] == 'green'
     np.testing.assert_array_equal(original.value[0].values, RECURSIVE)

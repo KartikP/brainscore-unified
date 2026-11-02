@@ -2,15 +2,23 @@
 
 ## Scope and dependency
 
-This example branches from unified `b8880276242296c6857363777b4bd12a02ab5213`
-(`feat/contract-v3-facade`). That facade candidate is still awaiting real-model
-regression qualification and is not merged. The integration depends on its
-v3 `Subject.interact(session)` contract and the pinned sibling revisions below;
-it does not qualify that candidate or alter the qualification work.
+This example is stacked on [unified PR #43](https://github.com/KartikP/brainscore-unified/pull/43),
+`feat/contract-v3-qualified` at `abf74bd55a48bd6585d08ccd3320dd30a1e9ceca`.
+That dependency is not merged. It retains the original runtime revision
+`b8880276242296c6857363777b4bd12a02ab5213` and its peer pins, adding only the
+qualification report and structured results. All four memo commits replayed
+unchanged onto the new base before this provenance/documentation update.
+
+The dependency's [scoped qualification report](qualification/2026-11-02-contract-v3-facade.md)
+records completed regression review with Malania explicitly excluded. Broader
+release qualification and verification of final merged peer pins remain separate.
+This demo depends on the v3 `Subject.interact(session)` contract; it neither
+performs nor extends that qualification work.
 
 | Repository | Revision used |
 |---|---|
-| unified base | `b8880276242296c6857363777b4bd12a02ab5213` |
+| unified dependency base | `abf74bd55a48bd6585d08ccd3320dd30a1e9ceca` |
+| unified unchanged runtime | `b8880276242296c6857363777b4bd12a02ab5213` |
 | core (from `install/peer-revisions.json`) | `15dcc3c6cbfea16565052abd2663b8de4bf1b203` |
 | vision (from `install/peer-revisions.json`) | `eca24202bb7b188c1115d3b140b96abc0fa848c7` |
 | language (from `install/peer-revisions.json`) | `62e2dcfe17daa81ecdf939f6e075d9edd33389ca` |
@@ -223,13 +231,14 @@ MEMO_PYTHON=/private/tmp/memo-rsa-py312/bin/python \
 PYTHONDONTWRITEBYTECODE=1 \
 PYTHONPATH=/private/tmp/memo-core-pin:/private/tmp/umi-memo-demo \
 /private/tmp/memo-pr-py311/bin/python examples/memo_umi/run.py \
-  --out /private/tmp/memo-umi-contract-fixes
+  --out /private/tmp/memo-umi-qualified-restack
 ```
 
 The pinned-core subject/streaming/catalog/compatibility tests were also rerun:
-**71 passed**. The refreshed probability summary adds provenance and retains
-exactly the same probabilities as its previous version. No contract changes
-were needed.
+**71 passed**. The refreshed probability summary records the dependency base
+separately from the unchanged runtime revision and retains exactly the same probabilities
+as its previous version. The notebook, example, focused tests, and full offline
+tier were rerun after restacking onto PR #43. No contract changes were needed.
 
 ## Scientific limits
 
@@ -242,9 +251,9 @@ set in this example.
 
 ## Remaining work
 
-- The unified `feat/contract-v3-facade` candidate still needs its separate
-  real-model regression qualification; this integration does not perform that
-  qualification.
+- Merge the coordinated dependency PRs, verify final merged peer pins with CI,
+  then update this demo as needed. PR #43 has completed scoped qualification
+  with Malania excluded; the broader release matrix remains separate.
 - This demonstration adds no leaderboard benchmark and makes no human-data
   comparison. A future scientific study would need a separate fitting/evaluation
   design and appropriate human observations.

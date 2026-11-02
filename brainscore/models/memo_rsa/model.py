@@ -138,7 +138,8 @@ class MemoSubject(Subject):
             'beta': float(self.config.beta),
             'worker_python': self.python_executable,
             'host_python': sys.version.split()[0],
-            'umi_base_revision': 'b8880276242296c6857363777b4bd12a02ab5213',
+            'umi_base_revision': 'abf74bd55a48bd6585d08ccd3320dd30a1e9ceca',
+            'umi_runtime_revision': 'b8880276242296c6857363777b4bd12a02ab5213',
             'pinned_revisions': {
                 'core': '15dcc3c6cbfea16565052abd2663b8de4bf1b203',
                 'vision': 'eca24202bb7b188c1115d3b140b96abc0fa848c7',

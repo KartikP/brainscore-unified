@@ -84,7 +84,7 @@
       "memo_source_reviewed_revision": "d8aac635ee53483e8e0311b85f6898ef37710a26",
       "memo_distribution": "memo-lang",
       "implementation_sha256": {
-        "model.py": "b1b47f551f1136523009540285777484a22806ad8b2a6b0c128455cbc8891625",
+        "model.py": "af04e6da2363efbed2fc82daf7a7c82e86d287f899348ff7f43340ac50e3e1bc",
         "worker.py": "dfd0bdcd3ddf4b289d0ffd599282564ff667140ce5dc2a59a7f500fe9cf042b1",
         "memo_worker.py": "68c0baa8e9099c4f33e058d05b96070b5980038c1e5ed05fce980af7c3dd3036",
         "memo_model.py": "4e6d00ae8725c25a9950b9bb55fb8fbc04c915c03905319d960f70a8f8e6e806"
@@ -95,7 +95,8 @@
       "beta": 1.0,
       "worker_python": "/private/tmp/memo-rsa-py312/bin/python",
       "host_python": "3.11.15",
-      "umi_base_revision": "b8880276242296c6857363777b4bd12a02ab5213",
+      "umi_base_revision": "abf74bd55a48bd6585d08ccd3320dd30a1e9ceca",
+      "umi_runtime_revision": "b8880276242296c6857363777b4bd12a02ab5213",
       "pinned_revisions": {
         "core": "15dcc3c6cbfea16565052abd2663b8de4bf1b203",
         "vision": "eca24202bb7b188c1115d3b140b96abc0fa848c7",
@@ -196,7 +197,7 @@
       "memo_source_reviewed_revision": "d8aac635ee53483e8e0311b85f6898ef37710a26",
       "memo_distribution": "memo-lang",
       "implementation_sha256": {
-        "model.py": "b1b47f551f1136523009540285777484a22806ad8b2a6b0c128455cbc8891625",
+        "model.py": "af04e6da2363efbed2fc82daf7a7c82e86d287f899348ff7f43340ac50e3e1bc",
         "worker.py": "dfd0bdcd3ddf4b289d0ffd599282564ff667140ce5dc2a59a7f500fe9cf042b1",
         "memo_worker.py": "68c0baa8e9099c4f33e058d05b96070b5980038c1e5ed05fce980af7c3dd3036",
         "memo_model.py": "4e6d00ae8725c25a9950b9bb55fb8fbc04c915c03905319d960f70a8f8e6e806"
@@ -207,7 +208,8 @@
       "beta": 1.0,
       "worker_python": "/private/tmp/memo-rsa-py312/bin/python",
       "host_python": "3.11.15",
-      "umi_base_revision": "b8880276242296c6857363777b4bd12a02ab5213",
+      "umi_base_revision": "abf74bd55a48bd6585d08ccd3320dd30a1e9ceca",
+      "umi_runtime_revision": "b8880276242296c6857363777b4bd12a02ab5213",
       "pinned_revisions": {
         "core": "15dcc3c6cbfea16565052abd2663b8de4bf1b203",
         "vision": "eca24202bb7b188c1115d3b140b96abc0fa848c7",
