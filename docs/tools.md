@@ -16,6 +16,7 @@ lesion = load_tool("ablate", targets=["language"], name="language_lesion")
 | --- | --- | --- |
 | `ablate` | Existing `Ablate` tool | `targets`, optional `conditions`, `trials`, `name` |
 | `linear-probe` | Fitted logistic readout | `target` and fitting settings, or `artifact`; [guide](linear_probe.md) |
+| `patch-activity` | Existing `PatchActivity` replacement | `targets`, `reference`, optional `conditions`, `trials`, `name` |
 | `record-activity` | Existing `RecordActivity` internal recorder | `targets`, optional `when` (`before`/`after`) and `name` |
 | `record-io` | Existing `RecordInputsOutputs` event writer | Optional `max_bytes` |
 | `scale-activity` | Existing `ScaleActivity` intervention | `targets`, `factor`, optional `conditions`, `trials`, `name` |
@@ -160,3 +161,23 @@ same units multiply in list order, so two factors of 0.5 give a factor of 0.25.
 Zero and negative factors are allowed; nonfinite factors fail during loading.
 The backend must support `scale` (currently `TorchInstrumentation`); recording
 access alone does not imply scaling support. Cleanup removes only these hooks.
+
+## Patch activity
+
+```python
+patch = load_tool("patch-activity", targets=[Selection("language", [0, 3])],
+                  reference=analysis["reference"], name="restore_language")
+```
+
+`reference` is the saved donor snapshot returned by
+`TorchInstrumentation.attribute`; see [attribution and patching](attribution_patching.md).
+The loaded tool owns a copy, saves the actual reference in the run, and checks
+coordinates, shapes and dtypes. It does not align tokens automatically.
+
+Several named patches can affect different selections. On overlapping units,
+later patches replace earlier values. Scaling followed by patching differs
+from patching followed by scaling: list order is explicit and preserved.
+Each active patch target must execute exactly once per trial/direct scope;
+missing or repeated calls fail and detach hooks. Autoregressive generation loops
+remain unsupported by this exact-patch scope. The backend must support `patch`
+(currently local PyTorch); this loader does not extend backend coverage.

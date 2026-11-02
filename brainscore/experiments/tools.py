@@ -168,8 +168,8 @@ class PatchActivity(Ablate):
     operation = 'patch'
 
     def __init__(self, targets: Any, *, reference: dict,
-                 conditions: Any = None, trials: Any = None) -> None:
-        super().__init__(targets, conditions=conditions, trials=trials)
+                 conditions: Any = None, trials: Any = None, name: str | None = None) -> None:
+        super().__init__(targets, conditions=conditions, trials=trials, name=name)
         self.reference = copy.deepcopy(reference)
 
     def describe(self) -> dict:

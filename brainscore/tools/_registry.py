@@ -30,9 +30,15 @@ def _scale_activity(**configuration: Any) -> Any:
     return ScaleActivity(**configuration)
 
 
+def _patch_activity(**configuration: Any) -> Any:
+    from brainscore.experiments import PatchActivity
+    return PatchActivity(**configuration)
+
+
 _FACTORIES: dict[str, Callable[..., Any]] = {
     'ablate': _ablate,
     'linear-probe': _linear_probe,
+    'patch-activity': _patch_activity,
     'record-activity': _record_activity,
     'record-io': _record_io,
     'scale-activity': _scale_activity,
