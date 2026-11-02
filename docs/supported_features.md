@@ -49,6 +49,7 @@ Pass these in `Experiment(tools=[...])`.
 | `ScaleActivity` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged |
 | `PatchActivity` | Replace selected outputs with recorded values from a paired input | `TorchInstrumentation`, `RecordInputsOutputs`, aligned shapes and one invocation per target; [guide](attribution_patching.md) |
 | `ObserveCalls` | Include an existing call observer in the experiment | Observer callbacks and selected subject methods |
+| `load_tool("linear-probe", ...)` | Fit/save/load a logistic probe and decode activity before or after interventions | Original unit coordinates; instrumentation supporting `record`; [guide](linear_probe.md) |
 | `RecordReasoning` | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
 
 ## Adapters and building blocks

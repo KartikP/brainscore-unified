@@ -20,6 +20,10 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 
 For closed-loop episodes, see [environment sessions](environment_sessions.md).
 
+For fitted readouts that can be saved and reused alongside other tools, see
+[linear probes](linear_probe.md). Multiple named probes can observe activity
+before and after an intervention without changing model responses.
+
 For exposed CoT and streamed responses, see [reasoning recording](reasoning_recording.md). For policies, see [robotics instrumentation](policy_instrumentation.md).
 
 To estimate unit influence and verify it by replacing activity between paired
