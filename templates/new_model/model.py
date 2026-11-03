@@ -5,7 +5,7 @@ dispatch branches process() can take (see
 https://brain-score.github.io/public/UMI/architecture.html for the full router):
   - extractor     -> neural recording + behavioral readout
   - answer        -> behavioral answers in words (instruction-following)
-  - policy        -> embodied closed loop (EnvironmentStep)
+  - policy        -> closed loop (EnvironmentStep)
   - intervention  -> lesion/perturbation (StateChange)
 Leave a slot as None if the model doesn't support that capability.
 

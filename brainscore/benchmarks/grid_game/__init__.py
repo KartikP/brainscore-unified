@@ -1,7 +1,7 @@
-"""Embodied grid-game benchmark — registered variant.
+"""Closed-loop grid-game benchmark — registered variant.
 
-The closed-loop reach-the-goal game as a Brain-Score ``Benchmark`` (scored via
-``process(EnvironmentStep)``). See ``benchmark.py``.
+The closed-loop reach-the-goal game as a Brain-Score ``Benchmark`` (scored
+through a closed-loop session). See ``benchmark.py``.
 """
 from brainscore import benchmark_registry
 from .benchmark import GridGameBenchmark

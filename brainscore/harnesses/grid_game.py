@@ -214,7 +214,7 @@ def greedy_oracle_policy(observation: Dict[str, Any], history) -> int:
 
 
 def random_action_policy(seed: int = 0) -> Callable:
-    """Return a uniform-random discrete policy — the embodied null floor."""
+    """Return a uniform-random discrete policy — the closed-loop null floor."""
     rng = np.random.RandomState(seed)
 
     def policy(observation, history) -> int:

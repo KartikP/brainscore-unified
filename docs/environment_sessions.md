@@ -7,6 +7,23 @@ its score. A **session** connects them for one episode.
 Use `EnvironmentSession` for a UMI-managed loop. Keep an established evaluator's
 loop when reproducing its benchmark. Both routes can use experiment tools.
 
+## Vocabulary
+
+Every benchmark runs a **session** with a **subject** through `participate(session)`.
+Sessions differ in one way that matters here:
+
+| Term | Meaning | Examples |
+| --- | --- | --- |
+| Open-loop | The subject's responses do not change what it is shown next. | Image and text benchmarks, CogGym, human replay |
+| Closed-loop | Each response can change the next observation. | Grid game, MiniGrid, dialogue, robots |
+| Embodied | The closed-loop subset with sensors and effectors. | DROID, LIBERO |
+
+A **harness** adapts an outside world or evaluator to a session, whether that is a
+simulator, a robot policy server, or CogGym's own evaluator. Closed-loop sessions
+call `participate(session)`; an object without it is rejected. A subject declares
+closed-loop support by being built with `policy`, which always receives an
+`EnvironmentStep`; a `Message` from another agent arrives as its `observation`.
+
 ## Declare observations and actions
 
 Import specifications from `brainscore_core.environment`:
@@ -108,6 +125,11 @@ The environment owns trajectory time. Set `context['t_ms']`, `time_source`, and
 call in wall time. Native sessions wait for the policy; they enforce no real-time
 deadline.
 
+Reset rule: whoever runs the trial resets the subject (`subject.reset()`) before
+each independent episode; `SessionProtocol` and `replay_actions` do this for you,
+while `run_environment` leaves it to the caller. Policy adapters clear their own
+per-episode memory when a step arrives with `is_first=True`.
+
 `seed` and `options` are forwarded to reset only when supplied. Unsupported reset
 arguments fail before starting. Record initial-state and policy RNG controls as
 well: a seed alone does not guarantee reproduction of a remote policy.
@@ -132,6 +154,25 @@ session tests do not satisfy that trained-policy gate.
 
 Task success, demonstration agreement, movement similarity, and neural similarity
 are different measurements. Each benchmark declares its target and metric.
+
+## Compare with humans
+
+`brainscore.harnesses.human_replay` scores whether a subject chooses like people,
+not only whether it succeeds. Each recorded state is replayed in order, and the
+subject's move is compared with the counts of what participants chose there. The
+ceiling is how often two participants agree; the floor is chance.
+
+```python
+from brainscore.harnesses.human_replay import HumanAgreementBenchmark
+
+# episodes: [[(EnvironmentStep, counts_per_action), ...], ...]
+benchmark = HumanAgreementBenchmark('MyStudy-human_agreement', episodes, n_actions=4)
+score = benchmark(subject)  # score.attrs: raw, ceiling, chance_floor, n_scored_states
+```
+
+Replay is open-loop, so every subject sees exactly the states humans saw; it does
+not measure task success. States with fewer than two answers are shown but not
+scored. Discrete actions only.
 Generic action specifications do not establish support for a new robot.
 
 For externally managed evaluation, see the [LIBERO integration](robotics_benchmark_integration.md).

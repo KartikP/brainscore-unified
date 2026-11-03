@@ -3,7 +3,7 @@
 The local-weights twin of ``api_behavioral.build_api_action_fn``: turn a HF
 vision-language or text model into a one-tick game policy
 ``policy(observation, history) -> EnvironmentResponse`` that ``PolicyWrapper``
-drives through ``process(EnvironmentStep)``. Each response keeps the model's
+drives through a closed-loop session. Each response keeps the model's
 answer and whether it parsed (``answer``, ``valid``, ``parse_error``,
 ``fallback_action``; see ``io_catalog.RESPONSE_META_KEYS``). These builders were consolidated
 here from several duplicated, cross-importing copies.

@@ -143,7 +143,7 @@ def play_gym_episode(model, env_id: str, max_steps: int = 60, seed: int = 0,
 
 
 def random_gym_policy(seed: int = 0):
-    """Uniform-random discrete policy — the embodied null floor for a Gym env."""
+    """Uniform-random discrete policy — the closed-loop null floor for a Gym env."""
     rng = np.random.RandomState(seed)
 
     def policy(observation, history):
