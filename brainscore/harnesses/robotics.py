@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional
 
 # The DROID-shaped types live in core for one more release; re-export them here
 # as their going-forward home so new robotics code imports them from the harness.
+from brainscore.robotics import validate_cameras
 from brainscore_core.model_interface import (
     CameraFrame,
     EnvironmentResponse,
@@ -24,6 +25,7 @@ from brainscore_core.model_interface import (
 )
 
 __all__ = [
+    "validate_cameras",
     "CameraFrame",
     "Proprioception",
     "robotics_observation",
@@ -38,7 +40,8 @@ def robotics_observation(
     cameras: Dict[str, CameraFrame], proprioception: Proprioception
 ) -> Dict[str, Any]:
     """Pack DROID-shaped cameras and proprioception into a generic observation
-    payload suitable for ``EnvironmentStep.observation``."""
+    payload suitable for ``EnvironmentStep.observation``. Cameras are validated."""
+    validate_cameras(cameras)
     return {"cameras": cameras, "proprioception": proprioception}
 
 

@@ -17,6 +17,32 @@ from brainscore_core.streaming import StreamEvent
 from brainscore_core.environment import ActionSpec
 
 
+def validate_cameras(cameras) -> None:
+    """Reject malformed camera frames before they reach a policy.
+
+    Each frame must be (H, W, 3) channels-last RGB. Raises ``ValueError``
+    listing every bad camera. Robot-specific, so it lives here, not in core.
+    """
+    from brainscore_core.io_catalog import check_payload
+    if cameras is None:
+        return
+    if not isinstance(cameras, dict):
+        raise ValueError('Environment cameras must be a name-to-CameraFrame mapping.')
+    issues = []
+    for name, frame in cameras.items():
+        rgb = getattr(frame, 'rgb', None)
+        if rgb is None:
+            continue
+        issues += [f"camera '{name}': {m}" for m in check_payload('vision', rgb)]
+        shape = getattr(rgb, 'shape', None)
+        if shape is not None and not (len(shape) == 3 and shape[-1] == 3):
+            issues.append(f"camera '{name}': rgb shape {tuple(shape)} is not "
+                          "(H, W, 3) channels-last RGB.")
+    if issues:
+        raise ValueError("EnvironmentStep camera payload(s) failed validation:\n  - "
+                         + "\n  - ".join(issues))
+
+
 def _vector(observation, key, size):
     value = np.asarray(observation[key])
     if value.shape != (size,) or value.dtype.kind not in 'fiu' or not np.all(np.isfinite(value)):
@@ -64,6 +90,7 @@ def droid_steps(episode, *, action_spec, action_source, timestamp_key=None):
         if not isinstance(instruction, str):
             raise ValueError('language_instruction must be text or UTF-8 bytes')
         ended = bool(row.get('is_last', False))
+        validate_cameras(cameras)
         step = EnvironmentStep(
             observation={'cameras': cameras, 'proprioception': body},
             instruction=instruction, step_num=index, is_first=index == 0,
