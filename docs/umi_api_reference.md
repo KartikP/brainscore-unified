@@ -165,7 +165,7 @@ subject.reset()
 actions = run_environment(subject, environment)  # calls subject.participate(session)
 ~~~
 
-The subject is built with `action_fn`; each tick it receives an
+The subject is built with `policy=` (older spelling: `action_fn`); each tick it receives an
 `EnvironmentStep` and returns an `EnvironmentResponse`.
 The environment wrapper declares observations and actions. See
 [environment sessions](environment_sessions.md) for specifications, seeded reset,
@@ -186,7 +186,7 @@ Start with `BufferedSession(stimulus_set=..., requested_output_channels=...)` fo
 
 For a single operation, `brainscore_core.streaming_helpers` also provides `neural_response`, `behavioral_response`, `apply_state_change`, and `run_environment`. Always name the target when recording, for example `neural_response(subject=subject, stimulus_set=stimuli, record='V4')`.
 
-`StimulusSetSession`, `BehavioralSession`, `StateChangeSession`, and their factory aliases remain compatibility conveniences. New integrations do not need to learn these alternatives. Their historical default recording target, including `neural_response`'s default, remains `IT`; use an explicit target to avoid an unintended measurement.
+`StimulusSetSession`, `BehavioralSession`, `StateChangeSession`, and their factory aliases remain compatibility conveniences; import them from `brainscore_core.streaming_helpers`, not `brainscore_core.streaming`. New integrations do not need to learn these alternatives. Their historical default recording target, including `neural_response`'s default, remains `IT`; use an explicit target to avoid an unintended measurement.
 
 ## Model helper imports
 

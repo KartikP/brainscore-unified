@@ -161,7 +161,7 @@ for response in result.record.outputs():
     print(response)  # Only model responses, excluding activity and lifecycle events.
 ```
 
-You can also open `RunRecord('runs/my-experiment')`. Events retain their original payloads. `event_id` connects input, activity, and output where the protocol permits it. `t_ms` is experiment time; `elapsed_s` is wall-clock duration.
+You can also open a saved run directly: `from brainscore.run_record import RunRecord`, then `RunRecord('runs/my-experiment')`. Events retain their original payloads. `event_id` connects input, activity, and output where the protocol permits it. `t_ms` is experiment time; `elapsed_s` is wall-clock duration.
 
 | Location | Contents |
 | --- | --- |
