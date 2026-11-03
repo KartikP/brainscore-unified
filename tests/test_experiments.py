@@ -221,13 +221,14 @@ def test_saved_calls_explicit_allowlist_and_reset(tmp_path):
 
 
 def test_cross_domain_demonstrations(tmp_path):
-    import importlib.util
-    from pathlib import Path
-    path = Path(__file__).parents[1]/'examples/experiment_toolbox/run.py'
-    spec = importlib.util.spec_from_file_location('toolbox_demo', path)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    assert all(v['equal'] for v in module.run(tmp_path).values())
+    from umi_partner_tool.toolbox import run
+
+    summary = run(directory=tmp_path / 'installed-examples')
+    assert set(summary) == {'vision', 'language', 'vlm', 'robotics', 'brain_behavior'}
+    assert all(
+        result['equal'] and result['intervention_changed_output'] and result['recovery_exact']
+        for result in summary.values()
+    )
 
 
 @pytest.mark.parametrize('exception', [RuntimeError('failure'), KeyboardInterrupt()])

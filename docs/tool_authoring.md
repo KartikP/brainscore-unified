@@ -43,8 +43,16 @@ discovery is not required. Treat registration as process initialization; do not
 replace registrations while existing models are running.
 
 For an installable package, copy [examples/partner_tool](../examples/partner_tool/README.md).
-It runs outside the source tree and combines new channels, a capability, an observer,
-record/replay and reset using only public imports.
+It adds channels, a capability and an observer, with record/replay and reset
+using public imports. It also includes five synthetic experiments using the
+same recording and intervention tools. Once installed, run them from any directory:
+
+```sh
+python -I -m umi_partner_tool.toolbox --out ./new-toolbox-run
+```
+
+The cases cover images, text, image-plus-text, feedback-controlled actions, and
+a recurrent subject. They demonstrate integration, not scientific performance.
 
 ## Your first independent tool
 
