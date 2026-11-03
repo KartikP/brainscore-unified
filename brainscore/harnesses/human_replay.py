@@ -79,7 +79,7 @@ class ReplayEnvironment:
 
 
 def replay_actions(subject, steps: Sequence[EnvironmentStep], n_actions: int) -> List[int]:
-    """Reset ``subject``, replay ``steps`` through its ``interact``, return its choices."""
+    """Reset ``subject``, replay ``steps`` through its ``participate``, return its choices."""
     subject.reset()
     responses = run_environment(subject, ReplayEnvironment(steps, n_actions))
     actions = [int(np.asarray(response.action).item()) for response in responses]

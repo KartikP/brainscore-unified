@@ -31,8 +31,8 @@ def demo(out):
             state = torch.tensor(step.observation['proprioception'].joint_position, dtype=torch.float32)
             return EnvironmentResponse(action=network(state).numpy())
 
-    model = BrainScoreModel('synthetic-robot-policy', model=network, action_fn=policy,
-                            state_change_fn=build_pytorch_ablation_fn(network))
+    model = BrainScoreModel('synthetic-robot-policy', model=network, policy=policy,
+                            intervention=build_pytorch_ablation_fn(network))
     spec = ActionSpec(tuple(f'component_{i}' for i in range(7)), ('normalized',)*7,
                       'synthetic_fixture', 50, (-1.,)*7, (1.,)*7)
     rows = []

@@ -12,6 +12,8 @@ score = brainscore.score('alexnet', 'MajajHong2015.IT-pls')
 
 The loaders check unified, then the vision and language registries. `score` also accepts already-built model and benchmark objects.
 
+A legacy vision or language benchmark calls `look_at` or `digest_text` on its candidate. Scoring hands such a benchmark a permanent facade that records each of those calls, presents the stimuli as a session carrying the task, recording target, time bins and trial count, and runs it through the subject's `participate`. Any subject takes part this way: a `BrainScoreModel`, an adapted legacy model, or a `Subject` that only implements `participate`. A vision subject reports its field of view through `visual_degrees()`; one without it cannot run a legacy vision benchmark, and scoring says so instead of inventing a value.
+
 Compatibility applies to tested model, benchmark, and environment combinations. See the [support matrix](supported_features.md) and [numerical policy](numerical_policy.md).
 
 ## Choose the interface
@@ -20,7 +22,7 @@ Compatibility applies to tested model, benchmark, and environment combinations. 
 | --- | --- |
 | Existing vision `BrainModel` / `ModelCommitment` | Load through UMI; the vision adapter bridges the existing methods. |
 | Existing language `ArtificialSubject` | Load through UMI; the language adapter bridges `digest_text`. |
-| New model or policy with its own session loop | `Subject`: declare identity/channels and implement `interact(session)`. |
+| New model or policy with its own session loop | `Subject`: declare identity/channels and implement `participate(session)`. |
 | Model using shared extraction and capability helpers | `BrainScoreModel`, which extends `UnifiedModel`. |
 
 `UnifiedModel` extends `Subject` with `process`, `start_task`, `start_recording`, and layer/modality declarations. Implement `Subject` directly when your integration only needs session interaction.
@@ -31,16 +33,19 @@ For a `BrainScoreModel`, configure a backbone, wrapper, and region mapping. Buil
 
 ```python
 from brainscore_core.model_interface import BrainScoreModel
-from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
 # Supply your network and preprocessing function.
 net = backbone()
-activations = PytorchWrapper(
-    identifier='my-cnn', model=net, preprocessing=preprocess,
+activations = VisionWrapper(
+    identifier='my-cnn',
+    model=net,
+    preprocessing=preprocess,
 )
 model = BrainScoreModel(
-    'my-cnn', model=net, activations_model=activations,
-    preprocessors={'vision': preprocess},
+    identifier='my-cnn',
+    model=net,
+    extractor={'vision': activations},
     region_layer_map={'V4': 'layer3', 'IT': 'layer4'},
 )
 ```

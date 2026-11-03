@@ -165,7 +165,7 @@ class Witness:
         # StimulusSet
         stimuli = input_event
         try:
-            ev.modalities = sorted(m._detect_modalities(stimuli))
+            ev.modalities = sorted(m.detect_modalities(stimuli))
         except Exception:
             ev.modalities = []
         try:

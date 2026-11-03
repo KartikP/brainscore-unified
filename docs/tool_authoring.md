@@ -27,7 +27,7 @@ Use the [UMI vocabulary and conventions](conventions.md) across integrations. Th
 | Measure internal activity | `ActivationWindow` / `PerceptWindow` | Supported model module and selected layers |
 | Change model activity | `intervene` and `StateChange` | Model-supported perturbation and condition design |
 | Estimate and verify unit influence | `TorchInstrumentation.attribute`, `PatchActivity` | Paired inputs, differentiable objective, independent validation and controls; [guide](attribution_patching.md) |
-| Add a sensory domain | `register_channel(..., columns=...)` and a preprocessor | Payload validation, materialization and model extraction |
+| Add a sensory domain | `register_channel(..., columns=...)` and an extraction wrapper | Payload validation, materialization and model extraction |
 | Add an output or session | `Capability` with `StreamEvent` | Schema, channel declarations, dispatch and lifecycle |
 | Evaluate a robotics policy | `ActionSpec`, `droid_steps`, `evaluate_droid_episode` | Action semantics, policy, data and scientific protocol |
 | Drive a controlled environment | `EnvironmentSession` | Environment reset/step, action validation, timing and safety |
@@ -71,7 +71,7 @@ concurrent experiment. Observer failures propagate; an incomplete record must
 not silently become a valid result. A tool that needs immutable inputs must copy
 them in `on_start`, before inference can mutate them.
 
-For native `interact` implementations, pass `ObservedSession(session, recorder)`
+For native `participate` implementations, pass `ObservedSession(session, recorder)`
 to observe input/output events. `observe` records only calls made on the object
 to which it is attached. Methods with arbitrary custom names can be included via
 the `methods` argument.
@@ -102,6 +102,43 @@ Unsupported schemas/payload types fail explicitly. No pickle or dynamically
 imported payload classes are used. An exception marks the run failed, including
 model exceptions caught by the calling experiment. Interrupted records remain
 `open` and are diagnostic evidence, not completed experiments.
+
+A recording failure (an unsupported payload, an I/O error, a damaged existing
+asset, or an exceeded budget) is raised unchanged and marks the record `failed`,
+even if the caller catches it. Later calls refuse to record; nothing is retried.
+
+To cap a record's size on disk, pass `max_bytes`:
+
+```python
+RunRecorder('new-run-directory', metadata={...}, max_bytes=500_000_000)
+Experiment(..., tools=[RecordInputsOutputs(max_bytes=500_000_000)], ...)
+```
+
+The cap covers `events.jsonl` plus the unique array and file assets the record
+stores, including assets in its metadata. A duplicate asset is counted once.
+Bytes are reserved before each write, so stored bytes never exceed the cap. A
+write that would exceed it raises `RecordingBudgetExceeded` and writes nothing.
+The manifest reports `budget: {max_bytes, reserved_bytes, exceeded}`.
+`reserved_bytes` can exceed the bytes actually stored when a write failed
+partway, and assets kept from a failed event stay reserved. Under `Experiment`
+the run fails and normal cleanup runs.
+
+The manifest is outside this limit; disk errors can still prevent saving it.
+The cap does not limit memory: each event is fully serialized in memory before
+it is checked. It is also not an experiment-wide quota. `result.json`,
+`external/`, `experiment.json` and other tools' directories (such as
+`reasoning/`) are not counted.
+
+`RunRecord.events()` checks the whole event log (checksum, JSON, count and order)
+before yielding the first event, then streams it. Memory grows with the largest
+single event, not with the number of events; collecting events into a list
+(`list(record.events())`) still holds them all. Do not modify, replace or link a
+closed record while reading it. The reader stops with an error if the log file's
+identity, size, modification time or change time differs from when reading
+began. This catches ordinary writes, including a write that restores the
+modification time. It is not a defense against someone who can forge file
+timestamps, or whose write falls within the filesystem's timestamp resolution.
+Open (interrupted) records are read as an unchecked prefix for diagnosis only.
 
 Pass local file assets as `pathlib.Path` objects to copy and hash their contents;
 StimulusSet `stimulus_paths` are copied automatically. Arbitrary strings remain
@@ -156,7 +193,7 @@ register_channel(CatalogEntry(
 ), columns=['tactile_sample'])
 ```
 
-Add a `tactile` preprocessor to BrainScoreModel. The column is now recognized
+Pass the wrapper as `extractor={'tactile': wrapper}` to `BrainScoreModel`; configure input preparation in the wrapper. The column is now recognized
 without changing the built-in mapping. Register channel **families**; addressed
 instances use `family:address` and require an addressing policy. Duplicate channel,
 column and capability registrations require explicit replacement. Stock legacy
@@ -168,12 +205,12 @@ Use `model.capability_config` for configuration and
 `model.capability_state(self.identifier)` for per-model state. Declare
 `input_channels`/`output_channels`; enable the capability only on configured
 models. Return a registered `StreamEvent` for extension outputs. StreamEvent
-payloads are validated in both directions. A preprocessor must validate/materialize
-its own StimulusSet cells; column registration alone does not validate files.
+payloads are validated in both directions. The wrapper and its preparation callable must validate/materialize
+their own StimulusSet cells; column registration alone does not validate files.
 
 Implement `setup` and `reset` when allocating state or resources. Reset is followed
 by setup on the next execution. `supports_session(model, channels)` accepts a
-complete output combination; `interact(model, session)` executes it. Multiple
+complete output combination; `participate(model, session)` executes it. Multiple
 handlers accepting the same combination are rejected. Catalog declarations alone
 do not implement execution. See the working `response_trace.py` implementation
 and `core/tests/test_external_extensions.py` for complete examples.
@@ -203,6 +240,15 @@ capture actual forward-hook outputs; `PerceptWindow` captures model input tensor
 Closed API models cannot expose these internals unless their provider explicitly
 supports them. Attach to an accessible module, not an invented neural channel.
 
+Prefer passing the network or modules explicitly, as `TorchInstrumentation`
+does: `PerceptWindow({'vision': image_net, 'text': text_net})`. Given a
+`BrainScoreModel`, `PerceptWindow` also hooks every root in its read-only
+`model.extractor` mapping (one entry per modality, as registered), so each
+tower is captured without an extra forward pass. Tools that render inputs can
+call `model.detect_modalities(stimuli)`. Neither is part of the subject
+contract; a subject without them still runs, it just exposes less to tools.
+Do not read private attributes such as `_extractors` or `_preprocessors`.
+
 ```python
 from brainscore.instrumentation import intervene
 from brainscore_core.events import StateChange, Selection, Perturbation
@@ -212,7 +258,7 @@ with intervene(model, change) as applied:
     perturbed_score = benchmark(model)
 ```
 
-The model must already implement the relevant `state_change_fn`. The context
+The model must already implement the relevant `intervention`. The context
 removes only its own handle on success or failure. Record baseline and perturbed
 conditions separately, including selector, intervention, model revision and
 protocol. Do not infer a scientific causal result from the fact that a hook ran.

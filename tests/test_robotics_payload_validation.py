@@ -40,7 +40,7 @@ def test_cameras_must_be_a_mapping():
 def test_core_no_longer_inspects_device_payloads():
     """Core is device-agnostic: a non-robot observation goes straight to action_fn."""
     model = BrainScoreModel('agent', None, {}, {}, None,
-                            action_fn=lambda step: EnvironmentResponse(action=np.zeros(7)))
+                            policy=lambda step: EnvironmentResponse(action=np.zeros(7)))
     assert isinstance(model.process(EnvironmentStep(observation={'anything': 1})),
                       EnvironmentResponse)
 

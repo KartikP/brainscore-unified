@@ -5,8 +5,8 @@ Use the same `RecordActivity`, `Ablate`, and `Selection` tools used for other mo
 | Policy | Provider | Scope |
 | --- | --- | --- |
 | Local PyTorch | `TorchInstrumentation(network)` | The network's named modules |
-| Local OpenPI/JAX | `OpenPIInstrumentation(policy, checkpoint=...)` | Three sites in the pinned Pi0/Pi0.5 sampler; **feature branch** |
-| Remote OpenPI/JAX | `RemoteOpenPIInstrumentation(client)` | Same sites through `OpenPIToolServer`; **feature branch** |
+| Local OpenPI/JAX | `OpenPIInstrumentation(policy, checkpoint=...)` | Three sites in the pinned Pi0/Pi0.5 sampler; pinned OpenPI sampler only |
+| Remote OpenPI/JAX | `RemoteOpenPIInstrumentation(client)` | Same sites through `OpenPIToolServer`; pinned OpenPI sampler only |
 | Other JAX policies | Custom provider | No general JAX layer-hook API is included |
 | Actions-only service | `RecordInputsOutputs` | Requests and actions; no internal access |
 
@@ -109,10 +109,10 @@ python examples/libero/qualify_tools.py \
 
 **Still to qualify:** broader policies, GPUs, selections and full task suites. The isolated OpenPI server runtime is not the general UMI scoring environment. Restart the server and reuse GPU autotuning results between matched simulator runs; neither closing a tool scope nor reconnecting resets OpenPI's RNG. Physical-robot control and hardware safety are outside this integration.
 
-The [remote qualification script](../examples/libero/qualify_remote_tools.py) tests the client/server path. The [evaluator bridge](../examples/libero/serve_tool_bridge.py) accepts the official evaluator's websocket calls and applies baseline, recording or ablation tools through the UMI model adapter.
+The [remote qualification script](../examples/libero/qualify_remote_tools.py) tests the client/server path. The [evaluator bridge](../examples/libero/serve_tool_bridge.py) accepts the official evaluator's websocket calls and applies baseline, recording or ablation tools through the UMI model adapter. It requires the matching `evaluate.py`, records a run as complete only after a consistent evaluator receipt, and is qualified with `compare.py --umi-experiment` ([details](../examples/libero/README.md#use-the-official-evaluator-with-tools)).
 
 ## Add another backend
 
-Implement `describe()`, `validate(operation, targets)`, `record(targets, receive)` and `ablate(targets)`. Both context managers must restore their changes after errors. `Selection.indices` selects the last output axis. Deliver supported arrays/mappings to `receive(target, value)`. Researchers keep using the same experiment tools; no new `Subject` method is needed.
+Implement `describe()`, `validate(operation, targets)`, `record(targets, receive)` and `ablate(targets)`. Both context managers must restore their changes after errors. `Selection.axis` declares how indices address the output. OpenPI supports `axis=-1`; reject other coordinate systems explicitly rather than reinterpreting their indices. Deliver supported arrays/mappings to `receive(target, value)`. Researchers keep using the same experiment tools; no new `Subject` method is needed.
 
 [LIBERO integration](robotics_benchmark_integration.md) · [Experiment toolbox](experiment_toolbox.md)

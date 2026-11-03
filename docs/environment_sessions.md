@@ -9,7 +9,7 @@ loop when reproducing its benchmark. Both routes can use experiment tools.
 
 ## Vocabulary
 
-Every benchmark runs a **session** with a **subject** through `interact(session)`.
+Every benchmark runs a **session** with a **subject** through `participate(session)`.
 Sessions differ in one way that matters here:
 
 | Term | Meaning | Examples |
@@ -20,8 +20,8 @@ Sessions differ in one way that matters here:
 
 A **harness** adapts an outside world or evaluator to a session, whether that is a
 simulator, a robot policy server, or CogGym's own evaluator. Closed-loop sessions
-require `interact`; there is no `process()` fallback. A subject declares
-closed-loop support by being built with `action_fn`, which always receives an
+call `participate(session)`; an object without it is rejected. A subject declares
+closed-loop support by being built with `policy`, which always receives an
 `EnvironmentStep`; a `Message` from another agent arrives as its `observation`.
 
 ## Declare observations and actions
@@ -67,7 +67,7 @@ from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 
 subject = BrainScoreModel(
     "grid-oracle",
-    action_fn=PolicyWrapper(greedy_oracle_policy),
+    policy=PolicyWrapper(greedy_oracle_policy),
 )
 
 # A context manager closes the environment even if the trial fails.
@@ -75,7 +75,7 @@ subject = BrainScoreModel(
 def session_factory(trial):
     with EnvironmentSession(
         GridGameEnvironment(GridGameEnv(size=4)),
-        seed=trial,
+        seed=trial.identifier,
         require_specs=True,
     ) as session:
         yield session
@@ -176,3 +176,53 @@ scored. Discrete actions only.
 Generic action specifications do not establish support for a new robot.
 
 For externally managed evaluation, see the [LIBERO integration](robotics_benchmark_integration.md).
+
+## Long episodes
+
+Use `EnvironmentSession(environment, history_limit=0)` to keep no in-memory history,
+or a positive limit to keep only the latest entries in each history list. The
+model and recording tools still receive every event. The default keeps all history.
+`collect()` raises once applied actions have been dropped; it never returns a
+partial episode as if it were complete.
+
+With `SessionProtocol`, set `collect_outputs=False` and attach
+`RecordInputsOutputs(max_bytes=...)`. The experiment saves events to disk and
+returns `None` instead of collecting session outputs. Without a recording tool,
+the episode events are not saved. Completion checks, resets
+and cleanup still run. Limits count entries, not payload bytes; use the recorder's
+byte budget separately. A policy's own internal history is not bounded by these
+settings.
+
+
+## Check your adapter
+
+Call `Experiment.validate()` before running. It checks declared channels, tools,
+and whether the output parent accepts a temporary file, without resetting a
+subject or stepping an environment. Storage can still fail later; this is not a
+space reservation. `SessionProtocol` accepts only a `Subject` and session
+factories that yield a `Session`; it reads the declared `Session.complete`, which
+an environment adapter keeps `False` until the episode ends. `EnvironmentSession(require_specs=True)` checks observation
+and action specifications before the first policy call. Shapes and units that
+an adapter does not declare remain unknown.
+
+Use the [external-package conformance tests](../examples/partner_tool/tests/test_conformance.py)
+as a starting point. The [CPU lifecycle example](../examples/external_environment_checks/README.md)
+checks long episodes, independent workers, intervention and recovery after failure.
+It uses a fixed-weight fixture, not a trained robot policy. Give each worker its
+own subject, environment, random state, server and output directory. Recording
+observations does not save simulator state or enable mid-episode recovery.
+
+## Keep answers interpretable
+
+When a policy parses generated text into an action, keep the original answer,
+`valid`, `parse_error` and any fallback action in `EnvironmentResponse.metadata`.
+Keep the model revision and inference settings under its `provenance` key and
+include them in the experiment metadata. A saved action then remains interpretable
+when copied separately from the qualification report. The `motor` channel lists
+these keys (`io_catalog.get('motor').meta_keys`), and the grid-game and MiniGrid
+builders in `local_vlm_policy` return them. Use `visual_policy(model, processor)`
+when you load the model yourself.
+
+The [native-environment example](../examples/native_environment_toolbox.py) shows
+this without adding a method to the model interface. Its fallback to “up” remains
+a qualification-fixture choice, not a default for other policies.

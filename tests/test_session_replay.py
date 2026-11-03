@@ -139,7 +139,7 @@ def test_assembly_comparison_checks_labels_values_and_attributes():
     assert not _equal(original, original.astype(np.float32))
 
 
-def test_neural_replay_without_a_collector_restores_each_trials_request(tmp_path):
+def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_path):
     """Exercise replay independently of built-in collect() defaults."""
     subject = BrainScoreModel(
         identifier='length',
@@ -149,7 +149,8 @@ def test_neural_replay_without_a_collector_restores_each_trials_request(tmp_path
     )
 
     @contextmanager
-    def factory(region):
+    def factory(trial):
+        region = trial.identifier
         table = stimuli()
         session = InMemorySession([
             StreamEvent(channel='text', payload=row['sentence'], t_ms=index)

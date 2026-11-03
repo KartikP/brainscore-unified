@@ -2,8 +2,7 @@
 
 A closed-weight model exposes only its OUTPUT — not internal activations — so it
 plugs straight into ``BrainScoreModel``'s behavioral generation path with NO core
-changes: it's just a ``BrainScoreModel(generation_fn=<closure built here>,
-activations_model=None)``. This module builds that closure for the common API
+changes: it's just a ``BrainScoreModel(answer=<closure built here>)``. This module builds that closure for the common API
 providers.
 
 What it handles (the "graceful" parts):

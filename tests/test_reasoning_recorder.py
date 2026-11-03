@@ -92,7 +92,7 @@ class StreamingSubject(Subject):
     def reset(self):
         self.resets += 1
 
-    def interact(self, session):
+    def participate(self, session):
         while (request := session.next_input()) is not None:
             for offset, block in enumerate([
                 {'text': '6 times ', 'format': 'delta', 'kind': 'chain_of_thought'},

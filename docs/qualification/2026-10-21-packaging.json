@@ -1,0 +1,48 @@
+{
+  "date": "2026-10-21",
+  "scope": "Required offline installed-package profile on macOS arm64; not scientific or GPU qualification",
+  "passes": {
+    "core": 791,
+    "vision": 239,
+    "language": 68,
+    "unified": 1309
+  },
+  "allowed_skips": 43,
+  "unexpected_skips": 0,
+  "deselected": 62,
+  "package_contents": {
+    "brainscore_core": {
+      "wheel": "brainscore_core-2.4.0rc1-py3-none-any.whl",
+      "sha256": "0e4d9c11ba1bf0b52411f9e61157537c62be8376bcc5b2b922c3c3aad168555b",
+      "files": 79,
+      "errors": []
+    },
+    "brainscore_vision": {
+      "wheel": "brainscore_vision-2.4.0rc1-py3-none-any.whl",
+      "sha256": "4da7eace8806ff22c748ce54735801d00116d5d981f6060c359f1d42840d913f",
+      "files": 4248,
+      "errors": []
+    },
+    "brainscore_language": {
+      "wheel": "brainscore_language-2.3.0rc1-py3-none-any.whl",
+      "sha256": "dca5feac47857413853f29a656db5cc7ddc11a425861ca49a5e7e8c1ed702bf8",
+      "files": 235,
+      "errors": []
+    },
+    "brainscore": {
+      "wheel": "brainscore-0.3.0rc1-py3-none-any.whl",
+      "sha256": "0e26a58c98d48d481e805c667d19ce1fd68af821ff1c4c15af615a3af596e5f4",
+      "files": 184,
+      "errors": []
+    }
+  },
+  "examples": {
+    "doctor": 0,
+    "partner": 0,
+    "external": 0
+  },
+  "offline_tutorials": {
+    "passed": 15,
+    "excluded": 4
+  }
+}

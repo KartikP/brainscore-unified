@@ -8,7 +8,7 @@ For a model registration, instantiate `BrainScoreModel`, the concrete `Subject`
 subclass that composes wrappers, recording, and capability callables. For benchmark
 type annotations or a custom implementation, use the abstract `Subject` contract.
 Both are importable from `brainscore_core.model_interface`. A native `Subject`
-declares identity and input/output channels and implements `interact(session)`;
+declares identity and input/output channels and implements `participate(session)`;
 it does not need `process()` or a layer map. `UnifiedModel` extends `Subject`
 with `process`, task/recording setup, and layer/modality declarations.
 `BrainScoreModel` builds on that base. See [Concepts](docs/concepts.md#subject).
@@ -54,15 +54,15 @@ score     = brainscore.score('your-model', 'your-benchmark')
 
 ## Extension seams
 
-The model and benchmark templates below use `BrainScoreModel` task and extraction helpers. For a session-native integration, implement `Subject.interact(session)` and use a benchmark or protocol that consumes that contract. A bare `Subject` is not required to implement `process()` or region mapping.
+The model template builds a `BrainScoreModel`; the benchmark template scores any `Subject` through typed helpers such as `neural_response`, which call `participate(session)`. For a session-native integration, implement `Subject.participate(session)` and use a benchmark or protocol that consumes that contract. A bare `Subject` is not required to implement `process()` or region mapping.
 
 | Seam | Lives in | Implements | Contract | Template |
 |------|----------|---------------|----------|----------|
-| **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `process(input_event) -> OutputEvent` | `templates/new_model/` |
+| **Model** | `brainscore/models/<name>/` | `get_model() -> BrainScoreModel` | `Subject.participate(session)`; `BrainScoreModel.process(input_event)` is a typed convenience, not the contract | `templates/new_model/` |
 | **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(subject) -> Score` | `templates/new_benchmark/` |
 | **Metric** | `brainscore/metrics/<name>/` | a `Metric` subclass | `__call__(assembly1, assembly2) -> Score` | `templates/new_metric/` |
 | **Data / Stimulus set** | `brainscore/data/<name>/` | loaders registered in `data_registry` / `stimulus_set_registry` | return a `StimulusSet` and a `DataAssembly` | `templates/new_data/` |
-| **Capability** | constructor slots on `BrainScoreModel` | a callable (`generation_fn` / `action_fn` / `state_change_fn`) | see below | `templates/new_capability/` |
+| **Capability** | constructor slots on `BrainScoreModel`, or your own package | a function (`answer` / `policy` / `intervention`) or a registered `Capability` | see below | `templates/new_capability/` |
 
 Reference registered data from a benchmark with `load_dataset` /
 `load_stimulus_set`.
@@ -81,11 +81,10 @@ def get_model():
         identifier='your-model',
         model=backbone,                       # nn.Module, or None for output-only
         region_layer_map={'IT': 'blocks.16'}, # brain region -> layer path
-        preprocessors={'vision': preprocess},  # modality -> callable (defines supported_modalities)
-        activations_model=wrapper,            # PytorchWrapper / Text / VLMVision / Video / Audio
+        extractor={'vision': wrapper},        # wrapper owns input preparation and recording
         # optional capability slots:
-        # generation_fn=..., action_fn=..., state_change_fn=...,
-        # behavioral_readout_layer=..., region_modality_map=..., backbone_id=...,
+        # answer=..., policy=..., intervention=...,
+        # behavioral_readout_layer=..., backbone_id=...,
     )
 
 model_registry['your-model'] = get_model
@@ -112,6 +111,7 @@ A benchmark drives the subject model and scores it. Subclass `BenchmarkBase`, im
 ```python
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
+from brainscore_core.streaming_helpers import neural_response
 from brainscore import benchmark_registry, load_metric
 
 class YourBenchmark(BenchmarkBase):
@@ -122,8 +122,13 @@ class YourBenchmark(BenchmarkBase):
         self._metric = load_metric('your-metric')
 
     def __call__(self, subject):
-        subject.start_recording('IT', time_bins=[(70, 170)])
-        predictions = subject.process(self._stimulus_set)   # -> NeuroidAssembly
+        # Runs a session through subject.participate; works for any Subject.
+        predictions = neural_response(
+            subject=subject,
+            stimulus_set=self._stimulus_set,
+            record='IT',
+            time_bins=[(70, 170)],
+        )                                                    # -> NeuroidAssembly
         raw = self._metric(predictions, self._assembly)
         return ceil_score(raw, self.ceiling)
 
@@ -168,24 +173,31 @@ separate.
 
 There are two related extension levels:
 
-1. **Configure an existing capability for a model.** Pass a callable into a
-   `BrainScoreModel` constructor slot;
-   `process()` reaches it through the already-registered framework capability.
-2. **Add a new framework dispatch capability.** Subclass
-   `brainscore_core.capabilities.Capability` and register that class with
-   `register_capability` for a new UMI dispatch path.
+1. **Configure an existing capability for a model.** Pass a function into a
+   `BrainScoreModel` constructor slot; the already-registered capability
+   reaches it.
+2. **Add a new capability.** In your own package, define typed payloads,
+   register their channels with `register_channel`, subclass
+   `brainscore_core.capabilities.Capability` and register it once with
+   `register_capability`. Models opt in through `capability_config`. No core
+   edit is needed.
 
-The constructor-callable slots available to model authors are:
+The constructor slots available to model authors are:
 
 | Slot | Fires on | Signature |
 |------|----------|-----------|
-| `generation_fn` | `StimulusSet` + `TaskContext.instruction` | `(stimulus_row, instruction, label_set) -> str` |
-| `action_fn` | `EnvironmentStep` / `Message` | `(env_step) -> EnvironmentResponse` |
-| `state_change_fn` | `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
+| `answer` | `StimulusSet` + `TaskContext.instruction` | `(stimulus_row, instruction, label_set) -> str` |
+| `policy` | `EnvironmentStep` / `Message` | `(env_step) -> EnvironmentResponse` |
+| `intervention` | `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 
-A new input/output event or dispatch behavior belongs at the second level. See
-`core/brainscore_core/capabilities/` for the framework registry and
-`templates/new_capability/` for model-level callable examples.
+`templates/new_capability/` shows both levels, with a runnable registered
+capability that runs through `subject.participate(session)`.
+
+Builders: a function that builds a part is called `build_<part>` and returns
+it, for example `build_policy()` returns the function passed as `policy=`. The
+ready-made builders work the same way: `build_api_generation_fn(...)` returns an
+`answer`, `build_api_action_fn(...)` a `policy`, and
+`build_pytorch_ablation_fn(model)` an `intervention`.
 
 The interface evaluates checkpoints; it does not train. Register the checkpoint.
 For a discovery or analysis pipeline, work directly with `process()` outputs — see

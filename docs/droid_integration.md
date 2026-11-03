@@ -36,7 +36,7 @@ provider = DroidPolicy(
     policy, action_spec=spec, reset_policy=reset_policy,
     external_camera='exterior_1', action_horizon=1,
 )
-model = BrainScoreModel('my-droid-policy', action_fn=provider)
+model = BrainScoreModel('my-droid-policy', policy=provider)
 result = evaluate_droid_episode(
     model, episode, action_spec=spec,
     action_source=lambda row: np.concatenate([

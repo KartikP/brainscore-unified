@@ -53,7 +53,7 @@ def test_selected_units_conditions_and_recording_order(tmp_path):
         def reset(self):
             pass
 
-        def interact(self, session):
+        def participate(self, session):
             event = session.next_input()
             session.emit(StreamEvent('behavior', self.layer(torch.tensor(event.payload)).numpy(), None))
 

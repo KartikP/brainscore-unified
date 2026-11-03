@@ -2,7 +2,7 @@
 
 Run models across compatible Brain-Score benchmarks, record their responses, and attach experiment tools. A `Subject` connects the model to the experiment; `BrainScoreModel` supplies extraction and task helpers. Use `Experiment` to combine a protocol with recording and intervention tools.
 
-**Start here:** [Getting started](docs/getting_started.md) | [Concepts](docs/concepts.md) | [Build tools](docs/tool_authoring.md) | [Supported features and environments](docs/supported_features.md)
+**Start here:** [Getting started](docs/getting_started.md) | [Concepts](docs/concepts.md) | [Glossary](docs/glossary.md) | [Build tools](docs/tool_authoring.md) | [Supported features and environments](docs/supported_features.md)
 
 UMI is a v2 source candidate. See the [release policy](docs/production_release.md) for remaining qualification.
 

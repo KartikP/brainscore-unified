@@ -49,6 +49,11 @@ class ChanceBaseline(UnifiedModel):
         # see that we support everything by design.
         return {'vision', 'text', 'audio', 'video'}
 
+    @property
+    def out_channels(self) -> Set[str]:
+        # It answers behavioral tasks; declared, not inferred (Contract v3 rule 2).
+        return {'behavior'}
+
     def start_task(self, task_context_or_task, fitting_stimuli=None, **kwargs) -> None:
         if isinstance(task_context_or_task, TaskContext):
             self._task_context = task_context_or_task

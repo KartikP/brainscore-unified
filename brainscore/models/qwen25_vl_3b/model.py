@@ -153,7 +153,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         variant_kwargs = dict(
             # Selection paths are relative to the extraction root. The same
             # visual module is also used by the full model's generate().
-            state_change_fn=build_pytorch_ablation_fn(qwen_model.model.visual),
+            intervention=build_pytorch_ablation_fn(qwen_model.model.visual),
             region_modality_map={
                 region: 'text' if region == 'language_system' else 'vision'
                 for region in region_layer_map
@@ -164,12 +164,12 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         model=qwen_model,
         region_layer_map=region_layer_map,
-        preprocessors={
+        extractor={
             'vision': vision_wrapper,
             'text': text_wrapper,
         },
         visual_degrees=8,
-        generation_fn=generation_fn,
+        answer=generation_fn,
         # Also enable the readout path so Qwen can be compared on the same
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',

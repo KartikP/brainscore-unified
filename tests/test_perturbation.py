@@ -305,3 +305,181 @@ def test_perturbation_positional_api_preserved():
     p = Perturbation('replace', 0.25, 'payload')
     assert (p.kind, p.scale, p.replacement, p.amount) == ('replace', 0.25, 'payload', 0.0)
     assert Perturbation(kind='drive', amount=8.0).amount == 8.0
+
+
+# ── Input site (forward pre-hook) ────────────────────────────────────
+
+class _GatedMLP(torch.nn.Module):
+    """SwiGLU MLP shaped like Qwen/LLaMA: down(silu(gate(x)) * up(x)).
+    The down_proj input is computed inline, so only a pre-hook reaches it."""
+
+    def __init__(self, d=6, h=10):
+        super().__init__()
+        torch.manual_seed(0)
+        self.gate_proj = torch.nn.Linear(d, h, bias=False)
+        self.up_proj = torch.nn.Linear(d, h, bias=False)
+        self.down_proj = torch.nn.Linear(h, d, bias=False)
+
+    def forward(self, x):
+        return self.down_proj(torch.nn.functional.silu(self.gate_proj(x)) * self.up_proj(x))
+
+
+class TestInputSite:
+
+    def _bs(self, net):
+        return BrainScoreModel(identifier='gated-mlp-test', model=net, region_layer_map={},
+                               preprocessors={}, state_change_fn=build_pytorch_ablation_fn(net))
+
+    def _steer(self, bs, layer, perturbation, indices=None):
+        return bs.process(StateChange(kind='steer', perturbation=perturbation,
+                                      target=Selection(layer=layer, indices=indices)))
+
+    def test_drive_down_proj_input_adds_weight_column(self):
+        net = _GatedMLP()
+        bs = self._bs(net)
+        x = torch.randn(2, 5, 6)  # (batch, tokens, d)
+        baseline = net(x).detach().clone()
+
+        n, delta = 7, 2.5
+        self._steer(bs, 'down_proj:input', Perturbation(kind='drive', amount=delta), [n])
+        # every token's output moves by exactly delta * W_down[:, n]
+        expected = baseline + delta * net.down_proj.weight[:, n].detach()
+        assert torch.allclose(net(x).detach(), expected, atol=1e-6)
+
+        bs.reset()
+        assert torch.equal(net(x).detach(), baseline)
+
+    def test_whole_layer_vector_drive(self):
+        net = _GatedMLP()
+        bs = self._bs(net)
+        x = torch.randn(2, 5, 6)
+        baseline = net(x).detach().clone()
+        direction = torch.arange(6, dtype=torch.float64)  # dtype is matched to the layer
+        self._steer(bs, 'down_proj', Perturbation(kind='drive', amount=direction))
+        assert torch.allclose(net(x).detach(), baseline + direction.float(), atol=1e-6)
+
+    def test_input_site_validates_against_in_features(self):
+        net = _GatedMLP()
+        with pytest.raises(ValueError, match='out of range'):
+            self._steer(self._bs(net), 'down_proj:input', Perturbation(kind='drive', amount=1.0), [10])
+
+    def test_unknown_site_rejected(self):
+        net = _GatedMLP()
+        with pytest.raises(ValueError, match='site'):
+            self._steer(self._bs(net), 'down_proj:middle', Perturbation(kind='drive', amount=1.0))
+
+
+# ── Array drive amounts never grow the activity ──────────────────────
+
+def _drive(net, amount, layer='0', indices=None):
+    return build_pytorch_ablation_fn(net)(StateChange(
+        kind='steer', target=Selection(layer=layer, indices=indices),
+        perturbation=Perturbation(kind='drive', amount=amount)))
+
+
+class TestArrayDrive:
+
+    @pytest.mark.parametrize('amount', [torch.arange(3.), torch.arange(3.)[None],
+                                        np.arange(3.), torch.tensor(2.), np.float32(2.)])
+    def test_broadcastable_amounts_add_in_place(self, amount):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        x = torch.ones(2, 4, 3)
+        _, cleanup = _drive(net, amount)
+        try:
+            out = net(x)
+            assert out.shape == x.shape and out.dtype == x.dtype
+            assert torch.equal(out, x + torch.as_tensor(np.asarray(amount), dtype=x.dtype))
+        finally:
+            cleanup()
+        assert torch.equal(net(x), x)
+
+    @pytest.mark.parametrize('shape', [(2, 3), (4,), (1, 1, 3), (2, 1, 3)])
+    def test_amounts_that_would_change_the_shape_are_rejected(self, shape):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        _, cleanup = _drive(net, torch.ones(shape))
+        try:
+            with pytest.raises(ValueError, match='does not broadcast'):
+                net(torch.ones(1, 3))
+        finally:
+            cleanup()
+
+    def test_numpy_float64_follows_the_activity_dtype(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        direction = np.array([0.1, 0.2, 0.3])
+        for dtype in (torch.float32, torch.bfloat16):
+            _, cleanup = _drive(net, direction)
+            x = torch.ones(2, 3, dtype=dtype)
+            out = net(x)
+            assert out.dtype == dtype
+            assert torch.equal(out, x + torch.from_numpy(direction).to(dtype))
+            cleanup()
+
+    def test_caller_edits_after_apply_do_not_change_a_numpy_amount(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        direction = np.ones(3)
+        _, cleanup = _drive(net, direction)
+        direction[:] = 100.
+        assert torch.equal(net(torch.zeros(1, 3)), torch.ones(1, 3))
+        cleanup()
+
+    def test_gradients_flow_to_activity_and_to_a_tensor_amount(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        x = torch.ones(2, 3, requires_grad=True)
+        _, cleanup = _drive(net, np.arange(3.))
+        net(x).sum().backward()
+        assert torch.equal(x.grad, torch.ones(2, 3))
+        cleanup()
+        amount = torch.zeros(3, dtype=torch.float64, requires_grad=True)
+        _, cleanup = _drive(net, amount)
+        net(torch.ones(2, 3)).sum().backward()
+        assert torch.equal(amount.grad, torch.full((3,), 2., dtype=torch.float64))
+        cleanup()
+
+    def test_indexed_drive_takes_only_a_scalar(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        with pytest.raises(ValueError, match='scalar amount'):
+            _drive(net, np.ones(2), indices=[0, 1])
+        assert not net[0]._forward_hooks
+        _, cleanup = _drive(net, np.array(2.), indices=[1])  # 0-d is a scalar
+        assert torch.equal(net(torch.zeros(1, 3)), torch.tensor([[0., 2., 0.]]))
+        cleanup()
+
+    def test_other_amount_types_are_rejected(self):
+        with pytest.raises(TypeError, match='drive amount'):
+            _drive(torch.nn.Sequential(torch.nn.Identity()), [1., 2., 3.])
+
+    def test_python_scalars_keep_their_arithmetic(self):
+        net = torch.nn.Sequential(torch.nn.Identity())
+        applied, cleanup = _drive(net, 2)
+        x = torch.arange(3)  # an integer activity stays integer with an int amount
+        assert torch.equal(net(x[None]), x[None] + 2) and applied.perturbation.amount == 2
+        cleanup()
+
+
+# ── Strict site parser ───────────────────────────────────────────────
+
+from brainscore.model_helpers.selection import split_site
+
+
+@pytest.mark.parametrize('layer, expected', [
+    ('fc1', ('fc1', 'output')), ('model.layers.14.mlp.down_proj', ('model.layers.14.mlp.down_proj', 'output')),
+    ('model.layers.14.mlp.down_proj:input', ('model.layers.14.mlp.down_proj', 'input')),
+    ('0', ('0', 'output')), ('0:input', ('0', 'input')),
+])
+def test_split_site_accepts_paths_and_one_input_suffix(layer, expected):
+    assert split_site(layer) == expected
+
+
+@pytest.mark.parametrize('layer', ['', ':input', ':', 'fc1:', 'fc1:output', 'fc1:middle:input',
+                                   'fc1:input:input', 'fc1::input', 'fc1:Input'])
+def test_split_site_rejects_malformed_addresses(layer):
+    with pytest.raises(ValueError):
+        split_site(layer)
+
+
+@pytest.mark.parametrize('layer', [':input', 'fc1:middle:input', 'fc1:input:input'])
+def test_perturbation_rejects_malformed_sites_before_hooking(layer):
+    net = _TwoLayerNet()
+    with pytest.raises(ValueError):
+        _drive(net, 1.0, layer=layer)
+    assert not any(m._forward_hooks or m._forward_pre_hooks for m in net.modules())

@@ -2,7 +2,7 @@
 from contextlib import contextmanager, ExitStack
 import copy
 import math
-from typing import Any, Callable, ContextManager, Iterator
+from typing import Any, Callable, ContextManager, Iterator, Sequence
 from brainscore.run_record import RunRecorder
 from brainscore_core.events import Selection, Perturbation, StateChange
 from brainscore.instrumentation import observe
@@ -10,17 +10,40 @@ from .runner import Tool
 
 
 class RecordInputsOutputs(Tool):
-    """Snapshot events with trial IDs, call IDs, source and elapsed time."""
+    """Snapshot events with trial IDs, call IDs, source and elapsed time.
+
+    max_bytes caps this tool's record (events plus its stored arrays/files); see
+    RunRecorder. Exceeding it fails the experiment. Other outputs are not counted.
+    """
     name = 'inputs_outputs'
+
+    def __init__(self, *, max_bytes: int | None = None):
+        if max_bytes is not None and (type(max_bytes) is not int or max_bytes <= 0):
+            raise ValueError('max_bytes must be a positive integer or None')
+        self.max_bytes = max_bytes
+
+    def describe(self):
+        return {} if self.max_bytes is None else {'max_bytes': self.max_bytes}
 
     @contextmanager
     def attach(self, context):
         path = context.directory / self.name
         try:
             with RunRecorder(path, metadata={'experiment': context.manifest['run_id'],
-                                            'plan': context.manifest['plan']}) as recorder:
+                                            'plan': context.manifest['plan']},
+                             max_bytes=self.max_bytes) as recorder:
+                stopped = []
+
                 def record(event):
-                    recorder.record('input' if event['kind'] == 'input' else 'output', event)
+                    # After a recording failure, the first exception already failed the
+                    # run; skipping later events (e.g. trial_end) keeps it the one raised.
+                    if stopped:
+                        return
+                    try:
+                        recorder.record('input' if event['kind'] == 'input' else 'output', event)
+                    except BaseException:
+                        stopped.append(True)
+                        raise
                 try:
                     with context.subscribe(record):
                         yield
@@ -39,9 +62,12 @@ class RecordInputsOutputs(Tool):
 
 
 class RecordActivity(Tool):
-    def __init__(self, targets, *, when='after', name='activity'):
+    def __init__(self, targets: Sequence[str | Selection], *, when: str = 'after',
+                 name: str = 'activity') -> None:
         if when not in ('before', 'after'):
             raise ValueError('when must be before or after')
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError('Tool name must be a nonempty string')
         self.targets, self.when, self.name = tuple(targets), when, name
         self.phase = 'before_intervention' if when == 'before' else 'after_intervention'
 
@@ -70,7 +96,12 @@ class Ablate(Tool):
     phase = 'intervene'
     operation = 'ablate'
 
-    def __init__(self, targets, *, conditions=None, trials=None):
+    def __init__(self, targets: Sequence[str | Selection], *,
+                 conditions: Sequence[str] | None = None, trials: Sequence[Any] | None = None,
+                 name: str | None = None) -> None:
+        self.name = self.name if name is None else name
+        if not isinstance(self.name, str) or not self.name.strip():
+            raise ValueError('Tool name must be a nonempty string')
         self.targets = tuple(targets)
         self.conditions = None if conditions is None else tuple(conditions)
         self.trials = None if trials is None else tuple(trials)
@@ -112,8 +143,10 @@ class ScaleActivity(Ablate):
     name = 'scale_activity'
     operation = 'scale'
 
-    def __init__(self, targets, *, factor, conditions=None, trials=None):
-        super().__init__(targets, conditions=conditions, trials=trials)
+    def __init__(self, targets: Sequence[str | Selection], *, factor: float,
+                 conditions: Sequence[str] | None = None, trials: Sequence[Any] | None = None,
+                 name: str | None = None) -> None:
+        super().__init__(targets, conditions=conditions, trials=trials, name=name)
         if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not math.isfinite(factor):
             raise ValueError('factor must be a finite number')
         self.factor = float(factor)
@@ -135,8 +168,8 @@ class PatchActivity(Ablate):
     operation = 'patch'
 
     def __init__(self, targets: Any, *, reference: dict,
-                 conditions: Any = None, trials: Any = None) -> None:
-        super().__init__(targets, conditions=conditions, trials=trials)
+                 conditions: Any = None, trials: Any = None, name: str | None = None) -> None:
+        super().__init__(targets, conditions=conditions, trials=trials, name=name)
         self.reference = copy.deepcopy(reference)
 
     def describe(self) -> dict:
@@ -169,7 +202,8 @@ def _selection(target):
 def _describe_target(target):
     if isinstance(target, str):
         return target
-    return {'layer': target.layer, 'indices': target.indices}
+    return {'layer': target.layer, 'indices': target.indices,
+            'axis': target.axis, 'expected_shape': target.expected_shape}
 
 
 class ObserveCalls(Tool):
@@ -178,7 +212,10 @@ class ObserveCalls(Tool):
     Native session tools use on_event instead; a session event is not a method
     call. This adapter preserves existing observers without inventing call data.
     """
-    def __init__(self, observer, *, methods=('process',), name='call_observer'):
+    def __init__(self, observer: Any, *, methods: Sequence[str] = ('process',),
+                 name: str = 'call_observer') -> None:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError('Tool name must be a nonempty string')
         self.observer, self.methods, self.name = observer, tuple(methods), name
 
     def describe(self):
@@ -200,8 +237,8 @@ class TorchInstrumentation:
     """Expose model layer paths or explicitly named modules to experiment tools.
 
     Recording uses ActivationWindow; ablation uses build_pytorch_ablation_fn.
-    Selection.indices refers to the last output axis, just as in StateChange.
-    It is not automatically the channel axis of a convolutional output.
+    Selection.axis uses the same coordinates for recording and intervention.
+    The default -1 indexes the last axis; None flattens non-batch dimensions.
     """
     def __init__(self, model_or_targets):
         import torch
@@ -212,13 +249,13 @@ class TorchInstrumentation:
         return {'provider': 'TorchInstrumentation',
                 'targets': {name: type(module).__module__ + '.' + type(module).__qualname__
                             for name, module in self.targets.items()},
-                'operations': ['record', 'ablate', 'scale', 'attribute', 'patch'],
-                'selection': 'layer path; optional last-axis indices'}
+                'operations': ['record', 'ablate', 'scale', 'attribute', 'patch', 'transform'],
+                'selection': 'layer path; optional indices and explicit axis'}
 
     def validate(self, operation, targets):
         import operator
         import torch
-        if operation not in ('record', 'ablate', 'scale', 'attribute', 'patch'):
+        if operation not in ('record', 'ablate', 'scale', 'attribute', 'patch', 'transform'):
             raise ValueError(f'Unsupported operation: {operation}')
         selections = [_selection(t) for t in targets]
         if not selections or any(not isinstance(s, Selection) for s in selections):
@@ -227,6 +264,17 @@ class TorchInstrumentation:
         if len(set(names)) != len(names):
             raise ValueError('Select distinct layers; combine unit indices in one Selection')
         for selection in selections:
+            if isinstance(selection.layer, str) and ':' in selection.layer:
+                # Every operation here hooks a module's output. An input-site
+                # name would label output activity as input, so it is refused
+                # before any hook or file exists, even as an explicit alias.
+                raise ValueError(
+                    f'{selection.layer!r}: TorchInstrumentation reads and changes module '
+                    f"outputs only; input sites (':input') and other site suffixes are not "
+                    f'supported here. Use TextWrapper recording or a StateChange through '
+                    f'intervene() for input sites.')
+            if operation in ('attribute', 'patch') and (selection.axis != -1 or selection.expected_shape is not None):
+                raise ValueError('Attribution and patching require last-axis selections without a fixed shape.')
             if (selection.layer not in self.targets
                     or not isinstance(self.targets[selection.layer], torch.nn.Module)):
                 raise ValueError(f'Unknown or invalid PyTorch target: {selection.layer}')
@@ -248,8 +296,12 @@ class TorchInstrumentation:
                     tensor = _first_tensor_out(output)
                     if tensor is None:
                         raise TypeError('Activity target must expose a tensor')
+                    from brainscore.model_helpers.selection import selection_view
+                    tensor, axis = selection_view(tensor, selection)
                     if selection.indices is not None:
-                        tensor = tensor[..., selection.indices]
+                        import torch
+                        indices = torch.tensor(selection.indices, device=tensor.device, dtype=torch.long)
+                        tensor = tensor.index_select(axis, indices)
                     return tensor
                 def capture(value, selection=selection):
                     import torch
@@ -257,7 +309,8 @@ class TorchInstrumentation:
                     if snapshot.dtype == torch.bfloat16:
                         snapshot = snapshot.float()
                     receive(selection.layer, {'array': snapshot.numpy(), 'dtype': value.dtype,
-                                              'device': value.device, 'indices': selection.indices})
+                                              'device': value.device, 'indices': selection.indices,
+                                              'axis': selection.axis, 'expected_shape': selection.expected_shape})
                 stack.enter_context(ActivationWindow(self.targets[selection.layer],
                     select_output=select, on_capture=capture, retain=False, max_captures=None))
             yield
@@ -298,6 +351,11 @@ class TorchInstrumentation:
         from .attribution import patch
         return patch(self, targets, reference)
 
+    def transform(self, targets: Any, *, apply: Callable[[Any], Any]) -> ContextManager[None]:
+        """Temporarily transform selected floating activity on every forward call."""
+        from .transforms import transform
+        return transform(self, targets, apply)
+
     @contextmanager
     def _perturb(self, targets, perturbation):
         import torch
@@ -317,7 +375,8 @@ class TorchInstrumentation:
                 root = torch.nn.ModuleDict({'target': module})
                 apply = build_pytorch_ablation_fn(root)
                 _, cleanup = apply(StateChange(kind='ablation',
-                    target=Selection(layer='target', indices=selection.indices),
+                    target=Selection(layer='target', indices=selection.indices,
+                                     axis=selection.axis, expected_shape=selection.expected_shape),
                     perturbation=perturbation))
                 stack.callback(cleanup)
             yield

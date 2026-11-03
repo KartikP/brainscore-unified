@@ -214,7 +214,6 @@ def score(model_identifier, benchmark_identifier,
     then runs the benchmark on the model.
     """
     from brainscore_core.compatibility import (
-        check_channel_compatibility,
         check_compatibility,
     )
     from brainscore_core.extraction_cache import weight_fingerprint_scope
@@ -242,14 +241,19 @@ def score(model_identifier, benchmark_identifier,
                     else _resolve_identifier(benchmark, 'custom-benchmark'))
     requested_channels = requested_output_channels_for_score(benchmark)
 
-    check_compatibility(model, benchmark)
-    check_channel_compatibility(model, benchmark)
+    compatibility = check_compatibility(model, benchmark)
     if check_mem:
         check_memory(model, benchmark)
 
+    # A legacy domain benchmark (marked by its domain loader) receives the
+    # permanent facade, which runs its calls as sessions through participate.
+    from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
+    candidate = subject_for_benchmark(model, benchmark,
+                                      visual_degrees=declared_visual_degrees(model))
+
     _t0 = _time.time()
     with weight_fingerprint_scope():
-        result = benchmark(model)
+        result = benchmark(candidate)
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
     # Benchmarks can supply a qualified identity for settings or data subsets.
@@ -267,6 +271,7 @@ def score(model_identifier, benchmark_identifier,
         protocol=infer_score_protocol(model, benchmark, requested_channels),
         harness_id='brainscore',
     )
+    result.attrs['compatibility'] = compatibility.as_attrs()
     return result
 
 

@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-14]
+        os: [ubuntu-24.04, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
     env:
@@ -89,6 +89,8 @@ jobs:
           for repo in core vision language unified; do
             python -m build --wheel --no-isolation --outdir wheels "$repo"
           done
+      - name: Check package contents and notices
+        run: python unified/brainscore/validation/package_contents.py --wheels wheels --out qualification/package-contents.json
       - name: Install CPU Torch on Linux
         if: runner.os == 'Linux'
         run: python -m pip install torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu
@@ -105,7 +107,7 @@ jobs:
           python -m brainscore.doctor
           python "$GITHUB_WORKSPACE/unified/examples/partner_integration.py" --out "$RUNNER_TEMP/partner-demo"
           python -m umi_partner_tool --out "$RUNNER_TEMP/external-tool-demo"
-          python -m pytest "$GITHUB_WORKSPACE/unified/tests/test_production_tools.py" "$GITHUB_WORKSPACE/unified/tests/test_droid_policy.py" -q --import-mode=importlib -p no:cacheprovider
+          python -m pytest "$GITHUB_WORKSPACE/unified/tests/test_production_tools.py" "$GITHUB_WORKSPACE/unified/tests/test_droid_policy.py" "$GITHUB_WORKSPACE/unified/examples/partner_tool/tests/test_conformance.py" -q --import-mode=importlib -p no:cacheprovider
       - name: Test the four installed packages
         working-directory: ${{ runner.temp }}
         run: |

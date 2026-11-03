@@ -2,7 +2,7 @@
 
 Wraps the closed-loop ``GridGameEnv`` (``brainscore.harnesses.grid_game``) as a
 proper ``Benchmark``: ``__call__(candidate)`` runs N reach-the-goal episodes
-through ``run_environment(candidate, ...)`` (the candidate's ``interact``) and
+through ``run_environment(candidate, ...)`` (the candidate's ``participate``) and
 returns the success rate,
 ceiled by the greedy oracle, with the random-action floor in ``attrs``.
 
@@ -40,8 +40,10 @@ def policy_model(policy, identifier):
     """Wrap a bare ``(observation, history) -> action`` policy as a scorable
     candidate (the same shape a real model takes: ``action_fn`` on a
     ``BrainScoreModel``). Used for the oracle ceiling + random floor."""
-    return BrainScoreModel(identifier, None, {}, {}, None,
-                           action_fn=PolicyWrapper(policy, max_history=4))
+    return BrainScoreModel(
+        identifier=identifier,
+        policy=PolicyWrapper(policy, max_history=4),
+    )
 
 
 class GridGameBenchmark(BenchmarkBase):

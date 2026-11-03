@@ -45,7 +45,7 @@ whole chunk. The official evaluator decides how many commands to execute before
 asking again. Changing that schedule would change the experiment.
 
 `BrainScoreModel` supplies the existing UMI machinery here; the policy adapter
-is supplied through `action_fn`. We did not change the core contract. This route
+is supplied through `policy`. We did not change the core contract. This route
 uses `process()` and does not test the `EnvironmentSession` driver.
 
 ## How we built it
@@ -92,13 +92,13 @@ from brainscore_core.model_interface import BrainScoreModel
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
 
 # policy is an initialized OpenPI policy or its websocket client.
-subject = BrainScoreModel('pi05-libero', action_fn=LiberoChunkPolicy(policy))
+subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy))
 # step is an EnvironmentStep with the fields described above.
 response = subject.process(step)
 ```
 
 For a partner integration, the adapter can live in your own package. Supplying
-it as `action_fn` does not require modifying the UMI core or registering a new
+it as `policy` does not require modifying the UMI core or registering a new
 built-in capability.
 
 ### 4. Connect the evaluator and retain evidence
@@ -112,6 +112,14 @@ and UMI keep their separate Python environments.
 and adds trial records, initial-state hashes, error reporting, and distinct video
 filenames. These additions make the result inspectable without redefining its
 score. Failed and interrupted trials must remain visible.
+
+With [`serve_tool_bridge.py`](../examples/libero/serve_tool_bridge.py), the
+evaluator and bridge also exchange a start message, per-call annotations, a
+final receipt and an acknowledgment sent only after the UMI records are saved.
+`compare.py --umi-experiment` joins those records to the report. `serve_bridge.py`
+records remain transport-only: they can be marked complete after a disconnect,
+a known gap tracked separately. See the
+[LIBERO README](../examples/libero/README.md#use-the-official-evaluator-with-tools).
 
 Check reset behavior explicitly. OpenPI's websocket client does not reset the
 server's random state, so we restart the policy server for matched runs. This
@@ -151,10 +159,12 @@ do not assume the saved tuning file works on another GPU or software stack.
 
 With cached autotuning, the trained-policy smoke test completed **10/10 tasks on
 both routes**, and **221 saved inference requests matched exactly** through UMI.
-The full Spatial evaluation is still running at the time of writing. This is a
-candidate integration, not a completed full-suite qualification.
+This historical smoke test is not full-suite qualification. The hardened
+completion and failure paths also have model-free transport tests; those tests
+do not establish trained-policy parity on a new source revision.
 
-This example does not demonstrate internal activation recording, interventions,
-physical robot control, or a trained DROID evaluation. Each needs its own
-integration and evidence. Use the [DROID guide](droid_integration.md) for the
+The original transport smoke test did not exercise internal tools. Separate
+[OpenPI tool qualification](qualification/2026-10-06-openpi-tools.md) covers
+recording, ablation and restoration at three supported sampler sites. Neither
+report establishes physical robot control or trained DROID qualification. Use the [DROID guide](droid_integration.md) for the
 recorded-episode path.

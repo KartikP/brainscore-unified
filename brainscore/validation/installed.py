@@ -126,6 +126,10 @@ def main() -> int:
         sys.path.insert(0, str(args.stage))
         code = int(pytest.main(['--import-mode=importlib', *tests], plugins=[guard]))
         report['import_violations'] = sorted(guard.violations)
+        # Installation tests must not silently replace a coordinated peer.
+        report['packages_after'] = verify_wheels(args.wheels)
+        if report['packages_after'] != report['packages']:
+            raise ValueError('Candidate wheel identity changed during testing')
         report['complete'] = True
         report['returncode'] = code
         return code

@@ -31,9 +31,11 @@ The same experiment tools work across domains when the subject exposes the requi
 | Check storage and data early | `score()`, `python -m brainscore.doctor` | Scoring checks cache storage before loading benchmarks/models; unified also checks declared local assets. Lazy or remote failures can occur later |
 | Map activity to brain regions | `region_layer_map`, recording helpers | One layer, composite selections, or all layers; the benchmark determines fitting/scoring |
 | Reuse legacy models | `look_at`, `digest_text`, adapters | Existing vision/language task and recording workflows |
-| Assemble an experiment | `Experiment` | Combines a subject, one protocol, tools, and an output folder |
+| Assemble an experiment | `Experiment` | Combines a subject, protocol, tools and a new output folder; validates declarations and storage before execution |
 | Choose the procedure | `SessionProtocol`, `CallableProtocol` | Sessions manage conditions/trials; an existing evaluator keeps its own procedure |
 | Control delivery | Sessions and streaming helpers | Batches, individual inputs, windows, and clock policies; no hard real-time guarantee |
+| Limit history and call recordings | `EnvironmentSession(history_limit=...)`, `SessionProtocol(collect_outputs=False)`, `RecordInputsOutputs(max_bytes=...)` | History limits count entries; the recorder fails explicitly at its byte budget. Other artifacts and policy state need separate limits |
+| Inspect an interrupted record | `RunRecord.inspect`, `unverified_prefix` | Read-only diagnostic prefix; incomplete or corrupt runs cannot be scored as completed measurements |
 
 ## Ready-to-use experiment tools
 
@@ -41,13 +43,16 @@ Pass these in `Experiment(tools=[...])`.
 
 | Tool | What it does | Requires |
 | --- | --- | --- |
-| `RecordInputsOutputs` | Save inputs, outputs, activity, errors, and lifecycle events | Supported payloads |
-| `RecordActivity` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation |
+| `RecordInputsOutputs` / `load_tool("record-io")` | Save inputs, outputs, activity, errors, and lifecycle events | Supported payloads; [tool catalog](tools.md) |
+| `RecordActivity` / `load_tool("record-activity")` | Capture selected internal activity before/after intervention | `RecordInputsOutputs` and instrumentation; [tool catalog](tools.md) |
 | `Ablate` | Temporarily zero selected outputs, optionally in selected conditions/trials | Instrumentation |
-| `ScaleActivity` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged |
-| `PatchActivity` | Replace selected outputs with recorded values from a paired input | `TorchInstrumentation`, `RecordInputsOutputs`, aligned shapes and one invocation per target; [guide](attribution_patching.md) |
-| `ObserveCalls` | Include an existing call observer in the experiment | Observer callbacks and selected subject methods |
-| `RecordReasoning` | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
+| `ScaleActivity` / `load_tool("scale-activity")` | Multiply selected outputs by a fixed factor, optionally in selected conditions/trials | `TorchInstrumentation`; weights stay unchanged; [tool catalog](tools.md) |
+| `PatchActivity` / `load_tool("patch-activity")` | Replace selected outputs with recorded values from a paired input | `TorchInstrumentation`, `RecordInputsOutputs`, aligned shapes and one invocation per target; [guide](attribution_patching.md) |
+| `ObserveCalls` / `load_tool("observe-calls")` | Include an existing call observer in the experiment | Observer callbacks and explicitly selected public methods; [tool catalog](tools.md) |
+| `load_tool("linear-probe", ...)` | Fit/save/load a logistic probe and decode activity before or after interventions | Original unit coordinates; instrumentation supporting `record`; [guide](linear_probe.md) |
+| `load_tool("leace", ...)` | Fit/save/load categorical concept erasure and apply it offline or inside a model | Reference fitter optional extra; `TorchInstrumentation` for live transforms; [guide](leace.md) |
+| `load_tool("contrastive-steering", ...)` | Fit/save/load a group-mean direction and apply signed activation additions | Explicit discovery labels; `TorchInstrumentation` for live transforms; [guide](contrastive_steering.md) |
+| `RecordReasoning` / `load_tool("record-reasoning")` | Save exposed CoT, summaries, and streamed fragments with their original response | `RecordInputsOutputs` and explicit reasoning fields or an extractor; [guide](reasoning_recording.md) |
 
 ## Adapters and building blocks
 
@@ -55,18 +60,18 @@ Use these to connect a model or build a tool. They also underpin the tools above
 
 | Component | Responsibility | Relationship to experiment tools |
 | --- | --- | --- |
-| `TorchInstrumentation` | Access the actual PyTorch network's named layers | Recording, ablation, scaling, paired-input attribution and exact patches; attribution needs a differentiable forward call; [patching guide](attribution_patching.md), [policy backends](policy_instrumentation.md) |
+| `TorchInstrumentation` | Access the actual PyTorch network's named layers | Recording, ablation, scaling, fitted transforms, paired-input attribution and exact patches; attribution needs a differentiable forward call; [patching guide](attribution_patching.md), [policy backends](policy_instrumentation.md) |
 | `OpenPIInstrumentation` | Record/ablate three sites in the pinned Pi0/Pi0.5 JAX sampler | Selected units and denoising iterations; [trained L4 and ten-task smoke checks](qualification/2026-10-06-openpi-tools.md) |
 | `RemoteOpenPIInstrumentation` | Use the same tools through `OpenPIToolServer` and `OpenPIPolicyClient` | Request-scoped cleanup and separate activity delivery; [guide](policy_instrumentation.md) |
 | `observe` | Notify callbacks about method starts, results, and errors | Used by `ObserveCalls`; does not save anything by itself |
 | `ActivationWindow` / `intervene` | Scoped activity capture / intervention | The direct mechanisms behind activity and intervention workflows |
 | `RunRecorder` | Write records, arrays, files, and metadata | Storage used by recording tools |
-| `RunRecord` | Read saved measurements and apply metrics | Shared reader; no model execution |
+| `RunRecord` | Read saved measurements, inspect failures and apply metrics | Checks completed records before scoring; diagnostic prefixes are unverified; no model execution |
 | `build_trace_subject` | Adapt a provider and answer parser into a subject | Produces raw responses, streamed fragments, and parsed answers for recorders |
 | `replay_sessions` / `replay_calls` | Send saved inputs through a model again | Explicit new execution; does not regenerate simulator feedback |
 | `context.import_artifact` | Copy external videos/reports with producer metadata | Keeps evaluator-produced artifacts with the experiment |
 
-`Selection` uses the same layer paths across recording and intervention tools. For PyTorch interventions, unit indices address the **last output axis**; on a convolutional output that is usually image width, not channels.
+`Selection` uses the same layer paths and tensor coordinates for recording and intervention. Set `axis=-1` for the last feature axis, `axis=1` for CNN channels, or `axis=None` for flattened spatial features. Functional localizers retain spatial coordinates when available; ambiguous subsets are rejected. OpenPI and attribution/patching currently require last-axis selections.
 
 ## Guides, tutorials and examples
 
@@ -110,8 +115,8 @@ Install the four packages together using the [peer revisions and constraints](..
 
 | Environment | Current coverage | Boundary |
 | --- | --- | --- |
-| Ubuntu 24.04 x86_64, CPU | Coordinated installation and offline integration CI | Scientific results need their own model/data profile |
-| macOS 14 ARM64, CPU | Coordinated installation and offline integration CI | Other macOS versions need separate evidence |
+| Ubuntu 24.04 x86_64, CPU | Coordinated installation and offline integration CI; fresh-Conda language scoring/readout, native text extraction, AlexNet mapping and pixels/public IT scoring in an Ubuntu container | Pixels/public IT scoring took about 38 minutes; its profile now allows 60. Other scientific profiles need separate qualification. [Results](qualification/2026-10-22-cpu-pilot.md) |
+| macOS 26 ARM64, CPU | Coordinated installation and offline integration CI (macOS 14 until its runner image retirement on November 2, 2026) | Other macOS versions need separate evidence |
 | Ubuntu 22.04, NVIDIA L4, CUDA 13.0, FP32 | Recorded scientific candidate comparisons | Historical profile; final-artifact requalification remains required |
 | macOS, Apple MPS | Selected measured runs, including GPT-2/LeBel | Experimental backend; one result is not general numerical qualification |
 | Robotics policy servers | Integration-specific environments, separated from UMI when necessary | Follow the pinned evaluator/policy instructions |
@@ -120,3 +125,5 @@ Install the four packages together using the [peer revisions and constraints](..
 Use the [numerical policy](numerical_policy.md) for exactness and error budgets. Use separate subject/tool instances for concurrent experiments; the experiment runner is synchronous. Custom object serialization, physical-robot safety, distributed scheduling, a replay UI and automatic circuit discovery are not built-in guarantees.
 
 [Release requirements](production_release.md) · [Qualification records](qualification/) · [Shared vocabulary](conventions.md)
+
+See the [external-environment qualification report](qualification/2026-10-29-external-environments.md) for installed-package tests, long-run fixtures and trained-model qualification limits.

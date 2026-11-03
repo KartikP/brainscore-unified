@@ -1,6 +1,6 @@
 # Learn the Brain-Score UMI
 
-Choose by task: **01** for registration and scoring, **18** for recording/intervention tools, or **19** for trained robotics-policy measurements. See [Getting started](../docs/getting_started.md#choose-your-starting-point) for how these paths fit together. The remaining notebooks are independent examples. Read the [concepts](../docs/concepts.md) when a term is unfamiliar; the [shared vocabulary](../docs/conventions.md) applies throughout.
+Choose by task: **01** for registration and scoring, **18** for recording/intervention tools, or **19** for trained robotics-policy measurements. See [Getting started](../docs/getting_started.md#choose-your-starting-point) for how these paths fit together. The remaining notebooks are independent examples. Read the [concepts](../docs/concepts.md) or the [glossary](../docs/glossary.md) when a term is unfamiliar; the [shared vocabulary](../docs/conventions.md) applies throughout.
 
 ## Set up
 
@@ -23,7 +23,7 @@ If scoring reports a cache-storage error, see [cache troubleshooting](../docs/ge
 | --- | --- | --- | --- |
 | 01 | [Select layers](01_quickstart_layer_mapping.ipynb) | Register, score, and record one/all/composite mappings. | Synthetic stand-in; CPU, no download. |
 | 02 | [Compare with controls](02_behavioral_and_nulls.ipynb) | Interpret accuracy against random features. | Synthetic task; CPU. |
-| 07 | [Connect your model](07_bring_your_model.ipynb) | Inspect, wrap, extract, and generate a registration template. | Random-weight ResNet-18; CPU. |
+| 07 | [Connect your model](07_bring_your_model.ipynb) | Inspect, wrap, extract, generate a registration template, and run a legacy benchmark with a participate-only subject. | Random-weight ResNet-18; CPU. |
 | 09 | [Read saved scores](09_scaling_curves.ipynb) | Compare each saved result with its own controls. | Local saved results; no new scoring. |
 | 10 | [Compare with brain recordings](10_brain_alignment.ipynb) | Plot held-out predictions and measured IT responses. | Saved CLIP/MajajHong results; CPU to replot. |
 
@@ -50,6 +50,7 @@ If scoring reports a cache-storage error, see [cache troubleshooting](../docs/ge
 | 17 | [Experiment with digits](17_experiment_toolbox.ipynb) | Train, record, ablate, restore, and replay. | Real bundled digits; CPU, no download. |
 | 18 | [Experiment with ResNet-18](18_resnet_experiment_toolbox.ipynb) | Attach the same tools to a pretrained image model. | Real bundled photos; CPU, ~45 MB weight download. |
 | 19 | [Inspect an OpenPI policy](19_openpi_experiment_toolbox.ipynb) | Read internal measurements and compare predicted actions; optionally attach tools remotely. | Saved trained-policy GPU results; reading needs no GPU. Live use requires the OpenPI tool server and matching inputs. |
+| 20 | [Steer a language model](20_steer_a_language_model.ipynb) | Push one MLP neuron, compare with random-neuron controls, and rank neurons by three methods. | Runs Qwen3.5-4B live: GPU (~16 GB), `transformers>=5`, ~10 GB download, ~15 min on an L4. |
 
 In the PyTorch notebooks, `Ablate` uses the same intervention implementation as notebooks 11 and 14. `RecordActivity` uses `ActivationWindow`, demonstrated directly in 05 and 12. These are composition and direct-control entry points to the same components.
 

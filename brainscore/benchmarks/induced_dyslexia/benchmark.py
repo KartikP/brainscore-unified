@@ -42,7 +42,7 @@ import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
-from brainscore_core.selection import selection_unit_indices
+from brainscore_core.selection import selection_unit_indices, selection_coordinates
 from brainscore_core.model_interface import (
     StateChange, Selection, Perturbation, FunctionalSelection, RandomSelection,
 )
@@ -127,7 +127,7 @@ class InducedDyslexia(BenchmarkBase):
             # coord; when the assembly carries no such coord it falls back to the
             # region name. The ablation needs the actual module path, so remap via
             # the candidate's region_layer_map.
-            actual = candidate.region_layer_map.get(self.localizer_region)
+            actual = candidate.region_layer_selectors[self.localizer_region].layer_path
             if actual and sel.layer != actual:
                 sel = dataclasses.replace(sel, layer=actual)
             return [sel]
@@ -156,7 +156,9 @@ class InducedDyslexia(BenchmarkBase):
             order = np.argsort(d)[::-1][:self.n_units]
             population = selection_unit_indices(
                 asm.isel(neuroid=cols), candidate, self.localizer_region)
+            axis, expected_shape = selection_coordinates(asm.isel(neuroid=cols))
             out.append(Selection(layer=L, indices=sorted(int(i) for i in population[order]),
+                                 axis=axis, expected_shape=expected_shape,
                                  metadata={'selector': 'functional',
                                            'n_recorded': int(sub.shape[1]),
                                            'unit_population': population.tolist()}))
@@ -205,6 +207,7 @@ class InducedDyslexia(BenchmarkBase):
 
         # matched random-ablation control
         controls = [RandomSelection(layer=s.layer, n_units=len(s.indices),
+                                    axis=s.axis, expected_shape=s.expected_shape,
                                     n_total=int(s.metadata['n_recorded']),
                                     seed=self.control_seed,
                                     population=s.metadata.get('unit_population')).resolve(candidate)

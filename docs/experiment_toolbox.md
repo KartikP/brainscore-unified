@@ -6,6 +6,9 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 
 ## How the pieces fit
 
+For a short overview and diagram, see
+[instrumentation, tools and experiments](tools_and_experiments.md).
+
 | Part | Responsibility |
 | --- | --- |
 | `Experiment` | Run the subject with one protocol and the selected tools; save results and clean up. |
@@ -18,7 +21,14 @@ Start with [pretrained ResNet-18](../notebooks/18_resnet_experiment_toolbox.ipyn
 
 `ObserveCalls` wraps `observe` for experiments. `RecordActivity` uses `ActivationWindow` through instrumentation. `RecordInputsOutputs` writes through `RunRecorder`. These are shared implementations at different levels of control.
 
+Use [the tool catalog](tools.md) to load supported tools by name and compose
+multiple named instances in a protocol or direct attachment scope.
+
 For closed-loop episodes, see [environment sessions](environment_sessions.md).
+
+For fitted readouts that can be saved and reused alongside other tools, see
+[linear probes](linear_probe.md). Multiple named probes can observe activity
+before and after an intervention without changing model responses.
 
 For exposed CoT and streamed responses, see [reasoning recording](reasoning_recording.md). For policies, see [robotics instrumentation](policy_instrumentation.md).
 
@@ -29,35 +39,42 @@ inputs, see [attribution and activation patching](attribution_patching.md).
 
 | Protocol | Use it when | Who supplies the next input? |
 | --- | --- | --- |
-| `SessionProtocol` | Your subject implements `interact(session)` | The session, which can respond to model outputs. |
+| `SessionProtocol` | Your subject implements `participate(session)` | The session, which can respond to model outputs. |
 | `CallableProtocol` | You already have a benchmark or evaluator | The existing evaluator, with its scoring and reset rules. |
 
 For sessions, name the **conditions** you want to compare and the **trials** that repeat each condition:
 
 ```python
 from contextlib import contextmanager
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import BufferedSession, StreamEvent
 from brainscore.experiments import SessionProtocol
 
 @contextmanager
 def make_session(trial):
     # trial.condition names the setting; trial.identifier identifies the repetition.
     # Supply already prepared inputs and collect the model's responses.
-    yield InMemorySession([StreamEvent('image', images.copy(), t_ms=0)])
+    yield BufferedSession(
+        inputs=[StreamEvent(channel='vision', payload=images.copy(), t_ms=0)],
+        requested_output_channels=['behavior'],
+    )
 
 protocol = SessionProtocol(
-    'compare-conditions', make_session,
+    identifier='compare-conditions',
+    session_factory=make_session,
     conditions=['normal', 'silenced', 'restored'],
     trials=[0],  # One repetition of each condition.
-    input_channels=['image'], output_channels=['prediction'],
+    input_channels=['vision'],
+    output_channels=['behavior'],
 )
 ```
 
-Supply `images` and a subject with matching channels. The protocol resets the subject before and after each trial. The factory creates a fresh session and closes any resources it owns. `@contextmanager` lets Python manage that setup and cleanup around `yield`.
+The factory always receives a `Trial`, whether or not conditions are specified. Use `trial.identifier` for a repetition ID or seed. Supply `images` and a subject with matching channels. The protocol resets the subject before and after each trial. The factory creates a fresh session and closes any resources it owns. `@contextmanager` lets Python manage that setup and cleanup around `yield`.
 
 Each entry in `result.value` is the session's `collect()` result. Built-in neural sessions return an assembly for one requested region, or a dictionary keyed by channel for several regions. Use `session.collect(channel='neural:IT')` to select one. Behavioral sessions return their behavioral assembly.
 
 `session.next_input()` returns `None` only when the session has ended. Inputs may be images, text, robot observations, or other documented payloads; channel names alone do not define their shape or units.
+
+Use catalog channel names in both subject and protocol. Unknown families produce a warning during experiment validation and must be registered before benchmark scoring. Known families still require matching payload formats; channel checks do not convert images or tensors.
 
 For an existing evaluator:
 
@@ -65,8 +82,8 @@ For an existing evaluator:
 from brainscore.experiments import CallableProtocol
 
 protocol = CallableProtocol(
-    'existing-benchmark',
-    lambda subject, context: benchmark(subject),
+    identifier='existing-benchmark',
+    evaluate=lambda subject, context: benchmark(subject),
     methods=['look_at'],  # Select the public calls to observe.
 )
 ```
@@ -103,7 +120,7 @@ This example assumes the session protocol above and a ResNet model. For recordin
 | Tool | Purpose |
 | --- | --- |
 | `RecordInputsOutputs` | Save input/output, activity, and lifecycle events with condition, trial, and call IDs. |
-| `RecordReasoning` (feature branch) | Save exposed reasoning and response context in a focused record; requires `RecordInputsOutputs`. |
+| `RecordReasoning` | Save exposed reasoning and response context in a focused record; requires `RecordInputsOutputs`. |
 | `RecordActivity` | Record selected layer outputs through `ActivationWindow`. Requires `RecordInputsOutputs`. |
 | `Ablate` | Zero selected outputs using the same implementation as `StateChange` interventions. |
 | `ScaleActivity` | Multiply selected outputs by a fixed factor, such as `0.5` to halve them. Currently supported by `TorchInstrumentation`. |
@@ -121,13 +138,13 @@ Use the same dotted layer paths throughout UMI, such as `layer3.0.bn2`. To selec
 ```python
 from brainscore_core.events import Selection
 
-selected = Selection('encoder', indices=[0, 3])
-# These indices address the last output axis, as they do in StateChange.
+selected = Selection(layer='encoder', indices=[0, 3], axis=-1)
+# Record and change exactly the same positions on the chosen axis.
 activity = RecordActivity([selected])
 ablation = Ablate([selected], conditions=['silenced'])
 ```
 
-For a linear layer, the last axis contains its units. For a convolutional output, it is usually image width, **not channels**. Check the output shape before choosing indices.
+For a linear layer, use `axis=-1`. For `(batch, channels, height, width)` output, use `axis=1` for channels or `axis=None` for flattened spatial features. A functional localizer returns a resolved selection; reuse that object rather than copying only its indices. Spatial selections carry an expected shape and reject a different layout. Pass the same module root to extraction and instrumentation. Attribution/patching and OpenPI currently accept last-axis selections only and reject other coordinate systems.
 
 `TorchInstrumentation` records tensor outputs, the first tensor in a tuple/list, or supported transformer output fields. Ablation supports tensors and tuples beginning with a tensor; other tuple entries are unchanged. Unsupported outputs raise errors when encountered. This does not provide weight editing or internal access to a remote model.
 
@@ -156,6 +173,52 @@ You can also open `RunRecord('runs/my-experiment')`. Events retain their origina
 For external videos or reports, use `context.import_artifact(path, name='trial.mp4', producer='LIBERO evaluator', description='Trial video')`. This records the actual producer. Supply checkpoint, seed, precision, and environment details in metadata; UMI cannot discover every setting in an external process.
 
 Failed runs remain readable for diagnosis but cannot be replayed as completed measurements. Use a new output directory and separate subject/tools for each experiment. This synchronous runner does not support concurrent reuse or distributed execution. Keep recordings bounded; the codec materializes individual assets in memory.
+
+### Inspect an interrupted record
+
+A record left by a killed process or a torn final write is never closed, so `events()`, `outputs()`, `evaluate()` and replay keep refusing or failing on it. To see what survived:
+
+```python
+report = RunRecord.inspect('runs/my-experiment')  # also accepts a standalone record directory
+# {'status': 'incomplete', 'valid_events': 41, 'torn_tail_bytes': 87, 'checksum': 'not_recorded', ...}
+events = list(RunRecord('runs/my-experiment').unverified_prefix())  # warns; diagnostic only
+```
+
+`status` is `complete`, `failed`, `incomplete` (never closed, or `experiment.json` still `running`; this does not distinguish a dead writer from a live one) or `corrupt` (a closed record failing its checksum/count/order checks, a malformed event before the end of the log, or contradictory record and experiment states). A truncated closed record stays `corrupt`. `unverified_prefix()` yields decoded events up to the first torn, malformed, out-of-order or undecodable line and never resumes after it; an unterminated last line is excluded even if it parses. Both read only, never repair a file, and use memory bounded by the largest event. Neither verifies that a prefix is a measurement, and neither says whether data reached stable storage. A log that shrinks during inspection, or an unreadable manifest, metadata asset or log, reports `corrupt`; a readable manifest with an unknown schema version raises. With no manifest and no events, the cause cannot be known (setup died, the manifest was lost, or the directory is not a record), so it reports `incomplete` with `record_status: 'missing'`; events without a manifest are `corrupt`. `RunRecord()` itself still requires the manifest.
+
+The strict readers also refuse a closed record whose manifest lacks a 64-character lowercase hex checksum or a non-negative integer event count, or has an unknown status. `evaluate()` reads the whole log, including its final checks, before it calls the metric.
+
+### Errors in failed runs
+
+A failed run's `experiment.json` has two error fields. `error` is the error that ended the run. `error_chain` also lists the errors behind it, so a failure during cleanup (subject reset, a `trial_end` listener, tool detach) does not hide the failure that came first. Successful runs have neither field.
+
+```json
+{
+  "status": "failed",
+  "error": {"type": "RuntimeError", "message": "reset failed"},
+  "error_chain": [
+    {"type": "RuntimeError", "message": "reset failed", "parent": null, "relation": null},
+    {"type": "ValueError", "message": "trial failed", "parent": 0, "relation": "context"}
+  ]
+}
+```
+
+`error_chain` lists the error that ended the run first. Each entry has these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `type`, `message` | Exception class name and message. |
+| `parent` | Index of the entry this error is linked to; `null` for the first entry. |
+| `relation` | How this entry led to its parent. `cause`: the parent was raised `from` it. `context`: it was being handled when the parent was raised; not listed if the parent used `from None`. `group`: it is a member of the parent `ExceptionGroup`, in order. |
+| `same_as` | Present when an error appears again, for example in a loop; points to its first entry and is not repeated further. |
+| `truncated` | Present when some of this entry's linked errors were not saved. |
+
+Limits:
+
+- At most 50 entries are saved, and tracebacks are not saved.
+- A message that cannot be turned into text is saved as `<unprintable TypeName>`.
+- If building `error_chain` fails, the field is left out. The original error is still the one raised.
+- If writing `experiment.json` itself fails (for example, a full disk), the file may still say `running`. The write error carries the original error as its `__context__`.
 
 ## Replay saved inputs
 
@@ -203,4 +266,16 @@ For existing method observers, use `ObserveCalls(observer, methods=['process'])`
 
 The [five CPU examples](../examples/experiment_toolbox/run.py) exercise image, text, image-plus-text, feedback-control, and recurrent activity/behavior with synthetic data. They verify integration, not scientific performance. Notebooks 17 and 18 add trained image-model demonstrations.
 
-The [OpenPI example](../examples/libero/toolbox_calls.py) uses saved LIBERO requests and a policy server. Its websocket test uses a synthetic policy. The trained LIBERO qualification uses the separate bridge; it does not qualify internal policy ablation. The feature-branch [OpenPI providers](policy_instrumentation.md) also have [trained L4 and ten-task LIBERO checks](qualification/2026-10-06-openpi-tools.md), including exact recording-only actions under controlled compiler settings.
+The [OpenPI example](../examples/libero/toolbox_calls.py) uses saved LIBERO requests and a policy server. Its websocket test uses a synthetic policy. The trained LIBERO qualification uses the separate bridge; it does not qualify internal policy ablation. The [OpenPI providers](policy_instrumentation.md) also have [trained L4 and ten-task LIBERO checks](qualification/2026-10-06-openpi-tools.md), including exact recording-only actions under controlled compiler settings.
+
+## Trial boundaries
+
+A `Trial` is one independent repetition of a condition. `SessionProtocol`
+resets the subject, opens a fresh session, runs it to completion, and resets the
+subject again, including after an error. That session may contain several
+stimuli or an entire environment episode. State can persist between inputs
+inside the session, but not between these independent repetitions.
+
+`CallableProtocol` leaves these boundaries to the external evaluator. Use it
+when preserving another package's experimental procedure. It is not a different
+kind of subject or a replacement for the session contract.

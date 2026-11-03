@@ -2,7 +2,7 @@
 
 UMI lets an experiment send inputs to a model, collect responses, and compare them with measured data. Tools can record those interactions or change model activity during an experiment.
 
-Start with [Getting started](getting_started.md). See [Supported features and environments](supported_features.md) for capabilities, examples, and environment limits.
+Start with [Getting started](getting_started.md). See [Supported features and environments](supported_features.md) for capabilities, examples, and environment limits. Short definitions are in the [glossary](glossary.md).
 
 ## How should I think about UMI's layers?
 
@@ -30,7 +30,7 @@ You can implement `Subject` yourself or use `BrainScoreModel` to reuse extractio
 | --- | --- |
 | **Preprocessor** | Prepare raw input, such as resizing an image or tokenizing text. |
 | **Extraction wrapper** | Coordinate input preparation, run the model, and collect and label requested activity. It may call a preprocessor internally. |
-| **`activations_model`** | A configuration slot that commonly holds an extraction wrapper. It is not another model layer. |
+| **`extractor`** | A configuration slot that commonly holds an extraction wrapper. It is not another model layer. |
 
 For a typical neural-recording integration:
 
@@ -39,11 +39,11 @@ For a typical neural-recording integration:
 3. The wrapper prepares inputs, runs the network, and collects activity.
 4. The subject supplies those responses to the benchmark, which calculates a score.
 
-Not every subject needs a wrapper: it can call a robotics policy or remote service directly. Not every wrapper goes in `activations_model`: a text integration can put a complete `TextWrapper` in `preprocessors['text']`.
+Not every subject needs an extraction wrapper: it can call a robotics policy or remote service directly. When extraction is needed, put the wrapper in `extractor`, regardless of modality.
 
 ### Where do sessions and `model_interface` fit?
 
-- **Session:** the exchange between experiment and subject. It supplies inputs and accepts responses. The subject handles it through `interact(session)`.
+- **Session:** the exchange between experiment and subject. It supplies inputs and accepts responses. The subject handles it through `participate(session)`.
 - **`model_interface`:** the Python module from which you import class definitions. Calls do not pass through it as another runtime layer.
 
 ## Subject
@@ -52,7 +52,7 @@ A **subject** is the interface through which an experiment or benchmark uses a m
 
 | Class | Use it for |
 | --- | --- |
-| `Subject` | A new integration that handles a session directly. Declare `identifier`, `in_channels`, and `out_channels`; implement `interact(session)`. |
+| `Subject` | A new integration that handles a session directly. Declare `identifier`, `in_channels`, and `out_channels`; implement `participate(session)`. |
 | `UnifiedModel` | A `Subject` base with `process`, task/recording setup, layer maps, and modality declarations. |
 | `BrainScoreModel` | A ready-made implementation combining extraction wrappers and capabilities. It extends `UnifiedModel`. |
 
@@ -62,9 +62,11 @@ Existing Brain-Score vision and language models can use adapters; compatibility 
 
 ## Sessions and channels
 
-A **session** delivers inputs and collects outputs. In `interact(session)`, a subject reads `session.next_input()` until it returns `None`, and sends responses through `session.emit(event)`.
+A **session** delivers inputs and collects outputs. In `participate(session)`, a subject reads `session.next_input()` until it returns `None`, and sends responses through `session.respond(event)`.
 
 A **channel** identifies what an event carries, such as `text` or `neural:IT`. A `StreamEvent` contains a channel, payload, timestamp (`t_ms`), and optional metadata. Input and output declarations let experiments check compatibility before running.
+
+For fixed inputs, use `BufferedSession(inputs=..., requested_output_channels=...)`. It also accepts `stimulus_set=` or `task_context=` and collects responses. Use `EnvironmentSession` when responses change the next input; use windowed/live sessions when delivery timing matters. Specialized stimulus and behavior helpers remain available, but are not additional contracts to learn.
 
 Use an external package to add channels, capabilities, or experiment tools. See [Build tools and integrations](tool_authoring.md).
 
@@ -101,7 +103,7 @@ For neural recording, this map selects the model units used to represent a brain
 region_layer_map = {'V4': 'layer3', 'IT': 'layer4'}
 ```
 
-On a `BrainScoreModel`, `start_recording('IT')` then selects `layer4`. Choose the mapping using benchmark evidence; it is not automatically a scientifically validated match. Composite selections can combine units from several layers; see the [API reference](umi_api_reference.md#record-a-region).
+On a `BrainScoreModel`, `start_recording('IT')` then selects `layer4`. Choose the mapping using benchmark evidence; it is not automatically a scientifically validated match. Add `modality='text'` or `modality='vision'` to a `LayerSelector` or `CompositeSelector` when routing between towers. The same mapping holds the layer and its source. Composite selections can combine units from several layers; see the [API reference](umi_api_reference.md#record-a-region).
 
 ## Selections
 
@@ -113,7 +115,7 @@ On a `BrainScoreModel`, `start_recording('IT')` then selects `layer4`. Choose th
 | `LayerSelector` | One layer in a region mapping; a string layer path is shorthand |
 | `CompositeSelector` | Units from several layers grouped into one region mapping |
 
-These are different roles, not interchangeable names. Extraction selectors index recorded units; PyTorch interventions index the last output axis. On a convolutional output that axis is usually image width, so inspect the shape before selecting units.
+A recipe chooses units; a resolved `Selection` identifies them. Use the same resolved selection for recording and intervention. `axis=-1` indexes the last tensor axis; `axis=1` can select CNN channels; `axis=None` flattens non-batch dimensions. Functional localizers preserve spatial coordinates when available and reject ambiguous spatial subsets. Extraction and instrumentation must refer to the same module root and output layout.
 
 ## Layer path
 
@@ -127,15 +129,15 @@ Paths are relative to that module. A VLM wrapper may wrap only its vision tower,
 
 ## Modalities
 
-A **modality** is an input domain, such as vision, text, or audio. A **channel** names an input or output and its payload schema, including outputs such as `neural:IT`.
+A **modality** is a kind of input, such as vision, text, or audio. It is not a **domain** (a research area such as vision or language; see the [glossary](glossary.md#inputs-and-outputs)). A **channel** names an input or output and its payload schema, including outputs such as `neural:IT`.
 
-For `BrainScoreModel`, preprocessors describe input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly: a custom session label such as `image` is not automatically an alias of `vision`; its producer and consumer must agree on the name and payload.
+For `BrainScoreModel`, the keys of `extractor` declare input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly. Use catalog names such as `vision` and `behavior`, or register a custom family with `register_channel`. Experiments warn about unregistered names; benchmark scoring rejects them. A label such as `image` is not automatically an alias of `vision`.
 
-## Preprocessor vs. `activations_model`
+## Preprocessor vs. `extractor`
 
 A **preprocessor** prepares inputs: resize images, tokenize text, or resample audio. An **extraction wrapper** runs the model, records selected layers, and packages responses.
 
-Image models commonly put a callable in `preprocessors['vision']` and a wrapper in `activations_model`. Text paths put the complete `TextWrapper` in `preprocessors['text']`; a tokenizer alone is insufficient. When the extraction wrapper already preprocesses, an identity preprocessor avoids doing the work twice.
+Configure the wrapper with its preparation function or tokenizer, then pass it as `extractor={'vision': wrapper}` or `extractor={'text': wrapper}`. The call is always `wrapper(stimuli, layers=...)`. Multiple entries connect separate towers; different modalities can also share the same wrapper. No identity preprocessor is needed. Output-only models can declare `supported_modalities` directly; that declaration does not provide access to internal activity.
 
 See [Getting started](getting_started.md#choose-an-extraction-wrapper) for wrapper imports and the [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) for a multimodal example.
 
@@ -170,4 +172,28 @@ These list the unified package's registered entries. Loaders also consult vision
 
 ## Experiments and tools
 
-A subject provides the model-facing interface; a session carries inputs and outputs. A protocol sets the procedure, and an `Experiment` combines that protocol with a subject and tools. Conditions describe settings such as normal or silenced; trials repeat those settings. Tools use the same layer paths, `Selection`, and `RunRecord` as the lower-level interfaces. See [set up an experiment](experiment_toolbox.md) and the [shared vocabulary](conventions.md).
+A subject provides the model-facing interface; a session carries inputs and outputs. A protocol sets the procedure, and an `Experiment` combines that protocol with a subject and tools. Conditions describe settings such as normal or silenced. Each `Trial` repeats a condition with a fresh session and resets before and after it. A trial can include many stimuli or a whole episode; it is not necessarily one stimulus presentation. Tools use the same layer paths, `Selection`, and `RunRecord` as the lower-level interfaces. See [set up an experiment](experiment_toolbox.md) and the [glossary](glossary.md).
+
+## One configuration vocabulary
+
+Configure `BrainScoreModel` with the components it needs:
+
+| Parameter | Responsibility |
+| --- | --- |
+| `extractor` | Prepare inputs, run the model, and return requested activity. |
+| `answer` | Generate and parse a behavioral answer. |
+| `policy` | Choose an action from an environment observation. |
+| `intervention` | Apply a state change and provide a way to undo it. |
+
+These are optional components, not extra stages every model must implement.
+Existing integrations can still use `activations_model`, `generation_fn`,
+`action_fn`, and `state_change_fn`. Do not specify both spellings for a component.
+Internal capability registration is an extension mechanism, not a second setup
+path for routine model integration.
+
+`BufferedSession` delivers fixed inputs. `EnvironmentSession` handles feedback.
+Streaming sources add incremental delivery, windows, or deadlines to the same
+session contract. A source supplies `next_input()` and accepts `respond(event)`;
+`collect()` returns the results. Existing `InMemorySession` and `emit()` calls
+remain compatible. The specialized stimulus, behavior, and state-change helpers
+are compatibility conveniences, not additional concepts to learn.

@@ -8,22 +8,74 @@ from pathlib import Path
 import shutil
 import time
 import uuid
+from typing import Iterator
 
 from brainscore.instrumentation import ObservedSession, observe
 from brainscore.run_record import PayloadCodec, RunRecord
+from brainscore.experiments._storage import check_output_directory
+from brainscore_core.compatibility import validate_channels
+from brainscore_core.contract import Subject
 
 
 # These data fields affect built-in session evaluation. Never serialize a live
 # environment, iterator, callback, or clock when recording a replay request.
-_SESSION_CONTEXT_FIELDS = (
-    'requested_output_channels', 'stimulus_set', 'task_context', 'time_bins',
-    'streaming',
-)
+from brainscore_core.streaming import Session
+
+_SESSION_CONTEXT_FIELDS = Session.context_fields
 
 
 def _identity(value):
     cls = type(value)
     return f'{cls.__module__}.{cls.__qualname__}'
+
+
+_ERROR_CHAIN_LIMIT = 50
+
+
+def _message(error):
+    # Only called while a failure is already propagating. BaseException is
+    # deliberate: an interrupt raised by a broken __str__ must not replace it.
+    try:
+        return str(error)
+    except BaseException:
+        return f'<unprintable {type(error).__name__}>'
+
+
+def _error_chain(error, limit=_ERROR_CHAIN_LIMIT):
+    """Flatten an exception graph, outermost first, without recursion.
+
+    Each entry names its parent entry and how it relates: 'cause' (raise ...
+    from), 'context' (raised while handling, unless suppressed) or 'group'
+    (a member of an ExceptionGroup). An exception reached twice (a cycle or a
+    shared child) is recorded once more with 'same_as' and not expanded. An
+    entry whose links were not followed because of the limit has 'truncated'.
+    """
+    chain, seen, pending = [], {}, [(error, None, None)]
+    while pending:
+        current, parent, relation = pending.pop()
+        if len(chain) >= limit:
+            chain[parent]['truncated'] = True
+            continue
+        entry = {'type': type(current).__name__, 'message': _message(current),
+                 'parent': parent, 'relation': relation}
+        chain.append(entry)
+        if id(current) in seen:
+            entry['same_as'] = seen[id(current)]
+            continue
+        seen[id(current)] = index = len(chain) - 1
+        links = []
+        if current.__cause__ is not None:
+            links.append((current.__cause__, 'cause'))
+        elif current.__context__ is not None and not current.__suppress_context__:
+            links.append((current.__context__, 'context'))
+        if isinstance(current, BaseExceptionGroup):
+            members = current.exceptions
+            links.extend((member, 'group') for member in members[:limit])
+            if len(members) > limit:
+                entry['truncated'] = True
+        # Stack is last-in first-out: push in reverse so links are visited in order.
+        pending.extend((child, index, kind) for child, kind in reversed(links))
+    return chain
 
 
 def _write(path, value):
@@ -60,7 +112,12 @@ class Tool:
 
 @dataclass(frozen=True)
 class Trial:
-    """One repetition within an experimental condition."""
+    """One independent repetition within an experimental condition.
+
+    SessionProtocol creates one fresh session for this repetition, resetting
+    the subject before and after it. A session may contain many stimuli or an
+    entire environment episode; Trial does not mean one input event.
+    """
     condition: str
     identifier: object
 
@@ -71,17 +128,26 @@ class SessionProtocol:
     The protocol owns trial progression and resets. The factory owns session
     resource cleanup. Channel declarations describe the protocol, not a modality.
 
-    With explicit conditions, the factory receives Trial(condition, identifier).
-    Omitting conditions preserves the single-condition factory(trial_id) form.
+    The factory always receives Trial(condition, identifier). Adding conditions
+    does not change its argument. For a factory written to accept only an ID,
+    set factory_argument='identifier' explicitly.
+    Set collect_outputs=False to return None instead of collecting session history.
+    Attach a recording tool if the episode's events must be kept.
 
     """
     def __init__(self, identifier, session_factory, *, conditions=None, trials=(0,),
-                 input_channels=(), output_channels=(), metadata=None):
+                 input_channels=(), output_channels=(), metadata=None,
+                 factory_argument='trial', collect_outputs: bool = True):
+        if not isinstance(collect_outputs, bool):
+            raise TypeError('collect_outputs must be a bool')
+        self.collect_outputs = collect_outputs
         self.identifier = identifier
         self.session_factory = session_factory
         self.trials = tuple(trials)
         self.conditions = tuple(conditions) if conditions is not None else ('default',)
-        self._legacy_factory = conditions is None
+        if factory_argument not in ('trial', 'identifier'):
+            raise ValueError("factory_argument must be 'trial' or 'identifier'.")
+        self.factory_argument = factory_argument
         self.input_channels = frozenset(input_channels)
         self.output_channels = frozenset(output_channels)
         self.metadata = dict(metadata or {})
@@ -89,20 +155,29 @@ class SessionProtocol:
     def describe(self):
         return {'conditions': self.conditions, 'trials': self.trials, 'input_channels': sorted(self.input_channels),
                 'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
-                'reset_policy': 'before and after each trial; tools attach after initial reset'}
+                'factory_argument': self.factory_argument,
+                'reset_policy': 'before and after each trial; tools attach after initial reset',
+                **({} if self.collect_outputs else {'collect_outputs': False})}
 
     def validate(self, subject):
-        if not callable(getattr(subject, 'interact', None)):
-            raise TypeError('SessionProtocol requires subject.interact(session)')
-        if not callable(getattr(subject, 'reset', None)):
-            raise TypeError('SessionProtocol requires subject.reset()')
+        if not isinstance(subject, Subject):
+            raise TypeError('SessionProtocol requires a Subject (participate, reset and channels)')
+        # Use scoring's channel rules; exploratory names remain usable with a warning.
+        for channels, direction, owner in (
+            (subject.in_channels, 'input', 'subject inputs'),
+            (subject.out_channels, 'output', 'subject outputs'),
+            (subject.required_channels, 'input', 'subject required inputs'),
+            (self.input_channels, 'input', 'protocol inputs'),
+            (self.output_channels, 'output', 'protocol outputs'),
+        ):
+            validate_channels(set(channels), direction, owner, allow_unregistered=True)
         if (not self.conditions or any(not isinstance(c, str) or not c for c in self.conditions)
                 or len(set(self.conditions)) != len(self.conditions)):
             raise ValueError('Use nonempty, distinct condition names')
         if not self.trials or len(set(self.trials)) != len(self.trials):
             raise ValueError('Use nonempty, distinct, hashable trial IDs')
         missing = self.input_channels - set(subject.in_channels)
-        missing_required = set(getattr(subject, 'required_channels', ())) - self.input_channels
+        missing_required = set(subject.required_channels) - self.input_channels
         missing_outputs = self.output_channels - set(subject.out_channels)
         if missing or missing_required or missing_outputs:
             raise ValueError(f'Incompatible channels: unsupported inputs={missing}, '
@@ -112,10 +187,12 @@ class SessionProtocol:
         results = []
         for condition in self.conditions:
             for trial in self.trials:
-                request = trial if self._legacy_factory else Trial(condition, trial)
+                request = trial if self.factory_argument == 'identifier' else Trial(condition, trial)
                 try:
                     subject.reset()
                     with context.trial(trial, condition=condition), self.session_factory(request) as session:
+                        if not isinstance(session, Session):
+                            raise TypeError('Session factories must return a Session')
                         settings = {
                             name: getattr(session, name)
                             for name in _SESSION_CONTEXT_FIELDS
@@ -123,13 +200,14 @@ class SessionProtocol:
                         }
                         if settings:
                             context.publish('session_context', settings)
-                        subject.interact(ObservedSession(session, context))
-                        if getattr(session, 'complete', True) is False:
+                        subject.participate(ObservedSession(session, context))
+                        if not session.complete:
                             raise RuntimeError('Environment session ended before episode completion')
-                        results.append(session.collect() if callable(getattr(session, 'collect', None)) else None)
+                        if self.collect_outputs:
+                            results.append(session.collect())
                 finally:
                     subject.reset()
-        return results
+        return results if self.collect_outputs else None
 
 
 class CallableProtocol:
@@ -152,6 +230,8 @@ class CallableProtocol:
     def validate(self, subject):
         if not self.methods or len(set(self.methods)) != len(self.methods):
             raise ValueError('Select distinct methods to observe')
+        # The external evaluator names the methods it calls, so checking for them is
+        # checking its request, not discovering what the subject can do.
         for method in self.methods:
             if not callable(getattr(subject, method, None)):
                 raise ValueError(f'Subject does not expose {method}')
@@ -285,8 +365,7 @@ class Experiment:
         self.metadata = dict(metadata or {})
 
     def validate(self):
-        if self.output_dir.exists():
-            raise FileExistsError(self.output_dir)
+        check_output_directory(self.output_dir)
         self.protocol.validate(self.subject)
         names = [tool.name for tool in self.tools]
         if len(set(names)) != len(names):
@@ -313,7 +392,13 @@ class Experiment:
         json.dumps(plan, allow_nan=False)
         return plan
 
-    def run(self):
+    @contextmanager
+    def open(self) -> Iterator[RunContext]:
+        """Attach run observers while a caller or protocol owns execution.
+
+        Enter ``context.trial`` to attach trial tools. This scope never runs
+        the subject or resets it; the caller retains those responsibilities.
+        """
         plan = self.validate()
         self.output_dir.mkdir(parents=True, exist_ok=False)
         manifest = {'schema_version': 1, 'run_id': uuid.uuid4().hex, 'status': 'running',
@@ -326,21 +411,34 @@ class Experiment:
                 for tool in self.tools:
                     if tool.phase == 'observe':
                         stack.enter_context(tool.attach(context))
-                value = self.protocol.run(self.subject, context)
+                yield context
                 if context.failed:
                     raise RuntimeError('Experiment encountered a caught model or tool error')
-                encoded = context.codec.encode(value)
-                _write(self.output_dir / 'result.json', encoded)
-                context.artifact(self.output_dir / 'result.json', producer='protocol',
-                                 description='Protocol return value, RunRecord payload encoding')
             manifest['status'] = 'complete'
         except BaseException as error:
             context.failed = True
             manifest['status'] = 'failed'
-            manifest['error'] = {'type': type(error).__name__, 'message': str(error)}
+            manifest['error'] = {'type': type(error).__name__, 'message': _message(error)}
+            # Narrow and deliberate: this only builds diagnostics for a failure
+            # that is already propagating. Anything it raises, including an
+            # interrupt, is dropped so the original exception is the one raised.
+            try:
+                manifest['error_chain'] = _error_chain(error)
+            except BaseException:
+                pass
             raise
         finally:
             manifest['finished_utc'] = datetime.now(timezone.utc).isoformat()
             manifest['event_count'] = context.sequence
             _write(self.output_dir / 'experiment.json', manifest)
+
+    def run(self):
+        with self.open() as context:
+            value = self.protocol.run(self.subject, context)
+            if context.failed:
+                raise RuntimeError('Experiment encountered a caught model or tool error')
+            encoded = context.codec.encode(value)
+            _write(self.output_dir / 'result.json', encoded)
+            context.artifact(self.output_dir / 'result.json', producer='protocol',
+                             description='Protocol return value, RunRecord payload encoding')
         return ExperimentResult(self.output_dir, value)

@@ -12,7 +12,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 @pytest.fixture(scope='module')
-def clip_text_wrapper():
+def clip_text_wrapper(request):
     """Create a TextWrapper around CLIP's text encoder."""
     from transformers import CLIPModel, CLIPProcessor
     from brainscore.model_helpers.text_wrapper import TextWrapper
@@ -20,13 +20,16 @@ def clip_text_wrapper():
     clip_model = CLIPModel.from_pretrained('openai/clip-vit-base-patch32')
     clip_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
 
-    return TextWrapper(
+    wrapper = TextWrapper(
         model=clip_model.text_model,
         tokenizer=clip_processor.tokenizer,
         identifier='clip-vit-b-32-text',
         layer_aggregation='mean_tokens',
         max_length=77,
     )
+    from brainscore.validation.integration_checks import record_placement
+    record_placement(request.config, wrapper._model, identifier='CLIP text encoder', dtype='torch.float32')
+    return wrapper
 
 
 @pytest.fixture
@@ -124,17 +127,18 @@ class TestTextWrapperIntegration:
             },
         )
         model.start_recording('language_system')
-        # TextWrapper is callable: (stimuli, layers) -> NeuroidAssembly
-        # BrainScoreModel.process() for text calls: preprocessor(model, stimuli, recording_layer=...)
-        # But TextWrapper expects: (stimuli, layers=[...])
-        # So we need to test the direct path
-        result = clip_text_wrapper(text_stimuli, layers=['encoder.layers.10'])
+        # The public model call must preserve the wrapper's features and stimulus order.
+        result = model.process(text_stimuli)
+        direct = clip_text_wrapper(text_stimuli, layers=['encoder.layers.10'])
+        np.testing.assert_array_equal(result.values, direct.values)
+        assert list(result['stimulus_id'].values) == list(direct['stimulus_id'].values)
         assert result.dims == ('presentation', 'neuroid')
         assert result.shape[0] == 3
+        model.reset()
 
 
 @pytest.fixture(scope='module')
-def gpt2_text_wrapper():
+def gpt2_text_wrapper(request):
     """Create a TextWrapper around GPT-2 (causal LM).
 
     GPT-2 is a decoder-only causal model, so last_token aggregation is used.
@@ -148,17 +152,33 @@ def gpt2_text_wrapper():
     # GPT-2 has no pad token; set one so batching works
     tokenizer.pad_token = tokenizer.eos_token
 
-    return TextWrapper(
+    wrapper = TextWrapper(
         model=gpt2,
         tokenizer=tokenizer,
         identifier='gpt2-text',
         layer_aggregation='last_token',
         max_length=128,
     )
+    from brainscore.validation.integration_checks import record_placement
+    record_placement(request.config, wrapper._model, identifier='GPT-2', dtype='torch.float32')
+    return wrapper
 
 
 class TestTextWrapperCausalMode:
     """Validate last_token aggregation path using GPT-2."""
+
+    def test_process_matches_wrapper(self, gpt2_text_wrapper, text_stimuli):
+        model = BrainScoreModel(
+            identifier='gpt2-dispatch',
+            preprocessors={'text': gpt2_text_wrapper},
+            region_layer_map={'language_system': 'h.11'},
+        )
+        model.start_recording('language_system')
+        result = model.process(text_stimuli)
+        direct = gpt2_text_wrapper(text_stimuli, layers=['h.11'])
+        np.testing.assert_array_equal(result.values, direct.values)
+        assert list(result['stimulus_id'].values) == list(direct['stimulus_id'].values)
+        model.reset()
 
     def test_returns_neuroid_assembly(self, gpt2_text_wrapper, text_stimuli):
         result = gpt2_text_wrapper(text_stimuli, layers=['h.11'])

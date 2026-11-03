@@ -120,6 +120,8 @@ class OpenPIInstrumentation:
             selection = Selection(layer=target) if isinstance(target, str) else target
             if not isinstance(selection, Selection) or selection.layer not in self.widths:
                 raise ValueError(f'Unknown OpenPI target: {target}')
+            if selection.axis != -1 or selection.expected_shape is not None:
+                raise ValueError('OpenPI instrumentation supports last-axis selections without a fixed shape.')
             indices = selection.indices
             if indices is not None and (not len(indices) or any(
                     isinstance(i, bool) or not isinstance(i, numbers.Integral)

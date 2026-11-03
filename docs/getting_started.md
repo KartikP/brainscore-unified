@@ -12,7 +12,7 @@ Use Python 3.11 and install the four repositories together. Follow the [pinned-r
 | --- | --- |
 | Score a registered model | [Scoring example below](#score-a-registered-model); no custom class needed |
 | Connect a model using extraction/task helpers | `BrainScoreModel`; [notebook 01](../notebooks/01_quickstart_layer_mapping.ipynb) |
-| Define a custom session interaction | `Subject.interact(session)`; [subject contract](concepts.md#subject) |
+| Define a custom session interaction | `Subject.participate(session)`; [subject contract](concepts.md#subject) |
 | Combine recording and intervention tools | `Experiment`; [notebook 18](../notebooks/18_resnet_experiment_toolbox.ipynb) |
 | Connect a robotics evaluator | [DROID](droid_integration.md) or [LIBERO](robotics_benchmark_integration.md) |
 
@@ -29,7 +29,7 @@ python unified/examples/partner_integration.py --out /tmp/umi-first-experiment
 
 Use a new output directory each time. This small synthetic example demonstrates external channels, recording, and replay without model downloads. It is an integration check, not a scientific result.
 
-Examples follow the [shared vocabulary](conventions.md).
+Terms are defined in the [glossary](glossary.md); examples follow the [style conventions](conventions.md).
 
 ## Score a registered model
 
@@ -61,7 +61,7 @@ Use `RESULTCACHING_DISABLE=1` to bypass result caching. Activation caches check 
 | Goal | Start here |
 | --- | --- |
 | Use an existing vision or language model | [Coming from Brain-Score](from_brain_score.md) |
-| Build a model or policy that handles sessions directly | Implement `Subject` from `brainscore_core.model_interface`: identity, input/output channels, and `interact(session)`. See [Subject lifecycle](umi_api_reference.md#subject-lifecycle). |
+| Build a model or policy that handles sessions directly | Implement `Subject` from `brainscore_core.model_interface`: identity, input/output channels, and `participate(session)`. See [Subject lifecycle](umi_api_reference.md#subject-lifecycle). |
 | Reuse neural extraction and capability helpers | Construct `BrainScoreModel` with the wrappers below. |
 | Assemble a session with recording and interventions | [Experiment toolbox](experiment_toolbox.md) |
 | Add a tool, input/output type, or experiment | Use an external package and the [tool-authoring guide](tool_authoring.md). |
@@ -74,18 +74,39 @@ A native `Subject` does not need `process()` or a layer map. `BrainScoreModel` p
 
 Use these when your integration needs model activity extraction:
 
-| Input | Wrapper import |
-| --- | --- |
-| Images, visual towers, or video | `from brainscore.model_helpers.vision_wrapper import VisionWrapper` |
-| Standard image CNN or ViT | `from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper` |
-| Text | `from brainscore.model_helpers.text_wrapper import TextWrapper` |
-| Flattened-patch visual tower | `from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper` |
-| Temporal video | `from brainscore.model_helpers.video_wrapper import VideoWrapper` |
-| Audio | `from brainscore.model_helpers.audio_wrapper import AudioWrapper` |
+| Input | Wrapper | Input preparation | Activity aggregation |
+| --- | --- | --- | --- |
+| Images | `VisionWrapper(kind='frame')` | `preprocessing=` callable | Spatial units are retained; no `layer_aggregation` setting. |
+| Flattened-patch visual tower | `VisionWrapper(kind='vlm')` | `processor=` | `mean_patches`, `first_patch`, or `none` |
+| Temporal video | `VisionWrapper(kind='temporal')` | `preprocessing=` callable | `post_hook_fn` handles the model's layout; `hook_time_axis` identifies time. |
+| Text | `TextWrapper` | `tokenizer=` | `last_token`, `mean_tokens`, or `per_token` |
+| Audio | `AudioWrapper` | `processor=` | `mean_time` or `time_series` |
 
-`VisionWrapper` selects an image, VLM, or video wrapper from the architecture. Check its choice and choose recorded layers using benchmark evidence.
+```python
+from brainscore.model_helpers.vision_wrapper import VisionWrapper
+from brainscore.model_helpers.text_wrapper import TextWrapper
+from brainscore.model_helpers.audio_wrapper import AudioWrapper
+```
 
-For image models, `activations_model` usually holds the extraction wrapper. Text paths put a complete wrapper in `preprocessors['text']`. See the [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) for a working multimodal configuration.
+Aggregation combines a model's token, patch, or time positions into features. These axes differ, so their options differ. Use the model's expected preprocessing and retain any time or spatial information your benchmark needs.
+
+`VisionWrapper` can infer its strategy when `kind` is omitted. Inspect `wrapper.kind`; set `kind` explicitly if needed. The underlying `PytorchWrapper`, `VLMVisionWrapper`, and `VideoWrapper` remain available for direct configuration and existing registrations.
+
+Use `extractor={'vision': wrapper}` for image/video extraction, `{'text': wrapper}` for text, and `{'audio': wrapper}` for audio. Configure input preparation inside the wrapper. The [CLIP registration](../brainscore/models/clip_vit_b_32/model.py) connects two towers through this same mapping.
+
+An output-only model has no extraction wrapper:
+
+```python
+from brainscore_core.model_interface import BrainScoreModel
+
+subject = BrainScoreModel(
+    identifier='my-model',
+    supported_modalities={'text'},
+    answer=answer,  # Your callable returns one allowed answer per stimulus row.
+)
+```
+
+This enables behavioral tasks, not neural recording. The generation callable accepts `stimulus_row`, `instruction`, and `label_set`.
 
 ## Share a model or tool
 
@@ -95,6 +116,7 @@ To contribute a model to this repository's catalog, copy [templates/new_model](.
 
 ## Next steps
 
-- [Concepts](concepts.md): the main terms.
+- [Concepts](concepts.md): how the main pieces fit together.
+- [Glossary](glossary.md): short definitions.
 - [API reference](umi_api_reference.md): recording, sessions, and scoring.
 - [Notebook guide](../notebooks/README.md): examples and their data/compute requirements.

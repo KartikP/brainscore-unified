@@ -410,3 +410,30 @@ class TestAutoRegisterLive:
         with pytest.raises(NotImplementedError, match="multi-tower"):
             auto_register(make_clip(6, 6), identifier='clip-tiny',
                           preprocessing=lambda f: f)
+
+
+@pytest.mark.parametrize('modality', ['vision', 'text'])
+def test_live_registration_uses_the_documented_extractor_mapping(modality):
+    from types import SimpleNamespace
+    import numpy as np
+    if modality == 'vision':
+        subject = auto_register(
+            _TinyVision(), identifier='mapping-vision',
+            preprocessing=lambda paths: np.zeros((len(paths), 3, 8, 8), np.float32),
+        )
+    else:
+        subject = auto_register(
+            make_gpt(), identifier='mapping-text', tokenizer=SimpleNamespace(),
+        )
+    assert isinstance(subject._activations_model, dict)
+    assert set(subject._activations_model) == {modality}
+    assert subject.supported_modalities == {modality}
+
+
+def test_multimodal_scaffold_keeps_optional_towers_in_extractor_mapping():
+    profile = inspect_model(make_clip(), identifier='clip-example')
+    assert profile.required_modalities() == set()
+    code = scaffold_registration(profile)
+    assert "'vision': vision_wrapper" in code
+    assert "'text': text_wrapper" in code
+    compile(code, '<generated-registration>', 'exec')
