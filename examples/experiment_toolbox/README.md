@@ -1,31 +1,35 @@
 # A recording room for models
 
-Run five CPU demonstrations with the same experiment API: images, text,
-image-plus-text, a feedback-controlled toy environment, and a recurrent subject
-emitting both activity and behavior. These are synthetic, untrained examples.
-
-From the unified repository, in the coordinated UMI environment:
+The five CPU demonstrations are part of the separately installed
+[example package](../partner_tool/README.md):
 
 ```sh
-python examples/experiment_toolbox/run.py --out /tmp/my-toolbox-demo
+python -m pip install ./examples/partner_tool
+python -I -m umi_partner_tool.toolbox --out ./my-toolbox-demo
 ```
 
-Choose a new output folder. Each example records a baseline trial and a trial
-with a module ablated, then replays the same inputs with the same intervention.
-`summary.json` reports exact output agreement. The robotics example has an actual
-feedback loop, but is not LIBERO or a robot-performance benchmark.
+After installation, the second command works from any directory. Choose a new
+output folder. Images, text, image-plus-text, a feedback environment, and a
+recurrent subject all use the same recording and intervention tools.
+
+Each case runs baseline, silenced, and restored conditions, then reruns saved
+inputs. `summary.json` checks intervention, recovery, and replay. These are
+synthetic, untrained examples; the feedback environment is not a robotics
+benchmark. Replay uses saved observations and does not restart that environment.
 
 Read [Set up an experiment](../../docs/experiment_toolbox.md) for configuration,
-outputs, replay, limits, and external evaluator integration. Copy
-[partner_tool.py](partner_tool.py) to your own package to add a tool using only
-public APIs.
+outputs, replay, and external evaluators. Copy [partner_tool.py](partner_tool.py)
+to your own package to add a tool using public APIs.
 
 ## Record reasoning
 
-The [reasoning example](reasoning.py) records two synthetic reasoning fragments and a final answer. It uses `build_trace_subject`, `SessionProtocol`, and the same record format as the other tools; no model download or paid API call is needed.
+The [reasoning example](reasoning.py) records two synthetic reasoning fragments
+and a final answer. It uses `build_trace_subject`, `SessionProtocol`, and the
+same record format; no model download or paid API call is needed.
 
 ```sh
-python examples/experiment_toolbox/reasoning.py --out /tmp/my-reasoning-demo
+python examples/experiment_toolbox/reasoning.py --out ./my-reasoning-demo
 ```
 
-See [reasoning recording](../../docs/reasoning_recording.md) for completed responses, live fragments, and adapting a real provider. This example verifies recording behavior, not a trained model's reasoning quality.
+See [reasoning recording](../../docs/reasoning_recording.md) for provider adapters
+and the distinction between visible reasoning and hidden model computation.
