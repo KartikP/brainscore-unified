@@ -2,7 +2,7 @@
 
 UMI lets an experiment send inputs to a model, collect responses, and compare them with measured data. Tools can record those interactions or change model activity during an experiment.
 
-Start with [Getting started](getting_started.md). See [Supported features and environments](supported_features.md) for capabilities, examples, and environment limits.
+Start with [Getting started](getting_started.md). See [Supported features and environments](supported_features.md) for capabilities, examples, and environment limits. Short definitions are in the [glossary](glossary.md).
 
 ## How should I think about UMI's layers?
 
@@ -43,7 +43,7 @@ Not every subject needs an extraction wrapper: it can call a robotics policy or 
 
 ### Where do sessions and `model_interface` fit?
 
-- **Session:** the exchange between experiment and subject. It supplies inputs and accepts responses. The subject handles it through `interact(session)`.
+- **Session:** the exchange between experiment and subject. It supplies inputs and accepts responses. The subject handles it through `participate(session)`.
 - **`model_interface`:** the Python module from which you import class definitions. Calls do not pass through it as another runtime layer.
 
 ## Subject
@@ -52,7 +52,7 @@ A **subject** is the interface through which an experiment or benchmark uses a m
 
 | Class | Use it for |
 | --- | --- |
-| `Subject` | A new integration that handles a session directly. Declare `identifier`, `in_channels`, and `out_channels`; implement `interact(session)`. |
+| `Subject` | A new integration that handles a session directly. Declare `identifier`, `in_channels`, and `out_channels`; implement `participate(session)`. |
 | `UnifiedModel` | A `Subject` base with `process`, task/recording setup, layer maps, and modality declarations. |
 | `BrainScoreModel` | A ready-made implementation combining extraction wrappers and capabilities. It extends `UnifiedModel`. |
 
@@ -62,7 +62,7 @@ Existing Brain-Score vision and language models can use adapters; compatibility 
 
 ## Sessions and channels
 
-A **session** delivers inputs and collects outputs. In `interact(session)`, a subject reads `session.next_input()` until it returns `None`, and sends responses through `session.respond(event)`.
+A **session** delivers inputs and collects outputs. In `participate(session)`, a subject reads `session.next_input()` until it returns `None`, and sends responses through `session.respond(event)`.
 
 A **channel** identifies what an event carries, such as `text` or `neural:IT`. A `StreamEvent` contains a channel, payload, timestamp (`t_ms`), and optional metadata. Input and output declarations let experiments check compatibility before running.
 
@@ -129,7 +129,7 @@ Paths are relative to that module. A VLM wrapper may wrap only its vision tower,
 
 ## Modalities
 
-A **modality** is an input domain, such as vision, text, or audio. A **channel** names an input or output and its payload schema, including outputs such as `neural:IT`.
+A **modality** is a kind of input, such as vision, text, or audio. It is not a **domain** (a research area such as vision or language; see the [glossary](glossary.md#inputs-and-outputs)). A **channel** names an input or output and its payload schema, including outputs such as `neural:IT`.
 
 For `BrainScoreModel`, the keys of `extractor` declare input modalities; `required_modalities` identifies inputs the model cannot run without. Its channel declarations are derived from those modalities. The built-in catalog treats `video` as an alias of `vision`. Native subjects declare channels directly. Use catalog names such as `vision` and `behavior`, or register a custom family with `register_channel`. Experiments warn about unregistered names; benchmark scoring rejects them. A label such as `image` is not automatically an alias of `vision`.
 
@@ -172,7 +172,7 @@ These list the unified package's registered entries. Loaders also consult vision
 
 ## Experiments and tools
 
-A subject provides the model-facing interface; a session carries inputs and outputs. A protocol sets the procedure, and an `Experiment` combines that protocol with a subject and tools. Conditions describe settings such as normal or silenced. Each `Trial` repeats a condition with a fresh session and resets before and after it. A trial can include many stimuli or a whole episode; it is not necessarily one stimulus presentation. Tools use the same layer paths, `Selection`, and `RunRecord` as the lower-level interfaces. See [set up an experiment](experiment_toolbox.md) and the [shared vocabulary](conventions.md).
+A subject provides the model-facing interface; a session carries inputs and outputs. A protocol sets the procedure, and an `Experiment` combines that protocol with a subject and tools. Conditions describe settings such as normal or silenced. Each `Trial` repeats a condition with a fresh session and resets before and after it. A trial can include many stimuli or a whole episode; it is not necessarily one stimulus presentation. Tools use the same layer paths, `Selection`, and `RunRecord` as the lower-level interfaces. See [set up an experiment](experiment_toolbox.md) and the [glossary](glossary.md).
 
 ## One configuration vocabulary
 

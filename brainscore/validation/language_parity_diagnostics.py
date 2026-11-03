@@ -240,12 +240,12 @@ def observe_case(case, route, *, max_length=1024, score=False, score_float64=Fal
     from brainscore_language.utils.ceiling import ceiling_normalize
 
     candidate = local_candidate(case, route)
-    model = candidate._extractors['text']._model if route == 'native' else (
-        candidate._legacy.basemodel if route == 'adapter' else candidate.basemodel)
-    tokenizer = candidate._extractors['text']._tokenizer if route == 'native' else (
-        candidate._legacy.tokenizer if route == 'adapter' else candidate.tokenizer)
+    model = candidate.extractor['text']._model if route == 'native' else (
+        candidate.legacy_model.basemodel if route == 'adapter' else candidate.basemodel)
+    tokenizer = candidate.extractor['text']._tokenizer if route == 'native' else (
+        candidate.legacy_model.tokenizer if route == 'adapter' else candidate.tokenizer)
     if route == 'native':
-        candidate._extractors['text']._max_length = max_length
+        candidate.extractor['text']._max_length = max_length
     benchmark = load_benchmark(case.legacy if route == 'legacy' else case.unified)
     metric, captured, fits = benchmark.metric, [], []
     if score:

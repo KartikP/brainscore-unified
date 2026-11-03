@@ -16,7 +16,10 @@ from brainscore.experiments import (
 from brainscore.models.mirage import MirageRuntime, MirageSubject
 from brainscore.models.mirage.model import OUTPUT_CHANNEL, Prediction
 from brainscore.models.mirage.runtime import MirageRuntimeError, MirageTimeout
+from brainscore_core.contract import Subject
 from brainscore_core.streaming import BufferedSession, Session, StreamEvent
+
+pytestmark = pytest.mark.unit
 
 
 class NativeFixture:
@@ -50,13 +53,23 @@ def video(tmp_path):
     return path
 
 
+def test_native_subject_satisfies_subject_through_participate(video):
+    subject = MirageSubject(predictor=NativeFixture())
+    assert isinstance(subject, Subject)
+    assert 'participate' in vars(MirageSubject)
+    assert not any('interact' in vars(cls) for cls in MirageSubject.__mro__)
+    session = BufferedSession(inputs(video), requested_output_channels=(OUTPUT_CHANNEL,))
+    subject.participate(session)
+    assert [event.channel for event in session.emitted] == [OUTPUT_CHANNEL]
+
+
 def test_subject_preserves_native_values_dtype_labels_and_time_grid(video):
     predictor = NativeFixture()
     subject = MirageSubject(predictor=predictor)
     assert subject.in_channels == subject.required_channels == {'vision', 'audio', 'text'}
     assert subject.out_channels == {OUTPUT_CHANNEL}
     session = BufferedSession(inputs(video), requested_output_channels=(OUTPUT_CHANNEL,))
-    subject.interact(session)
+    subject.participate(session)
     assembly = session.collect(OUTPUT_CHANNEL)
     assert assembly.dims == ('presentation', 'neuroid')
     assert assembly.dtype == np.float32
@@ -102,7 +115,7 @@ def test_malformed_clip_fails_before_native_compute(video, tmp_path, defect):
     subject = MirageSubject(predictor=predictor)
     session = BufferedSession(events, requested_output_channels=(requested,))
     with pytest.raises((ValueError, TypeError)):
-        subject.interact(session)
+        subject.participate(session)
     assert predictor.calls == []
     assert session.emitted == []
 
@@ -130,7 +143,7 @@ def test_subject_answers_complete_clip_before_next_reactive_input(video):
     subject = MirageSubject(predictor=predictor)
     for _ in range(2):
         session = ReactiveSession()
-        subject.interact(session)
+        subject.participate(session)
         assert len(session.emitted) == 1
         subject.reset()
     assert len(predictor.calls) == 2
@@ -218,7 +231,7 @@ def test_invalid_native_output_is_not_emitted(video, defect):
     subject = MirageSubject(predictor=predictor)
     session = BufferedSession(inputs(video), requested_output_channels=(OUTPUT_CHANNEL,))
     with pytest.raises(ValueError):
-        subject.interact(session)
+        subject.participate(session)
     assert session.emitted == []
 
 

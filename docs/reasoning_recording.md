@@ -2,7 +2,7 @@
 
 Use `RecordReasoning` to preserve exposed reasoning separately from the final answer. It saves completed text and streamed fragments using the same `RunRecorder` / `RunRecord` format as other tools.
 
-**Feature-branch addition:** this recorder and streaming support require the accompanying code changes; they are not yet merged into v2. The example uses a synthetic provider to demonstrate recording, not a trained model's reasoning quality.
+`RecordReasoning` and streamed-response recording are included in `brainscore.experiments`. The example uses a synthetic provider to demonstrate recording, not a trained model's reasoning quality.
 
 ## The three jobs
 

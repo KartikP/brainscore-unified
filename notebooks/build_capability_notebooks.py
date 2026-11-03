@@ -24,7 +24,8 @@ def notebook(cells):
 
 
 HEADER = lambda title, blurb: ('md', f"# {title}\n\n{blurb}\n\n"
-    "> Run on EC2 (GPU + Brain-Score data). Do **not** run on a laptop.\n")
+    "> Run on EC2 (GPU + Brain-Score data). Do **not** run on a laptop.\n\n"
+    "Terms are defined in the [glossary](../docs/glossary.md).")
 
 
 # ---------------------------------------------------------------------------

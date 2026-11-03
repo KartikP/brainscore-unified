@@ -74,8 +74,9 @@ Component medians should not be summed to reconstruct a median total.
   time native imports, checkpoint verification and inference, then write
   sidecar JSON. Timing diagnostics do not enter the prediction assemblies.
 - The direct condition executes the native CLI with phase timers. UMI uses the
-  qualified `MirageSubject.interact` and `MirageRuntime`; the recorded condition
-  adds existing Experiment and RecordInputsOutputs tools. No model-class
+  qualified `MirageSubject.participate` (named `interact` when measured) and
+  `MirageRuntime`; the recorded condition adds existing Experiment and
+  RecordInputsOutputs tools. No model-class
   dispatch, new Subject method, core dependency or benchmark registration was
   introduced.
 - Inputs, head, CUDA settings, precision and batch size match across conditions

@@ -1,6 +1,6 @@
 """Register a Hugging Face causal LM as one subject that records, can be pushed, writes and scores text.
 
-One registration declares, and answers through ``interact`` (or ``process``):
+One registration declares, and answers through ``participate`` (or ``process``):
 
 - recording: ``neural:<region>`` (``TextWrapper``; layer names accept the
   ``':input'`` site, e.g. ``'model.layers.14.mlp.down_proj:input'``), e.g. via

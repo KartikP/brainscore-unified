@@ -30,7 +30,7 @@ class FixtureSubject(Subject):
     def __init__(self) -> None:
         self.layer = torch.nn.Linear(3, 2)
 
-    def interact(self, session: Session) -> None:
+    def participate(self, session: Session) -> None:
         while (event := session.next_input()) is not None:
             with torch.no_grad():
                 values = self.layer(torch.tensor(event.payload, dtype=torch.float32)).numpy()

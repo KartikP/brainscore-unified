@@ -108,7 +108,7 @@ def intervene(subject, state_change):
 class ObservedSession:
     """Record session inputs and outputs without changing the session protocol.
 
-    The sink implements record(direction, event). Pass this proxy to interact().
+    The sink implements record(direction, event). Pass this proxy to participate().
     Its properties and collect() are delegated to the original session.
     """
 

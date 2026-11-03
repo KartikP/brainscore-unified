@@ -10,6 +10,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+pytestmark = pytest.mark.unit
+
 torch = pytest.importorskip('torch')
 
 NOTEBOOK = Path(__file__).resolve().parents[1] / 'notebooks' / '20_steer_a_language_model.ipynb'

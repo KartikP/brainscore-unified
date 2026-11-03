@@ -1,35 +1,6 @@
-# UMI vocabulary and example style
+# UMI naming and example style
 
-Use these terms across code, guides, and notebooks. Explain a term once, then use the same name.
-
-| Term | Meaning |
-| --- | --- |
-| Model | The network or service performing the computation. |
-| Subject | The interface through which an experiment or benchmark uses a model. `BrainScoreModel` is a configurable implementation. |
-| Adapter | Connects an existing interface to another; name the interfaces, such as `VisionModelAdapter` bridging a vision plugin to UMI. |
-| Environment adapter | Connects an external environment's observations, actions and lifecycle to the subject. |
-| Preprocessor | Prepares an input in the format a model expects. |
-| Wrapper | Adapts a model or extractor to an expected interface. It can include preprocessing. |
-| Activations | Internal values produced by the model. “Activity” is the plain-language name for these measurements. |
-| Layer path | The model's own name for a component, such as `layer3.0.bn2`. |
-| Selection | A layer path, optional unit indices, and their tensor axis. Reuse the same selection for recording and intervention. |
-| Region mapping | A proposed correspondence between brain regions and model layers. A mapping alone is not evidence of biological similarity. |
-| Assembly | An array with labels describing its samples, units, and other axes. |
-| Neuroid | An entry on a recorded-unit axis: a model feature or biological recording site, depending on the data. |
-| Modality | An input domain, such as vision, text, or audio; channel names also describe outputs. |
-| Channel | A named kind of input or output, with a documented payload schema. |
-| Event | One timestamped input or output. Experiment logs also include activity and lifecycle events. |
-| Session | The exchange of inputs and outputs. `None` from `next_input()` means it has ended. |
-| Protocol | The procedure that supplies inputs and controls the experiment. |
-| Condition | A setting being compared, such as normal or silenced. |
-| Trial | One independent protocol repetition, with a fresh session and resets before and after it. It can contain several stimuli or an entire episode. |
-| Experiment | One execution combining a subject, protocol, tools, and output location. |
-| Tool | A component that observes a run or changes selected model behavior. |
-| Instrumentation | The backend connection that lets tools record or change internal model activity; `TorchInstrumentation` supplies it for PyTorch. |
-| Reasoning trace | Exposed model-generated reasoning text. Preserve whether it is a complete block, a streamed delta, a cumulative snapshot, or a provider summary. It is not automatically a faithful explanation of internal computation. |
-| Benchmark | A defined evaluation procedure that returns a score. Not every experiment is a benchmark. |
-| RunRecord | The shared reader for saved measurements. Reading a record does not run the model. |
-| Replay | Sending saved inputs through a model again. This does not regenerate an environment's feedback. |
+Term definitions live in the [glossary](glossary.md). Use those names across code, guides, and notebooks. Explain a term once, then use the same name.
 
 ## One learning path
 

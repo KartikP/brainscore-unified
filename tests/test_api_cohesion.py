@@ -62,7 +62,7 @@ def test_factory_argument_does_not_change_when_conditions_are_added(conditions):
         requests.append(trial)
         yield InMemorySession()
     protocol = SessionProtocol(identifier='stable', session_factory=factory, conditions=conditions)
-    subject = SimpleNamespace(reset=lambda: None, interact=lambda session: None)
+    subject = SimpleNamespace(reset=lambda: None, participate=lambda session: None)
     context = SimpleNamespace(trial=lambda *a, **k: nullcontext(), publish=lambda *a: None)
     protocol.run(subject, context)
     assert all(isinstance(request, Trial) and request.identifier == 0 for request in requests)
@@ -75,7 +75,7 @@ def test_identifier_factory_is_an_explicit_compatibility_option():
         requests.append(identifier)
         yield InMemorySession()
     protocol = SessionProtocol(identifier='old', session_factory=factory, factory_argument='identifier')
-    protocol.run(SimpleNamespace(reset=lambda: None, interact=lambda session: None),
+    protocol.run(SimpleNamespace(reset=lambda: None, participate=lambda session: None),
                  SimpleNamespace(trial=lambda *a, **k: nullcontext(), publish=lambda *a: None))
     assert requests == [0]
 
@@ -184,7 +184,7 @@ def test_experiment_warns_about_unregistered_channels_before_running():
         in_channels = {'unregistered_input'}
         out_channels = {'behavior'}
 
-        def interact(self, session):
+        def participate(self, session):
             pass
 
     subject = Exploratory()
@@ -232,7 +232,7 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
         requested_output_channels = {'behavior'}
         def __call__(self, candidate):
             run = session()
-            candidate.interact(run)
+            candidate.participate(run)
             return Score(float(run.collect(channel='behavior').sum()))
     result = score(subject, SessionBenchmark(), check_mem=False)
     assert float(result) == pytest.approx(1)

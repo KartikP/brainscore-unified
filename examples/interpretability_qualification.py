@@ -69,7 +69,7 @@ class Calls:
         self.started, self.completed = 0, 0
 
     def on_start(self, call: Any) -> None:
-        require(call.method == 'interact', 'explicitly observed interact')
+        require(call.method == 'participate', 'explicitly observed participate')
         self.started += 1
 
     def on_result(self, call: Any, result: Any) -> None:
@@ -102,7 +102,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
 
     def evaluate(texts: list[str]) -> Any:
         current = session(texts)
-        subject.interact(current)
+        subject.participate(current)
         return current.collect()
 
     tokens = tokenizer(testing, padding=True, truncation=True, max_length=64, return_tensors='pt')
@@ -152,7 +152,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
     result = Experiment(subject=subject,
         protocol=SessionProtocol('trained-tool-mechanics', factory, conditions=CONDITIONS,
                                  input_channels=['text'], output_channels=['neural:population']),
-        tools=[load_tool('record-io'), load_tool('observe-calls', observer=calls, methods=['interact']),
+        tools=[load_tool('record-io'), load_tool('observe-calls', observer=calls, methods=['participate']),
                load_tool('record-reasoning'),
                load_tool('record-activity', targets=[layer], name='before', when='before'),
                load_tool('linear-probe', artifact=directory / 'linear-probe.json', name='probe_before', when='before'),
@@ -197,7 +197,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
         errors[f'{condition}_response'] = check_close(output.values, pool(expected.numpy()),
             f'{condition}/response', exact=condition != 'erased')
     require(calls.started == calls.completed == len(CONDITIONS), 'observer call counts')
-    require('interact' not in vars(subject), 'observer restores instance method state')
+    require('participate' not in vars(subject), 'observer restores instance method state')
     probes = [e for e in events if e['kind'] == 'probe']
     require(len(probes) == 2 * len(CONDITIONS), 'both probes execute in every condition')
     for event in probes:

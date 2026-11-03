@@ -160,7 +160,7 @@ def test_trace_preserves_invalid_response_and_session(tmp_path):
                                 parse=int, provenance={'provider': 'fixture'})
     session = InMemorySession([StreamEvent('generation_request', {'prompt': 'a'}, 12)])
     session.requested_output_channels = ('response_trace',)
-    model.interact(session)
+    model.participate(session)
     result = session.emitted[0]
     assert result.payload['answer'] is None and not result.payload['valid']
     assert result.payload['raw']['tokens'] == [1] and result.t_ms == 12

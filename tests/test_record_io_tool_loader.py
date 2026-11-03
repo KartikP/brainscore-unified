@@ -24,7 +24,7 @@ class FixtureSubject(Subject):
     def __init__(self) -> None:
         self.layer = torch.nn.Identity()
 
-    def interact(self, session: Session) -> None:
+    def participate(self, session: Session) -> None:
         while (event := session.next_input()) is not None:
             values = self.layer(torch.tensor(event.payload, dtype=torch.float32)).numpy()
             session.respond(StreamEvent('behavior', values, event.t_ms, {'fixture': True}))

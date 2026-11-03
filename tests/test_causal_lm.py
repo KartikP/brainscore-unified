@@ -1,8 +1,10 @@
-"""build_causal_lm_subject: record, intervene, generate and score, through interact() and process()."""
+"""build_causal_lm_subject: record, intervene, generate and score, through participate() and process()."""
 import json
 
 import numpy as np
 import pytest
+
+pytestmark = pytest.mark.unit
 
 torch = pytest.importorskip('torch')
 
@@ -125,13 +127,13 @@ def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
     assert _ask(model, 'conditional_logprob_request', req)['answer'] != before
 
 
-# Through interact(): the contract's only evaluation method.
+# Through participate(): the contract's only evaluation method.
 
 def _session_ask(model, channel, payload):
     from brainscore_core.streaming import BufferedSession
     session = BufferedSession([StreamEvent(channel, payload, None, {})],
                               requested_output_channels=['response_trace'])
-    model.interact(session)
+    model.participate(session)
     (response,) = session.emitted
     assert response.channel == 'response_trace' and response.payload['valid'] is True
     return response.payload
@@ -143,7 +145,7 @@ def test_declares_what_it_can_do(subject):
     assert {'neural:mlp_in', 'neural:block1', 'response_trace'} <= model.out_channels
 
 
-def test_generate_and_score_through_interact_match_process(subject):
+def test_generate_and_score_through_participate_match_process(subject):
     model, _, _ = subject
     request = {'contexts': ['the cat', 'the dog ran is'], 'targets': ['sat', 'kind mean']}
     assert _session_ask(model, 'conditional_logprob_request', request)['answer'] == \
@@ -153,7 +155,7 @@ def test_generate_and_score_through_interact_match_process(subject):
         _ask(model, 'generation_request', request)['raw']['texts']
 
 
-def test_record_and_push_an_input_site_through_interact(subject):
+def test_record_and_push_an_input_site_through_participate(subject):
     from brainscore.instrumentation import intervene
     from brainscore_core.streaming_helpers import neural_response
     model, _, _ = subject
@@ -238,7 +240,7 @@ def test_neural_responses_carry_a_copy_of_the_provenance(subject):
     model, _, _ = subject
     expected = {'identifier': 'tiny-qwen', 'revision': 'test'}
     session = BufferedSession(stimulus_set=_stimuli(), requested_output_channels=['neural:mlp_in'])
-    model.interact(session)
+    model.participate(session)
     (event,) = session.emitted
     assert event.meta == {'driver': 'interact', 'record': 'mlp_in'}  # record format unchanged
     assert event.payload.attrs['provenance'] == expected

@@ -154,7 +154,7 @@ def main() -> None:
                     subject.reset()
                     try:
                         with factory(None) as session:
-                            subject.interact(session)
+                            subject.participate(session)
                             assembly = session.collect(OUTPUT_CHANNEL)
                         values = assembly.values
                     finally:

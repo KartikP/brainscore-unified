@@ -14,7 +14,7 @@ def run(directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=False)
     subject = TextFixture()
     session = make_session(['red square', 'blue square', 'red circle', 'blue circle'])
-    subject.interact(session)
+    subject.participate(session)
     features = session.collect()
     labels = ['red', 'blue', 'red', 'blue']
     provenance = {'checkpoint': 'fixed-synthetic-weights-v1', 'dataset': 'four-discovery-phrases'}

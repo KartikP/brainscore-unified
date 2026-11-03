@@ -27,18 +27,18 @@ class Observer:
 def test_loaded_observers_preserve_native_outputs_and_independent_counts(tmp_path):
     subject = FixtureSubject()
     first, second = Observer(), Observer()
-    loaded = load_tool('observe-calls', observer=first, methods=['interact'], name='first')
+    loaded = load_tool('observe-calls', observer=first, methods=['participate'], name='first')
     assert type(loaded) is ObserveCalls
-    assert loaded.describe() == ObserveCalls(first, methods=['interact'], name='first').describe()
+    assert loaded.describe() == ObserveCalls(first, methods=['participate'], name='first').describe()
     Experiment(subject=subject, protocol=protocol(), tools=[load_tool('record-io')],
                output_dir=tmp_path / 'baseline').run()
     Experiment(subject=subject, protocol=protocol(), tools=[load_tool('record-io'), loaded,
-               load_tool('observe-calls', observer=second, methods=['interact'], name='second')],
+               load_tool('observe-calls', observer=second, methods=['participate'], name='second')],
                output_dir=tmp_path / 'observed').run()
     assert compare_outputs(tmp_path / 'baseline', tmp_path / 'observed')['equal']
-    assert first.starts == first.results == second.starts == second.results == ['interact'] * 4
+    assert first.starts == first.results == second.starts == second.results == ['participate'] * 4
     assert not first.errors and not second.errors
-    assert 'interact' not in vars(subject)
+    assert 'participate' not in vars(subject)
 
 
 @pytest.mark.parametrize('error', [None, RuntimeError, KeyboardInterrupt])
@@ -91,7 +91,7 @@ def test_missing_selected_method_fails_before_wrapping_or_writing(tmp_path):
         with attach_tools(subject, tools=[load_tool('observe-calls', observer=Observer())],
                           output_dir=tmp_path / 'run'):
             pytest.fail('unsupported method entered scope')
-    assert 'interact' not in vars(subject) and not (tmp_path / 'run').exists()
+    assert 'participate' not in vars(subject) and not (tmp_path / 'run').exists()
 
 
 @pytest.mark.parametrize('name', ['', ' ', 7])

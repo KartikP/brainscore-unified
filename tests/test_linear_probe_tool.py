@@ -55,7 +55,7 @@ class FixtureSubject(Subject):
     def __init__(self):
         self.layer = torch.nn.Identity()
 
-    def interact(self, session):
+    def participate(self, session):
         while (event := session.next_input()) is not None:
             value = self.layer(torch.as_tensor(event.payload, dtype=torch.float32))
             session.respond(StreamEvent('behavior', value.numpy(), event.t_ms))
@@ -165,7 +165,7 @@ def test_direct_scope_reuses_probe_and_preserves_model_even_on_interrupt(tmp_pat
         with attach_tools(subject, tools=[RecordInputsOutputs(), probe],
                           instrumentation=provider, output_dir=tmp_path / 'scope'):
             session = InMemorySession([StreamEvent('stimulus', [[2., 1.]], None)])
-            subject.interact(session)
+            subject.participate(session)
             raise KeyboardInterrupt()
     assert list(subject.layer._forward_hooks) == [original.id]
     record = RunRecord(tmp_path / 'scope')

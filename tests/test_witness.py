@@ -101,3 +101,50 @@ def test_witness_records_error_and_reraises():
         with pytest.raises(ValueError):
             model.process(pd.DataFrame({'stimulus_id': ['a'], 'sentence': ['x']}))
     assert len(w.events) == 1 and w.events[0].error and 'boom' in w.events[0].error
+
+
+# -- Witness reads the public detect_modalities, not the private alias --------
+
+@pytest.mark.unit
+def test_witness_uses_public_detect_modalities():
+    class _PublicOnly(_BareTextModel):
+        def detect_modalities(self, stimuli):
+            return {'text'}
+
+        def _detect_modalities(self, stimuli):
+            raise AssertionError('Witness must not call the private alias')
+
+    model = _PublicOnly()
+    stim = pd.DataFrame({'stimulus_id': ['a'], 'sentence': ['hello']})
+    with Witness(model) as w:
+        out = model.process(stim)
+    assert out == {'echoed': 1}
+    # the private alias would have raised -> caught -> [] (old behaviour)
+    assert w.events[0].modalities == ['text']
+    assert w.events[0].error is None
+
+
+@pytest.mark.unit
+def test_witness_on_real_brainscoremodel_preserves_output():
+    class _TextExtractor:
+        def __init__(self):
+            self.calls = 0
+            self.output = object()
+
+        def __call__(self, stimuli, layers):
+            self.calls += 1
+            return self.output
+
+    extractor = _TextExtractor()
+    model = BrainScoreModel('witness-text', extractor={'text': extractor})
+    public_calls = []
+    detect = model.detect_modalities
+    model.detect_modalities = lambda s: public_calls.append(s) or detect(s)
+    stim = pd.DataFrame({'stimulus_id': ['a', 'b'], 'sentence': ['one', 'two']})
+    with Witness(model) as w:
+        out = model.process(stim)
+    assert out is extractor.output          # response value passed through untouched
+    assert extractor.calls == 1             # Witness adds no extraction call
+    assert len(public_calls) == 1 and public_calls[0] is stim
+    assert w.events[0].modalities == ['text']
+    assert [s['text']['text'] for s in w.events[0].saw] == ['one', 'two']

@@ -26,7 +26,7 @@ class TextFixture(Subject):
         with torch.no_grad():
             self.population.weight.copy_(torch.tensor([[1., 0.], [0., 1.], [1., 1.], [1., -1.]]))
 
-    def interact(self, session: Session) -> None:
+    def participate(self, session: Session) -> None:
         while (event := session.next_input()) is not None:
             stimuli = event.payload
             vectors = [[1. if 'red' in text else -1., 1. if 'square' in text else -1.]
@@ -52,7 +52,7 @@ def run(directory: Path) -> None:
     subject = TextFixture()
     texts = ['red square', 'blue circle', 'red circle', 'blue square']
     session = make_session(texts)
-    subject.interact(session)
+    subject.participate(session)
     discovery = session.collect()
     probe = load_tool('linear-probe', target='population').fit(
         discovery, ['red', 'blue', 'red', 'blue'],
@@ -85,10 +85,10 @@ def run(directory: Path) -> None:
 
     with attach_tools(subject, tools=[load_tool('record-io'), after], instrumentation=provider,
                       output_dir=directory / 'direct'):
-        subject.interact(make_session(['a red circle']))
+        subject.participate(make_session(['a red circle']))
 
     restored = make_session(texts)
-    subject.interact(restored)
+    subject.participate(restored)
     np.testing.assert_array_equal(restored.collect().values, discovery.values)
     print('Restored baseline exactly; protocol and direct scope completed.')
 

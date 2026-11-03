@@ -205,11 +205,11 @@ remain unsupported by this exact-patch scope. The backend must support `patch`
 
 ```python
 observer_tool = load_tool("observe-calls", observer=my_observer,
-                          methods=["interact"], name="call_counts")
+                          methods=["participate"], name="call_counts")
 ```
 
 An observer implements any of `on_start(call)`, `on_result(call, result)` and
-`on_error(call, error)`. Use `methods=["interact"]` for a native subject, or
+`on_error(call, error)`. Use `methods=["participate"]` for a native subject, or
 explicit public methods exposed by an existing legacy evaluator. The default
 remains `("process",)` for compatibility; it is not required by `Subject`.
 There is no automatic method or capability discovery.

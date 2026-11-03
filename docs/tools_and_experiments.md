@@ -14,7 +14,7 @@ change. An experiment runs a procedure with those tools attached.**
 flowchart TB
     E[Experiment] -->|runs| P[Protocol]
     E -->|attaches| T[Tools]
-    P -->|sessions| S["Subject: interact(session)"]
+    P -->|sessions| S["Subject: participate(session)"]
     T -->|internal activity tools| I[Instrumentation]
     I <-->|capture or modify named model sites| S
     P -->|session inputs and outputs| R[Recording tools and saved records]
@@ -22,7 +22,7 @@ flowchart TB
 ```
 
 The diagram shows responsibilities, not an extra evaluation path. The subject
-still evaluates through `interact(session)`. Instrumentation is supplied
+still evaluates through `participate(session)`. Instrumentation is supplied
 explicitly; it does not discover private models or add subject methods.
 
 ## Example: erase information and measure the result

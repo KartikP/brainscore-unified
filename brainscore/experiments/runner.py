@@ -161,7 +161,7 @@ class SessionProtocol:
 
     def validate(self, subject):
         if not isinstance(subject, Subject):
-            raise TypeError('SessionProtocol requires a Subject (interact, reset and channels)')
+            raise TypeError('SessionProtocol requires a Subject (participate, reset and channels)')
         # Use scoring's channel rules; exploratory names remain usable with a warning.
         for channels, direction, owner in (
             (subject.in_channels, 'input', 'subject inputs'),
@@ -200,7 +200,7 @@ class SessionProtocol:
                         }
                         if settings:
                             context.publish('session_context', settings)
-                        subject.interact(ObservedSession(session, context))
+                        subject.participate(ObservedSession(session, context))
                         if not session.complete:
                             raise RuntimeError('Environment session ended before episode completion')
                         if self.collect_outputs:
