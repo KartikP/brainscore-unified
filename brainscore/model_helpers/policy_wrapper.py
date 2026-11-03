@@ -1,9 +1,8 @@
-"""PolicyWrapper: a stateful model harness for closed-loop embodied dispatch.
+"""PolicyWrapper: per-episode memory for a closed-loop policy.
 
-v1.5 builds the closed-loop embodied session that the design reserved. A
-benchmark drives the loop by calling ``process(EnvironmentStep(...))`` once per
-tick, applying the returned action, and producing the next step, without calling
-``reset()`` in between. A stateless policy ignores prior steps; a stateful policy
+A benchmark runs a closed-loop session (``run_environment``): each tick the
+subject receives an ``EnvironmentStep``, returns an action, and the environment
+produces the next step, without ``reset()`` in between. A stateless policy ignores prior steps; a stateful policy
 needs to carry context across them.
 
 ``PolicyWrapper`` provides that state. It wraps a per-step policy callable,

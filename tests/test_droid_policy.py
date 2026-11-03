@@ -95,3 +95,14 @@ def test_chunk_metadata_declares_predictions_execution_and_owner():
         assert response.metadata['scheduler'] == 'policy_adapter'
         assert response.metadata['action_kind'] == 'single'
         assert response.metadata['control_period_ms'] == spec().period_ms
+
+
+def test_bad_camera_frame_is_rejected_before_inference():
+    """Moved from core: the robot harness, not core, validates camera frames."""
+    policy = Policy()
+    adapter = DroidPolicy(policy, action_spec=spec(), reset_policy=lambda: None)
+    bad = step(first=True)
+    bad.observation['cameras']['wrist'] = CameraFrame(rgb=np.zeros((3, 4, 3), dtype=np.float32))
+    with pytest.raises(ValueError, match='wrist'):
+        adapter(bad)
+    assert policy.requests == []

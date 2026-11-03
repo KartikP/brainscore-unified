@@ -2,6 +2,7 @@
 import numpy as np
 
 from brainscore_core.events import EnvironmentResponse, EnvironmentStep
+from brainscore.robotics import validate_cameras
 
 
 class DroidPolicy:
@@ -56,6 +57,7 @@ class DroidPolicy:
             raise ValueError('Steps must be consecutive; reset before starting another episode')
         if not self._pending:
             cameras = step.observation['cameras']
+            validate_cameras(cameras)
             body = step.observation['proprioception']
             request = {
                 'observation/exterior_image_1_left': np.array(cameras[self.external_camera].rgb, copy=True),
