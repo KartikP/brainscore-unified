@@ -389,8 +389,9 @@ def test_qwen_answer_path_is_identical(build, tmp_path):
     assert old_warnings == new_warnings and any('unsure' in w for w in new_warnings)
     assert old_calls == new_calls == [{'device': 'fake-device', 'max_new_tokens': 8, 'do_sample': False}] * 3
     assert old_prompts == new_prompts == ['Is this a real word? Answer with exactly one of: real, pseudo.'] * 3
-    # exact match -> 'real', word match -> 'pseudo', unparseable -> first label
-    np.testing.assert_array_equal(new_output.values, [[1, 0], [0, 1], [1, 0]])
+    # exact match -> 'real', word match -> 'pseudo', unparseable -> invalid
+    np.testing.assert_array_equal(new_output.values, [[1, 0], [0, 1], [np.nan, np.nan]])
+    assert list(new_output['answer_valid'].values) == [True, True, False]
 
 
 def test_reset_reaches_the_same_wrappers(pair):

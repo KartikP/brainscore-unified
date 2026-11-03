@@ -64,7 +64,7 @@ def test_slider_validation_preserves_native_results_and_gates_score(scored_refer
         'CogGym.Hu2023Fine.exp1', checkout=root, repetitions=1,
         reset=lambda repetition: None, output_dir=tmp_path / 'registered',
     )
-    assert benchmark.version == 2
+    assert benchmark.version == 1
     if invalid:
         with pytest.raises(ValueError, match='slider validation rejected 1 answers'):
             benchmark(make_subject(provider))

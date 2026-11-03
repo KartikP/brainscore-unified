@@ -74,7 +74,7 @@ class TestGenerationClosure:
         gen = build_api_generation_fn(self._mock({'return': 'I cannot say'}), 'mock')
         row = pd.Series({'sentence': 'x', 'stimulus_id': 's1'})
         out = gen(row, 'Is this real?', ['real', 'pseudo'])
-        # raw string passed through; BrainScoreModel warns + defaults to label_set[0]
+        # raw string passed through; BrainScoreModel records it as an invalid answer
         assert out == 'I cannot say'
 
     def test_missing_modality_column_raises(self):
