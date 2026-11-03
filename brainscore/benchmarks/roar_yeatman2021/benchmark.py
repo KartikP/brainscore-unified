@@ -243,8 +243,12 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
 
         # argmax over choices to get predicted label per stimulus
         prob_matrix = predictions.values  # (n_test, n_choices)
-        pred_idx = prob_matrix.argmax(axis=1)
-        predicted_labels = [choice_values[i] for i in pred_idx]
+        # An invalid generated answer arrives as a NaN row; it is scored as wrong
+        # rather than as whichever label argmax would pick.
+        invalid = np.isnan(prob_matrix).any(axis=1)
+        pred_idx = np.nan_to_num(prob_matrix, nan=-1).argmax(axis=1)
+        predicted_labels = [None if bad else choice_values[i]
+                            for i, bad in zip(pred_idx, invalid)]
 
         # Ground truth
         stim_ids = list(predictions['stimulus_id'].values)
@@ -264,6 +268,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         score.attrs['raw'] = Score(raw_accuracy)
         score.attrs['ceiling'] = ceiling_value
         score.attrs['n_test_stimuli'] = len(stim_ids)
+        score.attrs['n_invalid_answers'] = int(invalid.sum())
         score.attrs['requested_behavioral_path'] = self.prefer_path
         score.attrs['dyslexia_threshold'] = DYSLEXIA_THRESHOLD
         score.attrs['dyslexic'] = bool(raw_accuracy < DYSLEXIA_THRESHOLD)

@@ -54,7 +54,7 @@ Short definitions of UMI terms. For how the pieces fit together, see [Concepts](
 | **`answer` / `policy` / `intervention`** | Callables that produce a behavioral answer, choose an action from an `EnvironmentStep`, or apply a `StateChange` and return its record and cleanup. |
 | **`Capability`** | A registered handler inside `BrainScoreModel` that adds a dispatch path and its channels; it is part of the subject. |
 | **`TaskContext`** | Task settings such as `instruction`, `label_set` and `fitting_stimuli`. |
-| **`label_set`** | The answers a benchmark accepts, passed to `answer`; it does not constrain what a model generates. On the generation path, an out-of-list answer is replaced by the first label, with a warning. |
+| **`label_set`** | The answers a benchmark accepts, passed to `answer`; it does not constrain what a model generates. On the generation path, an out-of-list answer is recorded as invalid, with a warning: its probabilities are NaN, and the `raw_answer` and `answer_valid` coordinates keep the reply. |
 | **Readout** | A classifier fitted on recorded features to produce behavior, a different measurement from generation. |
 
 ## Recording and measurement
