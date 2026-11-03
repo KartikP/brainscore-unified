@@ -143,20 +143,17 @@ For a matched random control of a localized subset, pass
 `n_total=len(population)`. Sampling `range(n_total)` would lesion different units
 when the recorded population contains original indices such as `[4, 1]`.
 
-## Run an embodied step
+## Run a closed-loop episode
 
 ~~~python
-from brainscore_core.model_interface import EnvironmentStep
+from brainscore_core.streaming_helpers import run_environment
 
-response = model.process(EnvironmentStep(
-    observation=observation,
-    instruction="move to the goal",
-    step_num=0,
-    is_first=True,
-))
-action = response.action
+subject.reset()
+actions = run_environment(subject, environment)  # calls subject.interact(session)
 ~~~
 
+The subject is built with `action_fn`; each tick it receives an
+`EnvironmentStep` and returns an `EnvironmentResponse`.
 The environment wrapper declares observations and actions. See
 [environment sessions](environment_sessions.md) for specifications, seeded reset,
 execution records, and clocks. `run_environment` returns applied actions and

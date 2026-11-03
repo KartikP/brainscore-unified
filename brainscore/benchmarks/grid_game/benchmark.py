@@ -1,16 +1,17 @@
-"""Embodied grid game as a registered Brain-Score benchmark.
+"""Closed-loop grid game as a registered Brain-Score benchmark.
 
 Wraps the closed-loop ``GridGameEnv`` (``brainscore.harnesses.grid_game``) as a
 proper ``Benchmark``: ``__call__(candidate)`` runs N reach-the-goal episodes
-through ``candidate.process(EnvironmentStep(...))`` and returns the success rate,
+through ``run_environment(candidate, ...)`` (the candidate's ``interact``) and
+returns the success rate,
 ceiled by the greedy oracle, with the random-action floor in ``attrs``.
 
-This is the embodied capability as a *registered benchmark*, not just a script —
+This is the closed-loop capability as a *registered benchmark*, not just a script —
 the same closed loop that drives the scaling-curve demo. The environment IS the
 data source (a deterministic simulator seeded per episode), so there is no
-dataset to download. The candidate must expose an ``action_fn`` (i.e.
-``process(EnvironmentStep) -> EnvironmentResponse``); a feature/behavioral model
-with no ``action_fn`` is correctly incompatible.
+dataset to download. The candidate must declare an ``action_fn`` (it emits
+the ``motor`` channel); a feature/behavioral model with no ``action_fn`` is
+correctly incompatible.
 """
 import numpy as np
 
@@ -44,7 +45,7 @@ def policy_model(policy, identifier):
 
 
 class GridGameBenchmark(BenchmarkBase):
-    """Closed-loop reach-the-goal grid game, scored via ``process(EnvironmentStep)``.
+    """Closed-loop reach-the-goal grid game, scored through a closed-loop session.
 
     Metric: success rate over ``n_episodes`` (each a fresh seeded board),
     ceiling-normalized by the greedy oracle. ``attrs`` carry the raw rate, the
@@ -61,7 +62,7 @@ class GridGameBenchmark(BenchmarkBase):
         self.n_episodes = n_episodes
         self.max_steps = max_steps
         self.base_seed = base_seed
-        self.required_modalities = set()   # embodied: no perceptual-modality gate
+        self.required_modalities = set()   # closed-loop: no perceptual-modality gate
 
         common = dict(n_episodes=n_episodes, size=size,
                       max_steps=max_steps, base_seed=base_seed)
@@ -71,7 +72,7 @@ class GridGameBenchmark(BenchmarkBase):
 
         super().__init__(
             identifier=f'GridGame-reach-{size}x{size}',
-            version=1, parent='embodied',
+            version=1, parent='closed_loop',
             ceiling=Score(max(oracle_rate, 1e-6)), bibtex='')
 
     def __call__(self, candidate) -> Score:

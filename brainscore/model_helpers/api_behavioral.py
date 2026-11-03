@@ -273,7 +273,7 @@ def build_api_generation_fn(
     return generate
 
 
-# ── embodied / closed-loop game: action_fn ───────────────────────────────
+# ── closed-loop game: action_fn ───────────────────────────────
 # The video game is agentic, not forced-choice: it drives the model through
 # process(EnvironmentStep) -> EnvironmentResponse one tick at a time (see
 # brainscore.harnesses.gymnasium_harness.play_gym_episode). This builds an
@@ -296,7 +296,7 @@ def _encode_frame(frame, resize: int = 384) -> Tuple[str, str]:
 def _parse_action_index(response: str, n_actions: int) -> Optional[int]:
     """Parse an action index from the response. Prefers a trailing
     ``Action: <n>`` line; falls back to the last in-range integer; else None
-    (caller picks a random action, the embodied null behavior)."""
+    (caller picks a random action, the closed-loop null behavior)."""
     if not response:
         return None
     m = re.search(r'action\s*[:\-]\s*(\d+)', response, re.IGNORECASE)
@@ -340,7 +340,7 @@ def build_api_action_fn(
 
     Reuses the same provider adapters and response cache as the behavioral
     generation path. On an unparseable reply the action collapses to a random
-    legal move (the embodied null), deterministically seeded so cached re-runs
+    legal move (the closed-loop null), deterministically seeded so cached re-runs
     reproduce. No GPU / weights — laptop-runnable with the provider key in env.
 
     The returned closure carries a ``.trace`` list: one dict per tick

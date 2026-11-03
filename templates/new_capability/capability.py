@@ -24,7 +24,7 @@ def build_generation_fn(**cfg):
 
 
 def build_action_fn(**cfg):
-    """Embodied closed loop: see an observation, return one action."""
+    """Closed loop: see an observation, return one action."""
     def act(env_step) -> 'EnvironmentResponse':
         # obs = env_step.observation  (frame / ascii / legal_actions / instruction)
         # TODO: choose an action index. MUST return EnvironmentResponse(action=...).
