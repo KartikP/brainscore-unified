@@ -220,7 +220,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
             suffix += f'-{prefer_path}'
         super().__init__(
             identifier=f'Yeatman2021-lexical_decision-{suffix}',
-            version=2,
+            version=3,  # 3: invalid generated answers count as incorrect
             parent='behavioral',
             ceiling=Score(self._human_accuracy),
             bibtex=BIBTEX,
