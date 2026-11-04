@@ -1,0 +1,26 @@
+{
+  "source_scene_count": 40,
+  "source_trial_count": 1120,
+  "packaged_scenes": [
+    1
+  ],
+  "packaged_trials": 28,
+  "human_reference_alignment": [
+    {
+      "participant": 1,
+      "scene_count": 40,
+      "max_gt_alignment_error": 1.2562779545532976e-06
+    },
+    {
+      "participant": 2,
+      "scene_count": 40,
+      "max_gt_alignment_error": 1.2562779545532976e-06
+    },
+    {
+      "participant": 3,
+      "scene_count": 40,
+      "max_gt_alignment_error": 1.2562779545532976e-06
+    }
+  ],
+  "rebuild_manifest_identical": true
+}

@@ -11,3 +11,4 @@ from . import lebel2023  # noqa: F401
 from . import roar_yeatman2021  # noqa: F401
 
 from . import ewok  # noqa: F401
+from . import sun2025  # noqa: F401
