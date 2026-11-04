@@ -35,5 +35,5 @@ The first run downloads model weights and benchmark data. Large checkpoints stop
 ## Reading a score
 
 - **Raw** is the metric value. **Ceiled** divides by the benchmark's ceiling and can exceed 1.
-- Compare a model with a **null baseline** (chance, or the same architecture with random weights) before interpreting it. [Experiment 1](../../notebooks/experiments/01_does_the_model_beat_random_features.ipynb) shows why.
+- Compare a model with a **null baseline** (chance, or the same architecture with random weights) before interpreting it. [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb) shows why.
 - The score's `attrs` record provenance: compatibility result, behavioral path, model and benchmark identifiers.
