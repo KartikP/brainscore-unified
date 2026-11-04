@@ -13,7 +13,7 @@ from typing import Iterator
 from brainscore.instrumentation import ObservedSession, observe
 from brainscore.run_record import PayloadCodec, RunRecord
 from brainscore.experiments._storage import check_output_directory
-from brainscore_core.compatibility import validate_channels
+from brainscore_core.compatibility import CompatibilityMatch, validate_channels
 from brainscore_core.contract import Subject
 
 
@@ -156,6 +156,7 @@ class SessionProtocol:
         self.input_channels = frozenset(input_channels)
         self.output_channels = frozenset(output_channels)
         self.metadata = dict(metadata or {})
+        self._compatibility = None
 
     def accept_requests(self, channels):
         """Fail when attached recorders need outputs these sessions do not request."""
@@ -169,9 +170,12 @@ class SessionProtocol:
                 'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
                 'factory_argument': self.factory_argument,
                 'reset_policy': 'before and after each repetition; tools attach after initial reset',
+                **({'compatibility': self._compatibility.as_attrs()}
+                   if self._compatibility is not None else {}),
                 **({} if self.collect_outputs else {'collect_outputs': False})}
 
     def validate(self, subject):
+        self._compatibility = None
         if not isinstance(subject, Subject):
             raise TypeError('SessionProtocol requires a Subject (participate, reset and channels)')
         # Use scoring's channel rules; exploratory names remain usable with a warning.
@@ -188,12 +192,26 @@ class SessionProtocol:
             raise ValueError('Use nonempty, distinct condition names')
         if not self.repetitions or len(set(self.repetitions)) != len(self.repetitions):
             raise ValueError('Use nonempty, distinct, hashable repetition IDs')
-        missing = self.input_channels - set(subject.in_channels)
+        consumed = self.input_channels & set(subject.in_channels)
         missing_required = set(subject.required_channels) - self.input_channels
         missing_outputs = self.output_channels - set(subject.out_channels)
-        if missing or missing_required or missing_outputs:
-            raise ValueError(f'Incompatible channels: unsupported inputs={missing}, '
-                             f'missing required inputs={missing_required}, outputs={missing_outputs}')
+        problems = []
+        if self.input_channels and not consumed:
+            problems.append(f'takes in none of the protocol inputs {sorted(self.input_channels)}')
+        if missing_required:
+            problems.append(f'requires inputs absent from the protocol {sorted(missing_required)}')
+        if missing_outputs:
+            problems.append(f'cannot produce requested outputs {sorted(missing_outputs)}')
+        if problems:
+            raise ValueError(f'Subject {subject.identifier!r} is incompatible with protocol '
+                             f'{self.identifier!r}: {"; ".join(problems)}. '
+                             f'Subject in_channels={sorted(subject.in_channels)}, '
+                             f'out_channels={sorted(subject.out_channels)}.')
+        self._compatibility = CompatibilityMatch(
+            subject=subject.identifier, benchmark=self.identifier,
+            consumed_inputs=frozenset(consumed),
+            dropped_inputs=frozenset(self.input_channels - set(subject.in_channels)),
+            requested_outputs=frozenset(self.output_channels))
 
     def run(self, subject, context):
         results = []
