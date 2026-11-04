@@ -144,6 +144,10 @@ def get_model(identifier: str) -> BrainScoreModel:
     # with an `instruction` and `label_set` (e.g., ROAR) will use this
     # path; others fall back to the logistic readout configured below.
     generation_fn = _make_generation_fn(qwen_model, qwen_processor)
+    # Raw replies and candidate likelihoods for TaskContext(response=...) tasks:
+    # ratings, reported confidence, written answers and implied probabilities.
+    from brainscore.model_helpers.replies import chat_parts
+    reply, likelihood = chat_parts(qwen_model, qwen_processor)
 
     region_layer_map = dict(REGION_LAYER_MAP)
     variant_kwargs = {}
@@ -170,6 +174,8 @@ def get_model(identifier: str) -> BrainScoreModel:
         },
         visual_degrees=8,
         answer=generation_fn,
+        reply=reply,
+        likelihood=likelihood,
         # Also enable the readout path so Qwen can be compared on the same
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',
