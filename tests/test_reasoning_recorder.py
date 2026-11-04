@@ -23,7 +23,7 @@ def session(trial):
 
 def protocol():
     return SessionProtocol(
-        'reasoning', session, conditions=['normal', 'repeat'], trials=[0, 1],
+        'reasoning', session, conditions=['normal', 'repeat'], repetitions=[0, 1],
         input_channels=['generation_request'], output_channels=['response_trace'],
     )
 
@@ -46,7 +46,7 @@ def test_completed_reasoning_preserves_response_and_input_links(tmp_path):
     result = run(tmp_path, trace_subject(raw))
     records = list(RunRecord(result.directory / 'reasoning').outputs())
     assert len(records) == 4
-    assert [(r['condition'], r['trial_id']) for r in records] == [
+    assert [(r['condition'], r['repetition_id']) for r in records] == [
         ('normal', 0), ('normal', 1), ('repeat', 0), ('repeat', 1)]
     inputs = {e['event_id'] for e in result.record.events() if e['kind'] == 'input'}
     for record in records:

@@ -169,7 +169,7 @@ def check_repeated_failure(subject, layer, directory: Path, steps: int) -> dict:
             subject=subject,
             protocol=SessionProtocol(
                 identifier='repeated-episodes', session_factory=factory,
-                trials=(0, 1, 2), input_channels=('observation',),
+                repetitions=(0, 1, 2), input_channels=('observation',),
                 output_channels=('motor',), collect_outputs=False,
             ),
             tools=tools,

@@ -187,7 +187,7 @@ def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | No
                 subject=BrainScoreModel(identifier=identifier,
                                         policy=PolicyWrapper(policy, max_history=0)),
                 protocol=SessionProtocol(
-                    identifier='grid-game', session_factory=factory, trials=seeds,
+                    identifier='grid-game', session_factory=factory, repetitions=seeds,
                     input_channels={'observation'}, output_channels={'motor'},
                     collect_outputs=False,
                 ),

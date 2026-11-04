@@ -114,42 +114,44 @@ class Tool:
 
 
 @dataclass(frozen=True)
-class Trial:
-    """One independent repetition within an experimental condition.
+class Repetition:
+    """One independent run of a condition: one session, between two resets.
 
-    SessionProtocol creates one fresh session for this repetition, resetting
-    the subject before and after it. A session may contain many stimuli or an
-    entire environment episode; Trial does not mean one input event.
+    A protocol runs each condition once per repetition. Each repetition is one
+    session (a visit), which may hold many trials (stimuli, each perhaps with
+    several parts, then a response) or one continuous stream with no trials.
+    The subject is reset before and after it, so nothing carries over between
+    repetitions; within a session, memory follows the subject's traits.
     """
     condition: str
     identifier: object
 
 
 class SessionProtocol:
-    """Factory creates a fresh context-managed session for each independent trial.
+    """Factory creates a fresh context-managed session for each independent repetition.
 
-    The protocol owns trial progression and resets. The factory owns session
+    The protocol owns repetition progression and resets. The factory owns session
     resource cleanup. Channel declarations describe the protocol, not a modality.
 
-    The factory always receives Trial(condition, identifier). Adding conditions
+    The factory always receives Repetition(condition, identifier). Adding conditions
     does not change its argument. For a factory written to accept only an ID,
     set factory_argument='identifier' explicitly.
     Set collect_outputs=False to return None instead of collecting session history.
     Attach a recording tool if the episode's events must be kept.
 
     """
-    def __init__(self, identifier, session_factory, *, conditions=None, trials=(0,),
+    def __init__(self, identifier, session_factory, *, conditions=None, repetitions=(0,),
                  input_channels=(), output_channels=(), metadata=None,
-                 factory_argument='trial', collect_outputs: bool = True):
+                 factory_argument='repetition', collect_outputs: bool = True):
         if not isinstance(collect_outputs, bool):
             raise TypeError('collect_outputs must be a bool')
         self.collect_outputs = collect_outputs
         self.identifier = identifier
         self.session_factory = session_factory
-        self.trials = tuple(trials)
+        self.repetitions = tuple(repetitions)
         self.conditions = tuple(conditions) if conditions is not None else ('default',)
-        if factory_argument not in ('trial', 'identifier'):
-            raise ValueError("factory_argument must be 'trial' or 'identifier'.")
+        if factory_argument not in ('repetition', 'identifier'):
+            raise ValueError("factory_argument must be 'repetition' or 'identifier'.")
         self.factory_argument = factory_argument
         self.input_channels = frozenset(input_channels)
         self.output_channels = frozenset(output_channels)
@@ -163,10 +165,10 @@ class SessionProtocol:
                              f'{sorted(self.output_channels)}. Use TaskProtocol, or request them.')
 
     def describe(self):
-        return {'conditions': self.conditions, 'trials': self.trials, 'input_channels': sorted(self.input_channels),
+        return {'conditions': self.conditions, 'repetitions': self.repetitions, 'input_channels': sorted(self.input_channels),
                 'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
                 'factory_argument': self.factory_argument,
-                'reset_policy': 'before and after each trial; tools attach after initial reset',
+                'reset_policy': 'before and after each repetition; tools attach after initial reset',
                 **({} if self.collect_outputs else {'collect_outputs': False})}
 
     def validate(self, subject):
@@ -184,8 +186,8 @@ class SessionProtocol:
         if (not self.conditions or any(not isinstance(c, str) or not c for c in self.conditions)
                 or len(set(self.conditions)) != len(self.conditions)):
             raise ValueError('Use nonempty, distinct condition names')
-        if not self.trials or len(set(self.trials)) != len(self.trials):
-            raise ValueError('Use nonempty, distinct, hashable trial IDs')
+        if not self.repetitions or len(set(self.repetitions)) != len(self.repetitions):
+            raise ValueError('Use nonempty, distinct, hashable repetition IDs')
         missing = self.input_channels - set(subject.in_channels)
         missing_required = set(subject.required_channels) - self.input_channels
         missing_outputs = self.output_channels - set(subject.out_channels)
@@ -196,11 +198,11 @@ class SessionProtocol:
     def run(self, subject, context):
         results = []
         for condition in self.conditions:
-            for trial in self.trials:
-                request = trial if self.factory_argument == 'identifier' else Trial(condition, trial)
+            for repetition in self.repetitions:
+                request = repetition if self.factory_argument == 'identifier' else Repetition(condition, repetition)
                 try:
                     subject.reset()
-                    with context.trial(trial, condition=condition), self.session_factory(request) as session:
+                    with context.repetition(repetition, condition=condition), self.session_factory(request) as session:
                         if not isinstance(session, Session):
                             raise TypeError('Session factories must return a Session')
                         settings = {
@@ -223,7 +225,7 @@ class SessionProtocol:
 class CallableProtocol:
     """Preserve an external evaluator's loop and scientific scoring.
 
-    evaluate(subject, context) owns reset/seed/trial semantics. Its selected
+    evaluate(subject, context) owns reset/seed/repetition semantics. Its selected
     public methods are observed, including errors caught by the evaluator.
     Instrumentation is scoped to the whole evaluator call. Use separate runs
     for baseline and intervention conditions.
@@ -252,7 +254,7 @@ class CallableProtocol:
                 raise ValueError(f'Subject does not expose {method}')
 
     def run(self, subject, context):
-        with context.trial('external'), observe(subject, context, methods=self.methods):
+        with context.repetition('external'), observe(subject, context, methods=self.methods):
             return self.evaluate(subject, context)
 
 
@@ -270,32 +272,32 @@ class ExperimentResult:
     def manifest(self):
         return json.loads((self.directory / 'experiment.json').read_text())
 
-    def neural(self, region, *, condition='default', trial=None):
+    def neural(self, region, *, condition='default', repetition=None):
         """The NeuroidAssembly a RecordNeural tool saved for ``region``.
 
         ``attrs['recording']`` says how it was made. A recording made during a
         task is stamped by the subject; one without a stamp was plain viewing.
         """
-        assembly = self._saved('neural', f'neural:{region}', condition, trial)
+        assembly = self._saved('neural', f'neural:{region}', condition, repetition)
         recording = assembly.attrs.get('recording') or {'task_type': 'passive', 'path': 'extractor'}
         return assembly.assign_attrs(recording={**recording, 'condition': condition})
 
-    def behavior(self, *, condition='default', trial=None, measure=None):
+    def behavior(self, *, condition='default', repetition=None, measure=None):
         """The BehavioralAssembly a RecordBehavior tool saved.
 
         ``measure`` picks one kind of answer: ``'choice'``, ``'probabilities'``,
         ``'confidence'``, ``'rating'`` or ``'text'``. By default, the main answer.
         """
         if measure is not None:
-            return self._saved('behavior', f'behavior:{measure}', condition, trial)
+            return self._saved('behavior', f'behavior:{measure}', condition, repetition)
         for channel in ('behavior', 'behavior:choice', 'behavior:rating', 'behavior:text'):
             try:
-                return self._saved('behavior', channel, condition, trial)
+                return self._saved('behavior', channel, condition, repetition)
             except LookupError:
                 continue
-        raise LookupError(f'No saved behavior for condition={condition!r}, trial={trial!r}.')
+        raise LookupError(f'No saved behavior for condition={condition!r}, repetition={repetition!r}.')
 
-    def _saved(self, folder, channel, condition, trial):
+    def _saved(self, folder, channel, condition, repetition):
         path = self.directory / folder
         if not path.is_dir():
             raise FileNotFoundError(f'No {folder} record: attach Record{folder.title()} to the experiment.')
@@ -303,12 +305,12 @@ class ExperimentResult:
         found = [row['payload'] for row in RunRecord(path).events()]
         found = [env for env in found
                  if env['kind'] == 'output' and env['payload'].channel == channel
-                 and env['condition'] == condition and (trial is None or env['trial_id'] == trial)]
+                 and env['condition'] == condition and (repetition is None or env['repetition_id'] == repetition)]
         if not found:
-            raise LookupError(f'No saved {channel!r} output for condition={condition!r}, trial={trial!r}.')
+            raise LookupError(f'No saved {channel!r} output for condition={condition!r}, repetition={repetition!r}.')
         if len(found) != 1:
             raise LookupError(f'{len(found)} saved {channel!r} outputs for condition={condition!r}, '
-                              f'trial={trial!r}; pass condition= and trial= to pick one.')
+                              f'repetition={repetition!r}; pass condition= and repetition= to pick one.')
         return found[0]['payload'].payload
 
 
@@ -318,7 +320,7 @@ class RunContext:
         self.directory = experiment.output_dir
         self.codec = PayloadCodec(self.directory)
         self.listeners = []
-        self.trial_id = None
+        self.repetition_id = None
         self.condition = 'default'
         self.event_id = None
         self.sequence = 0
@@ -335,7 +337,7 @@ class RunContext:
 
     def publish(self, kind, payload, *, source='protocol', event_id=None):
         envelope = {'kind': kind, 'payload': payload, 'source': source,
-                    'condition': self.condition, 'trial_id': self.trial_id, 'event_id': event_id or self.event_id,
+                    'condition': self.condition, 'repetition_id': self.repetition_id, 'event_id': event_id or self.event_id,
                     'sequence': self.sequence, 'elapsed_s': time.monotonic() - self.started}
         self.sequence += 1
         try:
@@ -364,10 +366,10 @@ class RunContext:
                      event_id=call.event_id)
 
     @contextmanager
-    def trial(self, identifier, *, condition='default'):
+    def repetition(self, identifier, *, condition='default'):
         self.condition = condition
-        self.trial_id, self.event_id = identifier, None
-        self.publish('trial_start', {'id': identifier})
+        self.repetition_id, self.event_id = identifier, None
+        self.publish('repetition_start', {'id': identifier})
         try:
             with ExitStack() as stack:
                 for tool in self.experiment.tools:
@@ -378,8 +380,8 @@ class RunContext:
             self.failed = True
             raise
         finally:
-            self.publish('trial_end', {'failed': self.failed})
-            self.trial_id, self.event_id = None, None
+            self.publish('repetition_end', {'failed': self.failed})
+            self.repetition_id, self.event_id = None, None
             self.condition = 'default'
 
     def artifact(self, path, *, producer, description):
@@ -456,7 +458,7 @@ class Experiment:
     def open(self) -> Iterator[RunContext]:
         """Attach run observers while a caller or protocol owns execution.
 
-        Enter ``context.trial`` to attach trial tools. This scope never runs
+        Enter ``context.repetition`` to attach repetition tools. This scope never runs
         the subject or resets it; the caller retains those responsibilities.
         """
         plan = self.validate()

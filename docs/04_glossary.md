@@ -35,15 +35,16 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`Perturbation`** | How to change selected units: `zero`, `scale` or `replace`. |
 | **`policy`** | A `BrainScoreModel` part: `EnvironmentStep -> EnvironmentResponse`. |
 | **`process(...)`** | A convenience method on `BrainScoreModel` and adapters for interactive use. Not part of the contract. |
-| **Protocol** | The procedure of an experiment: which sessions, conditions and trials to run. |
+| **Protocol** | The procedure of an experiment: which conditions, how many repetitions, where sessions begin and end, and when the subject is reset. |
 | **Readout** | A classifier fitted on one layer's activity to produce choices (`behavioral_readout_layer`). |
 | **`region_layer_map`** | Which layer (or units) stands in for each brain region. A hypothesis that benchmarks test. |
 | **`reset()`** | Clears run state between independent runs. Does not retrain the model. |
 | **`RunRecord`** | Reads a saved experiment without running the model. |
 | **Score** | A metric result with metadata. Raw or ceiled. |
 | **`Selection`** | A concrete set of units: layer path, optional indices, axis. Shared by recording and perturbation. |
-| **Session** | One exchange of inputs and responses with one subject: `next_input()`, `respond(event)`, `collect()`. |
-| **`SessionProtocol`** | A protocol that creates a fresh session for each trial and resets the subject around it. |
+| **Session** | One continuous visit by one subject, between two resets: `next_input()`, `respond(event)`, `collect()`. It holds many trials, or one continuous stream. |
+| **Repetition** | One independent run of a condition: one session, with the subject reset before and after it. |
+| **`SessionProtocol`** | A protocol that creates a fresh session for each repetition and resets the subject around it. |
 | **`StateChange`** | A request to apply a perturbation to a selection, or to undo one. |
 | **`StimulusSet`** | A table with one row per stimulus; `stimulus_id` links each row to its response. |
 | **Subject** | The participant: anything that declares channels and implements `participate`. |
@@ -52,6 +53,6 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Prompt** | One trial as a replying model sees it, in order: the instruction, the stimulus parts (in `present` order), then the response's directive. |
 | **Reported / implied** | A reported answer is the model's parsed reply; an implied one is read from its internals (a readout, or a language model's likelihoods). Results say which in `attrs['measure']`. |
 | **Tool** | Equipment attached to an experiment to observe or change the run, without changing the subject. |
-| **Trial** | One independent repetition of a condition, with a fresh session. |
+| **Trial** | A unit within a session: one stimulus (one `StimulusSet` row, perhaps with several parts) followed by a response. |
 | **`UnitSelection`** | A recipe for choosing units (`IndexSelection`, `RandomSelection`, `FunctionalSelection`) that resolves to a `Selection`. |
 | **Wrapper** | An extractor shipped with Brain-Score, such as `VisionWrapper` or `TextWrapper`. |

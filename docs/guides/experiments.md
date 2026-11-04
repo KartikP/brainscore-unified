@@ -4,10 +4,34 @@ A benchmark gives one score. A study usually needs more: several conditions, rec
 
 | Term | Meaning |
 | --- | --- |
-| **Protocol** | The procedure. `TaskProtocol` presents stimuli under a task; `SessionProtocol` runs sessions you build yourself; `CallableProtocol` wraps an evaluator that already exists. |
+| **Benchmark** | A protocol plus reference data and a way to score the subject against them. |
+| **Protocol** | The procedure: what is presented, under which conditions, how many repetitions, where sessions begin and end, and when the subject is reset. `TaskProtocol` presents stimuli under a task; `SessionProtocol` runs sessions you build yourself; `CallableProtocol` wraps an evaluator that already exists. |
 | **Condition** | A setting being compared, such as `baseline` or `silenced`. |
-| **Trial** | One independent repetition of a condition. The subject is reset before and after each trial. |
+| **Repetition** | One independent run of a condition. Each repetition is one session, and the subject is reset before and after it, so nothing carries over between repetitions. |
+| **Session** | One continuous visit: everything the subject sees and does between two resets. It may hold many trials, or one continuous stream with no trials (a movie, an environment episode). |
+| **Trial** | A unit within a session: one stimulus (perhaps with several parts, such as an instruction then images) followed by a response. In a `StimulusSet`, one row. Whether a subject remembers earlier trials of the same session depends on its traits (`memory:session`). |
 | **Tool** | Equipment attached to the run: recorders and interventions. The subject is not modified. |
+
+## How the parts fit
+
+```
+benchmark  = protocol + reference data + score
+protocol   : for each condition, for each repetition:
+                 reset -> one session -> reset
+session    : trial, trial, trial, ...        (or one continuous stream)
+trial      : stimulus parts -> response       (one StimulusSet row)
+```
+
+A lexical-decision study with two conditions, three repetitions and 40 words runs 2 x 3 = 6 sessions of 40 trials each:
+
+```python
+protocol = TaskProtocol(stimuli,                     # 40 rows: 40 trials per session
+                        task,                        # what each trial asks
+                        conditions=['baseline', 'lesioned'],
+                        repetitions=[0, 1, 2])       # 3 independent sessions per condition
+```
+
+Within a session, a subject with `memory:session` sees earlier trials (as a person in a 1-back task does); across repetitions it remembers nothing. A continuous experiment, such as watching a movie while fMRI is recorded, is one session with no trials: its stimulus set holds one row per clip and the recording keeps time steps. Running a session directly, without `Experiment`, is the same thing without the protocol around it: `subject.participate(session)` is one session.
 
 ## A task with recorders
 
@@ -37,7 +61,7 @@ result.neural('IT', condition='lesioned')       # NeuroidAssembly
 result.behavior(condition='lesioned')           # BehavioralAssembly
 ```
 
-The task says what the subject does; the recorders say what is measured. Each session requests exactly the recorders' channels, and each stimulus is presented once per trial, so the recording is the activity that produced the answer.
+The task says what the subject does; the recorders say what is measured. Each session requests exactly the recorders' channels, and each stimulus is presented once per repetition, so the recording is the activity that produced the answer.
 
 | Task | Recorders | Saved |
 | --- | --- | --- |
@@ -55,7 +79,7 @@ How the activity is taken depends on how the subject answers:
 
 `result.neural(region, condition=...)` returns a `NeuroidAssembly` whose `attrs['recording']` says how it was made (task type, path, forward pass, readout fit, condition), so a recording made during a task is never mistaken for one made during plain viewing.
 
-`Intervene` applies a change through the subject's own `intervention` at the start of each matching trial and undoes it at the end. Its targets use the same layer paths as `region_layer_map`.
+`Intervene` applies a change through the subject's own `intervention` at the start of each matching repetition and undoes it at the end. Its targets use the same layer paths as `region_layer_map`.
 
 ## Lower-level tools
 
@@ -68,11 +92,11 @@ from brainscore.experiments import (Experiment, SessionProtocol, RecordInputsOut
                                     RecordActivity, Ablate, TorchInstrumentation)
 
 @contextmanager
-def make_session(trial):                     # trial.condition, trial.identifier
+def make_session(repetition):                # repetition.condition, repetition.identifier
     yield BufferedSession(stimulus_set=stimuli, requested_output_channels=['behavior'])
 
 protocol = SessionProtocol(identifier='silence-layer3', session_factory=make_session,
-                           conditions=['baseline', 'silenced'], trials=[0, 1, 2],
+                           conditions=['baseline', 'silenced'], repetitions=[0, 1, 2],
                            input_channels=['vision'], output_channels=['behavior'])
 
 experiment = Experiment(
@@ -97,8 +121,8 @@ List tools in this order: recorders, activity recorded *before* an intervention,
 | --- | --- |
 | `RecordNeural(regions)` | Requests `neural:<region>` from the subject and saves it. Read with `result.neural(region, condition=...)`. |
 | `RecordBehavior()` | Requests every kind of answer the task's response asks for and saves them. Read with `result.behavior(condition=..., measure=...)`. |
-| `Intervene(change, conditions=...)` | Applies a `StateChange` through the subject's `intervention`, undone after each trial. |
-| `RecordInputsOutputs` | Saves every input, output and lifecycle event with its condition and trial. Needs no access to model internals. |
+| `Intervene(change, conditions=...)` | Applies a `StateChange` through the subject's `intervention`, undone after each repetition. |
+| `RecordInputsOutputs` | Saves every input, output and lifecycle event with its condition and repetition. Needs no access to model internals. |
 | `RecordActivity(targets)` | Records layer outputs through instrumentation. |
 | `Ablate(targets, conditions=...)` | Zeros layer outputs or a `Selection` of units, in chosen conditions. |
 | `ScaleActivity(targets, factor=0.5)` | Multiplies outputs by a factor. |
@@ -111,7 +135,7 @@ Targets are layer paths or `Selection` objects, the same ones used in [Perturb a
 
 ```python
 for event in result.record.events():        # or RunRecord('runs/silence-layer3')
-    print(event['condition'], event['trial_id'], event['kind'])
+    print(event['condition'], event['repetition_id'], event['kind'])
 outputs = list(result.record.outputs())
 
 from brainscore.experiments import replay_sessions, compare_outputs

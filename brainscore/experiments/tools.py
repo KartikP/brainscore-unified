@@ -10,7 +10,7 @@ from .runner import Tool
 
 
 class RecordInputsOutputs(Tool):
-    """Snapshot events with trial IDs, call IDs, source and elapsed time.
+    """Snapshot events with repetition IDs, call IDs, source and elapsed time.
 
     max_bytes caps this tool's record (events plus its stored arrays/files); see
     RunRecorder. Exceeding it fails the experiment. Other outputs are not counted.
@@ -42,7 +42,7 @@ class RecordInputsOutputs(Tool):
                     if not self._keeps(event):
                         return
                     # After a recording failure, the first exception already failed the
-                    # run; skipping later events (e.g. trial_end) keeps it the one raised.
+                    # run; skipping later events (e.g. repetition_end) keeps it the one raised.
                     if stopped:
                         return
                     try:
@@ -103,18 +103,18 @@ class Ablate(Tool):
     operation = 'ablate'
 
     def __init__(self, targets: Sequence[str | Selection], *,
-                 conditions: Sequence[str] | None = None, trials: Sequence[Any] | None = None,
+                 conditions: Sequence[str] | None = None, repetitions: Sequence[Any] | None = None,
                  name: str | None = None) -> None:
         self.name = self.name if name is None else name
         if not isinstance(self.name, str) or not self.name.strip():
             raise ValueError('Tool name must be a nonempty string')
         self.targets = tuple(targets)
         self.conditions = None if conditions is None else tuple(conditions)
-        self.trials = None if trials is None else tuple(trials)
+        self.repetitions = None if repetitions is None else tuple(repetitions)
 
     def describe(self):
         return {'targets': [_describe_target(t) for t in self.targets], 'conditions': self.conditions,
-                'trials': self.trials, 'operation': 'zero_output'}
+                'repetitions': self.repetitions, 'operation': 'zero_output'}
 
     def validate(self, experiment):
         if experiment.instrumentation is None:
@@ -123,14 +123,14 @@ class Ablate(Tool):
         available_conditions = getattr(experiment.protocol, 'conditions', ('default',))
         if self.conditions is not None and (not self.conditions or set(self.conditions) - set(available_conditions)):
             raise ValueError(f'{type(self).__name__} conditions must belong to the protocol')
-        available = getattr(experiment.protocol, 'trials', ('external',))
-        if self.trials is not None and (not self.trials or set(self.trials) - set(available)):
-            raise ValueError(f'{type(self).__name__} trials must belong to the protocol')
+        available = getattr(experiment.protocol, 'repetitions', ('external',))
+        if self.repetitions is not None and (not self.repetitions or set(self.repetitions) - set(available)):
+            raise ValueError(f'{type(self).__name__} repetitions must belong to the protocol')
 
     @contextmanager
     def attach(self, context):
         if ((self.conditions is not None and context.condition not in self.conditions)
-                or (self.trials is not None and context.trial_id not in self.trials)):
+                or (self.repetitions is not None and context.repetition_id not in self.repetitions)):
             yield
             return
         with self._apply(context.experiment.instrumentation):
@@ -150,9 +150,9 @@ class ScaleActivity(Ablate):
     operation = 'scale'
 
     def __init__(self, targets: Sequence[str | Selection], *, factor: float,
-                 conditions: Sequence[str] | None = None, trials: Sequence[Any] | None = None,
+                 conditions: Sequence[str] | None = None, repetitions: Sequence[Any] | None = None,
                  name: str | None = None) -> None:
-        super().__init__(targets, conditions=conditions, trials=trials, name=name)
+        super().__init__(targets, conditions=conditions, repetitions=repetitions, name=name)
         if isinstance(factor, bool) or not isinstance(factor, (int, float)) or not math.isfinite(factor):
             raise ValueError('factor must be a finite number')
         self.factor = float(factor)
@@ -167,15 +167,15 @@ class ScaleActivity(Ablate):
 class PatchActivity(Ablate):
     """Replace outputs with a paired input's saved activity for one forward call.
 
-    Uses the same Selection, condition and trial filters as Ablate. The reference
+    Uses the same Selection, condition and repetition filters as Ablate. The reference
     records the original coordinates and units; subsets may be patched later.
     """
     name = 'patch_activity'
     operation = 'patch'
 
     def __init__(self, targets: Any, *, reference: dict,
-                 conditions: Any = None, trials: Any = None, name: str | None = None) -> None:
-        super().__init__(targets, conditions=conditions, trials=trials, name=name)
+                 conditions: Any = None, repetitions: Any = None, name: str | None = None) -> None:
+        super().__init__(targets, conditions=conditions, repetitions=repetitions, name=name)
         self.reference = copy.deepcopy(reference)
 
     def describe(self) -> dict:

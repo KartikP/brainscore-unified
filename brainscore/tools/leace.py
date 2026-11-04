@@ -19,12 +19,12 @@ class LEACE(FittedActivityTransform):
 
     def __init__(self, target: str | Selection, *, shrinkage: bool = True,
                  constrain_cov_trace: bool = True, svd_tol: float = 0.01,
-                 name: str | None = None, conditions: Any = None, trials: Any = None) -> None:
+                 name: str | None = None, conditions: Any = None, repetitions: Any = None) -> None:
         if type(shrinkage) is not bool or type(constrain_cov_trace) is not bool:
             raise ValueError('shrinkage and constrain_cov_trace must be boolean')
         if isinstance(svd_tol, bool) or not isinstance(svd_tol, (int, float)) or not math.isfinite(svd_tol) or svd_tol <= 0:
             raise ValueError('svd_tol must be a positive finite number')
-        super().__init__(target, name=name, conditions=conditions, trials=trials)
+        super().__init__(target, name=name, conditions=conditions, repetitions=repetitions)
         self.shrinkage, self.constrain_cov_trace, self.svd_tol = shrinkage, constrain_cov_trace, float(svd_tol)
 
     def fit(self, activity: NeuroidAssembly, labels: Sequence[str], *,
@@ -42,7 +42,7 @@ class LEACE(FittedActivityTransform):
         eraser = LeaceEraser.fit(torch.from_numpy(values), torch.from_numpy(np.eye(len(classes))[encoded]),
                                 affine=True, **settings)
         fitted = LEACE(replace(self.target, indices=units), name=self.name,
-                       conditions=self.conditions, trials=self.trials, **settings)
+                       conditions=self.conditions, repetitions=self.repetitions, **settings)
         fitted._install({
             'proj_left': eraser.proj_left.detach().cpu().numpy().tolist(),
             'proj_right': eraser.proj_right.detach().cpu().numpy().tolist(),

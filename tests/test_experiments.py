@@ -35,9 +35,9 @@ class FixtureSubject(Subject):
 
 def protocol():
     @contextmanager
-    def factory(trial):
+    def factory(repetition):
         yield InMemorySession([StreamEvent('stimulus', [1., 2.], 12)])
-    return SessionProtocol('fixture', factory, trials=('baseline', 'ablation'),
+    return SessionProtocol('fixture', factory, repetitions=('baseline', 'ablation'),
                           input_channels=('stimulus',), output_channels=('behavior',))
 
 
@@ -49,7 +49,7 @@ def test_session_intervention_order_reset_and_cleanup(tmp_path):
     subject = FixtureSubject()
     result = Experiment(subject=subject, protocol=protocol(), tools=[
         RecordInputsOutputs(), RecordActivity(['population'], when='before', name='before'),
-        Ablate(['population'], trials=['ablation']), RecordActivity(['population'])],
+        Ablate(['population'], repetitions=['ablation']), RecordActivity(['population'])],
         instrumentation=TorchInstrumentation({'population': subject.layer}),
         output_dir=tmp_path/'run').run()
     events = rows(result.directory)
@@ -57,9 +57,9 @@ def test_session_intervention_order_reset_and_cleanup(tmp_path):
     np.testing.assert_equal(outputs[0]['payload'].payload, [1, 2])
     np.testing.assert_equal(outputs[1]['payload'].payload, [0, 0])
     assert [e['payload'].meta['state'] for e in outputs] == [1, 1]
-    assert [e['trial_id'] for e in outputs] == ['baseline', 'ablation']
+    assert [e['repetition_id'] for e in outputs] == ['baseline', 'ablation']
     assert not {'error', 'error_chain'} & set(result.manifest)
-    activity = [e for e in events if e['kind'] == 'activity' and e['trial_id'] == 'ablation']
+    activity = [e for e in events if e['kind'] == 'activity' and e['repetition_id'] == 'ablation']
     np.testing.assert_equal(activity[0]['payload']['value']['array'], [1, 2])
     np.testing.assert_equal(activity[1]['payload']['value']['array'], [0, 0])
     assert subject.resets == 4 and subject.state == 0
@@ -84,7 +84,7 @@ def test_identical_api_for_domain_payloads(tmp_path, domain, payload):
             while (event := session.next_input()) is not None:
                 session.emit(StreamEvent('custom_output', event.payload, event.t_ms))
     @contextmanager
-    def factory(trial):
+    def factory(repetition):
         yield InMemorySession([StreamEvent('custom_input', payload, 5)])
     result = Experiment(subject=Echo(), protocol=SessionProtocol(domain, factory,
         input_channels=['custom_input'], output_channels=['custom_output']),
@@ -101,14 +101,14 @@ def test_legacy_return_and_instance_method_preserved(tmp_path):
         lambda model, context: float(model.look_at([2, 3]).mean()), methods=['look_at']),
         tools=[RecordInputsOutputs()], output_dir=tmp_path/'run').run()
     assert result.value == 5 and subject.look_at is original
-    assert [e['kind'] for e in rows(result.directory)] == ['trial_start', 'input', 'output', 'trial_end']
+    assert [e['kind'] for e in rows(result.directory)] == ['repetition_start', 'input', 'output', 'repetition_end']
 
 
 def test_external_artifact_producer_and_hash(tmp_path):
     video = tmp_path/'upstream.mp4'
     video.write_bytes(b'fixture, not a video')
     def evaluate(subject, context):
-        context.import_artifact(video, name='trial.mp4', producer='external-evaluator',
+        context.import_artifact(video, name='repetition.mp4', producer='external-evaluator',
                                 description='Fixture testing provenance')
         return subject.process(1)
     result = Experiment(subject=SimpleNamespace(process=lambda x: x),
@@ -138,9 +138,9 @@ def test_hook_cleanup_on_model_failure_and_original_hooks_retained(tmp_path):
     handle = subject.layer.register_forward_hook(lambda *args: None)
     def fail(session):
         subject.layer(torch.ones(2))
-        raise RuntimeError('trial failure')
+        raise RuntimeError('repetition failure')
     subject.participate = fail
-    with pytest.raises(RuntimeError, match='trial failure'):
+    with pytest.raises(RuntimeError, match='repetition failure'):
         Experiment(subject=subject, protocol=protocol(), tools=[RecordInputsOutputs(),
             Ablate(['x'])], instrumentation=TorchInstrumentation({'x': subject.layer}),
             output_dir=tmp_path/'run').run()
@@ -236,7 +236,7 @@ def test_cancellation_and_resource_cleanup(tmp_path, exception):
     subject = FixtureSubject()
     closed = []
     @contextmanager
-    def factory(trial):
+    def factory(repetition):
         try:
             yield InMemorySession([])
         finally:
@@ -395,12 +395,12 @@ def test_conditions_repetitions_shared_record_and_replay(tmp_path):
     requests = []
 
     @contextmanager
-    def factory(trial):
-        requests.append((trial.condition, trial.identifier))
-        yield InMemorySession([StreamEvent('stimulus', [trial.identifier + 1., 2.], 12)])
+    def factory(repetition):
+        requests.append((repetition.condition, repetition.identifier))
+        yield InMemorySession([StreamEvent('stimulus', [repetition.identifier + 1., 2.], 12)])
 
     schedule = SessionProtocol('conditions', factory,
-        conditions=['normal', 'silenced', 'restored'], trials=[0, 1],
+        conditions=['normal', 'silenced', 'restored'], repetitions=[0, 1],
         input_channels=['stimulus'], output_channels=['behavior'])
     provider = TorchInstrumentation(torch.nn.ModuleDict({'layer': subject.layer}))
     def tools():
@@ -409,7 +409,7 @@ def test_conditions_repetitions_shared_record_and_replay(tmp_path):
                 RecordActivity([Selection('layer', [0])])]
     result = Experiment(subject=subject, protocol=schedule, tools=tools(),
         instrumentation=provider, output_dir=tmp_path/'run').run()
-    assert requests == [(c, t) for c in schedule.conditions for t in schedule.trials]
+    assert requests == [(c, t) for c in schedule.conditions for t in schedule.repetitions]
     assert subject.resets == 12 and subject.state == 0
     events = list(result.record.events())
     outputs = list(result.record.outputs())
@@ -479,7 +479,7 @@ def test_simple_event_tool_and_existing_call_observer(tmp_path):
         protocol=CallableProtocol('existing', lambda s, c: s.process(2)),
         tools=[events, ObserveCalls(observer)], output_dir=tmp_path/'run').run()
     assert result.value == 3 and observer.results == [3]
-    assert events.kinds == ['trial_start', 'input', 'output', 'trial_end']
+    assert events.kinds == ['repetition_start', 'input', 'output', 'repetition_end']
     assert subject.process is original
 
 
@@ -493,7 +493,7 @@ def test_activity_callback_snapshot_survives_inplace_operations():
 
 
 def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
-    """One Trial contains multiple inputs; resets separate independent sessions."""
+    """One Repetition contains multiple inputs; resets separate independent sessions."""
     from brainscore_core.streaming import BufferedSession
 
     class StatefulSubject(Subject):
@@ -516,7 +516,7 @@ def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
 
     sessions = []
     @contextmanager
-    def factory(trial):
+    def factory(repetition):
         session = BufferedSession(inputs=[
             StreamEvent(channel='text', payload='first', t_ms=0),
             StreamEvent(channel='text', payload='second', t_ms=1),
@@ -527,8 +527,8 @@ def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
     subject = StatefulSubject()
     result = Experiment(
         subject=subject,
-        protocol=SessionProtocol(identifier='two-trials', session_factory=factory,
-                                 trials=(0, 1), input_channels=('text',),
+        protocol=SessionProtocol(identifier='two-repetitions', session_factory=factory,
+                                 repetitions=(0, 1), input_channels=('text',),
                                  output_channels=('behavior',)),
         tools=[RecordInputsOutputs()],
         output_dir=tmp_path / 'respond',
@@ -537,7 +537,7 @@ def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
     assert [[event.payload for event in session.collect()] for session in sessions] == [[1, 2], [1, 2]]
     outputs = [event for event in rows(result.directory) if event['kind'] == 'output']
     assert [event['payload'].payload for event in outputs] == [1, 2, 1, 2]
-    assert [event['trial_id'] for event in outputs] == [0, 0, 1, 1]
+    assert [event['repetition_id'] for event in outputs] == [0, 0, 1, 1]
     assert subject.resets == 4 and subject.state == 0
 
 
@@ -551,7 +551,7 @@ def _saved_chain(path):
 def test_cleanup_failure_keeps_original_failure_on_disk(tmp_path, cleanup):
     class Subject(FixtureSubject):
         def participate(self, session):
-            raise ValueError('trial failed')
+            raise ValueError('repetition failed')
         def reset(self):
             super().reset()
             if cleanup == 'reset' and self.resets == 2:
@@ -560,7 +560,7 @@ def test_cleanup_failure_keeps_original_failure_on_disk(tmp_path, cleanup):
         name = 'failing'
         phase = 'observe' if cleanup == 'trial_end_listener' else 'after_intervention'
         def on_event(self, event):
-            if event['kind'] == 'trial_end':
+            if event['kind'] == 'repetition_end':
                 raise RuntimeError('cleanup failed')
         @contextmanager
         def attach(self, context):
@@ -575,7 +575,7 @@ def test_cleanup_failure_keeps_original_failure_on_disk(tmp_path, cleanup):
     subject = Subject()
     tools = [RecordInputsOutputs()] + ([] if cleanup == 'reset' else [Failing()])
     p = protocol()
-    p.trials = ('only',)
+    p.repetitions = ('only',)
     with pytest.raises(RuntimeError, match='cleanup failed') as raised:
         Experiment(subject=subject, protocol=p, tools=tools, output_dir=tmp_path/'run').run()
     assert isinstance(raised.value.__context__, ValueError)  # Python's own chain is unchanged.
@@ -584,7 +584,7 @@ def test_cleanup_failure_keeps_original_failure_on_disk(tmp_path, cleanup):
     error, chain = _saved_chain(tmp_path/'run')
     assert error == {'type': 'RuntimeError', 'message': 'cleanup failed'}
     assert chain == [('RuntimeError', 'cleanup failed', None, None),
-                     ('ValueError', 'trial failed', 0, 'context')]
+                     ('ValueError', 'repetition failed', 0, 'context')]
 
 
 def _cause():
@@ -752,7 +752,7 @@ def test_record_failure_keeps_original_error_and_fails_run(tmp_path, caught):
         assert 'caught model or tool error' in experiment['error']['message']
     else:
         assert experiment['error']['type'] == 'TypeError'
-    assert [e['kind'] for e in rows(tmp_path/'run')] == ['trial_start']  # nothing after the loss
+    assert [e['kind'] for e in rows(tmp_path/'run')] == ['repetition_start']  # nothing after the loss
 
 
 def test_output_preflight_fails_before_subject_or_session(tmp_path, monkeypatch):
@@ -851,7 +851,7 @@ def test_session_protocol_relies_on_the_declared_contract(tmp_path):
         protocol().validate(duck)
 
     @contextmanager
-    def factory(trial):
+    def factory(repetition):
         yield SimpleNamespace(next_input=lambda: None)
     undeclared = SessionProtocol('fixture', factory, input_channels=('stimulus',),
                                  output_channels=('behavior',))

@@ -30,25 +30,25 @@ def _source(directory):
 
 
 def replay_sessions(directory):
-    """Replay saved session inputs, preserving trials and event timestamps.
+    """Replay saved session inputs, preserving repetitions and event timestamps.
 
     This is open-loop: outputs cannot change the saved future observations.
     It does not restart a simulator or reproduce a conversational environment.
-    The normal SessionProtocol reset policy applies to each trial.
+    The normal SessionProtocol reset policy applies to each repetition.
     """
     events = read_events(directory)
-    schedule = [(e.get('condition', 'default'), e['trial_id'])
-                for e in events if e['kind'] == 'trial_start']
+    schedule = [(e.get('condition', 'default'), e['repetition_id'])
+                for e in events if e['kind'] == 'repetition_start']
     conditions = list(dict.fromkeys(condition for condition, _ in schedule))
-    trials = list(dict.fromkeys(trial for _, trial in schedule))
-    if schedule != [(condition, trial) for condition in conditions for trial in trials]:
-        raise ValueError('Saved sessions must use a complete condition-by-trial schedule')
+    repetitions = list(dict.fromkeys(repetition for _, repetition in schedule))
+    if schedule != [(condition, repetition) for condition in conditions for repetition in repetitions]:
+        raise ValueError('Saved sessions must use a complete condition-by-repetition schedule')
     inputs = {key: [] for key in schedule}
     settings = {key: {} for key in schedule}
     trial_outputs = {key: set() for key in schedule}
     outputs = set()
     for event in events:
-        key = (event.get('condition', 'default'), event['trial_id'])
+        key = (event.get('condition', 'default'), event['repetition_id'])
         if event['kind'] == 'input':
             if not isinstance(event['payload'], (StreamEvent, EnvironmentStep)):
                 raise TypeError('Use replay_calls for recorded method calls')
@@ -62,26 +62,26 @@ def replay_sessions(directory):
                 outputs.add(event['payload'].channel)
                 trial_outputs[key].add(event['payload'].channel)
     @contextmanager
-    def factory(trial):
+    def factory(repetition):
         # Independent copies prevent a mutating subject altering another replay.
         from copy import deepcopy
-        key = (trial.condition, trial.identifier)
+        key = (repetition.condition, repetition.identifier)
         saved = deepcopy(inputs[key])
         session = InMemorySession(saved)
         for name, value in deepcopy(settings[key]).items():
             setattr(session, name, value)
         if 'requested_output_channels' not in settings[key] and trial_outputs[key]:
             # Older records have no request metadata. Keep the observed channel
-            # names scoped to this trial rather than mixing different trials.
+            # names scoped to this repetition rather than mixing different repetitions.
             session.requested_output_channels = tuple(sorted(trial_outputs[key]))
         if any(isinstance(event, EnvironmentStep) for event in saved):
             if not all(isinstance(event, EnvironmentStep) for event in saved):
-                raise ValueError('Cannot mix environment and ordinary stream inputs in a trial')
+                raise ValueError('Cannot mix environment and ordinary stream inputs in a repetition')
             session.requested_output_channels = ('motor',)
         # SessionProtocol collects results after the final observation.
         session.collect = lambda: [event.payload for event in session.emitted]
         yield session
-    return SessionProtocol('saved-session-inputs', factory, conditions=conditions, trials=trials,
+    return SessionProtocol('saved-session-inputs', factory, conditions=conditions, repetitions=repetitions,
         input_channels={'observation' if isinstance(e, EnvironmentStep) else e.channel
                         for group in inputs.values() for e in group},
         output_channels=outputs,

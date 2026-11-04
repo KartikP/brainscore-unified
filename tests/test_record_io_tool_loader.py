@@ -35,7 +35,7 @@ def protocol() -> SessionProtocol:
     def factory(trial):
         yield BufferedSession([StreamEvent('stimulus', [[1., 2.]], None)])
     return SessionProtocol('record-io-check', factory, input_channels=['stimulus'],
-                           output_channels=['behavior'], trials=[0, 1])
+                           output_channels=['behavior'], repetitions=[0, 1])
 
 
 def test_loader_returns_existing_recorder_and_preserves_default_configuration():

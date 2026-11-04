@@ -103,7 +103,7 @@ class Partner:
             yield session
 
     def native(self, **kwargs):
-        return SessionProtocol(identifier='partner-episode', session_factory=self.session, trials=(7,),
+        return SessionProtocol(identifier='partner-episode', session_factory=self.session, repetitions=(7,),
                                input_channels={'observation'}, output_channels={'motor'},
                                **kwargs)
 

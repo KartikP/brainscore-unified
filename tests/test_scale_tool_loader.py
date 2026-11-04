@@ -17,8 +17,8 @@ def test_loaded_scaling_preserves_existing_class_defaults_and_filters(tmp_path):
     provider = TorchInstrumentation({'population': subject.layer})
     target = Selection('population', [1])
     loaded = load_tool('scale-activity', targets=[target], factor=0.5,
-                       conditions=['lesioned'], trials=[1])
-    native = ScaleActivity([target], factor=0.5, conditions=['lesioned'], trials=[1])
+                       conditions=['lesioned'], repetitions=[1])
+    native = ScaleActivity([target], factor=0.5, conditions=['lesioned'], repetitions=[1])
     assert type(loaded) is ScaleActivity and loaded.name == 'scale_activity'
     assert loaded.describe() == native.describe()
     assert loaded is not load_tool('scale-activity', targets=[target], factor=0.5)

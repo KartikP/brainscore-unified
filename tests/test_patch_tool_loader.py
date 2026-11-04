@@ -27,8 +27,8 @@ def test_loaded_patch_is_existing_class_and_preserves_filters(tmp_path):
     provider, donor = reference(subject)
     target = Selection('population', [0])
     loaded = load_tool('patch-activity', targets=[target], reference=donor,
-                       conditions=['lesioned'], trials=[1])
-    native = PatchActivity([target], reference=donor, conditions=['lesioned'], trials=[1])
+                       conditions=['lesioned'], repetitions=[1])
+    native = PatchActivity([target], reference=donor, conditions=['lesioned'], repetitions=[1])
     assert type(loaded) is PatchActivity and loaded.name == 'patch_activity'
     assert loaded.describe() == native.describe()
     for name, tool in [('native', native), ('loaded', loaded)]:

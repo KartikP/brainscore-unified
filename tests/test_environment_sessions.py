@@ -111,7 +111,7 @@ def test_session_tools_record_applied_actions_and_replay_saved_observations(tmp_
     result = Experiment(
         subject=model,
         protocol=SessionProtocol(
-            'grid', factory, trials=(5,),
+            'grid', factory, repetitions=(5,),
             input_channels={'observation'}, output_channels={'motor'},
         ),
         tools=[RecordInputsOutputs()], output_dir=tmp_path/'run',
