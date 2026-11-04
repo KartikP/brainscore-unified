@@ -25,6 +25,10 @@ class RecordInputsOutputs(Tool):
     def describe(self):
         return {} if self.max_bytes is None else {'max_bytes': self.max_bytes}
 
+    def _keeps(self, event):
+        """Which events this recorder saves; all of them here."""
+        return True
+
     @contextmanager
     def attach(self, context):
         path = context.directory / self.name
@@ -35,6 +39,8 @@ class RecordInputsOutputs(Tool):
                 stopped = []
 
                 def record(event):
+                    if not self._keeps(event):
+                        return
                     # After a recording failure, the first exception already failed the
                     # run; skipping later events (e.g. trial_end) keeps it the one raised.
                     if stopped:

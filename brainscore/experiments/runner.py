@@ -93,6 +93,9 @@ class Tool:
     """
     name = 'tool'
     phase = 'observe'
+    # Outputs this tool asks the subject for; a protocol that builds its own
+    # sessions (TaskProtocol) requests them.
+    output_channels = frozenset()
 
     def describe(self):
         return {}
@@ -254,6 +257,28 @@ class ExperimentResult:
     @property
     def manifest(self):
         return json.loads((self.directory / 'experiment.json').read_text())
+
+    def neural(self, region, *, condition='default', trial=None):
+        """The NeuroidAssembly a RecordNeural tool saved for ``region``."""
+        return self._saved('neural', f'neural:{region}', condition, trial)
+
+    def behavior(self, *, condition='default', trial=None):
+        """The BehavioralAssembly a RecordBehavior tool saved."""
+        return self._saved('behavior', 'behavior', condition, trial)
+
+    def _saved(self, folder, channel, condition, trial):
+        path = self.directory / folder
+        if not path.is_dir():
+            raise FileNotFoundError(f'No {folder} record: attach Record{folder.title()} to the experiment.')
+        # A tool's own record keeps each experiment envelope as the row payload.
+        found = [row['payload'] for row in RunRecord(path).events()]
+        found = [env for env in found
+                 if env['kind'] == 'output' and env['payload'].channel == channel
+                 and env['condition'] == condition and (trial is None or env['trial_id'] == trial)]
+        if len(found) != 1:
+            raise LookupError(f'{len(found)} saved {channel!r} outputs for condition={condition!r}, '
+                              f'trial={trial!r}; pass condition= and trial= to pick one.')
+        return found[0]['payload'].payload
 
 
 class RunContext:
