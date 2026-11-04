@@ -45,7 +45,7 @@ L4_FP32_POLICY = 'gpt2-pereira-l4-fp32-v1'
 FP32_POLICIES = (CPU_FP32_POLICY, L4_FP32_POLICY)
 POLICIES = (HISTORICAL_POLICY, *FP32_POLICIES)
 # Scoped to these four GPT-2/Pereira cases, not arbitrary language inputs.
-# See docs/numerical_policy.md for the precision decision and counterexamples.
+# See docs/archive/numerical_policy.md for the precision decision and counterexamples.
 CPU_NATIVE_ULPS = 32
 # The L4 profile retains the historical linear activation budget for both
 # linear and ridge, whose metric inputs are checked independently.

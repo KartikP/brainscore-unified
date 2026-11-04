@@ -21,6 +21,6 @@ behavioral responses; its `correct` field supplies the ground-truth label,
 not per-trial model accuracy.
 
 There is no native-file builder or author request-ID resolver for this plugin.
-The [dataset audit](../../../docs/dataset_preparation.md) requires confirmation
+The [dataset audit](../../../docs/archive/dataset_preparation.md) requires confirmation
 of access/redistribution terms for each asset, a fresh-cache loading check, and
 documented size/runtime estimates before claiming general-release data support.

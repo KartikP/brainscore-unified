@@ -2,9 +2,9 @@
 
 Run models across compatible Brain-Score benchmarks, record their responses, and attach experiment tools. A `Subject` connects the model to the experiment; `BrainScoreModel` supplies extraction and task helpers. Use `Experiment` to combine a protocol with recording and intervention tools.
 
-**Start here:** [Getting started](docs/getting_started.md) | [Concepts](docs/concepts.md) | [Glossary](docs/glossary.md) | [Build tools](docs/tool_authoring.md) | [Supported features and environments](docs/supported_features.md)
+**Start here:** [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [Lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
 
-UMI is a v2 source candidate. See the [release policy](docs/production_release.md) for remaining qualification.
+UMI is a v2 source candidate. See the [release policy](docs/archive/production_release.md) for remaining qualification.
 
 ## Layout
 
@@ -65,9 +65,9 @@ Requires Python 3.11 and `conda` (miniforge or miniconda). See
 
 ## Local datasets and external experiments
 
-Use [local data builders](docs/local_data.md) to prepare author-format files or
-retrieve data with a provider-supported request ID. See [EWoK](docs/ewok.md) for
-world-knowledge scoring and [CogGym](docs/coggym.md) for cognitive experiments
+Use [local data builders](docs/archive/local_data.md) to prepare author-format files or
+retrieve data with a provider-supported request ID. See [EWoK](docs/archive/ewok.md) for
+world-knowledge scoring and [CogGym](docs/archive/coggym.md) for cognitive experiments
 with UMI recording and intervention tools.
 
 ## Capability Status Matrix

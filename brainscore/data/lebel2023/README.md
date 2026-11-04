@@ -33,4 +33,4 @@ The language-mask benchmark additionally needs the LanA atlas.
 
 Conversion happens in the loader, not through `brainscore.data prepare`.
 A source-content manifest and a fresh-build validation record remain part of the
-[dataset audit](../../../docs/dataset_preparation.md).
+[dataset audit](../../../docs/archive/dataset_preparation.md).

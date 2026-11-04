@@ -1,0 +1,84 @@
+# Wrap your model
+
+Choose one of two routes.
+
+| Your system | Route |
+| --- | --- |
+| A neural network whose layers you can access | `BrainScoreModel`, assembled from parts (below) |
+| Anything with its own loop: a remote API, a simulator agent, a rule | Subclass `Subject` and write `participate` ([Lesson 1](../../notebooks/lessons/01_your_first_subject.ipynb)) |
+
+## BrainScoreModel in four steps
+
+**1. Find the layer paths.**
+
+```python
+[name for name, _ in net.named_modules() if name]
+```
+
+**2. Build one extractor per input type.** Pick the wrapper from the [class map](../03_class_map.md#extractor-one-per-input-type).
+
+```python
+from brainscore.model_helpers.vision_wrapper import VisionWrapper
+
+vision = VisionWrapper(identifier='my-cnn', model=net, preprocessing=preprocess)
+```
+
+`preprocess` takes a list of image paths and returns the batch the network expects. Use the same preprocessing the model was trained with.
+
+**3. Propose a region-to-layer map.** Each region becomes a `neural:<region>` output.
+
+```python
+region_layer_map = {'V1': 'layer1', 'V4': 'layer3', 'IT': 'layer4'}
+```
+
+This map is a hypothesis. To choose layers from data, run the layer mapping explorer (`brainscore_vision.tools.layer_mapping_explorer`), which scores each layer on standard region benchmarks.
+
+**4. Assemble.**
+
+```python
+from brainscore_core import BrainScoreModel
+
+model = BrainScoreModel(
+    identifier='my-cnn',
+    model=net,                                   # the module perturbations act on
+    extractor={'vision': vision},
+    region_layer_map=region_layer_map,
+    behavioral_readout_layer='layer4',           # optional: behavior by readout
+)
+```
+
+Pass the same `net` object to the extractor and to `model=`, so recording and perturbation act on the same network.
+
+## Models with several inputs
+
+Give each tower its own extractor. If two towers use the same layer names, route regions with `LayerSelector`:
+
+```python
+from brainscore_core import LayerSelector
+
+model = BrainScoreModel(
+    identifier='my-clip',
+    model=clip,
+    extractor={'vision': image_wrapper, 'text': text_wrapper},
+    region_layer_map={
+        'IT': LayerSelector(name='encoder.layers.10', modality='vision'),
+        'language_system': LayerSelector(name='encoder.layers.10', modality='text'),
+    },
+)
+```
+
+The [CLIP registration](../../brainscore/models/clip_vit_b_32/model.py) is a complete example.
+
+## Models without accessible layers
+
+A hosted model or any system that only returns answers has no extractor. Declare its input and give it an `answer`:
+
+```python
+model = BrainScoreModel(identifier='my-api-model', supported_modalities={'text'}, answer=my_answer)
+```
+
+It can take part in behavioral benchmarks but not neural ones; neural benchmarks will report N/A.
+
+## Register it (optional)
+
+You can always pass the object directly to `brainscore.score`. To load it by name, copy [templates/new_model](../../templates/new_model), implement the factory and its test, and register it in `brainscore/models`.

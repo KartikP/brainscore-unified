@@ -1,6 +1,6 @@
 # Extending the Unified Model Interface
 
-[Build tools and integrations](docs/tool_authoring.md) | [Support matrix](docs/supported_features.md) | [Release qualification](docs/production_release.md)
+[Build tools and integrations](docs/guides/extend.md) | [Support matrix](docs/reference/features.md) | [Release qualification](docs/archive/production_release.md)
 
 Extend the unified interface through five registries and Capability.
 
@@ -11,7 +11,7 @@ Both are importable from `brainscore_core.model_interface`. A native `Subject`
 declares identity and input/output channels and implements `participate(session)`;
 it does not need `process()` or a layer map. `UnifiedModel` extends `Subject`
 with `process`, task/recording setup, and layer/modality declarations.
-`BrainScoreModel` builds on that base. See [Concepts](docs/concepts.md#subject).
+`BrainScoreModel` builds on that base. See [Concepts](docs/02_core_concepts.md#1-subject).
 
 > Companion: the interactive contract map at
 > [brain-score.github.io/public/UMI/architecture.html](https://brain-score.github.io/public/UMI/architecture.html).
@@ -32,7 +32,7 @@ model_registry:        Dict[str, Callable[[], Subject]]
 Each `load_*` checks this package first, then falls back to the `brainscore_vision` and
 `brainscore_language` registries, so legacy domain plugins remain loadable by id. Note
 that those domain registries populate lazily — see
-[Finding models and benchmarks](docs/concepts.md#finding-models-and-benchmarks) before concluding something is
+[Finding models and benchmarks](docs/guides/score_a_model.md#find-models-and-benchmarks) before concluding something is
 missing because it is not in a registry dict.
 
 A plugin is a subpackage whose `__init__.py` adds a factory to the
@@ -95,13 +95,13 @@ infer the wrapper, layers, and a provisional `region_layer_map`, then refine wit
 layer-mapping explorer.
 
 Factories that fetch multi-gigabyte checkpoints should use the local pre-download
-guard before any loader call; see [model downloads](docs/model_downloads.md) and
+guard before any loader call; see [model downloads](docs/archive/model_downloads.md) and
 `brainscore/models/blip2_opt_2_7b/model.py` for the pattern.
 
 Custom extraction providers should expose output-affecting state through `cache_config()`.
 Disable result caching if that state cannot be represented. Make `.data` alias or
 NumPy weight edits between scoring runs, because they bypass within-run change
-tracking. See [activation caching](docs/caching.md) for supported paths and limits.
+tracking. See [activation caching](docs/archive/caching.md) for supported paths and limits.
 
 ### Seam 2 — a new benchmark
 
@@ -142,7 +142,7 @@ as worked examples. For a clip longer than a video model's native temporal windo
 `VideoWrapper(..., context_window_ms=...)` to tile it into windows and stitch the per-window
 time-resolved features into one clip-time sequence. Set `max_clip_ms` for a fail-fast.
 Before sharing a new benchmark, complete the
-[benchmark addition checklist](docs/benchmark_addition_checklist.md). Record the data boundary,
+[benchmark addition checklist](docs/archive/benchmark_addition_checklist.md). Record the data boundary,
 null floor, ceiling, modality ablations, timing assumptions, score attrs, and EC2 evidence.
 
 ### Seam 3 — a new metric

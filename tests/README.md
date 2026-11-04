@@ -1,6 +1,6 @@
 # Running tests
 
-Use the coordinated environment from [install/README.md](../install/README.md). The [release matrix](../docs/release_test_matrix.md) maps capabilities to tests, real-model comparisons and runner requirements.
+Use the coordinated environment from [install/README.md](../install/README.md). The [release matrix](../docs/archive/release_test_matrix.md) maps capabilities to tests, real-model comparisons and runner requirements.
 
 ## Four-repository offline checks
 

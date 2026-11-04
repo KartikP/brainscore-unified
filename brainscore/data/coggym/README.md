@@ -50,7 +50,7 @@ be present; prompt preparation checks it before inference.
 
 ## 3. Run with your model
 
-Follow [the CogGym guide](../../../docs/coggym.md) to connect a provider,
+Follow [the CogGym guide](../../../docs/archive/coggym.md) to connect a provider,
 supply its reset callback, and attach tools. Save run outputs outside the
 reference checkout. UMI records model calls while CogGym retains its trial
 selection and scoring.
