@@ -8,7 +8,7 @@ This page connects the [core concepts](02_core_concepts.md) to the classes you w
 | --- | --- |
 | Score a model on a benchmark | `brainscore.score(model, benchmark)` with objects or registered names |
 | Run your own session on a subject | `subject.participate(session)` |
-| Run a study with conditions, trials and tools | `Experiment(...).run()` |
+| Run a study with conditions, repetitions and tools | `Experiment(...).run()` |
 | Try something quickly in a notebook on a `BrainScoreModel` | `model.process(...)` after `start_recording(...)` or `start_task(...)` |
 
 `participate(session)` is the only method the contract requires, and the only one benchmarks and experiments call. `process(...)` is a convenience that exists on `BrainScoreModel` and the legacy adapters; it does the same computation without a session. Use it interactively, but do not write benchmarks against it.
@@ -134,9 +134,9 @@ classDiagram
     Session <|-- WindowedStreamSession : timed delivery
     Session <|-- RealTimeStreamSession : timed delivery
     class SessionProtocol {
-        session_factory(trial)
+        session_factory(repetition)
         conditions
-        trials
+        repetitions
     }
     class CallableProtocol {
         evaluate(subject, context)
@@ -155,7 +155,7 @@ classDiagram
     Experiment o-- SessionProtocol
     Experiment o-- CallableProtocol
     SessionProtocol <|-- TaskProtocol
-    SessionProtocol ..> Session : creates one per trial
+    SessionProtocol ..> Session : creates one per repetition
     Experiment o-- Tool
     Tool <|-- RecordNeural
     Tool <|-- RecordBehavior
@@ -165,7 +165,7 @@ classDiagram
     Tool <|-- Ablate
 ```
 
-`TaskProtocol` presents a stimulus set under a task, once per trial, and requests whatever the attached recorders ask for. `SessionProtocol` builds a fresh session for each trial from your own factory. `CallableProtocol` wraps an evaluator that already exists, such as a classic benchmark or a robotics evaluator, and keeps its own loop.
+`TaskProtocol` presents a stimulus set under a task, once per repetition, and requests whatever the attached recorders ask for. `SessionProtocol` builds a fresh session for each repetition from your own factory. `CallableProtocol` wraps an evaluator that already exists, such as a classic benchmark or a robotics evaluator, and keeps its own loop.
 
 ## Where to import from
 

@@ -149,7 +149,7 @@ These four are easy to confuse:
 | Term | Scope | Produces |
 | --- | --- | --- |
 | **Session** | One exchange of inputs and responses with one subject. | Responses. |
-| **Protocol** | The procedure: which sessions to run, under which **conditions** (such as baseline and silenced) and how many **trials** (independent repetitions). | A set of sessions. |
+| **Protocol** | The procedure: which sessions to run, under which **conditions** (such as baseline and silenced) and how many **repetitions** (independent sessions, each between two resets). A session holds the **trials**: stimuli and responses. | A set of sessions. |
 | **Experiment** | A protocol plus a subject plus **tools** (recorders, interventions) plus an output folder. | A saved record. |
 | **Benchmark** | A fixed experiment with a metric and measured data. | A score. |
 
