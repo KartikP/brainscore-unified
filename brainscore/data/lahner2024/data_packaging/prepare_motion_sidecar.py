@@ -12,7 +12,7 @@ sidecars. The runtime benchmark loads this sidecar and regresses the motion
 columns out of BOLD per-run-per-voxel before z-scoring + ridge.
 
 Usage:
-    python -m brainscore.data.lahner2024.prepare_motion_sidecar \
+    python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar \
         --output-path ~/lahner2024_prep/Lahner2024-fMRI-timeresolved-motion.csv \
         --upload-to-s3
 """

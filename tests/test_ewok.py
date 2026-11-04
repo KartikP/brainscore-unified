@@ -10,7 +10,7 @@ import pytest
 import brainscore
 from brainscore.data.preparation import DataBuilder, data_builder_registry, prepare_dataset
 from brainscore.data.ewok.data import load_prepared
-from brainscore.data.ewok.prepare import HF_REPOSITORY, HF_REVISION, normalize, resolve
+from brainscore.data.ewok.data_packaging.prepare import HF_REPOSITORY, HF_REVISION, normalize, resolve
 from brainscore.benchmarks.ewok.benchmark import logprob_accuracy
 from brainscore.harnesses.ewok import EWoKProvider
 from brainscore.model_helpers.response_trace import build_trace_subject
@@ -46,6 +46,13 @@ def test_data_and_benchmark_registrations():
     assert 'EWoK-core-1.0' in brainscore.data_registry
     assert 'EWoK-core-1.0' in brainscore.stimulus_set_registry
     assert {'EWoK-core-1.0-logprobs', 'EWoK-core-1.0-choice'} <= brainscore.benchmark_registry.keys()
+
+
+def test_benchmark_reads_exactly_the_prepared_items_through_the_registry(prepared):
+    rows, manifest = load_prepared(prepared)
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
+    assert benchmark._rows == rows
+    assert benchmark._manifest == manifest
 
 
 def test_build_round_trip_and_private_permissions(prepared):
@@ -122,7 +129,7 @@ def test_request_resolver_is_plugin_specific_and_not_persisted(native, tmp_path,
     def resolver(request_id):
         seen.append(request_id)
         return native, {'method':'author-download'}
-    from brainscore.data.ewok.prepare import build
+    from brainscore.data.ewok.data_packaging.prepare import build
     monkeypatch.setitem(data_builder_registry,'fixture',lambda:DataBuilder(build, resolver))
     output=prepare_dataset('fixture',request_id='private-author-request',output=tmp_path/'resolved')
     assert seen==['private-author-request']

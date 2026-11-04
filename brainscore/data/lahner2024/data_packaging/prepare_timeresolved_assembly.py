@@ -70,7 +70,7 @@ on-disk footprint stays under ~5 GB. The final .nc artifact is ~5-10 GB.
 ## Usage
 
     # On EC2, in an env with the deps above:
-    python -m brainscore.data.lahner2024.prepare_timeresolved_assembly \\
+    python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly \\
         --output-path /tmp/lahner2024_timeresolved.nc \\
         --events-path /tmp/lahner2024_timeresolved-events.csv \\
         --upload-to-s3

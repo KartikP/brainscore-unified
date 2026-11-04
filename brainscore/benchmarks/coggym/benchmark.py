@@ -1,7 +1,6 @@
 """Registered experiments delegate prompts, trials and scoring to CogGym."""
 from collections.abc import Callable
 import math
-import os
 from pathlib import Path
 import tempfile
 
@@ -43,12 +42,9 @@ class CogGymBenchmark(BenchmarkBase):
         register_trace_channels()
         if experiment not in EXPERIMENTS:
             raise ValueError(f'Unknown public CogGym experiment: {experiment}')
-        checkout = checkout or os.environ.get('BRAINSCORE_COGGYM_CHECKOUT')
-        if not checkout:
-            raise ValueError(
-                'Supply checkout=... or set BRAINSCORE_COGGYM_CHECKOUT to the '
-                'pinned CogGym checkout; see docs/archive/coggym.md.'
-            )
+        if checkout is None:
+            from brainscore.data.local import COGGYM_CHECKOUT, path
+            checkout = path(COGGYM_CHECKOUT.name)      # the registered data location
         if reset is not None and not callable(reset):
             raise TypeError('reset must be a provider reset(repetition) callback')
         self.experiment = experiment

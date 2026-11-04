@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 from PIL import Image
 
-from .montage import render_sample, compose_choice_array
-from .sequential import SequentialTwoAFCModel, build_sequential_random_chooser
+from brainscore.benchmarks.rajalingham2018_2afc.montage import render_sample, compose_choice_array
+from brainscore.benchmarks.rajalingham2018_2afc.sequential import SequentialTwoAFCModel, build_sequential_random_chooser
 
 
 @pytest.fixture

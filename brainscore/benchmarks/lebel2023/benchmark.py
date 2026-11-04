@@ -254,8 +254,10 @@ class LeBel2023Encoding(BenchmarkBase):
 
     def _data(self):
         if self._cached is None:
-            from ...data.lebel2023.data import load
-            self._cached = load(context_window_tr=self._context_window_tr)
+            from brainscore import load_dataset, load_stimulus_set
+            self._cached = (
+                load_stimulus_set('LeBel2023-UTS03', context_window_tr=self._context_window_tr),
+                load_dataset('LeBel2023-UTS03'))
         return self._cached
 
     def _model_features(self, candidate, stimulus_set, assembly):
@@ -380,9 +382,14 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
 
     def _word_data(self):
         if self._word_cached is None:
-            from ...data.lebel2023.data import build_word_level
-            self._word_cached = build_word_level(
-                context_words=self._context_words)
+            from brainscore import load_dataset, load_stimulus_set
+            word_stimuli = load_stimulus_set('LeBel2023-UTS03-words', context_words=self._context_words)
+            assembly = load_dataset('LeBel2023-UTS03')
+            # Each story's retained TR times, in story order, from the responses themselves.
+            stories = np.asarray(assembly['story_id'].values)
+            times = np.asarray(assembly['tr_time_sec'].values, dtype=float)
+            tr_times_by_story = {story: times[stories == story] for story in dict.fromkeys(stories)}
+            self._word_cached = (word_stimuli, assembly, tr_times_by_story)
         return self._word_cached
 
     def _data(self):

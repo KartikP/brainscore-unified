@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from . import benchmark as B
+from brainscore.benchmarks.rajalingham2018_2afc import benchmark as B
 
 
 def _synthetic(seed=0, n_obj=6, imgs_per_obj=8, reps=10):

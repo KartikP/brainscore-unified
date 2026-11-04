@@ -160,8 +160,8 @@ LEBEL_PICKLE = register(LocalAsset(
     env_var='BRAINSCORE_LEBEL_PICKLE',
     default_path='Downloads/assembly_lebel_uts03.pkl',
     kind='neural data',
-    why_local='Per-subject assembly redistributed by the provider under their '
-              'terms, not by Brain-Score.',
+    why_local='Needed only for non-default context settings; the default files are '
+              'hosted (brainscore/data/lebel2023/hosted.py).',
     source='https://github.com/GT-LIT-Lab/litcoder_release',
     obtain='The UTS03 assembly pickle for LeBel et al. 2023.',
     used_by=['LeBel2023-UTS03-encoding',
@@ -192,9 +192,22 @@ ALGONAUTS_ROOT = register(LocalAsset(
     obtain='The competition dataset via DataLad (~130 GB: 129 GB stimuli, ~1 GB '
            'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
            'current DataLad; install it from conda-forge instead.',
-    prepare='python -m brainscore.data.algonauts2025.prepare_assembly '
+    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
             '--algonauts-root <root> --subjects 1',
     used_by=['Algonauts2025-friends-sub01'],
+))
+
+
+COGGYM_CHECKOUT = register(LocalAsset(
+    name='coggym-checkout',
+    env_var='BRAINSCORE_COGGYM_CHECKOUT',
+    default_path='coggym',
+    kind='stimuli',
+    why_local="CogGym's runner reads its experiments, human results and scoring code "
+              "from an unmodified Git checkout at a pinned revision.",
+    source='https://github.com/lance-ying/coggym (revision a1cd9df1118fec80eba7463de237d1497d77e041)',
+    obtain='git clone https://github.com/lance-ying/coggym.git, then check out the revision above.',
+    used_by=['CogGym.* (all 23 public experiments)'],
 ))
 
 

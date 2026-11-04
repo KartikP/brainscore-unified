@@ -38,6 +38,7 @@ def load_stimulus_set(root: str | Path | None = None) -> "StimulusSet":
     stimuli['stimulus_id'] = [f"{manifest['items_sha256'][:16]}:{r['item_id']}" for r in rows]
     stimuli.identifier = f"EWoK-core-1.0-{manifest['items_sha256'][:16]}"
     stimuli.stimulus_paths = {}
+    stimuli.attrs['manifest'] = manifest      # checksum, scope and domains of this build
     return stimuli
 
 

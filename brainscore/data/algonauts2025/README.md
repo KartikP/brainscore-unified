@@ -12,7 +12,7 @@ and preparing all subject/split outputs was estimated at another 25 GB. Runtime
 depends on storage and scope; it has not been qualified for this release.
 
 ```bash
-python -m brainscore.data.algonauts2025.prepare_assembly \
+python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly \
   --algonauts-root /path/to/native-data \
   --output-root /path/to/new-build \
   --subjects 1 \
