@@ -72,4 +72,4 @@ BrainScoreModel(..., reply=reply, likelihood=likelihood)
 
 `build_api_generation_fn` (in `brainscore.model_helpers.api_behavioral`) builds an `answer` for a hosted model API. Such a model has no layers, so it can take part in behavioral benchmarks only.
 
-See [Lesson 6](../../notebooks/lessons/06_behavior.ipynb) and [Experiment 1](../../notebooks/experiments/01_does_the_model_beat_random_features.ipynb).
+See [Lesson 6](../../notebooks/lessons/06_behavior.ipynb) and [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb).

@@ -62,4 +62,4 @@ from brainscore_core import CompositeSelector
 region_layer_map = {'IT': CompositeSelector(layers=(('layer3', (0, 1, 2)), ('layer4', None)))}
 ```
 
-See [Lesson 7](../../notebooks/lessons/07_perturb_a_model.ipynb), [Lesson 8](../../notebooks/lessons/08_choose_units.ipynb) and [Experiment 5](../../notebooks/experiments/05_how_much_ablation_matters.ipynb).
+See [Lesson 7](../../notebooks/lessons/07_perturb_a_model.ipynb) and [Lesson 8](../../notebooks/lessons/08_choose_units.ipynb).

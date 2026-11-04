@@ -36,19 +36,14 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 
 | # | Question | Lessons | Requires |
 | --- | --- | --- | --- |
-| 1 | [Does a readout beat random features?](experiments/01_does_the_model_beat_random_features.ipynb) | 2, 6 | CPU, seconds |
 | 2 | [Does category structure increase along the layers mapped to V1 to IT?](experiments/02_which_layer_matches_which_region.ipynb) | 3, 5 | CPU, ResNet-50 weights (100 MB) |
-| 3 | [How well do CLIP features predict macaque IT responses?](experiments/03_predicting_it_responses.ipynb) | 2, 3 | CPU to replot saved results |
+| 3 | [How well do CLIP features predict macaque IT responses, and how much comes from training?](experiments/03_predicting_it_responses.ipynb) | 2, 3, 5 | GPU recommended; MajajHong2015 data and CLIP weights, about 40 minutes |
 | 4 | [Which image half does a digit classifier rely on?](experiments/04_silencing_units_in_a_digit_classifier.ipynb) | 7, 10 | CPU, seconds |
-| 5 | [How does the effect of an ablation scale with its size and strength?](experiments/05_how_much_ablation_matters.ipynb) | 7, 8 | CPU, seconds |
-| 6 | [Does a topographic metric distinguish organized from random layouts?](experiments/06_spatial_organization_of_units.ipynb) | 5 | CPU, seconds |
-| 7 | [Does a model of a delayed response need correctly timed features?](experiments/07_aligning_signals_in_time.ipynb) | 1, 2 | CPU, seconds |
+| 6 | [At what spatial scale does a topographic network organize its units?](experiments/06_spatial_organization_of_units.ipynb) | 3, 5 | CPU, TDANN download (280 MB), a few minutes |
 | 8 | [Does a policy cloned from an expert solve new games in a closed loop?](experiments/08_learning_in_a_closed_loop.ipynb) | 9 | CPU, under a minute |
 | 9 | [Does silencing one residual branch change ResNet-18's predictions?](experiments/09_recording_and_silencing_resnet18.ipynb) | 7, 10 | CPU, ResNet-18 weights (45 MB) |
-| 10 | [How well do GPT-2 features predict fMRI during story listening?](experiments/10_story_listening_fmri.ipynb) | 3, 5 | CPU to read saved results; rerun needs LeBel 2023 data |
-| 11 | [Does silencing one internal unit change a trained robot policy's actions?](experiments/11_inside_a_robot_policy.ipynb) | 9, 10 | CPU to read saved results; rerun needs OpenPI and a GPU |
-| 12 | [Is the effect of pushing one neuron in Qwen3.5-4B specific to that neuron?](experiments/12_steering_a_language_model.ipynb) | 7, 8 | GPU (16 GB), 10 GB download |
-| 13 | [Do outputs passed around a loop of subjects converge?](experiments/13_passing_outputs_between_subjects.ipynb) | 1 | CPU, seconds |
+| 10 | [How well do GPT-2 features predict fMRI during story listening, and does timing matter?](experiments/10_story_listening_fmri.ipynb) | 2, 5 | GPU recommended; LeBel 2023 assembly (3 GB), GPT-2 weights |
+| 13 | [Do messages passed around a loop of language models forget where they started?](experiments/13_passing_outputs_between_subjects.ipynb) | 1, 9 | CPU or GPU, GPT-2 and DistilGPT-2 weights (850 MB) |
 
 Results from saved runs, synthetic data or untrained networks demonstrate a procedure. Each notebook's "Conclusion and limits" section says what its result does and does not establish.
 
