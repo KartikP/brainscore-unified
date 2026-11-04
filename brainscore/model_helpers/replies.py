@@ -22,22 +22,33 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
 
     def inputs_for(prompt):
         from PIL import Image
-        content, images, videos, metadata = [], [], [], []
-        for kind, value in prompt.parts:
-            if kind == 'text':
-                content.append({'type': 'text', 'text': value})
-            elif kind == 'image':
-                images.append(Image.open(value).convert('RGB'))
-                content.append({'type': 'image', 'image': images[-1]})
-            elif kind == 'video':
-                from brainscore.model_helpers.vlm_video_wrapper import clip_metadata, read_clip
-                frames, fps = read_clip(value)
-                videos.append(frames)
-                metadata.append(clip_metadata(frames, fps))
-                content.append({'type': 'video'})
-            else:
-                raise NotImplementedError(f'chat_parts cannot show a {kind!r} part')
-        text = processor.apply_chat_template([{'role': 'user', 'content': content}], tokenize=False,
+        images, videos, metadata = [], [], []
+
+        def content_of(parts):
+            content = []
+            for kind, value in parts:
+                if kind == 'text':
+                    content.append({'type': 'text', 'text': value})
+                elif kind == 'image':
+                    images.append(Image.open(value).convert('RGB'))
+                    content.append({'type': 'image', 'image': images[-1]})
+                elif kind == 'video':
+                    from brainscore.model_helpers.vlm_video_wrapper import clip_metadata, read_clip
+                    frames, fps = read_clip(value)
+                    videos.append(frames)
+                    metadata.append(clip_metadata(frames, fps))
+                    content.append({'type': 'video'})
+                else:
+                    raise NotImplementedError(f'chat_parts cannot show a {kind!r} part')
+            return content
+
+        # Earlier trials of the session (memory='session') become earlier turns.
+        messages = []
+        for earlier, answered in prompt.history:
+            messages.append({'role': 'user', 'content': content_of(earlier.parts)})
+            messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': answered}]})
+        messages.append({'role': 'user', 'content': content_of(prompt.parts)})
+        text = processor.apply_chat_template(messages, tokenize=False,
                                              add_generation_prompt=True, **template)
         call = dict(text=[text], return_tensors='pt', padding=True)
         if images:

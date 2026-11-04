@@ -311,3 +311,29 @@ def test_vlm_vision_wrapper_records_each_image_of_a_trial():
     np.testing.assert_allclose(several.values[0], torch.stack(expected).detach().cpu().numpy(), rtol=1e-5)
     assert one.dims == ('presentation', 'neuroid')
     np.testing.assert_allclose(one.values[0], out[0:4].mean(0).detach().cpu().numpy(), rtol=1e-5)
+
+
+def test_chat_parts_replays_earlier_trials_as_turns():
+    from brainscore_core.responses import Prompt
+    from brainscore.model_helpers.replies import chat_parts
+    seen = {}
+
+    class Recorder(CharProcessor):
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt, **kwargs):
+            seen['messages'] = messages
+            return messages[-1]['content'][-1]['text']
+    reply, _ = chat_parts(TinyLM2(), Recorder())
+    first = Prompt((('text', 'cat'),))
+    reply(Prompt((('text', 'dog'),), history=((first, 'no'),)))
+    assert [m['role'] for m in seen['messages']] == ['user', 'assistant', 'user']
+    assert seen['messages'][1]['content'][0]['text'] == 'no'
+
+
+def test_a_memory_task_rejects_a_subject_without_memory(tmp_path):
+    from brainscore_core.responses import Choice
+    forgets = BrainScoreModel(identifier='forgets', supported_modalities={'text'}, reply=lambda p: 'no')
+    protocol = TaskProtocol(STIMULI, TaskContext(response=Choice(['yes', 'no'])),
+                            required_traits={'memory:session'})
+    with pytest.raises(ValueError, match='memory:session'):
+        Experiment(subject=forgets, protocol=protocol, tools=[RecordBehavior()],
+                   output_dir=tmp_path / 'x').validate()

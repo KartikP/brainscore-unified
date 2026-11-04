@@ -15,6 +15,7 @@ EXCLUDED = {
     'experiments/02_which_layer_matches_which_region.ipynb': 'Pretrained ResNet-50 download',
     'experiments/09_recording_and_silencing_resnet18.ipynb': 'Pretrained ResNet-18 download',
     'experiments/12_steering_a_language_model.ipynb': 'Qwen3.5-4B download and GPU run',
+    'experiments/14_reading_instructions_and_words.ipynb': 'Qwen2.5-VL-7B download and GPU run',
 }
 SELECTED = (
     'lessons/01_your_first_subject.ipynb', 'lessons/02_your_first_benchmark.ipynb',

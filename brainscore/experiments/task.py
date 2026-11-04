@@ -27,20 +27,24 @@ class TaskProtocol(SessionProtocol):
     """Present ``stimuli`` under ``task``, once per condition and trial.
 
     The task says what the subject does; ``TaskContext(task_type='passive')``
-    is plain viewing. The attached recorders say what is measured: each
+    is plain viewing. ``required_traits`` (e.g. ``{'memory:session'}``) makes a
+    subject without them fail validation, as a benchmark marks it N/A. The
+    attached recorders say what is measured: each
     session requests exactly their channels. With a readout task, the readout
     is fitted on the intact network and tested on the changed one; pass
     ``refit_readout=True`` to fit it on the changed network instead.
     """
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
-                 trials=(0,), refit_readout=False, metadata=None):
+                 trials=(0,), refit_readout=False, required_traits=(), metadata=None):
         probe = BufferedSession(stimulus_set=stimuli)
         inputs = set()
         while (event := probe.next_input()) is not None:
             inputs.add(event.channel)
         self.stimuli = stimuli
         self.task = replace(task, readout_fit='current' if refit_readout else 'intact')
+        # e.g. {'memory:session'} for a task whose trials depend on earlier ones.
+        self.required_traits = frozenset(required_traits)
         super().__init__(identifier, self._session, conditions=conditions, trials=trials,
                          input_channels=inputs, output_channels=(), metadata=metadata)
 
@@ -58,8 +62,16 @@ class TaskProtocol(SessionProtocol):
                 channels = (channels - {'behavior'}) | set(self.task.response.channels)
         self.output_channels = frozenset(channels)
 
+    def validate(self, subject):
+        missing = self.required_traits - set(subject.traits)
+        if missing:
+            raise ValueError(f'This task needs subject traits {sorted(missing)}; '
+                             f'{subject.identifier!r} declares {sorted(subject.traits) or "none"}.')
+        super().validate(subject)
+
     def describe(self):
         return {**super().describe(), 'task_type': self.task.task_type,
+                'required_traits': sorted(self.required_traits),
                 'readout_fit': self.task.readout_fit}
 
     @contextmanager
