@@ -48,9 +48,14 @@ class TaskProtocol(SessionProtocol):
         if not channels:
             raise ValueError('Attach a recorder (RecordNeural, RecordBehavior): '
                              'nothing would be measured.')
-        if 'behavior' in channels and self.task.task_type == 'passive':
-            raise ValueError('A passive task produces no behavior; remove RecordBehavior '
-                             'or give the task a task_type that asks for an answer.')
+        channels = set(channels)
+        if 'behavior' in channels:
+            if self.task.task_type == 'passive':
+                raise ValueError('A passive task produces no behavior; remove RecordBehavior '
+                                 'or give the task a response (Choice, Scale, Text).')
+            if self.task.response is not None:
+                # Every kind of answer the response asks for: e.g. choice and confidence.
+                channels = (channels - {'behavior'}) | set(self.task.response.channels)
         self.output_channels = frozenset(channels)
 
     def describe(self):
@@ -100,9 +105,16 @@ class RecordNeural(_ChannelRecorder):
 
 
 class RecordBehavior(_ChannelRecorder):
-    """Record the subject's answers. Read back with ``result.behavior()``."""
+    """Record the subject's answers: every kind the task's response asks for.
+
+    Read back with ``result.behavior()``, or ``result.behavior(measure='confidence')``.
+    """
     name = 'behavior'
     output_channels = frozenset({'behavior'})
+
+    def _keeps(self, event):
+        channel = event['payload'].channel if event['kind'] == 'output' else ''
+        return channel == 'behavior' or channel.startswith('behavior:')
 
 
 class Intervene(Tool):

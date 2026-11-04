@@ -280,9 +280,20 @@ class ExperimentResult:
         recording = assembly.attrs.get('recording') or {'task_type': 'passive', 'path': 'extractor'}
         return assembly.assign_attrs(recording={**recording, 'condition': condition})
 
-    def behavior(self, *, condition='default', trial=None):
-        """The BehavioralAssembly a RecordBehavior tool saved."""
-        return self._saved('behavior', 'behavior', condition, trial)
+    def behavior(self, *, condition='default', trial=None, measure=None):
+        """The BehavioralAssembly a RecordBehavior tool saved.
+
+        ``measure`` picks one kind of answer: ``'choice'``, ``'probabilities'``,
+        ``'confidence'``, ``'rating'`` or ``'text'``. By default, the main answer.
+        """
+        if measure is not None:
+            return self._saved('behavior', f'behavior:{measure}', condition, trial)
+        for channel in ('behavior', 'behavior:choice', 'behavior:rating', 'behavior:text'):
+            try:
+                return self._saved('behavior', channel, condition, trial)
+            except LookupError:
+                continue
+        raise LookupError(f'No saved behavior for condition={condition!r}, trial={trial!r}.')
 
     def _saved(self, folder, channel, condition, trial):
         path = self.directory / folder
@@ -293,6 +304,8 @@ class ExperimentResult:
         found = [env for env in found
                  if env['kind'] == 'output' and env['payload'].channel == channel
                  and env['condition'] == condition and (trial is None or env['trial_id'] == trial)]
+        if not found:
+            raise LookupError(f'No saved {channel!r} output for condition={condition!r}, trial={trial!r}.')
         if len(found) != 1:
             raise LookupError(f'{len(found)} saved {channel!r} outputs for condition={condition!r}, '
                               f'trial={trial!r}; pass condition= and trial= to pick one.')

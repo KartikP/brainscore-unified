@@ -188,3 +188,96 @@ def test_vlm_vision_wrapper_records_the_mean_over_patches():
         expected = model(patches).mean(dim=0)
         taken = recording.take()
     np.testing.assert_allclose(taken.values[0], expected.detach().cpu().numpy(), rtol=1e-5)
+
+
+class CharTokenizer:
+    """One token per character, ids 1..26 for a..z."""
+    def __call__(self, text, add_special_tokens=False):
+        return {'input_ids': [ord(c) - 96 if 'a' <= c <= 'z' else 0 for c in text]}
+
+    def decode(self, ids, skip_special_tokens=True):
+        return ''.join(chr(int(i) + 96) for i in ids)
+
+
+class Batch(dict):
+    def to(self, device):
+        return self
+
+
+class CharProcessor:
+    tokenizer = CharTokenizer()
+
+    def apply_chat_template(self, messages, tokenize, add_generation_prompt, **kwargs):
+        self.kwargs = kwargs
+        return messages[0]['content'][-1]['text']
+
+    def __call__(self, text, return_tensors, padding, images=None):
+        ids = torch.tensor([self.tokenizer(text[0])['input_ids']])
+        return Batch(input_ids=ids, attention_mask=torch.ones_like(ids),
+                     token_type_ids=torch.zeros_like(ids))
+
+
+class TinyLM2(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        torch.manual_seed(0)
+        self.embed, self.head = torch.nn.Embedding(27, 8), torch.nn.Linear(8, 27)
+        self.device = torch.device('cpu')
+
+    def forward(self, input_ids, attention_mask, token_type_ids):
+        assert input_ids.shape == attention_mask.shape == token_type_ids.shape
+        return type('Out', (), {'logits': self.head(self.embed(input_ids))})()
+
+    def generate(self, input_ids, max_new_tokens, do_sample, **kwargs):
+        return torch.cat([input_ids, torch.tensor([[4, 15, 7]])], dim=1)   # 'dog'
+
+
+def test_chat_parts_reply_and_likelihood():
+    from brainscore.model_helpers.replies import chat_parts
+    model, processor = TinyLM2(), CharProcessor()
+    reply, likelihood = chat_parts(model, processor, chat_template_kwargs={'enable_thinking': False})
+    row = {'stimulus_id': 'a', 'sentence': 'x'}
+    assert reply(row, 'which') == 'dog'
+    assert processor.kwargs == {'enable_thinking': False}
+    scores = likelihood(row, 'which', ['cat', 'dog'])
+    # Reference: score 'cat' after the exact prompt the helper built.
+    built = processor.tokenizer(processor.apply_chat_template(
+        [{'role': 'user', 'content': [{'type': 'text', 'text': 'x\n\nwhich'}]}],
+        tokenize=False, add_generation_prompt=True))['input_ids']
+    ids = torch.tensor([built + [3, 1, 20]])
+    logp = model.head(model.embed(ids))[0].log_softmax(-1)
+    expected = sum(float(logp[len(built) - 1 + i, t]) for i, t in enumerate([3, 1, 20]))
+    assert scores['cat'] == pytest.approx(expected, rel=1e-5)
+    assert set(scores) == {'cat', 'dog'}
+
+
+def test_experiment_saves_every_kind_of_answer(tmp_path):
+    from brainscore_core.responses import Choice, Scale, Text
+
+    def reply(stimulus_row, prompt):
+        if 'confidence' in prompt:
+            return 'long\n4' if len(stimulus_row['sentence']) > 1 else 'short\n5'
+        return f"It reads {stimulus_row['sentence']}."
+
+    model = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=reply)
+    choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long'], confidence=Scale(1, 5, 1)))
+    result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, choice),
+                        tools=[RecordBehavior()], output_dir=tmp_path / 'choice').run()
+    assert list(result.behavior()['raw_answer'].values) == ['short\n5', 'long\n4', 'long\n4']
+    assert list(result.behavior(measure='confidence').values) == [5, 4, 4]
+
+    written = TaskContext(instruction='Read it.', response=Text())
+    result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, written),
+                        tools=[RecordBehavior()], output_dir=tmp_path / 'text').run()
+    assert list(result.behavior(measure='text').values) == ['It reads x.', 'It reads yy.', 'It reads zzz.']
+
+
+def test_a_model_that_cannot_write_fails_at_validation(tmp_path):
+    from brainscore_core.responses import Text
+    net = Net()
+    experiment = Experiment(subject=_subject(net),       # answer= only: choices, not text
+                            protocol=TaskProtocol(STIMULI, TaskContext(response=Text())),
+                            tools=[RecordBehavior()], output_dir=tmp_path / 'x')
+    with pytest.raises(ValueError, match='behavior:text'):
+        experiment.validate()
+    assert net.passes == 0
