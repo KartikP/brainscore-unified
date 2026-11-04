@@ -1,54 +1,60 @@
-"""``reply`` and ``likelihood`` parts for a Hugging Face chat model (text or image-text).
+"""``reply`` and ``likelihood`` parts for a Hugging Face chat model (text, image or video).
 
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs={'enable_thinking': False})
     BrainScoreModel(..., reply=reply, likelihood=likelihood)
 
-``reply(stimulus_row, prompt)`` returns the model's raw reply; the task's
-response parses it. ``likelihood(stimulus_row, prompt, candidates)`` returns
-the log probability of each candidate as the whole reply (teacher-forced,
-summed over its tokens), so a choice and its implied probabilities come from
-the model's own distribution without generating.
+Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
+(instruction, stimulus parts, the response's directive). They are shown as one
+user message in that order; images as images, clips as video with their real
+frame rate. ``reply(prompt)`` returns the model's raw reply; the task's response
+parses it. ``likelihood(prompt, candidates)`` returns the log probability of
+each candidate as the whole reply (teacher-forced, summed over its tokens).
 """
 from typing import Mapping, Optional, Sequence
 
 
 def chat_parts(model, processor, *, max_new_tokens: int = 64,
                chat_template_kwargs: Optional[Mapping] = None):
-    from PIL import Image
-    from brainscore.model_helpers.api_behavioral import IMAGE_COLUMNS, TEXT_COLUMNS, _find_column
-
     tokenizer = getattr(processor, 'tokenizer', processor)
     template = dict(chat_template_kwargs or {})
 
-    def inputs_for(stimulus_row, prompt):
-        image_column = _find_column(stimulus_row, IMAGE_COLUMNS)
-        content, images = [], None
-        if image_column:
-            images = [Image.open(stimulus_row[image_column]).convert('RGB')]
-            content.append({'type': 'image', 'image': images[0]})
-        else:
-            text_column = _find_column(stimulus_row, TEXT_COLUMNS)
-            if text_column:
-                prompt = f'{stimulus_row[text_column]}\n\n{prompt}'
-        content.append({'type': 'text', 'text': prompt})
+    def inputs_for(prompt):
+        from PIL import Image
+        content, images, videos, metadata = [], [], [], []
+        for kind, value in prompt.parts:
+            if kind == 'text':
+                content.append({'type': 'text', 'text': value})
+            elif kind == 'image':
+                images.append(Image.open(value).convert('RGB'))
+                content.append({'type': 'image', 'image': images[-1]})
+            elif kind == 'video':
+                from brainscore.model_helpers.vlm_video_wrapper import clip_metadata, read_clip
+                frames, fps = read_clip(value)
+                videos.append(frames)
+                metadata.append(clip_metadata(frames, fps))
+                content.append({'type': 'video'})
+            else:
+                raise NotImplementedError(f'chat_parts cannot show a {kind!r} part')
         text = processor.apply_chat_template([{'role': 'user', 'content': content}], tokenize=False,
                                              add_generation_prompt=True, **template)
         call = dict(text=[text], return_tensors='pt', padding=True)
-        if images is not None:
+        if images:
             call['images'] = images
+        if videos:
+            call.update(videos=videos, video_metadata=metadata)
         return processor(**call).to(model.device)
 
-    def reply(stimulus_row, prompt) -> str:
+    def reply(prompt) -> str:
         import torch
-        inputs = inputs_for(stimulus_row, prompt)
+        inputs = inputs_for(prompt)
         with torch.no_grad():
             generated = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         return tokenizer.decode(generated[0, inputs['input_ids'].shape[1]:],
                                 skip_special_tokens=True).strip()
 
-    def likelihood(stimulus_row, prompt, candidates: Sequence[str]) -> dict:
+    def likelihood(prompt, candidates: Sequence[str]) -> dict:
         import torch
-        inputs = inputs_for(stimulus_row, prompt)
+        inputs = inputs_for(prompt)
         prompt_ids = inputs['input_ids']
         length = prompt_ids.shape[1]
         scores = {}

@@ -235,11 +235,12 @@ class TinyLM2(torch.nn.Module):
 def test_chat_parts_reply_and_likelihood():
     from brainscore.model_helpers.replies import chat_parts
     model, processor = TinyLM2(), CharProcessor()
+    from brainscore_core.responses import Prompt
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs={'enable_thinking': False})
-    row = {'stimulus_id': 'a', 'sentence': 'x'}
-    assert reply(row, 'which') == 'dog'
+    prompt = Prompt((('text', 'x\n\nwhich'),), stimulus_id='a')
+    assert reply(prompt) == 'dog'
     assert processor.kwargs == {'enable_thinking': False}
-    scores = likelihood(row, 'which', ['cat', 'dog'])
+    scores = likelihood(prompt, ['cat', 'dog'])
     # Reference: score 'cat' after the exact prompt the helper built.
     built = processor.tokenizer(processor.apply_chat_template(
         [{'role': 'user', 'content': [{'type': 'text', 'text': 'x\n\nwhich'}]}],
@@ -254,10 +255,11 @@ def test_chat_parts_reply_and_likelihood():
 def test_experiment_saves_every_kind_of_answer(tmp_path):
     from brainscore_core.responses import Choice, Scale, Text
 
-    def reply(stimulus_row, prompt):
-        if 'confidence' in prompt:
-            return 'long\n4' if len(stimulus_row['sentence']) > 1 else 'short\n5'
-        return f"It reads {stimulus_row['sentence']}."
+    def reply(prompt):
+        sentence = [content for kind, content in prompt.parts if kind == 'text'][1]
+        if 'confidence' in prompt.text():
+            return 'long\n4' if len(sentence) > 1 else 'short\n5'
+        return f"It reads {sentence}."
 
     model = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=reply)
     choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long'], confidence=Scale(1, 5, 1)))

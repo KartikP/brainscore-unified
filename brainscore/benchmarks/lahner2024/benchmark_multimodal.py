@@ -223,9 +223,8 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
                 one per output feature column.
         """
         candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
-        # raw input_modalities, not canonicalized supported_modalities: a native-video model
-        # reports 'vision' in supports post-unification (see benchmark._is_native_video).
-        if 'video' in getattr(candidate, 'input_modalities', set()):
+        # Clips natively when the subject declares vision:clip, frames otherwise.
+        if Lahner2024BOLDMoments._is_native_video(candidate):
             video_assembly = candidate.process(self._video_stim_set())
         else:
             # Frame-aggregation path: expand each clip into N frames,
