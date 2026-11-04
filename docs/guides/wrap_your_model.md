@@ -69,6 +69,8 @@ model = BrainScoreModel(
 
 The [CLIP registration](../../brainscore/models/clip_vit_b_32/model.py) is a complete example.
 
+**Stills and clips.** The `extractor` keys declare the visual forms a model takes natively: a `'vision'` key takes pictures (`vision:still`) and a `'video'` key takes clips (`vision:clip`). A model that takes both, such as a vision-language model, registers one of each; each stimulus then goes to the matching one. Never wrap a picture as a one-frame video for a model that takes pictures. The [Qwen3.6 registration](../../brainscore/models/qwen36_27b/model.py) registers both.
+
 ## Models without accessible layers
 
 A hosted model or any system that only returns answers has no extractor. Declare its input and give it an `answer`:

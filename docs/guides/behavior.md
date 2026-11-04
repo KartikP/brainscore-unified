@@ -24,6 +24,13 @@ task = TaskContext(
 
 Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording and parsing are the benchmark's science: subclass a response to change them.
 
+**The order of a trial.** A model that replies receives a `Prompt`: the instruction, the stimulus, then the response's directive. When a stimulus has several parts (a sentence and a clip), say the order people saw them in with `present`; a stimulus with several parts and no order fails before any compute:
+
+```python
+TaskContext(instruction='Which way does the ball move?', present=('text', 'video'),
+            response=Choice(['left', 'right', 'up', 'down']))
+```
+
 Run the task through a session, or attach `RecordBehavior` in an [experiment](experiments.md):
 
 ```python
@@ -52,7 +59,7 @@ One benchmark can take models of both kinds, as long as it fills in both the ins
 
 A reply that cannot be parsed is recorded as invalid: NaN values, `answer_valid` is `False`, the reply is kept in `raw_answer` and the reason in `parse_error`. Nothing is credited. Written answers are stored as written; scoring them (a parser, a judge, a comparison with people) is the benchmark's job.
 
-**Parts for chat models.** `chat_parts(model, processor)` in `brainscore.model_helpers.replies` builds `reply` and `likelihood` for a Hugging Face chat model, text or image-text:
+**Parts.** `reply(prompt)` returns the model's raw reply to one trial; `likelihood(prompt, candidates)` returns the log probability of each candidate answer. `chat_parts(model, processor)` in `brainscore.model_helpers.replies` builds both for a Hugging Face chat model; it shows the prompt's parts in order, images as images and clips as video:
 
 ```python
 reply, likelihood = chat_parts(hf_model, processor, chat_template_kwargs={'enable_thinking': False})

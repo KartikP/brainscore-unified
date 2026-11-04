@@ -65,7 +65,8 @@ Each `BrainScoreModel` part is a slot. Fill it with the class that matches your 
 | --- | --- | --- |
 | Images (CNN, ViT) | `VisionWrapper(kind='frame')` | `preprocessing=` function |
 | Images in a vision-language model with flattened patches (Qwen-VL, LLaVA) | `VisionWrapper(kind='vlm')` | `processor=`, `layer_aggregation=` |
-| Video clips (V-JEPA, VideoMAE) | `VisionWrapper(kind='temporal')` | `preprocessing=`, `post_hook_fn=` |
+| Video clips (V-JEPA, VideoMAE) | `VisionWrapper(kind='temporal')`, keyed `'video'` | `preprocessing=`, `post_hook_fn=` |
+| Video clips through a vision-language model (Qwen-VL) | `VLMVideoWrapper`, keyed `'video'` next to the image wrapper | the model's own processor |
 | Text | `TextWrapper` | `tokenizer=`, `layer_aggregation=` (`last_token`, `mean_tokens`, `per_token`) |
 | Audio | `AudioWrapper` | `processor=`, `layer_aggregation=` (`mean_time`, `time_series`) |
 | Something else | Any callable `extractor(stimuli, layers=[...])` returning a `NeuroidAssembly` | |
