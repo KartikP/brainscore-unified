@@ -12,7 +12,10 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
-ROOT = Path(__file__).resolve().parents[1] / 'brainscore'
+import brainscore
+
+# The installed package, so this also holds when tests run outside the checkout.
+ROOT = Path(brainscore.__file__).resolve().parent
 PLUGINS = {p.name for p in (ROOT / 'data').iterdir() if (p / '__init__.py').exists()}
 
 
