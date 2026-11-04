@@ -195,7 +195,10 @@ def test_full_registry_rejects_pilot_data_before_inference(monkeypatch):
 
 def test_reference_mismatch_and_ambiguous_design_fail_before_compute():
     stimuli, reference = study()
-    wrong = reference.assign_coords(scene=('presentation', [99]))
+    wrong = BehavioralAssembly(reference.values.copy(), dims=reference.dims, coords={
+        'stimulus_id': ('presentation', reference['stimulus_id'].values),
+        'scene': ('presentation', [99]), 'modulation': ('presentation', [1]),
+        'participant': [1, 2, 3], 'axis': ['x', 'y']})
     with pytest.raises(ValueError, match='scene coordinates'):
         Sun2025MotionBenchmark(make_protocol(stimuli), wrong)
     with pytest.raises(ValueError, match='four distinct flips'):
