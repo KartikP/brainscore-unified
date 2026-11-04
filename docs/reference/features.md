@@ -32,7 +32,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Tools: `RecordInputsOutputs`, `RecordActivity`, `Ablate`, `ScaleActivity`, `PatchActivity` | same |
 | `TorchInstrumentation`, `RunRecord`, `replay_sessions`, `compare_outputs` | same |
 | Timed delivery: `WindowedStreamSession`, `RealTimeStreamSession`, `StreamingStimulusSetSession` | [Class map](../03_class_map.md#sessions-protocols-and-experiments) |
-| Temporal helpers: `temporal_bin`, HRF convolution, contiguous-block cross-validation | `brainscore_core.temporal`, [Experiment 7](../../notebooks/experiments/07_aligning_signals_in_time.ipynb) |
+| Temporal helpers: `temporal_bin`, HRF convolution, contiguous-block cross-validation | `brainscore_core.temporal`, [Experiment 10](../../notebooks/experiments/10_story_listening_fmri.ipynb) |
 | Score provenance and status (`score.attrs`, N/A scores) | [Score a model](../guides/score_a_model.md) |
 | Activation caching keyed by weights, settings and inputs | [Perturb and select units](../guides/perturb_and_select_units.md#perturb) |
 
