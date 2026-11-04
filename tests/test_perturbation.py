@@ -483,3 +483,16 @@ def test_perturbation_rejects_malformed_sites_before_hooking(layer):
     with pytest.raises(ValueError):
         _drive(net, 1.0, layer=layer)
     assert not any(m._forward_hooks or m._forward_pre_hooks for m in net.modules())
+
+
+def test_index_out_of_range_for_the_selected_axis_fails_on_every_device():
+    """Flattened-unit indices on a per-axis selection must raise, not be skipped.
+
+    MPS ignores out-of-range indices silently, so the hook checks bounds itself.
+    """
+    conv = torch.nn.Sequential(torch.nn.Conv2d(1, 2, 1))
+    apply_fn = build_pytorch_ablation_fn(conv)
+    apply_fn(StateChange(kind='ablation', target=Selection(layer='0', indices=[0, 7], axis=-1),
+                         perturbation=Perturbation(kind='zero')))
+    with pytest.raises(ValueError, match='out of range for axis'):
+        conv(torch.ones(1, 1, 3, 3))
