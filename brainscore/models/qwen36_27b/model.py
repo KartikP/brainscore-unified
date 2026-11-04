@@ -1,5 +1,5 @@
-"""Qwen3.6-27B registered as a BrainScoreModel: vision tower, language decoder,
-generation and interventions from one checkpoint.
+"""Qwen3.6-27B registered as a BrainScoreModel: vision tower (images and clips),
+language decoder, replies, likelihoods and interventions from one checkpoint.
 
 ``Qwen3_5ForConditionalGeneration`` holds both towers:
 
@@ -146,6 +146,13 @@ def get_model(identifier: str) -> BrainScoreModel:
         max_length=128,
     )
 
+    # Clips go through the model's own video processor (vision:clip); stills
+    # through the image path above (vision:still). Both record the same tower.
+    from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
+    from brainscore.model_helpers.replies import chat_parts
+    video = VLMVideoWrapper(visual, processor, identifier=f'{identifier}-video')
+    reply, likelihood = chat_parts(full, processor, chat_template_kwargs={'enable_thinking': False})
+
     return BrainScoreModel(
         identifier=identifier,
         model=full,
@@ -154,9 +161,11 @@ def get_model(identifier: str) -> BrainScoreModel:
                                   modality='text' if region in TEXT_REGIONS else 'vision')
             for region, layer in REGION_LAYER_MAP.items()
         },
-        extractor={'vision': vision, 'text': text},
+        extractor={'vision': vision, 'video': video, 'text': text},
         visual_degrees=8,
         answer=_make_answer(full, processor),
+        reply=reply,
+        likelihood=likelihood,
         behavioral_readout_layer=REGION_LAYER_MAP['IT'],
         intervention=build_pytorch_ablation_fn(_tower_root(visual, language_model)),
     )

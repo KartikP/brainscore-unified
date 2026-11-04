@@ -347,6 +347,24 @@ class VLMVisionWrapper:
             return arr
         raise ValueError(f"Unknown layer_aggregation: {self._layer_aggregation}")
 
+    def record(self, layers):
+        """Record ``layers`` while another caller runs the model (e.g. generation).
+
+        Returns a context manager; its ``take()`` gives the first forward pass
+        since the previous take, aggregated over the image's patches as
+        ``__call__`` aggregates one image.
+        """
+        from brainscore.model_helpers.live_recording import live_recording
+        for layer in layers:
+            self._get_layer(layer)          # unknown layers fail before any compute
+
+        def aggregate(activity):
+            counts = None if activity.ndim == 3 else [activity.shape[0]]
+            return self._aggregate_per_image(activity, 1, counts).reshape(1, -1)
+
+        return live_recording(self._get_layer, layers, aggregate,
+                              lambda activity: self._package(activity, [None]))
+
     def _get_layer(self, layer_name: str):
         module = self._model
         for part in layer_name.split('.'):

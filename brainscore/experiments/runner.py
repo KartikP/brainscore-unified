@@ -93,6 +93,9 @@ class Tool:
     """
     name = 'tool'
     phase = 'observe'
+    # Outputs this tool asks the subject for; a protocol that builds its own
+    # sessions (TaskProtocol) requests them.
+    output_channels = frozenset()
 
     def describe(self):
         return {}
@@ -151,6 +154,13 @@ class SessionProtocol:
         self.input_channels = frozenset(input_channels)
         self.output_channels = frozenset(output_channels)
         self.metadata = dict(metadata or {})
+
+    def accept_requests(self, channels):
+        """Fail when attached recorders need outputs these sessions do not request."""
+        missing = set(channels) - set(self.output_channels)
+        if missing:
+            raise ValueError(f'Recorders need {sorted(missing)}, but this protocol requests only '
+                             f'{sorted(self.output_channels)}. Use TaskProtocol, or request them.')
 
     def describe(self):
         return {'conditions': self.conditions, 'trials': self.trials, 'input_channels': sorted(self.input_channels),
@@ -223,6 +233,11 @@ class CallableProtocol:
         self.methods = tuple(methods)
         self.metadata = dict(metadata or {})
 
+    def accept_requests(self, channels):
+        if channels:
+            raise ValueError('CallableProtocol runs an evaluator with its own sessions, so recorders '
+                             f'cannot request {sorted(channels)}. Use RecordInputsOutputs or RecordActivity.')
+
     def describe(self):
         return {'methods': self.methods, 'metadata': self.metadata,
                 'reset_policy': 'owned by external evaluator'}
@@ -254,6 +269,47 @@ class ExperimentResult:
     @property
     def manifest(self):
         return json.loads((self.directory / 'experiment.json').read_text())
+
+    def neural(self, region, *, condition='default', trial=None):
+        """The NeuroidAssembly a RecordNeural tool saved for ``region``.
+
+        ``attrs['recording']`` says how it was made. A recording made during a
+        task is stamped by the subject; one without a stamp was plain viewing.
+        """
+        assembly = self._saved('neural', f'neural:{region}', condition, trial)
+        recording = assembly.attrs.get('recording') or {'task_type': 'passive', 'path': 'extractor'}
+        return assembly.assign_attrs(recording={**recording, 'condition': condition})
+
+    def behavior(self, *, condition='default', trial=None, measure=None):
+        """The BehavioralAssembly a RecordBehavior tool saved.
+
+        ``measure`` picks one kind of answer: ``'choice'``, ``'probabilities'``,
+        ``'confidence'``, ``'rating'`` or ``'text'``. By default, the main answer.
+        """
+        if measure is not None:
+            return self._saved('behavior', f'behavior:{measure}', condition, trial)
+        for channel in ('behavior', 'behavior:choice', 'behavior:rating', 'behavior:text'):
+            try:
+                return self._saved('behavior', channel, condition, trial)
+            except LookupError:
+                continue
+        raise LookupError(f'No saved behavior for condition={condition!r}, trial={trial!r}.')
+
+    def _saved(self, folder, channel, condition, trial):
+        path = self.directory / folder
+        if not path.is_dir():
+            raise FileNotFoundError(f'No {folder} record: attach Record{folder.title()} to the experiment.')
+        # A tool's own record keeps each experiment envelope as the row payload.
+        found = [row['payload'] for row in RunRecord(path).events()]
+        found = [env for env in found
+                 if env['kind'] == 'output' and env['payload'].channel == channel
+                 and env['condition'] == condition and (trial is None or env['trial_id'] == trial)]
+        if not found:
+            raise LookupError(f'No saved {channel!r} output for condition={condition!r}, trial={trial!r}.')
+        if len(found) != 1:
+            raise LookupError(f'{len(found)} saved {channel!r} outputs for condition={condition!r}, '
+                              f'trial={trial!r}; pass condition= and trial= to pick one.')
+        return found[0]['payload'].payload
 
 
 class RunContext:
@@ -366,6 +422,10 @@ class Experiment:
 
     def validate(self):
         check_output_directory(self.output_dir)
+        requested = set().union(*(tool.output_channels for tool in self.tools))
+        if requested or isinstance(self.protocol, SessionProtocol):
+            # Protocols from other packages need accept_requests only to take recorders.
+            self.protocol.accept_requests(requested)
         self.protocol.validate(self.subject)
         names = [tool.name for tool in self.tools]
         if len(set(names)) != len(names):

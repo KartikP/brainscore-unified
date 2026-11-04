@@ -547,6 +547,34 @@ class TextWrapper:
 
         return layer_results
 
+    def record(self, layers):
+        """Record ``layers`` while another caller runs the model (e.g. generation).
+
+        Returns a context manager; its ``take()`` gives the first forward pass
+        since the previous take, aggregated as ``__call__`` aggregates one text.
+        """
+        from brainscore.model_helpers.live_recording import live_recording
+        if self._layer_aggregation not in ('last_token', 'mean_tokens'):
+            raise NotImplementedError(
+                f'Recording during generation supports last_token or mean_tokens, '
+                f'not {self._layer_aggregation!r}.')
+        from brainscore.model_helpers.selection import split_site
+        for layer in layers:
+            if split_site(layer)[1] == 'input':
+                raise NotImplementedError(f'{layer!r}: recording a module input during generation is not supported.')
+            self._get_layer(layer)          # unknown layers fail before any compute
+
+        def aggregate(activity):
+            if activity.ndim == 3:
+                if activity.shape[0] != 1:
+                    raise ValueError('Recording during generation expects one prompt at a time.')
+                activity = (activity[:, -1, :] if self._layer_aggregation == 'last_token'
+                            else activity.mean(axis=1))
+            return activity.reshape(1, -1)
+
+        return live_recording(self._get_layer, layers, aggregate,
+                              lambda activity: self._package(activity, [None]))
+
     def _get_layer(self, layer_name):
         from brainscore.model_helpers.selection import split_site
         module = self._model
