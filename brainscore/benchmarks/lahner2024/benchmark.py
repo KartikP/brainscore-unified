@@ -384,16 +384,14 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 
     @staticmethod
     def _is_native_video(candidate) -> bool:
-        """True when the model consumes whole video clips (a VideoWrapper tower),
-        declared via a ``'video'`` input key.
+        """True when the subject declares that it takes clips (``vision:clip``).
 
-        Channel unification canonicalizes ``video -> vision`` in
-        ``supported_modalities``, so a native-video model no longer reports
-        ``'video'`` there. Route on the RAW ``input_modalities`` instead, which
-        preserves the declared processing style. Models that don't expose it
-        (legacy adapters, plain still-image models) fall back to frame-aggregation.
+        Subjects that take only stills (and legacy adapters, which declare no
+        form) are shown frames sampled from each clip instead; the score records
+        that adaptation in ``attrs['input_adaptation']``.
         """
-        return 'video' in getattr(candidate, 'input_modalities', set())
+        from brainscore.presentation import takes_clips
+        return takes_clips(candidate)
 
     def __call__(self, candidate) -> Score:
         # Configure the model's recording once (both paths use it).
@@ -478,6 +476,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         # Make the pipeline explicit so downstream consumers know what
         # assumption the score was computed under.
         score.attrs['pipeline'] = pipeline_mode
+        from brainscore.presentation import frames_from_clip
+        score.attrs['input_adaptation'] = (frames_from_clip(self._sample_times_ms)
+                                           if pipeline_mode == 'frame_aggregation' else None)
         if pipeline_mode == 'frame_aggregation':
             score.attrs['sample_times_ms'] = self._sample_times_ms
             score.attrs['n_frames_per_video'] = len(self._sample_times_ms)

@@ -89,6 +89,9 @@ def built(monkeypatch):
     monkeypatch.setattr(downloads, 'hf_preflight', lambda *a, **k: {})
     monkeypatch.setattr(vision_wrapper, 'VisionWrapper', FakeWrapper)
     monkeypatch.setattr(text_wrapper, 'TextWrapper', FakeWrapper)
+    import brainscore.model_helpers.vlm_video_wrapper as vlm_video_wrapper
+    monkeypatch.setattr(vlm_video_wrapper, 'VLMVideoWrapper',
+                        lambda model, processor, identifier: FakeWrapper(model=model, identifier=identifier))
     return registration.get_model('qwen3.6-27b'), processor
 
 
@@ -102,6 +105,10 @@ def test_both_towers_are_wired(built):
     # Same identifier and cache key as the earlier text-only registration.
     assert (text.identifier, text.kwargs['backbone_id']) == ('qwen3.6-27b-text', 'qwen3.6-27b')
     assert {'vision', 'text'} <= set(model.available_modalities)
+    # Stills as images, clips as video, from the same vision tower.
+    assert {'vision:still', 'vision:clip'} <= model.in_channels
+    assert model.extractor['video'].kwargs['model'] is vision.kwargs['model']
+    assert {'behavior:text', 'behavior:probabilities'} <= model.out_channels
 
 
 def test_regions_route_to_their_tower(built):

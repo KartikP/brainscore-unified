@@ -5,6 +5,8 @@ from .tools import RecordInputsOutputs, RecordActivity, Ablate, ScaleActivity, P
 __all__ = ['Experiment', 'ExperimentResult', 'Tool', 'SessionProtocol',
            'CallableProtocol', 'Trial', 'ObserveCalls', 'RecordInputsOutputs', 'RecordActivity', 'Ablate',
            'TorchInstrumentation', 'ScaleActivity', 'PatchActivity']
+from .task import TaskProtocol, RecordNeural, RecordBehavior, Intervene
+__all__ += ['TaskProtocol', 'RecordNeural', 'RecordBehavior', 'Intervene']
 from .replay import replay_sessions, replay_calls, compare_outputs, read_events
 __all__ += ['replay_sessions', 'replay_calls', 'compare_outputs', 'read_events']
 from .reasoning import RecordReasoning
