@@ -99,7 +99,9 @@ def test_same_protocol_and_recorders_match_direct_experiment(tmp_path):
                             output_dir=tmp_path / 'direct').run()
     measurements = experiment.behavior(measure='text')
     expected = analyze(measurements, stimuli, reference)[2]['mean_endpoint_error_px_per_frame']
-    benchmark = Sun2025MotionBenchmark(protocol, reference)
+    provenance = {'revision': 'synthetic-test-revision', 'dtype': 'float64'}
+    benchmark = Sun2025MotionBenchmark(protocol, reference,
+                                       metadata={'execution_provenance': provenance})
     assert benchmark.protocol is protocol
     assert benchmark.reference is reference
     assert benchmark.metric is motion_vector_error
@@ -108,6 +110,8 @@ def test_same_protocol_and_recorders_match_direct_experiment(tmp_path):
     score = brainscore.score(control, benchmark, check_mem=False)
     assert float(score) == expected
     assert score.attrs['experiment_directory'] is None and not score.attrs['records_retained']
+    assert score.attrs['execution_provenance'] == provenance
+    assert score.attrs['experiment_provenance']['plan']['metadata']['execution_provenance'] == provenance
     assert benchmark.identifier.startswith(IDENTIFIER + '-custom-')
     assert not score.attrs['full_study']
 
@@ -251,5 +255,5 @@ def test_saved_real_pilot_matches_previous_analysis():
     benchmark = Sun2025MotionBenchmark(make_protocol(stimuli), reference)
     score = benchmark.score_measurements(behavior)
     saved = json.loads((directory / 'summary.json').read_text())
-    assert float(score) == pytest.approx(saved['mean_endpoint_error_px_per_frame'], abs=1e-12)
+    assert float(score) == pytest.approx(saved['mean_endpoint_error_px_per_frame'], rel=0, abs=1e-12)
     assert score.attrs['valid_answers'] == 28

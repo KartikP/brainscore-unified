@@ -75,7 +75,7 @@ class Sun2025MotionBenchmark(BenchmarkBase):
 
     def __init__(self, protocol: TaskProtocol, reference: BehavioralAssembly, *,
                  recorders=None, output_dir: str | Path | None = None,
-                 identifier: str | None = None):
+                 identifier: str | None = None, metadata: dict | None = None):
         # Procedure: the existing task protocol defines trials, sessions and resets.
         if len(protocol.conditions) != 1 or len(protocol.repetitions) != 1:
             raise ValueError('This benchmark scores one condition and one repetition')
@@ -96,6 +96,7 @@ class Sun2025MotionBenchmark(BenchmarkBase):
         self.reference = reference
         self.metric = motion_vector_error
         self.output_dir = Path(output_dir) if output_dir is not None else None
+        self.metadata = dict(metadata or {})
         ceiling = Score(float('nan'), attrs={'status': 'not_estimated'})
         super().__init__(identifier=identifier or _custom_identifier(protocol, reference),
                          version=1, parent='behavioral', ceiling=ceiling,
@@ -118,7 +119,8 @@ class Sun2025MotionBenchmark(BenchmarkBase):
     def _run(self, subject: Subject, directory: Path) -> Score:
         experiment = Experiment(subject=subject, protocol=self.protocol,
                                 tools=self.recorders, output_dir=directory,
-                                metadata={'benchmark': self.identifier, 'version': self.version})
+                                metadata={**self.metadata, 'benchmark': self.identifier,
+                                          'version': self.version})
         result = experiment.run()
         measurements = result.behavior(condition=self.protocol.conditions[0],
                                        repetition=self.protocol.repetitions[0], measure='text')
@@ -137,6 +139,7 @@ class Sun2025MotionBenchmark(BenchmarkBase):
                            reference_identifier=self.reference.attrs.get('identifier'),
                            reference_provenance=self.reference.attrs.get('provenance', {}),
                            measurement_provenance=measurements.attrs,
+                           execution_provenance=self.metadata.get('execution_provenance', {}),
                            study_doi='10.1038/s42256-025-01068-w',
                            full_study=self.identifier == IDENTIFIER,
                            leaderboard_eligible=False)
@@ -144,7 +147,8 @@ class Sun2025MotionBenchmark(BenchmarkBase):
 
 
 def load_benchmark(*, root: str | Path | None = None, recorders=None,
-                   output_dir: str | Path | None = None) -> Sun2025MotionBenchmark:
+                   output_dir: str | Path | None = None,
+                   metadata: dict | None = None) -> Sun2025MotionBenchmark:
     """Assemble the registered full-study benchmark from the data plugin."""
     from brainscore import load_dataset, load_stimulus_set
     stimuli = load_stimulus_set('Sun2025-second-order-motion', root=root)
@@ -152,4 +156,4 @@ def load_benchmark(*, root: str | Path | None = None, recorders=None,
     _validate_reference(stimuli, reference, full_study=True)
     protocol = make_protocol(stimuli, seed=0)
     return Sun2025MotionBenchmark(protocol, reference, recorders=recorders,
-                                  output_dir=output_dir, identifier=IDENTIFIER)
+                                  output_dir=output_dir, identifier=IDENTIFIER, metadata=metadata)

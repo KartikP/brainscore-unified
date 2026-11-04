@@ -48,6 +48,12 @@ same presentations. Select a new output directory for each run. If omitted,
 temporary experiment files are cleaned up; the returned Score retains the
 behavioral measurements, parsed reports and participant errors.
 
+As with `Experiment`, `metadata` carries execution provenance into the saved
+run and returned score. When using the supplied Qwen builder, pass its returned
+provenance as `metadata={'execution_provenance': provenance}`. Keep checkpoint
+revisions, weight hashes, dtype and processor/generation settings there; the
+benchmark does not inspect private model attributes to discover them.
+
 Setting `BRAINSCORE_SUN2025_ROOT` also supports the identifier-only call:
 `brainscore.score(subject, 'Sun2025-motion-vector-error')`.
 
