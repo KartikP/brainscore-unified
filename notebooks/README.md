@@ -1,88 +1,66 @@
-# Learn the Brain-Score UMI
+# Notebooks
 
-Choose by task: **01** for registration and scoring, **18** for recording/intervention tools, or **19** for trained robotics-policy measurements. See [Getting started](../docs/getting_started.md#choose-your-starting-point) for how these paths fit together. The remaining notebooks are independent examples. Read the [concepts](../docs/concepts.md) or the [glossary](../docs/glossary.md) when a term is unfamiliar; the [shared vocabulary](../docs/conventions.md) applies throughout.
+There are two kinds of notebook.
+
+- **Lessons** teach one concept each, in order. They use tiny models and synthetic data, run on a laptop CPU in under a minute, and download nothing.
+- **Experiments** use those concepts to answer one scientific question each, written as a short lab report: question, background, hypothesis, method, results, conclusion and limits.
+
+Start with the lessons. Read the [manual](../docs/README.md) alongside them when a term is new.
 
 ## Set up
 
-Install the coordinated packages following [installation](../install/README.md), including the notebook dependencies. From a workspace containing `unified/`:
-
 ```bash
-python -m pip install -e './unified[notebooks]'
+python -m pip install -e './unified[notebooks]'      # from the workspace root
 jupyter notebook unified/notebooks/
 ```
 
-Select that Python environment as your kernel and run cells in order. Some examples download weights; rerunning notebook 16 also needs the linked LeBel dataset. Missing plotting libraries usually mean the notebook extra is not installed.
+If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a writable folder before starting Jupyter.
 
-If scoring reports a cache-storage error, see [cache troubleshooting](../docs/getting_started.md#check-storage-before-a-long-run). The [caching guide](../docs/caching.md) explains reuse and weight-editing limits.
+## Lessons
 
-## Choose an example
+| # | Lesson | You learn |
+| --- | --- | --- |
+| 1 | [Your first subject](lessons/01_your_first_subject.ipynb) | Subjects, channels, events, sessions, `participate` |
+| 2 | [Your first benchmark](lessons/02_your_first_benchmark.ipynb) | Benchmarks, metrics, scores, compatibility and N/A |
+| 3 | [Wrap a PyTorch model](lessons/03_wrap_a_pytorch_model.ipynb) | `BrainScoreModel`, `extractor`, `region_layer_map`; `participate` versus `process` |
+| 4 | [Bring an existing Brain-Score model](lessons/04_bring_an_existing_model.ipynb) | Adapters; translating a classic registration |
+| 5 | [Layers and regions](lessons/05_layers_and_regions.ipynb) | Layer paths, several regions in one pass, multi-tower routing |
+| 6 | [Behavior](lessons/06_behavior.ipynb) | `TaskContext`, readout versus `answer` |
+| 7 | [Perturb a model](lessons/07_perturb_a_model.ipynb) | `Selection`, `Perturbation`, `StateChange`, `intervention`, undo |
+| 8 | [Choose units](lessons/08_choose_units.ipynb) | Functional localizers, matched random controls, `CompositeSelector` |
+| 9 | [Closed loop](lessons/09_closed_loop.ipynb) | Environments, `policy`, `EnvironmentSession` |
+| 10 | [Run an experiment](lessons/10_run_an_experiment.ipynb) | `Experiment`, protocols, conditions, trials, tools, records, replay |
 
-### Register, record, and score
+## Experiments
 
-| # | Notebook | What you do | Data and requirements |
+| # | Question | Lessons | Requires |
 | --- | --- | --- | --- |
-| 01 | [Select layers](01_quickstart_layer_mapping.ipynb) | Register, score, and record one/all/composite mappings. | Synthetic stand-in; CPU, no download. |
-| 02 | [Compare with controls](02_behavioral_and_nulls.ipynb) | Interpret accuracy against random features. | Synthetic task; CPU. |
-| 07 | [Connect your model](07_bring_your_model.ipynb) | Inspect, wrap, extract, generate a registration template, and run a legacy benchmark with a participate-only subject. | Random-weight ResNet-18; CPU. |
-| 09 | [Read saved scores](09_scaling_curves.ipynb) | Compare each saved result with its own controls. | Local saved results; no new scoring. |
-| 10 | [Compare with brain recordings](10_brain_alignment.ipynb) | Plot held-out predictions and measured IT responses. | Saved CLIP/MajajHong results; CPU to replot. |
+| 1 | [Does a readout beat random features?](experiments/01_does_the_model_beat_random_features.ipynb) | 2, 6 | CPU, seconds |
+| 2 | [Does category structure increase along the layers mapped to V1 to IT?](experiments/02_which_layer_matches_which_region.ipynb) | 3, 5 | CPU, ResNet-50 weights (100 MB) |
+| 3 | [How well do CLIP features predict macaque IT responses?](experiments/03_predicting_it_responses.ipynb) | 2, 3 | CPU to replot saved results |
+| 4 | [Which image half does a digit classifier rely on?](experiments/04_silencing_units_in_a_digit_classifier.ipynb) | 7, 10 | CPU, seconds |
+| 5 | [How does the effect of an ablation scale with its size and strength?](experiments/05_how_much_ablation_matters.ipynb) | 7, 8 | CPU, seconds |
+| 6 | [Does a topographic metric distinguish organized from random layouts?](experiments/06_spatial_organization_of_units.ipynb) | 5 | CPU, seconds |
+| 7 | [Does a model of a delayed response need correctly timed features?](experiments/07_aligning_signals_in_time.ipynb) | 1, 2 | CPU, seconds |
+| 8 | [Does a policy cloned from an expert solve new games in a closed loop?](experiments/08_learning_in_a_closed_loop.ipynb) | 9 | CPU, under a minute |
+| 9 | [Does silencing one residual branch change ResNet-18's predictions?](experiments/09_recording_and_silencing_resnet18.ipynb) | 7, 10 | CPU, ResNet-18 weights (45 MB) |
+| 10 | [How well do GPT-2 features predict fMRI during story listening?](experiments/10_story_listening_fmri.ipynb) | 3, 5 | CPU to read saved results; rerun needs LeBel 2023 data |
+| 11 | [Does silencing one internal unit change a trained robot policy's actions?](experiments/11_inside_a_robot_policy.ipynb) | 9, 10 | CPU to read saved results; rerun needs OpenPI and a GPU |
+| 12 | [Is the effect of pushing one neuron in Qwen3.5-4B specific to that neuron?](experiments/12_steering_a_language_model.ipynb) | 7, 8 | GPU (16 GB), 10 GB download |
+| 13 | [Do outputs passed around a loop of subjects converge?](experiments/13_passing_outputs_between_subjects.ipynb) | 1 | CPU, seconds |
 
-### Inspect representations
+Results from saved runs, synthetic data or untrained networks demonstrate a procedure. Each notebook's "Conclusion and limits" section says what its result does and does not establish.
 
-| # | Notebook | What you do | Data and requirements |
-| --- | --- | --- | --- |
-| 03 | [Compare layers](03_real_model_representations.ipynb) | Compare response patterns across mapped regions. | Synthetic images; pretrained ResNet-50 download. |
-| 04 | [Record several regions](04_multiregion_geometry.ipynb) | Collect several layers in one pass and separate by labels. | Same model/data profile as 03. |
-| 05 | [Compare subjects](05_multiple_subjects.ipynb) | Compare small models and pass outputs between them. | Untrained models and synthetic inputs; CPU. |
-| 06 | [Measure spatial organization](06_topographic_metric.ipynb) | Compare correlation with distance between units. | Synthetic layouts; CPU. |
-| 08 | [Display a brain map](08_brain_visualization.ipynb) | Plot values assigned to cortical parcels. | Explicitly illustrative values; CPU local plots. |
-| 13 | [Align signals in time](13_temporal_multimodal.ipynb) | Resample features and test timing shifts. | Synthetic streams; CPU. |
-| 16 | [Predict story-listening responses](16_whole_brain_encoding.ipynb) | Score GPT-2 against held-out fMRI stories. | Saved measured figures; rerun needs GPT-2, LeBel2023 pickle, sufficient memory. |
+## Folders
 
-### Intervene and run sessions
+- `assets/` and `data/`: figures and saved results the experiments read.
+- `figure_sources/`: scripts that produced the saved figures.
+- `archive/`: earlier notebooks, kept unchanged for reference. They are not maintained and some of their paths no longer resolve.
 
-| # | Notebook | What you do | Data and requirements |
-| --- | --- | --- | --- |
-| 11 | [Silence selected units](11_state_change_ablation.ipynb) | Use `Selection` and `StateChange` directly. | Small untrained network; CPU. |
-| 12 | [Run a feedback loop](12_embodied_vlm_game.ipynb) | Train a grid policy and record its activity while it acts. | Synthetic game; CPU, not robotics qualification. |
-| 14 | [Compare interventions](14_intervention_spectrum.ipynb) | Change selection size and intervention type. | Small untrained network; CPU. |
-| 15 | [Control delivery](15_streaming_delivery.ipynb) | Inspect batching, windows, and clock policies. | Advanced internal-driver demonstration; CPU. |
-| 17 | [Experiment with digits](17_experiment_toolbox.ipynb) | Train, record, ablate, restore, and replay. | Real bundled digits; CPU, no download. |
-| 18 | [Experiment with ResNet-18](18_resnet_experiment_toolbox.ipynb) | Attach the same tools to a pretrained image model. | Real bundled photos; CPU, ~45 MB weight download. |
-| 19 | [Inspect an OpenPI policy](19_openpi_experiment_toolbox.ipynb) | Read internal measurements and compare predicted actions; optionally attach tools remotely. | Saved trained-policy GPU results; reading needs no GPU. Live use requires the OpenPI tool server and matching inputs. |
-| 20 | [Steer a language model](20_steer_a_language_model.ipynb) | Push one MLP neuron, compare with random-neuron controls, and rank neurons by three methods. | Runs Qwen3.5-4B live: GPU (~16 GB), `transformers>=5`, ~10 GB download, ~15 min on an L4. |
-
-In the PyTorch notebooks, `Ablate` uses the same intervention implementation as notebooks 11 and 14. `RecordActivity` uses `ActivationWindow`, demonstrated directly in 05 and 12. These are composition and direct-control entry points to the same components.
-
-For notebook 16, set `BRAINSCORE_LEBEL_PICKLE` to the supplied dataset path. A saved-result notebook does not rerun the original scoring, and a synthetic demonstration does not establish scientific validity.
-
-## Check a notebook
-
-Execute without overwriting its source:
+## Automated check
 
 ```bash
-cd unified/notebooks
-jupyter nbconvert --to notebook --execute --stdout 18_resnet_experiment_toolbox.ipynb > /tmp/18.ipynb
+python -m brainscore.validation.notebooks --source unified/notebooks --out /tmp/notebook-check
 ```
 
-Maintainers should retain outputs only from successful runs and state when data-dependent examples could not be executed. Follow the [example conventions](../docs/conventions.md) when adding a notebook. Superseded and externally gated examples are listed in [archive/README.md](archive/README.md).
-
-## Automated offline check
-
-From the installed test environment, run:
-
-```bash
-python -m brainscore.validation.notebooks \
-  --source /path/to/unified/notebooks \
-  --out /path/to/new-notebook-results
-```
-
-CI runs 15 tutorials with fresh kernels and temporary application caches on
-Ubuntu and macOS. A setup cell in each executed copy forces CPU selection; the
-tutorial cells stay unchanged. It saves source hashes and `report.json`,
-including partial output on failure. Missing images, execution errors and
-unclassified new notebooks fail the check. Source notebooks are not overwritten.
-
-Notebooks 03, 04 and 18 need pretrained weights; 16 needs LeBel data and GPT-2.
-They remain separate qualification runs. Notebook 19 reads saved measurements;
-its optional live-server cell stays off. Passing it does not rerun the policy.
+Runs every lesson and every CPU experiment in a fresh kernel without modifying the source. Notebooks that need downloads or a GPU are listed as excluded in `brainscore/validation/notebooks.py`.
