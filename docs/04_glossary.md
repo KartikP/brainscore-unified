@@ -47,7 +47,8 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`StateChange`** | A request to apply a perturbation to a selection, or to undo one. |
 | **`StimulusSet`** | A table with one row per stimulus; `stimulus_id` links each row to its response. |
 | **Subject** | The participant: anything that declares channels and implements `participate`. |
-| **`TaskContext`** | A behavioral task description: `task_type`, `label_set`, `fitting_stimuli`, `instruction`, `prefer_path`. |
+| **`TaskContext`** | What the subject is asked to do (`instruction`, or `task_type='passive'`), the form of the answer (`response`: `Choice`, `Scale`, `Text`), labeled `fitting_stimuli` for a readout, and `prefer_path`. |
+| **Reported / implied** | A reported answer is the model's parsed reply; an implied one is read from its internals (a readout, or a language model's likelihoods). Results say which in `attrs['measure']`. |
 | **Tool** | Equipment attached to an experiment to observe or change the run, without changing the subject. |
 | **Trial** | One independent repetition of a condition, with a fresh session. |
 | **`UnitSelection`** | A recipe for choosing units (`IndexSelection`, `RandomSelection`, `FunctionalSelection`) that resolves to a `Selection`. |

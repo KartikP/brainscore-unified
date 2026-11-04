@@ -22,7 +22,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Feature | Where |
 | --- | --- |
 | `LayerSelector`, `CompositeSelector`, several regions per run | [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb), [Lesson 8](../../notebooks/lessons/08_choose_units.ipynb) |
-| Behavior: `TaskContext`, readout, `answer`, `prefer_path` | [Behavior](../guides/behavior.md) |
+| Behavior: `TaskContext` responses (`Choice`, `Scale`, `Text`), reported and implied answers, `reply`, `likelihood`, readout, `prefer_path` | [Behavior](../guides/behavior.md) |
 | Perturbation: `Selection`, `StateChange`, `intervention` | [Perturb and select units](../guides/perturb_and_select_units.md) |
 | Unit selection: `IndexSelection`, `RandomSelection`, `FunctionalSelection` | same |
 | Closed loop: `policy`, `EnvironmentStep`, specs | [Closed loop](../guides/closed_loop.md) |

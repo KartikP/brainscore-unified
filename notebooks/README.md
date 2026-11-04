@@ -25,7 +25,7 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 | 3 | [Wrap a PyTorch model](lessons/03_wrap_a_pytorch_model.ipynb) | `BrainScoreModel`, `extractor`, `region_layer_map`; `participate` versus `process` |
 | 4 | [Bring an existing Brain-Score model](lessons/04_bring_an_existing_model.ipynb) | Adapters; translating a classic registration |
 | 5 | [Layers and regions](lessons/05_layers_and_regions.ipynb) | Layer paths, several regions in one pass, multi-tower routing |
-| 6 | [Behavior](lessons/06_behavior.ipynb) | `TaskContext`, readout versus `answer` |
+| 6 | [Behavior](lessons/06_behavior.ipynb) | `TaskContext` and its `response` (`Choice`, `Scale`, `Text`); reported versus implied answers |
 | 7 | [Perturb a model](lessons/07_perturb_a_model.ipynb) | `Selection`, `Perturbation`, `StateChange`, `intervention`, undo |
 | 8 | [Choose units](lessons/08_choose_units.ipynb) | Functional localizers, matched random controls, `CompositeSelector` |
 | 9 | [Closed loop](lessons/09_closed_loop.ipynb) | Environments, `policy`, `EnvironmentSession` |

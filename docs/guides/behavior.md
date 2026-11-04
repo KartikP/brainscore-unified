@@ -1,40 +1,65 @@
 # Behavior
 
-Behavioral benchmarks compare choices or answers instead of activity. The task is described by a `TaskContext`:
+Behavioral benchmarks compare answers instead of activity. A `TaskContext` says what the subject is asked to do; its `response` says what form the answer takes:
 
 ```python
 from brainscore_core import TaskContext
+from brainscore_core.responses import Choice, Scale, Text
 
 task = TaskContext(
-    task_type='probabilities',            # 'probabilities', 'label' or 'classification'
-    label_set=['real', 'pseudo'],         # answers the benchmark accepts
-    fitting_stimuli=train_stimuli,        # labeled examples, for a readout
-    instruction='Is this a real word?',   # for models that follow instructions
-    prefer_path='readout',                # 'readout', 'generation' or 'auto'
+    instruction='Is this a real word?',
+    response=Choice(['real', 'pseudo']),   # the form of the answer
+    fitting_stimuli=train_stimuli,         # labeled examples, for a readout
 )
 ```
 
-Run it through a session on the `behavior` channel:
+| Response | Answer | Channel |
+| --- | --- | --- |
+| none: `TaskContext(task_type='passive')` | nothing; plain viewing | (neural only) |
+| `Choice(labels)` | one label | `behavior:choice` |
+| `Choice(labels, probabilities=True)` | also the implied probability of each label | `+ behavior:probabilities` |
+| `Choice(labels, confidence=Scale(1, 5, 1))` | also a reported confidence, in the same reply | `+ behavior:confidence` |
+| `Scale(1, 7, 1)` | a rating | `behavior:rating` |
+| `Text()` | a written answer, kept as written | `behavior:text` |
+
+Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording and parsing are the benchmark's science: subclass a response to change them.
+
+Run the task through a session, or attach `RecordBehavior` in an [experiment](experiments.md):
 
 ```python
 from brainscore_core.streaming import BufferedSession
 
-session = BufferedSession(task_context=task, requested_output_channels=['behavior'])
+session = BufferedSession(stimulus_set=test_stimuli, task_context=task,
+                          requested_output_channels=['behavior:choice'])
 model.participate(session)
-choices = session.collect()      # BehavioralAssembly: presentation x choice
+choices = session.collect('behavior:choice')   # BehavioralAssembly: presentation x choice
 model.reset()
 ```
 
-## Two ways to answer
+## Reported and implied
 
-| Path | How | Model needs |
-| --- | --- | --- |
-| **Readout** | Fit a logistic classifier on one layer's activity using `fitting_stimuli`, then predict. | `behavioral_readout_layer` and an extractor |
-| **Generation** | Call `answer(stimulus_row, instruction, label_set)` for each stimulus. | `answer` |
+A **reported** answer is the model's reply, parsed. An **implied** measure is read from the model's internals by a stated link, as Futrell2018 reads reading times from surprisal. Every result says which it is in `attrs['measure']`.
 
-These are different measurements: a readout asks what information a layer contains; generation asks what the model does when asked. A model can support both. With `prefer_path='auto'` generation is used when available; set the path explicitly whenever your conclusion depends on it.
+| Path | How | Gives | Model needs |
+| --- | --- | --- | --- |
+| **Generation** | the model replies to the instruction; the response parses it | choice, rating, confidence, text (reported) | `reply` (or `answer` for a plain choice) |
+| **Likelihood** | the model scores each label as its reply, without generating | choice, probabilities (implied) | `likelihood` |
+| **Readout** | a classifier or ridge regression on one layer, fitted on `fitting_stimuli` | choice, probabilities, rating (implied) | `behavioral_readout_layer` and an extractor |
 
-If `answer` returns a label outside `label_set`, the response is recorded as invalid: its probabilities are NaN, `answer_valid` is `False`, and the reply is kept in `raw_answer`. A warning is issued. No label is credited.
+`prefer_path` (`'generation'`, `'likelihood'`, `'readout'` or `'auto'`) picks one; `'auto'` tries them in that order. A readout asks what information a layer holds; generation asks what the model does when asked. Set the path explicitly whenever your conclusion depends on it.
+
+One benchmark can take models of both kinds, as long as it fills in both the instruction and `fitting_stimuli`. Choices, ratings and implied probabilities come from either kind. Reported confidence and written answers need a model that replies; for a readout-only model those benchmarks are N/A before any compute.
+
+A reply that cannot be parsed is recorded as invalid: NaN values, `answer_valid` is `False`, the reply is kept in `raw_answer` and the reason in `parse_error`. Nothing is credited. Written answers are stored as written; scoring them (a parser, a judge, a comparison with people) is the benchmark's job.
+
+**Parts for chat models.** `chat_parts(model, processor)` in `brainscore.model_helpers.replies` builds `reply` and `likelihood` for a Hugging Face chat model, text or image-text:
+
+```python
+reply, likelihood = chat_parts(hf_model, processor, chat_template_kwargs={'enable_thinking': False})
+BrainScoreModel(..., reply=reply, likelihood=likelihood)
+```
+
+**Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged.
 
 ## Hosted models
 

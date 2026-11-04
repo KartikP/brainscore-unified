@@ -13,13 +13,14 @@ A benchmark gives one score. A study usually needs more: several conditions, rec
 
 ```python
 from brainscore_core import Perturbation, Selection, StateChange, TaskContext
+from brainscore_core.responses import Choice
 from brainscore.experiments import (Experiment, TaskProtocol, RecordNeural,
                                     RecordBehavior, Intervene)
 
 model = load_model('qwen3.6-27b')                                    # 1. the subject
 stimuli = ...                                                         # 2. a StimulusSet
-task = TaskContext(task_type='label', label_set=['real', 'pseudo'],  # 3. the task
-                   instruction='Is this a real word?', prefer_path='generation')
+task = TaskContext(instruction='Is this a real word?',                # 3. the task
+                   response=Choice(['real', 'pseudo']), prefer_path='generation')
 lesion = StateChange(kind='ablation', target=Selection(layer='blocks.12'),
                      perturbation=Perturbation(kind='zero'))
 
@@ -95,7 +96,7 @@ List tools in this order: recorders, activity recorded *before* an intervention,
 | Tool | Does |
 | --- | --- |
 | `RecordNeural(regions)` | Requests `neural:<region>` from the subject and saves it. Read with `result.neural(region, condition=...)`. |
-| `RecordBehavior()` | Requests `behavior` and saves it. Read with `result.behavior(condition=...)`. |
+| `RecordBehavior()` | Requests every kind of answer the task's response asks for and saves them. Read with `result.behavior(condition=..., measure=...)`. |
 | `Intervene(change, conditions=...)` | Applies a `StateChange` through the subject's `intervention`, undone after each trial. |
 | `RecordInputsOutputs` | Saves every input, output and lifecycle event with its condition and trial. Needs no access to model internals. |
 | `RecordActivity(targets)` | Records layer outputs through instrumentation. |
