@@ -283,3 +283,100 @@ def test_a_model_that_cannot_write_fails_at_validation(tmp_path):
     with pytest.raises(ValueError, match='behavior:text'):
         experiment.validate()
     assert net.passes == 0
+
+
+class TinyVisionGrid(torch.nn.Module):
+    """Qwen-style tower: flattened patches for several images plus their grid."""
+    def __init__(self):
+        super().__init__()
+        self.blocks = torch.nn.ModuleList([torch.nn.Linear(4, 4)])
+
+    def forward(self, patches, grid_thw):
+        return self.blocks[0](patches)
+
+
+def test_vlm_vision_wrapper_records_each_image_of_a_trial():
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    model = TinyVisionGrid()
+    wrapper = VLMVisionWrapper(model=model, processor=None, identifier='tiny-vision')
+    grid = torch.tensor([[1, 2, 2], [1, 2, 3], [1, 1, 2]])          # 4, 6 and 2 patches
+    patches = torch.randn(12, 4, device=wrapper._device)
+    with wrapper.record(['blocks.0']) as recording:
+        out = model(patches, grid_thw=grid)
+        several = recording.take()
+        model(patches[:4], grid_thw=grid[:1])
+        one = recording.take()
+    expected = [out[0:4].mean(0), out[4:10].mean(0), out[10:12].mean(0)]
+    assert several.dims == ('presentation', 'part', 'neuroid')
+    np.testing.assert_allclose(several.values[0], torch.stack(expected).detach().cpu().numpy(), rtol=1e-5)
+    assert one.dims == ('presentation', 'neuroid')
+    np.testing.assert_allclose(one.values[0], out[0:4].mean(0).detach().cpu().numpy(), rtol=1e-5)
+
+
+def test_chat_parts_replays_earlier_trials_as_turns():
+    from brainscore_core.responses import Prompt
+    from brainscore.model_helpers.replies import chat_parts
+    seen = {}
+
+    class Recorder(CharProcessor):
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt, **kwargs):
+            seen['messages'] = messages
+            return messages[-1]['content'][-1]['text']
+    reply, _ = chat_parts(TinyLM2(), Recorder())
+    first = Prompt((('text', 'cat'),))
+    reply(Prompt((('text', 'dog'),), history=((first, 'no'),)))
+    assert [m['role'] for m in seen['messages']] == ['user', 'assistant', 'user']
+    assert seen['messages'][1]['content'][0]['text'] == 'no'
+
+
+def test_a_memory_task_rejects_a_subject_without_memory(tmp_path):
+    from brainscore_core.responses import Choice
+    forgets = BrainScoreModel(identifier='forgets', supported_modalities={'text'}, reply=lambda p: 'no')
+    protocol = TaskProtocol(STIMULI, TaskContext(response=Choice(['yes', 'no'])),
+                            required_traits={'memory:session'})
+    with pytest.raises(ValueError, match='memory:session'):
+        Experiment(subject=forgets, protocol=protocol, tools=[RecordBehavior()],
+                   output_dir=tmp_path / 'x').validate()
+
+
+class TinyVLM(torch.nn.Module):
+    """Token 27 stands for image tokens; the decoder is `lm.layers`."""
+    def __init__(self):
+        super().__init__()
+        torch.manual_seed(0)
+        self.embed = torch.nn.Embedding(28, 4)
+        self.lm = torch.nn.Module()
+        self.lm.layers = torch.nn.ModuleList([torch.nn.Linear(4, 4)])
+        self.config = type('Config', (), {'image_token_id': 27, 'video_token_id': None})()
+        self.device = torch.device('cpu')
+
+    def forward(self, input_ids, attention_mask=None, **kwargs):
+        return self.lm.layers[0](self.embed(input_ids))
+
+
+class ImageTokenProcessor(CharProcessor):
+    def apply_chat_template(self, messages, tokenize, add_generation_prompt, **kwargs):
+        return ''.join('#' if part['type'] == 'image' else part['text']
+                       for message in messages for part in message['content'])
+
+    def __call__(self, text, return_tensors, padding, images=None):
+        ids = []
+        for character in text[0]:
+            ids += [27, 27, 27] if character == '#' else self.tokenizer(character)['input_ids']
+        ids = torch.tensor([ids])
+        return Batch(input_ids=ids, attention_mask=torch.ones_like(ids))
+
+
+def test_fused_chat_extractor_splits_one_pass_by_input(tmp_path):
+    from PIL import Image as PILImage
+    from brainscore.model_helpers.fused import fused_chat_extractor
+    PILImage.new('RGB', (4, 4)).save(tmp_path / 'a.png')
+    model = TinyVLM()
+    fused = fused_chat_extractor(model, ImageTokenProcessor(), root=model.lm, identifier='tiny-fused')
+    stimuli = StimulusSet({'stimulus_id': ['s'], 'image_path': [str(tmp_path / 'a.png')], 'sentence': ['ab']})
+    recorded = fused(stimuli, layers=['layers.0'])
+    assert recorded.dims == ('presentation', 'part', 'neuroid')
+    assert list(recorded['part_name'].values) == ['image', 'text', 'final']
+    ids = torch.tensor([[27, 27, 27, 1, 2]])                     # image first, then 'ab'
+    hidden = model(ids)[0].detach().numpy()
+    np.testing.assert_allclose(recorded.values[0], [hidden[:3].mean(0), hidden[3:].mean(0), hidden[-1]], rtol=1e-5)

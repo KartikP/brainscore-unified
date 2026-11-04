@@ -8,7 +8,9 @@ Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
 user message in that order; images as images, clips as video with their real
 frame rate. ``reply(prompt)`` returns the model's raw reply; the task's response
 parses it. ``likelihood(prompt, candidates)`` returns the log probability of
-each candidate as the whole reply (teacher-forced, summed over its tokens).
+each candidate as the whole reply (teacher-forced, summed over its tokens). It
+runs the prompt on its own before any candidate, so a recording made during
+scoring is the prompt pass, as it is for a reply.
 """
 from typing import Mapping, Optional, Sequence
 
@@ -19,30 +21,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
     template = dict(chat_template_kwargs or {})
 
     def inputs_for(prompt):
-        from PIL import Image
-        content, images, videos, metadata = [], [], [], []
-        for kind, value in prompt.parts:
-            if kind == 'text':
-                content.append({'type': 'text', 'text': value})
-            elif kind == 'image':
-                images.append(Image.open(value).convert('RGB'))
-                content.append({'type': 'image', 'image': images[-1]})
-            elif kind == 'video':
-                from brainscore.model_helpers.vlm_video_wrapper import clip_metadata, read_clip
-                frames, fps = read_clip(value)
-                videos.append(frames)
-                metadata.append(clip_metadata(frames, fps))
-                content.append({'type': 'video'})
-            else:
-                raise NotImplementedError(f'chat_parts cannot show a {kind!r} part')
-        text = processor.apply_chat_template([{'role': 'user', 'content': content}], tokenize=False,
-                                             add_generation_prompt=True, **template)
-        call = dict(text=[text], return_tensors='pt', padding=True)
-        if images:
-            call['images'] = images
-        if videos:
-            call.update(videos=videos, video_metadata=metadata)
-        return processor(**call).to(model.device)
+        return chat_inputs(model, processor, prompt, template)
 
     def reply(prompt) -> str:
         import torch
@@ -57,6 +36,8 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
         inputs = inputs_for(prompt)
         prompt_ids = inputs['input_ids']
         length = prompt_ids.shape[1]
+        with torch.no_grad():
+            model(**inputs)     # the prompt alone first: the pass a recording keeps
         scores = {}
         for candidate in candidates:
             ids = torch.tensor([tokenizer(candidate, add_special_tokens=False)['input_ids']],
@@ -79,3 +60,43 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
         return scores
 
     return reply, likelihood
+
+
+def chat_inputs(model, processor, prompt, template=None):
+    """Processor inputs for one trial: earlier turns from ``prompt.history``, then
+    the prompt's parts in order (images as images, clips as video)."""
+    from PIL import Image
+    images, videos, metadata = [], [], []
+
+    def content_of(parts):
+        content = []
+        for kind, value in parts:
+            if kind == 'text':
+                content.append({'type': 'text', 'text': value})
+            elif kind == 'image':
+                images.append(Image.open(value).convert('RGB'))
+                content.append({'type': 'image', 'image': images[-1]})
+            elif kind == 'video':
+                from brainscore.model_helpers.vlm_video_wrapper import clip_metadata, read_clip
+                frames, fps = read_clip(value)
+                videos.append(frames)
+                metadata.append(clip_metadata(frames, fps))
+                content.append({'type': 'video'})
+            else:
+                raise NotImplementedError(f'chat models here cannot be shown a {kind!r} part')
+        return content
+
+    # Earlier trials of the session (memory='session') become earlier turns.
+    messages = []
+    for earlier, answered in prompt.history:
+        messages.append({'role': 'user', 'content': content_of(earlier.parts)})
+        messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': answered}]})
+    messages.append({'role': 'user', 'content': content_of(prompt.parts)})
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
+                                         **dict(template or {}))
+    call = dict(text=[text], return_tensors='pt', padding=True)
+    if images:
+        call['images'] = images
+    if videos:
+        call.update(videos=videos, video_metadata=metadata)
+    return processor(**call).to(model.device)

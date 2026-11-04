@@ -351,19 +351,80 @@ class VLMVisionWrapper:
         """Record ``layers`` while another caller runs the model (e.g. generation).
 
         Returns a context manager; its ``take()`` gives the first forward pass
-        since the previous take, aggregated over the image's patches as
-        ``__call__`` aggregates one image.
+        since the previous take, averaged over each image's patches as
+        ``__call__`` averages one image. A pass over several images (a trial
+        showing a sequence) gives one step per image: ``(presentation, part,
+        neuroid)``, in the order the images were shown.
         """
-        from brainscore.model_helpers.live_recording import live_recording
+        from contextlib import contextmanager
         for layer in layers:
             self._get_layer(layer)          # unknown layers fail before any compute
 
-        def aggregate(activity):
-            counts = None if activity.ndim == 3 else [activity.shape[0]]
-            return self._aggregate_per_image(activity, 1, counts).reshape(1, -1)
+        @contextmanager
+        def recording():
+            import numpy as np
+            state = {'grid': None, 'captured': {}}
 
-        return live_recording(self._get_layer, layers, aggregate,
-                              lambda activity: self._package(activity, [None]))
+            def grid_hook(_module, args, kwargs):
+                if state['grid'] is None:
+                    state['grid'] = kwargs.get('grid_thw', args[1] if len(args) > 1 else None)
+
+            def keep(layer):
+                def hook(_module, _inputs, output):
+                    if layer in state['captured']:
+                        return              # a later pass: keep the first
+                    if isinstance(output, (tuple, list)):
+                        output = output[0]
+                    state['captured'][layer] = output.detach().float().cpu().numpy()
+                return hook
+
+            handles = [self._model.register_forward_pre_hook(grid_hook, with_kwargs=True)]
+            handles += [self._get_layer(layer).register_forward_hook(keep(layer)) for layer in layers]
+
+            class Recording:
+                @staticmethod
+                def take():
+                    missing = [layer for layer in layers if layer not in state['captured']]
+                    if missing:
+                        raise ValueError(f'No forward pass reached {missing} since the last presentation.')
+                    grid = state['grid']
+                    counts = ([int(t * h * w) for t, h, w in np.asarray(grid.cpu() if hasattr(grid, 'cpu') else grid)]
+                              if grid is not None else None)
+                    per_image = {}
+                    for layer in layers:
+                        activity = state['captured'][layer]
+                        if activity.ndim == 2:      # flattened patches, Qwen-style
+                            image_counts = counts or [activity.shape[0]]
+                            per_image[layer] = self._aggregate_per_image(
+                                activity, len(image_counts), image_counts).reshape(len(image_counts), -1)
+                        else:
+                            per_image[layer] = self._aggregate_per_image(activity, 1, None).reshape(1, -1)
+                    state['captured'].clear()
+                    state['grid'] = None
+                    n_images = per_image[layers[0]].shape[0]
+                    if n_images == 1:
+                        return self._package(per_image, [None])
+                    return self._package_parts(per_image)
+            try:
+                yield Recording()
+            finally:
+                for handle in handles:
+                    handle.remove()
+        return recording()
+
+    def _package_parts(self, per_image):
+        """One trial's images as ``(presentation=1, part, neuroid)``, in the order shown."""
+        import numpy as np
+        layers = list(per_image)
+        values = np.concatenate([per_image[layer] for layer in layers], axis=1)[None]
+        neuroid_layers = [layer for layer in layers for _ in range(per_image[layer].shape[1])]
+        units = [unit for layer in layers for unit in range(per_image[layer].shape[1])]
+        return NeuroidAssembly(values, dims=['presentation', 'part', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ['?']),
+            'part_index': ('part', list(range(values.shape[1]))),
+            'neuroid_id': ('neuroid', [f'{self._identifier}.{layer}.{unit}'
+                                       for layer, unit in zip(neuroid_layers, units)]),
+            'layer': ('neuroid', neuroid_layers)})
 
     def _get_layer(self, layer_name: str):
         module = self._model

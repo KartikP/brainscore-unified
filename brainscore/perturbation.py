@@ -68,6 +68,16 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
       With ``indices`` set, the amount must be a scalar (a number or a
       zero-dimensional array).
 
+    Two more kinds reach beyond activations, both undone exactly:
+
+    - ``kind='weights'``: edit a parameter. ``target.layer`` is its path
+      (``'layers.3.mlp.down_proj.weight'``); ``indices`` pick slices along
+      ``axis``, counted from the end (-1 columns, -2 rows). Undo restores a
+      saved copy.
+    - ``kind='attention_heads'``: silence or scale heads of an attention module
+      (``target.layer``; ``indices`` are head numbers) by editing each head's
+      slice of the input to its output projection.
+
     For ``kind='ablation'`` (the canonical case), the hook is installed on
     the layer named by ``state_change.target.layer``. The layer path is
     resolved by ``getattr``-walking the model: ``'a.b.c'`` becomes
@@ -196,6 +206,68 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                 "is only supported for the whole layer (indices=None).")
         return dataclasses.replace(perturbation, amount=amount)
 
+    def _apply(tensor, perturbation):
+        """The perturbation's effect on a tensor (or a slice of one), in place."""
+        if perturbation.kind == 'zero':
+            tensor.zero_()
+        elif perturbation.kind == 'scale':
+            tensor.mul_(perturbation.scale)
+        elif perturbation.kind == 'drive':
+            tensor.add_(torch.as_tensor(perturbation.amount, dtype=tensor.dtype, device=tensor.device))
+        elif perturbation.kind == 'replace':
+            tensor.copy_(torch.as_tensor(perturbation.replacement, dtype=tensor.dtype, device=tensor.device))
+        else:
+            raise ValueError(f"Unknown perturbation kind {perturbation.kind!r}")
+
+    def _change_weights(state_change):
+        """Edit a parameter: ``target.layer`` is its path (``'layers.3.mlp.down_proj.weight'``),
+        ``indices`` pick slices along ``axis``, counted from the end (-1: columns,
+        -2: rows of a matrix). Undo restores an exact copy."""
+        module_path, _, name = state_change.target.layer.rpartition('.')
+        module = _resolve_layer(module_path) if module_path else model
+        parameter = getattr(module, name, None)
+        if not isinstance(parameter, torch.nn.Parameter):
+            raise ValueError(f"{state_change.target.layer!r} is not a parameter of the model.")
+        saved = parameter.detach().clone()
+        indices, axis = state_change.target.indices, state_change.target.axis
+        with torch.no_grad():
+            if indices is None:
+                _apply(parameter.data, state_change.perturbation)
+            else:
+                index = torch.tensor(list(indices), device=parameter.device)
+                axis = parameter.dim() - 1 if axis in (None, -1) else axis
+                part = parameter.data.index_select(axis, index)
+                _apply(part, state_change.perturbation)
+                parameter.data.index_copy_(axis, index, part)
+
+        def cleanup():
+            with torch.no_grad():
+                parameter.data.copy_(saved)
+        return PerturbationApplied(handle_id=str(uuid.uuid4()), target=state_change.target,
+                                   perturbation=state_change.perturbation), cleanup
+
+    def _change_heads(state_change):
+        """Silence or scale attention heads: ``target.layer`` is the attention module,
+        ``indices`` the heads. Edits each head's slice of the output projection's input."""
+        attention = _resolve_layer(state_change.target.layer)
+        head_dim = getattr(attention, 'head_dim', None)
+        projection = getattr(attention, 'o_proj', None) or getattr(attention, 'out_proj', None)
+        if head_dim is None or projection is None:
+            raise ValueError(f"{state_change.target.layer!r} needs head_dim and an o_proj or out_proj "
+                             "to edit heads; target the projection's input with kind='ablation' instead.")
+        heads = list(state_change.target.indices or ())
+        if not heads:
+            raise ValueError("kind='attention_heads' needs Selection.indices: the heads to change.")
+
+        def hook(_module, args):
+            hidden = args[0].clone()
+            for head in heads:
+                _apply(hidden[..., head * head_dim:(head + 1) * head_dim], state_change.perturbation)
+            return (hidden, *args[1:])
+        handle = projection.register_forward_pre_hook(hook)
+        return PerturbationApplied(handle_id=str(uuid.uuid4()), target=state_change.target,
+                                   perturbation=state_change.perturbation), handle.remove
+
     def state_change_fn(
         state_change: StateChange,
     ) -> Tuple[PerturbationApplied, Callable[[], None]]:
@@ -205,6 +277,10 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                 f"build_pytorch_ablation_fn requires both target and "
                 f"perturbation to be set."
             )
+        if state_change.kind == 'weights':
+            return _change_weights(state_change)
+        if state_change.kind == 'attention_heads':
+            return _change_heads(state_change)
         path, site = split_site(state_change.target.layer)
         layer = _resolve_layer(path)
         perturbation = _normalized(state_change)
