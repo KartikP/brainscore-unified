@@ -168,6 +168,12 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                         f"Unsupported Perturbation kind for whole-layer "
                         f"ablation: {kind!r}. Expected 'zero', 'scale', or 'drive'.")
             # Use the same coordinates as recording; never reinterpret indices.
+            # Some devices (MPS) silently ignore out-of-range indices; fail everywhere.
+            if max(indices) >= view.shape[axis]:
+                raise ValueError(
+                    f"Selection index {max(indices)} is out of range for axis {axis} of "
+                    f"'{selection.layer}' (size {view.shape[axis]}); check the selection's "
+                    f"axis and expected_shape match how its units were recorded.")
             modified = view.clone()
             idx = torch.tensor(indices, dtype=torch.long, device=tensor.device)
             if kind == 'zero':
