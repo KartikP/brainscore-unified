@@ -17,7 +17,7 @@ inputs. `summary.json` checks intervention, recovery, and replay. These are
 synthetic, untrained examples; the feedback environment is not a robotics
 benchmark. Replay uses saved observations and does not restart that environment.
 
-Read [Set up an experiment](../../docs/experiment_toolbox.md) for configuration,
+Read [Set up an experiment](../../docs/guides/experiments.md) for configuration,
 outputs, replay, and external evaluators. Copy [partner_tool.py](partner_tool.py)
 to your own package to add a tool using public APIs.
 
@@ -31,5 +31,5 @@ same record format; no model download or paid API call is needed.
 python examples/experiment_toolbox/reasoning.py --out ./my-reasoning-demo
 ```
 
-See [reasoning recording](../../docs/reasoning_recording.md) for provider adapters
+See [reasoning recording](../../docs/archive/reasoning_recording.md) for provider adapters
 and the distinction between visible reasoning and hidden model computation.

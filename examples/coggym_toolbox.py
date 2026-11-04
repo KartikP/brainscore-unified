@@ -3,7 +3,7 @@
 This CPU smoke run uses Hu2023Fine/exp1; it is not a leaderboard reproduction.
 It needs a local CogGym checkout and model snapshot and never downloads.
 qualification.json is written on success and on failure (status, error, hashes).
-For the shorter registered-benchmark walkthrough, see docs/coggym.md.
+For the shorter registered-benchmark walkthrough, see docs/archive/coggym.md.
 """
 import argparse
 from copy import deepcopy

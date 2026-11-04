@@ -208,7 +208,7 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     from brainscore_core import Benchmark, Score, Subject
     from brainscore_core.streaming import StreamEvent
     from brainscore.experiments import Experiment
-    notebook = json.loads((Path(__file__).parents[1] / 'notebooks/18_resnet_experiment_toolbox.ipynb').read_text())
+    notebook = json.loads((Path(__file__).parents[1] / 'notebooks/experiments/09_recording_and_silencing_resnet18.ipynb').read_text())
     source = next(''.join(cell['source']) for cell in notebook['cells']
                   if 'class ImageSubject(Subject):' in ''.join(cell.get('source', [])))
     tree = ast.parse(source)

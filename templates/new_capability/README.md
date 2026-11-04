@@ -55,5 +55,5 @@ its `setup` checks the model's settings before the first request.
 4. Adapt `test_capability.py` and run it. It runs a `BufferedSession` through
    `subject.participate(session)`.
 
-See the [tool-authoring guide](../../docs/tool_authoring.md) for channel
+See the [tool-authoring guide](../../docs/guides/extend.md) for channel
 registration details.

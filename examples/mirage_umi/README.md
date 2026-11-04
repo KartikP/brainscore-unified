@@ -88,14 +88,14 @@ The setup script does not launch or stop an instance. Use `--help` on the Python
 scripts for asset and input destinations. Keep `HF_HOME` and the cache paths
 consistent with `run.py`. The complete commands, environment details and
 scientific limits are in the
-[integration report](../../docs/mirage_umi_integration.md).
+[integration report](../../docs/archive/mirage_umi_integration.md).
 
 Upstream: [source](https://github.com/epflneuroailab/mirage) and
 [released encoder](https://huggingface.co/epfl-neuroai/mirage).
 
 ## Runtime overhead
 
-The [performance report](../../docs/mirage_umi_performance.md) measures native
+The [performance report](../../docs/archive/mirage_umi_performance.md) measures native
 CLI, UMI session and recorded-experiment latency under matched execution settings.
 The current adapter adds approximately 5–6% on the two short clips. Its per-call
 encoder checkpoint verification takes about 2.81 s; host work outside the runtime

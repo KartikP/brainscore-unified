@@ -47,7 +47,7 @@ class CogGymBenchmark(BenchmarkBase):
         if not checkout:
             raise ValueError(
                 'Supply checkout=... or set BRAINSCORE_COGGYM_CHECKOUT to the '
-                'pinned CogGym checkout; see docs/coggym.md.'
+                'pinned CogGym checkout; see docs/archive/coggym.md.'
             )
         if reset is not None and not callable(reset):
             raise TypeError('reset must be a provider reset(repetition) callback')
