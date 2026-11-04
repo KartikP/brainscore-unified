@@ -43,7 +43,7 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 | 8 | [Does a policy cloned from an expert solve new games in a closed loop?](experiments/08_learning_in_a_closed_loop.ipynb) | 9 | CPU, under a minute |
 | 9 | [Does silencing one residual branch change ResNet-18's predictions?](experiments/09_recording_and_silencing_resnet18.ipynb) | 7, 10 | CPU, ResNet-18 weights (45 MB) |
 | 10 | [How well do GPT-2 features predict fMRI during story listening, and does timing matter?](experiments/10_story_listening_fmri.ipynb) | 2, 5 | GPU recommended; LeBel 2023 assembly (3 GB), GPT-2 weights |
-| 13 | [Do outputs passed around a loop of subjects converge?](experiments/13_passing_outputs_between_subjects.ipynb) | 1 | CPU, seconds |
+| 13 | [Do messages passed around a loop of language models forget where they started?](experiments/13_passing_outputs_between_subjects.ipynb) | 1, 9 | CPU or GPU, GPT-2 and DistilGPT-2 weights (850 MB) |
 
 Results from saved runs, synthetic data or untrained networks demonstrate a procedure. Each notebook's "Conclusion and limits" section says what its result does and does not establish.
 

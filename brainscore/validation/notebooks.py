@@ -16,6 +16,7 @@ EXCLUDED = {
     'experiments/09_recording_and_silencing_resnet18.ipynb': 'Pretrained ResNet-18 download',
     'experiments/06_spatial_organization_of_units.ipynb': 'TDANN checkpoints and positions download (280 MB)',
     'experiments/10_story_listening_fmri.ipynb': 'LeBel 2023 assembly (3 GB) and GPT-2 download',
+    'experiments/13_passing_outputs_between_subjects.ipynb': 'GPT-2 and DistilGPT-2 download',
     'experiments/14_reading_instructions_and_words.ipynb': 'Qwen2.5-VL-7B download and GPU run',
 }
 SELECTED = (
@@ -28,7 +29,6 @@ SELECTED = (
     'experiments/03_predicting_it_responses.ipynb',
     'experiments/04_silencing_units_in_a_digit_classifier.ipynb',
     'experiments/08_learning_in_a_closed_loop.ipynb',
-    'experiments/13_passing_outputs_between_subjects.ipynb',
 )
 # Folders shared by every notebook; experiments reference them as ../assets etc.
 SHARED_FOLDERS = ('assets', 'data', 'figure_sources')
