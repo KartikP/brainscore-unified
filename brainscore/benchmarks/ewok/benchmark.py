@@ -12,7 +12,6 @@ from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
 from brainscore_core.streaming import StreamEvent
-from brainscore.data.ewok.data import load_prepared
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
 from brainscore.model_helpers.response_trace import register_trace_channels
 
@@ -66,7 +65,10 @@ class EWoKBenchmark(BenchmarkBase):
         if type(batch_size) is not int or batch_size < 1:
             raise ValueError('batch_size must be a positive integer')
         # Check local data and its checksum before spending time on model calls.
-        rows, manifest = load_prepared(root)
+        from brainscore import load_stimulus_set
+        stimuli = load_stimulus_set('EWoK-core-1.0', root=root)
+        manifest = stimuli.attrs['manifest']
+        rows = stimuli.drop(columns=['stimulus_id']).astype(object).to_dict('records')
         if domains is not None:
             if not domains or set(domains) - set(manifest['domains']):
                 raise ValueError('Select one or more domains present in this dataset')

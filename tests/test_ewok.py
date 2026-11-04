@@ -48,6 +48,13 @@ def test_data_and_benchmark_registrations():
     assert {'EWoK-core-1.0-logprobs', 'EWoK-core-1.0-choice'} <= brainscore.benchmark_registry.keys()
 
 
+def test_benchmark_reads_exactly_the_prepared_items_through_the_registry(prepared):
+    rows, manifest = load_prepared(prepared)
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
+    assert benchmark._rows == rows
+    assert benchmark._manifest == manifest
+
+
 def test_build_round_trip_and_private_permissions(prepared):
     rows, manifest = load_prepared(prepared)
     assert len(rows) == manifest['items'] == 3
