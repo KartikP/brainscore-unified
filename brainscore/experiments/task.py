@@ -13,6 +13,7 @@ their channels in that one session, so the neural recording comes from the
 same presentation that produced the behavior.
 """
 from contextlib import contextmanager
+from dataclasses import replace
 
 from brainscore_core.events import StateChange
 from brainscore_core.streaming import BufferedSession
@@ -23,33 +24,43 @@ from .tools import RecordInputsOutputs
 
 
 class TaskProtocol(SessionProtocol):
-    """Present ``stimuli`` under ``task_context``, once per condition and trial.
+    """Present ``stimuli`` under ``task``, once per condition and trial.
 
-    The session requests ``behavior`` plus every channel the attached tools
-    request (``RecordNeural`` asks for ``neural:<region>``).
+    The task says what the subject does; ``TaskContext(task_type='passive')``
+    is plain viewing. The attached recorders say what is measured: each
+    session requests exactly their channels. With a readout task, the readout
+    is fitted on the intact network and tested on the changed one; pass
+    ``refit_readout=True`` to fit it on the changed network instead.
     """
 
-    def __init__(self, stimuli, task_context, *, identifier='task', conditions=None,
-                 trials=(0,), metadata=None):
+    def __init__(self, stimuli, task, *, identifier='task', conditions=None,
+                 trials=(0,), refit_readout=False, metadata=None):
         probe = BufferedSession(stimulus_set=stimuli)
         inputs = set()
         while (event := probe.next_input()) is not None:
             inputs.add(event.channel)
-        self.stimuli, self.task_context = stimuli, task_context
-        self._requested = ('behavior',)
+        self.stimuli = stimuli
+        self.task = replace(task, readout_fit='current' if refit_readout else 'intact')
         super().__init__(identifier, self._session, conditions=conditions, trials=trials,
-                         input_channels=inputs, output_channels={'behavior'},
-                         metadata=metadata)
+                         input_channels=inputs, output_channels=(), metadata=metadata)
+
+    def accept_requests(self, channels):
+        if not channels:
+            raise ValueError('Attach a recorder (RecordNeural, RecordBehavior): '
+                             'nothing would be measured.')
+        if 'behavior' in channels and self.task.task_type == 'passive':
+            raise ValueError('A passive task produces no behavior; remove RecordBehavior '
+                             'or give the task a task_type that asks for an answer.')
+        self.output_channels = frozenset(channels)
+
+    def describe(self):
+        return {**super().describe(), 'task_type': self.task.task_type,
+                'readout_fit': self.task.readout_fit}
 
     @contextmanager
     def _session(self, trial):
-        yield BufferedSession(stimulus_set=self.stimuli, task_context=self.task_context,
-                              requested_output_channels=list(self._requested))
-
-    def run(self, subject, context):
-        requested = {'behavior'}.union(*(tool.output_channels for tool in context.experiment.tools))
-        self._requested = tuple(sorted(requested))
-        return super().run(subject, context)
+        yield BufferedSession(stimulus_set=self.stimuli, task_context=self.task,
+                              requested_output_channels=sorted(self.output_channels))
 
 
 class _ChannelRecorder(RecordInputsOutputs):
@@ -65,18 +76,27 @@ class _ChannelRecorder(RecordInputsOutputs):
 
 
 class RecordNeural(_ChannelRecorder):
-    """Record ``regions`` during the task. Read back with ``result.neural(region)``."""
+    """Record ``regions`` during the task. Read back with ``result.neural(region)``.
+
+    For a model that answers by generating text, ``during='prompt'`` keeps the
+    forward pass that reads the stimulus and instruction; the passes that
+    generate the reply are not kept.
+    """
     name = 'neural'
 
-    def __init__(self, regions, *, max_bytes=None):
+    def __init__(self, regions, *, during='prompt', max_bytes=None):
         super().__init__(max_bytes=max_bytes)
         if isinstance(regions, str) or not regions:
             raise ValueError('Pass a nonempty list of region names')
-        self.regions = list(regions)
+        if during != 'prompt':
+            # ponytail: only the prompt pass exists; add 'all_tokens' when a study needs it.
+            raise ValueError("during='prompt' is the only option: the forward pass that "
+                             'reads the stimulus and instruction, before any generated token.')
+        self.regions, self.during = list(regions), during
         self.output_channels = frozenset(f'neural:{region}' for region in self.regions)
 
     def describe(self):
-        return {**super().describe(), 'regions': self.regions}
+        return {**super().describe(), 'regions': self.regions, 'during': self.during}
 
 
 class RecordBehavior(_ChannelRecorder):

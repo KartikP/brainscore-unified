@@ -105,6 +105,36 @@ def test_one_presentation_gives_behavior_and_activity_per_condition(tmp_path):
     assert not net.silenced                            # the change was undone
 
 
+def test_passive_task_records_viewing_and_refuses_behavior(tmp_path):
+    net = Net()
+    passive = TaskContext(task_type='passive')
+    with pytest.raises(ValueError, match='passive task produces no behavior'):
+        Experiment(subject=_subject(net), protocol=TaskProtocol(STIMULI, passive),
+                   tools=[RecordBehavior()], output_dir=tmp_path / 'bad').validate()
+    assert net.passes == 0
+
+
+def test_recorders_on_a_protocol_that_will_not_request_them_fail(tmp_path):
+    from brainscore.experiments import SessionProtocol
+
+    @contextmanager
+    def sessions(trial):
+        raise AssertionError('not reached')
+    protocol = SessionProtocol('own', sessions, output_channels=['behavior'])
+    with pytest.raises(ValueError, match="Recorders need \\['neural:A'\\]"):
+        Experiment(subject=_subject(Net()), protocol=protocol, tools=[RecordNeural(['A'])],
+                   output_dir=tmp_path / 'x').validate()
+
+
+def test_recording_is_labelled_with_how_it_was_made(tmp_path):
+    result = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+                        tools=[RecordNeural(['A'])], output_dir=tmp_path / 'run').run()
+    recording = result.neural('A').attrs['recording']
+    assert recording['task_type'] == 'label' and recording['forward_pass'] == 'prompt'
+    with pytest.raises(FileNotFoundError, match='attach RecordBehavior'):
+        result.behavior()                                  # not recorded, not requested
+
+
 def test_recorder_for_an_undeclared_region_fails_before_running(tmp_path):
     net = Net()
     experiment = Experiment(subject=_subject(net), protocol=TaskProtocol(STIMULI, TASK),

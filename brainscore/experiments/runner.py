@@ -155,6 +155,13 @@ class SessionProtocol:
         self.output_channels = frozenset(output_channels)
         self.metadata = dict(metadata or {})
 
+    def accept_requests(self, channels):
+        """Fail when attached recorders need outputs these sessions do not request."""
+        missing = set(channels) - set(self.output_channels)
+        if missing:
+            raise ValueError(f'Recorders need {sorted(missing)}, but this protocol requests only '
+                             f'{sorted(self.output_channels)}. Use TaskProtocol, or request them.')
+
     def describe(self):
         return {'conditions': self.conditions, 'trials': self.trials, 'input_channels': sorted(self.input_channels),
                 'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
@@ -226,6 +233,11 @@ class CallableProtocol:
         self.methods = tuple(methods)
         self.metadata = dict(metadata or {})
 
+    def accept_requests(self, channels):
+        if channels:
+            raise ValueError('CallableProtocol runs an evaluator with its own sessions, so recorders '
+                             f'cannot request {sorted(channels)}. Use RecordInputsOutputs or RecordActivity.')
+
     def describe(self):
         return {'methods': self.methods, 'metadata': self.metadata,
                 'reset_policy': 'owned by external evaluator'}
@@ -259,8 +271,14 @@ class ExperimentResult:
         return json.loads((self.directory / 'experiment.json').read_text())
 
     def neural(self, region, *, condition='default', trial=None):
-        """The NeuroidAssembly a RecordNeural tool saved for ``region``."""
-        return self._saved('neural', f'neural:{region}', condition, trial)
+        """The NeuroidAssembly a RecordNeural tool saved for ``region``.
+
+        ``attrs['recording']`` says how it was made. A recording made during a
+        task is stamped by the subject; one without a stamp was plain viewing.
+        """
+        assembly = self._saved('neural', f'neural:{region}', condition, trial)
+        recording = assembly.attrs.get('recording') or {'task_type': 'passive', 'path': 'extractor'}
+        return assembly.assign_attrs(recording={**recording, 'condition': condition})
 
     def behavior(self, *, condition='default', trial=None):
         """The BehavioralAssembly a RecordBehavior tool saved."""
@@ -391,6 +409,10 @@ class Experiment:
 
     def validate(self):
         check_output_directory(self.output_dir)
+        requested = set().union(*(tool.output_channels for tool in self.tools))
+        if requested or isinstance(self.protocol, SessionProtocol):
+            # Protocols from other packages need accept_requests only to take recorders.
+            self.protocol.accept_requests(requested)
         self.protocol.validate(self.subject)
         names = [tool.name for tool in self.tools]
         if len(set(names)) != len(names):
