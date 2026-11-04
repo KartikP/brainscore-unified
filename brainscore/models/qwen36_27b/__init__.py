@@ -1,4 +1,4 @@
-"""Qwen3.6-27B text tower. Registered lazily; weights load only when called."""
+"""Qwen3.6-27B vision-language model. Registered lazily; weights load only when called."""
 
 from brainscore import model_registry
 

@@ -85,7 +85,7 @@ class InducedDyslexia(BenchmarkBase):
 
         super().__init__(
             identifier=f'Yeatman2021-induced_dyslexia-{modality}',
-            version=2,
+            version=1,
             parent='perturbation',
             ceiling=Score(1.0),   # ceiling is "no deficit"; the floor is the chance reader
             bibtex=BIBTEX,

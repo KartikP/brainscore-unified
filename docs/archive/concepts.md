@@ -191,6 +191,17 @@ Existing integrations can still use `activations_model`, `generation_fn`,
 Internal capability registration is an extension mechanism, not a second setup
 path for routine model integration.
 
+Channel declarations use a different field name in each role, so match the
+field to the object you are writing:
+
+| Role | Inputs | Outputs |
+| --- | --- | --- |
+| Subject (model) | `in_channels` (plus `required_channels`) | `out_channels` |
+| Benchmark | `required_input_channels` | `requested_output_channels` |
+| `SessionProtocol` | `input_channels` | `output_channels` |
+
+Pre-flight rejects a benchmark that uses the subject or protocol names.
+
 `BufferedSession` delivers fixed inputs. `EnvironmentSession` handles feedback.
 Streaming sources add incremental delivery, windows, or deadlines to the same
 session contract. A source supplies `next_input()` and accepts `respond(event)`;

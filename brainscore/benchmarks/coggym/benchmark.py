@@ -79,7 +79,7 @@ class CogGymBenchmark(BenchmarkBase):
             identifier += f'.repeats-{repetitions}.tokens-{max_tokens}.temperature-{float(temperature)!r}'
         super().__init__(
             identifier=identifier,
-            version=2,
+            version=1,
             parent='behavioral',
             ceiling=ceiling,
             bibtex='@misc{coggym2026, title={CogGym: Towards Large-Scale Comparative '

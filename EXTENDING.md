@@ -109,16 +109,22 @@ A benchmark drives the subject model and scores it. Subclass `BenchmarkBase`, im
 `__call__(subject)`:
 
 ```python
-from brainscore_core.benchmarks import BenchmarkBase
+from brainscore_core.benchmarks import BenchmarkBase, ceil_score
 from brainscore_core.metrics import Score
 from brainscore_core.streaming_helpers import neural_response
-from brainscore import benchmark_registry, load_metric
+from brainscore import benchmark_registry, load_metric, load_stimulus_set
 
 class YourBenchmark(BenchmarkBase):
+    # Checked before any compute, so a mismatched model is N/A instead of failing mid-run.
+    required_input_channels = {'vision'}
+    requested_output_channels = {'neural:IT'}
+    uses_session = True
+
     def __init__(self):
-        super().__init__(identifier='your-benchmark', ceiling=ceiling_score,
+        super().__init__(identifier='your-benchmark', ceiling=Score(1.0),  # or your estimate
                          version=1, parent='neural', bibtex=BIBTEX)
         self._assembly = load_assembly()        # target measurements
+        self._stimulus_set = load_stimulus_set('your-stimuli')
         self._metric = load_metric('your-metric')
 
     def __call__(self, subject):
@@ -186,9 +192,17 @@ The constructor slots available to model authors are:
 
 | Slot | Fires on | Signature |
 |------|----------|-----------|
-| `answer` | `StimulusSet` + `TaskContext.instruction` | `(stimulus_row, instruction, label_set) -> str` |
+| `answer` | `StimulusSet` + `TaskContext.instruction` | `(*, stimulus_row, instruction, label_set) -> str`, called with keywords |
 | `policy` | `EnvironmentStep` / `Message` | `(env_step) -> EnvironmentResponse` |
 | `intervention` | `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
+
+An `answer` function receives its arguments by keyword, so use these names:
+
+```python
+def answer(*, stimulus_row, instruction, label_set):
+    reply = generate(stimulus_row, instruction)   # your model
+    return reply  # a reply outside label_set is recorded as invalid, not as label_set[0]
+```
 
 `templates/new_capability/` shows both levels, with a runnable registered
 capability that runs through `subject.participate(session)`.
