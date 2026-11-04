@@ -93,7 +93,7 @@ def load_lahner2024_timeresolved_assembly(
         TIMERESOLVED_ASSEMBLY_ID,
         TIMERESOLVED_ASSEMBLY_VERSION_ID,
         TIMERESOLVED_ASSEMBLY_SHA1,
-        "python -m brainscore.data.lahner2024.prepare_timeresolved_assembly",
+        "python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly",
     )
     return load_assembly_from_s3(
         identifier=TIMERESOLVED_ASSEMBLY_ID,
@@ -131,7 +131,7 @@ def load_lahner2024_timeresolved_events():
         'Lahner2024-fMRI-timeresolved-events.csv',
         TIMERESOLVED_EVENTS_VERSION_ID,
         TIMERESOLVED_EVENTS_SHA1,
-        "python -m brainscore.data.lahner2024.prepare_timeresolved_assembly",
+        "python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly",
     )
 
 
@@ -140,7 +140,7 @@ def load_lahner2024_timeresolved_motion():
         'Lahner2024-fMRI-timeresolved-motion.csv',
         TIMERESOLVED_MOTION_VERSION_ID,
         TIMERESOLVED_MOTION_SHA1,
-        "python -m brainscore.data.lahner2024.prepare_motion_sidecar",
+        "python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar",
     )
 
 

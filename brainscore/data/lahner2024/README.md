@@ -26,9 +26,9 @@ human responses, or vice versa. Confirm the applicable terms before sharing.
 Inspect inputs and output options before preparing data:
 
 ```bash
-python -m brainscore.data.lahner2024.prepare_timeresolved_assembly --help
-python -m brainscore.data.lahner2024.prepare_motion_sidecar --help
-python -m brainscore.data.lahner2024.prepare_audio_tracks --help
+python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly --help
+python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar --help
+python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks --help
 ```
 
 The time-resolved converter accepts `--data-cache`, `--output-path` and

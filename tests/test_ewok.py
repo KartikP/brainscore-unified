@@ -10,7 +10,7 @@ import pytest
 import brainscore
 from brainscore.data.preparation import DataBuilder, data_builder_registry, prepare_dataset
 from brainscore.data.ewok.data import load_prepared
-from brainscore.data.ewok.prepare import HF_REPOSITORY, HF_REVISION, normalize, resolve
+from brainscore.data.ewok.data_packaging.prepare import HF_REPOSITORY, HF_REVISION, normalize, resolve
 from brainscore.benchmarks.ewok.benchmark import logprob_accuracy
 from brainscore.harnesses.ewok import EWoKProvider
 from brainscore.model_helpers.response_trace import build_trace_subject
@@ -122,7 +122,7 @@ def test_request_resolver_is_plugin_specific_and_not_persisted(native, tmp_path,
     def resolver(request_id):
         seen.append(request_id)
         return native, {'method':'author-download'}
-    from brainscore.data.ewok.prepare import build
+    from brainscore.data.ewok.data_packaging.prepare import build
     monkeypatch.setitem(data_builder_registry,'fixture',lambda:DataBuilder(build, resolver))
     output=prepare_dataset('fixture',request_id='private-author-request',output=tmp_path/'resolved')
     assert seen==['private-author-request']

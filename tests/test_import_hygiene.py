@@ -24,7 +24,7 @@ def test_import_brainscore_does_not_load_heavy_deps():
         "assert len(brainscore.benchmark_registry) == 59, "
         "f'benchmark_registry={len(brainscore.benchmark_registry)} (expected 59)'\n"
         "assert 'brainscore.harnesses.coggym' not in sys.modules\n"
-        "assert 'brainscore.data.ewok.prepare' not in sys.modules\n"
+        "assert 'brainscore.data.ewok.data_packaging.prepare' not in sys.modules\n"
         "assert 'brainscore.benchmarks.ewok.benchmark' not in sys.modules\n"
         "print('OK')\n"
     )

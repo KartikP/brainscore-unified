@@ -192,7 +192,7 @@ ALGONAUTS_ROOT = register(LocalAsset(
     obtain='The competition dataset via DataLad (~130 GB: 129 GB stimuli, ~1 GB '
            'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
            'current DataLad; install it from conda-forge instead.',
-    prepare='python -m brainscore.data.algonauts2025.prepare_assembly '
+    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
             '--algonauts-root <root> --subjects 1',
     used_by=['Algonauts2025-friends-sub01'],
 ))

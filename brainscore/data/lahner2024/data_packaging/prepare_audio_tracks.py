@@ -9,7 +9,7 @@ get a zero waveform of matching duration, so every clip ends up with a
 file at the expected path. The AudioWrapper sees a uniform schema.
 
 Usage:
-    python -m brainscore.data.lahner2024.prepare_audio_tracks \
+    python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks \
         --audio-dir ~/.brainio/lahner2024_audio_16k \
         --target-rate 16000
 

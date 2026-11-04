@@ -37,7 +37,7 @@ def load_algonauts2025_assembly(
     if not path.exists():
         raise FileNotFoundError(
             f"Algonauts assembly missing at {path}. Run "
-            "python -m brainscore.data.algonauts2025.prepare_assembly "
+            "python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly "
             "on EC2 first; see README.md."
         )
 
@@ -57,7 +57,7 @@ def load_algonauts2025_stimulus_set(split: str, root: Optional[Path] = None):
     if not path.exists():
         raise FileNotFoundError(
             f"Algonauts stim_set missing at {path}. Run "
-            "python -m brainscore.data.algonauts2025.prepare_assembly "
+            "python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly "
             "on EC2 first."
         )
 

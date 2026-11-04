@@ -6,7 +6,7 @@ IDENTIFIER = 'EWoK-core-1.0'
 
 
 def _builder() -> DataBuilder:
-    from .prepare import build, resolve
+    from .data_packaging.prepare import build, resolve
     return DataBuilder(build=build, resolve=resolve)
 
 
