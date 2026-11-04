@@ -1,0 +1,51 @@
+{
+  "status": "passed",
+  "scope": "one-scene real-model pilot",
+  "trial_count": 28,
+  "source_manifest_sha256": "75e9ab5f12a5b8c515418a4937b407be97d5c51083cb3a40134cc2d82530443c",
+  "prepared_manifest_sha256": "81a433629d78f191d78ca7f3ede14a63d6979c4da2aec1c53bad9a7b5da5b6f9",
+  "same_presentation_ids_for_neural_and_behavior": true,
+  "analysis_invariant_to_row_order": true,
+  "neural_shape": [
+    28,
+    8,
+    1280
+  ],
+  "neural_dims": [
+    "presentation",
+    "time_bin",
+    "neuroid"
+  ],
+  "neural_recording": {
+    "task_type": "text",
+    "path": "generation",
+    "response": "Text",
+    "forward_pass": "prompt",
+    "readout_fit": "intact",
+    "condition": "default"
+  },
+  "python": "3.11.15",
+  "weights_sha256": {
+    "model-00001-of-00002.safetensors": "41a8895c164b4d32bae6b302f4603fcbc1797f32dafa45c7e9bcda23c6755df8",
+    "model-00002-of-00002.safetensors": "365531ff8752420e89dee707b79d021fb2d6e25abafe486f080555a4fe6972e4"
+  },
+  "source_sha256": {
+    "brainscore/data/__init__.py": "77a4ac65e9de58f74b4e7685b92baa131aeeecf0986f192b7d0750feecbed460",
+    "brainscore/data/sun2025/__init__.py": "9948c99fc2cdc65b92ea480a3b73cbe3a3c3be4e9d92d0b05ef50a42206aca08",
+    "brainscore/data/sun2025/data.py": "56665f10d65744c8cad88821875a42c386e473b4a66ec342bf0729391cacdf52",
+    "brainscore/data/sun2025/data_packaging/__init__.py": "3de0f48a7ee77c043988ced49a8e0aba3d3404a63f28b4f8f5d73beaaab4ae4f",
+    "brainscore/data/sun2025/data_packaging/prepare.py": "39baa29ccf08c502fa820c1609c727aa5183c3ba0447269b665283d03a88ffbb",
+    "brainscore/data/sun2025/data_packaging/fetch.py": "e3cb9948abad0b5b7ff73206dcb438faea4533aec1fdad01797dfea71c19aa34",
+    "brainscore/experiments/sun2025/experiment.py": "51842731098635f4b9acfc94c3b3c23eb0022c901879a1502b7637082fddab96",
+    "brainscore/experiments/sun2025/__init__.py": "d09564598f00fcf91b6330e68113b2fb97c3b8e8166d50ae2ab27868876dae0c",
+    "brainscore/experiments/sun2025/analysis.py": "c25b6a189ad0b3798b6e8360b6b1db34942b5855c7955cec1bd3fb7f949ed9dd",
+    "examples/sun2025/validate_run.py": "11764232600ee65ff4bdc710c9daa270de78f69639fd4a4d4ea9e76b7efa432b",
+    "examples/sun2025/qwen_video.py": "f2da89cbace9efad580040b8f610c9de9375ca409532ac2cd1eaeb897e4015ed",
+    "examples/sun2025/run.py": "aba22d83edf5389acba19fe244aafb53d11d87f6fd50e020e64551989d1525fb",
+    "examples/sun2025/reanalyze.py": "2ef41772eae1934da46cff693ed0d6f621eb346924b437ccfaed7bace5dd29d8",
+    "tests/test_sun2025.py": "0bfc566dcd2633e85651963f07b31c3f7b38e6ddb6263f1e0d50be37f16239dd"
+  },
+  "summary_sha256": "1e50a7bc1c7e3b22719b085d13b9352f9ee6d65455fecc3c492e9da078480f9f",
+  "report_parser": "motion-json-v2",
+  "control_summary_sha256": "b77959aaf2720f9cd3f50e9c2598dca0509e75c8509826bf4942c2c3a0779840"
+}

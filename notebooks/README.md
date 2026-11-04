@@ -44,6 +44,7 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 | 9 | [Does silencing one residual branch change ResNet-18's predictions?](experiments/09_recording_and_silencing_resnet18.ipynb) | 7, 10 | CPU, ResNet-18 weights (45 MB) |
 | 10 | [How well do GPT-2 features predict fMRI during story listening, and does timing matter?](experiments/10_story_listening_fmri.ipynb) | 2, 5 | GPU recommended; LeBel 2023 assembly (3 GB), GPT-2 weights |
 | 13 | [Do messages passed around a loop of language models forget where they started?](experiments/13_passing_outputs_between_subjects.ipynb) | 1, 9 | CPU or GPU, GPT-2 and DistilGPT-2 weights (850 MB) |
+| 15 | [Watch Sun motion clips and replay recorded activity](experiments/15_sun2025_motion_and_activity_replay.ipynb) | 5, 6, 10 | Prepared Sun data; GPU for a new run, or an existing recording for replay |
 
 Results from saved runs, synthetic data or untrained networks demonstrate a procedure. Each notebook's "Conclusion and limits" section says what its result does and does not establish.
 

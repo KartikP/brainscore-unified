@@ -19,6 +19,7 @@ EXCLUDED = {
     'experiments/10_story_listening_fmri.ipynb': 'LeBel 2023 assembly (3 GB) and GPT-2 download',
     'experiments/13_passing_outputs_between_subjects.ipynb': 'GPT-2 and DistilGPT-2 download',
     'experiments/14_reading_instructions_and_words.ipynb': 'Qwen2.5-VL-7B download and GPU run',
+    'experiments/15_sun2025_motion_and_activity_replay.ipynb': 'Prepared Sun data and a GPU, or a saved Sun recording',
 }
 SELECTED = (
     'lessons/01_your_first_subject.ipynb', 'lessons/02_your_first_benchmark.ipynb',

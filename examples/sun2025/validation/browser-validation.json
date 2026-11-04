@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "frame_count": 16,
+  "html_sha256": "8692de5b46a386b5403e35c201517ac2eeb3a2fe12c61b3b5dd5e53872e32361",
+  "browser_version": "141.0.7390.37",
+  "sandboxed_iframe": true,
+  "time_bins": 8,
+  "frame_step_alignment": true,
+  "seek_alignment": true,
+  "play_pause": true,
+  "speed_control": true,
+  "raw_hover": true,
+  "answer_preserved": true,
+  "narrow_layout": true,
+  "page_errors": [],
+  "network_requests": []
+}
