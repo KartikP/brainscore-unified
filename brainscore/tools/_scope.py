@@ -9,7 +9,7 @@ from brainscore.experiments.runner import Experiment, RunContext, Tool
 class _DirectProtocol:
     identifier = 'tool-scope'
     conditions = ('default',)
-    trials = ('direct',)
+    repetitions = ('direct',)
 
     def validate(self, subject: Any) -> None:
         pass
@@ -33,5 +33,5 @@ def attach_tools(subject: Any, *, tools: Sequence[Tool], output_dir: str | PathL
                             output_dir=output_dir, instrumentation=instrumentation,
                             metadata=metadata)
     with experiment.open() as context:
-        with context.trial('direct'):
+        with context.repetition('direct'):
             yield context

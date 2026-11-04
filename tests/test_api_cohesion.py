@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import torch
 import xarray as xr
-from brainscore.experiments import SessionProtocol, Trial, TorchInstrumentation
+from brainscore.experiments import SessionProtocol, Repetition, TorchInstrumentation
 from brainscore_core.model_interface import FunctionalSelection, Selection
 from brainscore_core.streaming import InMemorySession
 
@@ -58,14 +58,14 @@ def test_localizer_selection_reuses_spatial_units_in_tools():
 def test_factory_argument_does_not_change_when_conditions_are_added(conditions):
     requests = []
     @contextmanager
-    def factory(trial):
-        requests.append(trial)
+    def factory(repetition):
+        requests.append(repetition)
         yield InMemorySession()
     protocol = SessionProtocol(identifier='stable', session_factory=factory, conditions=conditions)
     subject = SimpleNamespace(reset=lambda: None, participate=lambda session: None)
-    context = SimpleNamespace(trial=lambda *a, **k: nullcontext(), publish=lambda *a: None)
+    context = SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None)
     protocol.run(subject, context)
-    assert all(isinstance(request, Trial) and request.identifier == 0 for request in requests)
+    assert all(isinstance(request, Repetition) and request.identifier == 0 for request in requests)
 
 
 def test_identifier_factory_is_an_explicit_compatibility_option():
@@ -76,7 +76,7 @@ def test_identifier_factory_is_an_explicit_compatibility_option():
         yield InMemorySession()
     protocol = SessionProtocol(identifier='old', session_factory=factory, factory_argument='identifier')
     protocol.run(SimpleNamespace(reset=lambda: None, participate=lambda session: None),
-                 SimpleNamespace(trial=lambda *a, **k: nullcontext(), publish=lambda *a: None))
+                 SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None))
     assert requests == [0]
 
 
@@ -189,7 +189,7 @@ def test_experiment_warns_about_unregistered_channels_before_running():
 
     subject = Exploratory()
     protocol = SessionProtocol(
-        identifier='exploratory', session_factory=lambda trial: None,
+        identifier='exploratory', session_factory=lambda repetition: None,
         input_channels=['unregistered_input'], output_channels=['behavior'],
     )
     with pytest.warns(CompatibilityWarning, match='benchmark scoring requires'):
@@ -239,7 +239,7 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     experiment = Experiment(
         subject=subject,
         protocol=SessionProtocol(
-            identifier='notebook-channels', session_factory=lambda trial: nullcontext(session()),
+            identifier='notebook-channels', session_factory=lambda repetition: nullcontext(session()),
             input_channels=['vision'], output_channels=['behavior'],
         ),
         output_dir=tmp_path / 'experiment',

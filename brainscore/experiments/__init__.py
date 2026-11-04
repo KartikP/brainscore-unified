@@ -1,9 +1,9 @@
 """Compose protocols and tools without extending the Subject contract."""
-from .runner import Experiment, ExperimentResult, Tool, Trial, SessionProtocol, CallableProtocol
+from .runner import Experiment, ExperimentResult, Tool, Repetition, SessionProtocol, CallableProtocol
 from .tools import RecordInputsOutputs, RecordActivity, Ablate, ScaleActivity, PatchActivity, TorchInstrumentation, ObserveCalls
 
 __all__ = ['Experiment', 'ExperimentResult', 'Tool', 'SessionProtocol',
-           'CallableProtocol', 'Trial', 'ObserveCalls', 'RecordInputsOutputs', 'RecordActivity', 'Ablate',
+           'CallableProtocol', 'Repetition', 'ObserveCalls', 'RecordInputsOutputs', 'RecordActivity', 'Ablate',
            'TorchInstrumentation', 'ScaleActivity', 'PatchActivity']
 from .task import TaskProtocol, RecordNeural, RecordBehavior, Intervene
 __all__ += ['TaskProtocol', 'RecordNeural', 'RecordBehavior', 'Intervene']

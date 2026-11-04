@@ -36,7 +36,7 @@ def protocol() -> SessionProtocol:
     def factory(trial):
         yield BufferedSession([StreamEvent('stimulus', [[1., 2., 3.]], None)])
     return SessionProtocol('loaded-ablation', factory, conditions=['baseline', 'lesioned'],
-                           trials=[0, 1], input_channels=['stimulus'], output_channels=['behavior'])
+                           repetitions=[0, 1], input_channels=['stimulus'], output_channels=['behavior'])
 
 
 def test_loader_returns_existing_implementation_and_fresh_instances():
@@ -53,14 +53,14 @@ def test_loaded_and_constructed_ablation_have_identical_filtered_results(tmp_pat
     provider = TorchInstrumentation({'population': subject.layer})
     outputs = []
     for name, tool in [
-        ('constructed', Ablate([Selection('population', [1])], conditions=['lesioned'], trials=[1])),
+        ('constructed', Ablate([Selection('population', [1])], conditions=['lesioned'], repetitions=[1])),
         ('loaded', load_tool('ablate', targets=[Selection('population', [1])],
-                            conditions=['lesioned'], trials=[1])),
+                            conditions=['lesioned'], repetitions=[1])),
     ]:
         result = Experiment(subject=subject, protocol=protocol(),
                             tools=[RecordInputsOutputs(), tool], instrumentation=provider,
                             output_dir=tmp_path / name).run()
-        outputs.append([(event['condition'], event['trial_id'], event['payload'].payload)
+        outputs.append([(event['condition'], event['repetition_id'], event['payload'].payload)
                         for event in result.record.events() if event['kind'] == 'output'])
         assert not subject.layer._forward_hooks
     assert [(condition, trial) for condition, trial, _ in outputs[0]] == [

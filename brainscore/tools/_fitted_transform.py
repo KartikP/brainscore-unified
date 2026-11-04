@@ -22,11 +22,11 @@ class FittedActivityTransform(Ablate):
     application_keys: frozenset[str] = frozenset()
 
     def __init__(self, target: str | Selection, *, name: str | None = None,
-                 conditions: Any = None, trials: Any = None) -> None:
+                 conditions: Any = None, repetitions: Any = None) -> None:
         target = Selection(target) if isinstance(target, str) else deepcopy(target)
         if not isinstance(target, Selection) or not target.layer:
             raise ValueError('A transform needs a named target or Selection')
-        super().__init__([target], name=name, conditions=conditions, trials=trials)
+        super().__init__([target], name=name, conditions=conditions, repetitions=repetitions)
         self._parameters: dict | None = None
         self._provenance: dict = {}
         self._arrays: dict[str, np.ndarray] = {}
@@ -95,7 +95,7 @@ class FittedActivityTransform(Ablate):
 
     @classmethod
     def load(cls, path: str | PathLike, *, name: str | None = None,
-             conditions: Any = None, trials: Any = None, **configuration: Any) -> 'FittedActivityTransform':
+             conditions: Any = None, repetitions: Any = None, **configuration: Any) -> 'FittedActivityTransform':
         """Restore the selected method only; artifact contents never import code."""
         saved = json.loads(Path(path).read_text())
         payload = saved['payload']
@@ -115,7 +115,7 @@ class FittedActivityTransform(Ablate):
         configuration = {**defaults, **configuration}
         if set(settings) & set(configuration):
             raise TypeError('Fitting settings are fixed by the artifact; fit a new tool to change them')
-        tool = cls(target, name=name, conditions=conditions, trials=trials, **settings, **configuration)
+        tool = cls(target, name=name, conditions=conditions, repetitions=repetitions, **settings, **configuration)
         tool._install(payload['parameters'], payload['provenance'])
         return tool
 
@@ -165,10 +165,10 @@ class FittedActivityTransform(Ablate):
         source, targets = self.name, deepcopy(self.targets)
         configuration = deepcopy(self._application_configuration())
         description = self.describe()
-        conditions, trials = self.conditions, self.trials
+        conditions, repetitions = self.conditions, self.repetitions
         context.publish('tool_artifact', self._payload(), source=source)
         if ((conditions is not None and context.condition not in conditions)
-                or (trials is not None and context.trial_id not in trials)):
+                or (repetitions is not None and context.repetition_id not in repetitions)):
             yield
             return
         import torch

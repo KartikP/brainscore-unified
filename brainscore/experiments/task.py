@@ -8,7 +8,7 @@
     result = experiment.run()
     result.neural('IT', condition='lesioned'); result.behavior(condition='lesioned')
 
-Each stimulus is presented once per trial. The recorders ask the subject for
+Each stimulus is presented once per repetition. The recorders ask the subject for
 their channels in that one session, so the neural recording comes from the
 same presentation that produced the behavior.
 """
@@ -24,7 +24,7 @@ from .tools import RecordInputsOutputs
 
 
 class TaskProtocol(SessionProtocol):
-    """Present ``stimuli`` under ``task``, once per condition and trial.
+    """Present ``stimuli`` under ``task``, once per condition and repetition.
 
     The task says what the subject does; ``TaskContext(task_type='passive')``
     is plain viewing. ``required_traits`` (e.g. ``{'memory:session'}``) makes a
@@ -36,7 +36,7 @@ class TaskProtocol(SessionProtocol):
     """
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
-                 trials=(0,), refit_readout=False, required_traits=(), metadata=None):
+                 repetitions=(0,), refit_readout=False, required_traits=(), metadata=None):
         probe = BufferedSession(stimulus_set=stimuli)
         inputs = set()
         while (event := probe.next_input()) is not None:
@@ -45,7 +45,7 @@ class TaskProtocol(SessionProtocol):
         self.task = replace(task, readout_fit='current' if refit_readout else 'intact')
         # e.g. {'memory:session'} for a task whose trials depend on earlier ones.
         self.required_traits = frozenset(required_traits)
-        super().__init__(identifier, self._session, conditions=conditions, trials=trials,
+        super().__init__(identifier, self._session, conditions=conditions, repetitions=repetitions,
                          input_channels=inputs, output_channels=(), metadata=metadata)
 
     def accept_requests(self, channels):
@@ -75,7 +75,7 @@ class TaskProtocol(SessionProtocol):
                 'readout_fit': self.task.readout_fit}
 
     @contextmanager
-    def _session(self, trial):
+    def _session(self, repetition):
         yield BufferedSession(stimulus_set=self.stimuli, task_context=self.task,
                               requested_output_channels=sorted(self.output_channels))
 
@@ -132,7 +132,7 @@ class RecordBehavior(_ChannelRecorder):
 class Intervene(Tool):
     """Apply one undoable change through the subject's own ``intervention``.
 
-    The change is applied at the start of each matching trial and undone at
+    The change is applied at the start of each matching repetition and undone at
     its end. Targets use the subject's layer paths, as in ``region_layer_map``.
     """
     name = 'intervention'

@@ -182,7 +182,7 @@ def test_real_jax_remote_experiment(policy, observation, tmp_path):
     assert len(activity) == 4
     for event in activity:
         assert event['event_id']
-        assert event['trial_id'] == 'external'
+        assert event['repetition_id'] == 'external'
         assert event['payload']['value']['request_id']
     after = [event['payload']['value']['array'] for event in activity if event['source'] == 'after']
     assert len(after) == 2

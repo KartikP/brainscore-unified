@@ -79,7 +79,7 @@
       "path": "inputs_outputs/events.jsonl",
       "producer": "brainscore.RunRecorder",
       "description": "Events with content-addressed array/file references",
-      "sha256": "6fb8a57c3df21b5e206ed6e09509ca06059fa6302f83d3bd5e91ab66ac825699",
+      "sha256": "085b22f94697842b8afca9e7df125941d04b647054ccd2780bc34a67b73eabb3",
       "bytes": 13022
     }
   ],

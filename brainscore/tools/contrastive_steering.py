@@ -18,8 +18,8 @@ class ContrastiveSteering(FittedActivityTransform):
     application_keys = frozenset({'strength'})
 
     def __init__(self, target: str | Selection, *, strength: float = 1.,
-                 name: str | None = None, conditions: Any = None, trials: Any = None) -> None:
-        super().__init__(target, name=name, conditions=conditions, trials=trials)
+                 name: str | None = None, conditions: Any = None, repetitions: Any = None) -> None:
+        super().__init__(target, name=name, conditions=conditions, repetitions=repetitions)
         self.strength = strength
 
     @property
@@ -59,7 +59,7 @@ class ContrastiveSteering(FittedActivityTransform):
             direction = direction / scale
             direction = direction / np.linalg.norm(direction)
         fitted = ContrastiveSteering(replace(self.target, indices=units), strength=self.strength,
-                                     name=self.name, conditions=self.conditions, trials=self.trials)
+                                     name=self.name, conditions=self.conditions, repetitions=self.repetitions)
         fitted._install({'direction': direction.tolist(), 'positive': positive, 'negative': negative,
                          'normalized': normalize, 'counts': {'positive': int(pos.sum()), 'negative': int(neg.sum())}},
                         _fitting_provenance(values, units, labels, dict(provenance or {})))

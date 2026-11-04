@@ -54,7 +54,7 @@
             }
           ],
           "conditions": null,
-          "trials": null,
+          "repetitions": null,
           "operation": "zero_output"
         }
       },
@@ -129,7 +129,7 @@
       "path": "inputs_outputs/events.jsonl",
       "producer": "brainscore.RunRecorder",
       "description": "Events with content-addressed array/file references",
-      "sha256": "71f5b9f0974bdcfad8ac897ecfdf4ba808f6f78a1d5e2797510844af9f474c3d",
+      "sha256": "b284b0397cfcd9a55646be57fd21fcda337e253c422477cea6e0ff68bc972604",
       "bytes": 36083
     }
   ],

@@ -166,7 +166,7 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
         protocol=SessionProtocol(
             identifier='different-region-per-trial',
             session_factory=factory,
-            trials=['V4', 'IT'],
+            repetitions=['V4', 'IT'],
             input_channels=['text'],
             output_channels=['neural:V4', 'neural:IT'],
         ),

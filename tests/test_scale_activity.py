@@ -18,7 +18,7 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.mark.parametrize('tool_class', [Ablate, ScaleActivity])
-@pytest.mark.parametrize('invalid', ['instrumentation', 'conditions', 'trials'])
+@pytest.mark.parametrize('invalid', ['instrumentation', 'conditions', 'repetitions'])
 def test_intervention_validation_names_the_selected_tool(tool_class, invalid):
     layer = torch.nn.Identity()
     options = {'factor': 0.5} if tool_class is ScaleActivity else {}
