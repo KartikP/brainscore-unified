@@ -20,6 +20,7 @@ Each guide answers one "how do I" question.
 | Score a model on a benchmark | [Score a model](guides/score_a_model.md) |
 | Connect my own network | [Wrap your model](guides/wrap_your_model.md) |
 | Use a model already in Brain-Score | [Existing models](guides/existing_models.md) |
+| Load or add a dataset | [Data](guides/data.md) |
 | Write a benchmark | [Write a benchmark](guides/write_a_benchmark.md) |
 | Get choices or answers from a model | [Behavior](guides/behavior.md) |
 | Silence or change units, or choose units by function | [Perturb and select units](guides/perturb_and_select_units.md) |
