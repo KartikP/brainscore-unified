@@ -14,6 +14,7 @@ import tempfile
 EXCLUDED = {
     'experiments/02_which_layer_matches_which_region.ipynb': 'Pretrained ResNet-50 download',
     'experiments/09_recording_and_silencing_resnet18.ipynb': 'Pretrained ResNet-18 download',
+    'experiments/03_predicting_it_responses.ipynb': 'MajajHong2015 data and CLIP download; GPU recommended',
     'experiments/06_spatial_organization_of_units.ipynb': 'TDANN checkpoints and positions download (280 MB)',
     'experiments/10_story_listening_fmri.ipynb': 'LeBel 2023 assembly (3 GB) and GPT-2 download',
     'experiments/13_passing_outputs_between_subjects.ipynb': 'GPT-2 and DistilGPT-2 download',
@@ -26,7 +27,6 @@ SELECTED = (
     'lessons/07_perturb_a_model.ipynb', 'lessons/08_choose_units.ipynb',
     'lessons/09_closed_loop.ipynb', 'lessons/10_run_an_experiment.ipynb',
     'lessons/11_interventions_in_an_experiment.ipynb',
-    'experiments/03_predicting_it_responses.ipynb',
     'experiments/04_silencing_units_in_a_digit_classifier.ipynb',
     'experiments/08_learning_in_a_closed_loop.ipynb',
 )

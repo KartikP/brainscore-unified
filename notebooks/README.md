@@ -37,7 +37,7 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 | # | Question | Lessons | Requires |
 | --- | --- | --- | --- |
 | 2 | [Does category structure increase along the layers mapped to V1 to IT?](experiments/02_which_layer_matches_which_region.ipynb) | 3, 5 | CPU, ResNet-50 weights (100 MB) |
-| 3 | [How well do CLIP features predict macaque IT responses?](experiments/03_predicting_it_responses.ipynb) | 2, 3 | CPU to replot saved results |
+| 3 | [How well do CLIP features predict macaque IT responses, and how much comes from training?](experiments/03_predicting_it_responses.ipynb) | 2, 3, 5 | GPU recommended; MajajHong2015 data and CLIP weights, about 40 minutes |
 | 4 | [Which image half does a digit classifier rely on?](experiments/04_silencing_units_in_a_digit_classifier.ipynb) | 7, 10 | CPU, seconds |
 | 6 | [At what spatial scale does a topographic network organize its units?](experiments/06_spatial_organization_of_units.ipynb) | 3, 5 | CPU, TDANN download (280 MB), a few minutes |
 | 8 | [Does a policy cloned from an expert solve new games in a closed loop?](experiments/08_learning_in_a_closed_loop.ipynb) | 9 | CPU, under a minute |
