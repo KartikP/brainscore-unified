@@ -67,6 +67,12 @@ class TaskProtocol(SessionProtocol):
         if missing:
             raise ValueError(f'This task needs subject traits {sorted(missing)}; '
                              f'{subject.identifier!r} declares {sorted(subject.traits) or "none"}.')
+        if self.task.response is not None:
+            missing = set(self.task.response.channels) - set(subject.out_channels)
+            if missing:
+                raise ValueError(f'Task response requires outputs {sorted(missing)} even when '
+                                 f'behavior is not recorded; subject {subject.identifier!r} '
+                                 f'declares {sorted(subject.out_channels)}.')
         super().validate(subject)
 
     def describe(self):

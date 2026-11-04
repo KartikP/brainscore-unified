@@ -380,3 +380,83 @@ def test_fused_chat_extractor_splits_one_pass_by_input(tmp_path):
     ids = torch.tensor([[27, 27, 27, 1, 2]])                     # image first, then 'ab'
     hidden = model(ids)[0].detach().numpy()
     np.testing.assert_allclose(recorded.values[0], [hidden[:3].mean(0), hidden[3:].mean(0), hidden[-1]], rtol=1e-5)
+
+
+def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
+    from types import SimpleNamespace
+    from brainscore_core import check_compatibility
+
+    net = Net()
+    subject = _subject(net)
+    mixed = StimulusSet(STIMULI.assign(image_path='unused-image.png'))
+    mixed.identifier = 'mixed-task'
+    protocol = TaskProtocol(mixed, TASK)
+    experiment = Experiment(subject=subject, protocol=protocol, tools=[RecordBehavior()],
+                            output_dir=tmp_path / 'partial')
+    plan = experiment.validate()
+    benchmark = SimpleNamespace(identifier='same-task',
+                                required_input_channels=protocol.input_channels,
+                                requested_output_channels=protocol.output_channels)
+    expected = check_compatibility(subject, benchmark).as_attrs()
+    assert expected['match'] == 'partial'
+    assert expected['consumed_inputs'] == ['text']
+    assert expected['dropped_inputs'] == ['vision']
+    assert plan['protocol']['config']['compatibility'] == expected
+    assert net.passes == 0
+    assert not experiment.output_dir.exists()
+
+    partial = experiment.run()
+    full = Experiment(subject=subject, protocol=TaskProtocol(STIMULI, TASK),
+                      tools=[RecordBehavior()], output_dir=tmp_path / 'full').run()
+    np.testing.assert_array_equal(partial.behavior().values, full.behavior().values)
+    assert net.passes == 2 * len(STIMULI)
+    assert full.manifest['plan']['protocol']['config']['compatibility']['match'] == 'full'
+
+
+@pytest.mark.parametrize('mistake, expected', [
+    ('output', "cannot produce requested outputs ['neural:IT']"),
+    ('input', "takes in none of the protocol inputs ['vision']"),
+    ('required', "requires inputs absent from the protocol ['vision']"),
+])
+def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, expected):
+    calls = []
+    subject = BrainScoreModel(identifier='reader', supported_modalities={'text', 'vision'}
+                             if mistake == 'required' else {'text'},
+                             required_modalities={'vision'} if mistake == 'required' else set(),
+                             reply=lambda prompt: calls.append('inference') or 'yes')
+    subject.reset = lambda: calls.append('reset')
+    stimuli = (StimulusSet({'stimulus_id': ['x'], 'image_path': ['unused.png']})
+               if mistake == 'input' else STIMULI)
+    task = TaskContext(task_type='label', label_set=['yes', 'no'])
+    experiment = Experiment(subject=subject, protocol=TaskProtocol(stimuli, task),
+                            tools=[RecordNeural(['IT'])] if mistake == 'output' else [RecordBehavior()],
+                            output_dir=tmp_path / 'bad')
+    with pytest.raises(ValueError) as caught:
+        experiment.run()
+    message = str(caught.value)
+    assert expected in message
+    assert "Subject 'reader'" in message
+    assert 'in_channels=' in message and 'out_channels=' in message
+    assert calls == []
+    assert not experiment.output_dir.exists()
+
+
+@pytest.mark.parametrize('operation', ['validate', 'run'])
+def test_neural_only_recording_checks_the_task_response_before_reset(tmp_path, operation):
+    from brainscore_core.responses import Text
+
+    net = Net()
+    subject = _subject(net)
+    resets = []
+    subject.reset = lambda: resets.append('reset')
+    experiment = Experiment(
+        subject=subject, protocol=TaskProtocol(STIMULI, TaskContext(response=Text())),
+        tools=[RecordNeural(['A'])], output_dir=tmp_path / 'bad-task')
+    with pytest.raises(ValueError, match='Task response requires outputs.*behavior:text'):
+        if operation == 'validate':
+            experiment.validate()
+        else:
+            experiment.run()
+    assert net.passes == 0
+    assert resets == []
+    assert not experiment.output_dir.exists()
