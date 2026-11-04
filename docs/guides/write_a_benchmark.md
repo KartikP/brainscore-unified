@@ -2,6 +2,8 @@
 
 A benchmark presents stimuli, requests outputs, and compares them with measured data. It is a `Benchmark` subclass with declarations and a `__call__(subject)` that returns a `Score`.
 
+Already have a `TaskProtocol`? Follow the [experiment-to-benchmark walkthrough](experiments.md#6-reuse-the-protocol-as-a-benchmark): keep the protocol and recorders, run them inside `Benchmark.__call__`, and compare the saved assembly with reference data. `Experiment` continues to own session creation and resets. The manual-session example below is for authors who need that lower-level control.
+
 ```python
 from brainscore_core import Benchmark, Score
 from brainscore_core.streaming import BufferedSession
@@ -33,7 +35,7 @@ class MyITBenchmark(Benchmark):
 | Part | What to provide |
 | --- | --- |
 | Stimuli | A `StimulusSet` (one row per stimulus, a `stimulus_id` column, and a column per input type such as `image_path` or `sentence`), or your own list of `StreamEvent`s. |
-| Declarations | `required_input_channels` and `requested_output_channels`. These alone decide compatibility. |
+| Declarations | `required_input_channels`, `requested_output_channels`, and any `required_traits` such as `memory:session`. Compatibility compares these with the subject's declarations. |
 | Session | Usually `BufferedSession`. Add `task_context=TaskContext(...)` for behavior, or use `EnvironmentSession` for closed-loop tasks. |
 | Metric | Any function of model output and measured data. Brain-Score ships metrics such as PLS regression, ridge regression, RSA and accuracy (`brainscore.load_metric`). |
 | Ceiling | An estimate of how well the data can be predicted, for example split-half reliability. Leave it out and report the raw value if you have none. |
