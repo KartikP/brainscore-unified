@@ -148,3 +148,27 @@ def test_cache_key_includes_the_trim(tmp_path, monkeypatch):
         else:
             raise AssertionError(
                 f'cache written at {head}/{tail} was reused at {tail}/{head}')
+
+
+def test_hosted_stimuli_read_back_exactly(tmp_path, monkeypatch):
+    """Text such as "NA" stays text, and onset times keep every digit."""
+    import pandas as pd
+    from brainscore.data.lebel2023 import hosted
+    rows = pd.DataFrame({'stimulus_id': ['s_w00000', 's_w00001'], 'story_id': ['s', 's'],
+                         'word_index': [0, 1], 'word_time_sec': [1.1299319727900001, 6.2582766439899995],
+                         'sentence': ['NA', 'NA null']})
+    path = tmp_path / 'stimulus_LeBel2023-UTS03-words.csv'
+    rows.to_csv(path, index=False)
+    monkeypatch.setattr(hosted, '_fetch', lambda *args: str(path))
+    stimuli = hosted.word_stimulus_set()
+    assert list(stimuli['sentence']) == ['NA', 'NA null']
+    assert list(stimuli['word_time_sec']) == list(rows['word_time_sec'])
+    assert stimuli.identifier == 'LeBel2023-UTS03-words32'
+
+
+def test_registered_views_use_the_hosted_files_by_default():
+    import brainscore
+    from brainscore.data.lebel2023 import hosted
+    assert hosted.available()
+    assert {'LeBel2023-UTS03', 'LeBel2023-UTS03-words'} <= set(brainscore.stimulus_set_registry)
+    assert 'LeBel2023-UTS03' in brainscore.data_registry

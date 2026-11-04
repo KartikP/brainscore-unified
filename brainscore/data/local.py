@@ -160,8 +160,8 @@ LEBEL_PICKLE = register(LocalAsset(
     env_var='BRAINSCORE_LEBEL_PICKLE',
     default_path='Downloads/assembly_lebel_uts03.pkl',
     kind='neural data',
-    why_local='Per-subject assembly redistributed by the provider under their '
-              'terms, not by Brain-Score.',
+    why_local='Needed only for non-default context settings; the default files are '
+              'hosted (brainscore/data/lebel2023/hosted.py).',
     source='https://github.com/GT-LIT-Lab/litcoder_release',
     obtain='The UTS03 assembly pickle for LeBel et al. 2023.',
     used_by=['LeBel2023-UTS03-encoding',
