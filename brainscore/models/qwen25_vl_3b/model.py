@@ -150,7 +150,10 @@ def get_model(identifier: str) -> BrainScoreModel:
     reply, likelihood = chat_parts(qwen_model, qwen_processor)
 
     region_layer_map = dict(REGION_LAYER_MAP)
-    variant_kwargs = {}
+    # Each region says which tower records it, so a task showing images and
+    # text records the vision regions from the image tower.
+    variant_kwargs = dict(region_modality_map={
+        region: 'text' if region == 'language_system' else 'vision' for region in region_layer_map})
     if identifier == ABLATION_VARIANT:
         from brainscore.perturbation import build_pytorch_ablation_fn
         region_layer_map['VWFA'] = VWFA_LAYER
