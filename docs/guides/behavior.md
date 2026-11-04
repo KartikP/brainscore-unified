@@ -34,7 +34,7 @@ model.reset()
 
 These are different measurements: a readout asks what information a layer contains; generation asks what the model does when asked. A model can support both. With `prefer_path='auto'` generation is used when available; set the path explicitly whenever your conclusion depends on it.
 
-If `answer` returns a label outside `label_set`, the current release replaces it with the first label and issues a warning. Check for that warning, since it can inflate or deflate accuracy.
+If `answer` returns a label outside `label_set`, the response is recorded as invalid: its probabilities are NaN, `answer_valid` is `False`, and the reply is kept in `raw_answer`. A warning is issued. No label is credited.
 
 ## Hosted models
 

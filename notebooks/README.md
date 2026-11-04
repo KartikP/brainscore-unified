@@ -29,7 +29,7 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 | 7 | [Perturb a model](lessons/07_perturb_a_model.ipynb) | `Selection`, `Perturbation`, `StateChange`, `intervention`, undo |
 | 8 | [Choose units](lessons/08_choose_units.ipynb) | Functional localizers, matched random controls, `CompositeSelector` |
 | 9 | [Closed loop](lessons/09_closed_loop.ipynb) | Environments, `policy`, `EnvironmentSession` |
-| 10 | [Run an experiment](lessons/10_run_an_experiment.ipynb) | `Experiment`, protocols, conditions, trials, tools, records, replay |
+| 10 | [Run an experiment](lessons/10_run_an_experiment.ipynb) | `Experiment`, `TaskProtocol`, recorders, conditions; one presentation for behavior and activity |
 
 ## Experiments
 

@@ -26,7 +26,8 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Perturbation: `Selection`, `StateChange`, `intervention` | [Perturb and select units](../guides/perturb_and_select_units.md) |
 | Unit selection: `IndexSelection`, `RandomSelection`, `FunctionalSelection` | same |
 | Closed loop: `policy`, `EnvironmentStep`, specs | [Closed loop](../guides/closed_loop.md) |
-| `Experiment`, `SessionProtocol`, `CallableProtocol`, conditions, trials | [Experiments](../guides/experiments.md) |
+| `Experiment`, `TaskProtocol`, `SessionProtocol`, `CallableProtocol`, conditions, trials | [Experiments](../guides/experiments.md) |
+| Recorders: `RecordNeural`, `RecordBehavior` (one presentation for both); `Intervene` | same |
 | Tools: `RecordInputsOutputs`, `RecordActivity`, `Ablate`, `ScaleActivity`, `PatchActivity` | same |
 | `TorchInstrumentation`, `RunRecord`, `replay_sessions`, `compare_outputs` | same |
 | Timed delivery: `WindowedStreamSession`, `RealTimeStreamSession`, `StreamingStimulusSetSession` | [Class map](../03_class_map.md#sessions-protocols-and-experiments) |

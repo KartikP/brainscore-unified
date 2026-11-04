@@ -147,16 +147,24 @@ classDiagram
         output_dir
         run()
     }
+    class TaskProtocol {
+        stimuli
+        task_context
+    }
     Experiment o-- SessionProtocol
     Experiment o-- CallableProtocol
+    SessionProtocol <|-- TaskProtocol
     SessionProtocol ..> Session : creates one per trial
     Experiment o-- Tool
+    Tool <|-- RecordNeural
+    Tool <|-- RecordBehavior
+    Tool <|-- Intervene
     Tool <|-- RecordInputsOutputs
     Tool <|-- RecordActivity
     Tool <|-- Ablate
 ```
 
-`SessionProtocol` builds a fresh session for each trial. `CallableProtocol` wraps an evaluator that already exists, such as a classic benchmark or a robotics evaluator, and keeps its own loop.
+`TaskProtocol` presents a stimulus set under a task, once per trial, and requests whatever the attached recorders ask for. `SessionProtocol` builds a fresh session for each trial from your own factory. `CallableProtocol` wraps an evaluator that already exists, such as a classic benchmark or a robotics evaluator, and keeps its own loop.
 
 ## Where to import from
 
