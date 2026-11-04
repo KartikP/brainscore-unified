@@ -39,6 +39,7 @@ class MyITBenchmark(Benchmark):
 | Session | Usually `BufferedSession`. Add `task_context=TaskContext(...)` for behavior, or use `EnvironmentSession` for closed-loop tasks. |
 | Metric | Any function of model output and measured data. Brain-Score ships metrics such as PLS regression, ridge regression, RSA and accuracy (`brainscore.load_metric`). |
 | Ceiling | An estimate of how well the data can be predicted, for example split-half reliability. Leave it out and report the raw value if you have none. |
+| Reference data | Measured responses in an assembly whose `presentation` dimension carries `stimulus_id` and at least one more coordinate (a condition, a category, a subject). A dimension with only one coordinate keeps its values as the dimension's index and loses the coordinate's name, so `reference['stimulus_id']` would fail. |
 
 ## Checklist
 
