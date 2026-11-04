@@ -2,7 +2,7 @@
 
 There are two kinds of notebook.
 
-- **Lessons** teach the concepts in order and download nothing. Lessons 1-9 use tiny models and synthetic data; lesson 10 develops the full workflow with bundled SqueezeNet weights and CIFAR-10 images, targeting under two minutes on CPU.
+- **Lessons** teach the concepts in order and download nothing. Lessons 1, 2 and 9 use tiny synthetic models; lessons 3-8, 10 and 11 use bundled SqueezeNet weights and CIFAR-10 images. Each runs on a laptop CPU in under two minutes.
 - **Experiments** use those concepts to answer one scientific question each, written as a short lab report: question, background, hypothesis, method, results, conclusion and limits.
 
 Start with the lessons. Read the [manual](../docs/README.md) alongside them when a term is new.
@@ -30,6 +30,7 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 | 8 | [Choose units](lessons/08_choose_units.ipynb) | Functional localizers, matched random controls, `CompositeSelector` |
 | 9 | [Closed loop](lessons/09_closed_loop.ipynb) | Environments, `policy`, `EnvironmentSession` |
 | 10 | [From an experiment to a benchmark](lessons/10_run_an_experiment.ipynb) | Choose a model, design a task, attach recorders, run, inspect and reuse the protocol in a benchmark |
+| 11 | [Interventions in an experiment](lessons/11_interventions_in_an_experiment.ipynb) | `Intervene` per condition, functional and matched random lesions, recording activity and answers together |
 
 ## Experiments
 

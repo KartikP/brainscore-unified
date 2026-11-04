@@ -23,6 +23,7 @@ SELECTED = (
     'lessons/05_layers_and_regions.ipynb', 'lessons/06_behavior.ipynb',
     'lessons/07_perturb_a_model.ipynb', 'lessons/08_choose_units.ipynb',
     'lessons/09_closed_loop.ipynb', 'lessons/10_run_an_experiment.ipynb',
+    'lessons/11_interventions_in_an_experiment.ipynb',
     'experiments/01_does_the_model_beat_random_features.ipynb',
     'experiments/03_predicting_it_responses.ipynb',
     'experiments/04_silencing_units_in_a_digit_classifier.ipynb',
