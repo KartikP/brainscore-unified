@@ -8,7 +8,9 @@ Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
 user message in that order; images as images, clips as video with their real
 frame rate. ``reply(prompt)`` returns the model's raw reply; the task's response
 parses it. ``likelihood(prompt, candidates)`` returns the log probability of
-each candidate as the whole reply (teacher-forced, summed over its tokens).
+each candidate as the whole reply (teacher-forced, summed over its tokens). It
+runs the prompt on its own before any candidate, so a recording made during
+scoring is the prompt pass, as it is for a reply.
 """
 from typing import Mapping, Optional, Sequence
 
@@ -57,6 +59,8 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
         inputs = inputs_for(prompt)
         prompt_ids = inputs['input_ids']
         length = prompt_ids.shape[1]
+        with torch.no_grad():
+            model(**inputs)     # the prompt alone first: the pass a recording keeps
         scores = {}
         for candidate in candidates:
             ids = torch.tensor([tokenizer(candidate, add_special_tokens=False)['input_ids']],
