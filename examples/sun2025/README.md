@@ -12,6 +12,14 @@ saved experiment without loading a model. The viewer provides play/pause, frame
 stepping, a time slider, speed controls, and a standalone HTML export. It uses
 the recording's time-bin coordinates and never changes the saved activity.
 
+The [registered benchmark](../../brainscore/benchmarks/sun2025/README.md),
+`Sun2025-motion-vector-error`, wraps this same procedure with the human
+reference and a mean vector-error metric. It runs through `brainscore.score`.
+Its full-study registration requires all 1,120 trials; smaller studies can
+compose `Sun2025MotionBenchmark(protocol, reference, recorders=recorders)`.
+Call `benchmark.score_measurements(result.behavior(measure='text'))` to score
+existing recordings without presenting the clips again.
+
 ## The experiment, with both instruments visible
 
 The registered data plugin supplies stimuli and human data separately. Any
@@ -96,8 +104,11 @@ modulation. It reports angular error, absolute speed error and vector endpoint
 error against each participant. Invalid flips invalidate their entire comparison
 group; coverage is always reported. Zero-speed vectors have no defined direction
 and contribute no angular error, with the angular comparison count reported.
-These are descriptive raw errors, without a fitted mapping, ceiling or
-leaderboard score. One-scene pilots cannot establish an effect across scenes.
+These are descriptive raw errors, without a fitted mapping or ceiling. The
+registered benchmark uses mean vector endpoint error as its score (lower is
+better), retains direction/speed diagnostics, and requires valid answers for
+every trial. It has no automatic leaderboard eligibility. One-scene pilots
+cannot establish an effect across scenes.
 
 Neural data is collected during the same task for inspection. The study's open
 human reference is behavioral, so this example does not claim neural alignment.

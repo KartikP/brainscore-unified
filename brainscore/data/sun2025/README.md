@@ -4,6 +4,8 @@ Registered dataset and stimulus set: **Sun2025-second-order-motion**.
 This plugin owns acquisition, source conversion, human responses, stimulus
 metadata and provenance. Experiment and comparison code import its outputs.
 No source packaging or dataset registration lives in a benchmark module.
+The registered [Sun2025-motion-vector-error benchmark](../../benchmarks/sun2025/README.md)
+consumes these data through the registries and requires the full prepared study.
 
 Study: Sun et al., [Machine learning modelling for multi-order human visual
 motion processing](https://doi.org/10.1038/s42256-025-01068-w), Nature Machine

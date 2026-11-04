@@ -15,3 +15,4 @@ from . import lebel2023         # noqa: F401  whole-cortex story-listening fMRI
 from . import coggym            # noqa: F401  pinned external cognitive experiments
 
 from . import ewok  # noqa: F401
+from . import sun2025  # noqa: F401

@@ -17,9 +17,6 @@ from brainscore.experiments.sun2025 import analyze, make_protocol
 from brainscore.experiments.sun2025.analysis import unflip_vector
 from brainscore.experiments.sun2025.experiment import parse_report
 
-pytestmark = pytest.mark.unit
-
-
 def stimuli():
     data = StimulusSet([dict(stimulus_id=f'a-f{flip}', base_id='a', scene=1, modulation=1,
                             flip=flip, video_path=f'{flip}.avi') for flip in (1, 2, 3, 4)])
@@ -227,6 +224,7 @@ def test_prepared_checksum_mismatch_is_rejected(tmp_path):
         load_prepared(tmp_path)
 
 
+@pytest.mark.slow
 def test_real_prepared_source_and_no_answer_leakage():
     root = os.environ.get('SUN2025_PREPARED')
     if root is None:

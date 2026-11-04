@@ -21,8 +21,17 @@ def analyze(behavior, stimuli, reference) -> tuple[pd.DataFrame, pd.DataFrame, d
     expected = list(stimuli.stimulus_id.astype(str))
     if len(ids) != len(set(ids)) or len(expected) != len(set(expected)) or set(ids) != set(expected):
         raise ValueError('Behavior must contain every selected stimulus exactly once')
-    raw = list(behavior['raw_answer'].values) if 'raw_answer' in behavior.coords else list(behavior.values)
-    supplied_valid = list(behavior['valid'].values) if 'valid' in behavior.coords else [True] * len(ids)
+    # BrainIO MultiIndex levels can be accessed by name without appearing in coords.
+    try:
+        raw = list(behavior['raw_answer'].values)
+    except KeyError:
+        raw = list(behavior.values)
+    supplied_valid = np.ones(len(ids), dtype=bool)
+    for coordinate in ('answer_valid', 'valid'):
+        try:
+            supplied_valid &= np.asarray(behavior[coordinate].values, dtype=bool)
+        except KeyError:
+            pass
     replies = dict(zip(ids, zip(raw, supplied_valid)))
     trials = []
     for row in stimuli.itertuples(index=False):
