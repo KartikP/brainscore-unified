@@ -439,3 +439,24 @@ def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, ex
     assert 'in_channels=' in message and 'out_channels=' in message
     assert calls == []
     assert not experiment.output_dir.exists()
+
+
+@pytest.mark.parametrize('operation', ['validate', 'run'])
+def test_neural_only_recording_checks_the_task_response_before_reset(tmp_path, operation):
+    from brainscore_core.responses import Text
+
+    net = Net()
+    subject = _subject(net)
+    resets = []
+    subject.reset = lambda: resets.append('reset')
+    experiment = Experiment(
+        subject=subject, protocol=TaskProtocol(STIMULI, TaskContext(response=Text())),
+        tools=[RecordNeural(['A'])], output_dir=tmp_path / 'bad-task')
+    with pytest.raises(ValueError, match='Task response requires outputs.*behavior:text'):
+        if operation == 'validate':
+            experiment.validate()
+        else:
+            experiment.run()
+    assert net.passes == 0
+    assert resets == []
+    assert not experiment.output_dir.exists()
