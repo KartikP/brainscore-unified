@@ -21,41 +21,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
     template = dict(chat_template_kwargs or {})
 
     def inputs_for(prompt):
-        from PIL import Image
-        images, videos, metadata = [], [], []
-
-        def content_of(parts):
-            content = []
-            for kind, value in parts:
-                if kind == 'text':
-                    content.append({'type': 'text', 'text': value})
-                elif kind == 'image':
-                    images.append(Image.open(value).convert('RGB'))
-                    content.append({'type': 'image', 'image': images[-1]})
-                elif kind == 'video':
-                    from brainscore.model_helpers.vlm_video_wrapper import clip_metadata, read_clip
-                    frames, fps = read_clip(value)
-                    videos.append(frames)
-                    metadata.append(clip_metadata(frames, fps))
-                    content.append({'type': 'video'})
-                else:
-                    raise NotImplementedError(f'chat_parts cannot show a {kind!r} part')
-            return content
-
-        # Earlier trials of the session (memory='session') become earlier turns.
-        messages = []
-        for earlier, answered in prompt.history:
-            messages.append({'role': 'user', 'content': content_of(earlier.parts)})
-            messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': answered}]})
-        messages.append({'role': 'user', 'content': content_of(prompt.parts)})
-        text = processor.apply_chat_template(messages, tokenize=False,
-                                             add_generation_prompt=True, **template)
-        call = dict(text=[text], return_tensors='pt', padding=True)
-        if images:
-            call['images'] = images
-        if videos:
-            call.update(videos=videos, video_metadata=metadata)
-        return processor(**call).to(model.device)
+        return chat_inputs(model, processor, prompt, template)
 
     def reply(prompt) -> str:
         import torch
@@ -94,3 +60,43 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
         return scores
 
     return reply, likelihood
+
+
+def chat_inputs(model, processor, prompt, template=None):
+    """Processor inputs for one trial: earlier turns from ``prompt.history``, then
+    the prompt's parts in order (images as images, clips as video)."""
+    from PIL import Image
+    images, videos, metadata = [], [], []
+
+    def content_of(parts):
+        content = []
+        for kind, value in parts:
+            if kind == 'text':
+                content.append({'type': 'text', 'text': value})
+            elif kind == 'image':
+                images.append(Image.open(value).convert('RGB'))
+                content.append({'type': 'image', 'image': images[-1]})
+            elif kind == 'video':
+                from brainscore.model_helpers.vlm_video_wrapper import clip_metadata, read_clip
+                frames, fps = read_clip(value)
+                videos.append(frames)
+                metadata.append(clip_metadata(frames, fps))
+                content.append({'type': 'video'})
+            else:
+                raise NotImplementedError(f'chat models here cannot be shown a {kind!r} part')
+        return content
+
+    # Earlier trials of the session (memory='session') become earlier turns.
+    messages = []
+    for earlier, answered in prompt.history:
+        messages.append({'role': 'user', 'content': content_of(earlier.parts)})
+        messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': answered}]})
+    messages.append({'role': 'user', 'content': content_of(prompt.parts)})
+    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
+                                         **dict(template or {}))
+    call = dict(text=[text], return_tensors='pt', padding=True)
+    if images:
+        call['images'] = images
+    if videos:
+        call.update(videos=videos, video_metadata=metadata)
+    return processor(**call).to(model.device)
