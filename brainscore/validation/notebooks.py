@@ -14,6 +14,7 @@ import tempfile
 EXCLUDED = {
     'experiments/02_which_layer_matches_which_region.ipynb': 'Pretrained ResNet-50 download',
     'experiments/09_recording_and_silencing_resnet18.ipynb': 'Pretrained ResNet-18 download',
+    'experiments/06_spatial_organization_of_units.ipynb': 'TDANN checkpoints and positions download (280 MB)',
     'experiments/14_reading_instructions_and_words.ipynb': 'Qwen2.5-VL-7B download and GPU run',
 }
 SELECTED = (
@@ -25,7 +26,6 @@ SELECTED = (
     'lessons/11_interventions_in_an_experiment.ipynb',
     'experiments/03_predicting_it_responses.ipynb',
     'experiments/04_silencing_units_in_a_digit_classifier.ipynb',
-    'experiments/06_spatial_organization_of_units.ipynb',
     'experiments/08_learning_in_a_closed_loop.ipynb',
     'experiments/10_story_listening_fmri.ipynb',
     'experiments/13_passing_outputs_between_subjects.ipynb',
