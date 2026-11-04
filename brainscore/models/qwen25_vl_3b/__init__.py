@@ -15,3 +15,15 @@ def _load_vwfa():
 
 
 model_registry['qwen2.5-vl-3b-vwfa'] = _load_vwfa
+
+
+def _loader(identifier):
+    def load():
+        from .model import get_model
+        return get_model(identifier)
+    return load
+
+
+# The 7B: the same vision tower and parts, a larger decoder.
+model_registry['qwen2.5-vl-7b'] = _loader('qwen2.5-vl-7b')
+model_registry['qwen2.5-vl-7b-vwfa'] = _loader('qwen2.5-vl-7b-vwfa')

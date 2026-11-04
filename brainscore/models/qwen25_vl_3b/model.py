@@ -42,6 +42,15 @@ REGION_LAYER_MAP = {
 VWFA_LAYER = 'blocks.28'
 ABLATION_VARIANT = 'qwen2.5-vl-3b-vwfa'
 
+# Sizes share the vision tower (32 blocks, so the vision regions are the same)
+# and differ in the decoder. The 7B language layer is provisional: ~2/3 of its
+# 28 decoder layers, as layers.28 is for the 3B's 36.
+SIZES = {
+    'qwen2.5-vl-3b': ('Qwen/Qwen2.5-VL-3B-Instruct', 7.6, 'layers.28'),
+    'qwen2.5-vl-7b': ('Qwen/Qwen2.5-VL-7B-Instruct', 16.6, 'layers.18'),
+}
+VARIANTS = {f'{size}-vwfa': size for size in SIZES}
+
 
 def _make_generation_fn(qwen_model, qwen_processor, max_new_tokens: int = 8):
     """Create a generation callable for instruction-following behavioral
@@ -96,23 +105,29 @@ def _make_generation_fn(qwen_model, qwen_processor, max_new_tokens: int = 8):
 
 
 def get_model(identifier: str) -> BrainScoreModel:
-    assert identifier in ('qwen2.5-vl-3b', ABLATION_VARIANT)
+    size = VARIANTS.get(identifier, identifier)
+    assert size in SIZES, identifier
+    hf_id, download_gb, language_layer = SIZES[size]
     from brainscore.models._downloads import hf_preflight
-    download = hf_preflight(identifier, 'Qwen/Qwen2.5-VL-3B-Instruct', 7.6)
+    download = hf_preflight(identifier, hf_id, download_gb)
 
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
     qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        'Qwen/Qwen2.5-VL-3B-Instruct',
+        hf_id,
         torch_dtype=torch.float16,
         **download,
     )
     # Pin the image-processor implementation: transformers 5 rebinds the class
     # names, moving the default from PIL to torchvision and shifting pixels.
-    qwen_processor = AutoProcessor.from_pretrained('Qwen/Qwen2.5-VL-3B-Instruct', **download)
-    qwen_processor = pin_image_processor(qwen_processor, 'Qwen/Qwen2.5-VL-3B-Instruct', **download)
+    # The whole model on one device: the 7B's output head is not tied to its
+    # input embeddings, so moving the towers alone would leave it behind.
+    from brainscore.model_helpers._device import select_device
+    qwen_model = qwen_model.to(select_device())
+    qwen_processor = AutoProcessor.from_pretrained(hf_id, **download)
+    qwen_processor = pin_image_processor(qwen_processor, hf_id, **download)
 
     # Vision: VisionWrapper(kind='vlm') delegates to VLMVisionWrapper, which
     # handles Qwen's flattened-patch layout.
@@ -149,12 +164,12 @@ def get_model(identifier: str) -> BrainScoreModel:
     from brainscore.model_helpers.replies import chat_parts
     reply, likelihood = chat_parts(qwen_model, qwen_processor)
 
-    region_layer_map = dict(REGION_LAYER_MAP)
+    region_layer_map = dict(REGION_LAYER_MAP, language_system=language_layer)
     # Each region says which tower records it, so a task showing images and
     # text records the vision regions from the image tower.
     variant_kwargs = dict(region_modality_map={
         region: 'text' if region == 'language_system' else 'vision' for region in region_layer_map})
-    if identifier == ABLATION_VARIANT:
+    if identifier in VARIANTS:
         from brainscore.perturbation import build_pytorch_ablation_fn
         region_layer_map['VWFA'] = VWFA_LAYER
         variant_kwargs = dict(

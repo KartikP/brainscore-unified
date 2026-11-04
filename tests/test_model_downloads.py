@@ -113,7 +113,8 @@ def test_opt_out_requires_explicit_one(cache, monkeypatch, value):
 
 @pytest.mark.parametrize('identifier', [
     'blip2-opt-2.7b', 'blip2-wav2vec2', 'qwen2.5-vl-3b',
-    'qwen2.5-vl-3b-vwfa', 'qwen2.5-vl-wav2vec2', 'qwen3.6-27b', 'vjepa2-vitl',
+    'qwen2.5-vl-3b-vwfa', 'qwen2.5-vl-7b', 'qwen2.5-vl-7b-vwfa', 'qwen2.5-vl-wav2vec2',
+    'qwen3.6-27b', 'vjepa2-vitl',
 ])
 def test_cold_registered_factory_stops_before_any_hf_download(cache, monkeypatch, identifier):
     import brainscore
