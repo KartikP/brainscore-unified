@@ -14,7 +14,9 @@ pytestmark = pytest.mark.unit
 
 torch = pytest.importorskip('torch')
 
-NOTEBOOK = Path(__file__).resolve().parents[1] / 'notebooks' / '20_steer_a_language_model.ipynb'
+# ponytail: the blind-discovery section holding require_damage was cut from
+# experiments/12; the archived original still defines both gates verbatim.
+NOTEBOOK = Path(__file__).resolve().parents[1] / 'notebooks' / 'archive' / '20_steer_a_language_model.ipynb'
 
 
 def _helpers(*names):

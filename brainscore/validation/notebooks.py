@@ -10,24 +10,31 @@ import sys
 import tempfile
 
 
-# Downloads and full scientific reruns have separate qualification requirements.
+# Downloads, GPU runs and full scientific reruns have separate qualification requirements.
 EXCLUDED = {
-    '03_real_model_representations.ipynb': 'Pretrained ResNet-50 download',
-    '04_multiregion_geometry.ipynb': 'Pretrained ResNet-50 download',
-    '16_whole_brain_encoding.ipynb': 'LeBel data and GPT-2 scientific rerun',
-    '18_resnet_experiment_toolbox.ipynb': 'Pretrained ResNet-18 download',
-    '20_steer_a_language_model.ipynb': 'Qwen3.5-4B download and GPU run',
+    'experiments/02_which_layer_matches_which_region.ipynb': 'Pretrained ResNet-50 download',
+    'experiments/09_recording_and_silencing_resnet18.ipynb': 'Pretrained ResNet-18 download',
+    'experiments/12_steering_a_language_model.ipynb': 'Qwen3.5-4B download and GPU run',
 }
 SELECTED = (
-    '01_quickstart_layer_mapping.ipynb', '02_behavioral_and_nulls.ipynb',
-    '05_multiple_subjects.ipynb', '06_topographic_metric.ipynb',
-    '07_bring_your_model.ipynb', '08_brain_visualization.ipynb',
-    '09_scaling_curves.ipynb', '10_brain_alignment.ipynb',
-    '11_state_change_ablation.ipynb', '12_embodied_vlm_game.ipynb',
-    '13_temporal_multimodal.ipynb', '14_intervention_spectrum.ipynb',
-    '15_streaming_delivery.ipynb', '17_experiment_toolbox.ipynb',
-    '19_openpi_experiment_toolbox.ipynb',
+    'lessons/01_your_first_subject.ipynb', 'lessons/02_your_first_benchmark.ipynb',
+    'lessons/03_wrap_a_pytorch_model.ipynb', 'lessons/04_bring_an_existing_model.ipynb',
+    'lessons/05_layers_and_regions.ipynb', 'lessons/06_behavior.ipynb',
+    'lessons/07_perturb_a_model.ipynb', 'lessons/08_choose_units.ipynb',
+    'lessons/09_closed_loop.ipynb', 'lessons/10_run_an_experiment.ipynb',
+    'experiments/01_does_the_model_beat_random_features.ipynb',
+    'experiments/03_predicting_it_responses.ipynb',
+    'experiments/04_silencing_units_in_a_digit_classifier.ipynb',
+    'experiments/05_how_much_ablation_matters.ipynb',
+    'experiments/06_spatial_organization_of_units.ipynb',
+    'experiments/07_aligning_signals_in_time.ipynb',
+    'experiments/08_learning_in_a_closed_loop.ipynb',
+    'experiments/10_story_listening_fmri.ipynb',
+    'experiments/11_inside_a_robot_policy.ipynb',
+    'experiments/13_passing_outputs_between_subjects.ipynb',
 )
+# Folders shared by every notebook; experiments reference them as ../assets etc.
+SHARED_FOLDERS = ('assets', 'data', 'figure_sources')
 
 
 def execute(source: Path, destination: Path, timeout: int) -> None:
@@ -60,9 +67,15 @@ def execute(source: Path, destination: Path, timeout: int) -> None:
     ))
     with tempfile.TemporaryDirectory(prefix='umi-notebook-') as temporary:
         work = Path(temporary)
-        for folder in ('assets', 'data'):
+        # Mirror the notebooks folder: shared folders at the root, the notebook
+        # one level below, so both ./assets and ../assets resolve.
+        run_dir = work / 'notebook'
+        run_dir.mkdir()
+        for folder in SHARED_FOLDERS:
             if (source.parent / folder).exists():
-                shutil.copytree(source.parent / folder, work / folder)
+                shutil.copytree(source.parent / folder, run_dir / folder)
+            if (source.parent.parent / folder).exists():
+                shutil.copytree(source.parent.parent / folder, work / folder)
         env = dict(os.environ)
         env.pop('PYTHONPATH', None)
         env.update({
@@ -79,7 +92,7 @@ def execute(source: Path, destination: Path, timeout: int) -> None:
         ]
         client = NotebookClient(
             notebook, km=manager, timeout=timeout, allow_errors=False,
-            resources={'metadata': {'path': str(work)}},
+            resources={'metadata': {'path': str(run_dir)}},
         )
         try:
             client.execute(env=env, cleanup_kc=True)
@@ -93,7 +106,10 @@ def run(source: Path, output: Path, timeout: int = 180) -> dict:
     if source.resolve() == output.resolve() or source.resolve() in output.resolve().parents:
         raise ValueError('Execution output must not overwrite source notebooks')
     output.mkdir(parents=True, exist_ok=True)
-    actual = {path.name for path in source.glob('*.ipynb')}
+    actual = {
+        path.relative_to(source).as_posix() for path in source.rglob('*.ipynb')
+        if not {'archive', '.ipynb_checkpoints'} & set(path.relative_to(source).parts)
+    }
     expected = set(SELECTED) | set(EXCLUDED)
     report = {
         'python': sys.version, 'executable': sys.executable,
@@ -103,7 +119,7 @@ def run(source: Path, output: Path, timeout: int = 180) -> dict:
     }
     (output / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
     # Saved Markdown figures must still open after the temporary kernels exit.
-    for folder in ('assets', 'data'):
+    for folder in SHARED_FOLDERS:
         if (source / folder).exists():
             shutil.copytree(source / folder, output / folder, dirs_exist_ok=True)
     for name in SELECTED:
@@ -111,6 +127,7 @@ def run(source: Path, output: Path, timeout: int = 180) -> dict:
         result = {'notebook': name, 'passed': False}
         try:
             result['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+            (output / name).parent.mkdir(parents=True, exist_ok=True)
             execute(path, output / name, timeout)
             result['passed'] = True
         except Exception as error:

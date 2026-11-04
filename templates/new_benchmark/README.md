@@ -21,7 +21,7 @@ score = brainscore.score('<some-model>', '<your-id>')
 
 This template records responses with `neural_response(subject=..., stimulus_set=..., record='IT', time_bins=...)`, which runs a session through `subject.participate(session)`. Any `Subject` can be scored: a `BrainScoreModel`, a legacy adapter, or a subject that implements only `participate`. For behavioral tasks use `behavioral_response(subject, task_context)`. Do not call `start_recording`, `start_task` or `process` directly; a session-native `Subject` does not promise them.
 Before opening a PR, complete the
-[benchmark addition checklist](../../docs/benchmark_addition_checklist.md) and attach the evidence
+[benchmark addition checklist](../../docs/archive/benchmark_addition_checklist.md) and attach the evidence
 for data-plugin loading, null floor, ceiling, modality ablations, timing assumptions, score attrs,
 and any EC2-only verification.
 

@@ -41,4 +41,4 @@ prepared time-resolved assembly are different targets, not interchangeable.
 
 Before release, complete the local loader/command path, document the exact
 native inputs and access steps, measure storage/runtime needs, and validate a
-fresh build. See the [dataset audit](../../../docs/dataset_preparation.md).
+fresh build. See the [dataset audit](../../../docs/archive/dataset_preparation.md).

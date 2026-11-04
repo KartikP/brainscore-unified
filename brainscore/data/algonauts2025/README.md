@@ -38,4 +38,4 @@ Do not treat those NaNs as an acquired human dataset.
 
 This converter is not registered with `brainscore.data prepare`. The full
 fresh-build validation, content manifest and shared-builder migration are
-tracked in the [dataset audit](../../../docs/dataset_preparation.md).
+tracked in the [dataset audit](../../../docs/archive/dataset_preparation.md).

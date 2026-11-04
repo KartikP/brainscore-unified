@@ -77,4 +77,4 @@ the authors' distribution terms. A successful build does not establish paper
 replication; the paper archive currently yields 4,372 items, versus 4,374 stated
 in the paper.
 
-For model setup, scoring, and tools, see [the EWoK guide](../../../docs/ewok.md).
+For model setup, scoring, and tools, see [the EWoK guide](../../../docs/archive/ewok.md).

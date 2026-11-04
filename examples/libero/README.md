@@ -2,10 +2,10 @@
 
 **Transport results:** both routes passed 10/10 smoke trials and 221 saved requests matched exactly. The full Spatial run later completed: reference 496/500 successes, UMI 488/500. Those closed-loop outcomes were not equivalent.
 
-**Historical internal-tools check (October 6, 2026):** a separate ten-task check passed after a GPU recording fix. Baseline, recording and ablation each succeeded on 10/10 tasks; baseline and recording matched all 223 observations/action chunks exactly. See the [qualification report](../../docs/qualification/2026-10-06-openpi-tools.md).
+**Historical internal-tools check (October 6, 2026):** a separate ten-task check passed after a GPU recording fix. Baseline, recording and ablation each succeeded on 10/10 tasks; baseline and recording matched all 223 observations/action chunks exactly. See the [qualification report](../../docs/archive/qualification/2026-10-06-openpi-tools.md).
 
 For the design and steps to reuse in another benchmark, read
-[Connect a robotics benchmark](../../docs/robotics_benchmark_integration.md).
+[Connect a robotics benchmark](../../docs/archive/robotics_benchmark_integration.md).
 
 Use the public `pi05_libero` checkpoint with OpenPI's LIBERO evaluator. The
 reference evaluator keeps control of tasks, initial states, image preprocessing,
@@ -158,7 +158,7 @@ profile that produced the selected corpus.
 
 `serve_tools.py` adds the common `RecordActivity` and `Ablate` tools to the pinned
 OpenPI JAX sampler. `qualify_tools.py` compares baseline, recorded, ablated and
-restored inference on saved requests. See [policy instrumentation](../../docs/policy_instrumentation.md)
+restored inference on saved requests. See [policy instrumentation](../../docs/archive/policy_instrumentation.md)
 for the target names, client example and cleanup rules.
 
 The providers have 36 CPU checks plus trained NVIDIA L4 same-input and remote checks. Selected-unit recording at all three sites preserved actions exactly on ten inputs each. The separate ten-task simulator check uses shared GPU autotuning results; it is not full benchmark reproduction.

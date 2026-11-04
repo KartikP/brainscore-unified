@@ -23,7 +23,7 @@ The supported shared environment is:
 
 Use the shared constraints in `install/v2-constraints.txt` for the reviewed CPU
 integration profile. Full platform and scientific qualification is tracked in
-[the production policy](../docs/production_release.md).
+[the production policy](../docs/archive/production_release.md).
 
 ## One-command setup
 
@@ -96,7 +96,7 @@ jupyter nbconvert --to notebook --execute --stdout 01_quickstart_layer_mapping.i
 ~~~
 
 Then follow the [notebook manifest](../notebooks/README.md) or the
-[getting-started guide](../docs/getting_started.md).
+[getting-started guide](../docs/README.md).
 
 ## Hardware
 

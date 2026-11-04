@@ -26,4 +26,4 @@ python notebooks/figure_sources/render_openpi_figures.py
 
 To rerun inference, use the full pinned OpenPI runtime and `examples/libero/qualify_tools.py` with the trained checkpoint and original raw call record. Always write to a new directory. The general UMI notebook environment is sufficient for reading these records, but not for loading the policy.
 
-[Qualification scope, discovered failure and correction](../../../docs/qualification/2026-10-06-openpi-tools.md).
+[Qualification scope, discovered failure and correction](../../../docs/archive/qualification/2026-10-06-openpi-tools.md).
