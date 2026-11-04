@@ -84,7 +84,7 @@ def test_all_public_experiments_registered_lazily():
 
 def test_loading_requires_explicit_checkout_before_model_use(monkeypatch):
     monkeypatch.delenv('BRAINSCORE_COGGYM_CHECKOUT', raising=False)
-    with pytest.raises(ValueError, match='BRAINSCORE_COGGYM_CHECKOUT'):
+    with pytest.raises(FileNotFoundError, match='BRAINSCORE_COGGYM_CHECKOUT'):
         brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
 
 

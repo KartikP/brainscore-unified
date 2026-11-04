@@ -198,6 +198,19 @@ ALGONAUTS_ROOT = register(LocalAsset(
 ))
 
 
+COGGYM_CHECKOUT = register(LocalAsset(
+    name='coggym-checkout',
+    env_var='BRAINSCORE_COGGYM_CHECKOUT',
+    default_path='coggym',
+    kind='stimuli',
+    why_local="CogGym's runner reads its experiments, human results and scoring code "
+              "from an unmodified Git checkout at a pinned revision.",
+    source='https://github.com/lance-ying/coggym (revision a1cd9df1118fec80eba7463de237d1497d77e041)',
+    obtain='git clone https://github.com/lance-ying/coggym.git, then check out the revision above.',
+    used_by=['CogGym.* (all 23 public experiments)'],
+))
+
+
 def check_benchmark_assets(identifier: str) -> None:
     """Check declared local assets without constructing a model or reading data."""
     for asset in REGISTRY.values():
