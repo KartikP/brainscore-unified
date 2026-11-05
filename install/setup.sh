@@ -11,13 +11,20 @@ ENV_NAME="${UMI_ENV_NAME:-brainscore-unified}"
 ENV_FILE="$WORKDIR/environment-unified.yml"
 
 clone_or_verify() {
+    # Unified is cloned at the branch tip; core, vision and language at the commit
+    # unified was tested with (install/peer-revisions.json), passed as $3.
     local name="$1"
     local url="$2"
+    local pinned="${3:-}"
     local destination="$WORKDIR/$name"
 
     if [[ ! -e "$destination" ]]; then
-        echo "Cloning $name at $BRANCH"
+        echo "Cloning $name at $BRANCH${pinned:+ (pinned to ${pinned:0:7})}"
         git clone --branch "$BRANCH" --single-branch --depth 1 "$url" "$destination"
+        if [[ -n "$pinned" ]]; then
+            git -C "$destination" fetch --quiet --depth 1 origin "$pinned"
+            git -C "$destination" checkout --quiet "$pinned"
+        fi
         return
     fi
 
@@ -26,10 +33,14 @@ clone_or_verify() {
         exit 1
     fi
 
+    if [[ -n "$pinned" && "$(git -C "$destination" rev-parse HEAD)" == "$pinned" ]]; then
+        echo "$name already exists at the pinned ${pinned:0:7}"
+        return
+    fi
     local current_branch
     current_branch="$(git -C "$destination" branch --show-current)"
     if [[ "$current_branch" != "$BRANCH" ]]; then
-        echo "Error: $name is on '$current_branch'; expected '$BRANCH'." >&2
+        echo "Error: $name is on '${current_branch:-a detached commit}'; expected '$BRANCH'${pinned:+ or ${pinned:0:7}}." >&2
         echo "Use a clean checkout or switch that repository explicitly." >&2
         exit 1
     fi
@@ -40,10 +51,14 @@ echo "Brain-Score UMI local setup"
 echo "Root: $WORKDIR"
 echo "Environment: $ENV_NAME"
 
-clone_or_verify core "https://github.com/brain-score/core.git"
-clone_or_verify vision "https://github.com/brain-score/vision.git"
-clone_or_verify language "https://github.com/brain-score/language.git"
 clone_or_verify unified "https://github.com/KartikP/brainscore-unified.git"
+peer() {    # the commit unified pins for a peer repository
+    python3 -c "import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])" \
+        "$WORKDIR/unified/install/peer-revisions.json" "$1"
+}
+clone_or_verify core "https://github.com/brain-score/core.git" "$(peer core)"
+clone_or_verify vision "https://github.com/brain-score/vision.git" "$(peer vision)"
+clone_or_verify language "https://github.com/brain-score/language.git" "$(peer language)"
 
 # Record the exact commit of each repo so a run is reproducible / citable
 # (branches move; this pins what was actually installed).

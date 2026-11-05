@@ -27,10 +27,11 @@ def _event_types():
     from brainscore_core import events
     from brainscore_core.contract import TaskContext
     from brainscore_core.streaming import StreamEvent
+    from brainscore_core.responses import Choice, Prompt, Scale, Text   # a task's answer forms
     types = [getattr(events, name) for name in (
         'CameraFrame', 'Proprioception', 'EnvironmentStep', 'EnvironmentResponse',
         'Message', 'StateChange', 'Perturbation', 'PerturbationApplied', 'Selection')]
-    return {t.__name__: t for t in [*types, TaskContext, StreamEvent]}
+    return {t.__name__: t for t in [*types, TaskContext, StreamEvent, Choice, Scale, Text, Prompt]}
 
 
 def _stamp(handle):
