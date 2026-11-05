@@ -1,0 +1,224 @@
+{
+  "date": "2026-11-01",
+  "policy_calls": 81,
+  "policy_processes": 9,
+  "observations": [
+    0,
+    49,
+    98
+  ],
+  "within_process_exact": {
+    "native-0": true,
+    "native-1": true,
+    "native-2": true,
+    "autotune-reference": true,
+    "autotune-reuse-0": true,
+    "autotune-reuse-1": true,
+    "independent-recorded-0": true,
+    "independent-recorded-1": true,
+    "alternate-kernels-reused": true
+  },
+  "between_processes": {
+    "native-0:native-1": [
+      {
+        "call": 0,
+        "inputs_equal": true,
+        "tokens_equal": false,
+        "actions_equal": false,
+        "max_action_difference": 0.018808658378401066
+      },
+      {
+        "call": 49,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 98,
+        "inputs_equal": true,
+        "tokens_equal": false,
+        "actions_equal": false,
+        "max_action_difference": 0.018808658378401066
+      }
+    ],
+    "native-0:native-2": [
+      {
+        "call": 0,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 49,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 98,
+        "inputs_equal": true,
+        "tokens_equal": false,
+        "actions_equal": false,
+        "max_action_difference": 0.018808658378401066
+      }
+    ],
+    "autotune-reference:autotune-reuse-0": [
+      {
+        "call": 0,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 49,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 98,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      }
+    ],
+    "autotune-reference:autotune-reuse-1": [
+      {
+        "call": 0,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 49,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 98,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      }
+    ],
+    "independent-recorded-1:alternate-kernels-reused": [
+      {
+        "call": 0,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 49,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 98,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      }
+    ],
+    "autotune-reference:alternate-kernels-reused": [
+      {
+        "call": 0,
+        "inputs_equal": true,
+        "tokens_equal": false,
+        "actions_equal": false,
+        "max_action_difference": 0.018808658378401066
+      },
+      {
+        "call": 49,
+        "inputs_equal": true,
+        "tokens_equal": true,
+        "actions_equal": true,
+        "max_action_difference": 0.0
+      },
+      {
+        "call": 98,
+        "inputs_equal": true,
+        "tokens_equal": false,
+        "actions_equal": false,
+        "max_action_difference": 0.018808658378401066
+      }
+    ]
+  },
+  "render_setting_controls": [
+    {
+      "scene": "kettle",
+      "setting": "default",
+      "renders": 90,
+      "distinct_images": 4
+    },
+    {
+      "scene": "kettle",
+      "setting": "no-msaa",
+      "renders": 90,
+      "distinct_images": 1
+    },
+    {
+      "scene": "kettle",
+      "setting": "no-shadow",
+      "renders": 90,
+      "distinct_images": 2
+    },
+    {
+      "scene": "kettle",
+      "setting": "no-reflection",
+      "renders": 90,
+      "distinct_images": 4
+    },
+    {
+      "scene": "kettle",
+      "setting": "no-dither",
+      "renders": 90,
+      "distinct_images": 4
+    },
+    {
+      "scene": "remote",
+      "setting": "default",
+      "renders": 90,
+      "distinct_images": 4
+    },
+    {
+      "scene": "remote",
+      "setting": "no-msaa",
+      "renders": 90,
+      "distinct_images": 1
+    }
+  ],
+  "initial_render_controls": 27,
+  "kernel_choices_changed": {
+    "0": 9,
+    "1": 11
+  },
+  "kernel_operations_compared": 23,
+  "fast_tokenizer_revision": "ec4d7aa71691cac0b8bed6942be45684db2110f4",
+  "gpu": "NVIDIA L4",
+  "driver": "580.126.09",
+  "jax": "0.5.3",
+  "mujoco": "3.5.0",
+  "autotune_reference_sha256": "1e547cac68074e095d3925bf782aaddc6d52bcfce4dd39a10d951304e708403f",
+  "autotune_alternate_sha256": "001d8b2f8f6f632a97452015ff1764337456718acc100ca18d20dea4e6eb0a78",
+  "source_provenance": "2026-11-01-native-evaluators.json",
+  "limitations": [
+    "Three saved policy inputs; no new full closed-loop rollout",
+    "Saved exterior-view rendering at 224x224, not all original camera preprocessing",
+    "No published-score replication; no default benchmark or UMI changes"
+  ]
+}

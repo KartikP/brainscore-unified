@@ -1087,3 +1087,84 @@ def test_unresponsive_close_releases_the_bridge_and_keeps_the_run_error(tmp_path
             bridge.lock.release()
     # After the fixture has joined its connection handlers, including their bounded closes.
     assert timers() == []
+
+
+@pytest.mark.parametrize('mode', ['baseline', 'recording'])
+def test_paired_noise_reaches_remote_policy_and_saved_receipts(tmp_path, mode):
+    from brainscore.experiments.backends.openpi_remote import OpenPIToolServer
+
+    class NoisePolicy:
+        def __init__(self):
+            self.noises = []
+            self.receivers = []
+
+        def infer(self, observation, *, noise):
+            self.noises.append(noise.copy())
+            for receive in self.receivers:
+                receive('action_out_proj', {'array': noise[:, :1].copy(), 'denoising_step': 0})
+            return {'actions': noise[:, :7].copy()}
+
+    class NoiseInstrumentation(NoInstrumentation):
+        def validate(self, operation, targets):
+            assert operation == 'record'
+            assert all(t.layer == 'action_out_proj' and tuple(t.indices) == (0,) for t in targets)
+
+        @contextmanager
+        def record(self, targets, receive):
+            self.policy.receivers.append(receive)
+            try:
+                yield
+            finally:
+                self.policy.receivers.remove(receive)
+
+    policy = NoisePolicy()
+    module = example('serve_tool_bridge')
+    with listening(OpenPIToolServer(policy, NoiseInstrumentation(policy)).handler) as policy_port:
+        bridge = module.Bridge(
+            'ws://127.0.0.1:%d' % policy_port, tmp_path / 'bridge', mode,
+            suite='libero_spatial', trials_per_task=1, horizon=5, paired_seed=7,
+        )
+        with listening(bridge.handler) as port:
+            assert evaluate_in_process(tmp_path / 'eval', port) == 0
+    report = json.loads((tmp_path / 'eval/report.json').read_text())
+    assert report['bridge']['policy_randomness']['mode'] == 'paired-tools-v1'
+    assert report['bridge']['policy_randomness']['seed'] == 7
+    events = record_events(tmp_path / 'bridge/connection-1')
+    inputs = [e['payload']['args'][0] for e in events if e['kind'] == 'input']
+    outputs = [e['payload'] for e in events if e['kind'] == 'output']
+    assert len(inputs) == len(outputs) == len(policy.noises)
+    activity = [e for e in events if e['kind'] == 'activity']
+    assert len(activity) == (len(inputs) if mode == 'recording' else 0)
+    assert not policy.receivers  # Recording scopes are detached after the run.
+    counters = collections.Counter()
+    for step, response, noise in zip(inputs, outputs, policy.noises):
+        annotation = step.context['umi_call']
+        key = annotation['task'], annotation['trial']
+        receipt = step.context['policy_randomness']
+        assert receipt['call'] == counters[key]
+        counters[key] += 1
+        assert receipt == response.metadata['policy_output']['qualification_randomness']
+        import hashlib
+        assert receipt['noise_sha256'] == hashlib.sha256(noise.astype('<f4').tobytes()).hexdigest()
+    assert all(np.array_equal(out.action, noise[:, :7]) for out, noise in zip(outputs, policy.noises))
+    comparison = example('compare')
+    result = comparison.compare(tmp_path / 'eval', tmp_path / 'eval',
+                                reference_experiment=tmp_path / 'bridge/connection-1',
+                                umi_experiment=tmp_path / 'bridge/connection-1')
+    assert result['policy_randomness']['benchmark_replication'] is False
+
+
+def test_paired_noise_shape_matches_pinned_pi05_libero_configuration():
+    config = ast.parse((OPENPI / 'src/openpi/training/config.py').read_text())
+    matches = [node for node in ast.walk(config) if isinstance(node, ast.Call)
+               and any(k.arg == 'name' and isinstance(k.value, ast.Constant)
+                       and k.value.value == 'pi05_libero' for k in node.keywords)]
+    assert len(matches) == 1
+    model = next(k.value for k in matches[0].keywords if k.arg == 'model')
+    horizon = next(ast.literal_eval(k.value) for k in model.keywords if k.arg == 'action_horizon')
+    defaults = ast.parse((OPENPI / 'src/openpi/models/pi0_config.py').read_text())
+    dimension = next(ast.literal_eval(node.value) for node in ast.walk(defaults)
+                     if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)
+                     and node.target.id == 'action_dim')
+    noise = example('serve_tool_bridge').PairedNoiseClient(None, seed=7, suite='libero_spatial')
+    assert noise.describe()['noise_shape'] == [horizon, dimension]
