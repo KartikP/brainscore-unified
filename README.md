@@ -2,7 +2,7 @@
 
 Run models across compatible Brain-Score benchmarks, record their responses, and attach experiment tools. A `Subject` connects the model to the experiment; `BrainScoreModel` supplies extraction and task helpers. Use `Experiment` to combine a protocol with recording and intervention tools.
 
-**Start here:** [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [Lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
+**Start here:** [Lesson 1: your first subject](notebooks/lessons/01_your_first_subject.ipynb), then [Lesson 10: a whole study in one notebook](notebooks/lessons/10_run_an_experiment.ipynb) (design a task, record answers and activity, save the run, turn it into a benchmark). Reference: [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [All lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
 
 UMI is a v2 source candidate. See the [release policy](docs/archive/production_release.md) for remaining qualification.
 
@@ -21,7 +21,19 @@ UMI is a v2 source candidate. See the [release policy](docs/archive/production_r
 
 ## Install
 
-Four editable installs in one Python 3.11 environment.
+Requires Python 3.11, `conda` (miniforge or miniconda) and `git`.
+
+**On a new machine** (recommended): the bootstrap clones all four repositories, with core,
+vision and language at the commits this version of unified was tested with
+(`install/peer-revisions.json`), builds the pinned environment and checks it:
+
+```bash
+mkdir brainscore-umi && cd brainscore-umi
+base=https://raw.githubusercontent.com/KartikP/brainscore-unified/unified-model-interface-v2/install
+curl -fsSLO "$base/setup.sh" && curl -fsSLO "$base/environment-unified.yml"
+bash setup.sh
+conda activate brainscore-unified
+```
 
 **With the four repositories already checked out side by side:**
 
@@ -34,33 +46,16 @@ python -m pip check
 python -m brainscore.doctor
 ```
 
-Install all four repositories in the same pip command. The candidate peer versions
-are supplied by these checkouts; they are not available from PyPI. Installing
-only unified, vision, or language into an empty environment will not resolve the
-candidate dependencies. Do not remove the exact peer pins to work around this.
+Install all four repositories in the same pip command: the candidate peer versions come
+from these checkouts and are not on PyPI. Keep `-c unified/install/v2-constraints.txt`.
+The packages declare only broad bounds (`numpy<2`, `xarray==2022.3.0`, ...); the
+constraints file holds every shared dependency (pyarrow, torch, transformers, ...) at the
+tested version, and without it pip can pick versions that break imports.
 For an immutable checkout set, use [the integration instructions](install/README.md#reproduce-the-reviewed-peer-revisions).
 
- Version pins (`numpy<2`, `xarray==2022.3.0`,
-`scikit-learn>=1.7,<1.8`, `transformers>=4.57,<6`) live in the packages themselves, so
-pip enforces them without a separate environment file.
-
-**Starting from nothing?** The bootstrap also clones the four repositories:
-
-```bash
-mkdir brainscore-umi && cd brainscore-umi
-base=https://raw.githubusercontent.com/KartikP/brainscore-unified/unified-model-interface-v2/install
-curl -fsSLO "$base/setup.sh" && curl -fsSLO "$base/environment-unified.yml"
-bash setup.sh
-conda activate brainscore-unified
-```
-
-`install/environment-unified.yml` exists for that bootstrap, which places it beside the
-repositories before use. Do not point conda at it in place — conda resolves its relative
-`-e ./core` entries from the file's own directory, so it fails with
-`ERROR: ./core is not a valid editable requirement`. The two-step above avoids the file
-entirely and is preferred when a checkout already exists.
-
-Requires Python 3.11 and `conda` (miniforge or miniconda). See
+Do not point conda at `install/environment-unified.yml` in place: conda resolves its
+relative `-e ./core` entries from the file's own directory, so it fails with
+`ERROR: ./core is not a valid editable requirement`. See
 [install/README.md](install/README.md) for troubleshooting.
 
 ## Local datasets and external experiments
