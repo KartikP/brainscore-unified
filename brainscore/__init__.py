@@ -9,6 +9,7 @@ registry lookup.
 """
 
 import logging
+from pathlib import Path
 from brainscore_core.plugin_management.import_plugin import PluginNotFoundError
 from typing import Dict, Any, Callable
 
@@ -53,33 +54,117 @@ def _populate_unified_registries() -> None:
         _logger.warning(f"failed to import unified metrics: {e}")
 
 
+class LoadError(RuntimeError):
+    """A registered model or benchmark that cannot load here, with the reason and a next step."""
+
+
+_ISSUES = {'vision': 'https://github.com/brain-score/vision/issues',
+           'language': 'https://github.com/brain-score/language/issues'}
+_GONE_STATUS = {403, 404, 410}
+_GONE_CODES = {'403', '404', 'NoSuchKey', 'NoSuchBucket', 'AccessDenied'}
+_GONE_CLASSES = {'RepositoryNotFoundError', 'EntryNotFoundError', 'RevisionNotFoundError',
+                 'GatedRepoError', 'FileURLRetrievalError'}
+
+
+def _gone(error) -> bool:
+    """Whether an error (or one it was raised from) says a download no longer exists."""
+    while error is not None:
+        status = getattr(error, 'code', None) or getattr(getattr(error, 'response', None), 'status_code', None)
+        aws = getattr(error, 'response', None)
+        aws_code = aws.get('Error', {}).get('Code') if isinstance(aws, dict) else None
+        if (type(error).__name__ in _GONE_CLASSES or status in _GONE_STATUS
+                or aws_code in _GONE_CODES):
+            return True
+        error = error.__cause__ or error.__context__
+    return False
+
+
+class _explained:
+    """Turn a known load failure into a LoadError with a readable reason and next step."""
+
+    def __init__(self, identifier, domain, files):
+        self.identifier, self.domain, self.files = identifier, domain, files
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, kind, error, traceback):
+        if error is None or isinstance(error, (PluginNotFoundError, LoadError)):
+            return False
+        from brainscore_core.plugin_management.import_plugin import PluginDependencyError
+        if isinstance(error, PluginDependencyError):
+            raise LoadError(str(error)) from error
+        if _gone(error):
+            raise LoadError(
+                f"'{self.identifier}' can't load: its {self.files} are no longer at the address "
+                f"recorded for it ({type(error).__name__}: {str(error).splitlines()[0][:200]}). "
+                f"This is a problem with the {self.domain} plugin, not your setup. "
+                f"Please tell a maintainer, quoting this message: {_ISSUES[self.domain]}") from error
+        if isinstance(error, ModuleNotFoundError):
+            raise LoadError(
+                f"'{self.identifier}' needs the package '{error.name}', which is not installed. "
+                f"Next step: load it with BS_INSTALL_DEPENDENCIES unset (or 'yes'), so Brain-Score "
+                f"installs what the plugin lists, or install '{error.name}' yourself.") from error
+        return False
+
+
+def _registered(domain: str, folder: str, registry: str):
+    """Identifiers registered by a domain library's plugins, read from their
+    ``__init__.py`` files without importing them (as the loader finds them)."""
+    import importlib.util
+    import re
+    spec = importlib.util.find_spec(f'brainscore_{domain}')
+    if spec is None or not spec.submodule_search_locations:
+        return []
+    root = Path(list(spec.submodule_search_locations)[0]) / folder
+    pattern = re.compile(registry + r"""\[['"]([^'"]+)['"]\]""")       # either quote, as the loader accepts
+    found = []
+    for init in sorted(root.glob('*/__init__.py')):
+        if not init.parent.name.startswith(('_', '.')):
+            found += pattern.findall(init.read_text(encoding='utf-8', errors='replace'))
+    return found
+
+
+def _listing(unified, folder, registry):
+    import pandas as pd
+    rows = [(identifier, 'unified') for identifier in sorted(unified)]
+    for domain in ('vision', 'language'):
+        rows += [(identifier, domain) for identifier in _registered(domain, folder, registry)]
+    table = pd.DataFrame(rows, columns=['identifier', 'source'])
+    return table.drop_duplicates('identifier').reset_index(drop=True)    # load order: unified first
+
+
+def list_models():
+    """Every model ``load_model`` can find, as a table of ``identifier`` and ``source``
+    (unified, vision or language). Nothing is downloaded or imported to list them."""
+    return _listing(model_registry, 'models', 'model_registry')
+
+
+def list_benchmarks():
+    """Every benchmark ``load_benchmark`` can find, as a table of ``identifier`` and ``source``."""
+    return _listing(benchmark_registry, 'benchmarks', 'benchmark_registry')
+
+
 def load_model(identifier: str) -> Subject:
     """Load a model by identifier.
 
     Checks the unified registry first, then falls back to domain-specific
     registries (brainscore_vision, brainscore_language) for legacy models.
-    Legacy models are auto-wrapped in their domain adapter.
+    Legacy models are auto-wrapped in their domain adapter. A model that cannot
+    load for a known reason (its weights are gone, its packages conflict with
+    this environment) raises ``LoadError`` saying why and what to try next.
     """
-    # Check unified registry first
     if identifier in model_registry:
         return model_registry[identifier]()
-
-    # Fallback to vision
-    try:
-        from brainscore_vision import load_model as load_vision_model
-        return load_vision_model(identifier)
-    except PluginNotFoundError:
-        pass
-
-    # Fallback to language
-    try:
-        from brainscore_language import load_model as load_language_model
-        return load_language_model(identifier)
-    except PluginNotFoundError:
-        pass
-
+    for domain in ('vision', 'language'):
+        try:
+            with _explained(identifier, domain, 'weights'):
+                return __import__(f'brainscore_{domain}', fromlist=['load_model']).load_model(identifier)
+        except PluginNotFoundError:
+            continue
     raise KeyError(
-        f"Model '{identifier}' not found in unified, vision, or language registries."
+        f"Model '{identifier}' not found in unified, vision, or language registries; "
+        f"brainscore.list_models() lists them all."
     )
 
 
@@ -98,24 +183,16 @@ def load_benchmark(identifier: str, **configuration: Any) -> Benchmark:
     if configuration:
         raise TypeError('Benchmark configuration is supported only by unified registry factories')
 
-    # Fallback to vision
-    try:
-        from brainscore_vision import load_benchmark as load_vision_benchmark
-        benchmark = load_vision_benchmark(identifier)
-        return ensure_legacy_benchmark_modalities(benchmark, {'vision'})
-    except PluginNotFoundError:
-        pass
-
-    # Fallback to language
-    try:
-        from brainscore_language import load_benchmark as load_language_benchmark
-        benchmark = load_language_benchmark(identifier)
-        return ensure_legacy_benchmark_modalities(benchmark, {'text'})
-    except PluginNotFoundError:
-        pass
-
+    for domain, modality in (('vision', 'vision'), ('language', 'text')):
+        try:
+            with _explained(identifier, domain, 'data'):
+                benchmark = __import__(f'brainscore_{domain}', fromlist=['load_benchmark']).load_benchmark(identifier)
+            return ensure_legacy_benchmark_modalities(benchmark, {modality})
+        except PluginNotFoundError:
+            continue
     raise KeyError(
-        f"Benchmark '{identifier}' not found in unified, vision, or language registries."
+        f"Benchmark '{identifier}' not found in unified, vision, or language registries; "
+        f"brainscore.list_benchmarks() lists them all."
     )
 
 

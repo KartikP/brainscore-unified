@@ -66,15 +66,25 @@ def test_standard_installer_pip_installs_the_plugin_requirements(identifier, mon
     monkeypatch.setitem(sys.modules, 'brainscore_vision',
                         types.SimpleNamespace(__file__=str(root / '__init__.py')))
     calls = []
-    monkeypatch.setattr(plugin_installer.subprocess, 'run',
-                        lambda command, **kwargs: calls.append((command, kwargs)))
+    copied = []
+
+    def run(command, **kwargs):
+        calls.append((command, kwargs))
+        copied.append(Path(command[-1]).read_text())        # the requirements copy pip is given
+        return subprocess.CompletedProcess(command, 0, '', '')
+
+    monkeypatch.setenv('BS_INSTALL_DEPENDENCIES', 'yes')
+    monkeypatch.setattr(plugin_installer.subprocess, 'run', run)
 
     importer = plugin_installer.ImportPlugin('brainscore_vision', 'models', identifier)
     importer.install_requirements()
 
     requirements = root / 'models' / FOLDERS[identifier] / 'requirements.txt'
     assert importer.plugin_dirname == FOLDERS[identifier]
-    assert calls == [([sys.executable, '-m', 'pip', 'install', '-r', str(requirements)], {'check': True})]
+    (command, kwargs), = calls
+    assert command[:5] == [sys.executable, '-m', 'pip', 'install', '-c'] and command[-2] == '-r'
+    assert kwargs == {'capture_output': True, 'text': True}
+    assert copied[0].split() == requirements.read_text().split()
 
 
 @pytest.mark.parametrize('folder', FOLDERS.values())
