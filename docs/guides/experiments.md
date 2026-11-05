@@ -236,14 +236,15 @@ provides it from three pieces:
 - **Recorders** say what to request and save. `RecordBehavior()` saves every answer the
   task asks for; `RecordNeural(['IT'])` saves the activity of a region the subject declares.
 - **`Experiment`** checks the subject, protocol and recorders against each other before
-  running (`validate()`), runs the protocol, and writes every recording to `output_dir`.
-  That folder must be new, so a run never overwrites an earlier one; the results are read
-  back from it, and it can be inspected or replayed later.
+  running (`validate()`), runs the protocol, and saves every recording. The result reads
+  them back. A run is kept in a temporary folder until the result is no longer used:
+  call `result.save('runs/my-study')`, or pass `output_dir='runs/my-study'`, to keep it
+  for inspection or replay. A folder you name must be new, so a run never overwrites an
+  earlier one.
 
 The answers it saves are the same as the ones collected by hand.
 
 ```python
-from tempfile import TemporaryDirectory
 from brainscore.experiments import Experiment, RecordBehavior, RecordNeural, TaskProtocol
 
 # The same stimuli and task, under one named condition and one repetition.
@@ -254,10 +255,7 @@ def recorders():
     """What to request and save: the IT activity, and every answer the task asks for."""
     return [RecordNeural(['IT']), RecordBehavior()]
 
-workspace = TemporaryDirectory(prefix='umi-lesson-')   # a folder for this lesson's runs
-run_root = Path(workspace.name)
-experiment = Experiment(subject=model, protocol=protocol, tools=recorders(),
-                        output_dir=run_root / 'exploration')
+experiment = Experiment(subject=model, protocol=protocol, tools=recorders())
 plan = experiment.validate()               # checks the whole setup without running the model
 print(plan['protocol']['config']['compatibility'])
 result = experiment.run()
@@ -269,10 +267,10 @@ saved_it = result.neural('IT', condition='baseline', repetition=0)
 assert np.array_equal(saved_choices.values, choices.values)
 assert np.allclose(saved_it.values, it.values)
 print('saved:', sorted(path.name for path in result.directory.iterdir()))   # what the run wrote
+# This run is temporary; result.save('runs/animal-or-vehicle-001') would keep a copy.
 ```
 
-Four deliberate mistakes, each caught before the model runs. Each prints its reason and
-leaves no folder behind.
+Four deliberate mistakes, each caught before the model runs. Each prints its reason.
 
 ```python
 text_only = StimulusSet({'stimulus_id': ['word'], 'sentence': ['cat']})
@@ -286,15 +284,12 @@ mistakes = [                                      # (name, protocol, tools), eac
     ('wrong-input', TaskProtocol(text_only, task), [RecordBehavior()]),
 ]
 for name, wrong_protocol, wrong_tools in mistakes:
-    destination = run_root / name
     try:
-        Experiment(subject=model, protocol=wrong_protocol, tools=wrong_tools,
-                   output_dir=destination).validate()
+        Experiment(subject=model, protocol=wrong_protocol, tools=wrong_tools).validate()
     except ValueError as error:
         print(f'{name}: {error}')
     else:
         raise AssertionError(f'{name} should have failed validation')
-    assert not destination.exists()               # nothing was run or written
 ```
 
 ## 7. Make it a benchmark
@@ -313,9 +308,8 @@ class AnimalVehicleBenchmark(Benchmark):
     version = 1
     uses_session = True
 
-    def __init__(self, protocol, reference, metric, output_root):
+    def __init__(self, protocol, reference, metric):
         self.protocol, self.reference, self.metric = protocol, reference, metric
-        self.output_root = output_root
         # Resolve the same recorders before copying benchmark declarations.
         protocol.accept_requests(set().union(*(tool.output_channels for tool in recorders())))
         self.required_input_channels = protocol.input_channels
@@ -323,17 +317,14 @@ class AnimalVehicleBenchmark(Benchmark):
         self.required_traits = protocol.required_traits
 
     def __call__(self, subject):
-        from uuid import uuid4
-        # Each call runs the same experiment into a new folder, then applies the metric.
-        run = Experiment(subject=subject, protocol=self.protocol, tools=recorders(),
-                         output_dir=self.output_root / uuid4().hex).run()
+        # Each call runs the same experiment, then applies the metric to its answers.
+        run = Experiment(subject=subject, protocol=self.protocol, tools=recorders()).run()
         prediction = run.behavior(condition='baseline', repetition=0, measure='choice')
         score = self.metric(prediction, self.reference)
-        score.attrs.update(reference='CIFAR-10 labels', metric='accuracy', normalization='raw',
-                           experiment_directory=str(run.directory))
+        score.attrs.update(reference='CIFAR-10 labels', metric='accuracy', normalization='raw')
         return score
 
-benchmark = AnimalVehicleBenchmark(protocol, reference, accuracy, run_root / 'benchmarks')
+benchmark = AnimalVehicleBenchmark(protocol, reference, accuracy)
 assert benchmark.protocol is protocol
 ```
 
@@ -355,10 +346,6 @@ print(f'Elapsed: {time.perf_counter() - started:.1f} seconds')
 `brainscore.score` checks compatibility before running the benchmark and records the match
 on the score. A `CompatibilityError` means the pair is not applicable, not a score of zero.
 `check_mem=False` skips the memory probe, which this small example does not need.
-
-```python
-workspace.cleanup()
-```
 
 ## When to use manual sessions
 
@@ -453,7 +440,7 @@ compare_outputs(result.directory, replay.directory)
 
 Replay sends the saved inputs again. It does not re-run a simulator; in closed-loop tasks the new actions do not change the saved observations. Reattach intervention tools explicitly when replaying.
 
-The output folder holds `experiment.json` (setup, status, provenance), `result.json`, and `inputs_outputs/` (events and arrays). A failed run stays readable for diagnosis; `RunRecord.inspect(path)` reports what survived an interrupted run.
+The output folder holds `experiment.json` (setup, status, provenance), `result.json`, and `inputs_outputs/` (events and arrays). Without `output_dir`, that folder is temporary and is deleted with the result; replay and inspection need a kept run, so pass `output_dir` or call `result.save(path)` first. A failed run stays readable for diagnosis in a folder you named; `RunRecord.inspect(path)` reports what survived an interrupted run.
 
 ## Wrap an existing evaluator
 
