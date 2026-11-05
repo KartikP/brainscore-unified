@@ -36,6 +36,39 @@ def _import_rows():
     return rows
 
 
+# Each folder can be moved with its environment variable, set before Python starts.
+STORAGE = (('result cache', 'RESULTCACHING_HOME', '~/.result_caching', 'results'),
+           ('downloads', 'BRAINSCORE_HOME', '~/.brain-score', 'downloads'),
+           ('datasets', 'BRAINIO_HOME', '~/.brainio', 'datasets'))
+
+
+def _storage_rows():
+    """(name, variable, path, problem or None) for each storage folder."""
+    import os
+    import tempfile
+    from pathlib import Path
+    rows = []
+    for name, variable, default, folder in STORAGE:
+        if variable == 'RESULTCACHING_HOME' and os.environ.get('RESULTCACHING_DISABLE') == '1':
+            rows.append((name, variable, 'disabled (RESULTCACHING_DISABLE=1)', None))
+            continue
+        path = Path(os.environ.get(variable, default)).expanduser()
+        fix = (f'Mount the drive it points to, or set {variable} to a folder on this disk '
+               f'(e.g. export {variable}=$HOME/brainscore-cache/{folder}) before starting Python.')
+        if path.is_symlink() and not path.exists():
+            rows.append((name, variable, path,
+                         f'{path} links to {os.readlink(path)}, which does not exist (an unmounted drive?). {fix}'))
+            continue
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryFile(dir=path):
+                pass
+            rows.append((name, variable, path, None))
+        except OSError as error:
+            rows.append((name, variable, path, f'{path} is not writable ({error.strerror}). {fix}'))
+    return rows
+
+
 def _asset_rows():
     from brainscore.data import local
     return local.status()
@@ -81,13 +114,13 @@ def report():
     lines.append('')
 
     dependency_problems = problems
-    from brainscore_core.preflight import check_cache_directory
-    try:
-        cache = check_cache_directory()
-        lines.append(f'result cache  {cache if cache is not None else "disabled"}')
-    except OSError as error:
-        lines.append(f'result cache  XX {error}')
-        problems += 1
+    lines.append('storage (where downloads and cached results go)')
+    for name, variable, path, error in _storage_rows():
+        if error is None:
+            lines.append(f'  ok {name:<14s} {path}')
+        else:
+            lines.append(f'  XX {name:<14s} {error}')
+            problems += 1
     lines.append('')
 
     if problems:
