@@ -44,6 +44,7 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 | 9 | [Does silencing one residual branch change ResNet-18's predictions?](experiments/09_recording_and_silencing_resnet18.ipynb) | 7, 10 | CPU, ResNet-18 weights (45 MB) |
 | 10 | [How well do GPT-2 features predict fMRI during story listening, and does timing matter?](experiments/10_story_listening_fmri.ipynb) | 2, 5 | GPU recommended; LeBel 2023 data (750 MB, downloaded on first use), GPT-2 weights |
 | 13 | [Do messages passed around a loop of language models forget where they started?](experiments/13_passing_outputs_between_subjects.ipynb) | 1, 9 | CPU or GPU, GPT-2 and DistilGPT-2 weights (850 MB) |
+| 14 | [Does a vision-language model read instructions and words like a reading-study participant?](experiments/14_reading_instructions_and_words.ipynb) | 6, 7, 8, 10 | One 24 GB GPU, Qwen2.5-VL-7B weights (16.6 GB), about 45 minutes |
 
 Results from saved runs, synthetic data or untrained networks demonstrate a procedure. Each notebook's "Conclusion and limits" section says what its result does and does not establish.
 

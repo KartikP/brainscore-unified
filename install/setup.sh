@@ -72,7 +72,7 @@ Four repositories, one interface. `unified/` is where you start.
 ```bash
 conda activate brainscore-unified
 python -m brainscore.doctor
-jupyter notebook unified/notebooks/01_quickstart_layer_mapping.ipynb
+jupyter notebook unified/notebooks/lessons/01_your_first_subject.ipynb
 ```
 
 `python -m brainscore.doctor` prints which interpreter answered, whether every
@@ -84,14 +84,13 @@ environment is the wrong one — easy to do on a machine with several.
 
 Then, in order:
 
-1. [Concepts](unified/docs/concepts.md) — the vocabulary. Ten minutes, and it makes
-   everything else legible.
-2. [Notebook path](unified/notebooks/README.md) — sixteen notebooks in four arcs; take
-   the arc that matches your goal rather than all of them.
-3. [Extending UMI](unified/EXTENDING.md) and [templates](unified/templates/) — to add a
-   model, benchmark, metric, dataset, or capability. Every template runs as-is.
-
-Coming from classic Brain-Score? [Start here instead](unified/docs/from_brain_score.md).
+1. [What UMI is](unified/docs/01_what_is_umi.md) and [core concepts](unified/docs/02_core_concepts.md):
+   the vocabulary. Twenty minutes, and it makes everything else legible.
+2. [Lessons](unified/notebooks/README.md#lessons): eleven short notebooks, each building on
+   the last; then the [experiments](unified/notebooks/README.md#experiments), which use them
+   on scientific questions.
+3. [Manual](unified/docs/README.md): guides for scoring a model, running experiments,
+   adding data, and extending UMI.
 
 `install-manifest.txt` records the exact commit of each repository from this install.
 ROOT_README
@@ -121,6 +120,7 @@ conda env create --name "$ENV_NAME" --file "$ENV_FILE"
 
 echo "Refreshing editable installs from this checkout"
 conda run --name "$ENV_NAME" python -m pip install \
+    -c "$WORKDIR/unified/install/v2-constraints.txt" \
     -e "$WORKDIR/core" \
     -e "$WORKDIR/vision" \
     -e "$WORKDIR/language" \
@@ -138,4 +138,4 @@ conda run --name "$ENV_NAME" python -m brainscore.doctor
 echo
 echo "Setup complete."
 echo "Activate with: conda activate $ENV_NAME"
-echo "Start with: unified/notebooks/01_quickstart_layer_mapping.ipynb"
+echo "Start with: unified/docs/01_what_is_umi.md, then unified/notebooks/lessons/01_your_first_subject.ipynb"

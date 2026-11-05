@@ -61,6 +61,15 @@ class TestReport:
         assert problems == 1
         assert '3.0' in text and 'outside' in text
 
+    def test_package_that_fails_to_import_is_a_problem(self, monkeypatch):
+        """pip check passes a pyarrow built for NumPy 2; importing it does not."""
+        monkeypatch.setattr(doctor, '_dependency_rows', lambda: [])
+        monkeypatch.setattr(doctor, '_asset_rows', lambda: [])
+        monkeypatch.setattr(doctor, 'IMPORT_CHECKS', ('json', 'no_such_package_xyz'))
+        text, problems = doctor.report()
+        assert problems == 1
+        assert 'XX no_such_package_xyz' in text and 'ok json' in text
+
     def test_exit_code_follows_the_verdict(self, monkeypatch):
         monkeypatch.setattr(doctor, '_dependency_rows',
                             lambda: [('numpy', '3.0', '>=1.21,<2', False)])
