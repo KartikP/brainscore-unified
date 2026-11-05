@@ -36,6 +36,9 @@ dependencies:
       - datasets==5.0.0
       # Test runner, so the documented `pytest tests/` commands work on a fresh env.
       - pytest
+      # Hold every transitive dependency (pyarrow, torch, ...) to the tested versions;
+      # without this, datasets pulls a pyarrow built for NumPy 2.
+      - -c ./unified/install/v2-constraints.txt
       # Install every sibling repository from this checkout.
       - -e ./core
       - -e ./vision

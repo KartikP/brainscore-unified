@@ -54,13 +54,13 @@ UMI_ENV_NAME=brainscore-unified-test bash setup.sh
 ## Manual setup
 
 With the four repositories already checked out side by side, the environment file is
-unnecessary — every version pin is declared by the packages:
+unnecessary; the shared constraints file holds every dependency to its tested version:
 
 ~~~bash
 cd <workspace-root>
 conda create -y -n brainscore-unified python=3.11
 conda activate brainscore-unified
-pip install -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
+pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
 python -m pip check
 python -c "import brainscore"
 ~~~
@@ -83,16 +83,16 @@ For an environment created without the notebook extras, install them
 from the workspace root:
 
 ~~~bash
-python -m pip install -e "unified[notebooks]"
+python -m pip install -c unified/install/v2-constraints.txt -e "unified[notebooks]"
 ~~~
 
 ## Verify the first local result
 
-Notebook 01 uses deterministic, in-memory data and does not download a model:
+Lesson 1 uses images and weights committed with the lessons and downloads nothing:
 
 ~~~bash
-cd unified/notebooks
-jupyter nbconvert --to notebook --execute --stdout 01_quickstart_layer_mapping.ipynb >/tmp/umi-quickstart.ipynb
+cd unified/notebooks/lessons
+jupyter nbconvert --to notebook --execute --stdout 01_your_first_subject.ipynb >/tmp/umi-lesson01.ipynb
 ~~~
 
 Then follow the [notebook manifest](../notebooks/README.md) or the
@@ -174,7 +174,7 @@ python -m pip show brainscore brainscore-core brainscore-vision brainscore-langu
 From the workspace root, repair the editable installs with:
 
 ~~~bash
-python -m pip install -e core -e vision -e language -e "unified[notebooks]"
+python -m pip install -c unified/install/v2-constraints.txt -e core -e vision -e language -e "unified[notebooks]"
 ~~~
 
 ### Cached results do not reflect a code change

@@ -121,6 +121,7 @@ conda env create --name "$ENV_NAME" --file "$ENV_FILE"
 
 echo "Refreshing editable installs from this checkout"
 conda run --name "$ENV_NAME" python -m pip install \
+    -c "$WORKDIR/unified/install/v2-constraints.txt" \
     -e "$WORKDIR/core" \
     -e "$WORKDIR/vision" \
     -e "$WORKDIR/language" \
