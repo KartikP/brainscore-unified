@@ -53,6 +53,7 @@ this. To use the file directly, `cp` it beside the repositories first.
 | `PackagesNotFoundError: install/environment-unified.yml` | `conda create -f` means *force*. Use `conda env create -f`. |
 | `./core is not a valid editable requirement` | copy the yml to the workspace root first; conda resolves its relative paths from the file's own directory |
 | `CondaValueError: prefix already exists` | that env name is taken; use `-n` with another name |
+| `FileExistsError: ... .brain-score` or `Result cache is not writable` | the folder links to a drive that is not mounted. Mount it, or set `BRAINSCORE_HOME` (downloads), `RESULTCACHING_HOME` (cached results) or `BRAINIO_HOME` (datasets) to a folder on this disk before starting Python. `python -m brainscore.doctor` checks all three. |
 
 ## Requirements
 
