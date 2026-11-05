@@ -19,6 +19,23 @@ def _dependency_rows():
     return describe_env()
 
 
+# Imported, not just version-checked: a wheel built for another NumPy (pyarrow
+# 26 under NumPy 1.26) installs cleanly and passes `pip check`, then fails here.
+IMPORT_CHECKS = ('numpy', 'pandas', 'pyarrow', 'scipy', 'sklearn', 'xarray', 'torch', 'transformers')
+
+
+def _import_rows():
+    import importlib
+    rows = []
+    for name in IMPORT_CHECKS:
+        try:
+            importlib.import_module(name)
+            rows.append((name, None))
+        except Exception as error:      # ImportError, or an ABI error raised during import
+            rows.append((name, f'{type(error).__name__}: {error}'.splitlines()[0]))
+    return rows
+
+
 def _asset_rows():
     from brainscore.data import local
     return local.status()
@@ -46,6 +63,15 @@ def report():
             mark, detail = 'XX', f'{installed:<20s} {expected}  <- outside'
             problems += 1
         lines.append(f'  {mark} {package:<14s} {detail}')
+
+    lines.append('')
+    lines.append('imports')
+    for package, error in _import_rows():
+        if error is None:
+            lines.append(f'  ok {package}')
+        else:
+            lines.append(f'  XX {package:<14s} {error}')
+            problems += 1
 
     lines.append('')
     lines.append('user-supplied data (benchmarks needing it will say so)')
