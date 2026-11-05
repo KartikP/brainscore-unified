@@ -145,7 +145,7 @@ classDiagram
         subject
         protocol
         tools
-        output_dir
+        output_dir (optional)
         run()
     }
     class TaskProtocol {
