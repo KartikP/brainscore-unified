@@ -460,3 +460,38 @@ def test_neural_only_recording_checks_the_task_response_before_reset(tmp_path, o
     assert net.passes == 0
     assert resets == []
     assert not experiment.output_dir.exists()
+
+
+def test_a_run_without_output_dir_reads_back_and_is_removed_with_its_result():
+    import gc
+    experiment = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+                            tools=[RecordBehavior()])
+    result = experiment.run()
+    folder = result.directory
+    assert result.temporary and folder.exists()
+    assert result.behavior().sizes['presentation'] == len(STIMULI)    # readers work as usual
+    del result, experiment
+    gc.collect()
+    assert not folder.exists()
+
+
+def test_save_keeps_a_temporary_run_and_refuses_an_existing_folder(tmp_path):
+    result = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+                        tools=[RecordBehavior()]).run()
+    kept = result.save(tmp_path / 'kept')
+    assert not kept.temporary and (kept.directory / 'experiment.json').exists()
+    np.testing.assert_array_equal(kept.behavior().values, result.behavior().values)
+    with pytest.raises(FileExistsError):
+        result.save(tmp_path / 'kept')
+
+
+def test_without_output_dir_each_run_gets_its_own_folder(tmp_path):
+    experiment = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+                            tools=[RecordBehavior()])
+    first, second = experiment.run(), experiment.run()
+    assert first.directory != second.directory and first.directory.exists()
+    explicit = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+                          tools=[RecordBehavior()], output_dir=tmp_path / 'run')
+    assert not explicit.run().temporary
+    with pytest.raises(FileExistsError):
+        explicit.run()                                  # an explicit folder is never overwritten

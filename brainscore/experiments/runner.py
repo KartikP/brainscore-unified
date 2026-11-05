@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import tempfile
 import time
 import uuid
 from typing import Iterator
@@ -278,8 +279,26 @@ class CallableProtocol:
 
 @dataclass(frozen=True)
 class ExperimentResult:
+    """What a run saved, read back from ``directory``.
+
+    A run made without ``output_dir`` lives in a temporary folder that is deleted
+    when this result is no longer used; ``save(path)`` keeps a copy.
+    """
     directory: Path
     value: object
+    _temporary: object = None          # the TemporaryDirectory that holds a run without output_dir
+
+    @property
+    def temporary(self) -> bool:
+        """Whether the run is deleted with this result unless saved."""
+        return self._temporary is not None
+
+    def save(self, path) -> 'ExperimentResult':
+        """Copy the run to ``path`` (which must not exist yet) and return the result there."""
+        destination = Path(path)
+        check_output_directory(destination)
+        shutil.copytree(self.directory, destination)
+        return ExperimentResult(destination, self.value)
 
     @property
     def record(self):
@@ -335,7 +354,7 @@ class ExperimentResult:
 class RunContext:
     def __init__(self, experiment, manifest):
         self.experiment, self.manifest = experiment, manifest
-        self.directory = experiment.output_dir
+        self.directory = experiment.run_directory
         self.codec = PayloadCodec(self.directory)
         self.listeners = []
         self.repetition_id = None
@@ -429,19 +448,26 @@ class RunContext:
 class Experiment:
     """One execution, one subject instance, one new output directory.
 
+    With ``output_dir``, the run is written there; the folder must not exist yet.
+    Without it, each run is written to a temporary folder that its result keeps
+    until the result is no longer used; call ``result.save(path)`` to keep it.
+
     Protocols and tools are ordinary Python objects and can live in external
     packages. No concurrent reuse of a subject, tool, or provider is supported.
     """
-    def __init__(self, *, subject, protocol, tools=(), output_dir,
+    def __init__(self, *, subject, protocol, tools=(), output_dir=None,
                  instrumentation=None, metadata=None):
         self.subject, self.protocol = subject, protocol
         self.tools = tuple(tools)
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir) if output_dir is not None else None
+        self.run_directory = self.output_dir      # where the current run is written
+        self._temporary = None
         self.instrumentation = instrumentation
         self.metadata = dict(metadata or {})
 
     def validate(self):
-        check_output_directory(self.output_dir)
+        if self.output_dir is not None:
+            check_output_directory(self.output_dir)
         requested = set().union(*(tool.output_channels for tool in self.tools))
         if requested or isinstance(self.protocol, SessionProtocol):
             # Protocols from other packages need accept_requests only to take recorders.
@@ -480,11 +506,15 @@ class Experiment:
         the subject or resets it; the caller retains those responsibilities.
         """
         plan = self.validate()
-        self.output_dir.mkdir(parents=True, exist_ok=False)
+        if self.output_dir is None:
+            # A fresh temporary folder per run, so the same Experiment can run again.
+            self._temporary = tempfile.TemporaryDirectory(prefix='umi-run-')
+            self.run_directory = Path(self._temporary.name) / 'run'
+        self.run_directory.mkdir(parents=True, exist_ok=False)
         manifest = {'schema_version': 1, 'run_id': uuid.uuid4().hex, 'status': 'running',
                     'started_utc': datetime.now(timezone.utc).isoformat(),
                     'plan': plan, 'artifacts': []}
-        _write(self.output_dir / 'experiment.json', manifest)
+        _write(self.run_directory / 'experiment.json', manifest)
         context = RunContext(self, manifest)
         try:
             with ExitStack() as stack:
@@ -510,7 +540,7 @@ class Experiment:
         finally:
             manifest['finished_utc'] = datetime.now(timezone.utc).isoformat()
             manifest['event_count'] = context.sequence
-            _write(self.output_dir / 'experiment.json', manifest)
+            _write(self.run_directory / 'experiment.json', manifest)
 
     def run(self):
         with self.open() as context:
@@ -518,7 +548,7 @@ class Experiment:
             if context.failed:
                 raise RuntimeError('Experiment encountered a caught model or tool error')
             encoded = context.codec.encode(value)
-            _write(self.output_dir / 'result.json', encoded)
-            context.artifact(self.output_dir / 'result.json', producer='protocol',
+            _write(self.run_directory / 'result.json', encoded)
+            context.artifact(self.run_directory / 'result.json', producer='protocol',
                              description='Protocol return value, RunRecord payload encoding')
-        return ExperimentResult(self.output_dir, value)
+        return ExperimentResult(self.run_directory, value, self._temporary)
