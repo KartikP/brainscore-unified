@@ -1,0 +1,47 @@
+{
+  "status": "incomplete_answers",
+  "trials": 28,
+  "valid_answers": 0,
+  "comparison_groups": 7,
+  "complete_groups": 0,
+  "participants": 3,
+  "mean_angular_error_deg": null,
+  "angular_comparisons": 0,
+  "mean_speed_error_px_per_frame": null,
+  "mean_endpoint_error_px_per_frame": null,
+  "aggregation": "mean over participants and complete scene/modulation groups",
+  "normalization": "none; descriptive comparison",
+  "reference_build": "Sun2025-second-order-motion-human-81a433629d78f191",
+  "full_study": false,
+  "neural_shape": [
+    28,
+    8,
+    1280
+  ],
+  "provenance": {
+    "checkpoint": "Qwen/Qwen2.5-VL-3B-Instruct",
+    "revision": "66285546d2b821cf421d4f5eb2576359d3770cd3",
+    "dtype": "float16",
+    "device": "cuda:0",
+    "attention": "sdpa",
+    "video_fps": 30,
+    "video_min_frames": 16,
+    "video_max_frames": 16,
+    "video_size": {
+      "shortest_edge": 100352,
+      "longest_edge": 200704
+    },
+    "max_new_tokens": 96,
+    "region_mapping": {
+      "V1": "visual.blocks.2"
+    },
+    "mapping_status": "illustrative reuse of registered mapping, not validated neural alignment",
+    "packages": {
+      "torch": "2.6.0+cu124",
+      "transformers": "5.16.1",
+      "numpy": "1.26.4",
+      "pandas": "2.3.3",
+      "opencv-python": "4.11.0.86"
+    }
+  }
+}

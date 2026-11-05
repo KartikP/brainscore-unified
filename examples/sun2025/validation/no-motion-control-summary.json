@@ -1,0 +1,16 @@
+{
+  "status": "complete",
+  "trials": 28,
+  "valid_answers": 28,
+  "comparison_groups": 7,
+  "complete_groups": 7,
+  "participants": 3,
+  "mean_angular_error_deg": null,
+  "angular_comparisons": 0,
+  "mean_speed_error_px_per_frame": 9.579972711423869,
+  "mean_endpoint_error_px_per_frame": 9.579972711423869,
+  "aggregation": "mean over participants and complete scene/modulation groups",
+  "normalization": "none; descriptive comparison",
+  "reference_build": "Sun2025-second-order-motion-human-81a433629d78f191",
+  "full_study": false
+}

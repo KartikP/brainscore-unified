@@ -1,0 +1,41 @@
+{
+  "source_sha256": "6c85ecc881c9fba22c623b116655c8831a19f8b340b3a13bdfcf1e5b10c60ca6",
+  "python": "3.11.15 (main, Jun 11 2026, 15:20:16) [GCC 14.3.0]",
+  "results": [
+    {
+      "mode": "replay",
+      "passed": true,
+      "receipt": {
+        "mode": "replay",
+        "stimulus_id": "sun2025-s01-m1-v1-f1",
+        "trial_count": 4,
+        "neural_shape": [
+          4,
+          8,
+          1280
+        ],
+        "valid_motion_reports": 4,
+        "source_run": "/home/ubuntu/sun2025-20261104/runs/qwen-pilot/model",
+        "replay_html": "/home/ubuntu/sun2025-20261104/runs/qwen-pilot/replay-225677ba/sun2025-s01-m1-v1-f1-activity-replay.html"
+      }
+    },
+    {
+      "mode": "run",
+      "passed": true,
+      "receipt": {
+        "mode": "run",
+        "stimulus_id": "sun2025-s01-m1-v1-f1",
+        "trial_count": 4,
+        "neural_shape": [
+          4,
+          8,
+          1280
+        ],
+        "valid_motion_reports": 4,
+        "source_run": "/home/ubuntu/sun2025-20261104/notebook-validation/run/new-run/model",
+        "replay_html": "/home/ubuntu/sun2025-20261104/notebook-validation/run/new-run/sun2025-s01-m1-v1-f1-activity-replay.html"
+      }
+    }
+  ],
+  "passed": true
+}

@@ -21,11 +21,12 @@ def test_import_brainscore_does_not_load_heavy_deps():
         # registries still populate without importing the plugins' model.py
         "assert len(brainscore.model_registry) == 31, "
         "f'model_registry={len(brainscore.model_registry)} (expected 31)'\n"
-        "assert len(brainscore.benchmark_registry) == 59, "
-        "f'benchmark_registry={len(brainscore.benchmark_registry)} (expected 59)'\n"
+        "assert len(brainscore.benchmark_registry) == 60, "
+        "f'benchmark_registry={len(brainscore.benchmark_registry)} (expected 60)'\n"
         "assert 'brainscore.harnesses.coggym' not in sys.modules\n"
         "assert 'brainscore.data.ewok.data_packaging.prepare' not in sys.modules\n"
         "assert 'brainscore.benchmarks.ewok.benchmark' not in sys.modules\n"
+        "assert 'brainscore.benchmarks.sun2025.benchmark' not in sys.modules\n"
         "print('OK')\n"
     )
     r = subprocess.run([sys.executable, '-c', code],
