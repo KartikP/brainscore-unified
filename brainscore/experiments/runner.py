@@ -277,6 +277,20 @@ class CallableProtocol:
             return self.evaluate(subject, context)
 
 
+def _per_trial_coords(assembly):
+    """Every per-presentation coordinate, including levels of a presentation MultiIndex
+    (where this xarray version keeps the stimulus set's columns)."""
+    import pandas as pd
+    found = {}
+    index = assembly.indexes.get('presentation')
+    if isinstance(index, pd.MultiIndex):
+        found.update({name: index.get_level_values(name).values for name in index.names})
+    found.update({name: coord.values for name, coord in assembly.coords.items()
+                  if coord.dims == ('presentation',) and name != 'presentation'})
+    found.pop('stimulus_id', None)
+    return found
+
+
 @dataclass(frozen=True)
 class ExperimentResult:
     """What a run saved, read back from ``directory``.
@@ -287,6 +301,17 @@ class ExperimentResult:
     directory: Path
     value: object
     _temporary: object = None          # the TemporaryDirectory that holds a run without output_dir
+
+    @classmethod
+    def open(cls, path) -> 'ExperimentResult':
+        """Reopen a run saved earlier (an ``output_dir`` or a ``result.save(path)`` copy),
+        with the same ``behavior``, ``neural`` and ``trials`` readers."""
+        directory = Path(path)
+        if not (directory / 'experiment.json').is_file():
+            raise FileNotFoundError(f'{directory} is not a saved experiment run (no experiment.json).')
+        saved = directory / 'result.json'
+        value = PayloadCodec(directory).decode(json.loads(saved.read_text())) if saved.is_file() else None
+        return cls(directory, value)
 
     @property
     def temporary(self) -> bool:
@@ -337,10 +362,12 @@ class ExperimentResult:
     def trials(self):
         """Every saved answer as a table: one row per trial.
 
-        Columns: ``condition``, ``repetition``, ``stimulus_id``, then one column per
-        kind of answer the run saved: ``choice`` (the chosen label), ``p(<label>)``
-        for each label's probability, ``rt``, ``confidence``, ``rating``, ``text``.
-        An answer that could not be read is empty (``None`` or NaN).
+        Columns: ``condition``, ``repetition``, ``stimulus_id``, the stimulus set's own
+        columns (e.g. a noise level), then one column per kind of answer the run saved:
+        ``choice`` (the chosen label), ``p(<label>)`` for each label's probability, ``rt``,
+        ``confidence``, ``rating``, ``text``. For an answer that was read from a reply,
+        ``<answer>_valid``, ``<answer>_raw`` and ``<answer>_error`` say whether it could be
+        read, what the reply was, and why not. An unreadable answer is empty (``None`` or NaN).
         """
         import numpy as np
         import pandas as pd
@@ -349,6 +376,7 @@ class ExperimentResult:
             raise FileNotFoundError('No behavior record: attach RecordBehavior to the experiment.')
         outputs = [row['payload'] for row in RunRecord(path).events() if row['payload']['kind'] == 'output']
         named = {env['payload'].channel for env in outputs} - {'behavior'}
+        details = {'answer_valid': 'valid', 'raw_answer': 'raw', 'parse_error': 'error'}
         tables = {}                    # (condition, repetition) -> {column: values}
         for env in outputs:
             channel, assembly = env['payload'].channel, env['payload'].payload
@@ -357,15 +385,25 @@ class ExperimentResult:
             values = np.asarray(assembly.values)
             table = tables.setdefault((env['condition'], env['repetition_id']),
                                       {'stimulus_id': list(assembly['stimulus_id'].values)})
+            per_trial = _per_trial_coords(assembly)
+            for name, column in per_trial.items():          # stimulus columns, once
+                if name not in details:
+                    table.setdefault(name, list(column))
             if 'choice' in assembly.dims and channel != 'behavior:probabilities':
                 labels = np.asarray(assembly['choice'].values)
                 answered = ~np.isnan(values).any(axis=1)          # unreadable answers are NaN rows
-                table['choice'] = [labels[row.argmax()] if ok else None for row, ok in zip(values, answered)]
+                answer = 'choice'
+                table[answer] = [labels[row.argmax()] if ok else None for row, ok in zip(values, answered)]
             elif 'choice' in assembly.dims:
                 for i, label in enumerate(assembly['choice'].values):
                     table[f'p({label})'] = values[:, i]
+                continue
             else:
-                table[channel.split(':', 1)[-1] if ':' in channel else 'answer'] = values
+                answer = channel.split(':', 1)[-1] if ':' in channel else 'answer'
+                table[answer] = values
+            for name, suffix in details.items():              # how the answer was read
+                if name in per_trial:
+                    table[f'{answer}_{suffix}'] = list(per_trial[name])
         frames = [pd.DataFrame(columns).assign(condition=condition, repetition=repetition)
                   for (condition, repetition), columns in tables.items()]
         if not frames:

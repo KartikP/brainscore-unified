@@ -65,6 +65,9 @@ class GridGameBenchmark(BenchmarkBase):
         self.max_steps = max_steps
         self.base_seed = base_seed
         self.required_modalities = set()   # closed-loop: no perceptual-modality gate
+        # The game sends observations and needs actions: a subject without a policy is N/A.
+        self.required_input_channels = frozenset({'observation'})
+        self.requested_output_channels = frozenset({'motor'})
 
         common = dict(n_episodes=n_episodes, size=size,
                       max_steps=max_steps, base_seed=base_seed)

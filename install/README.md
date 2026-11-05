@@ -1,7 +1,8 @@
 # Installing Brain-Score UMI (cold machine)
 
-These three files are the bootstrap. `setup.sh` clones all four repositories at the
-`unified-model-interface-v2` branch, builds the pinned conda environment, and runs a
+These three files are the bootstrap. `setup.sh` clones unified at the
+`unified-model-interface-v2` branch and core, vision and language at the commits it
+pins in `peer-revisions.json`, builds the pinned conda environment, and runs a
 consistency check.
 
 ## One-liner (no prior checkout)
