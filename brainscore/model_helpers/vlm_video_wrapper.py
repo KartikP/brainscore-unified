@@ -158,6 +158,10 @@ class VLMVideoWrapper:
             'neuroid_id': ('neuroid', [f'{self._identifier}.{layer}.{unit}' for layer, unit in neuroids]),
             'layer': ('neuroid', [layer for layer, _ in neuroids])})
 
+    def layer_names(self):
+        """Layer paths this extractor can record, relative to the module it wraps."""
+        return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
+
     def _get_layer(self, layer: str):
         module = self._model
         for part in layer.split('.'):

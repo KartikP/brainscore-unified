@@ -518,6 +518,10 @@ class VideoWrapper:
         B, T = arr.shape[0], arr.shape[1]
         return arr.reshape(B, T, -1)
 
+    def layer_names(self):
+        """Layer paths this extractor can record, relative to the module it wraps."""
+        return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
+
     def _get_layer(self, layer_name: str):
         module = self._model
         for part in layer_name.split('.'):

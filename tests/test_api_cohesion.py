@@ -1,5 +1,6 @@
 """A learned selection must address the same units when recording and intervening."""
 from contextlib import contextmanager, nullcontext
+import warnings
 from types import SimpleNamespace
 import numpy as np
 import pytest
@@ -302,9 +303,10 @@ def test_new_model_template_supports_public_recording_workflow(tmp_path):
     subject.start_recording('IT')
     result = subject.process(stimuli)
     assert result.sizes['presentation'] == 1 and result.sizes['neuroid'] > 0
-    # The template's raw-layer example must agree with the public API.
+    # A raw layer path the extractor declares records without a warning.
     for target in ('2', ['2']):
-        with pytest.warns(UserWarning, match='raw layer path'):
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', UserWarning)
             subject.start_recording(target)
         np.testing.assert_array_equal(subject.process(stimuli).values, result.values)
     subject.reset()
