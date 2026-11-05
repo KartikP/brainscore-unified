@@ -1,29 +1,27 @@
-# From a model to an experiment to a benchmark
+# From a session to an experiment to a benchmark
 
-This walkthrough develops one procedure through all six steps. We ask a pretrained
-SqueezeNet whether an image contains an animal or a vehicle, record its pooled visual
-features as an illustrative `IT` mapping, and then score its choices against held-out
-CIFAR-10 labels. The mapping is a teaching hypothesis, not a validated model of IT.
+This walkthrough builds one study step by step. We ask a pretrained SqueezeNet whether
+an image shows an animal or a vehicle, record its pooled visual features as an
+illustrative `IT` region, and check its answers against held-out CIFAR-10 labels. The
+`IT` mapping is a teaching hypothesis, not a validated model of IT.
 
-Run the cells in order. Everything is bundled with the lessons: no downloads, CPU
-only, and a target runtime below two minutes. In a notebook, use the lesson directory;
-for the guide, start Python from the `unified/` checkout. Neither needs an earlier lesson.
+First the study runs once, by hand: a subject, a stimulus set, a task and one session.
+Then the same study is packaged twice. An **experiment** adds named conditions,
+repetitions, a check of the whole setup before anything runs, and a saved record. A
+**benchmark** adds reference data and a score.
 
-| Step | Object introduced | Responsibility |
+Everything is bundled: no downloads, CPU only, under two minutes. In a notebook, run
+from the lesson folder; for this guide, start Python from the `unified/` checkout.
+
+| Step | What is introduced | What it does |
 | --- | --- | --- |
-| 1. Choose a model | `model` | Declares accepted inputs, available outputs and traits. |
-| 2. Design the task | `StimulusSet` | Holds trial content: one row per trial, with IDs and input columns. |
-| | `TaskContext` | Says what to do, what form an answer takes, and how a readout is fitted. |
-| | `TaskProtocol` | Combines stimuli and task; runs conditions x repetitions and owns resets. |
-| 3. Attach recorders | `RecordNeural`, `RecordBehavior` | Request and save measurements. |
-| 4. Run | `Experiment` | Validates the setup, runs the protocol and saves the run. |
-| 5. Inspect | `ExperimentResult` | Returns saved assemblies by condition, repetition and measure. |
-| 6. Make a benchmark | `Benchmark`, reference data, metric | Reuses the procedure and returns a `Score`. |
-
-A **repetition** is one session between two resets. A session holds trials (the rows of
-our `StimulusSet`), or one continuous stream in other protocols. Within a session,
-`memory:session` means earlier trials can be remembered; across repetitions the subject
-is reset. A condition name is a label: naming one `silenced` does not itself apply a lesion.
+| 1. Choose a model | the subject | Declares what it takes in, what it can produce, and its traits. |
+| 2. Choose the stimuli | `StimulusSet` | One row per trial, with IDs and input columns. |
+| 3. Describe the task | `TaskContext` | What to do, the form of the answer, how a readout is fitted. |
+| 4. Run it once | `BufferedSession` | Shows the stimuli once and collects what was asked for. |
+| 5. Read the results back | assemblies | The answers and the activity behind them. |
+| 6. Make it an experiment | `TaskProtocol`, recorders, `Experiment` | Conditions, repetitions, checks and a saved record. |
+| 7. Make it a benchmark | `Benchmark`, reference data, metric | The same procedure, returning a `Score`. |
 
 ```
 benchmark  = protocol + reference data + score
@@ -33,16 +31,9 @@ session    : trial, trial, trial, ...        (or one continuous stream)
 trial      : stimulus parts -> response       (one StimulusSet row)
 ```
 
-## 1. Choose a model
+## Setup
 
-For a registered model, start with `model = brainscore.load_model('your-registered-id')`
-and inspect its declarations; its registration already supplies extractors, readouts
-and region mappings. Do not redeclare its channels in the experiment.
-
-Here we assemble a local SqueezeNet subject once so the example can run offline.
-The bundled checkpoint is loaded explicitly with `weights=None` to prevent a download.
-Pooling gives a small 512-unit recording. The temporary device overrides only force the
-wrapper to choose CPU; they are restored immediately after construction.
+Imports, quiet output, the bundled files and image preprocessing.
 
 ```python
 # Keep the output short: no progress bars, no library warnings.
@@ -57,7 +48,6 @@ import os
 os.environ['BS_INSTALL_DEPENDENCIES'] = 'no'      # every requirement is already installed
 
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 import time
 import numpy as np
@@ -71,8 +61,6 @@ torch.set_num_threads(1)                   # one CPU thread, so runs repeat exac
 # The bundled files, found from the lesson folder (notebook) or the unified/ checkout (guide).
 ASSETS = next(path for path in (Path('../assets/lessons'), Path('notebooks/assets/lessons'))
               if (path / 'squeezenet1_1.pth').is_file())
-workspace = TemporaryDirectory(prefix='umi-beginner-')
-run_root = Path(workspace.name)            # every run of this walkthrough is saved under here
 
 # The network expects 224 x 224 images, normalized the way it was trained.
 transform = torchvision.transforms.Compose([
@@ -89,7 +77,14 @@ def preprocess(paths):
     return np.stack(images)
 ```
 
-Then build the subject.
+## 1. Choose a model
+
+For a registered model, start with `model = brainscore.load_model('your-registered-id')`
+and look at what it declares; its registration already supplies its extractors, readout
+and region map.
+
+Here we build a SqueezeNet subject locally so the example runs offline. Pooling gives a
+small 512-unit recording, and the readout answers from the same layer.
 
 ```python
 from brainscore_core import BrainScoreModel
@@ -99,6 +94,7 @@ def make_subject(backbone, identifier):
     # Pool each of the 512 feature maps to one number, so a recording has 512 units.
     network = torch.nn.Sequential(
         backbone.features, torch.nn.AdaptiveAvgPool2d(1), torch.nn.Flatten()).eval()
+    # Build the extractor on the CPU even when a GPU is present, so every machine gets the same numbers.
     with patch('torch.cuda.is_available', return_value=False), \
             patch('torch.backends.mps.is_available', return_value=False):
         extractor = VisionWrapper(model=network, preprocessing=preprocess,
@@ -117,15 +113,11 @@ print('outputs:', sorted(model.out_channels))
 print('traits:', sorted(model.traits))
 ```
 
-## 2. Design the task
+## 2. Choose the stimuli
 
-First introduce the **StimulusSet**: 48 images from four categories in the bundled
-120-image collection. Eight images per category fit the readout; four different images
-per category are test trials. IDs, paths and split membership stay explicit.
-
-`fitting_stimuli` teaches the readout. The table passed to `TaskProtocol` is what the
-subject answers during evaluation. Test labels are withheld from that table and become
-reference data only at step 6.
+48 images from four categories of the bundled collection: the first eight of each
+category teach the readout, and four other images of each are the test trials. The test
+table carries no labels; they become reference data only at step 7.
 
 ```python
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -147,120 +139,53 @@ def stimulus_table(rows, identifier, fitting=False):
 fitting_stimuli = stimulus_table(metadata[is_fitting], 'lesson-fit-32', fitting=True)
 stimuli = stimulus_table(metadata[~is_fitting], 'lesson-test-16')
 assert set(fitting_stimuli['stimulus_id']).isdisjoint(stimuli['stimulus_id'])
-print(f'{len(fitting_stimuli)} fitting images; {len(stimuli)} test trials per session')
+print(f'{len(fitting_stimuli)} fitting images; {len(stimuli)} test images')
 ```
 
-Now introduce the **TaskContext**. `Choice` specifies an animal/vehicle answer and asks
-for implied probabilities as well. `prefer_path='readout'` fixes how the answer is
-produced: a classifier fitted to this subject's pooled activity. An instruction does
-not make a CNN understand language; this task uses its labeled fitting examples.
+## 3. Describe the task
 
-Finally introduce the **TaskProtocol**. It combines the test stimuli with that task,
-under one `baseline` condition and one repetition. It creates a fresh `BufferedSession`
-automatically for each condition/repetition, and resets the subject before and after.
-You do not construct sessions or call `reset()` yourself on this path.
+`Choice` asks for an animal or vehicle answer and for the implied probability of each.
+`fitting_stimuli` are the labelled images the readout learns from, and
+`prefer_path='readout'` says to answer through that readout: an instruction does not make
+an image network understand language.
 
 ```python
 from brainscore_core import TaskContext
 from brainscore_core.responses import Choice
-from brainscore.experiments import TaskProtocol
 
 task = TaskContext(response=Choice(['animal', 'vehicle'], probabilities=True),
                    fitting_stimuli=fitting_stimuli, prefer_path='readout')
-protocol = TaskProtocol(stimuli, task, identifier='animal-or-vehicle',
-                        conditions=['baseline'], repetitions=[0])
 ```
 
-## 3. Attach neural and behavioral recorders
+## 4. Run it once
 
-The task decides what the subject does. The recorders decide what is requested and
-saved. `RecordBehavior()` resolves to the answer channels in `task.response`, here
-`behavior:choice` and `behavior:probabilities`. `RecordNeural(['IT'])` requests the
-region the subject already declares. Both measurements use the same test presentation;
-readout fitting is a separate pass over the fitting images.
-
-| Task | Recorders | Measurement |
-| --- | --- | --- |
-| `TaskContext(task_type='passive')` | Neural | Activity during plain viewing. |
-| A task with answers | Neural | Activity during answering; answers are not saved. |
-| A task with answers | Behavior | Answers. |
-| A task with answers | Both | Activity and answers from the same presentation. |
-
-Passive viewing has no answer, so attaching `RecordBehavior` to it is an error.
+A session is one visit by the subject. This one shows the test images once and asks for
+three things: the answers, their probabilities, and the `IT` activity. All three come
+from the same presentation of each image. The readout is fitted first, on the fitting
+images, in a separate pass.
 
 ```python
-from brainscore.experiments import RecordNeural, RecordBehavior
+from brainscore_core.streaming import BufferedSession
 
-def recorders():
-    return [RecordNeural(['IT']), RecordBehavior()]
-
-equipment = recorders()
+# One session: show the test images once; ask for the answers and the IT activity behind them.
+session = BufferedSession(stimulus_set=stimuli, task_context=task,
+                          requested_output_channels=['behavior:choice', 'behavior:probabilities',
+                                                     'neural:IT'])
+model.participate(session)
+model.reset()                              # forget the fitted readout before anything else runs
 ```
 
-## 4. Validate and run
+## 5. Read the results back
 
-`validate()` checks declarations and tools without running or resetting the model.
-Its plan records consumed and dropped input channels as a full or partial match.
-At least one input must match, every requested output must be declared, and all
-hard-required inputs and required traits must be present. Unsupported extra input
-streams are ignored by the subject. A fully unsupported stimulus kind is rejected.
-
-`run()` validates again before execution. The output directory must be new; using a
-fresh child of a temporary directory makes this walkthrough rerunnable. Use a new
-persistent path such as `runs/animal-or-vehicle-001` to retain your own study.
+Each measurement is an assembly: one row per test image, matched to its stimulus by
+`stimulus_id`. Each recording says how it was made (`attrs['recording']`).
 
 ```python
-from brainscore.experiments import Experiment
-
-experiment = Experiment(subject=model, protocol=protocol, tools=equipment,
-                        output_dir=run_root / 'exploration')
-plan = experiment.validate()
-print(plan['protocol']['config']['compatibility'])
-result = experiment.run()
-assert result.manifest['status'] == 'complete'
-```
-
-These are four deliberate mistakes, checked before inference. Each prints the reason
-and leaves no run directory. A missing trait is a declaration failure; setting
-`required_traits` does not add memory to the model.
-
-```python
-text_only = StimulusSet({'stimulus_id': ['word'], 'sentence': ['cat']})
-text_only.identifier = 'wrong-input-example'
-mistakes = [                                      # (name, protocol, tools), each wrong in one way
-    ('missing-region', TaskProtocol(stimuli, task), [RecordNeural(['not-a-region'])]),
-    ('passive-behavior', TaskProtocol(stimuli, TaskContext(task_type='passive')),
-     [RecordBehavior()]),
-    ('missing-memory', TaskProtocol(stimuli, task, required_traits={'memory:session'}),
-     [RecordBehavior()]),
-    ('wrong-input', TaskProtocol(text_only, task), [RecordBehavior()]),
-]
-for name, wrong_protocol, wrong_tools in mistakes:
-    destination = run_root / name
-    try:
-        Experiment(subject=model, protocol=wrong_protocol, tools=wrong_tools,
-                   output_dir=destination).validate()
-    except ValueError as error:
-        print(f'{name}: {error}')
-    else:
-        raise AssertionError(f'{name} should have failed validation')
-    assert not destination.exists()
-```
-
-## 5. Inspect the saved results
-
-These accessors read saved assemblies; they do not run the model again. `condition`
-selects a named condition. `repetition` selects one session when there are several;
-it is not a trial index. To select trials, use the assembly's `stimulus_id` coordinate.
-`measure` selects a kind of behavioral output that the task requested.
-
-```python
-it = result.neural('IT', condition='baseline', repetition=0)
-choices = result.behavior(condition='baseline', repetition=0, measure='choice')
-probabilities = result.behavior(condition='baseline', repetition=0, measure='probabilities')
+choices = session.collect('behavior:choice')
+probabilities = session.collect('behavior:probabilities')
+it = session.collect('neural:IT')
 assert it.sizes['presentation'] == choices.sizes['presentation'] == len(stimuli)
 assert it.sizes['neuroid'] == 512
-assert list(choices['stimulus_id'].values) == list(stimuli['stimulus_id'])
 print('neural:', it.shape, 'choices:', choices.shape)
 print('recording:', it.attrs['recording'])
 # The chosen label is the column holding the 1.
@@ -269,23 +194,12 @@ print(pd.DataFrame({'stimulus_id': choices['stimulus_id'].values,
                     'answer': predicted_labels}).head())
 ```
 
-## 6. Reuse the protocol as a benchmark
+### Measure the answers
 
-A **benchmark = protocol + reference data + score**. Core currently provides `Benchmark`
-and `BenchmarkBase`; it has no constructor that turns a `TaskProtocol` into a benchmark.
-The supported path is a small `Benchmark` subclass whose `__call__` runs the same
-`Experiment` and applies a metric. No Subject or Session changes are needed.
-
-Introduce reference data now: the held-out dataset labels, stored in a
-`BehavioralAssembly`. These are CIFAR-10 category annotations, not human behavioral or
-neural recordings. Accuracy against them is an engineering demonstration, not a
-brain-alignment result. A scientific benchmark would supply its measured reference
-data, metric, splits and, where appropriate, a ceiling.
-
-The metric aligns by stimulus ID and uses the assembly's choice labels, so it does not
-assume that label columns happen to be in alphabetical order. Invalid answers count as
-incorrect. The controlled example requests one baseline session and scores its choices;
-neural activity and probabilities remain available in the saved run.
+The reference data are the held-out labels, stored in a `BehavioralAssembly`. They are
+CIFAR-10 annotations, not human or neural recordings, so accuracy against them is an
+engineering demonstration, not a brain-alignment result. The metric matches answers to
+labels by stimulus ID and counts invalid answers as wrong.
 
 ```python
 from brainscore_core import Score
@@ -307,14 +221,89 @@ def accuracy(prediction, reference):
     return Score(float(np.mean((labels == target) & valid)))
 ```
 
-Applied to the saved run, the metric gives the pretrained subject's accuracy.
-
 ```python
 hand_score = accuracy(choices, reference)
-print('accuracy of the saved run:', float(hand_score))
+print('accuracy:', float(hand_score))
 ```
 
-The benchmark runs the same experiment and applies the same metric.
+## 6. Make it an experiment
+
+Running a session by hand is enough to explore. A study needs more, and an `Experiment`
+provides it from three pieces:
+
+- **`TaskProtocol`** combines the stimuli and the task under named conditions and
+  repetitions. It builds each session itself and resets the subject before and after.
+- **Recorders** say what to request and save. `RecordBehavior()` saves every answer the
+  task asks for; `RecordNeural(['IT'])` saves the activity of a region the subject declares.
+- **`Experiment`** checks the subject, protocol and recorders against each other before
+  running (`validate()`), runs the protocol, and writes every recording to `output_dir`.
+  That folder must be new, so a run never overwrites an earlier one; the results are read
+  back from it, and it can be inspected or replayed later.
+
+The answers it saves are the same as the ones collected by hand.
+
+```python
+from tempfile import TemporaryDirectory
+from brainscore.experiments import Experiment, RecordBehavior, RecordNeural, TaskProtocol
+
+# The same stimuli and task, under one named condition and one repetition.
+protocol = TaskProtocol(stimuli, task, identifier='animal-or-vehicle',
+                        conditions=['baseline'], repetitions=[0])
+
+def recorders():
+    """What to request and save: the IT activity, and every answer the task asks for."""
+    return [RecordNeural(['IT']), RecordBehavior()]
+
+workspace = TemporaryDirectory(prefix='umi-lesson-')   # a folder for this lesson's runs
+run_root = Path(workspace.name)
+experiment = Experiment(subject=model, protocol=protocol, tools=recorders(),
+                        output_dir=run_root / 'exploration')
+plan = experiment.validate()               # checks the whole setup without running the model
+print(plan['protocol']['config']['compatibility'])
+result = experiment.run()
+assert result.manifest['status'] == 'complete'
+
+# Read back from the saved files: the same answers and activity as the session run by hand.
+saved_choices = result.behavior(condition='baseline', repetition=0, measure='choice')
+saved_it = result.neural('IT', condition='baseline', repetition=0)
+assert np.array_equal(saved_choices.values, choices.values)
+assert np.allclose(saved_it.values, it.values)
+print('saved:', sorted(path.name for path in result.directory.iterdir()))   # what the run wrote
+```
+
+Four deliberate mistakes, each caught before the model runs. Each prints its reason and
+leaves no folder behind.
+
+```python
+text_only = StimulusSet({'stimulus_id': ['word'], 'sentence': ['cat']})
+text_only.identifier = 'wrong-input-example'
+mistakes = [                                      # (name, protocol, tools), each wrong in one way
+    ('missing-region', TaskProtocol(stimuli, task), [RecordNeural(['not-a-region'])]),
+    ('passive-behavior', TaskProtocol(stimuli, TaskContext(task_type='passive')),
+     [RecordBehavior()]),
+    ('missing-memory', TaskProtocol(stimuli, task, required_traits={'memory:session'}),
+     [RecordBehavior()]),
+    ('wrong-input', TaskProtocol(text_only, task), [RecordBehavior()]),
+]
+for name, wrong_protocol, wrong_tools in mistakes:
+    destination = run_root / name
+    try:
+        Experiment(subject=model, protocol=wrong_protocol, tools=wrong_tools,
+                   output_dir=destination).validate()
+    except ValueError as error:
+        print(f'{name}: {error}')
+    else:
+        raise AssertionError(f'{name} should have failed validation')
+    assert not destination.exists()               # nothing was run or written
+```
+
+## 7. Make it a benchmark
+
+A **benchmark is a protocol plus reference data and a score**. A small `Benchmark`
+subclass runs the same experiment in `__call__` and applies the metric. Core has no
+constructor that turns a `TaskProtocol` into a benchmark; this is the supported path.
+
+A random-weight network is scored first, as the control.
 
 ```python
 from brainscore_core import Benchmark
@@ -348,16 +337,6 @@ benchmark = AnimalVehicleBenchmark(protocol, reference, accuracy, run_root / 'be
 assert benchmark.protocol is protocol
 ```
 
-Score a random-weight control before the pretrained subject. Both use the same protocol,
-splits, fitting rule, recorders and metric. The control is local and needs no download.
-`brainscore.score` checks compatibility before the benchmark and stamps the match on the
-score. A `CompatibilityError` means N/A; it is not a score of zero. Here `check_mem=False`
-skips the memory probe for this small CPU example; keep the default for larger studies.
-
-Registration is optional when passing objects. Publishing a benchmark additionally
-needs a stable identifier/version and reviewed scientific choices. The explicit mapping
-from protocol fields to benchmark declarations above is current authoring boilerplate.
-
 ```python
 import brainscore
 
@@ -373,13 +352,9 @@ print(model_score.attrs['compatibility'])
 print(f'Elapsed: {time.perf_counter() - started:.1f} seconds')
 ```
 
-The sample is small and the region mapping illustrative. The result demonstrates the
-workflow; it does not establish a scientific advantage or a validated neural score.
-The protocol, task, fitting split and measurements were reused without rebuilding a
-session or changing the subject contract.
-
-The temporary files remain inspectable until the final cleanup cell. Omit cleanup and
-choose a persistent `output_dir` in a real study.
+`brainscore.score` checks compatibility before running the benchmark and records the match
+on the score. A `CompatibilityError` means the pair is not applicable, not a score of zero.
+`check_mem=False` skips the memory probe, which this small example does not need.
 
 ```python
 workspace.cleanup()
