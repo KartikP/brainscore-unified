@@ -64,7 +64,7 @@ this. To use the file directly, `cp` it beside the repositories first.
 
 `setup.sh` writes `install-manifest.txt` with the exact commit of each repo. Keep it.
 First run:
-`unified/notebooks/01_quickstart_layer_mapping.ipynb`.
+`unified/notebooks/lessons/01_your_first_subject.ipynb`.
 
 See [SETUP.md](SETUP.md) for supported versions, hardware notes (CPU / Apple MPS /
 NVIDIA CUDA), and troubleshooting.
