@@ -79,6 +79,18 @@ def _gone(error) -> bool:
     return False
 
 
+def _broken_link(filename):
+    """(link, target) for the first folder on ``filename``'s path that links to nothing."""
+    import os
+    if not filename:
+        return None
+    path = Path(str(filename)).expanduser()
+    for candidate in (path, *path.parents):
+        if candidate.is_symlink() and not candidate.exists():
+            return candidate, os.readlink(candidate)
+    return None
+
+
 class _explained:
     """Turn a known load failure into a LoadError with a readable reason and next step."""
 
@@ -100,6 +112,13 @@ class _explained:
                 f"recorded for it ({type(error).__name__}: {str(error).splitlines()[0][:200]}). "
                 f"This is a problem with the {self.domain} plugin, not your setup. "
                 f"Please tell a maintainer, quoting this message: {_ISSUES[self.domain]}") from error
+        broken = _broken_link(getattr(error, 'filename', None)) if isinstance(error, OSError) else None
+        if broken:
+            raise LoadError(
+                f"'{self.identifier}' can't load: the folder {broken[0]} links to {broken[1]}, which "
+                f"does not exist (an unmounted drive?). Mount the drive, or point the folder elsewhere "
+                f"before starting Python (BRAINSCORE_HOME for downloads, RESULTCACHING_HOME for cached "
+                f"results, BRAINIO_HOME for datasets). `python -m brainscore.doctor` checks all three.") from error
         if isinstance(error, ModuleNotFoundError):
             raise LoadError(
                 f"'{self.identifier}' needs the package '{error.name}', which is not installed. "
