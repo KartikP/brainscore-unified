@@ -134,6 +134,29 @@ List tools in this order: recorders, activity recorded *before* an intervention,
 
 Targets are layer paths or `Selection` objects, the same ones used in [Perturb and select units](perturb_and_select_units.md).
 
+## Reopen a saved run
+
+A run kept with `output_dir` or `result.save(path)` can be read again later, in a new session:
+
+```python
+from brainscore.experiments import ExperimentResult
+
+result = ExperimentResult.open('runs/my-study')
+trials = result.trials()           # one row per trial
+it = result.neural('IT', condition='lesioned')
+```
+
+`trials()` has `condition`, `repetition` and `stimulus_id`, then the stimulus set's own
+columns (a noise level, a word length), then each saved answer: `choice`, `p(<label>)`,
+`rt`, `rating`, `text`. For an answer read from a reply, `<answer>_valid`, `<answer>_raw`
+and `<answer>_error` say whether it could be read, what the reply was, and why not, so
+an analysis can count or drop invalid trials:
+
+```python
+valid = trials[trials['choice_valid']]
+valid.groupby(['condition', 'noise'])['choice'].apply(lambda c: (c == 'animal').mean())
+```
+
 ## Read and replay
 
 ```python
