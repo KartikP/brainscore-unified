@@ -45,6 +45,17 @@ Pooling gives a small 512-unit recording. The temporary device overrides only fo
 wrapper to choose CPU; they are restored immediately after construction.
 
 ```python
+# Keep the output short: no progress bars, no library warnings.
+import warnings
+from functools import partialmethod
+from tqdm.auto import tqdm
+import tqdm as _tqdm
+for _bar in (tqdm, _tqdm.tqdm):
+    _bar.__init__ = partialmethod(_bar.__init__, disable=True)
+warnings.filterwarnings('ignore')
+import os
+os.environ['BS_INSTALL_DEPENDENCIES'] = 'no'      # every requirement is already installed
+
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -54,40 +65,50 @@ import pandas as pd
 import torch
 import torchvision
 from PIL import Image
-from brainscore_core import BrainScoreModel
-from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
 started = time.perf_counter()
-torch.set_num_threads(1)
+torch.set_num_threads(1)                   # one CPU thread, so runs repeat exactly
+# The bundled files, found from the lesson folder (notebook) or the unified/ checkout (guide).
 ASSETS = next(path for path in (Path('../assets/lessons'), Path('notebooks/assets/lessons'))
               if (path / 'squeezenet1_1.pth').is_file())
 workspace = TemporaryDirectory(prefix='umi-beginner-')
-run_root = Path(workspace.name)
+run_root = Path(workspace.name)            # every run of this walkthrough is saved under here
 
+# The network expects 224 x 224 images, normalized the way it was trained.
 transform = torchvision.transforms.Compose([
     torchvision.transforms.Resize(224), torchvision.transforms.ToTensor(),
     torchvision.transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
 ])
 
 def preprocess(paths):
+    """Image files -> one (batch, 3, 224, 224) array."""
     images = []
     for path in paths:
         with Image.open(path) as image:
             images.append(transform(image.convert('RGB')).numpy())
     return np.stack(images)
+```
+
+Then build the subject.
+
+```python
+from brainscore_core import BrainScoreModel
+from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
 def make_subject(backbone, identifier):
+    # Pool each of the 512 feature maps to one number, so a recording has 512 units.
     network = torch.nn.Sequential(
         backbone.features, torch.nn.AdaptiveAvgPool2d(1), torch.nn.Flatten()).eval()
     with patch('torch.cuda.is_available', return_value=False), \
             patch('torch.backends.mps.is_available', return_value=False):
         extractor = VisionWrapper(model=network, preprocessing=preprocess,
                                   identifier=identifier, kind='frame', batch_size=16)
+    # Layer '2' is the Flatten step: it stands for IT and the readout answers from it.
     return BrainScoreModel(identifier=identifier, model=network,
                            extractor={'vision': extractor}, region_layer_map={'IT': '2'},
                            behavioral_readout_layer='2')
 
-backbone = torchvision.models.squeezenet1_1(weights=None)
+backbone = torchvision.models.squeezenet1_1(weights=None)       # weights=None: no download
 backbone.load_state_dict(torch.load(ASSETS / 'squeezenet1_1.pth',
                                     map_location='cpu', weights_only=True))
 model = make_subject(backbone, 'lesson-squeezenet1_1-pooled')
@@ -113,9 +134,10 @@ metadata = pd.read_csv(ASSETS / 'images.csv')
 metadata = metadata[metadata['category'].isin(['cat', 'dog', 'airplane', 'ship'])].copy()
 metadata['stimulus_id'] = metadata['file'].str.removesuffix('.png')
 metadata['image_path'] = metadata['file'].map(lambda name: str(ASSETS / 'images' / name))
-is_fitting = metadata.groupby('category').cumcount() < 8
+is_fitting = metadata.groupby('category').cumcount() < 8      # the first 8 of each category
 
 def stimulus_table(rows, identifier, fitting=False):
+    # Only the fitting table carries labels; the test table gets IDs and paths only.
     columns = ['stimulus_id', 'image_path'] + (['kind'] if fitting else [])
     table = StimulusSet(rows[columns].rename(columns={'kind': 'label'}).reset_index(drop=True))
     table.identifier = identifier
@@ -205,7 +227,7 @@ and leaves no run directory. A missing trait is a declaration failure; setting
 ```python
 text_only = StimulusSet({'stimulus_id': ['word'], 'sentence': ['cat']})
 text_only.identifier = 'wrong-input-example'
-mistakes = [
+mistakes = [                                      # (name, protocol, tools), each wrong in one way
     ('missing-region', TaskProtocol(stimuli, task), [RecordNeural(['not-a-region'])]),
     ('passive-behavior', TaskProtocol(stimuli, TaskContext(task_type='passive')),
      [RecordBehavior()]),
@@ -241,6 +263,7 @@ assert it.sizes['neuroid'] == 512
 assert list(choices['stimulus_id'].values) == list(stimuli['stimulus_id'])
 print('neural:', it.shape, 'choices:', choices.shape)
 print('recording:', it.attrs['recording'])
+# The chosen label is the column holding the 1.
 predicted_labels = choices['choice'].values[choices.values.argmax(axis=1)]
 print(pd.DataFrame({'stimulus_id': choices['stimulus_id'].values,
                     'answer': predicted_labels}).head())
@@ -265,21 +288,36 @@ incorrect. The controlled example requests one baseline session and scores its c
 neural activity and probabilities remain available in the saved run.
 
 ```python
-from brainscore_core import Benchmark, Score
+from brainscore_core import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
+# The held-out labels, one per test image, kept apart from the stimuli the subject saw.
 reference = BehavioralAssembly(
     metadata.loc[~is_fitting, 'kind'].to_numpy(), dims=['presentation'],
     coords={'stimulus_id': ('presentation', metadata.loc[~is_fitting, 'stimulus_id'].to_numpy()),
             'category': ('presentation', metadata.loc[~is_fitting, 'category'].to_numpy())})
 
 def accuracy(prediction, reference):
+    # Look up each answered image's true label by its stimulus ID, not by row position.
     by_id = dict(zip(reference['stimulus_id'].values, reference.values))
     target = np.array([by_id[identifier] for identifier in prediction['stimulus_id'].values])
     labels = prediction['choice'].values[prediction.values.argmax(axis=1)]
     valid = (prediction['answer_valid'].values if 'answer_valid' in prediction.coords
              else np.ones(len(labels), dtype=bool))
     return Score(float(np.mean((labels == target) & valid)))
+```
+
+Applied to the saved run, the metric gives the pretrained subject's accuracy.
+
+```python
+hand_score = accuracy(choices, reference)
+print('accuracy of the saved run:', float(hand_score))
+```
+
+The benchmark runs the same experiment and applies the same metric.
+
+```python
+from brainscore_core import Benchmark
 
 class AnimalVehicleBenchmark(Benchmark):
     identifier = 'lesson-animal-vehicle-accuracy'
@@ -297,6 +335,7 @@ class AnimalVehicleBenchmark(Benchmark):
 
     def __call__(self, subject):
         from uuid import uuid4
+        # Each call runs the same experiment into a new folder, then applies the metric.
         run = Experiment(subject=subject, protocol=self.protocol, tools=recorders(),
                          output_dir=self.output_root / uuid4().hex).run()
         prediction = run.behavior(condition='baseline', repetition=0, measure='choice')
@@ -322,12 +361,12 @@ from protocol fields to benchmark declarations above is current authoring boiler
 ```python
 import brainscore
 
-torch.manual_seed(7)
+torch.manual_seed(7)                       # fixes the random weights of the control
 control = make_subject(torchvision.models.squeezenet1_1(weights=None), 'lesson-random-squeezenet')
 control_score = brainscore.score(control, benchmark, check_mem=False)
 model_score = brainscore.score(model, benchmark, check_mem=False)
 # Repackaging the procedure must not change its score.
-assert float(model_score) == float(accuracy(choices, reference))
+assert float(model_score) == float(hand_score)
 assert float(model_score) == float(accuracy(choices, reference.isel(presentation=slice(None, None, -1))))
 print({'random-weight accuracy': float(control_score), 'pretrained accuracy': float(model_score)})
 print(model_score.attrs['compatibility'])
