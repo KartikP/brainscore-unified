@@ -74,7 +74,7 @@ class VLMVisionWrapper:
                  forward_kwargs_map: Optional[Dict[str, str]] = None,
                  patch_count_fn: Optional[Callable] = None,
                  layer_aggregation: str = 'mean_patches',
-                 batch_size: int = 4):
+                 batch_size: int = 4, device: Optional[str] = None):
         import torch
         self._model = model
         self._processor = processor
@@ -84,7 +84,7 @@ class VLMVisionWrapper:
         self._layer_aggregation = layer_aggregation
         self._batch_size = batch_size
         from brainscore.model_helpers._device import select_device
-        self._device = select_device()
+        self._device = select_device(device)
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__

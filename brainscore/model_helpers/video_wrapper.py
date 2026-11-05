@@ -210,6 +210,7 @@ class VideoWrapper:
         context_strategy: str = 'block',
         out_of_bound: str = 'repeat',
         max_clip_ms: Optional[float] = None,
+        device: Optional[str] = None,
     ):
         import torch
         self._model = model
@@ -230,7 +231,7 @@ class VideoWrapper:
         self._max_clip_ms = max_clip_ms
 
         from brainscore.model_helpers._device import select_device
-        self._device = select_device()
+        self._device = select_device(device)
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__

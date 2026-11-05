@@ -33,7 +33,7 @@ def subject(monkeypatch):
         net = Qwen2ForCausalLM(Qwen2Config(vocab_size=len(WORDS), hidden_size=16, intermediate_size=24,
                                            num_hidden_layers=2, num_attention_heads=2,
                                            num_key_value_heads=1, max_position_embeddings=64)).eval()
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda: 'cpu')
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
     model = build_causal_lm_subject('tiny-qwen', net, tok, provenance={'revision': 'test'},
                                     region_layer_map={'mlp_in': NEURON_IN, 'block1': 'model.layers.1'})
     yield model, net, tok

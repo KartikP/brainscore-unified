@@ -102,7 +102,8 @@ def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, 
 def test_every_declared_extraction_setting_participates(cls):
     wrapper = _wrapper(cls)
     original = fingerprint(wrapper.cache_config())
-    ignored = {'self', 'model', 'identifier', 'backbone_id'}
+    # device moves the work, not the result, so it stays out of the cache key.
+    ignored = {'self', 'model', 'identifier', 'backbone_id', 'device'}
     # A newly added constructor option cannot silently escape this contract.
     assert set(inspect.signature(cls).parameters) - ignored == {key[1:] for key in cls.CACHE_FIELDS}
     for name in cls.CACHE_FIELDS:

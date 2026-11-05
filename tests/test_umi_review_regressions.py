@@ -113,7 +113,7 @@ def language_pair(monkeypatch):
         torch.manual_seed(17)
         net = GPT2LMHeadModel(GPT2Config(vocab_size=7, n_positions=64, n_embd=8,
                                        n_layer=1, n_head=2)).eval()
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda: 'cpu')
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
     monkeypatch.setattr(torch.backends.mps, 'is_available', lambda: False)
     monkeypatch.setattr(torch.cuda, 'is_available', lambda: False)
     wrapper = TextWrapper(net, tokenizer, identifier='tiny-new', max_length=64)
