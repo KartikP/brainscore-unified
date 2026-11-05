@@ -13,6 +13,8 @@ responses = brainscore.load_dataset('LeBel2023-UTS03')            # what was rec
 
 `load_dataset` and `load_stimulus_set` look in the unified registry first, then in the vision and language registries, so classic datasets such as `MajajHong2015.public` load the same way.
 
+To present your own images instead, build a stimulus set from a table with `stimulus_id` and `image_path` columns ([Wrap your model](wrap_your_model.md#try-it-on-your-own-images)).
+
 ## Datasets in the unified package
 
 | Dataset | Stimulus set | What it is | Files | Used by |
