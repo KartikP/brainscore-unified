@@ -16,7 +16,7 @@ EXCLUDED = {
     'experiments/09_recording_and_silencing_resnet18.ipynb': 'Pretrained ResNet-18 download',
     'experiments/03_predicting_it_responses.ipynb': 'MajajHong2015 data and CLIP download; GPU recommended',
     'experiments/06_spatial_organization_of_units.ipynb': 'TDANN checkpoints and positions download (280 MB)',
-    'experiments/10_story_listening_fmri.ipynb': 'LeBel 2023 assembly (3 GB) and GPT-2 download',
+    'experiments/10_story_listening_fmri.ipynb': 'LeBel 2023 data (750 MB) and GPT-2 download',
     'experiments/13_passing_outputs_between_subjects.ipynb': 'GPT-2 and DistilGPT-2 download',
     'experiments/14_reading_instructions_and_words.ipynb': 'Qwen2.5-VL-7B download and GPU run',
 }
