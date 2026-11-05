@@ -56,7 +56,9 @@ class Qwen(torch.nn.Module):
         super().__init__()
         self.model = torch.nn.Module()
         self.model.visual = Visual()
-        self.model.language_model = torch.nn.Linear(2, 2)
+        # Mirrors the real layer namespace the registration maps (layers.28).
+        self.model.language_model = torch.nn.Module()
+        self.model.language_model.layers = torch.nn.ModuleList([torch.nn.Linear(2, 2) for _ in range(29)])
         self.generated_features = []
 
     def generate(self, pixel_values, input_ids, **kwargs):

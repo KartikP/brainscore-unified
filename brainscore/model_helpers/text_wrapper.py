@@ -575,6 +575,10 @@ class TextWrapper:
         return live_recording(self._get_layer, layers, aggregate,
                               lambda activity: self._package(activity, [None]))
 
+    def layer_names(self):
+        """Layer paths this extractor can record, relative to the module it wraps."""
+        return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
+
     def _get_layer(self, layer_name):
         from brainscore.model_helpers.selection import split_site
         module = self._model
