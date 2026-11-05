@@ -160,7 +160,7 @@ class TextWrapper:
 
     def __init__(self, model, tokenizer, identifier=None, backbone_id=None,
                  layer_aggregation='last_token', max_length=512,
-                 batch_size=32, provenance=None):
+                 batch_size=32, provenance=None, device=None):
         import torch
         if layer_aggregation not in self.VALID_AGGREGATIONS:
             raise ValueError(
@@ -192,7 +192,7 @@ class TextWrapper:
         if _is_externally_placed(self._model):
             self._device = _input_device(self._model)
         else:
-            self._device = select_device()
+            self._device = select_device(device)
             self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__

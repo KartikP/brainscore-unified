@@ -334,6 +334,46 @@ class ExperimentResult:
                 continue
         raise LookupError(f'No saved behavior for condition={condition!r}, repetition={repetition!r}.')
 
+    def trials(self):
+        """Every saved answer as a table: one row per trial.
+
+        Columns: ``condition``, ``repetition``, ``stimulus_id``, then one column per
+        kind of answer the run saved: ``choice`` (the chosen label), ``p(<label>)``
+        for each label's probability, ``rt``, ``confidence``, ``rating``, ``text``.
+        An answer that could not be read is empty (``None`` or NaN).
+        """
+        import numpy as np
+        import pandas as pd
+        path = self.directory / 'behavior'
+        if not path.is_dir():
+            raise FileNotFoundError('No behavior record: attach RecordBehavior to the experiment.')
+        outputs = [row['payload'] for row in RunRecord(path).events() if row['payload']['kind'] == 'output']
+        named = {env['payload'].channel for env in outputs} - {'behavior'}
+        tables = {}                    # (condition, repetition) -> {column: values}
+        for env in outputs:
+            channel, assembly = env['payload'].channel, env['payload'].payload
+            if channel == 'behavior' and named:
+                continue               # the main answer is also saved under its own name
+            values = np.asarray(assembly.values)
+            table = tables.setdefault((env['condition'], env['repetition_id']),
+                                      {'stimulus_id': list(assembly['stimulus_id'].values)})
+            if 'choice' in assembly.dims and channel != 'behavior:probabilities':
+                labels = np.asarray(assembly['choice'].values)
+                answered = ~np.isnan(values).any(axis=1)          # unreadable answers are NaN rows
+                table['choice'] = [labels[row.argmax()] if ok else None for row, ok in zip(values, answered)]
+            elif 'choice' in assembly.dims:
+                for i, label in enumerate(assembly['choice'].values):
+                    table[f'p({label})'] = values[:, i]
+            else:
+                table[channel.split(':', 1)[-1] if ':' in channel else 'answer'] = values
+        frames = [pd.DataFrame(columns).assign(condition=condition, repetition=repetition)
+                  for (condition, repetition), columns in tables.items()]
+        if not frames:
+            raise LookupError('The behavior record holds no answers.')
+        table = pd.concat(frames, ignore_index=True)
+        first = ['condition', 'repetition', 'stimulus_id']
+        return table[first + [c for c in table.columns if c not in first]]
+
     def _saved(self, folder, channel, condition, repetition):
         path = self.directory / folder
         if not path.is_dir():

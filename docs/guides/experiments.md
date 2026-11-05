@@ -65,8 +65,9 @@ that need their own session construction. The factory receives
 
 For interventions, attach `Intervene(change, conditions=[...])` after the recorders.
 It applies the subject's undoable state change per matching repetition and cleans it up
-at its end. A readout is fitted on the intact network by default;
-`TaskProtocol(..., refit_readout=True)` asks a different question by fitting after the change.
+at its end. A readout is fitted on the network as it is during the run (`readout_fit='current'`,
+the default). `TaskContext(..., readout_fit='intact')` fits it with every change undone and
+tests the changed network, as an animal trained before a lesion is tested after it.
 
 For models that generate answers, `RecordNeural(..., during='prompt')` keeps the prompt
 forward pass. The extractor must support recording during answers. Declared channels

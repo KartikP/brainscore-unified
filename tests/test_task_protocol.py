@@ -495,3 +495,31 @@ def test_without_output_dir_each_run_gets_its_own_folder(tmp_path):
     assert not explicit.run().temporary
     with pytest.raises(FileExistsError):
         explicit.run()                                  # an explicit folder is never overwritten
+
+
+def test_task_protocol_keeps_the_task_readout_fit():
+    from brainscore_core import TaskContext
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    from brainscore.experiments import TaskProtocol
+    stimuli = StimulusSet({'stimulus_id': ['a'], 'sentence': ['cat']})
+    stimuli.identifier = 'readout-fit-test'
+    for fit in ('current', 'intact'):
+        protocol = TaskProtocol(stimuli, TaskContext(task_type='passive', readout_fit=fit))
+        assert protocol.task.readout_fit == fit
+
+
+def test_trials_gives_one_row_per_trial(tmp_path):
+    net = Net()
+    silence = StateChange(kind='ablation', target=Selection(layer='early'),
+                          perturbation=Perturbation(kind='zero'))
+    result = Experiment(
+        subject=_subject(net),
+        protocol=TaskProtocol(STIMULI, TASK, conditions=['baseline', 'silenced']),
+        tools=[RecordBehavior(), Intervene(silence, conditions=['silenced'])]).run()
+    trials = result.trials()
+    assert list(trials.columns[:3]) == ['condition', 'repetition', 'stimulus_id']
+    assert len(trials) == 2 * len(STIMULI)
+    baseline = trials[trials['condition'] == 'baseline']
+    assert list(baseline['stimulus_id']) == ['a', 'b', 'c']
+    assert list(baseline['choice']) == ['short', 'long', 'long']
+    assert list(trials[trials['condition'] == 'silenced']['choice']) == ['short'] * 3

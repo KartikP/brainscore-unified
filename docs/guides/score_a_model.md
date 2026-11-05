@@ -22,11 +22,11 @@ What happens:
 ## Find models and benchmarks
 
 ```python
-sorted(brainscore.model_registry)
-sorted(brainscore.benchmark_registry)
+brainscore.list_models()         # identifier and source (unified, vision or language)
+brainscore.list_benchmarks()
 ```
 
-These list entries registered in the unified package. `load_model` and `load_benchmark` also find classic vision and language entries, such as `'alexnet'` or `'MajajHong2015.IT-pls'`, which are not in these lists.
+These list every identifier `load_model` and `load_benchmark` can find, across the unified, vision and language codebases. Listing downloads nothing and imports no plugin.
 
 ## Downloads and runtime
 

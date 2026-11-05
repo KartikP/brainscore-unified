@@ -140,6 +140,7 @@ class AudioWrapper:
         batch_size: int = 4,
         audio_loader: Optional[Callable[[str, int], np.ndarray]] = None,
         audio_input_key: str = 'input_values',
+        device: Optional[str] = None,
     ):
         import torch
 
@@ -158,7 +159,7 @@ class AudioWrapper:
         self._audio_input_key = audio_input_key
 
         from brainscore.model_helpers._device import select_device
-        self._device = select_device()
+        self._device = select_device(device)
         self._model = self._model.to(self._device)
 
         self._target_sample_rate = (

@@ -71,7 +71,7 @@ def registered_toy(monkeypatch, tmp_path):
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     import brainscore.models.qwen25_vl_3b.model as registration
     import brainscore.benchmarks.roar_yeatman2021.benchmark as roar
-    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda: 'cpu')
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda device=None: 'cpu')
     net = Qwen().eval()
     monkeypatch.setattr(Qwen2_5_VLForConditionalGeneration, 'from_pretrained', lambda *a, **k: net)
     monkeypatch.setattr(AutoProcessor, 'from_pretrained', lambda *a, **k: Processor())

@@ -13,7 +13,6 @@ their channels in that one session, so the neural recording comes from the
 same presentation that produced the behavior.
 """
 from contextlib import contextmanager
-from dataclasses import replace
 
 from brainscore_core.events import StateChange
 from brainscore_core.streaming import BufferedSession
@@ -30,19 +29,20 @@ class TaskProtocol(SessionProtocol):
     is plain viewing. ``required_traits`` (e.g. ``{'memory:session'}``) makes a
     subject without them fail validation, as a benchmark marks it N/A. The
     attached recorders say what is measured: each
-    session requests exactly their channels. With a readout task, the readout
-    is fitted on the intact network and tested on the changed one; pass
-    ``refit_readout=True`` to fit it on the changed network instead.
+    session requests exactly their channels. With a readout task, the task's
+    ``readout_fit`` says which network the readout is fitted on while a change
+    is active: ``TaskContext(..., readout_fit='intact')`` fits it before the
+    change and tests the changed network, as an animal trained before a lesion.
     """
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
-                 repetitions=(0,), refit_readout=False, required_traits=(), metadata=None):
+                 repetitions=(0,), required_traits=(), metadata=None):
         probe = BufferedSession(stimulus_set=stimuli)
         inputs = set()
         while (event := probe.next_input()) is not None:
             inputs.add(event.channel)
         self.stimuli = stimuli
-        self.task = replace(task, readout_fit='current' if refit_readout else 'intact')
+        self.task = task
         # e.g. {'memory:session'} for a task whose trials depend on earlier ones.
         self.required_traits = frozenset(required_traits)
         super().__init__(identifier, self._session, conditions=conditions, repetitions=repetitions,
