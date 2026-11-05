@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f4f5f6">
+  <title>UMI Lab</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/main.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="UMI virtual lab home"><span class="brand-name">brain-score</span><span class="brand-divider">/</span><strong>UMI Lab</strong></a>
+    <div class="top-meta"><span class="local-dot"></span> Local workspace <span class="version">v0.1</span></div>
+  </header>
+  <main>
+    <section class="page-heading">
+      <div><h1>Experiment workspace</h1><p class="intro">Configure a subject, run a session, inspect the results.</p></div>
+    </section>
+    <div class="workspace">
+      <aside class="setup">
+        <section class="panel subject-panel">
+          <div class="section-label"><h2>Subject</h2><span class="tiny-label" id="subject-status">Loading</span></div>
+          <div class="model-loader"><label for="model-search">Find a model</label><div class="model-search-row"><input type="search" id="model-search" placeholder="Type qwen, gpt, resnet..." autocomplete="off" aria-controls="model-id" disabled><button type="button" id="model-search-clear" class="secondary" aria-label="Clear model search" hidden>Clear</button></div><p class="subtle model-search-status" id="model-search-status" role="status" aria-live="polite">Reading model names...</p><label for="model-id">Registered model</label><select id="model-id" disabled><option value="">Loading model catalog...</option></select><div class="loader-buttons"><button id="load-model" class="primary" disabled>Load subject</button><button id="load-calibration" class="secondary">Calibration circuit</button></div><p class="subtle" id="catalog-count">Reading the model and benchmark registries...</p></div>
+          <div class="subject-identity"><canvas id="subject-avatar" width="44" height="44" class="subject-avatar" aria-label="Deterministic pixel avatar for the current subject"></canvas><div><h2 id="subject-title">Preparing the lab</h2><p id="subject-id">Loading Python profile...</p></div></div>
+          <p class="subject-description" id="subject-description">The subject loads once and stays in the experiment worker.</p>
+          <p class="model-notice" id="subject-notice" hidden></p>
+          <details class="channel-details"><summary>Declared channels</summary><div class="channel-row" id="channels"></div></details>
+          <div class="task-label">Current setup</div><h3 id="task-title">Number comparison</h3>
+        </section>
+        <section class="panel toolbox">
+          <div class="section-label"><h2>Tools</h2><span class="tiny-label">Drag or click</span></div>
+          <p class="shelf-hint">Add recording or an intervention.</p>
+          <button class="tool-card" draggable="true" data-tool="behavior" aria-pressed="true"><span class="tool-icon behavior-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 8h6M9 12h6M9 16h4"/></svg></span><span><strong>Behavior log</strong><small>Keep inputs &amp; responses</small></span><span class="tool-add">+</span></button>
+          <button class="tool-card" draggable="true" data-tool="activity" aria-pressed="false"><span class="tool-icon activity-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M2 12h5l3-7 4 14 3-7h5"/></svg></span><span><strong>Activation probe</strong><small>Save activity at the target</small></span><span class="tool-add">+</span></button>
+          <button class="tool-card" draggable="true" data-tool="ablation" aria-pressed="false"><span class="tool-icon ablation-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="m6 18 12-12"/></svg></span><span><strong>Ablation tool</strong><small>Zero units, then restore</small></span><span class="tool-add">+</span></button>
+          <div class="target-settings" id="calibration-settings">
+            <label for="target">Recording / intervention target</label><select id="target"><option value="population">population</option></select>
+            <div class="dose-heading"><label for="fraction">Units to ablate</label><output id="dose-value" for="fraction">25%</output></div>
+            <input id="fraction" type="range" min="25" max="100" step="25" value="25">
+            <p id="selection-hint" class="subtle">First 2 of 8 units; size-matched random control.</p>
+          </div>
+        </section>
+      </aside>
+      <div class="experiment-column">
+        <section class="panel experiment-editor">
+          <div class="editor-heading"><div class="section-label"><h2>Experiment</h2></div><button class="primary" id="run-editor" disabled>Run experiment</button></div>
+          <div class="mode-tabs" role="tablist" aria-label="Experiment workflow"><button data-mode="stimuli" role="tab" aria-selected="true">Stimuli</button><button data-mode="benchmark" role="tab" aria-selected="false">Benchmark</button><button data-mode="session" role="tab" aria-selected="false">Session JSON</button><button data-mode="calibration" role="tab" aria-selected="false">Calibration</button></div>
+          <div id="benchmark-editor" hidden>
+            <label for="benchmark-id">Existing benchmark identifier</label><input id="benchmark-id" list="benchmark-options" placeholder="e.g. Pereira2018.243sentences-ridge-unified" autocomplete="off"><datalist id="benchmark-options"></datalist>
+            <p class="editor-note">Runs the registered benchmark through brainscore.score, including compatibility and memory checks. Its stimuli, scoring, and protocol stay unchanged. Missing assets or credentials are reported by the loader.</p>
+          </div>
+          <div id="stimuli-editor">
+            <div class="editor-grid"><div><label for="stimulus-format">Input format</label><select id="stimulus-format"><option value="lines">Text, one stimulus per line</option><option value="csv">CSV table</option><option value="registered">Registered stimulus set</option></select></div><div><label for="output-channel">Requested output</label><select id="output-channel"></select></div></div>
+            <div id="stimulus-text-editor"><label for="stimulus-text">Stimuli</label><textarea id="stimulus-text" rows="4" spellcheck="false">The quick brown fox jumps over the fence.
+A scientist measures the model's response.</textarea></div>
+            <div id="registered-stimulus-editor" hidden><label for="stimulus-set-id">Registered stimulus set</label><input id="stimulus-set-id" list="stimulus-options" placeholder="Enter a stimulus set identifier"><datalist id="stimulus-options"></datalist></div>
+            <div class="file-controls"><label class="file-button">Import CSV<input type="file" id="csv-file" accept=".csv,text/csv"></label><label class="file-button">Add images / audio / video<input type="file" id="media-files" accept="image/png,image/jpeg,image/webp,image/bmp,image/gif,audio/*,video/*" multiple></label><span id="upload-status" class="subtle">Files become stimulus rows.</span></div>
+            <div id="behavior-settings" hidden><div class="editor-grid"><div><label for="labels">Response labels, comma-separated</label><input id="labels" value="yes,no"></div><div><label for="behavior-path">Behavioral path</label><select id="behavior-path"><option value="auto">Auto</option><option value="generation">Generation</option><option value="readout">Fitted readout</option></select></div></div><details><summary>Fitting stimuli for a behavioral readout</summary><p class="subtle">CSV with sentence or uploaded media columns, plus label. Required for models that answer through a fitted readout.</p><textarea id="fitting-text" rows="3" placeholder="sentence,label" spellcheck="false"></textarea></details></div>
+            <div id="instruction-settings" hidden><label for="instruction">Task instruction</label><textarea id="instruction" rows="2">Answer the question or follow the instruction in each stimulus. Reply only yes or no.</textarea></div>
+          </div>
+          <div id="session-editor" hidden><div class="editor-grid"><div><label for="session-input">Declared request channel</label><select id="session-input"></select></div><div><label for="session-output">Requested output</label><select id="session-output"></select></div></div><label for="session-events">Input events, as a JSON array</label><textarea id="session-events" rows="7" spellcheck="false"></textarea><p id="channel-schema" class="editor-note"></p></div>
+          <div id="calibration-editor" hidden><p class="editor-note">The engineered comparison circuit verifies recording, selective ablation, a random control, and exact restoration. Load it with the Calibration circuit button.</p></div>
+          <details id="intervention-editor"><summary>Intervention settings</summary><p class="subtle">Uses the subject's declared lesion or stimulation channel. Baseline, intervention, and restored conditions run independently. Addresses refer to module outputs; append :input for a module's input.</p><label class="check-label"><input type="checkbox" id="custom-intervention"> Enable intervention</label><div class="editor-grid"><div><label for="intervention-target">Target address</label><input id="intervention-target" placeholder="model.layers.14.mlp.down_proj:input"></div><div><label for="intervention-indices">Unit indices (blank = whole target)</label><input id="intervention-indices" placeholder="0,1,2,3"></div><div><label for="intervention-operation">Operation</label><select id="intervention-operation"><option value="zero">Ablate / zero</option><option value="scale">Scale activity</option><option value="drive">Drive / add activity</option></select></div><div><label for="intervention-value">Scale factor / additive amount</label><input type="number" id="intervention-value" value="0" step="0.1"></div></div></details>
+          <p class="editor-note" id="workflow-help">Load a registered model, then choose its declared output channel. Inputs and outputs are saved as experiment artifacts.</p>
+        </section>
+        <section class="panel bench" id="bench" aria-label="Experiment bench; drop tools here">
+          <div class="bench-top"><div><h2>Lab</h2></div><span class="status-pill" id="run-status"><i></i> Preparing</span></div>
+          <div class="lab-scene"><canvas id="lab-canvas" width="800" height="360" role="img" aria-label="Pixel art laboratory showing a model subject at an experiment station"></canvas><div class="scene-caption"><span class="scene-coordinate">UMI / Lab 01</span><span id="scene-state">AWAITING SUBJECT</span></div></div>
+          <div class="attached-row"><span class="attached-label">Attached tools</span><div id="attached-tools"></div><span class="drop-hint" id="drop-hint">Drop a tool here</span></div>
+          <div class="condition-strip" id="conditions" aria-label="Experiment conditions"></div>
+          <div class="run-controls"><p id="run-help">Start with a baseline, or attach an ablation tool to compare conditions.</p><button class="secondary" id="stop" hidden>Stop after trial</button><button class="primary" id="run" disabled>Run experiment</button></div>
+          <p id="error" class="error" role="alert" hidden></p>
+        </section>
+        <section class="panel results">
+          <div class="results-heading"><div><h2>Results</h2></div><span class="tiny-label" id="result-time">No run yet</span></div>
+          <div id="result-content"><div class="empty-result"><div><strong>No results yet</strong><p>Run an experiment to view responses and download recorded data.</p></div></div></div>
+          <div id="downloads" class="downloads" hidden><a id="download-plan" download="experiment-plan.json">Experiment plan <span>↓</span></a><a id="download-report" download="summary.json">Summary <span>↓</span></a><a id="download-artifacts" download="lab-artifacts.zip">All artifacts <span>↓</span></a></div>
+        </section>
+        <div class="workspace-notes"><p><span id="profile-note">Calibration workspace. Experiments execute in Python; this room displays their state.</span></p></div>
+      </div>
+    </div>
+    <footer><span>Brain-Score / Unified Model Interface v2</span><span>Local execution</span></footer>
+  </main>
+</body>
+</html>
