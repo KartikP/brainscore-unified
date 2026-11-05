@@ -11,6 +11,13 @@ from brainscore import doctor
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def _working_storage(monkeypatch, request):
+    """Unit tests judge one part of the report; this machine's folders are not under test."""
+    if 'storage' not in request.node.name and request.cls is TestReport:
+        monkeypatch.setattr(doctor, '_storage_rows', lambda: [])
+
+
 class TestReport:
     def test_names_the_interpreter_that_answered(self):
         """Which env replied is usually the whole question."""
@@ -86,3 +93,14 @@ class TestAgainstTheRealEnvironment:
     def test_describe_env_covers_every_bound(self):
         from brainscore_core.environment_check import _BOUNDS, describe_env
         assert len(describe_env()) == len(_BOUNDS)
+
+
+def test_storage_folder_linking_to_a_missing_drive_is_a_problem(monkeypatch, tmp_path):
+    link = tmp_path / 'cache'
+    link.symlink_to(tmp_path / 'unmounted')
+    monkeypatch.setenv('BRAINSCORE_HOME', str(link))
+    monkeypatch.setattr(doctor, '_dependency_rows', lambda: [])
+    monkeypatch.setattr(doctor, '_asset_rows', lambda: [])
+    monkeypatch.setattr(doctor, '_import_rows', lambda: [])
+    text, problems = doctor.report()
+    assert problems >= 1 and 'unmounted drive' in text and 'BRAINSCORE_HOME' in text

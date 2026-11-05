@@ -59,3 +59,10 @@ def test_dependency_conflict_keeps_the_plugin_explanation():
 def test_other_errors_pass_through_unchanged():
     with pytest.raises(ZeroDivisionError), _explained('some-model', 'vision', 'weights'):
         1 / 0
+
+
+def test_a_folder_linking_to_a_missing_drive_is_explained(tmp_path):
+    link = tmp_path / '.brain-score'
+    link.symlink_to(tmp_path / 'unmounted-drive' / 'brain-score')
+    message = _raise_inside(FileExistsError(17, 'File exists', str(link)))
+    assert 'which does not exist (an unmounted drive?)' in message and 'BRAINSCORE_HOME' in message

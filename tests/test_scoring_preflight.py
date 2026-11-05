@@ -57,7 +57,7 @@ def test_doctor_reports_invalid_cache(monkeypatch, tmp_path):
     monkeypatch.setattr(doctor, '_asset_rows', lambda: [])
     text, problems = doctor.report()
     assert problems == 1
-    assert 'Result cache is not writable' in text
+    assert 'is not writable' in text and 'RESULTCACHING_HOME' in text
     assert doctor.main() == 1
 
 
