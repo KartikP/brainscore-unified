@@ -179,13 +179,15 @@ def make_server(controller: LabController, frontend: Path, port: int = 8765) -> 
                 self._json({"error": "Request must originate from this local lab"}, 403)
             return allowed
 
-        def _headers(self, mime: str, length: int, status: int = 200) -> None:
+        def _headers(self, mime: str, length: int, status: int = 200, extra: dict | None = None) -> None:
             self.send_response(status)
             self.send_header("Content-Type", mime)
             self.send_header("Content-Length", str(length))
             self.send_header("Cache-Control", "no-store")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'")
+            for name, value in (extra or {}).items():
+                self.send_header(name, str(value))
             self.end_headers()
 
         def _json(self, data: dict, status: int = 200) -> None:
@@ -211,6 +213,46 @@ def make_server(controller: LabController, frontend: Path, port: int = 8765) -> 
                     self._json({"error": "Unknown run"}, 404)
                     return
                 directory = controller.runs[parts[2]]
+                if parts[3] in ("replay", "media"):
+                    state = controller.snapshot()["run"]
+                    if state and state["id"] == parts[2] and state["phase"] in ACTIVE:
+                        self._json({"error": "Wait for the recording to finish"}, 409)
+                        return
+                    try:
+                        from .replay import replay_manifest, replay_media, byte_range
+                        query = parse_qs(urlsplit(self.path).query)
+                        allowed = {"condition", "repetition"} if parts[3] == "replay" else {"stimulus", "kind"}
+                        if set(query) - allowed or any(len(values) != 1 for values in query.values()):
+                            raise ValueError("Unknown or repeated replay settings")
+                        settings = {key: values[0] if key == "kind" else int(values[0]) for key, values in query.items()}
+                        if parts[3] == "replay":
+                            self._json(replay_manifest(directory, **settings))
+                        else:
+                            filename, mime = replay_media(directory, **settings)
+                            size = filename.stat().st_size
+                            try:
+                                start, stop, status = byte_range(self.headers.get("Range"), size)
+                            except ValueError:
+                                self._headers(mime, 0, 416, {"Content-Range": f"bytes */{size}"})
+                                return
+                            headers = {"Accept-Ranges": "bytes"}
+                            if status == 206:
+                                headers["Content-Range"] = f"bytes {start}-{stop}/{size}"
+                            self._headers(mime, stop - start + 1, status, headers)
+                            with filename.open("rb") as stream:
+                                stream.seek(start)
+                                remaining = stop - start + 1
+                                while remaining:
+                                    chunk = stream.read(min(65536, remaining))
+                                    if not chunk:
+                                        break
+                                    self.wfile.write(chunk)
+                                    remaining -= len(chunk)
+                    except (BrokenPipeError, ConnectionResetError):
+                        return
+                    except (ValueError, OSError, KeyError, IndexError, TypeError) as error:
+                        self._json({"error": str(error)}, 400)
+                    return
                 if parts[3] == "observations":
                     try:
                         from .observations import observation_page

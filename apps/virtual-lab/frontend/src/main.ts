@@ -4,6 +4,7 @@ import { addResponsePlot, addCalibrationPlots, activationExtent, HeatmapScale, t
 import { conditionNames, protocolSpec, protocolMeasurements, protocolHasIntervention, protocolRunReady, protocolStep, protocolDraftMatches, type ProtocolValidation } from './protocol.js';
 import { renderProtocolResults } from './protocol_results.js';
 import { renderProgress } from './progress.js';
+import { replayView, type ReplayView } from './replay.js';
 
 interface Plan { target: string; fraction: number; activity: boolean; behavior: boolean; ablation: boolean; seed: number; repeats: number }
 interface Profile { identifier: string; title: string; description: string; task: string; in_channels: string[]; out_channels: string[]; traits?: string[]; targets: { name: string; layer: string; units: number }[]; provenance: Record<string, unknown>; avatar_seed?: string; calibration?: boolean; notice?: string; schemas?: Record<string, { payload: string; addressing?: string }> }
@@ -21,12 +22,33 @@ let requestPending = false;
 let animation: number | undefined;
 let lastScene = '';
 let connectionLost = false;
+let replay: ReplayView | undefined;
+let replayID = '';
 const activePhases = new Set(['queued', 'running', 'trial_finished', 'cancelling']);
 const toolLabels = { behavior: 'Behavior log', activity: 'Activation probe', ablation: 'Ablation tool' };
 const conditionLabels: Record<string, string> = { baseline: 'Baseline', ablation: 'Ablation', intervention: 'Intervention', random_control: 'Random control', restored: 'Restored', benchmark: 'Benchmark', loading_benchmark: 'Loading benchmark' };
 const running = () => Boolean(state.run && activePhases.has(state.run.phase));
 const busy = () => running() || requestPending || isUploading() || state.phase === 'validating';
 const currentProtocolResult = () => state.run?.report?.subject === state.profile?.identifier && protocolDraftMatches(state.run?.request);
+
+function reviewTab(name: 'results' | 'replay'): void {
+  const showReplay = name === 'replay' && !$<HTMLButtonElement>('replay-tab').disabled;
+  $('result-content').hidden = showReplay; $('replay-content').hidden = !showReplay;
+  for (const [id, selected] of [['results-tab', !showReplay], ['replay-tab', showReplay]] as const) {
+    $(id).setAttribute('aria-selected', String(selected)); $(id).tabIndex = selected ? 0 : -1;
+  }
+  if (showReplay && !replay && replayID) { replay = replayView(replayID); $('replay-content').replaceChildren(replay.element); }
+  if (!showReplay) replay?.pause();
+}
+$('results-tab').onclick = () => reviewTab('results'); $('replay-tab').onclick = () => reviewTab('replay');
+document.querySelector('.review-tabs')!.addEventListener('keydown', event => {
+  const key = (event as KeyboardEvent).key;
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(key)) return;
+  event.preventDefault();
+  const target = key === 'Home' || key === 'ArrowLeft' ? 'results' : 'replay';
+  if (target === 'replay' && $<HTMLButtonElement>('replay-tab').disabled) return;
+  reviewTab(target); $(`${target}-tab`).focus();
+});
 
 function scene(): void {
   const sceneState = { ...plan, running: running(), ready: state.phase === 'ready', condition: state.run?.condition ?? '', frame, seed: state.profile?.avatar_seed };
@@ -132,6 +154,8 @@ function renderState(): void {
     select.value = plan.target;
   }
   const run = state.run;
+  $<HTMLButtonElement>('replay-tab').disabled = run?.phase !== 'complete';
+  if (run?.phase !== 'complete') reviewTab('results');
   renderProgress(run, state.phase, !connectionLost);
   if (currentMode() !== 'calibration') $('task-title').textContent = currentMode() === 'protocol' ? protocolSpec().identifier || 'New protocol' : currentMode() === 'benchmark' ? 'Registered benchmark' : currentMode() === 'session' ? 'Declared event session' : `Custom stimuli / ${requestedOutput() || 'choose an output'}`;
   const status = $('run-status'); status.replaceChildren(document.createElement('i'));
@@ -158,6 +182,7 @@ function renderState(): void {
 
 function renderResults(run: Run): void {
   shownResult = run.id;
+  replay?.dispose(); replay = undefined; replayID = run.id; $('replay-content').replaceChildren(); reviewTab('results');
   const content = $('result-content'); content.replaceChildren();
   const report = run.report;
   if (report?.kind === 'protocol') {
@@ -331,6 +356,7 @@ $('bench').ondrop = event => {
 };
 initializeWorkbench({ state: () => state, post, changed: renderState, error,
   loading: () => {
+    replay?.dispose(); replay = undefined; replayID = ''; $('replay-content').replaceChildren(); reviewTab('results');
     state.phase = 'loading'; state.error = undefined; state.run = null; shownResult = ''; error('');
     const note = document.createElement('p'); note.className = 'editor-note'; note.textContent = 'Run an experiment with the loaded subject to inspect its responses.';
     $('result-content').replaceChildren(note); $('downloads').hidden = true; $('result-time').textContent = 'NO RUN YET';

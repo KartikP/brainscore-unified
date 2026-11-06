@@ -91,8 +91,13 @@ A scientist measures the model's response.</textarea></div>
           <p id="error" class="error" role="alert" hidden></p>
         </section>
         <section class="panel results">
-          <div class="results-heading"><div><h2>Results</h2></div><span class="tiny-label" id="result-time">No run yet</span></div>
-          <div id="result-content"><div class="empty-result"><div><strong>No results yet</strong><p>Run an experiment to view responses and download recorded data.</p></div></div></div>
+          <div class="results-heading"><div><h2>Experiment review</h2></div><span class="tiny-label" id="result-time">No run yet</span></div>
+          <div class="review-tabs" role="tablist" aria-label="Experiment review">
+            <button type="button" id="results-tab" role="tab" aria-selected="true" aria-controls="result-content">Results</button>
+            <button type="button" id="replay-tab" role="tab" aria-selected="false" aria-controls="replay-content" tabindex="-1" disabled>Replay</button>
+          </div>
+          <div id="result-content" role="tabpanel" aria-labelledby="results-tab"><div class="empty-result"><div><strong>No results yet</strong><p>Run an experiment to view responses and download recorded data.</p></div></div></div>
+          <div id="replay-content" role="tabpanel" aria-labelledby="replay-tab" hidden></div>
           <div id="downloads" class="downloads" hidden><a id="download-python" download="experiment.py">Python script <span>↓</span></a><a id="download-plan" download="experiment-plan.json">Run config (JSON) <span>↓</span></a><a id="download-report" download="summary.json">Summary <span>↓</span></a><a id="download-artifacts" download="lab-artifacts.zip">All artifacts <span>↓</span></a></div><p class="subtle" id="export-help">The Python script recreates the experiment. JSON stores its configuration. All artifacts bundles code, inputs and recorded outputs.</p>
         </section>
         <div class="workspace-notes"><p><span id="profile-note">Calibration workspace. Experiments execute in Python; this room displays their state.</span></p></div>

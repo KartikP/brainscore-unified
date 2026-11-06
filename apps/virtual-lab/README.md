@@ -185,6 +185,32 @@ units or 1,000,000 values rather than silently sampling. Additional axes use the
 same reported fixed slice as the raw view. A few images provide descriptive
 comparisons, not statistical evidence of category selectivity.
 
+The **Replay** tab displays a saved stimulus beside every recorded neural region.
+Choose its condition, repetition and stimulus, then select **Play**. The time
+slider seeks through the same clip. Playback uses saved data only and never
+loads or runs the subject. Switch to Results to pause playback.
+
+The player resolves each neural presentation by stimulus ID. Each region uses
+its own native physical time bounds, so audio and video can change at different
+rates. Gaps and overlapping intervals stay explicit. Outputs without a temporal
+axis appear as static responses; temporal outputs without physical bounds cannot
+be synchronized to media. These timestamps locate model output bins, not causal
+online responses. Models can use information from other parts of the clip.
+
+Video plays with its saved model audio when an audio input exists. Image and
+text stimuli remain visible while a recorded physical clock advances. The saved
+audio owns the clock while it plays; the silent video follows it. Replay seeks
+audio only at an explicit start or seek action, not on every animation frame.
+Missing or unsupported media produces an explicit message; the time slider can still
+inspect available neural data. No duration is invented for static data without
+a media or physical clock.
+
+Replay buffers the selected stimulus before playback, with a combined limit of
+4,000,000 neural values across regions. Every recorded neuron is included.
+Oversized selections use the paged Results views instead. Color scales remain
+fixed across time within each region and can expand across inspected stimuli or
+conditions. Different regions have separate scales. The layout is not anatomical.
+
 Frontend checks: `cd frontend && npm test`. Backend checks:
 `PYTHONPATH=backend python -m pytest tests -q`. Use the pinned UMI environment;
 the pre-existing local scikit-learn 1.5.2 installation remains outside its
