@@ -1,0 +1,14 @@
+{
+  "name": "umi-virtual-lab",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && node build.mjs",
+    "check": "tsc --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}
