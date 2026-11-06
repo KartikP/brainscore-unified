@@ -27,3 +27,6 @@ def _loader(identifier):
 # The 7B: the same vision tower and parts, a larger decoder.
 model_registry['qwen2.5-vl-7b'] = _loader('qwen2.5-vl-7b')
 model_registry['qwen2.5-vl-7b-vwfa'] = _loader('qwen2.5-vl-7b-vwfa')
+
+# Explicit precision identity; historical float16 registrations stay unchanged.
+model_registry['qwen2.5-vl-3b-bf16'] = _loader('qwen2.5-vl-3b-bf16')

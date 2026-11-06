@@ -49,6 +49,28 @@ model = BrainScoreModel(
 
 Pass the same `net` object to the extractor and to `model=`, so recording and perturbation act on the same network.
 
+Layer paths are relative to the module the extractor wraps (`extractor.layer_names()` lists them). A path the extractor does not have fails when you build the model, and `start_recording` rejects a name that is neither a mapped region nor a layer; both errors list close matches.
+
+## Try it on your own images
+
+A stimulus set is a table with one row per stimulus: a `stimulus_id` and an `image_path` column holding each file's path.
+
+```python
+import pandas as pd
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+stimuli = StimulusSet(pd.DataFrame({
+    'stimulus_id': ['cat', 'dog'],
+    'image_path': ['/path/to/cat.png', '/path/to/dog.png'],
+}))
+stimuli.identifier = 'my-images'          # names the activation cache entry
+
+model.start_recording('IT')
+activations = model.process(stimuli)      # (presentation, neuroid)
+```
+
+The column name tells the model what kind of input each row holds (`sentence` for text, `audio_path` for audio). A `stimulus_paths` dictionary alone is not enough.
+
 ## Models with several inputs
 
 Give each tower its own extractor. If two towers use the same layer names, route regions with `LayerSelector`:

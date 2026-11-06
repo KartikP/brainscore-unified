@@ -18,12 +18,15 @@ Region layer paths are relative to each wrapper's sub-model root:
 """
 
 import re
+import hashlib
+import json
+from pathlib import Path
 from typing import List
 
 import torch
 from PIL import Image
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.model_interface import BrainScoreModel, Subject
 from brainscore_core.hf_compat import pin_image_processor
 
 
@@ -50,6 +53,35 @@ SIZES = {
     'qwen2.5-vl-7b': ('Qwen/Qwen2.5-VL-7B-Instruct', 16.6, 'layers.18'),
 }
 VARIANTS = {f'{size}-vwfa': size for size in SIZES}
+BF16_IDENTIFIER = 'qwen2.5-vl-3b-bf16'
+BF16_REVISION = '66285546d2b821cf421d4f5eb2576359d3770cd3'
+
+
+def _bf16_provenance(model, processor, download):
+    import transformers
+    from transformers.utils.hub import cached_file
+
+    hf_id = SIZES['qwen2.5-vl-3b'][0]
+    def cached(filename):
+        return Path(cached_file(hf_id, filename, revision=BF16_REVISION,
+                    cache_dir=download.get('cache_dir'), local_files_only=True))
+
+    index = json.loads(cached('model.safetensors.index.json').read_text())
+    hashes = {}
+    for filename in sorted(set(index['weight_map'].values())):
+        digest = hashlib.sha256()
+        with cached(filename).open('rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(block)
+        hashes[filename] = digest.hexdigest()
+    return {
+        'identifier': BF16_IDENTIFIER, 'checkpoint': hf_id, 'revision': BF16_REVISION,
+        'weights_sha256': hashes, 'dtype': str(model.dtype), 'device': str(model.device),
+        'torch': torch.__version__, 'transformers': transformers.__version__,
+        'image_processor': processor.image_processor.to_dict(),
+        'generation_config': model.generation_config.to_dict(),
+        'reply_generation': {'max_new_tokens': 64, 'do_sample': False},
+    }
 
 
 def _make_generation_fn(qwen_model, qwen_processor, max_new_tokens: int = 8):
@@ -104,12 +136,16 @@ def _make_generation_fn(qwen_model, qwen_processor, max_new_tokens: int = 8):
     return generate
 
 
-def get_model(identifier: str) -> BrainScoreModel:
-    size = VARIANTS.get(identifier, identifier)
+def get_model(identifier: str) -> Subject:
+    bf16 = identifier == BF16_IDENTIFIER
+    size = 'qwen2.5-vl-3b' if bf16 else VARIANTS.get(identifier, identifier)
     assert size in SIZES, identifier
     hf_id, download_gb, language_layer = SIZES[size]
     from brainscore.models._downloads import hf_preflight
-    download = hf_preflight(identifier, hf_id, download_gb)
+    selection = {'revision': BF16_REVISION} if bf16 else {}
+    download = hf_preflight(identifier, hf_id, download_gb, **selection)
+    if bf16:
+        download = {**download, 'revision': BF16_REVISION}
 
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from brainscore.model_helpers.text_wrapper import TextWrapper
@@ -117,7 +153,7 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         hf_id,
-        torch_dtype=torch.float16,
+        torch_dtype=torch.bfloat16 if bf16 else torch.float16,
         **download,
     )
     # Pin the image-processor implementation: transformers 5 rebinds the class
@@ -182,7 +218,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             },
         )
 
-    return BrainScoreModel(
+    subject = BrainScoreModel(
         identifier=identifier,
         model=qwen_model,
         region_layer_map=region_layer_map,
@@ -199,3 +235,10 @@ def get_model(identifier: str) -> BrainScoreModel:
         behavioral_readout_layer='blocks.28',
         **variant_kwargs,
     )
+    if not bf16:
+        return subject
+
+    # The checkpoint's BF16 range avoids the reproduced final-visual-block
+    # FP16 overflow. Keep this scientific setting explicit in every response.
+    from brainscore.model_helpers.provenance import ProvenanceSubject
+    return ProvenanceSubject(subject, _bf16_provenance(qwen_model, qwen_processor, download))
