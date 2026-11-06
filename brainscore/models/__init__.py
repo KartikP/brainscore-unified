@@ -9,6 +9,7 @@ from . import qwen25_vl_3b   # noqa: F401
 from . import qwen36_27b  # noqa: F401  27B VLM: vision + text (needs transformers>=5)
 from . import blip2_opt_2_7b  # noqa: F401
 from . import gpt2            # noqa: F401
+from . import qwen25_05b_instruct  # noqa: F401
 from . import random_vit_b_32  # noqa: F401   null-control: untrained ViT + logistic
 from . import chance_baseline   # noqa: F401   null-control: uniform probabilities
 from . import videomae_base     # noqa: F401   native-temporal video model (pixel-reconstruction)
