@@ -223,26 +223,31 @@ def make_server(controller: LabController, frontend: Path, port: int = 8765) -> 
                     except (ValueError, OSError, KeyError, IndexError, TypeError) as error:
                         self._json({"error": str(error)}, 400)
                     return
-                if parts[3] == "activation":
+                if parts[3] in ("activation", "temporal"):
                     state = controller.snapshot()["run"]
                     if state and state["id"] == parts[2] and state["phase"] in ACTIVE:
                         self._json({"error": "Wait for the recording to finish"}, 409)
                         return
                     try:
-                        from .activation_data import activation_page
+                        from .activation_data import activation_page, temporal_page
                         query = parse_qs(urlsplit(self.path).query)
-                        allowed = {"index", "presentation", "offset", "limit", "stats", "labels", "channel"}
+                        temporal = parts[3] == "temporal"
+                        allowed = {"index", "presentation", "offset", "limit", "channel"}
+                        allowed |= {"time_offset", "time_limit", "neurons", "labels"} if temporal else {"stats", "labels", "time_bin"}
                         if set(query) - allowed or any(len(values) != 1 for values in query.values()):
                             raise ValueError("Unknown or repeated activation-view settings")
-                        settings = {key: int(values[0]) for key, values in query.items() if key != "channel"}
+                        settings = {key: int(values[0]) for key, values in query.items() if key not in ("channel", "neurons")}
                         if "channel" in query:
                             settings["channel"] = query["channel"][0]
+                        if "neurons" in query:
+                            settings["neurons"] = [int(value) for value in query["neurons"][0].split(",")]
                         if any(settings.get(key, 0) not in (0, 1) for key in ("stats", "labels")):
                             raise ValueError("Stats and labels flags must be 0 or 1")
                         for key in ("stats", "labels"):
                             if key in settings:
                                 settings[key] = bool(settings[key])
-                        self._json(activation_page(directory / "experiment", **settings))
+                        reader = temporal_page if temporal else activation_page
+                        self._json(reader(directory / "experiment", **settings))
                     except (ValueError, OSError, KeyError, IndexError, TypeError) as error:
                         self._json({"error": str(error)}, 400)
                     return
