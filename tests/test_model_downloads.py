@@ -104,6 +104,26 @@ def test_noninteractive_opt_out_skips_disk_check(cache, monkeypatch):
     downloads.shutil.disk_usage.assert_not_called()
 
 
+def test_pinned_revision_is_cached_without_main_reference(cache):
+    snapshot = write_snapshot(cache, {'config.json': '{}', 'model.safetensors': 'cached'})
+    (snapshot.parent.parent / 'refs/main').unlink()
+    assert downloads.hf_preflight('pinned', 'example/large', 7.6, revision='test-commit') == {
+        'cache_dir': str(cache), 'revision': 'test-commit', 'local_files_only': True}
+    downloads.shutil.disk_usage.assert_not_called()
+
+
+def test_cached_main_does_not_substitute_for_missing_pinned_weights(cache):
+    write_snapshot(cache, {'config.json': '{}', 'model.safetensors': 'cached'})
+    with pytest.raises(downloads.ModelDownloadRequired, match='/tree/missing-commit'):
+        downloads.hf_preflight('pinned', 'example/large', 7.6, revision='missing-commit')
+
+
+def test_download_opt_out_keeps_requested_revision(cache, monkeypatch):
+    monkeypatch.setenv(downloads.SKIP_ENV, '1')
+    assert downloads.hf_preflight('pinned', 'example/large', 7.6, revision='test-commit') == {
+        'cache_dir': str(cache), 'revision': 'test-commit'}
+
+
 @pytest.mark.parametrize('value', ['', '0', 'false'])
 def test_opt_out_requires_explicit_one(cache, monkeypatch, value):
     monkeypatch.setenv(downloads.SKIP_ENV, value)
@@ -113,7 +133,7 @@ def test_opt_out_requires_explicit_one(cache, monkeypatch, value):
 
 @pytest.mark.parametrize('identifier', [
     'blip2-opt-2.7b', 'blip2-wav2vec2', 'qwen2.5-vl-3b',
-    'qwen2.5-vl-3b-vwfa', 'qwen2.5-vl-7b', 'qwen2.5-vl-7b-vwfa', 'qwen2.5-vl-wav2vec2',
+    'qwen2.5-vl-3b-vwfa', 'qwen2.5-vl-3b-bf16', 'qwen2.5-vl-7b', 'qwen2.5-vl-7b-vwfa', 'qwen2.5-vl-wav2vec2',
     'qwen3.6-27b', 'vjepa2-vitl',
 ])
 def test_cold_registered_factory_stops_before_any_hf_download(cache, monkeypatch, identifier):

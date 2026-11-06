@@ -55,7 +55,7 @@ def _require_download(identifier, source, destination, approximate_gb, relocate)
     ]))
 
 
-def hf_preflight(identifier: str, repo_id: str, approximate_gb: float) -> dict:
+def hf_preflight(identifier: str, repo_id: str, approximate_gb: float, *, revision: str | None = None) -> dict:
     """Check local weights and return kwargs for every checkpoint loader.
 
     Fully cached weights load with ``local_files_only=True``: a new upstream
@@ -64,6 +64,8 @@ def hf_preflight(identifier: str, repo_id: str, approximate_gb: float) -> dict:
     when some shards are present; they are approximate, not remaining bytes.
     The opt-out restores the loaders' normal online behaviour and skips disk
     checks. It does not override Hugging Face's own offline settings.
+    A pinned revision checks that snapshot rather than the cache's main ref,
+    and is returned unchanged in the loader kwargs.
     """
     from huggingface_hub import constants, try_to_load_from_cache
     from transformers.utils import hub
@@ -72,11 +74,14 @@ def hf_preflight(identifier: str, repo_id: str, approximate_gb: float) -> dict:
     cache = Path(getattr(hub, 'TRANSFORMERS_CACHE', constants.HF_HUB_CACHE))
     cache = cache.expanduser().absolute()
     kwargs = {'cache_dir': str(cache)}
+    if revision is not None:
+        kwargs['revision'] = revision
     if os.environ.get(SKIP_ENV) == '1':
         return kwargs
 
     def cached(filename):
-        return try_to_load_from_cache(repo_id, filename, cache_dir=cache)
+        selection = {} if revision is None else {'revision': revision}
+        return try_to_load_from_cache(repo_id, filename, cache_dir=cache, **selection)
 
     complete = False
     if _present(cached('config.json')):
@@ -97,7 +102,7 @@ def hf_preflight(identifier: str, repo_id: str, approximate_gb: float) -> dict:
     if complete:
         return {**kwargs, 'local_files_only': True}
     _require_download(
-        identifier, f'https://huggingface.co/{repo_id}',
+        identifier, f'https://huggingface.co/{repo_id}' + (f'/tree/{revision}' if revision else ''),
         cache / ('models--' + repo_id.replace('/', '--')), approximate_gb,
         'set HF_HUB_CACHE before starting Python (or TRANSFORMERS_CACHE if already set).',
     )
