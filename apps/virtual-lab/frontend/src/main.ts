@@ -1,10 +1,14 @@
 import { drawScene, drawAvatar } from './scene.js';
 import { currentMode, initializeWorkbench, updateWorkbench, handleTool, buildRequest, customIntervention, requestedOutput, isUploading } from './workbench.js';
+import { addResponsePlot, addCalibrationPlots, activationExtent, HeatmapScale, type ActivationPreview } from './plots.js';
+import { conditionNames, protocolSpec, protocolMeasurements, protocolHasIntervention, protocolRunReady, protocolStep, protocolDraftMatches, type ProtocolValidation } from './protocol.js';
+import { renderProtocolResults } from './protocol_results.js';
+import { renderProgress } from './progress.js';
 
 interface Plan { target: string; fraction: number; activity: boolean; behavior: boolean; ablation: boolean; seed: number; repeats: number }
-interface Profile { identifier: string; title: string; description: string; task: string; in_channels: string[]; out_channels: string[]; targets: { name: string; layer: string; units: number }[]; provenance: Record<string, unknown>; avatar_seed?: string; calibration?: boolean; notice?: string; schemas?: Record<string, { payload: string; addressing?: string }> }
+interface Profile { identifier: string; title: string; description: string; task: string; in_channels: string[]; out_channels: string[]; traits?: string[]; targets: { name: string; layer: string; units: number }[]; provenance: Record<string, unknown>; avatar_seed?: string; calibration?: boolean; notice?: string; schemas?: Record<string, { payload: string; addressing?: string }> }
 interface Run { id: string; phase: string; condition?: string; trial?: number; error?: string; elapsed_s?: number; selection?: { overlap: number }; report?: { [key: string]: unknown; conditions?: { condition: string; accuracy: number; stimuli: number }[]; restored_exact?: boolean | null; note?: string }; artifacts?: { bytes: number }[]; plan?: Plan; request?: Record<string, unknown> }
-interface State { phase: string; token: string; profile: Profile | null; run: Run | null; error?: string; catalog_ready?: boolean }
+interface State { phase: string; token: string; profile: Profile | null; run: Run | null; error?: string; catalog_ready?: boolean; validation?: ProtocolValidation }
 type ToolName = 'behavior' | 'activity' | 'ablation';
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const plan: Plan = { target: 'population', fraction: 25, activity: false, behavior: true, ablation: false, seed: 1729, repeats: 1 };
@@ -21,7 +25,8 @@ const activePhases = new Set(['queued', 'running', 'trial_finished', 'cancelling
 const toolLabels = { behavior: 'Behavior log', activity: 'Activation probe', ablation: 'Ablation tool' };
 const conditionLabels: Record<string, string> = { baseline: 'Baseline', ablation: 'Ablation', intervention: 'Intervention', random_control: 'Random control', restored: 'Restored', benchmark: 'Benchmark', loading_benchmark: 'Loading benchmark' };
 const running = () => Boolean(state.run && activePhases.has(state.run.phase));
-const busy = () => running() || requestPending || isUploading();
+const busy = () => running() || requestPending || isUploading() || state.phase === 'validating';
+const currentProtocolResult = () => state.run?.report?.subject === state.profile?.identifier && protocolDraftMatches(state.run?.request);
 
 function scene(): void {
   const sceneState = { ...plan, running: running(), ready: state.phase === 'ready', condition: state.run?.condition ?? '', frame, seed: state.profile?.avatar_seed };
@@ -73,23 +78,27 @@ function toggleTool(name: ToolName): void {
 }
 
 function renderConditions(): void {
-  const names = currentMode() === 'benchmark' ? ['benchmark'] : currentMode() !== 'calibration' ? customIntervention() ? ['baseline', 'intervention', 'restored'] : ['baseline'] : plan.ablation ? ['baseline', 'ablation', 'random_control', 'restored'] : ['baseline'];
+  const names = currentMode() === 'protocol' ? conditionNames() : currentMode() === 'benchmark' ? ['benchmark'] : currentMode() !== 'calibration' ? customIntervention() ? ['baseline', 'intervention', 'restored'] : ['baseline'] : plan.ablation ? ['baseline', 'ablation', 'random_control', 'restored'] : ['baseline'];
   const container = $('conditions'); container.replaceChildren();
   const current = names.indexOf(state.run?.condition ?? '');
   names.forEach((name, index) => {
     const div = document.createElement('div'); div.className = 'condition';
-    if (state.run?.phase === 'complete' && shownResult === state.run.id && JSON.stringify(plan) === JSON.stringify(state.run.plan)) div.classList.add('done');
+    if (state.run?.phase === 'complete' && shownResult === state.run.id && (currentMode() === 'protocol' ? currentProtocolResult() : JSON.stringify(plan) === JSON.stringify(state.run.plan))) div.classList.add('done');
     else if (running() && index === current) div.classList.add('active');
     else if (running() && current > index) div.classList.add('done');
-    div.append(document.createTextNode(conditionLabels[name]));
+    div.append(document.createTextNode(conditionLabels[name] ?? name));
     const small = document.createElement('small'); small.textContent = name === 'ablation' ? `${plan.fraction}% ZEROED` : name === 'random_control' ? 'SAME DOSE' : name === 'restored' ? 'CLEANUP CHECK' : 'UNCHANGED';
+    if (currentMode() === 'protocol') {
+      const change = protocolSpec().conditions[index]?.intervention;
+      small.textContent = change ? `${change.operation} · ${change.indices?.length ?? 'all'} units` : 'Intact / no change';
+    }
     div.append(small); container.append(div);
   });
 }
 
 function renderState(): void {
   updateWorkbench(state, busy());
-  if (currentMode() !== 'calibration') {
+  if (currentMode() !== 'calibration' && currentMode() !== 'protocol') {
     plan.ablation = customIntervention();
     plan.activity = currentMode() === 'stimuli' && requestedOutput().startsWith('neural:');
   }
@@ -99,6 +108,10 @@ function renderState(): void {
     if (typeof state.run?.request?.record === 'boolean') plan.behavior = state.run.request.record;
     $<HTMLInputElement>('fraction').value = String(plan.fraction);
     hydrated = true;
+  }
+  if (currentMode() === 'protocol') {
+    const measurements = protocolMeasurements();
+    plan.behavior = measurements.behavior; plan.activity = measurements.regions.length > 0; plan.ablation = protocolHasIntervention();
   }
   if (profile && profileID !== profile.identifier) {
     profileID = profile.identifier;
@@ -119,16 +132,21 @@ function renderState(): void {
     select.value = plan.target;
   }
   const run = state.run;
-  if (currentMode() !== 'calibration') $('task-title').textContent = currentMode() === 'benchmark' ? 'Registered benchmark' : currentMode() === 'session' ? 'Declared event session' : `Custom stimuli / ${requestedOutput() || 'choose an output'}`;
+  renderProgress(run, state.phase, !connectionLost);
+  if (currentMode() !== 'calibration') $('task-title').textContent = currentMode() === 'protocol' ? protocolSpec().identifier || 'New protocol' : currentMode() === 'benchmark' ? 'Registered benchmark' : currentMode() === 'session' ? 'Declared event session' : `Custom stimuli / ${requestedOutput() || 'choose an output'}`;
   const status = $('run-status'); status.replaceChildren(document.createElement('i'));
-  const label = state.phase === 'failed' || state.phase === 'load_failed' ? 'Unavailable' : state.phase === 'loading' ? 'Loading subject' : running() ? run?.phase === 'cancelling' ? 'Stopping' : 'Experiment running' : run?.phase === 'complete' ? 'Run complete' : run?.phase === 'failed' ? 'Run failed' : 'Ready to experiment';
+  const label = state.phase === 'failed' || state.phase === 'load_failed' ? 'Unavailable' : state.phase === 'loading' ? 'Loading subject' : state.phase === 'validating' ? 'Validating draft' : running() ? run?.phase === 'cancelling' ? 'Stopping' : 'Experiment running' : currentMode() === 'protocol' && !currentProtocolResult() ? 'Protocol draft' : run?.phase === 'complete' ? 'Run complete' : run?.phase === 'failed' ? 'Run failed' : 'Ready to experiment';
   status.append(document.createTextNode(label)); status.classList.toggle('running', running());
   $('subject-status').textContent = state.phase === 'ready' ? 'Loaded' : state.phase.replaceAll('_', ' ');
   $('scene-state').textContent = running() ? conditionLabels[run?.condition ?? ''] ?? 'Preparing run' : state.phase === 'ready' ? 'Subject ready' : 'Awaiting subject';
-  $<HTMLButtonElement>('run').disabled = state.phase !== 'ready' || busy();
-  $<HTMLButtonElement>('run-editor').disabled = state.phase !== 'ready' || busy();
+  const blocked = state.phase !== 'ready' || busy() || currentMode() === 'protocol' && !protocolRunReady();
+  $<HTMLButtonElement>('run').disabled = blocked;
+  $<HTMLButtonElement>('run-editor').disabled = blocked;
+  $('run-editor').hidden = currentMode() === 'protocol' && protocolStep() !== 5;
+  $('run').textContent = $('run-editor').textContent = currentMode() === 'protocol' ? 'Run protocol' : 'Run experiment';
   $('stop').hidden = !running(); $<HTMLButtonElement>('stop').disabled = run?.phase === 'cancelling';
-  $('run-help').textContent = running() ? 'Python owns execution. Stopping waits for the current trial or whole benchmark and its cleanup.' : currentMode() === 'benchmark' ? 'Runs the existing benchmark and its pre-flight checks.' : currentMode() !== 'calibration' ? 'Executes your inputs through the subject session interface.' : plan.ablation ? 'Four conditions. Same stimuli. Independent trials, with automatic cleanup.' : 'Start with a baseline, or attach an ablation tool to compare conditions.';
+  $('stop').textContent = currentMode() === 'protocol' ? 'Stop after repetition' : currentMode() === 'benchmark' ? 'Stop after benchmark' : 'Stop after trial';
+  $('run-help').textContent = running() ? 'Stopping waits for the current repetition or whole benchmark and its cleanup.' : currentMode() === 'protocol' ? 'Each stimulus is shown once per condition and repetition. Validate the complete setup in step 6 before running.' : currentMode() === 'benchmark' ? 'Runs the existing benchmark and its pre-flight checks.' : currentMode() !== 'calibration' ? 'Executes your inputs through the subject session interface.' : plan.ablation ? 'Four conditions. Same stimuli. Independent trials, with automatic cleanup.' : 'Start with a baseline, or attach an ablation tool to compare conditions.';
   if (state.error) error(state.error);
   else if (run?.phase === 'failed' || run?.phase === 'cancelled') {
     error(run.error || 'Experiment stopped; the plugin supplied no additional message');
@@ -142,7 +160,9 @@ function renderResults(run: Run): void {
   shownResult = run.id;
   const content = $('result-content'); content.replaceChildren();
   const report = run.report;
-  if (report?.conditions) {
+  if (report?.kind === 'protocol') {
+    renderProtocolResults(report, content, run.id, (observations, target, scale) => renderWorkbenchReport(observations, target, run, scale));
+  } else if (report?.conditions) {
     const grid = document.createElement('div'); grid.className = 'metric-grid';
     for (const row of report.conditions) {
       const card = document.createElement('div'); card.className = `metric-card ${row.condition}`;
@@ -155,8 +175,9 @@ function renderResults(run: Run): void {
       card.append(label, value, bar, detail); grid.append(card);
     }
     content.append(grid);
+    addCalibrationPlots(report, content);
   } else if (report?.kind) {
-    renderWorkbenchReport(report, content);
+    renderWorkbenchReport(report, content, run);
   } else {
     const summary = document.createElement('pre'); summary.textContent = JSON.stringify(report, null, 2); content.append(summary);
   }
@@ -170,12 +191,13 @@ function renderResults(run: Run): void {
   if (report?.note) { const note = document.createElement('p'); note.className = 'result-note'; note.textContent = report.note; content.append(note); }
   $('result-time').textContent = `${run.elapsed_s?.toFixed(2)} s`;
   $('downloads').hidden = false;
+  $<HTMLAnchorElement>('download-python').href = `/api/runs/${run.id}/experiment.py`;
   $<HTMLAnchorElement>('download-plan').href = `/api/runs/${run.id}/plan.json`;
   $<HTMLAnchorElement>('download-report').href = `/api/runs/${run.id}/summary.json`;
   $<HTMLAnchorElement>('download-artifacts').href = `/api/runs/${run.id}/artifacts.zip`;
 }
 
-function renderWorkbenchReport(report: Record<string, unknown>, container: HTMLElement): void {
+function renderWorkbenchReport(report: Record<string, unknown>, container: HTMLElement, run: Run, sharedScale?: HeatmapScale): void {
   const title = document.createElement('p'); title.className = 'response-meta';
   title.textContent = `${String(report.subject ?? '')} / ${String(report.benchmark ?? report.output ?? '')}`;
   container.append(title);
@@ -188,15 +210,29 @@ function renderWorkbenchReport(report: Record<string, unknown>, container: HTMLE
     if (report.score) { const detail = document.createElement('pre'); detail.textContent = JSON.stringify(report.score, null, 2); container.append(detail); }
     return;
   }
-  const outputs = report.outputs as { condition: string; response: Record<string, unknown> }[] | undefined;
-  for (const output of outputs ?? []) {
+  const outputs = report.outputs as { condition: string; channel?: string; repetition?: number; result_index?: number; response: Record<string, unknown> }[] | undefined;
+  const extent = activationExtent((outputs ?? []).flatMap(output => output.response.activation_preview ? [output.response.activation_preview as ActivationPreview] : []));
+  const scale = sharedScale ?? new HeatmapScale();
+  for (const [index, output] of (outputs ?? []).entries()) {
     const card = document.createElement('div'); card.className = 'response-card';
-    const heading = document.createElement('h3'); heading.textContent = conditionLabels[output.condition] ?? output.condition; card.append(heading);
+    const heading = document.createElement('h3'); heading.textContent = `${conditionLabels[output.condition] ?? output.condition}${output.channel ? ` / ${output.channel}` : ''}${output.repetition !== undefined ? ` / repetition ${output.repetition + 1}` : ''}`; card.append(heading);
     const response = output.response;
     if (Array.isArray(response.shape)) {
       const meta = document.createElement('p'); meta.className = 'response-meta';
       meta.textContent = `${String(response.type)} / shape [${response.shape.join(', ')}] / ${(response.dims as string[]).join(' × ')}`;
       card.append(meta);
+      if (response.measure) {
+        const measure = document.createElement('p'); measure.className = 'response-meta';
+        const details = response.measure as { kind?: string; source?: string };
+        measure.textContent = typeof response.measure === 'string' ? response.measure : `${details.kind ?? 'Recorded'} measure${details.source ? ` / ${details.source}` : ''}`;
+        card.append(measure);
+      }
+      if (response.recording && typeof response.recording === 'object') {
+        const recording = response.recording as Record<string, unknown>;
+        const note = document.createElement('p'); note.className = 'response-meta';
+        note.textContent = `Recording: ${[recording.task_type, recording.path, recording.forward_pass, recording.readout_fit].filter(value => value !== undefined).join(' / ')}`;
+        card.append(note);
+      }
     }
     const rows = response.responses as { stimulus: string; stimulus_text?: string | null; answer: string | null; selection_status?: string; tied_choices?: string[]; scores: (number | null)[] }[] | undefined;
     if (rows?.length) {
@@ -210,6 +246,14 @@ function renderWorkbenchReport(report: Record<string, unknown>, container: HTMLE
         const tr = document.createElement('tr');
         const stimulus = row.stimulus_text ? `${row.stimulus}: ${row.stimulus_text}` : row.stimulus;
         for (const text of [stimulus, preference, row.scores.map(value => value === null ? 'nonfinite' : value.toFixed(4)).join(', ')]) { const td = document.createElement('td'); td.textContent = text; tr.append(td); }
+        table.append(tr);
+      }
+      card.append(table);
+    } else if (Array.isArray(response.scalar_rows)) {
+      const table = document.createElement('table'); table.className = 'response-table';
+      for (const row of response.scalar_rows as { stimulus: string; value: number | null }[]) {
+        const tr = document.createElement('tr');
+        for (const text of [row.stimulus, row.value === null ? 'Missing / invalid' : String(row.value)]) { const td = document.createElement('td'); td.textContent = text; tr.append(td); }
         table.append(tr);
       }
       card.append(table);
@@ -232,6 +276,8 @@ function renderWorkbenchReport(report: Record<string, unknown>, container: HTMLE
     } else {
       const detail = document.createElement('pre'); detail.textContent = JSON.stringify(response, null, 2); card.append(detail);
     }
+    const repetitions = Number(run.request?.repeats ?? 1);
+    addResponsePlot(card, response, extent, `/api/runs/${run.id}/activation?index=${output.result_index ?? index * repetitions}${output.channel ? `&channel=${encodeURIComponent(output.channel)}` : ''}`, scale);
     container.append(card);
   }
 }
@@ -247,12 +293,13 @@ async function poll(): Promise<void> {
     state = await response.json();
     if (connectionLost) error('');
     connectionLost = false; renderState();
-  } catch (problem) { connectionLost = true; error(`Connection lost. ${String(problem)}`); }
+  } catch (problem) { connectionLost = true; renderProgress(state.run, state.phase, false); error(`Connection lost. ${String(problem)}`); }
   window.setTimeout(poll, document.hidden ? 5000 : running() || state.phase === 'loading' ? 500 : 2000);
 }
 
 $('run').onclick = async () => {
   if (busy()) return;
+  if (currentMode() === 'protocol' && !protocolRunReady()) { error('Review and validate this protocol in step 6 before running.'); return; }
   error(''); requestPending = true; renderState();
   try {
     const calibration = currentMode() === 'calibration';

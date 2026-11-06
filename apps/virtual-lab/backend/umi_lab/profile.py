@@ -45,6 +45,7 @@ class LabProfile:
             "in_channels": sorted(self.subject.in_channels),
             "out_channels": sorted(self.subject.out_channels),
             "required_channels": sorted(self.subject.required_channels),
+            "traits": sorted(self.subject.traits),
             "inputs": list(self.input_channels),
             "outputs": list(self.output_channels),
             "targets": [vars(target) for target in self.targets],

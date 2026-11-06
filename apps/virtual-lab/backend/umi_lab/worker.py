@@ -98,12 +98,27 @@ def run_worker(factory: str, root: str, commands: object, messages: object,
                 traceback.print_exc()
                 send({"phase": "load_failed", "profile": None, "error": error_message(error), "run": None}, terminal=True)
             continue
+        if request.get("kind") == "validate":
+            try:
+                from .workbench import Request
+                from .protocol import validate_protocol
+                if profile is None:
+                    raise ValueError("Load a subject first")
+                summary = validate_protocol(profile.subject, Request.parse(request["request"]), Path(root) / "uploads")
+                validation = {"id": request["validation_id"], "phase": "valid", "summary": summary}
+            except Exception as error:
+                validation = {"id": request["validation_id"], "phase": "invalid", "error": error_message(error)}
+            send({"phase": "ready", "validation": validation}, terminal=True)
+            continue
         run_id = request["id"]
         directory = Path(root) / run_id
         try:
             directory.mkdir()
             if profile is None:
                 raise ValueError("Load a subject first")
+            if profile.make_session:
+                (directory / "profile.json").write_text(json.dumps({
+                    "factory": factory, "subject": profile.subject.identifier}, indent=2) + "\n")
 
             def progress(value: dict) -> None:
                 send({"id": run_id, **value})
@@ -128,7 +143,11 @@ def run_worker(factory: str, root: str, commands: object, messages: object,
                                 if Path(name).name != name or not source.is_relative_to((Path(root) / "uploads").resolve()) or not source.is_file():
                                     raise ValueError("Unknown uploaded input file")
                                 shutil.copyfile(source, inputs / name)
-                    result = run_session(profile.subject, experiment_request, directory / "experiment", inputs, progress, stop.is_set)
+                    if experiment_request.mode == "protocol":
+                        from .protocol import run_protocol
+                        result = run_protocol(profile.subject, experiment_request, directory / "experiment", inputs, progress, stop.is_set)
+                    else:
+                        result = run_session(profile.subject, experiment_request, directory / "experiment", inputs, progress, stop.is_set)
             else:
                 plan = Plan.parse(request["plan"])
                 if profile.make_session is None:
@@ -136,6 +155,7 @@ def run_worker(factory: str, root: str, commands: object, messages: object,
                 (directory / "plan.json").write_text(json.dumps(asdict(plan), indent=2) + "\n")
                 result = execute(profile, plan, directory / "experiment",
                                  progress if request.get("telemetry", True) else None, stop.is_set)
+            progress({"phase": "running", "activity": "Saving results"})
             message = bounded_message({"id": run_id, "phase": "complete", **result})
             (directory / "summary.json").write_text(json.dumps(message, indent=2, allow_nan=False) + "\n")
             send(message, terminal=True)

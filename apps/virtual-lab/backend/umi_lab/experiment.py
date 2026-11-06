@@ -63,7 +63,7 @@ def selections(profile: LabProfile, plan: Plan) -> dict:
 
 
 def build_experiment(profile: LabProfile, plan: Plan, directory: Path,
-                     observer: object | None = None) -> object:
+                     observer: object | None = None, visualization: object | None = None) -> object:
     from brainscore.experiments import (
         Ablate, Experiment, RecordActivity, RecordInputsOutputs, SessionProtocol,
     )
@@ -88,6 +88,8 @@ def build_experiment(profile: LabProfile, plan: Plan, directory: Path,
         tools.append(RecordInputsOutputs(max_bytes=256 * 1024 * 1024))
     if observer is not None:
         tools.append(observer)
+    if visualization is not None:
+        tools.append(visualization)
     if plan.ablation:
         tools.append(Ablate([Selection(layer=picked["layer"], indices=picked["selected"])],
                            conditions=["ablation"]))
@@ -112,7 +114,8 @@ def build_experiment(profile: LabProfile, plan: Plan, directory: Path,
     )
 
 
-def progress_tool(send: Callable[[dict], None], cancelled: Callable[[], bool]) -> object:
+def progress_tool(send: Callable[[dict], None], cancelled: Callable[[], bool], *,
+                  activity: str = "Processing stimuli", recording_neural: bool = False) -> object:
     from brainscore.experiments import Tool
 
     class Progress(Tool):
@@ -121,17 +124,62 @@ def progress_tool(send: Callable[[dict], None], cancelled: Callable[[], bool]) -
         def __init__(self) -> None:
             self.last_condition = None
             self.last_sent = 0.0
+            self.total = 0
+            self.completed = set()
+            self.recording_neural = recording_neural
+            self.last_activity = ""
+            self.output_seen = False
+
+        def validate(self, experiment) -> None:
+            # These are public SessionProtocol declarations, not model internals.
+            self.completed.clear()
+            self.last_condition, self.last_activity = None, ""
+            self.last_sent, self.output_seen = 0.0, False
+            self.total = len(experiment.protocol.conditions) * len(experiment.protocol.repetitions)
+            self.recording_neural = self.recording_neural or any(
+                channel.startswith("neural:") for channel in experiment.protocol.output_channels)
 
         def on_event(self, event: dict) -> None:
             kind = event["kind"]
+            label = activity
+            force = False
             if kind == "repetition_start":
                 if cancelled():
                     raise Cancelled("Stopped between repetitions; the current repetition was allowed to finish")
-                now = time.monotonic()
-                if event["condition"] != self.last_condition or now - self.last_sent >= 0.5:
-                    self.last_condition, self.last_sent = event["condition"], now
-                    send({"phase": "running", "condition": event["condition"],
-                          "repetition": event["repetition_id"]})
+                label = "Preparing repetition"
+                force = event["condition"] != self.last_condition
+                if force:
+                    self.output_seen = False
+                self.last_condition = event["condition"]
+            elif kind == "repetition_end":
+                if not event["payload"]["failed"]:
+                    self.completed.add((event["condition"], event["repetition_id"]))
+                label = "Finishing repetition"
+                force = len(self.completed) == self.total
+            elif kind == "output":
+                from brainscore_core.streaming import StreamEvent
+                payload = event["payload"]
+                channel = payload.channel if isinstance(payload, StreamEvent) else ""
+                label = ("Recording neural activity" if channel.startswith("neural:")
+                         else "Recording responses" if channel.startswith(("behavior", "response_trace"))
+                         else "Recording outputs")
+                force = not self.output_seen
+                self.output_seen = True
+            elif kind not in ("input", "session_context"):
+                return
+            else:
+                force = self.last_activity == "Preparing repetition"
+            now = time.monotonic()
+            # Never inspect/copy an activation payload or change inference batching.
+            # Bound updates within a condition; retain condition boundaries and completion.
+            if force or now - self.last_sent >= 0.5:
+                self.last_sent = now
+                self.last_activity = label
+                send({"phase": "running", "condition": event["condition"],
+                      "repetition": event["repetition_id"], "activity": label,
+                      "recording_neural": self.recording_neural,
+                      "progress": {"completed": len(self.completed), "total": self.total,
+                                   "unit": "repetition"}})
 
     return Progress()
 
@@ -139,11 +187,15 @@ def progress_tool(send: Callable[[dict], None], cancelled: Callable[[], bool]) -
 def execute(profile: LabProfile, plan: Plan, directory: Path,
             send: Callable[[dict], None] | None = None,
             cancelled: Callable[[], bool] = lambda: False) -> dict:
-    observer = progress_tool(send, cancelled) if send is not None else None
+    observer = progress_tool(send, cancelled, recording_neural=plan.activity) if send is not None else None
+    from .previews import activity_preview_tool
+    visualization = activity_preview_tool() if plan.activity else None
     started = time.perf_counter()
-    result = build_experiment(profile, plan, directory, observer).run()
+    result = build_experiment(profile, plan, directory, observer, visualization).run()
     elapsed = time.perf_counter() - started
     report = profile.summarize(result)
+    if visualization is not None:
+        report["activation_previews"] = list(visualization.previews.values())
     return {"report": report, "elapsed_s": elapsed,
             "selection": selections(profile, plan),
             "artifacts": result.manifest["artifacts"], "directory": str(directory)}

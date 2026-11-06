@@ -33,6 +33,9 @@ def main() -> None:
             request = Request.parse(saved["request"])
             if request.mode == "benchmark":
                 result = run_benchmark(subject, request, directory, lambda event: None, lambda: False)
+            elif request.mode == "protocol":
+                from .protocol import run_protocol
+                result = run_protocol(subject, request, directory, args.run.parent / "inputs", lambda event: None, lambda: False)
             else:
                 result = run_session(subject, request, directory, args.run.parent / "inputs", lambda event: None, lambda: False)
         else:

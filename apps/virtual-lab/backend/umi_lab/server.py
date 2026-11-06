@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import hashlib
 import mimetypes
 import multiprocessing as mp
 from pathlib import Path
@@ -13,7 +14,7 @@ import shutil
 import tempfile
 import threading
 import time
-from urllib.parse import urlsplit, unquote
+from urllib.parse import urlsplit, unquote, parse_qs
 
 from .experiment import Plan
 from .worker import DEFAULT_FACTORY, run_worker
@@ -23,11 +24,13 @@ ACTIVE = {"queued", "running", "trial_finished", "cancelling"}
 
 class LabController:
     def __init__(self, root: Path, factory: str = DEFAULT_FACTORY) -> None:
+        self.factory = factory
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.token = secrets.token_urlsafe(32)
         self.lock = threading.Lock()
         self.state = {"phase": "loading", "profile": None, "run": None}
+        self.validation_fingerprint: str | None = None
         self.catalog = {"models": [], "benchmarks": [], "stimulus_sets": []}
         self.runs: dict[str, Path] = {}
         context = mp.get_context("spawn")
@@ -93,7 +96,8 @@ class LabController:
         with self.lock:
             if self.state["phase"] not in ("ready", "load_failed") or (self.state["run"] and self.state["run"]["phase"] in ACTIVE):
                 raise ValueError("Wait for the current operation before changing models")
-            self.state.update(phase="loading", error=None)
+            self.state.update(phase="loading", error=None, validation=None)
+            self.validation_fingerprint = None
             self.commands.put_nowait({"kind": "load", "identifier": identifier})
 
     def submit_request(self, data: dict) -> str:
@@ -104,12 +108,34 @@ class LabController:
                 raise ValueError("Load a subject first")
             if self.state["run"] and self.state["run"]["phase"] in ACTIVE:
                 raise ValueError("An experiment is already running")
+            if request.mode == "protocol":
+                validation = self.state.get("validation") or {}
+                if validation.get("phase") != "valid" or self.validation_fingerprint != self._fingerprint(request):
+                    raise ValueError("Validate this exact protocol with the current subject before running")
             identifier = secrets.token_hex(16)
             self.stop.clear()
             self.runs[identifier] = self.root / identifier
             self.state["run"] = {"id": identifier, "phase": "queued", "request": asdict(request),
                                   "started_at": time.time()}
             self.commands.put_nowait({"kind": "workbench", "id": identifier, "request": asdict(request)})
+            return identifier
+
+    def _fingerprint(self, request: object) -> str:
+        payload = {"subject": self.state["profile"]["identifier"], "request": asdict(request)}
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, allow_nan=False).encode()).hexdigest()
+
+    def validate_request(self, data: dict) -> str:
+        from .workbench import Request
+        request = Request.parse(data)
+        if request.mode != "protocol":
+            raise ValueError("The protocol builder validates TaskProtocol configurations")
+        with self.lock:
+            if self.state["phase"] != "ready" or (self.state["run"] and self.state["run"]["phase"] in ACTIVE):
+                raise ValueError("Wait until the subject is ready and the current run has finished")
+            identifier = secrets.token_hex(16)
+            self.validation_fingerprint = self._fingerprint(request)
+            self.state.update(phase="validating", validation={"id": identifier, "phase": "pending"})
+            self.commands.put_nowait({"kind": "validate", "validation_id": identifier, "request": asdict(request)})
             return identifier
 
     def cancel(self) -> None:
@@ -185,6 +211,55 @@ def make_server(controller: LabController, frontend: Path, port: int = 8765) -> 
                     self._json({"error": "Unknown run"}, 404)
                     return
                 directory = controller.runs[parts[2]]
+                if parts[3] == "observations":
+                    try:
+                        from .observations import observation_page
+                        query = parse_qs(urlsplit(self.path).query)
+                        if set(query) - {"index", "channel"} or any(len(values) != 1 for values in query.values()):
+                            raise ValueError("Choose one recorded repetition index")
+                        index = int(query.get("index", ["0"])[0])
+                        channel = query.get("channel", [None])[0]
+                        self._json({"outputs": observation_page(directory / "experiment", index=index, channel=channel)})
+                    except (ValueError, OSError, KeyError, IndexError, TypeError) as error:
+                        self._json({"error": str(error)}, 400)
+                    return
+                if parts[3] == "activation":
+                    state = controller.snapshot()["run"]
+                    if state and state["id"] == parts[2] and state["phase"] in ACTIVE:
+                        self._json({"error": "Wait for the recording to finish"}, 409)
+                        return
+                    try:
+                        from .activation_data import activation_page
+                        query = parse_qs(urlsplit(self.path).query)
+                        allowed = {"index", "presentation", "offset", "limit", "stats", "labels", "channel"}
+                        if set(query) - allowed or any(len(values) != 1 for values in query.values()):
+                            raise ValueError("Unknown or repeated activation-view settings")
+                        settings = {key: int(values[0]) for key, values in query.items() if key != "channel"}
+                        if "channel" in query:
+                            settings["channel"] = query["channel"][0]
+                        if any(settings.get(key, 0) not in (0, 1) for key in ("stats", "labels")):
+                            raise ValueError("Stats and labels flags must be 0 or 1")
+                        for key in ("stats", "labels"):
+                            if key in settings:
+                                settings[key] = bool(settings[key])
+                        self._json(activation_page(directory / "experiment", **settings))
+                    except (ValueError, OSError, KeyError, IndexError, TypeError) as error:
+                        self._json({"error": str(error)}, 400)
+                    return
+                if parts[3] == "experiment.py":
+                    state = controller.snapshot()["run"]
+                    if state and state["id"] == parts[2] and state["phase"] in ACTIVE:
+                        self._json({"error": "Wait until the experiment stops before exporting"}, 409)
+                        return
+                    try:
+                        from .python_export import script_for_run
+                        body = script_for_run(directory).encode('utf-8')
+                    except (ValueError, OSError, KeyError, TypeError) as error:
+                        self._json({"error": str(error)}, 400)
+                        return
+                    self._headers("text/x-python; charset=utf-8", len(body))
+                    self.wfile.write(body)
+                    return
                 if parts[3] in ("plan.json", "summary.json"):
                     file = directory / parts[3]
                     if file.is_file():
@@ -198,7 +273,13 @@ def make_server(controller: LabController, frontend: Path, port: int = 8765) -> 
                         self._json({"error": "Wait until the experiment stops before exporting"}, 409)
                         return
                     with tempfile.TemporaryDirectory() as temporary:
-                        archive = Path(shutil.make_archive(str(Path(temporary) / "artifacts"), "zip", directory))
+                        from .python_export import write_archive
+                        archive = Path(temporary) / "artifacts.zip"
+                        try:
+                            write_archive(directory, archive)
+                        except (ValueError, OSError, KeyError, TypeError) as error:
+                            self._json({"error": str(error)}, 400)
+                            return
                         self._headers("application/zip", archive.stat().st_size)
                         with archive.open("rb") as stream:
                             shutil.copyfileobj(stream, self.wfile)
@@ -244,10 +325,16 @@ def make_server(controller: LabController, frontend: Path, port: int = 8765) -> 
                 if not 0 < length <= 1024 * 1024:
                     raise ValueError("JSON request limit is 1 MiB")
                 data = json.loads(self.rfile.read(length))
-                if self.path == "/api/runs":
+                if self.path == "/api/export-python":
+                    from .python_export import python_source
+                    source = python_source(data, factory=controller.factory)
+                    self._json({"filename": "experiment.py", "source": source})
+                elif self.path == "/api/runs":
                     self._json({"id": controller.submit(data)}, 202)
                 elif self.path == "/api/experiments":
                     self._json({"id": controller.submit_request(data)}, 202)
+                elif self.path == "/api/validate":
+                    self._json({"id": controller.validate_request(data)}, 202)
                 elif self.path == "/api/model":
                     controller.load(data)
                     self._json({"status": "loading"}, 202)

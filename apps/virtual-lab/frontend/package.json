@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc && node build.mjs",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "test": "npm run build && node --test tests/*.test.mjs"
   },
   "devDependencies": {
     "typescript": "~5.9.3"

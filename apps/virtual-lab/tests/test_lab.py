@@ -29,8 +29,10 @@ def test_tools_change_behavior_and_cleanup_restores_exact_outputs(profile, tmp_p
     assert compare_outputs(tmp_path / "direct", tmp_path / "observed")["equal"]
     assert [row["accuracy"] for row in observed["report"]["conditions"]] == [1, .5, 1, 1]
     assert observed["report"]["restored_exact"] is True
-    assert len(updates) == 4
-    assert all(set(update) == {"phase", "condition", "repetition"} for update in updates)
+    assert {update['condition'] for update in updates} == {'baseline', 'ablation', 'random_control', 'restored'}
+    assert updates[0]['progress'] == {'completed': 0, 'total': 4, 'unit': 'repetition'}
+    assert updates[-1]['progress'] == {'completed': 4, 'total': 4, 'unit': 'repetition'}
+    assert all(update['recording_neural'] for update in updates)
     assert (tmp_path / "observed/inputs_outputs/events.jsonl").is_file()
     assert execute(profile, Plan(), tmp_path / "again")["report"]["conditions"][0]["accuracy"] == 1
 

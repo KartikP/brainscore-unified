@@ -1,9 +1,10 @@
-export type Mode = 'benchmark' | 'stimuli' | 'session' | 'calibration';
-interface SubjectInfo { identifier: string; in_channels: string[]; out_channels: string[]; calibration?: boolean; schemas?: Record<string, { payload: string; addressing?: string; json_input?: boolean }> }
-interface Info { phase: string; token: string; profile: SubjectInfo | null; catalog_ready?: boolean; run?: { request?: unknown } | null }
+import { initializeProtocol, updateProtocol, protocolRequest, restoreProtocol, protocolSpec, protocolTool, type ProtocolSpec, type ProtocolValidation } from './protocol.js';
+export type Mode = 'protocol' | 'benchmark' | 'stimuli' | 'session' | 'calibration';
+interface SubjectInfo { identifier: string; in_channels: string[]; out_channels: string[]; traits?: string[]; calibration?: boolean; schemas?: Record<string, { payload: string; addressing?: string; json_input?: boolean }> }
+interface Info { phase: string; token: string; profile: SubjectInfo | null; catalog_ready?: boolean; run?: { request?: unknown } | null; validation?: ProtocolValidation }
 interface Callbacks { state: () => Info; post: (path: string, data: object) => Promise<unknown>; changed: () => void; loading: () => void; error: (message: string) => void }
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-let mode: Mode = 'calibration';
+let mode: Mode = 'protocol';
 let subjectID = '';
 let catalogLoaded = false;
 let catalogPending = false;
@@ -12,6 +13,8 @@ let uploading = false;
 let restoredForm = false;
 let modelEntries: { identifier: string; source: string }[] = [];
 let matchingModelCount = 0;
+let previousFormat = 'lines';
+const stimulusDrafts: Record<string, string> = {};
 export const currentMode = () => mode;
 export const isUploading = () => uploading;
 export const customIntervention = () => mode !== 'benchmark' && mode !== 'calibration' && $<HTMLInputElement>('custom-intervention').checked;
@@ -100,6 +103,23 @@ async function readCatalog(): Promise<void> {
   finally { catalogPending = false; }
 }
 
+async function uploadMediaFiles(files: File[], progress: (name: string) => void): Promise<Record<string, string>[]> {
+  uploading = true; callbacks.changed();
+  try {
+    const rows: Record<string, string>[] = [];
+    for (const file of files) {
+      if (file.size > 128 * 1024 * 1024) throw new Error('Media upload limit is 128 MiB per file');
+      progress(file.name);
+      const response = await fetch('/api/uploads', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Lab-Token': callbacks.state().token, 'X-Lab-Filename': encodeURIComponent(file.name) }, body: file });
+      const result = await response.json(); if (!response.ok) throw new Error(result.error);
+      const suffix = file.name.split('.').pop()?.toLowerCase() ?? '';
+      const column = ['wav', 'mp3', 'flac', 'ogg'].includes(suffix) ? 'audio_path' : ['mp4', 'mov', 'webm'].includes(suffix) ? 'video_path' : 'image_path';
+      rows.push({ stimulus_id: file.name, [column]: result.asset });
+    }
+    return rows;
+  } finally { uploading = false; callbacks.changed(); }
+}
+
 function sessionExample(notify = true): void {
   const channel = $<HTMLSelectElement>('session-input').value;
   const payload = channel === 'generation_request' ? { messages: [{ role: 'user', content: 'Describe what an experiment measures.' }], temperature: 0, max_tokens: 64 }
@@ -116,8 +136,8 @@ function toCSV(rows: Record<string, unknown>[]): string {
 }
 
 function restoreRequest(value: unknown): void {
-  const saved = value as { mode: Mode; benchmark: string; rows: Record<string, unknown>[]; fitting_rows: Record<string, unknown>[]; stimulus_set: string; output: string; instruction: string; labels: string[]; prefer_path: string; events: unknown[]; intervention?: { target: string; indices?: number[]; operation?: string; value?: number } };
-  if (!saved || !['benchmark', 'stimuli', 'session'].includes(saved.mode)) return;
+  const saved = value as { mode: Mode; benchmark: string; rows: Record<string, unknown>[]; fitting_rows: Record<string, unknown>[]; stimulus_set: string; output: string; instruction: string; labels: string[]; prefer_path: string; events: unknown[]; protocol?: ProtocolSpec; intervention?: { target: string; indices?: number[]; operation?: string; value?: number } };
+  if (!saved || !['protocol', 'benchmark', 'stimuli', 'session'].includes(saved.mode)) return;
   mode = saved.mode;
   $<HTMLInputElement>('benchmark-id').value = saved.benchmark ?? '';
   $<HTMLSelectElement>('output-channel').value = saved.output;
@@ -127,13 +147,24 @@ function restoreRequest(value: unknown): void {
     $<HTMLInputElement>('stimulus-set-id').value = saved.stimulus_set;
   } else if (saved.rows?.length) {
     const lines = saved.rows.every(row => Object.keys(row).length === 1 && typeof row.sentence === 'string');
-    $<HTMLSelectElement>('stimulus-format').value = lines ? 'lines' : 'csv';
+    const media = saved.rows.some(row => ['image_path', 'audio_path', 'video_path'].some(column => column in row));
+    $<HTMLSelectElement>('stimulus-format').value = lines ? 'lines' : media ? 'media' : 'csv';
     $<HTMLTextAreaElement>('stimulus-text').value = lines ? saved.rows.map(row => String(row.sentence)).join('\n') : toCSV(saved.rows);
   }
+  previousFormat = $<HTMLSelectElement>('stimulus-format').value;
   $<HTMLTextAreaElement>('instruction').value = saved.instruction ?? '';
   $<HTMLInputElement>('labels').value = saved.labels?.join(',') ?? '';
   $<HTMLSelectElement>('behavior-path').value = saved.prefer_path ?? 'auto';
   $<HTMLTextAreaElement>('fitting-text').value = saved.fitting_rows?.length ? toCSV(saved.fitting_rows) : '';
+  if (saved.mode === 'protocol' && saved.protocol) {
+    restoreProtocol(saved.protocol);
+    $<HTMLTextAreaElement>('protocol-fitting').value = saved.fitting_rows?.length ? toCSV(saved.fitting_rows) : '';
+  } else if (saved.mode === 'stimuli' && saved.output?.startsWith('neural:')) {
+    mode = 'protocol';
+    const draft = protocolSpec();
+    draft.measurements.regions = [saved.output.slice(7)];
+    restoreProtocol(draft);
+  }
   if (saved.events?.length) $<HTMLTextAreaElement>('session-events').value = JSON.stringify(saved.events, null, 2);
   $<HTMLInputElement>('custom-intervention').checked = Boolean(saved.intervention);
   if (saved.intervention) {
@@ -149,7 +180,7 @@ export function updateWorkbench(state: Info, busy: boolean): void {
   const profile = state.profile;
   if (profile && profile.identifier !== subjectID) {
     subjectID = profile.identifier;
-    if (mode === 'calibration' && !profile.calibration) mode = 'stimuli';
+    if (mode === 'calibration' && !profile.calibration) mode = 'protocol';
     const modelSelect = $<HTMLSelectElement>('model-id');
     if (!profile.calibration && ![...modelSelect.options].some(option => option.value === profile.identifier)) modelSelect.append(new Option(profile.identifier, profile.identifier));
     modelSelect.value = profile.calibration ? '' : profile.identifier;
@@ -160,7 +191,7 @@ export function updateWorkbench(state: Info, busy: boolean): void {
     options('session-input', profile.in_channels.filter(channel => profile.schemas?.[channel]?.json_input));
     if (profile.in_channels.includes('generation_request')) $<HTMLSelectElement>('session-input').value = 'generation_request';
     $<HTMLInputElement>('custom-intervention').checked = false;
-    if (!$<HTMLSelectElement>('output-channel').options.length && !profile.calibration) mode = 'session';
+    if (mode !== 'protocol' && !$<HTMLSelectElement>('output-channel').options.length && !profile.calibration) mode = 'session';
     sessionExample(false);
   }
   if (profile && !restoredForm) { restoredForm = true; restoreRequest(state.run?.request); }
@@ -168,14 +199,28 @@ export function updateWorkbench(state: Info, busy: boolean): void {
     button.setAttribute('aria-selected', String(button.dataset.mode === mode));
     button.disabled = busy || (button.dataset.mode === 'calibration' && !profile?.calibration);
   });
-  for (const item of ['benchmark', 'stimuli', 'session', 'calibration']) $(`${item}-editor`).hidden = item !== mode;
+  for (const item of ['protocol', 'benchmark', 'stimuli', 'session', 'calibration']) $(`${item}-editor`).hidden = item === 'stimuli' ? !['protocol', 'stimuli'].includes(mode) : item !== mode;
+  const modelHost = $(mode === 'protocol' ? 'protocol-model-host' : 'legacy-model-host');
+  if ($('model-loader').parentElement !== modelHost) modelHost.append($('model-loader'));
+  const stimuliHost = $(mode === 'protocol' ? 'protocol-stimuli-host' : 'legacy-stimuli-host');
+  if ($('stimuli-editor').parentElement !== stimuliHost) stimuliHost.append($('stimuli-editor'));
+  $('protocol-nav').hidden = mode !== 'protocol';
+  $('legacy-toolbox').hidden = mode === 'protocol';
+  $('legacy-output-field').hidden = mode === 'protocol';
+  $('stimulus-source-grid').classList.toggle('protocol-source', mode === 'protocol');
   $('calibration-settings').hidden = mode !== 'calibration';
   $('behavior-settings').hidden = requestedOutput() !== 'behavior' || mode !== 'stimuli';
   $('instruction-settings').hidden = mode !== 'stimuli' || !['behavior', 'response_trace'].includes(requestedOutput());
-  const registered = $<HTMLSelectElement>('stimulus-format').value === 'registered';
+  const format = $<HTMLSelectElement>('stimulus-format').value;
+  const registered = format === 'registered';
   $('registered-stimulus-editor').hidden = !registered;
-  $('stimulus-text-editor').hidden = registered;
-  $('intervention-editor').hidden = mode === 'benchmark' || mode === 'calibration';
+  $('media-editor').hidden = format !== 'media';
+  $('stimulus-actions').hidden = registered || format === 'media';
+  $('stimulus-text-editor').hidden = registered || format === 'media' && !$<HTMLTextAreaElement>('stimulus-text').value.trim();
+  $('stimulus-text-label').textContent = format === 'media' ? 'Uploaded stimulus rows (CSV; editable)' : format === 'csv' ? 'Stimulus table (CSV)' : 'Stimuli';
+  $('upload-status').hidden = registered || !$('upload-status').textContent;
+  $<HTMLButtonElement>('choose-media').disabled = busy;
+  $('intervention-editor').hidden = mode === 'benchmark' || mode === 'calibration' || mode === 'protocol';
   const canIntervene = Boolean(profile?.out_channels.includes('perturbation') && profile.in_channels.some(channel => ['lesion', 'stimulation'].includes(channel)));
   $<HTMLInputElement>('custom-intervention').disabled = busy || !canIntervene;
   $<HTMLSelectElement>('model-id').disabled = busy || state.phase === 'loading' || !catalogLoaded;
@@ -184,17 +229,21 @@ export function updateWorkbench(state: Info, busy: boolean): void {
   $<HTMLSelectElement>('model-id').disabled ||= matchingModelCount === 0;
   $<HTMLButtonElement>('load-model').disabled = busy || state.phase === 'loading' || !catalogLoaded || !$<HTMLSelectElement>('model-id').value;
   $<HTMLButtonElement>('load-calibration').disabled = busy || state.phase === 'loading';
-  document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('.experiment-editor input,.experiment-editor select,.experiment-editor textarea').forEach(input => { input.disabled = busy; });
+  document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('.experiment-editor input,.experiment-editor select,.experiment-editor textarea').forEach(input => { if (!input.closest('#model-loader')) input.disabled = busy; });
   $<HTMLInputElement>('custom-intervention').disabled = busy || !canIntervene;
   const channel = $<HTMLSelectElement>('session-input').value;
   $('channel-schema').textContent = profile?.schemas?.[channel]?.payload ?? 'JSON-native request channels are supported here. Typed environments and custom schemas use their benchmark or a Python harness.';
   $('workflow-help').textContent = mode === 'benchmark' ? 'The registered benchmark owns its experiment. Exploratory tools are disabled here; its score and provenance are saved.'
-    : mode === 'session' ? 'Send events through interact(session). JSON requests use declared channels. Environments and non-JSON payloads require a typed harness.'
+    : mode === 'session' ? 'Send JSON events through the subject’s declared request channels. Environments and non-JSON payloads require a typed harness.'
       : mode === 'stimuli' ? 'Choose response_trace for generated text, neural:<region> for activations, or behavior for labeled task responses. Generated text is kept verbatim.'
         : 'Calibration checks the tools. Load a registered subject to run your own science.';
+  $('workflow-help').hidden = mode === 'protocol';
+  $('editor-title').textContent = mode === 'protocol' ? 'Protocol' : mode === 'benchmark' ? 'Benchmark' : 'Experiment';
+  if (mode === 'protocol') updateProtocol(profile, busy, state.validation);
 }
 
 export function handleTool(name: string, enabled: boolean): void {
+  if (mode === 'protocol') { protocolTool(name, enabled); return; }
   if (mode === 'calibration') return;
   if (name === 'activity' && enabled) {
     const channel = callbacks.state().profile?.out_channels.find(channel => channel.startsWith('neural:'));
@@ -204,6 +253,7 @@ export function handleTool(name: string, enabled: boolean): void {
 }
 
 export function buildRequest(record: boolean): object {
+  if (mode === 'protocol') return protocolRequest(stimulusInput());
   const intervention = customIntervention() ? {
     target: $<HTMLInputElement>('intervention-target').value.trim(),
     indices: $<HTMLInputElement>('intervention-indices').value.trim() ? $<HTMLInputElement>('intervention-indices').value.split(',').map(value => Number(value.trim())) : null,
@@ -213,8 +263,9 @@ export function buildRequest(record: boolean): object {
   if (mode === 'benchmark') return { mode, benchmark: $<HTMLInputElement>('benchmark-id').value.trim() };
   if (mode === 'session') return { mode, output: $<HTMLSelectElement>('session-output').value, events: JSON.parse($<HTMLTextAreaElement>('session-events').value), record, intervention };
   const format = $<HTMLSelectElement>('stimulus-format').value;
+  if (format === 'media' && !$<HTMLTextAreaElement>('stimulus-text').value.trim()) throw new Error('Choose image, audio or video files first');
   return { mode, output: requestedOutput(), record, intervention,
-    rows: format === 'registered' ? [] : format === 'csv' ? parseCSV($<HTMLTextAreaElement>('stimulus-text').value)
+    rows: format === 'registered' ? [] : ['csv', 'media'].includes(format) ? parseCSV($<HTMLTextAreaElement>('stimulus-text').value)
       : $<HTMLTextAreaElement>('stimulus-text').value.split('\n').filter(line => line.trim()).map(sentence => ({ sentence })),
     stimulus_set: format === 'registered' ? $<HTMLInputElement>('stimulus-set-id').value.trim() : '',
     instruction: $<HTMLTextAreaElement>('instruction').value,
@@ -222,6 +273,14 @@ export function buildRequest(record: boolean): object {
     prefer_path: $<HTMLSelectElement>('behavior-path').value,
     fitting_rows: $<HTMLTextAreaElement>('fitting-text').value.trim() ? parseCSV($<HTMLTextAreaElement>('fitting-text').value) : [],
   };
+}
+
+function stimulusInput(): { rows: Record<string, unknown>[]; stimulus_set: string } {
+  const format = $<HTMLSelectElement>('stimulus-format').value;
+  return { rows: format === 'registered' ? [] : ['csv', 'media'].includes(format)
+    ? ($<HTMLTextAreaElement>('stimulus-text').value.trim() ? parseCSV($<HTMLTextAreaElement>('stimulus-text').value) : [])
+    : $<HTMLTextAreaElement>('stimulus-text').value.split('\n').filter(line => line.trim()).map(sentence => ({ sentence })),
+    stimulus_set: format === 'registered' ? $<HTMLInputElement>('stimulus-set-id').value.trim() : '' };
 }
 
 export function initializeWorkbench(api: Callbacks): void {
@@ -247,35 +306,44 @@ export function initializeWorkbench(api: Callbacks): void {
   };
   $('load-calibration').onclick = () => { mode = 'calibration'; void load('__calibration__'); };
   document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('.experiment-editor input,.experiment-editor select').forEach(input => { input.onchange = callbacks.changed; });
+  $<HTMLSelectElement>('stimulus-format').onchange = () => {
+    stimulusDrafts[previousFormat] = $<HTMLTextAreaElement>('stimulus-text').value;
+    previousFormat = $<HTMLSelectElement>('stimulus-format').value;
+    $<HTMLTextAreaElement>('stimulus-text').value = stimulusDrafts[previousFormat] ?? '';
+    $('upload-status').textContent = '';
+    callbacks.changed();
+  };
+  $('choose-media').onclick = () => {
+    $<HTMLSelectElement>('stimulus-format').value = 'media';
+    $<HTMLSelectElement>('stimulus-format').dispatchEvent(new Event('change'));
+    $<HTMLInputElement>('media-files').focus();
+  };
   $<HTMLSelectElement>('session-input').onchange = () => sessionExample();
+  $<HTMLTextAreaElement>('stimulus-text').oninput = callbacks.changed;
+  $<HTMLInputElement>('stimulus-set-id').oninput = callbacks.changed;
   $<HTMLInputElement>('csv-file').onchange = async event => {
     try {
       const file = (event.target as HTMLInputElement).files?.[0]; if (!file) return;
       if (file.size > 1024 * 1024) throw new Error('CSV import limit is 1 MiB; use a registered stimulus set for larger datasets');
       const source = await file.text(); const rows = parseCSV(source);
+      stimulusDrafts[previousFormat] = $<HTMLTextAreaElement>('stimulus-text').value;
       $<HTMLTextAreaElement>('stimulus-text').value = source; $<HTMLSelectElement>('stimulus-format').value = 'csv';
+      previousFormat = 'csv';
       $('upload-status').textContent = `${rows.length} stimulus rows imported`; callbacks.changed();
     } catch (problem) { callbacks.error(String(problem)); }
   };
   $<HTMLInputElement>('media-files').onchange = async event => {
-    uploading = true; callbacks.changed();
+    const files = [...((event.target as HTMLInputElement).files ?? [])];
+    if (!files.length) return;
     try {
-      const files = [...((event.target as HTMLInputElement).files ?? [])];
-      const rows: Record<string, string>[] = [];
-      for (const file of files) {
-        if (file.size > 128 * 1024 * 1024) throw new Error('Media upload limit is 128 MiB per file');
-        $('upload-status').textContent = `Uploading ${file.name}...`;
-        const response = await fetch('/api/uploads', { method: 'POST', headers: { 'Content-Type': 'application/octet-stream', 'X-Lab-Token': callbacks.state().token, 'X-Lab-Filename': encodeURIComponent(file.name) }, body: file });
-        const result = await response.json(); if (!response.ok) throw new Error(result.error);
-        const suffix = file.name.split('.').pop()?.toLowerCase() ?? '';
-        const column = ['wav', 'mp3', 'flac', 'ogg'].includes(suffix) ? 'audio_path' : ['mp4', 'mov', 'webm'].includes(suffix) ? 'video_path' : 'image_path';
-        rows.push({ stimulus_id: file.name, [column]: result.asset });
-      }
+      const rows = await uploadMediaFiles(files, name => { $('upload-status').textContent = `Uploading ${name}...`; });
       const headers = [...new Set(rows.flatMap(row => Object.keys(row)))];
       const quote = (text: string) => `"${text.replaceAll('"', '""')}"`;
       $<HTMLTextAreaElement>('stimulus-text').value = [headers.join(','), ...rows.map(row => headers.map(header => quote(row[header] ?? '')).join(','))].join('\n');
-      $<HTMLSelectElement>('stimulus-format').value = 'csv'; $('upload-status').textContent = `${rows.length} files ready as stimulus rows`;
+      $<HTMLSelectElement>('stimulus-format').value = 'media'; previousFormat = 'media';
+      $('upload-status').textContent = `${rows.length} files ready as stimulus rows`;
     } catch (problem) { callbacks.error(String(problem)); }
     finally { uploading = false; callbacks.changed(); }
   };
+  initializeProtocol({ ...api, stimuli: stimulusInput, parseCSV, toCSV, uploadMediaFiles });
 }

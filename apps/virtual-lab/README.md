@@ -17,8 +17,17 @@ cd ..
 python lab.py
 ```
 
-Open http://127.0.0.1:8765. This workspace already has the frontend built and a
-GUI-local runtime configuration; restarting requires only `python lab.py`.
+Open http://127.0.0.1:8765. Use matching unified, core, vision and language
+revisions from `install/peer-revisions.json`; a stale editable install can expose
+different channels or experiment APIs. The frontend build is app-local.
+
+The Lab panel reports activity from public experiment events and counts completed
+repetitions across all conditions. A repetition can process the entire stimulus
+table as one batch; this is not a per-token or per-image completion estimate.
+Neural recording is requested during that same presentation, rather than in a
+second forward pass. Benchmarks without intermediate progress use an
+indeterminate indicator. Progress messages contain only bounded metadata, never
+activation tensors, and are throttled within each condition.
 
 ## Load a subject
 
@@ -40,15 +49,68 @@ tools come from declarations, not the avatar or a model-class test.
 
 ## Choose a workflow
 
-### Stimuli
+### Protocol builder (default)
+
+The builder follows the workflow in `notebooks/lessons/10_run_an_experiment.ipynb`
+and `docs/guides/experiments.md`:
+
+1. **Subject:** name the protocol and load a registered subject. Its declarations
+   determine compatible tasks, recording regions and interventions.
+2. **Stimuli:** paste text, import CSV, upload images/audio/video, or choose a
+   registered stimulus set. Keep experimental factors as CSV columns.
+3. **Task and response:** choose plain viewing, choices, ratings, written answers,
+   or legacy labeled behavior. For choices, implied probabilities and reported
+   confidence are separate options. Select automatic routing, generation,
+   likelihood or a fitted readout. Readouts require separate labeled fitting
+   examples; their CSV and media import controls are in this step. Specify an
+   explicit trial-part order for multimodal tasks, such as `text,image`.
+4. **Recordings:** choose behavior, one or more declared neural regions, or both.
+   The task and recorders are independent: neural activity can be measured during
+   a task without also saving its answers. Joint recordings describe the same
+   presentation. A replay log is optional and separate from measurement saving.
+5. **Conditions:** name independent subject states, optionally attach a zero,
+   scale or drive intervention with an explicit target and units, and choose
+   repetitions. Choose whether a readout is fitted on the current or intact
+   network in step 3. Session memory is an explicit requirement, when needed.
+6. **Review and run:** inspect the complete configuration and click **Validate
+   setup**. Validation builds a real `TaskProtocol` with the selected tools
+   and calls `Experiment.validate()` without inference. **Run protocol** becomes
+   available after success. Changing the draft or subject requires validation
+   again; task-specific model checks also run when the session starts.
+
+Execution uses `Experiment.run()`, `RecordNeural`, `RecordBehavior` and conditional
+`Intervene` tools. The experiment owns resets and cleanup. Each condition and
+repetition has its own saved measurements. The result selectors inspect these
+artifacts without running the subject again. Color scales persist across
+inspected conditions for each measurement, expanding when a larger value appears.
+
+**Export Python** produces an editable UMI program before any inference.
+**Save config JSON** preserves the draft and subject identifier for machine
+replay. Uploaded file references in a draft belong to this workspace; after
+execution use **All artifacts** for the Python program, configuration and copied
+inputs together. Registered stimulus sets
+retain their identifier and require their data source on replay.
+
+Declared channels are the authority. A subject declaring only `response_trace`
+does not automatically support `behavior:text`; use **Quick session** for its
+generation-request path. Some legacy adapters accept only a single recording
+channel in a session; unsupported combinations fail explicitly. Functional
+localizers, adaptive environments and custom analysis/scoring still use Python
+protocols or their existing benchmarks. This builder configures static
+`TaskProtocol` experiments rather than generating arbitrary executable code.
+
+### Quick session
 
 1. Select a declared output: `response_trace` for generated text,
    `neural:<region>` for activations, or `behavior` for labeled task responses.
 2. Paste text, one stimulus per line; import a CSV; upload images, audio, or
    video; or select a registered stimulus-set identifier.
+   For media, choose **Images, audio or video** under **Stimulus source**, then
+   click **Choose files** in the upload area. The uploaded rows remain editable
+   as CSV, and switching sources preserves each source's text during the visit.
 3. For behavior, provide an instruction and response labels, or expand the
    fitting-stimuli section and supply a labeled CSV for a fitted readout.
-4. Click **Run experiment**. The app creates a session and calls `interact`.
+4. Click **Run experiment**. The app creates a session and calls `participate`.
 
 The fitted-readout CSV needs a `label` column and the appropriate stimulus
 columns. The behavioral path can be explicitly set to generation or readout.
@@ -61,15 +123,12 @@ the displayed run's inputs and settings. For question answering, load an
 instruction-following model and make the task instruction describe that task;
 the registered GPT-2 feature/readout model is not an instruction-following model.
 
-The `qwen2.5-0.5b-instruct` registration is a small local instruction-following
-option. In this workspace its pinned checkpoint is downloaded under `.runtime`
-and selected through `BRAINSCORE_QWEN25_05B_PATH`. Elsewhere its normal model
-download pre-flight applies. Choose `response_trace`, enter questions one per
-line, and supply a task instruction. The GUI builds generation-request events
-and displays the returned text verbatim, without forcing it into a label. The
-same model also exposes `neural:language_system` and intervention channels.
-Its neural mapping is a provisional last-layer hypothesis, not a validated
-brain-region fit. This small model can give incorrect factual answers.
+For a subject declaring `generation_request` and `response_trace`, choose
+`response_trace`, enter questions one per line, and supply a task instruction.
+The GUI builds generation-request events and displays the returned text verbatim,
+without forcing it into a label. Neural recording and intervention availability
+come from the loaded subject's declarations. Checkpoint setup and scientific
+mapping notes belong to that model's registration documentation.
 
 CSV columns include `stimulus_id`, `sentence`, `image_path`, `audio_path`, and
 `video_path`. Media columns reference files uploaded through this app. Uploading
@@ -78,9 +137,58 @@ a multimodal experiment. Uploads are capped at 128 MiB per file; CSV/JSON reques
 at 1 MiB. Use registered stimulus sets for larger datasets.
 
 Full and partial matches run; the compatibility result and dropped streams are
-saved with the experiment. The GUI does not invent missing inputs. It previews
-at most 20 behavioral rows or 16 neural values. Complete labeled assemblies
-remain on disk and in the artifact export.
+saved with the experiment. The GUI does not invent missing inputs. Complete
+labeled assemblies remain on disk and in the artifact export.
+
+### Visualize results
+
+The result cards have **Plot** and **Data** views. Behavioral plots show raw
+choice values for a selected stimulus, including ties and missing values.
+Generated text uses exact-response counts, preserving case, punctuation, and
+parse errors. These plots summarize the recorded preview, not accuracy.
+
+For registered neural outputs, the heatmap shows **every recorded neuroid** for
+the selected stimulus, wrapped into rows in recording order. It is not an
+anatomical map. Use the stimulus number to inspect other presentations, zoom
+to enlarge the cells, scroll to pan, and click or use arrow keys to inspect a
+neuron. Conditions share one symmetric color scale. Additional tensor axes use
+index zero and the fixed slice is reported; values are not pooled or normalized.
+
+The full heatmap reads existing `.npy` artifacts with memory mapping in pages
+of at most 2,048 values, independently of the inference worker. It performs no
+additional model forwards. The viewer's numeric buffer is capped at 128 MiB;
+oversized recordings fail explicitly rather than silently omitting neurons.
+The **Data** tab retains a small labeled numerical preview, and the complete
+recording is available in **All artifacts**. Calibration probe plots show up
+to eight existing recording events with at most 24 units per event; the default
+comparison circuit has eight units, all of which fit.
+
+The **Neural view** selector adds three comparisons of saved stimuli, within the
+same channel, condition and repetition:
+
+- **Difference between two stimuli:** choose A and B to see all units as A minus
+  B, plus the 20 largest absolute changes. The difference uses its own symmetric
+  color range. Persistent offsets cancel, while missing values remain missing.
+- **Stimulus variation:** show up to 32 units ranked by their range across all
+  stimuli, with each unit's mean across those stimuli subtracted. This removes
+  constant feature offsets for display without dividing by variance. It is a
+  selected descriptive view; raw and difference heatmaps retain every unit.
+- **Pairwise distances:** compare all stimulus pairs with RMS activation
+  difference or correlation distance (1 minus Pearson r). Each pair reports its
+  jointly finite unit count. Constant vectors have undefined correlation. Shared
+  feature outliers may dominate correlation, so RMS is the default. Absolute RMS
+  scales should not be compared across different regions.
+
+Comparisons load only when selected, use saved paged arrays, and never invoke a
+model. The browser explicitly refuses comparisons exceeding 64 stimuli, 65,536
+units or 1,000,000 values rather than silently sampling. Additional axes use the
+same reported fixed slice as the raw view. A few images provide descriptive
+comparisons, not statistical evidence of category selectivity.
+
+Frontend checks: `cd frontend && npm test`. Backend checks:
+`PYTHONPATH=backend python -m pytest tests -q`. Use the pinned UMI environment;
+the pre-existing local scikit-learn 1.5.2 installation remains outside its
+runtime compatibility bounds and is not qualified for benchmark scoring.
 
 ### Benchmark
 
@@ -96,7 +204,7 @@ requires perturbation. Benchmark artifacts retain the score and metadata.
 
 ### Session JSON
 
-Choose a declared JSON-compatible input and output channel, edit the event list,
+Choose **Event JSON**, select a declared JSON-compatible input and output channel, edit the event list,
 and run. The editor supports generation, conditional log probabilities, and new
 JSON-native families whose catalog declares their payloads. Guidance comes from
 the catalog; a new JSON channel requires no frontend dispatch change.
@@ -130,10 +238,11 @@ scores. Controls are disjoint when the dose permits; overlap is reported.
 
 ## Recording and interventions
 
-The behavior-log tool controls persistent session input/output recording.
-Selecting a neural output collects its activation assembly. The activation
-probe shortcut selects the first declared neural output; use the output selector
-to choose another region.
+In the protocol builder, the behavior-log and activation-probe tools mirror the
+recordings selected in step 4, and ablation opens the conditions setup. In Quick
+session, behavior-log controls persistent session input/output recording, and
+the output selector chooses the measurement. The activation-probe shortcut
+selects the first declared neural output.
 
 For a custom session, expand **Intervention**. Enter a target address, optional
 unit indices, and zero/scale/drive settings. The subject must declare the
@@ -147,8 +256,9 @@ The core experiment loop owns resets. Every intervention has selective undo in
 `finally`. Restoration compares full outputs and coordinates, not just the
 preview, using bounded temporary buffers.
 
-Stopping waits for the current independent trial; a benchmark runs as one
-operation and stops after that operation. The app does not interrupt an in-flight
+Stopping a protocol waits for the current repetition and cleanup. Other sessions
+stop after their current independent trial; a benchmark runs as one operation
+and stops after that operation. The app does not interrupt an in-flight
 GPU call. Closing the server requests cleanup, then terminates its isolated
 worker if necessary after five seconds.
 
@@ -156,8 +266,36 @@ worker if necessary after five seconds.
 
 Each `.lab-runs/<id>/` contains `plan.json`, `summary.json`, and experiment
 artifacts. Uploaded media are copied into that run's `inputs` directory. Download
-the plan, summary, or complete archive. Registered stimulus sets retain their
+the **Python script**, configuration, summary, or complete archive. The archive
+also contains `experiment.py`, generated directly from the saved configuration.
+Old runs gain this export on download without running their subject again.
+Registered stimulus sets retain their
 identifier and require their data source when re-run.
+
+Extract **All artifacts** and run or edit the program:
+
+```bash
+python experiment.py --output ./my-rerun
+python experiment.py --validate-only
+```
+
+The Python program shows the subject, stimuli, task/response, recorders,
+interventions, conditions and repetitions as public UMI calls. For a registered
+protocol or benchmark it needs UMI v2 and model/data dependencies, not a running
+webserver or the lab package. Downloading only the script works for text inputs;
+for uploaded media, keep the archive's `inputs` directory beside it or pass
+`--inputs /path/to/extracted/inputs`. It creates a new output directory and never
+overwrites the downloaded recordings. Validation loads the model but performs
+no inference. Model weights are not included in the archive.
+
+Calibration and custom-profile exports explicitly require the app-local profile
+factory and `umi_lab` to be importable. New profile runs record that factory;
+older exports without it require `--factory module:create_profile` (for the
+calibration circuit, `--factory umi_lab.demo:create_profile`).
+
+The JSON is the machine-readable configuration used to reproduce the exact
+settings, automate runs, or compare plans. It is not a Python program and does
+not itself contain the measured arrays. It can be replayed through the lab CLI:
 
 ```bash
 python lab.py --run /path/to/extracted/run/plan.json --output ./direct-runs
@@ -183,11 +321,9 @@ exploratory completion task, not a registered benchmark.
 ## Runtime and performance
 
 The optional `.lab-runtime.json` prepends app-local dependency paths before model
-imports. This workspace uses a detached core worktree at `bdda009` and
-scikit-learn 1.7.2 under `.runtime/`. This resolves the mismatched editable core
-and shared environment for the GUI without switching another repo's branch or
-changing its install. These local runtime files are ignored by Git. Elsewhere,
-use an aligned UMI environment or `python lab.py --core /path/to/matching/core`.
+imports. These local runtime files are ignored by Git. Use an aligned UMI
+environment or `python lab.py --core /path/to/matching/core`; ensure the unified
+checkout and its other peers also match the pinned revisions.
 
 The result cache defaults to app-local storage unless `RESULTCACHING_HOME` is
 set. The server never imports model libraries. Weights remain in one persistent

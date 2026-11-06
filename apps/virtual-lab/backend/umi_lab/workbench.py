@@ -67,6 +67,7 @@ def describe_subject(subject: Any) -> dict:
             "notice": "This null control ignores stimulus content and returns equal choice values. Load an instruction-following model to answer questions." if null_control else "",
             "task": "Choose an experiment", "in_channels": sorted(subject.in_channels),
             "out_channels": sorted(subject.out_channels), "required_channels": sorted(subject.required_channels),
+            "traits": sorted(subject.traits),
             "targets": [], "provenance": {"source": "registered model"}, "schemas": schemas,
             "avatar_seed": hashlib.sha256(subject.identifier.encode()).hexdigest()[:16],
             "calibration": False}
@@ -114,14 +115,18 @@ class Request:
     intervention: dict | None = None
     record: bool = True
     repeats: int = 1
+    protocol: dict | None = None
 
     @classmethod
     def parse(cls, value: dict) -> Request:
         if not isinstance(value, dict) or set(value) - set(cls.__dataclass_fields__):
             raise ValueError("Unknown workbench settings")
         request = cls(**value)
-        if request.mode not in ("benchmark", "stimuli", "session"):
+        if request.mode not in ("benchmark", "stimuli", "session", "protocol"):
             raise ValueError("Choose benchmark, stimuli, or session mode")
+        if request.mode == "protocol":
+            from .protocol import ProtocolSpec
+            ProtocolSpec.parse(request.protocol)
         for name in ("benchmark", "stimulus_set", "output", "instruction", "prefer_path"):
             if not isinstance(getattr(request, name), str):
                 raise ValueError(f"{name} must be text")
@@ -185,12 +190,13 @@ def stimulus_table(rows: list[dict], uploads: Path) -> Any:
 
 
 def response_preview(value: Any) -> dict:
-    """Summarize outputs after execution without shipping arrays to the UI."""
+    """Summarize outputs with bounded previews; full arrays stay in artifacts."""
     import numpy as np
     import xarray as xr
     from brainscore_core.streaming import StreamEvent
 
     if isinstance(value, xr.DataArray):
+        from .previews import activation_preview
         rows = []
         if "choice" in value.dims and "presentation" in value.dims and value.ndim == 2:
             choices = [str(choice) for choice in value["choice"].values]
@@ -213,7 +219,9 @@ def response_preview(value: Any) -> dict:
             elif isinstance(item, xr.DataArray) and item.size == 1:
                 number = float(item)
                 attrs[name] = number if math.isfinite(number) else None
+        preview = activation_preview(value)
         return {"type": type(value).__name__, "shape": list(value.shape), "dims": list(value.dims), "attrs": attrs,
+                **({"activation_preview": preview} if preview is not None else {}),
                 "sample": [float(item) if np.isfinite(item) else None for item in sample]
                           if sample.dtype.kind in "fiu" else [str(item) for item in sample],
                 "responses": rows,
@@ -372,7 +380,10 @@ def run_session(subject: Any, request: Request, directory: Path, uploads: Path,
     if not (set(inputs) & set(subject.in_channels)) or set(subject.required_channels) - set(inputs):
         raise ValueError("The supplied inputs do not satisfy the subject's declared required channels")
     tools = [RecordInputsOutputs()] if request.record else []
-    tools.append(progress_tool(send, cancelled))
+    tools.append(progress_tool(send, cancelled, activity=(
+        "Viewing stimuli" if request.output.startswith("neural:") else
+        "Processing inputs and generating responses" if request.output == "response_trace"
+        else "Processing stimuli and computing responses")))
     if request.intervention:
         tools.append(intervention_tool(subject, request.intervention))
     conditions = ("baseline", "intervention", "restored") if request.intervention else ("baseline",)
@@ -413,7 +424,7 @@ def run_benchmark(subject: Any, request: Request, directory: Path,
     from brainscore.experiments import Experiment
     from brainscore_core.compatibility import CompatibilityError
 
-    send({"phase": "running", "condition": "loading_benchmark"})
+    send({"phase": "running", "condition": "loading_benchmark", "activity": "Loading benchmark"})
     benchmark = load_benchmark(request.benchmark)
 
     class BenchmarkProtocol:
@@ -431,7 +442,7 @@ def run_benchmark(subject: Any, request: Request, directory: Path,
             try:
                 candidate.reset()
                 with context.repetition("benchmark"):
-                    send({"phase": "running", "condition": "benchmark"})
+                    send({"phase": "running", "condition": "benchmark", "activity": "Running benchmark"})
                     return score(candidate, benchmark)
             finally:
                 candidate.reset()
