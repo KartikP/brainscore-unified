@@ -205,7 +205,7 @@ def test_glm_beta_variants_are_unchanged(identifier):
     assert load(identifier).version == 1
 
 
-# ── Version labels on scores ──────────────────────────────────────
+# ── Score labels (3A) ─────────────────────────────────────────────
 
 
 def synthetic_assembly(subjects, tasks, n_tr=12, n_voxels=3, seed=0):
@@ -258,13 +258,21 @@ def score_synthetic(monkeypatch, benchmark, subjects=('a', 'a', 'b', 'b', 'c', '
     return benchmark(None)
 
 
-METHOD_KEYS = ('benchmark_version', 'event_key', 'known_defects', 'cv_mode',
-               'cv_n_held_out_runs', 'motion_regressed')
+METHOD_KEYS = ('encoding_model', 'feature_timing', 'onset_rounding',
+               'event_duration_used', 'tr_sec', 'hrf', 'stimulus_generalization',
+               'feature_projection_protocol', 'benchmark_version', 'event_key',
+               'known_defects', 'cv_mode', 'cv_policy', 'cv_n_held_out_runs',
+               'motion_regressed', 'inner_validation', 'ridge_alpha')
 
 
 def assert_method_labels(score, version):
     for key in METHOD_KEYS:
         assert key in score.attrs, key
+    assert score.attrs['encoding_model'] == 'clip_mean_onset_impulse_hrf'
+    assert score.attrs['onset_rounding'] == 'floor_to_TR'
+    assert score.attrs['event_duration_used'] is False
+    assert score.attrs['tr_sec'] == TR_SEC
+    assert score.attrs['stimulus_generalization'] == 'seen_stimuli'
     assert score.attrs['benchmark_version'] == version
     if version == 1:
         assert score.attrs['event_key'] == ('subject', 'session', 'run')
@@ -282,6 +290,29 @@ def test_default_paths_carry_method_labels(monkeypatch, identifier, version):
     benchmark._within_subject_n_held_out = 1
     score = score_synthetic(monkeypatch, benchmark)
     assert_method_labels(score, version)
+    assert score.attrs['inner_validation'] == 'none_fixed_alpha'
+    assert score.attrs['feature_projection_protocol'] == 'none'
     expected_cv = 'within_subject' if '-improved' in identifier else 'subject_out'
     assert score.attrs['cv_mode'] == expected_cv
     assert score.attrs['motion_regressed'] is ('-improved' in identifier)
+
+
+def test_subject_out_label_reports_whether_blocks_are_whole_subjects(monkeypatch):
+    grouped = tr.Lahner2024BOLDMoments_timeresolved(cv_n_held_out_runs=2)
+    score = score_synthetic(monkeypatch, grouped, subjects=('a', 'a', 'b', 'b', 'c', 'c'))
+    assert score.attrs['cv_policy'] == 'contiguous_run_blocks_in_assembly_order'
+    assert score.attrs['cv_blocks_hold_out_whole_subjects'] is True
+
+    interleaved = tr.Lahner2024BOLDMoments_timeresolved(cv_n_held_out_runs=2)
+    score = score_synthetic(monkeypatch, interleaved, subjects=('a', 'b', 'c', 'a', 'b', 'c'))
+    assert score.attrs['cv_blocks_hold_out_whole_subjects'] is False
+
+
+def test_transductive_projection_is_labelled():
+    """Feature widths above the cap are projected with an SVD fit on all stimuli."""
+    benchmark = tr.Lahner2024BOLDMoments_timeresolved()
+    benchmark._feature_projection = tr.TRANSDUCTIVE_SVD
+    attrs = benchmark._method_attrs()
+    assert attrs['feature_projection_protocol'] == (
+        'transductive_truncated_svd_fit_on_all_stimuli')
+    assert attrs['feature_dim_cap'] == tr.FEATURE_DIM_CAP

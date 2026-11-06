@@ -1,12 +1,14 @@
 """TR-resolved multimodal Lahner2024 — first benchmark in the unified
 interface where two-modality features are aligned to the brain's TR
-grid via temporal_bin / HRF / per-TR ridge.
+grid via onset placement / HRF / per-TR ridge.
 
 What this validates that the GLM-beta multimodal variant cannot:
-- Per-modality features placed at TR onsets (not at clip-mean)
-- Both modalities share the SAME time_bin axis after alignment, so
-  ``multi_modality=True`` would actually concat cleanly along neuroid
-- Continuous-time encoding still respects per-modality features
+- Per-modality clip-mean features placed as impulses at each clip's onset
+  TR (``floor(onset_sec / TR)``), HRF-convolved within each run. Native
+  time bins are averaged first, so within-clip dynamics are not modelled
+  (a clip-mean onset-impulse HRF model; see ``benchmark_timeresolved``).
+- Both modalities share the SAME TR axis after alignment
+- Continuous-time encoding still keeps per-modality feature columns
 
 Pipeline:
 1. For each unique stimulus (3-s clip): extract video features +
@@ -25,7 +27,8 @@ Mode parameter (matches the GLM-beta multimodal benchmark):
 - 'concat': one ridge on [video|audio] flat features, α=1.0
 - 'per_modality': two independent ridges, predictions summed
 - 'video_only' / 'audio_only': single-tower upper bounds
-- 'banded': per-group α via 20% inner-fold hold-out grid search
+- 'banded': per-group α chosen on a random 20% of the outer-training ROWS
+  (rows of one run fall on both sides of this inner split)
 
 Banded ridge is the recommended default for any multimodal scoring —
 flat α across asymmetric-utility modalities consistently underperforms
@@ -58,6 +61,7 @@ from .benchmark_timeresolved import (
     Lahner2024BOLDMoments_timeresolved,
     FEATURE_DIM_CAP,
     CURRENT_VERSION,
+    TRANSDUCTIVE_SVD,
 )
 from .benchmark_multimodal import DEFAULT_AUDIO_DIR
 
@@ -237,7 +241,11 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
             a_features = a_features[perm]
 
         # Cap each modality independently before concat (the parent's
-        # FEATURE_DIM_CAP would otherwise mix modalities under SVD).
+        # FEATURE_DIM_CAP would otherwise mix modalities under SVD). Each SVD
+        # is fit on all stimuli (transductive); recorded on the score.
+        self._feature_projection = 'none'
+        if max(v_features.shape[1], a_features.shape[1]) > FEATURE_DIM_CAP:
+            self._feature_projection = TRANSDUCTIVE_SVD + '_per_modality'
         if v_features.shape[1] > FEATURE_DIM_CAP:
             from sklearn.decomposition import TruncatedSVD
             v_features = TruncatedSVD(
@@ -286,6 +294,10 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         score.attrs['mode'] = self._mode
         score.attrs['pipeline'] = (
             f'tr_resolved_multimodal_{self._mode}')
+        if self._mode == 'banded':
+            score.attrs['inner_validation'] = (
+                'random_rows_20pct_runs_shared_with_inner_training')
+            score.attrs['banded_alpha_grid'] = tuple(self.BANDED_ALPHA_GRID)
         return score
 
     def _call_with_mode(self, candidate) -> Score:
@@ -335,6 +347,9 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
         score.attrs.update(self._method_attrs())
+        score.attrs['ridge_alpha'] = (
+            'per_group_from_grid' if self._mode == 'banded' else 1.0)
+        score.attrs['inner_validation'] = 'none_fixed_alpha'
         self._tag_score(score, candidate)
         return score
 

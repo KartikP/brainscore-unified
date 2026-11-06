@@ -22,12 +22,9 @@ benchmark_registry['Lahner2024-fMRI-naturalistic'] = Lahner2024BOLDMoments
 benchmark_registry['Lahner2024-fMRI-naturalistic-visualROI'] = (
     Lahner2024BOLDMoments_visualROI)
 
-# TR-resolved variant — predict per-TR BOLD time-series via continuous-time
-# encoding (each subject-run is a presentation; leave-one-run-out ridge with
-# HRF-convolved per-stimulus features). M12-lite. Loading raises until
-# brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly uploads the
-# assembly + events to S3 and the resulting version/sha1 are recorded in the
-# Lahner data plugin.
+# TR-resolved variant — predict per-TR BOLD time-series with a clip-mean
+# onset-impulse HRF model (each subject-run is a presentation; ridge with
+# whole-run held-out blocks, 52 runs per block by default). M12-lite.
 # Version 2 (default) selects events by (subject, session, task, run);
 # version 1 (defect F6, task omitted) stays reachable for reproducing
 # historical scores: load_benchmark(identifier, version=1). The same holds for
@@ -50,8 +47,8 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-visualROI'] = (
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = (
     Lahner2024BOLDMoments_multimodal_auditoryROI)
 
-# TR-resolved multimodal — features placed at clip-onset TRs, HRF-convolved,
-# per-voxel ridge against per-TR BOLD time series.
+# TR-resolved multimodal — clip-mean features placed at clip-onset TRs,
+# HRF-convolved, per-voxel ridge against per-TR BOLD time series.
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal'] = (
     Lahner2024BOLDMoments_timeresolved_multimodal)
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI'] = (

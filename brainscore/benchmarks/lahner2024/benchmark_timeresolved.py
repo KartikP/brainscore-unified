@@ -3,41 +3,54 @@ Lahner 2024 BOLDMoments — TR-resolved fMRI variant (continuous-time encoding).
 
 Same stimuli as the existing GLM-beta variant (`Lahner2024BOLDMoments`), but
 predicts the per-TR BOLD time-series of each scanning run rather than a
-per-clip GLM beta. M12-lite — the first benchmark that actually exercises
-the temporal kit (`temporal_bin`, `hrf_convolve`, `contiguous_block_cv`,
-absolute timestamps) end-to-end.
+per-clip GLM beta. M12-lite — the first benchmark that exercises the
+temporal kit (`hrf_convolve`, `contiguous_block_cv`) end-to-end.
 
-## Design: continuous-time encoding
+## Design: clip-mean onset-impulse HRF model
 
-For each (subject, run), the brain produces a continuous BOLD time-series at
-TR=1.75 s across the whole run (~263 TRs covering ~113 stimulus events at
-4 s SOA). The model produces per-stimulus features. We HRF-convolve and
-place the per-stimulus features at the right TR offsets within run-time,
-producing a continuous "expected response" time-series at TR resolution.
-Per-voxel ridge regression maps that to the actual BOLD signal, with
-leave-one-run-out cross-validation.
+For each (subject, session, task, run), the brain produces a continuous BOLD
+time-series at TR=1.75 s across the whole run (~263 TRs covering ~113
+stimulus events at 4 s SOA). The model produces ONE feature vector per clip:
+any native time bins (video tubelets, audio frames) are averaged before the
+design is built, so within-clip dynamics do not enter the regression. Each
+clip vector is added as a single impulse at ``floor(onset_sec / TR)`` (the
+sub-TR part of the onset is dropped, and the event duration is not used —
+no boxcar), the impulse train is convolved with the canonical SPM
+double-gamma HRF separately within each run, and per-voxel ridge maps the
+result to the run's BOLD.
 
-This avoids the rapid-event-related design's overlap problem (per-trial
-windowing with K>2 TRs has neighboring-trial contamination at SOA=4 s
-relative to TR=1.75 s). Continuous-time encoding is the standard
-naturalistic-fMRI approach (Huth lab, Friends/Sherlock benchmarks).
+This is a voxelwise encoding model, but a temporal approximation: it is not
+a model of the stimulus's native time course. A full temporal protocol
+(native feature timestamps, exact onsets, durations, scan timing) would be a
+separate benchmark.
 
 ## Pipeline (per model)
 
     1. Discover unique stimuli from events (1102 unique videos).
     2. Extract per-stimulus features ONCE via model.process(unique_stim_set):
-       - video-native models: per-clip features at the model's native time bins
-         (mean-pooled if per-frame, kept temporal otherwise)
+       - video-native models: per-clip features at the model's native time
+         bins, always mean-pooled over the time_bin axis to one vector
        - frame-aggregation models: per-clip features (mean of N still frames)
-    3. For each (subject, run):
-       a. Build a feature time-series at TR resolution by placing each clip's
-          features at floor(onset_sec / TR) within the run.
-       b. HRF-convolve along the time axis using the canonical SPM double-gamma.
-       c. Crop / pad to the run's actual TR length.
-    4. Concatenate (subject, run) feature time-series into the design matrix X.
-       Concatenate (subject, run) BOLD time-series into Y.
-    5. Per-voxel ridge regression with leave-one-run-out CV via
-       contiguous_block_cv at the run-block level.
+       If the feature width exceeds FEATURE_DIM_CAP, a TruncatedSVD is fit on
+       ALL stimuli (including those in held-out runs) — a transductive
+       projection, recorded on the score.
+    3. For each (subject, session, task, run):
+       a. Place each clip's vector at floor(onset_sec / TR) within the run.
+       b. HRF-convolve along the time axis (canonical SPM double-gamma).
+       c. Crop to the run's valid TR length.
+    4. Concatenate the runs' feature time-series into the design matrix X and
+       the runs' z-scored BOLD into Y.
+    5. Per-voxel ridge (alpha=1.0) with whole-run held-out CV:
+       - cv_mode='subject_out' (default): contiguous blocks of
+         ``cv_n_held_out_runs`` (default 52) runs in assembly order; this
+         holds out one subject per fold only if the assembly lists each
+         subject's runs together (checked and recorded on the score).
+       - cv_mode='within_subject': per subject, contiguous blocks of
+         ``within_subject_n_held_out`` runs; per-voxel r averaged over
+         subjects.
+       Every held-out stimulus is also shown in training runs, so the score
+       measures generalization to new runs of seen stimuli, not to new
+       stimuli.
     6. Per-voxel Pearson on held-out predictions, median across voxels.
 
 ## Versions
@@ -50,12 +63,13 @@ naturalistic-fMRI approach (Huth lab, Friends/Sherlock benchmarks).
   historical scores can be reproduced; its scores carry
   ``attrs['known_defects']``.
 
-## Comparison story
+## Comparison with the GLM-beta variant
 
-Same 1026+ videos, same models, but model has to predict TR-resolved
-trajectories rather than per-clip betas. Score delta between this variant
-and `Lahner2024-fMRI-naturalistic` quantifies how much temporal information
-the model adds (or how much the GLM beta already captured).
+Same 1026+ videos and models, but the target (single-run BOLD time series
+vs. trial-averaged GLM betas), the CV protocol, the voxel noise level and
+the feature design all differ. A score difference between this variant and
+`Lahner2024-fMRI-naturalistic` therefore does not isolate the contribution
+of temporal information.
 """
 
 from typing import List, Optional
@@ -111,6 +125,21 @@ F6_TASK_KEY_DEFECT = (
     "runs also receive the other task's events. Fixed in version 2.")
 KNOWN_DEFECTS_BY_VERSION = {1: (F6_TASK_KEY_DEFECT,), 2: ()}
 
+# Labels that describe the method the score was computed with (3A). They do
+# not change any number; they say what the number means.
+METHOD_ATTRS = {
+    'encoding_model': 'clip_mean_onset_impulse_hrf',
+    'feature_timing': ('one feature vector per clip (native time bins '
+                       'averaged), added as an impulse at floor(onset_sec / '
+                       'TR); event duration not used'),
+    'onset_rounding': 'floor_to_TR',
+    'event_duration_used': False,
+    'tr_sec': TR_SEC,
+    'hrf': 'spm_double_gamma_32s_unit_sum_convolved_per_run',
+    'stimulus_generalization': 'seen_stimuli',
+}
+TRANSDUCTIVE_SVD = 'transductive_truncated_svd_fit_on_all_stimuli'
+
 
 # ── Benchmark class ───────────────────────────────────────────────────
 
@@ -148,6 +177,8 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         self._events = None
         self._motion = None
         self._stimulus_set = None
+        # Set by feature extraction; records whether a projection was fit.
+        self._feature_projection: Optional[str] = None
 
         # Delegate stimulus prep to the GLM-beta variant — identical stimuli.
         # We also reuse its reliability machinery for visualROI variants
@@ -241,9 +272,11 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             feature_ts_convolved, assembly)
 
         # 4. Per-voxel ridge regression. Two CV modes:
-        #    - 'subject_out' (default): leave-1-subject-out global CV (10 folds).
-        #    - 'within_subject': per-subject leave-K-runs-out, average per-voxel
-        #      r across subjects (closer to standard encoding-lit practice).
+        #    - 'subject_out' (default): contiguous blocks of cv_n_held_out_runs
+        #      (52) runs in assembly order; one subject per block only if the
+        #      assembly groups each subject's runs (recorded on the score).
+        #    - 'within_subject': per-subject contiguous blocks of K runs,
+        #      per-voxel r averaged across subjects.
         if self._cv_mode == 'within_subject':
             per_voxel_r = self._cross_validated_ridge_within_subject(
                 X_flat, Y_flat, run_idx_per_obs, subject_per_obs,
@@ -276,18 +309,42 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                                               else self._cv_n_held_out_runs)
         score.attrs['motion_regressed'] = bool(self._apply_motion_regression)
         score.attrs['pipeline'] = 'continuous_time_encoding'
+        score.attrs.update(self._cv_policy_attrs(assembly))
         score.attrs.update(self._method_attrs())
+        score.attrs['ridge_alpha'] = 1.0
+        score.attrs['inner_validation'] = 'none_fixed_alpha'
         return score
 
     # ── Score labels ───────────────────────────────────────────────
 
     def _method_attrs(self) -> dict:
-        """Version, event key and known defects. Additive score attrs."""
-        attrs = {}
+        """Version, event key, known defects and method description (3A).
+
+        Additive score attrs; they do not change any number.
+        """
+        attrs = dict(METHOD_ATTRS)
         attrs['benchmark_version'] = int(self.version)
         attrs['event_key'] = EVENT_KEY_BY_VERSION[self.version]
         attrs['known_defects'] = KNOWN_DEFECTS_BY_VERSION[self.version]
+        attrs['feature_projection_protocol'] = (
+            self._feature_projection or 'not_recorded')
+        attrs['feature_dim_cap'] = FEATURE_DIM_CAP
         return attrs
+
+    def _cv_policy_attrs(self, assembly) -> dict:
+        """Describe the outer CV the parent ridge actually applies."""
+        if self._cv_mode == 'within_subject':
+            return {
+                'cv_policy': 'within_subject_contiguous_run_blocks',
+                'cv_block_runs': int(self._within_subject_n_held_out),
+            }
+        subjects = [str(s) for s in assembly['subject'].values]
+        return {
+            'cv_policy': 'contiguous_run_blocks_in_assembly_order',
+            'cv_block_runs': int(self._cv_n_held_out_runs),
+            'cv_blocks_hold_out_whole_subjects': _blocks_hold_out_whole_subjects(
+                subjects, self._cv_n_held_out_runs),
+        }
 
     # ── Design matrix ──────────────────────────────────────────────
 
@@ -390,10 +447,14 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         # (e.g. CLIP encoder.layers.10 = 50 tokens × 768 = 38400) make X scale
         # to (127k TR-obs × 38k feat × 4B) ≈ 19 GB and OOM the 64GB box.
         # TruncatedSVD to 512 keeps almost all variance and shrinks X 75×.
+        # The SVD is fit on every stimulus, including those only shown in
+        # held-out runs (transductive); recorded on the score.
+        self._feature_projection = 'none'
         if features.shape[1] > FEATURE_DIM_CAP:
             from sklearn.decomposition import TruncatedSVD
             svd = TruncatedSVD(n_components=FEATURE_DIM_CAP, random_state=0)
             features = svd.fit_transform(features).astype(np.float32)
+            self._feature_projection = TRANSDUCTIVE_SVD
 
         return features, stimulus_ids
 
@@ -521,7 +582,8 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         return X_flat, Y_flat, run_idx_per_obs, subject_per_obs
 
     def _cross_validated_ridge(self, X_flat, Y_flat, run_idx_per_obs, n_held_out: int):
-        """Leave-K-runs-out ridge per voxel; return (n_voxels,) Pearson array.
+        """Hold out contiguous blocks of ``n_held_out`` runs (assembly order);
+        ridge per voxel; return (n_voxels,) Pearson array.
 
         Voxel-batched: holding the full held_out_preds (n_obs × 20484 × 4B = 10 GB)
         plus sklearn's internal Y copies during fit blew past 64GB. We batch the
@@ -551,9 +613,9 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     def _cross_validated_ridge_within_subject(self, X_flat, Y_flat,
                                               run_idx_per_obs, subject_per_obs,
                                               n_held_out_per_subject: int):
-        """Per-subject leave-K-runs-out ridge; average per-voxel r across subjects.
+        """Per-subject run-block ridge; average per-voxel r across subjects.
 
-        For each subject independently: do leave-K-runs-out CV across that
+        For each subject independently: hold out contiguous blocks of K runs across that
         subject's runs only (block_size_samples=n_held_out_per_subject), fit
         ridge on subject-internal train, predict subject-internal held-out.
         Compute per-voxel pearson r on held-out predictions stitched across
@@ -599,6 +661,19 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         return np.nanmean(per_subject_r, axis=0).astype(np.float32)
 
 
+
+def _blocks_hold_out_whole_subjects(subjects_per_run: List[str], block_runs: int) -> bool:
+    """True if every contiguous block of ``block_runs`` runs is one subject
+    whose runs are all inside that block (a true leave-one-subject-out)."""
+    for train_runs, test_runs in contiguous_block_cv(
+            n_samples=len(subjects_per_run), block_size_samples=block_runs):
+        test_subjects = {subjects_per_run[i] for i in test_runs}
+        train_subjects = {subjects_per_run[i] for i in train_runs}
+        if len(test_subjects) != 1 or test_subjects & train_subjects:
+            return False
+    return True
+
+
 def Lahner2024BOLDMoments_timeresolved_visualROI(version: int = CURRENT_VERSION):
     """ROI variant: only voxels with split-half reliability >= 0.3.
 
@@ -616,22 +691,21 @@ def Lahner2024BOLDMoments_timeresolved_visualROI(version: int = CURRENT_VERSION)
 def Lahner2024BOLDMoments_timeresolved_improved(version: int = CURRENT_VERSION):
     """`-improved` variant: motion-regression + within-subject CV.
 
-    Two upgrades over the baseline TR-resolved variant, both standard fMRI
+    Two changes from the baseline TR-resolved variant, both standard fMRI
     encoding practice:
 
     1. **Motion regression.** Per-run OLS regression of BOLD on 9 fmriprep
        confound regressors (6 motion params + framewise displacement +
        csf/white-matter signal); residuals replace raw BOLD before z-score.
-       Removes scanner/physiology variance that confounds stimulus-driven
-       signal. (Power 2014, Ciric 2017.)
-    2. **Within-subject CV.** Leave-K-runs-out CV inside each subject
-       independently; per-voxel r averaged across subjects. Avoids the
-       cross-subject mean-leakage that hurt the baseline `subject_out` CV
-       and matches NSD / Conwell / Allen encoding pipelines.
+       (Power 2014, Ciric 2017.) Each complete run is regressed, test runs
+       included; this is target preprocessing, not a fitted encoder.
+    2. **Within-subject CV.** Contiguous blocks of 10 runs held out inside
+       each subject; per-voxel r averaged across subjects. Matches the
+       within-subject splits of NSD / Conwell / Allen encoding pipelines.
 
-    Together expected to lift TR-resolved-ROI raw r from ~0.066 (baseline)
-    toward ~0.13–0.18 (literature norm for single-trial encoding without
-    GLMsingle-style denoising).
+    Measured effect (M12-lite follow-up): ROI raw r moved by +0.001 to
+    +0.016 and whole-cortex r fell by about half (less training data per
+    fit); see the project notes.
     """
     return Lahner2024BOLDMoments_timeresolved(
         identifier_suffix='-timeresolved-improved',
