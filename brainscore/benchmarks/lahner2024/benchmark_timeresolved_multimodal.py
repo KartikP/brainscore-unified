@@ -24,11 +24,17 @@ Pipeline:
 4. Per-voxel Ridge (or banded ridge with per-group α) at TR grain.
 
 Mode parameter (matches the GLM-beta multimodal benchmark):
-- 'concat': one ridge on [video|audio] flat features, α=1.0
+- 'concat': one ridge on [video|audio] flat features, α=1.0; uses the
+  parent's outer CV and honours ``cv_mode`` ('subject_out' default, or
+  'within_subject')
 - 'per_modality': two independent ridges, predictions summed
 - 'video_only' / 'audio_only': single-tower upper bounds
 - 'banded': per-group α chosen on a random 20% of the outer-training ROWS
   (rows of one run fall on both sides of this inner split)
+
+The four non-concat modes use one outer CV: shuffled K-fold over whole runs
+with all subjects pooled (``cv_mode='pooled_run_kfold'``). They do not
+implement 'subject_out' or 'within_subject' and refuse those values.
 
 Banded ridge is the recommended default for any multimodal scoring —
 flat α across asymmetric-utility modalities consistently underperforms
@@ -73,6 +79,9 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
     VALID_MODES = ('concat', 'per_modality', 'video_only', 'audio_only',
                    'banded')
+    # Outer CV of the non-concat modes: shuffled K-fold over whole runs,
+    # subjects pooled. It is the only policy those modes implement.
+    POOLED_RUN_KFOLD = 'pooled_run_kfold'
     BANDED_ALPHA_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
 
     def __init__(
@@ -83,7 +92,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         reliability_threshold: Optional[float] = None,
         identifier_suffix: str = '-timeresolved-multimodal',
         apply_motion_regression: bool = False,
-        cv_mode: str = 'subject_out',
+        cv_mode: Optional[str] = None,
         within_subject_n_held_out: int = 10,
         mode: str = 'concat',
         voxel_mask_fn: Optional[callable] = None,
@@ -92,16 +101,31 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         if mode not in self.VALID_MODES:
             raise ValueError(
                 f"mode must be one of {self.VALID_MODES}; got {mode!r}.")
+        # cv_mode=None picks the policy the mode implements. Non-concat modes
+        # implement only pooled run K-fold; asking them for subject_out or
+        # within_subject is refused here, before any compute (F1).
+        if mode == 'concat':
+            parent_cv_mode = cv_mode or 'subject_out'
+        elif cv_mode in (None, self.POOLED_RUN_KFOLD):
+            parent_cv_mode = 'subject_out'   # unused by the non-concat fit
+        else:
+            raise ValueError(
+                f"mode={mode!r} uses shuffled K-fold over whole runs with all "
+                f"subjects pooled; it does not implement cv_mode={cv_mode!r}. "
+                f"Use mode='concat' for 'subject_out' / 'within_subject', or "
+                f"pass cv_mode=None or {self.POOLED_RUN_KFOLD!r}.")
         super().__init__(
             ceiling=ceiling,
             cv_n_held_out_runs=cv_n_held_out_runs,
             reliability_threshold=reliability_threshold,
             identifier_suffix=identifier_suffix,
             apply_motion_regression=apply_motion_regression,
-            cv_mode=cv_mode,
+            cv_mode=parent_cv_mode,
             within_subject_n_held_out=within_subject_n_held_out,
             version=version,
         )
+        if mode != 'concat':
+            self._cv_mode = self.POOLED_RUN_KFOLD
         # Multimodal A+V: audio hard-required; visual tower accepts video OR
         # vision (accepted_modalities inherited from the timeresolved base).
         self.required_modalities = {'audio'}
@@ -346,12 +370,25 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
+        # CV labels for the policy this path actually applies (F1).
+        score.attrs['n_runs'] = n_runs
+        score.attrs['n_observations'] = int(len(Y_flat))
+        score.attrs['cv_mode'] = self._cv_mode
+        score.attrs['cv_policy'] = 'shuffled_kfold_over_pooled_runs'
+        score.attrs['cv_n_held_out_runs'] = self._cv_n_held_out_runs
+        score.attrs['cv_n_splits'] = self._n_pooled_splits(run_idx_per_obs)
+        score.attrs['cv_blocks_hold_out_whole_subjects'] = False
+        score.attrs['motion_regressed'] = bool(self._apply_motion_regression)
         score.attrs.update(self._method_attrs())
         score.attrs['ridge_alpha'] = (
             'per_group_from_grid' if self._mode == 'banded' else 1.0)
         score.attrs['inner_validation'] = 'none_fixed_alpha'
         self._tag_score(score, candidate)
         return score
+
+    def _n_pooled_splits(self, run_idx_per_obs) -> int:
+        n_runs = len(np.unique(run_idx_per_obs))
+        return max(2, n_runs // self._cv_n_held_out_runs)
 
     def _fit_score_with_groups(self, feature_groups, Y_flat,
                                run_idx_per_obs, subject_per_obs):
@@ -364,12 +401,10 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         Y copies (CLAUDE.md note from M12-lite).
         """
         n_obs, n_voxels = Y_flat.shape
-        unique_runs = np.unique(run_idx_per_obs)
-        n_runs = len(unique_runs)
-        n_held = self._cv_n_held_out_runs
-
+        # Outer CV: shuffled K-fold over whole runs, subjects pooled
+        # (cv_mode='pooled_run_kfold'). subject_per_obs is not used.
         fold_masks = list(run_kfold_masks(
-            run_idx_per_obs, n_splits=max(2, n_runs // n_held),
+            run_idx_per_obs, n_splits=self._n_pooled_splits(run_idx_per_obs),
             random_state=0))
 
         per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)

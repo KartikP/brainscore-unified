@@ -205,7 +205,7 @@ def test_glm_beta_variants_are_unchanged(identifier):
     assert load(identifier).version == 1
 
 
-# ── Score labels (3A) ─────────────────────────────────────────────
+# ── Score labels (3A) and CV policy (F1) ──────────────────────────
 
 
 def synthetic_assembly(subjects, tasks, n_tr=12, n_voxels=3, seed=0):
@@ -306,6 +306,52 @@ def test_subject_out_label_reports_whether_blocks_are_whole_subjects(monkeypatch
     interleaved = tr.Lahner2024BOLDMoments_timeresolved(cv_n_held_out_runs=2)
     score = score_synthetic(monkeypatch, interleaved, subjects=('a', 'b', 'c', 'a', 'b', 'c'))
     assert score.attrs['cv_blocks_hold_out_whole_subjects'] is False
+
+
+@pytest.mark.parametrize('mode', NON_CONCAT_MODES)
+def test_non_concat_modes_label_their_actual_cv(monkeypatch, mode):
+    benchmark = Lahner2024BOLDMoments_timeresolved_multimodal(
+        mode=mode, cv_n_held_out_runs=2, apply_motion_regression=False)
+    score = score_synthetic(monkeypatch, benchmark)
+    assert_method_labels(score, 2)
+    assert score.attrs['cv_mode'] == 'pooled_run_kfold'
+    assert score.attrs['cv_policy'] == 'shuffled_kfold_over_pooled_runs'
+    assert score.attrs['cv_n_splits'] == 3
+    assert score.attrs['cv_blocks_hold_out_whole_subjects'] is False
+    assert score.attrs['motion_regressed'] is False
+    if mode == 'banded':
+        assert score.attrs['inner_validation'] == (
+            'random_rows_20pct_runs_shared_with_inner_training')
+        assert score.attrs['ridge_alpha'] == 'per_group_from_grid'
+    else:
+        assert score.attrs['inner_validation'] == 'none_fixed_alpha'
+        assert score.attrs['ridge_alpha'] == 1.0
+
+
+@pytest.mark.parametrize('mode', NON_CONCAT_MODES)
+@pytest.mark.parametrize('cv_mode', ('subject_out', 'within_subject'))
+def test_non_concat_modes_refuse_subject_policies(mode, cv_mode):
+    with pytest.raises(ValueError, match='does not implement cv_mode'):
+        Lahner2024BOLDMoments_timeresolved_multimodal(mode=mode, cv_mode=cv_mode)
+
+
+@pytest.mark.parametrize('mode', NON_CONCAT_MODES)
+@pytest.mark.parametrize('cv_mode', (None, 'pooled_run_kfold'))
+def test_non_concat_modes_accept_their_policy(mode, cv_mode):
+    benchmark = Lahner2024BOLDMoments_timeresolved_multimodal(mode=mode, cv_mode=cv_mode)
+    assert benchmark._cv_mode == 'pooled_run_kfold'
+
+
+@pytest.mark.parametrize('cv_mode', ('subject_out', 'within_subject'))
+def test_concat_mode_keeps_subject_policies(cv_mode):
+    benchmark = Lahner2024BOLDMoments_timeresolved_multimodal(mode='concat', cv_mode=cv_mode)
+    assert benchmark._cv_mode == cv_mode
+
+
+def test_concat_mode_rejects_pooled_policy():
+    with pytest.raises(ValueError, match="cv_mode must be"):
+        Lahner2024BOLDMoments_timeresolved_multimodal(
+            mode='concat', cv_mode='pooled_run_kfold')
 
 
 def test_transductive_projection_is_labelled():
