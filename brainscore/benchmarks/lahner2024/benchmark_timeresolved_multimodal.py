@@ -57,7 +57,7 @@ from ._util import read_stimulus_ids
 from .benchmark_timeresolved import (
     Lahner2024BOLDMoments_timeresolved,
     FEATURE_DIM_CAP,
-    TR_SEC,
+    CURRENT_VERSION,
 )
 from .benchmark_multimodal import DEFAULT_AUDIO_DIR
 
@@ -83,6 +83,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         within_subject_n_held_out: int = 10,
         mode: str = 'concat',
         voxel_mask_fn: Optional[callable] = None,
+        version: int = CURRENT_VERSION,
     ):
         if mode not in self.VALID_MODES:
             raise ValueError(
@@ -95,6 +96,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
             apply_motion_regression=apply_motion_regression,
             cv_mode=cv_mode,
             within_subject_n_held_out=within_subject_n_held_out,
+            version=version,
         )
         # Multimodal A+V: audio hard-required; visual tower accepts video OR
         # vision (accepted_modalities inherited from the timeresolved base).
@@ -287,39 +289,14 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         return score
 
     def _call_with_mode(self, candidate) -> Score:
-        from brainscore_core.temporal import double_gamma_hrf, hrf_convolve
-
         # Same as parent.__call__ up to the X_flat / Y_flat point
         per_stim_features, stimulus_ids = (
             self._extract_per_stimulus_features(candidate))
 
-        stim_idx = {sid: i for i, sid in enumerate(stimulus_ids)}
         assembly = self.assembly
-        n_TR_max = assembly.sizes['time_bin']
-        n_features = per_stim_features.shape[1]
         n_runs = assembly.sizes['presentation']
-
-        feature_ts = np.zeros((n_runs, n_TR_max, n_features), dtype=np.float32)
-        for run_idx in range(n_runs):
-            run_id = (str(assembly['subject'].values[run_idx]),
-                      str(assembly['session'].values[run_idx]),
-                      str(assembly['run'].values[run_idx]))
-            run_events = self._events_for_run(*run_id)
-            for _, ev in run_events.iterrows():
-                if ev['stimulus_id'] not in stim_idx:
-                    continue
-                onset_TR = int(np.floor(ev['onset_sec'] / TR_SEC))
-                if 0 <= onset_TR < n_TR_max:
-                    feature_ts[run_idx, onset_TR, :] += (
-                        per_stim_features[stim_idx[ev['stimulus_id']]])
-
-        hrf_kernel = double_gamma_hrf(
-            duration_sec=32.0, sampling_rate_hz=1.0/TR_SEC)
-        feature_ts_convolved = np.zeros_like(feature_ts)
-        for run_idx in range(n_runs):
-            feature_ts_convolved[run_idx] = hrf_convolve(
-                feature_ts[run_idx],
-                sampling_rate_hz=1.0/TR_SEC, hrf=hrf_kernel)
+        feature_ts_convolved = self._build_design(
+            per_stim_features, stimulus_ids, assembly)
 
         X_flat, Y_flat, run_idx_per_obs, subject_per_obs = (
             self._concatenate_with_mask(feature_ts_convolved, assembly))
@@ -357,6 +334,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
+        score.attrs.update(self._method_attrs())
         self._tag_score(score, candidate)
         return score
 
@@ -421,21 +399,25 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
 
 def Lahner2024BOLDMoments_timeresolved_multimodal_visualROI(
-        audio_dir: Optional[str] = None, mode: str = 'concat'):
+        audio_dir: Optional[str] = None, mode: str = 'concat',
+        version: int = CURRENT_VERSION):
     return Lahner2024BOLDMoments_timeresolved_multimodal(
         audio_dir=audio_dir,
         reliability_threshold=0.3,
         identifier_suffix='-timeresolved-multimodal-visualROI',
         mode=mode,
+        version=version,
     )
 
 
 def Lahner2024BOLDMoments_timeresolved_multimodal_auditoryROI(
-        audio_dir: Optional[str] = None, mode: str = 'concat'):
+        audio_dir: Optional[str] = None, mode: str = 'concat',
+        version: int = CURRENT_VERSION):
     from .auditory_roi import build_auditory_mask
     return Lahner2024BOLDMoments_timeresolved_multimodal(
         audio_dir=audio_dir,
         identifier_suffix='-timeresolved-multimodal-auditoryROI',
         mode=mode,
         voxel_mask_fn=build_auditory_mask,
+        version=version,
     )

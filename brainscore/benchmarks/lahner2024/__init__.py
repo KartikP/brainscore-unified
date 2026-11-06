@@ -28,6 +28,10 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-visualROI'] = (
 # brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly uploads the
 # assembly + events to S3 and the resulting version/sha1 are recorded in the
 # Lahner data plugin.
+# Version 2 (default) selects events by (subject, session, task, run);
+# version 1 (defect F6, task omitted) stays reachable for reproducing
+# historical scores: load_benchmark(identifier, version=1). The same holds for
+# the TR-resolved multimodal registrations below.
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved'] = (
     Lahner2024BOLDMoments_timeresolved)
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-visualROI'] = (

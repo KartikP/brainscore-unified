@@ -40,6 +40,16 @@ naturalistic-fMRI approach (Huth lab, Friends/Sherlock benchmarks).
        contiguous_block_cv at the run-block level.
     6. Per-voxel Pearson on held-out predictions, median across voxels.
 
+## Versions
+
+- version 2 (current): events are selected by (subject, session, task, run).
+- version 1: events were selected by (subject, session, run) only. The two
+  BOLDMoments tasks ('train', 'test') reuse these keys, so 240 of the 520
+  runs also received the other task's events (defect F6). Kept reachable
+  with ``version=1`` (e.g. ``load_benchmark(identifier, version=1)``) so
+  historical scores can be reproduced; its scores carry
+  ``attrs['known_defects']``.
+
 ## Comparison story
 
 Same 1026+ videos, same models, but model has to predict TR-resolved
@@ -86,6 +96,21 @@ SOA_SEC = 4.0
 FEATURE_DIM_CAP = 512
 CLIP_DURATION_SEC = 3.0
 
+# ── Protocol versions ─────────────────────────────────────────────────
+# Version 2 selects each run's events by the full run key, task included.
+# Version 1 omitted task; it stays reachable so historical scores can be
+# reproduced, and its scores are labelled with the defect.
+CURRENT_VERSION = 2
+EVENT_KEY_BY_VERSION = {
+    1: ('subject', 'session', 'run'),
+    2: ('subject', 'session', 'task', 'run'),
+}
+F6_TASK_KEY_DEFECT = (
+    "F6: events are selected by (subject, session, run) without task. The "
+    "BOLDMoments 'train' and 'test' tasks reuse these keys, so 240 of 520 "
+    "runs also receive the other task's events. Fixed in version 2.")
+KNOWN_DEFECTS_BY_VERSION = {1: (F6_TASK_KEY_DEFECT,), 2: ()}
+
 
 # ── Benchmark class ───────────────────────────────────────────────────
 
@@ -106,9 +131,13 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         apply_motion_regression: bool = False,
         cv_mode: str = 'subject_out',           # 'subject_out' | 'within_subject'
         within_subject_n_held_out: int = 10,    # block size when cv_mode='within_subject'
+        version: int = CURRENT_VERSION,
     ):
         if cv_mode not in ('subject_out', 'within_subject'):
             raise ValueError(f"cv_mode must be 'subject_out' or 'within_subject', got {cv_mode!r}")
+        if version not in EVENT_KEY_BY_VERSION:
+            raise ValueError(
+                f"version must be one of {sorted(EVENT_KEY_BY_VERSION)}, got {version!r}")
         self._cv_n_held_out_runs = cv_n_held_out_runs
         self._reliability_threshold = reliability_threshold
         self._apply_motion_regression = apply_motion_regression
@@ -128,7 +157,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
 
         super().__init__(
             identifier=f'Lahner2024-fMRI-naturalistic{identifier_suffix}',
-            version=1,
+            version=version,
             parent='naturalistic',
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),
             bibtex=BIBTEX,
@@ -186,6 +215,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         assert 'time_bin_start_ms' in time_bin_levels, time_bin_levels
         assert 'subject' in presentation_levels, presentation_levels
         assert 'run' in presentation_levels, presentation_levels
+        assert 'task' in presentation_levels, presentation_levels   # event key (v2)
         assert 'n_valid_TR' in presentation_levels, presentation_levels
         assert assembly.sizes['neuroid'] == 20484
         assert assembly.sizes['time_bin'] > 1, \
@@ -197,34 +227,11 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         # per_stim_features shape: (n_stimuli, n_features)
         # stimulus_ids: list of length n_stimuli
 
-        stim_idx = {sid: i for i, sid in enumerate(stimulus_ids)}
-
-        # 2. For each (subject, run) presentation: build feature time-series at TR
-        #    resolution by placing per-stim features at onset TRs, then HRF-convolve.
+        # 2. For each run: place per-stim features at onset TRs, HRF-convolve.
         assembly = self.assembly
-        n_TR_max = assembly.sizes['time_bin']
-        n_features = per_stim_features.shape[1]
         n_runs = assembly.sizes['presentation']
-
-        feature_ts = np.zeros((n_runs, n_TR_max, n_features), dtype=np.float32)
-        for run_idx in range(n_runs):
-            run_id = (str(assembly['subject'].values[run_idx]),
-                      str(assembly['session'].values[run_idx]),
-                      str(assembly['run'].values[run_idx]))
-            run_events = self._events_for_run(*run_id)
-            for _, ev in run_events.iterrows():
-                if ev['stimulus_id'] not in stim_idx:
-                    continue   # oddball or stimulus the model couldn't process
-                onset_TR = int(np.floor(ev['onset_sec'] / TR_SEC))
-                if 0 <= onset_TR < n_TR_max:
-                    feature_ts[run_idx, onset_TR, :] += per_stim_features[stim_idx[ev['stimulus_id']]]
-
-        # HRF-convolve along time axis. hrf_convolve expects (n_time, n_features).
-        hrf_kernel = double_gamma_hrf(duration_sec=32.0, sampling_rate_hz=1.0/TR_SEC)
-        feature_ts_convolved = np.zeros_like(feature_ts)
-        for run_idx in range(n_runs):
-            feature_ts_convolved[run_idx] = hrf_convolve(
-                feature_ts[run_idx], sampling_rate_hz=1.0/TR_SEC, hrf=hrf_kernel)
+        feature_ts_convolved = self._build_design(
+            per_stim_features, stimulus_ids, assembly)
 
         # 3. Concatenate (run, TR) → flat (n_obs, n_features); same for BOLD.
         #    Optionally regress motion confounds out of BOLD per-run before
@@ -269,9 +276,70 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                                               else self._cv_n_held_out_runs)
         score.attrs['motion_regressed'] = bool(self._apply_motion_regression)
         score.attrs['pipeline'] = 'continuous_time_encoding'
+        score.attrs.update(self._method_attrs())
         return score
 
-    # ── Helpers (each TODO has detailed instructions) ──────────────
+    # ── Score labels ───────────────────────────────────────────────
+
+    def _method_attrs(self) -> dict:
+        """Version, event key and known defects. Additive score attrs."""
+        attrs = {}
+        attrs['benchmark_version'] = int(self.version)
+        attrs['event_key'] = EVENT_KEY_BY_VERSION[self.version]
+        attrs['known_defects'] = KNOWN_DEFECTS_BY_VERSION[self.version]
+        return attrs
+
+    # ── Design matrix ──────────────────────────────────────────────
+
+    def _build_design(self, per_stim_features, stimulus_ids, assembly) -> np.ndarray:
+        """Clip-mean onset-impulse design, HRF-convolved within each run.
+
+        Returns ``(n_runs, n_TR_max, n_features)``. Each event adds its
+        clip's feature vector at ``floor(onset_sec / TR)``; the sub-TR part
+        of the onset and the event duration are not used.
+        """
+        stim_idx = {sid: i for i, sid in enumerate(stimulus_ids)}
+        n_TR_max = assembly.sizes['time_bin']
+        n_features = per_stim_features.shape[1]
+        n_runs = assembly.sizes['presentation']
+
+        feature_ts = np.zeros((n_runs, n_TR_max, n_features), dtype=np.float32)
+        for run_idx, run_events in enumerate(self._events_per_run(assembly)):
+            for _, ev in run_events.iterrows():
+                if ev['stimulus_id'] not in stim_idx:
+                    continue   # oddball or stimulus the model couldn't process
+                onset_TR = int(np.floor(ev['onset_sec'] / TR_SEC))
+                if 0 <= onset_TR < n_TR_max:
+                    feature_ts[run_idx, onset_TR, :] += per_stim_features[stim_idx[ev['stimulus_id']]]
+
+        # HRF-convolve along time axis. hrf_convolve expects (n_time, n_features).
+        hrf_kernel = double_gamma_hrf(duration_sec=32.0, sampling_rate_hz=1.0/TR_SEC)
+        feature_ts_convolved = np.zeros_like(feature_ts)
+        for run_idx in range(n_runs):
+            feature_ts_convolved[run_idx] = hrf_convolve(
+                feature_ts[run_idx], sampling_rate_hz=1.0/TR_SEC, hrf=hrf_kernel)
+        return feature_ts_convolved
+
+    def _events_per_run(self, assembly):
+        """Yield each assembly run's events, selected by this version's key."""
+        n_runs = assembly.sizes['presentation']
+        subjects = assembly['subject'].values
+        sessions = assembly['session'].values
+        runs = assembly['run'].values
+        if self.version == 1:
+            for run_idx in range(n_runs):
+                yield self._events_for_run_without_task(
+                    str(subjects[run_idx]), str(sessions[run_idx]),
+                    str(runs[run_idx]))
+            return
+        tasks = assembly['task'].values
+        groups = self._events_by_run_key()
+        for run_idx in range(n_runs):
+            yield self._events_for_run(
+                str(subjects[run_idx]), str(sessions[run_idx]),
+                str(tasks[run_idx]), str(runs[run_idx]), groups=groups)
+
+    # ── Helpers ────────────────────────────────────────────────────
 
     def _extract_per_stimulus_features(self, candidate):
         """One forward pass per unique stimulus → (n_stimuli, n_features).
@@ -329,8 +397,50 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
 
         return features, stimulus_ids
 
-    def _events_for_run(self, subject, session, run):
-        """Filter the events DataFrame to one (subject, session, run)."""
+    def _events_by_run_key(self) -> dict:
+        """Group events by (subject, session, task, run), keeping row order."""
+        ev = self.events
+        key = list(EVENT_KEY_BY_VERSION[2])
+        missing = [column for column in key if column not in ev.columns]
+        if missing:
+            raise ValueError(
+                f"Events table lacks {missing}; version {self.version} selects "
+                f"events by {tuple(key)}. Use the versioned events sidecar.")
+        key_frame = ev[key].astype(str)
+        return {
+            group_key: ev.iloc[positions]
+            for group_key, positions in key_frame.groupby(key, sort=False).indices.items()
+        }
+
+    def _events_for_run(self, subject, session, task, run, groups: Optional[dict] = None):
+        """Events of one (subject, session, task, run).
+
+        Raises if the run has no events, or if the selection holds more than
+        one task (two tasks must never feed one run's design).
+        """
+        if groups is None:
+            groups = self._events_by_run_key()
+        key = (str(subject), str(session), str(task), str(run))
+        if key not in groups:
+            raise ValueError(
+                f"No events for run (subject, session, task, run)={key}. "
+                f"Every assembly run needs events; check the assembly and the "
+                f"events sidecar come from the same build.")
+        selected = groups[key]
+        tasks = set(selected['task'].astype(str))
+        if tasks != {str(task)}:
+            raise ValueError(
+                f"Events for run {key} hold tasks {sorted(tasks)}; expected "
+                f"only {task!r}.")
+        return selected
+
+    def _events_for_run_without_task(self, subject, session, run):
+        """Version 1 selector (defect F6): (subject, session, run), no task.
+
+        Kept unchanged so version 1 reproduces historical scores. The two
+        BOLDMoments tasks reuse these keys, so it can return both tasks'
+        events. Do not use for new scores.
+        """
         ev = self.events
         mask = ((ev['subject'] == subject) &
                 (ev['session'] == session) &
@@ -489,7 +599,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         return np.nanmean(per_subject_r, axis=0).astype(np.float32)
 
 
-def Lahner2024BOLDMoments_timeresolved_visualROI():
+def Lahner2024BOLDMoments_timeresolved_visualROI(version: int = CURRENT_VERSION):
     """ROI variant: only voxels with split-half reliability >= 0.3.
 
     Mirrors the GLM-beta `-visualROI` variant. Reliability is computed on the
@@ -499,10 +609,11 @@ def Lahner2024BOLDMoments_timeresolved_visualROI():
     return Lahner2024BOLDMoments_timeresolved(
         reliability_threshold=0.3,
         identifier_suffix='-timeresolved-visualROI',
+        version=version,
     )
 
 
-def Lahner2024BOLDMoments_timeresolved_improved():
+def Lahner2024BOLDMoments_timeresolved_improved(version: int = CURRENT_VERSION):
     """`-improved` variant: motion-regression + within-subject CV.
 
     Two upgrades over the baseline TR-resolved variant, both standard fMRI
@@ -527,10 +638,11 @@ def Lahner2024BOLDMoments_timeresolved_improved():
         apply_motion_regression=True,
         cv_mode='within_subject',
         within_subject_n_held_out=10,
+        version=version,
     )
 
 
-def Lahner2024BOLDMoments_timeresolved_improved_visualROI():
+def Lahner2024BOLDMoments_timeresolved_improved_visualROI(version: int = CURRENT_VERSION):
     """`-improved-visualROI`: motion-regression + within-subject CV + ROI mask."""
     return Lahner2024BOLDMoments_timeresolved(
         reliability_threshold=0.3,
@@ -538,4 +650,5 @@ def Lahner2024BOLDMoments_timeresolved_improved_visualROI():
         apply_motion_regression=True,
         cv_mode='within_subject',
         within_subject_n_held_out=10,
+        version=version,
     )
