@@ -124,12 +124,37 @@ jobs:
           python -I -m brainscore.validation.notebooks \
             --source "$GITHUB_WORKSPACE/unified/notebooks" \
             --out "$GITHUB_WORKSPACE/qualification/notebooks" --timeout 180
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify the lab frontend and committed bundle
+        working-directory: unified/apps/virtual-lab/frontend
+        run: |
+          npm ci
+          npm test
+          npm run bundle
+          git -C "$GITHUB_WORKSPACE/unified" diff --exit-code -- apps/virtual-lab/backend/umi_lab/static
+      - name: Build and install the lab wheel
+        run: |
+          python -m build --wheel --no-isolation --outdir lab-wheels unified/apps/virtual-lab
+          python -m pip install -c unified/install/v2-constraints.txt lab-wheels/*.whl
+          python -m pip check
+          python -m pip freeze > resolved-dependencies.txt
+      - name: Test the lab with native neural channel outputs
+        working-directory: ${{ runner.temp }}
+        run: |
+          brainscore-lab --check
+          python -I -m pytest "$GITHUB_WORKSPACE/unified/apps/virtual-lab/tests" \
+            "$GITHUB_WORKSPACE/core/tests/test_session_channels_keep_native_output.py" \
+            -q --import-mode=importlib -p no:cacheprovider \
+            --junitxml="$GITHUB_WORKSPACE/qualification/virtual-lab.xml"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: v2-integration-${{ matrix.os }}
           path: |
             wheels
+            lab-wheels
             example-wheels
             qualification
             resolved-dependencies.txt

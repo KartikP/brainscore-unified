@@ -78,10 +78,11 @@ brainscore-lab
 
 Keep the environment file beside the four repositories: its editable paths are
 relative to that directory. The peer manifest pins exact commits, including the
-separate core time-index fix in [core PR 215](https://github.com/brain-score/core/pull/215).
-The lab does not need that PR to merge before installation: Git can fetch its
-published commit. These commands create a new environment and do not download
-model weights. The lab packages are not assumed to be available from PyPI.
+merged native-channel fix in [core PR 216](https://github.com/brain-score/core/pull/216).
+It supersedes PR 215: each neural channel keeps its standalone values, dtype,
+coordinates, indexes and attributes. These commands create a new environment
+and do not download model weights. The lab packages are not assumed to be
+available from PyPI.
 
 ### Frontend development and releases
 
@@ -114,8 +115,10 @@ or `node_modules`. The app stays separate from the core UMI packages.
 The Lab panel reports activity from public experiment events and counts completed
 repetitions across all conditions. A repetition can process the entire stimulus
 table as one batch; this is not a per-token or per-image completion estimate.
-Neural recording is requested during that same presentation, rather than in a
-second forward pass. Benchmarks without intermediate progress use an
+Task-based neural recording is requested during the same task presentation.
+Passive multi-region recording can run an extractor once per requested channel;
+the core keeps each channel's native output instead of merging incompatible
+arrays. Benchmarks without intermediate progress use an
 indeterminate indicator. Progress messages contain only bounded metadata, never
 activation tensors, and are throttled within each condition.
 
@@ -504,6 +507,14 @@ existing UMI builder. `UMI_LAB_MODEL` selects a local/cached checkpoint,
 exploratory completion task, not a registered benchmark.
 
 ## Runtime and performance
+
+Core PR 216 can increase inference cost for passive multi-region neural sessions.
+For example, V1, V4 and IT from one extractor can require three calls where the
+previous path used one. This is core execution behavior and also applies to the
+equivalent Python experiment. It is separate from browser/status overhead.
+The lab does not certify a 25% total overhead bound for these requests. Choose
+only the regions needed for the experiment; reopening saved plots or Replay
+does not run extraction again.
 
 The optional `.lab-runtime.json` prepends app-local dependency paths before model
 imports. These local runtime files are ignored by Git. Use an aligned UMI
