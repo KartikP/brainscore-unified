@@ -29,7 +29,7 @@ class LabController:
         self.root.mkdir(parents=True, exist_ok=True)
         self.token = secrets.token_urlsafe(32)
         self.lock = threading.Lock()
-        self.state = {"phase": "loading", "profile": None, "run": None}
+        self.state = {"phase": "loading", "profile": None, "run": None, "allow_model_downloads": True}
         self.validation_fingerprint: str | None = None
         self.catalog = {"models": [], "benchmarks": [], "stimulus_sets": []}
         self.runs: dict[str, Path] = {}
@@ -72,6 +72,19 @@ class LabController:
         with self.lock:
             return json.loads(json.dumps(self.state))
 
+    def configure_downloads(self, data: dict) -> None:
+        if (not isinstance(data, dict) or set(data) != {"allow_model_downloads"}
+                or type(data["allow_model_downloads"]) is not bool):
+            raise ValueError("Set allow_model_downloads to true or false")
+        with self.lock:
+            if self.state["phase"] not in ("ready", "load_failed") or (
+                    self.state["run"] and self.state["run"]["phase"] in ACTIVE):
+                raise ValueError("Wait until the current operation finishes before changing download settings")
+            self.state["allow_model_downloads"] = data["allow_model_downloads"]
+
+    def _enqueue(self, request: dict) -> None:
+        self.commands.put_nowait({**request, "allow_model_downloads": self.state["allow_model_downloads"]})
+
     def submit(self, data: dict, *, telemetry: bool = True) -> str:
         plan = Plan.parse(data)
         with self.lock:
@@ -84,7 +97,7 @@ class LabController:
             self.runs[identifier] = self.root / identifier
             self.state["run"] = {"id": identifier, "phase": "queued", "plan": asdict(plan),
                                   "started_at": time.time()}
-            self.commands.put_nowait({"id": identifier, "plan": asdict(plan), "telemetry": telemetry})
+            self._enqueue({"id": identifier, "plan": asdict(plan), "telemetry": telemetry})
             return identifier
 
     def load(self, data: dict) -> None:
@@ -96,9 +109,9 @@ class LabController:
         with self.lock:
             if self.state["phase"] not in ("ready", "load_failed") or (self.state["run"] and self.state["run"]["phase"] in ACTIVE):
                 raise ValueError("Wait for the current operation before changing models")
-            self.state.update(phase="loading", error=None, validation=None)
+            self.state.update(phase="loading", error=None, validation=None, download={"phase": "preparing"})
             self.validation_fingerprint = None
-            self.commands.put_nowait({"kind": "load", "identifier": identifier})
+            self._enqueue({"kind": "load", "identifier": identifier})
 
     def submit_request(self, data: dict) -> str:
         from .workbench import Request
@@ -117,7 +130,7 @@ class LabController:
             self.runs[identifier] = self.root / identifier
             self.state["run"] = {"id": identifier, "phase": "queued", "request": asdict(request),
                                   "started_at": time.time()}
-            self.commands.put_nowait({"kind": "workbench", "id": identifier, "request": asdict(request)})
+            self._enqueue({"kind": "workbench", "id": identifier, "request": asdict(request)})
             return identifier
 
     def _fingerprint(self, request: object) -> str:
@@ -135,7 +148,7 @@ class LabController:
             identifier = secrets.token_hex(16)
             self.validation_fingerprint = self._fingerprint(request)
             self.state.update(phase="validating", validation={"id": identifier, "phase": "pending"})
-            self.commands.put_nowait({"kind": "validate", "validation_id": identifier, "request": asdict(request)})
+            self._enqueue({"kind": "validate", "validation_id": identifier, "request": asdict(request)})
             return identifier
 
     def cancel(self) -> None:
@@ -372,7 +385,10 @@ def make_server(controller: LabController, frontend: Path, port: int = 8765) -> 
                 if not 0 < length <= 1024 * 1024:
                     raise ValueError("JSON request limit is 1 MiB")
                 data = json.loads(self.rfile.read(length))
-                if self.path == "/api/export-python":
+                if self.path == "/api/settings":
+                    controller.configure_downloads(data)
+                    self._json({"allow_model_downloads": controller.snapshot()["allow_model_downloads"]})
+                elif self.path == "/api/export-python":
                     from .python_export import python_source
                     source = python_source(data, factory=controller.factory)
                     self._json({"filename": "experiment.py", "source": source})

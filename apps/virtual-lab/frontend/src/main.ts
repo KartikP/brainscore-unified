@@ -1,5 +1,5 @@
 import { drawScene, drawAvatar } from './scene.js';
-import { currentMode, initializeWorkbench, updateWorkbench, handleTool, buildRequest, customIntervention, requestedOutput, isUploading } from './workbench.js';
+import { currentMode, initializeWorkbench, updateWorkbench, handleTool, buildRequest, customIntervention, requestedOutput, isUploading, isUpdatingSettings } from './workbench.js';
 import { addResponsePlot, addCalibrationPlots, activationExtent, HeatmapScale, type ActivationPreview } from './plots.js';
 import { conditionNames, protocolSpec, protocolMeasurements, protocolHasIntervention, protocolRunReady, protocolStep, protocolDraftMatches, type ProtocolValidation } from './protocol.js';
 import { renderProtocolResults } from './protocol_results.js';
@@ -28,7 +28,7 @@ const activePhases = new Set(['queued', 'running', 'trial_finished', 'cancelling
 const toolLabels = { behavior: 'Behavior log', activity: 'Activation probe', ablation: 'Ablation tool' };
 const conditionLabels: Record<string, string> = { baseline: 'Baseline', ablation: 'Ablation', intervention: 'Intervention', random_control: 'Random control', restored: 'Restored', benchmark: 'Benchmark', loading_benchmark: 'Loading benchmark' };
 const running = () => Boolean(state.run && activePhases.has(state.run.phase));
-const busy = () => running() || requestPending || isUploading() || state.phase === 'validating';
+const busy = () => running() || requestPending || isUploading() || isUpdatingSettings() || state.phase === 'validating';
 const currentProtocolResult = () => state.run?.report?.subject === state.profile?.identifier && protocolDraftMatches(state.run?.request);
 
 function reviewTab(name: 'results' | 'replay'): void {

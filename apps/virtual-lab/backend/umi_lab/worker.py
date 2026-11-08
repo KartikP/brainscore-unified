@@ -18,6 +18,11 @@ DEFAULT_FACTORY = "umi_lab.demo:create_profile"
 MAX_MESSAGE = 64 * 1024
 
 
+def apply_download_policy(allow: bool) -> None:
+    """Set the public download opt-out in this lab worker process only."""
+    os.environ["BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK"] = "1" if allow else "0"
+
+
 def error_message(error: Exception) -> str:
     message = str(error)
     return f"{type(error).__name__}: {message}" if message else f"{type(error).__name__}: the plugin supplied no additional error message"
@@ -47,6 +52,7 @@ def run_worker(factory: str, root: str, commands: object, messages: object,
     # The local server never changes the user's cache configuration. The worker
     # uses app-local storage only when the user has not selected a cache.
     os.environ.setdefault("RESULTCACHING_HOME", str(Path(root).parent / ".lab-cache"))
+    apply_download_policy(True)
 
     def send(value: dict, terminal: bool = False) -> None:
         value = bounded_message(value)
@@ -59,8 +65,10 @@ def run_worker(factory: str, root: str, commands: object, messages: object,
                 pass
 
     try:
-        profile = load_profile(factory)
-        send({"phase": "ready", "profile": profile.describe()}, terminal=True)
+        from .downloads import observe_downloads
+        with observe_downloads(send):
+            profile = load_profile(factory)
+        send({"phase": "ready", "profile": profile.describe(), "download": None}, terminal=True)
         from .workbench import catalog
         available = catalog()
         for key in ("models", "benchmarks", "stimulus_sets"):
@@ -75,6 +83,7 @@ def run_worker(factory: str, root: str, commands: object, messages: object,
         request = commands.get()
         if request is None:
             return
+        apply_download_policy(request.get("allow_model_downloads", True))
         if request.get("kind") == "load":
             from .workbench import describe_subject, release_model
             try:
@@ -83,17 +92,19 @@ def run_worker(factory: str, root: str, commands: object, messages: object,
                 profile = None
                 release_model()
                 if request["identifier"] == "__calibration__":
-                    profile = load_profile(factory)
+                    with observe_downloads(send):
+                        profile = load_profile(factory)
                     description = profile.describe()
                 else:
                     from brainscore import load_model
                     from .profile import LabProfile
-                    subject = load_model(request["identifier"])
+                    with observe_downloads(send):
+                        subject = load_model(request["identifier"])
                     description = describe_subject(subject)
                     profile = LabProfile(subject, subject.identifier, description["description"],
                                          description["task"], (), (), None, None)
                     del subject
-                send({"phase": "ready", "profile": description, "run": None, "error": None}, terminal=True)
+                send({"phase": "ready", "profile": description, "run": None, "error": None, "download": None}, terminal=True)
             except Exception as error:
                 traceback.print_exc()
                 send({"phase": "load_failed", "profile": None, "error": error_message(error), "run": None}, terminal=True)

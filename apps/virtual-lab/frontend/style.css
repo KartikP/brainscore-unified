@@ -37,6 +37,9 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible {
 #lab-activity { font-weight: 500; }
 #experiment-progress { display: block; width: 100%; height: 6px; margin: 9px 0; accent-color: var(--green); }
 #lab-progress-detail { font-size: 11px; overflow-wrap: anywhere; }
+.model-download-progress { margin: 12px 0; padding: 10px; border: 1px solid var(--border); border-radius: 3px; }
+#model-download-bar { display: block; width: 100%; height: 7px; margin: 8px 0; accent-color: var(--green); }
+#model-download-detail { overflow-wrap: anywhere; }
 
 .topbar {
   height: 52px;

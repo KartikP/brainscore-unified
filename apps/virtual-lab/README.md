@@ -43,6 +43,26 @@ The dropdown preserves the loaded model when the catalog finishes loading.
 The worker releases the old subject before loading the next one. There is one
 live model, not one copy per tab or run. A failed load leaves the loader usable.
 
+**Allow model downloads** is on by default in the Subject panel. It permits
+missing model weights to download without the disk-space preflight. Turn it off
+to restore the standard UMI download guard. The setting applies to the next
+worker operation, including model loads and runs, and survives page refreshes
+within this server session. It resets to on when the server restarts.
+
+This uses `BRAINSCORE_SKIP_MODEL_DOWNLOAD_CHECK` in the lab worker only. It does
+not change the parent shell, the library defaults, or Hugging Face offline
+settings. The switch does not cancel a download in progress or estimate whether
+a model fits in RAM. It is disabled during loads, validation and experiments.
+
+The Subject panel reports model download progress from actual byte callbacks.
+Direct checkpoint downloads use `urlretrieve` report hooks; Hugging Face downloads
+use byte-oriented `tqdm` counters. The display reports the current file, received
+bytes, known total size and completed file count. Unknown sizes remain
+indeterminate. A completed file does not imply that the full model is ready;
+other files and model initialization may follow. Cached loads can remain in the
+preparation phase without a network download. The observer exists only during
+subject loads and restores its hooks on success or failure.
+
 The same identifier generates the same avatar using SHA-256. Color, accessories,
 and a nine-pixel chest emblem are cosmetic. Input/output badges and available
 tools come from declarations, not the avatar or a model-class test.

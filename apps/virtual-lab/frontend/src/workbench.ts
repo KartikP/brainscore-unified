@@ -1,7 +1,8 @@
 import { initializeProtocol, updateProtocol, protocolRequest, restoreProtocol, protocolSpec, protocolTool, type ProtocolSpec, type ProtocolValidation } from './protocol.js';
+import { renderDownload, type DownloadState } from './downloads.js';
 export type Mode = 'protocol' | 'benchmark' | 'stimuli' | 'session' | 'calibration';
 interface SubjectInfo { identifier: string; in_channels: string[]; out_channels: string[]; traits?: string[]; calibration?: boolean; schemas?: Record<string, { payload: string; addressing?: string; json_input?: boolean }> }
-interface Info { phase: string; token: string; profile: SubjectInfo | null; catalog_ready?: boolean; run?: { request?: unknown } | null; validation?: ProtocolValidation }
+interface Info { phase: string; token: string; profile: SubjectInfo | null; catalog_ready?: boolean; run?: { request?: unknown } | null; validation?: ProtocolValidation; allow_model_downloads?: boolean; download?: DownloadState | null }
 interface Callbacks { state: () => Info; post: (path: string, data: object) => Promise<unknown>; changed: () => void; loading: () => void; error: (message: string) => void }
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 let mode: Mode = 'protocol';
@@ -10,6 +11,7 @@ let catalogLoaded = false;
 let catalogPending = false;
 let callbacks: Callbacks;
 let uploading = false;
+let downloadPolicyPending = false;
 let restoredForm = false;
 let modelEntries: { identifier: string; source: string }[] = [];
 let matchingModelCount = 0;
@@ -17,6 +19,7 @@ let previousFormat = 'lines';
 const stimulusDrafts: Record<string, string> = {};
 export const currentMode = () => mode;
 export const isUploading = () => uploading;
+export const isUpdatingSettings = () => downloadPolicyPending;
 export const customIntervention = () => mode !== 'benchmark' && mode !== 'calibration' && $<HTMLInputElement>('custom-intervention').checked;
 export const requestedOutput = () => $<HTMLSelectElement>(mode === 'session' ? 'session-output' : 'output-channel').value;
 
@@ -176,6 +179,10 @@ function restoreRequest(value: unknown): void {
 }
 
 export function updateWorkbench(state: Info, busy: boolean): void {
+  renderDownload(state.download, state.phase);
+  const downloads = $<HTMLInputElement>('allow-model-downloads');
+  if (!downloadPolicyPending) downloads.checked = state.allow_model_downloads ?? true;
+  downloads.disabled = busy || state.phase !== 'ready' && state.phase !== 'load_failed';
   if (state.catalog_ready && !catalogLoaded && !catalogPending) void readCatalog();
   const profile = state.profile;
   if (profile && profile.identifier !== subjectID) {
@@ -285,6 +292,15 @@ function stimulusInput(): { rows: Record<string, unknown>[]; stimulus_set: strin
 
 export function initializeWorkbench(api: Callbacks): void {
   callbacks = api;
+  $<HTMLInputElement>('allow-model-downloads').onchange = async () => {
+    const allow = $<HTMLInputElement>('allow-model-downloads').checked;
+    downloadPolicyPending = true; callbacks.changed();
+    try {
+      const result = await callbacks.post('/api/settings', { allow_model_downloads: allow }) as { allow_model_downloads: boolean };
+      callbacks.state().allow_model_downloads = result.allow_model_downloads;
+    } catch (problem) { callbacks.error(String(problem)); }
+    finally { downloadPolicyPending = false; callbacks.changed(); }
+  };
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => { button.onclick = () => chooseMode(button.dataset.mode as Mode); });
   const load = async (identifier: string) => {
     try { callbacks.error(''); await callbacks.post('/api/model', { identifier }); callbacks.loading(); }
