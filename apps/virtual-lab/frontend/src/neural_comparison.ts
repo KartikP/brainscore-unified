@@ -1,5 +1,7 @@
 import { fullHeatmap, HeatmapScale } from './full_heatmap.js';
 import { difference, largestChanges, variableUnits, distance, loadComparisons, type DistanceMetric } from './neural_math.js';
+import { dataURL, timeLabel } from './temporal_math.js';
+import { temporalView } from './temporal_views.js';
 
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '', className = '') => {
   const result = document.createElement(tag); result.textContent = text; result.className = className; return result;
@@ -135,26 +137,50 @@ export function neuralViews(source: string, scale: HeatmapScale, stimulusLabels:
   const view = select('Neural view', [
     { value: 'raw', text: 'Raw heatmap — all units' }, { value: 'difference', text: 'Difference between two stimuli' },
     { value: 'variation', text: 'Stimulus variation' }, { value: 'distances', text: 'Pairwise distances' },
+    { value: 'time_heatmap', text: 'Neurons across time' }, { value: 'traces', text: 'Neuron response traces' },
   ]);
-  const raw = fullHeatmap(source, scale, stimulusLabels), comparison = node('div'); comparison.hidden = true;
-  container.append(view.control, raw, comparison);
+  const timeControls = node('div', '', 'neural-time-controls'); timeControls.hidden = true;
+  const timeLabelNode = node('label', 'Time bin'), timeSlider = node('input'), timeNumber = node('input'), timeDescription = node('output');
+  timeSlider.type = 'range'; timeSlider.min = '1'; timeSlider.max = '1'; timeSlider.value = '1'; timeSlider.step = '1';
+  timeSlider.setAttribute('aria-label', 'Recorded time bin');
+  timeNumber.type = 'number'; timeNumber.min = '1'; timeNumber.max = '1'; timeNumber.value = '1'; timeNumber.step = '1';
+  timeNumber.setAttribute('aria-label', 'Recorded time bin number');
+  timeLabelNode.append(timeSlider, timeNumber); timeControls.append(timeLabelNode, timeDescription);
+  const raw = node('div'), comparison = node('div'); comparison.hidden = true;
+  let presentation = 0, rawBin = 0;
+  const makeRaw = (url: string) => fullHeatmap(url, scale, stimulusLabels, { presentation, onPresentation: value => { presentation = value; } });
+  raw.append(makeRaw(source));
+  container.append(view.control, timeControls, raw, comparison);
+  let timeBin = 0, timeCount = 0, timeRequest = 0, debounce: ReturnType<typeof setTimeout> | undefined;
+  const selectedSource = () => dataURL(source, { time_bin: timeBin });
   let saved: Awaited<ReturnType<typeof loadComparisons>> | undefined, controller: AbortController | undefined, sequence = 0;
   const render = async () => {
     const current = ++sequence;
     controller?.abort();
     const kind = view.input.value;
+    const temporal = kind === 'time_heatmap' || kind === 'traces';
+    timeControls.hidden = !timeCount || temporal;
     raw.hidden = kind !== 'raw'; comparison.hidden = kind === 'raw';
-    if (kind === 'raw') return;
+    if (kind === 'raw') {
+      if (rawBin !== timeBin) { raw.replaceChildren(makeRaw(selectedSource())); rawBin = timeBin; }
+      return;
+    }
+    if (temporal) {
+      comparison.replaceChildren(temporalView(source, scale, stimulusLabels, kind === 'traces'));
+      return;
+    }
     comparison.replaceChildren(node('p', 'Loading saved activations for comparison…', 'subtle'));
     try {
       if (!saved) {
         controller = new AbortController(); const signal = controller.signal;
-        saved = await loadComparisons(async (presentation, offset) => {
-          const response = await fetch(`${source}&presentation=${presentation}&offset=${offset}&limit=2048`, { signal });
+        const loaded = await loadComparisons(async (presentation, offset) => {
+          const response = await fetch(dataURL(selectedSource(), { presentation, offset, limit: 2048 }), { signal });
           const result = await response.json();
           if (!response.ok) throw new Error(result.error ?? 'Saved neural recording unavailable');
           return result;
         }, signal);
+        if (current !== sequence || !container.isConnected) return;
+        saved = loaded;
       }
       if (current !== sequence || !container.isConnected) return;
       const { rows, slice } = saved, labels = saved.labels.map((label, i) => `${i + 1}: ${stimulusLabels[i] ?? label}`);
@@ -179,6 +205,37 @@ export function neuralViews(source: string, scale: HeatmapScale, stimulusLabels:
       if (current === sequence) comparison.replaceChildren(node('p', String(error), 'error'));
     }
   };
-  view.input.onchange = () => void render();
+  view.input.onchange = () => { clearTimeout(debounce); timeSlider.value = timeNumber.value = String(timeBin + 1); void render(); };
+  const describeTime = async () => {
+    const current = ++timeRequest;
+    try {
+      const response = await fetch(dataURL(selectedSource(), { limit: 1 }));
+      if (!response.ok) return;
+      const page = await response.json();
+      if (current !== timeRequest || !container.isConnected || !page.time) return;
+      timeCount = page.time.count;
+      timeSlider.max = timeNumber.max = String(timeCount);
+      timeSlider.disabled = timeNumber.disabled = timeCount === 1;
+      timeDescription.textContent = `${timeLabel(page.time)} / ${timeCount} recorded bins`;
+      timeControls.hidden = view.input.value === 'time_heatmap' || view.input.value === 'traces';
+    } catch { /* The main view reports unavailable arrays. */ }
+  };
+  const selectTime = (value: string, immediate: boolean) => {
+    const index = Number(value) - 1;
+    if (!Number.isInteger(index) || index < 0 || index >= timeCount) { timeDescription.textContent = `Choose bin 1 to ${timeCount}.`; return; }
+    timeSlider.value = timeNumber.value = value;
+    timeRequest++;
+    timeDescription.textContent = `Bin ${value} / ${timeCount} recorded bins`;
+    clearTimeout(debounce);
+    const update = () => {
+      timeBin = index; saved = undefined;
+      void describeTime(); void render();
+    };
+    if (immediate) update(); else debounce = setTimeout(update, 100);
+  };
+  timeSlider.oninput = () => selectTime(timeSlider.value, false);
+  timeSlider.onchange = () => selectTime(timeSlider.value, true);
+  timeNumber.onchange = () => selectTime(timeNumber.value, true);
+  queueMicrotask(() => { if (container.isConnected) void describeTime(); });
   return container;
 }

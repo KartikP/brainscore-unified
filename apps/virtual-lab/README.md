@@ -197,8 +197,12 @@ For registered neural outputs, the heatmap shows **every recorded neuroid** for
 the selected stimulus, wrapped into rows in recording order. It is not an
 anatomical map. Use the stimulus number to inspect other presentations, zoom
 to enlarge the cells, scroll to pan, and click or use arrow keys to inspect a
-neuron. Conditions share one symmetric color scale. Additional tensor axes use
-index zero and the fixed slice is reported; values are not pooled or normalized.
+neuron. For temporal outputs, use **Time bin** to scrub through recorded bins.
+The slider and direct bin entry show native start/end times when available.
+The selected stimulus remains selected across time changes. Conditions and
+inspected time bins share one symmetric color scale, which expands when a larger
+value is found. Other tensor axes use index zero and the fixed slice is reported;
+values are not pooled or normalized.
 
 The full heatmap reads existing `.npy` artifacts with memory mapping in pages
 of at most 2,048 values, independently of the inference worker. It performs no
@@ -209,8 +213,27 @@ recording is available in **All artifacts**. Calibration probe plots show up
 to eight existing recording events with at most 24 units per event; the default
 comparison circuit has eight units, all of which fit.
 
-The **Neural view** selector adds three comparisons of saved stimuli, within the
-same channel, condition and repetition:
+The **Neural view** selector adds these temporal views for recorded time axes:
+
+- **Neurons across time:** rows are neurons and columns are time bins in native
+  order. Select the first neuron, first time bin and page sizes. Every neuron
+  and bin is reachable; displayed ranges are explicit. Columns have equal widths,
+  even when their physical intervals differ. Click or use arrow keys for exact
+  values and time bounds. Missing values are gray.
+- **Neuron response traces:** enter up to eight distinct neuron indices,
+  separated by commas. Indices start at zero. The horizontal axis uses native
+  physical intervals when present, or bin indices when bounds are unavailable.
+  Each physical bin appears as a constant segment; missing values and gaps break
+  traces. No smoothing, interpolation or normalization is applied.
+
+Temporal windows read at most 65,536 values per request, with at most 1,024 bins
+and 2,048 neurons. Reduce the page sizes if a request exceeds this limit. The
+controls label direct neuron indices as zero-based and page starts as one-based.
+Audio and video channels retain independent time grids; the GUI does not create
+a shared clock. Existing saved experiments can use these views without a rerun.
+
+The selector also provides three stimulus comparisons within the same channel,
+condition, repetition and selected time bin:
 
 - **Difference between two stimuli:** choose A and B to see all units as A minus
   B, plus the 20 largest absolute changes. The difference uses its own symmetric
@@ -227,7 +250,7 @@ same channel, condition and repetition:
 
 Comparisons load only when selected, use saved paged arrays, and never invoke a
 model. The browser explicitly refuses comparisons exceeding 64 stimuli, 65,536
-units or 1,000,000 values rather than silently sampling. Additional axes use the
+units or 1,000,000 values rather than silently sampling. Other axes use the
 same reported fixed slice as the raw view. A few images provide descriptive
 comparisons, not statistical evidence of category selectivity.
 

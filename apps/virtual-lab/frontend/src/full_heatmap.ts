@@ -1,3 +1,5 @@
+import { dataURL, timeLabel, type TimeBin } from './temporal_math.js';
+
 interface Page {
   total_rows: number;
   total_columns: number;
@@ -8,6 +10,7 @@ interface Page {
   slice: Record<string, number>;
   extent?: number;
   labels?: string[];
+  time?: TimeBin & { count: number };
 }
 const node = <K extends keyof HTMLElementTagNameMap>(tag: K, text = '') => {
   const element = document.createElement(tag); element.textContent = text; return element;
@@ -29,11 +32,12 @@ export class HeatmapScale {
   }
 }
 
-export function fullHeatmap(source: string, scale: HeatmapScale, stimulusLabels: string[] = []): HTMLElement {
+export function fullHeatmap(source: string, scale: HeatmapScale, stimulusLabels: string[] = [],
+    options: { presentation?: number; onPresentation?: (presentation: number) => void } = {}): HTMLElement {
   const container = node('div'); container.className = 'full-activation-plot';
   const controls = node('div'); controls.className = 'full-heatmap-controls';
   const stimulusLabel = node('label', 'Stimulus');
-  const stimulus = node('input'); stimulus.type = 'number'; stimulus.min = '1'; stimulus.value = '1'; stimulus.step = '1';
+  const stimulus = node('input'); stimulus.type = 'number'; stimulus.min = '1'; stimulus.value = String((options.presentation ?? 0) + 1); stimulus.step = '1';
   stimulus.setAttribute('aria-label', 'Stimulus number for full activation heatmap'); stimulusLabel.append(stimulus);
   const zoomLabel = node('label', 'Zoom');
   const zoom = node('input'); zoom.type = 'range'; zoom.min = '100'; zoom.max = '400'; zoom.step = '25'; zoom.value = '100';
@@ -85,14 +89,15 @@ export function fullHeatmap(source: string, scale: HeatmapScale, stimulusLabels:
     selected = Math.max(0, Math.min(values.length - 1, index)); selection.hidden = false; layout();
     const indexAtRequest = selected, presentation = page.presentation;
     const value = values[selected];
-    const description = `Stimulus ${page.stimulus} / neuron ${selected}: ${Number.isFinite(value) ? format(value) : 'nonfinite / missing'}`;
+    const description = `Stimulus ${page.stimulus} / neuron ${selected}: ${Number.isFinite(value) ? format(value) : 'nonfinite / missing'}${page.time ? ` / ${timeLabel(page.time)}` : ''}`;
     detail.textContent = description;
     if (focus) selection.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     try {
-      const response = await fetch(`${source}&presentation=${presentation}&offset=${selected}&limit=1&labels=1`);
+      const requestSequence = sequence;
+      const response = await fetch(dataURL(source, { presentation, offset: selected, limit: 1, labels: 1 }));
       if (!response.ok) return;
       const labeled = await response.json() as Page;
-      if (selected === indexAtRequest && page.presentation === presentation && labeled.labels?.[0]) detail.textContent = `${description} (${labeled.labels[0]})`;
+      if (requestSequence === sequence && selected === indexAtRequest && page.presentation === presentation && labeled.labels?.[0]) detail.textContent = `${description} (${labeled.labels[0]})`;
     } catch { /* The numeric value remains visible if its optional coordinate is unavailable. */ }
   };
   const load = async () => {
@@ -102,7 +107,7 @@ export function fullHeatmap(source: string, scale: HeatmapScale, stimulusLabels:
     if (!Number.isInteger(presentation) || presentation < 0) { status.textContent = 'Enter a stimulus number starting at 1.'; return; }
     values = null; selection.hidden = true; status.textContent = 'Loading all recorded neurons…';
     const get = async (offset: number, stats = false): Promise<Page> => {
-      const response = await fetch(`${source}&presentation=${presentation}&offset=${offset}&limit=2048${stats ? '&stats=1' : ''}`, { signal: controller!.signal });
+      const response = await fetch(dataURL(source, { presentation, offset, limit: 2048, stats: stats ? 1 : 0 }), { signal: controller!.signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? 'Recorded activations unavailable');
       return data as Page;
@@ -126,13 +131,14 @@ export function fullHeatmap(source: string, scale: HeatmapScale, stimulusLabels:
       }
       if (current !== sequence || !container.isConnected) return;
       page = { ...first, stimulus: stimulusLabels[presentation] ?? first.stimulus }; values = buffer;
+      options.onPresentation?.(presentation);
       stimulus.max = String(first.total_rows);
       columns = Math.ceil(Math.sqrt(buffer.length)); rows = Math.ceil(buffer.length / columns);
       cell = Math.max(1, Math.min(16, Math.floor(Math.min(Math.max(200, container.clientWidth - 8) / columns, 420 / rows))));
       canvas.width = columns; canvas.height = rows; selected = 0; layout();
       setExtent(first.extent ?? 1);
-      const slice = Object.entries(first.slice).map(([dim, value]) => `${dim}=${value}`).join(', ');
-      status.textContent = `All ${buffer.length.toLocaleString()} recorded neurons · stimulus ${presentation + 1} of ${first.total_rows}: ${page.stimulus}${slice ? ` · fixed slice: ${slice}` : ''}`;
+      const slice = Object.entries(first.slice).filter(([dim]) => dim !== 'time_bin').map(([dim, value]) => `${dim}=${value}`).join(', ');
+      status.textContent = `All ${buffer.length.toLocaleString()} recorded neurons · stimulus ${presentation + 1} of ${first.total_rows}: ${page.stimulus}${first.time ? ` · ${timeLabel(first.time)}` : ''}${slice ? ` · fixed slice: ${slice}` : ''}`;
       detail.textContent = 'Click a neuron, or focus the heatmap and use arrow keys to inspect values.';
     } catch (error) {
       if (current !== sequence || controller.signal.aborted) return;

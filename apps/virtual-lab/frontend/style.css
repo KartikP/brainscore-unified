@@ -357,6 +357,21 @@ footer { display: flex; justify-content: space-between; gap: 16px; margin-top: 2
 .full-heatmap-controls input[type=number] { width: 80px; margin: 0; }
 .full-heatmap-controls input[type=range] { width: 120px; margin: 0; }
 .full-heatmap-controls output { font: 10px var(--mono); min-width: 35px; }
+.neural-time-controls, .temporal-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.neural-time-controls label, .temporal-controls label { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+.neural-time-controls input[type=number] { width: 86px; max-width: 86px; margin: 0; }
+.neural-time-controls input[type=range] { width: min(260px, 35vw); }
+.neural-time-controls output { font: 11px var(--mono); }
+.temporal-controls { align-items: flex-end; }
+.temporal-controls label { display: grid; gap: 4px; min-width: 110px; }
+.temporal-controls label > input:not([type=range]):not([type=file]):not([type=checkbox]) { width: 110px; margin: 0; }
+.temporal-controls label > input[type=text]:not([type=file]):not([type=checkbox]) { width: 220px; margin: 0; }
+.temporal-controls button { padding: 8px 10px; border: 1px solid #c9cfd6; border-radius: 3px; background: #fff; font-size: 11px; }
+.trace-scroll { overflow-x: auto; border: 1px solid #dce0e4; }
+.neural-traces { display: block; width: 100%; min-width: 620px; max-width: 100%; }
+.trace-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; font: 11px var(--mono); margin: 10px 0; }
+.temporal-heatmap canvas { image-rendering: pixelated; }
+.temporal-surface { position: relative; }
 .full-heatmap-scroll { max-width: 100%; max-height: 480px; overflow: auto; border: 1px solid #dce0e4; background: #fafafa; }
 .full-heatmap-surface { position: relative; }
 .full-heatmap-surface canvas { display: block; image-rendering: pixelated; cursor: crosshair; }
