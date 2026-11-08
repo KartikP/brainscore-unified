@@ -6,8 +6,10 @@ import sys
 
 
 def configure_runtime(core: Path | None = None) -> None:
-    configuration = Path(__file__).resolve().parents[2] / ".lab-runtime.json"
-    if configuration.is_file():
+    from .frontend import source_root
+    root = source_root()
+    configuration = root / ".lab-runtime.json" if root is not None else None
+    if configuration is not None and configuration.is_file():
         settings = json.loads(configuration.read_text())
         for path in reversed(settings.get("python_paths", [])):
             resolved = str((configuration.parent / path).resolve())

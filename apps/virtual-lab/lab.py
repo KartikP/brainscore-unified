@@ -12,4 +12,4 @@ if __name__ == "__main__":
         from umi_lab.benchmark import main
     else:
         from umi_lab.__main__ import main
-    main()
+    raise SystemExit(main())

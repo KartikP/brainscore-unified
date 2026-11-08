@@ -36,7 +36,8 @@ def wait(controller: LabController, *, ready: bool = False, timeout: float = 120
 def benchmark(factory: str, pairs: int, repeats: int, root: Path) -> dict:
     controller = LabController(root, factory)
     try:
-        server = make_server(controller, Path(__file__).resolve().parents[2] / "frontend/dist", 0)
+        from .frontend import frontend_directory
+        server = make_server(controller, frontend_directory(), 0)
     except BaseException:
         controller.close()
         raise

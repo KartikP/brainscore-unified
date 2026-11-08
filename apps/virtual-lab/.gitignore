@@ -5,3 +5,4 @@ frontend/dist/
 .runtime/
 .lab-runtime.json
 *performance-result.json
+backend/*.egg-info/

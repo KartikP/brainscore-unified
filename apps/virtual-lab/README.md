@@ -7,19 +7,109 @@ circuit is one optional experiment, not the application's scope.
 
 ## Start
 
-Use the Python 3.11 UMI environment. From this directory:
+Activate the matching Python 3.11 UMI v2 environment. From the repository root:
 
 ```bash
-cd frontend
-npm ci
-npm run build
-cd ..
-python lab.py
+python -m pip install ./apps/virtual-lab
+brainscore-lab
 ```
 
-Open http://127.0.0.1:8765. Use matching unified, core, vision and language
-revisions from `install/peer-revisions.json`; a stale editable install can expose
-different channels or experiment APIs. The frontend build is app-local.
+The command checks the frontend and package metadata, starts the local server,
+and opens http://127.0.0.1:8765. The Python package and source checkout include a
+prebuilt frontend. Users do not need Node, npm, or a frontend build. The command
+starts only the tiny calibration circuit; model weights download only after a
+user selects and loads a registered subject.
+
+For a source checkout without installing the lab package:
+
+```bash
+python apps/virtual-lab/lab.py
+```
+
+For a remote server or a manual browser launch:
+
+```bash
+brainscore-lab --no-browser --port 8765 --output ./lab-runs
+```
+
+The server binds only to loopback. The output directory stores experiment files;
+it defaults to `.lab-runs` under the current directory. Use another `--port` if
+the default port is occupied. Stop the server with Ctrl-C.
+
+### Check an installation
+
+```bash
+brainscore-lab --check
+python -m brainscore.doctor
+```
+
+`--check` validates Python 3.11, required module locations, the installed UMI
+dependency versions, and the frontend hashes. It does not import model libraries,
+load weights, make downloads, or start a worker. It returns a nonzero status on
+failure. The existing UMI doctor additionally tests binary imports and reports
+data assets. Neither check certifies that a specific model or benchmark can run.
+
+Use matching unified, core, vision and language revisions from
+`install/peer-revisions.json`. A stale editable install can expose different
+channels or experiment APIs. The launcher reports dependency mismatches before
+it starts the worker; it does not modify the Python environment automatically.
+
+### New machines
+
+Use a new workspace with Conda, Git and Python 3 available:
+
+```bash
+mkdir umi-lab-workspace
+cd umi-lab-workspace
+git clone --depth 1 --branch feat/virtual-lab-app https://github.com/KartikP/brainscore-unified.git unified
+for peer in core vision language; do
+  git clone --depth 1 --branch unified-model-interface-v2 "https://github.com/brain-score/$peer.git" "$peer"
+  revision=$(python3 -c 'import json,sys; print(json.load(open("unified/install/peer-revisions.json"))[sys.argv[1]])' "$peer")
+  git -C "$peer" fetch --depth 1 origin "$revision"
+  git -C "$peer" checkout --detach "$revision"
+done
+cp unified/install/environment-unified.yml .
+conda env create --name umi-lab --file environment-unified.yml
+conda activate umi-lab
+python -m pip install ./unified/apps/virtual-lab
+brainscore-lab --check
+brainscore-lab
+```
+
+Keep the environment file beside the four repositories: its editable paths are
+relative to that directory. The peer manifest pins exact commits, including the
+separate core time-index fix in [core PR 215](https://github.com/brain-score/core/pull/215).
+The lab does not need that PR to merge before installation: Git can fetch its
+published commit. These commands create a new environment and do not download
+model weights. The lab packages are not assumed to be available from PyPI.
+
+### Frontend development and releases
+
+Only frontend developers need Node and npm. After changing a frontend source:
+
+```bash
+cd apps/virtual-lab/frontend
+npm ci
+npm test
+npm run bundle
+```
+
+`bundle` refreshes the distributable files in `backend/umi_lab/static` and their
+source and asset hashes. Keep those files with the source changes. A source
+launcher rejects a stale bundle, including added or removed TypeScript files.
+For an installed wheel, the launcher checks the packaged assets without needing
+the source tree. `npm run build` still creates the separate developer `dist/`.
+
+Build the standalone lab distribution from `apps/virtual-lab`:
+
+```bash
+python -m build
+```
+
+The sdist and wheel builds check the bundle and never invoke npm. An installed
+wheel includes the Python backend, all frontend files, and the `brainscore-lab`
+entry point. It does not include experiment data, caches, model weights, Node,
+or `node_modules`. The app stays separate from the core UMI packages.
 
 The Lab panel reports activity from public experiment events and counts completed
 repetitions across all conditions. A repetition can process the entire stimulus

@@ -1,0 +1,6 @@
+include frontend/index.html frontend/style.css frontend/package.json
+include frontend/package-lock.json frontend/tsconfig.json
+include frontend/build.mjs frontend/package.mjs
+include lab.py
+recursive-include frontend/src *.ts
+recursive-include backend/umi_lab/static *
