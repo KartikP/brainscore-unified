@@ -1,12 +1,14 @@
 """TR-resolved multimodal Lahner2024 — first benchmark in the unified
 interface where two-modality features are aligned to the brain's TR
-grid via temporal_bin / HRF / per-TR ridge.
+grid via onset placement / HRF / per-TR ridge.
 
 What this validates that the GLM-beta multimodal variant cannot:
-- Per-modality features placed at TR onsets (not at clip-mean)
-- Both modalities share the SAME time_bin axis after alignment, so
-  ``multi_modality=True`` would actually concat cleanly along neuroid
-- Continuous-time encoding still respects per-modality features
+- Per-modality clip-mean features placed as impulses at each clip's onset
+  TR (``floor(onset_sec / TR)``), HRF-convolved within each run. Native
+  time bins are averaged first, so within-clip dynamics are not modelled
+  (a clip-mean onset-impulse HRF model; see ``benchmark_timeresolved``).
+- Both modalities share the SAME TR axis after alignment
+- Continuous-time encoding still keeps per-modality feature columns
 
 Pipeline:
 1. For each unique stimulus (3-s clip): extract video features +
@@ -22,10 +24,17 @@ Pipeline:
 4. Per-voxel Ridge (or banded ridge with per-group α) at TR grain.
 
 Mode parameter (matches the GLM-beta multimodal benchmark):
-- 'concat': one ridge on [video|audio] flat features, α=1.0
+- 'concat': one ridge on [video|audio] flat features, α=1.0; uses the
+  parent's outer CV and honours ``cv_mode`` ('subject_out' default, or
+  'within_subject')
 - 'per_modality': two independent ridges, predictions summed
 - 'video_only' / 'audio_only': single-tower upper bounds
-- 'banded': per-group α via 20% inner-fold hold-out grid search
+- 'banded': per-group α chosen on a random 20% of the outer-training ROWS
+  (rows of one run fall on both sides of this inner split)
+
+The four non-concat modes use one outer CV: shuffled K-fold over whole runs
+with all subjects pooled (``cv_mode='pooled_run_kfold'``). They do not
+implement 'subject_out' or 'within_subject' and refuse those values.
 
 Banded ridge is the recommended default for any multimodal scoring —
 flat α across asymmetric-utility modalities consistently underperforms
@@ -57,7 +66,8 @@ from ._util import read_stimulus_ids
 from .benchmark_timeresolved import (
     Lahner2024BOLDMoments_timeresolved,
     FEATURE_DIM_CAP,
-    TR_SEC,
+    CURRENT_VERSION,
+    TRANSDUCTIVE_SVD,
 )
 from .benchmark_multimodal import DEFAULT_AUDIO_DIR
 
@@ -69,6 +79,9 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
     VALID_MODES = ('concat', 'per_modality', 'video_only', 'audio_only',
                    'banded')
+    # Outer CV of the non-concat modes: shuffled K-fold over whole runs,
+    # subjects pooled. It is the only policy those modes implement.
+    POOLED_RUN_KFOLD = 'pooled_run_kfold'
     BANDED_ALPHA_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
 
     def __init__(
@@ -79,23 +92,40 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         reliability_threshold: Optional[float] = None,
         identifier_suffix: str = '-timeresolved-multimodal',
         apply_motion_regression: bool = False,
-        cv_mode: str = 'subject_out',
+        cv_mode: Optional[str] = None,
         within_subject_n_held_out: int = 10,
         mode: str = 'concat',
         voxel_mask_fn: Optional[callable] = None,
+        version: int = CURRENT_VERSION,
     ):
         if mode not in self.VALID_MODES:
             raise ValueError(
                 f"mode must be one of {self.VALID_MODES}; got {mode!r}.")
+        # cv_mode=None picks the policy the mode implements. Non-concat modes
+        # implement only pooled run K-fold; asking them for subject_out or
+        # within_subject is refused here, before any compute (F1).
+        if mode == 'concat':
+            parent_cv_mode = cv_mode or 'subject_out'
+        elif cv_mode in (None, self.POOLED_RUN_KFOLD):
+            parent_cv_mode = 'subject_out'   # unused by the non-concat fit
+        else:
+            raise ValueError(
+                f"mode={mode!r} uses shuffled K-fold over whole runs with all "
+                f"subjects pooled; it does not implement cv_mode={cv_mode!r}. "
+                f"Use mode='concat' for 'subject_out' / 'within_subject', or "
+                f"pass cv_mode=None or {self.POOLED_RUN_KFOLD!r}.")
         super().__init__(
             ceiling=ceiling,
             cv_n_held_out_runs=cv_n_held_out_runs,
             reliability_threshold=reliability_threshold,
             identifier_suffix=identifier_suffix,
             apply_motion_regression=apply_motion_regression,
-            cv_mode=cv_mode,
+            cv_mode=parent_cv_mode,
             within_subject_n_held_out=within_subject_n_held_out,
+            version=version,
         )
+        if mode != 'concat':
+            self._cv_mode = self.POOLED_RUN_KFOLD
         # Multimodal A+V: audio hard-required; visual tower accepts video OR
         # vision (accepted_modalities inherited from the timeresolved base).
         self.required_modalities = {'audio'}
@@ -235,7 +265,11 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
             a_features = a_features[perm]
 
         # Cap each modality independently before concat (the parent's
-        # FEATURE_DIM_CAP would otherwise mix modalities under SVD).
+        # FEATURE_DIM_CAP would otherwise mix modalities under SVD). Each SVD
+        # is fit on all stimuli (transductive); recorded on the score.
+        self._feature_projection = 'none'
+        if max(v_features.shape[1], a_features.shape[1]) > FEATURE_DIM_CAP:
+            self._feature_projection = TRANSDUCTIVE_SVD + '_per_modality'
         if v_features.shape[1] > FEATURE_DIM_CAP:
             from sklearn.decomposition import TruncatedSVD
             v_features = TruncatedSVD(
@@ -284,42 +318,21 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         score.attrs['mode'] = self._mode
         score.attrs['pipeline'] = (
             f'tr_resolved_multimodal_{self._mode}')
+        if self._mode == 'banded':
+            score.attrs['inner_validation'] = (
+                'random_rows_20pct_runs_shared_with_inner_training')
+            score.attrs['banded_alpha_grid'] = tuple(self.BANDED_ALPHA_GRID)
         return score
 
     def _call_with_mode(self, candidate) -> Score:
-        from brainscore_core.temporal import double_gamma_hrf, hrf_convolve
-
         # Same as parent.__call__ up to the X_flat / Y_flat point
         per_stim_features, stimulus_ids = (
             self._extract_per_stimulus_features(candidate))
 
-        stim_idx = {sid: i for i, sid in enumerate(stimulus_ids)}
         assembly = self.assembly
-        n_TR_max = assembly.sizes['time_bin']
-        n_features = per_stim_features.shape[1]
         n_runs = assembly.sizes['presentation']
-
-        feature_ts = np.zeros((n_runs, n_TR_max, n_features), dtype=np.float32)
-        for run_idx in range(n_runs):
-            run_id = (str(assembly['subject'].values[run_idx]),
-                      str(assembly['session'].values[run_idx]),
-                      str(assembly['run'].values[run_idx]))
-            run_events = self._events_for_run(*run_id)
-            for _, ev in run_events.iterrows():
-                if ev['stimulus_id'] not in stim_idx:
-                    continue
-                onset_TR = int(np.floor(ev['onset_sec'] / TR_SEC))
-                if 0 <= onset_TR < n_TR_max:
-                    feature_ts[run_idx, onset_TR, :] += (
-                        per_stim_features[stim_idx[ev['stimulus_id']]])
-
-        hrf_kernel = double_gamma_hrf(
-            duration_sec=32.0, sampling_rate_hz=1.0/TR_SEC)
-        feature_ts_convolved = np.zeros_like(feature_ts)
-        for run_idx in range(n_runs):
-            feature_ts_convolved[run_idx] = hrf_convolve(
-                feature_ts[run_idx],
-                sampling_rate_hz=1.0/TR_SEC, hrf=hrf_kernel)
+        feature_ts_convolved = self._build_design(
+            per_stim_features, stimulus_ids, assembly)
 
         X_flat, Y_flat, run_idx_per_obs, subject_per_obs = (
             self._concatenate_with_mask(feature_ts_convolved, assembly))
@@ -357,8 +370,25 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
+        # CV labels for the policy this path actually applies (F1).
+        score.attrs['n_runs'] = n_runs
+        score.attrs['n_observations'] = int(len(Y_flat))
+        score.attrs['cv_mode'] = self._cv_mode
+        score.attrs['cv_policy'] = 'shuffled_kfold_over_pooled_runs'
+        score.attrs['cv_n_held_out_runs'] = self._cv_n_held_out_runs
+        score.attrs['cv_n_splits'] = self._n_pooled_splits(run_idx_per_obs)
+        score.attrs['cv_blocks_hold_out_whole_subjects'] = False
+        score.attrs['motion_regressed'] = bool(self._apply_motion_regression)
+        score.attrs.update(self._method_attrs())
+        score.attrs['ridge_alpha'] = (
+            'per_group_from_grid' if self._mode == 'banded' else 1.0)
+        score.attrs['inner_validation'] = 'none_fixed_alpha'
         self._tag_score(score, candidate)
         return score
+
+    def _n_pooled_splits(self, run_idx_per_obs) -> int:
+        n_runs = len(np.unique(run_idx_per_obs))
+        return max(2, n_runs // self._cv_n_held_out_runs)
 
     def _fit_score_with_groups(self, feature_groups, Y_flat,
                                run_idx_per_obs, subject_per_obs):
@@ -371,12 +401,10 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         Y copies (CLAUDE.md note from M12-lite).
         """
         n_obs, n_voxels = Y_flat.shape
-        unique_runs = np.unique(run_idx_per_obs)
-        n_runs = len(unique_runs)
-        n_held = self._cv_n_held_out_runs
-
+        # Outer CV: shuffled K-fold over whole runs, subjects pooled
+        # (cv_mode='pooled_run_kfold'). subject_per_obs is not used.
         fold_masks = list(run_kfold_masks(
-            run_idx_per_obs, n_splits=max(2, n_runs // n_held),
+            run_idx_per_obs, n_splits=self._n_pooled_splits(run_idx_per_obs),
             random_state=0))
 
         per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)
@@ -421,21 +449,25 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
 
 def Lahner2024BOLDMoments_timeresolved_multimodal_visualROI(
-        audio_dir: Optional[str] = None, mode: str = 'concat'):
+        audio_dir: Optional[str] = None, mode: str = 'concat',
+        version: int = CURRENT_VERSION):
     return Lahner2024BOLDMoments_timeresolved_multimodal(
         audio_dir=audio_dir,
         reliability_threshold=0.3,
         identifier_suffix='-timeresolved-multimodal-visualROI',
         mode=mode,
+        version=version,
     )
 
 
 def Lahner2024BOLDMoments_timeresolved_multimodal_auditoryROI(
-        audio_dir: Optional[str] = None, mode: str = 'concat'):
+        audio_dir: Optional[str] = None, mode: str = 'concat',
+        version: int = CURRENT_VERSION):
     from .auditory_roi import build_auditory_mask
     return Lahner2024BOLDMoments_timeresolved_multimodal(
         audio_dir=audio_dir,
         identifier_suffix='-timeresolved-multimodal-auditoryROI',
         mode=mode,
         voxel_mask_fn=build_auditory_mask,
+        version=version,
     )

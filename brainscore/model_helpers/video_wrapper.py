@@ -417,7 +417,7 @@ class VideoWrapper:
                        ) -> Tuple[Dict[str, np.ndarray], List[List[float]]]:
         """Whole-clip path: sample num_frames across each clip, one forward."""
         per_video_frames = []
-        duration_ms = 0.0
+        durations_ms: List[float] = []
         for path in batch_paths:
             if self._num_frames is not None:
                 frames = self._frame_sampler(path, num_frames=self._num_frames)
@@ -431,11 +431,13 @@ class VideoWrapper:
                     f"{self._max_clip_ms}; set context_window_ms to chunk it "
                     f"(no silent downsampling).")
             per_video_frames.append(frames)
+            durations_ms.append(duration_ms)
 
         processed = self._run_model(per_video_frames, layers)
         T_out = processed[layers[0]].shape[1]
-        times = self._t_to_time_ms_fn(T_out, duration_ms)  # last clip's duration
-        return processed, [list(times) for _ in batch_paths]
+        # Each clip keeps its own clock; _package checks they agree.
+        return processed, [list(self._t_to_time_ms_fn(T_out, duration_ms))
+                           for duration_ms in durations_ms]
 
     def _extract_video_windowed(self, path, layers: List[str]
                                 ) -> Tuple[Dict[str, np.ndarray], List[float]]:
@@ -552,8 +554,9 @@ class VideoWrapper:
         # each entry shape (T_out, features_flat_per_layer).
         T_out = per_video_activations[first_layer][0].shape[0]
 
-        # Assume time axis length is consistent; use the first video's times.
-        time_ms = per_video_time_ms[0]
+        # One time_bin axis is shared by all presentations; refuse clips whose
+        # clocks differ beyond tolerance rather than mislabel them.
+        time_ms = _shared_clock(per_video_time_ms, paths)
 
         # Concatenate layers along the feature axis, and stack videos
         layer_tensors = []
@@ -636,6 +639,43 @@ class VideoWrapper:
             except Exception:
                 pass
         return assembly
+
+
+# Clips packaged together share one time_bin axis. Their own clocks may
+# differ by at most this fraction of the clip's time span. Lahner2024 clips
+# (nominally 3 s) span 2969.6-3066.7 ms at 15-60 fps, a 3.3% spread; 5%
+# accepts them while refusing clips of clearly different lengths.
+CLOCK_TOLERANCE_FRACTION = 0.05
+
+
+def _shared_clock(per_video_time_ms: List[List[float]], paths: List[str]) -> List[float]:
+    """Return the first clip's clock if every clip's clock matches it.
+
+    Raises ``ValueError`` when the clips have different numbers of time bins,
+    or when any bin time differs from the first clip's by more than
+    ``CLOCK_TOLERANCE_FRACTION`` of the larger clock's span. Within
+    tolerance, the first clip's own clock labels every presentation.
+    """
+    reference = np.asarray(per_video_time_ms[0], dtype=float)
+    for path, times in zip(paths[1:], per_video_time_ms[1:]):
+        clock = np.asarray(times, dtype=float)
+        if clock.shape != reference.shape:
+            raise ValueError(
+                f"Clips {paths[0]} and {path} have {len(reference)} and "
+                f"{len(clock)} time bins; one assembly needs one time_bin axis. "
+                f"Process clips of different lengths separately.")
+        if not len(clock):
+            continue
+        deviation = float(np.max(np.abs(clock - reference)))
+        span = float(max(np.max(np.abs(reference)), np.max(np.abs(clock))))
+        if deviation > CLOCK_TOLERANCE_FRACTION * span:
+            raise ValueError(
+                f"Clips {paths[0]} and {path} have different clocks (bin times "
+                f"differ by up to {deviation:.1f} ms, more than "
+                f"{CLOCK_TOLERANCE_FRACTION:.0%} of {span:.1f} ms). One assembly "
+                f"has one time_bin axis; process clips of different durations "
+                f"separately.")
+    return list(per_video_time_ms[0])
 
 
 def _edges_from_centers(centers: List[float]) -> Tuple[List[float], List[float]]:
