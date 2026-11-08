@@ -357,3 +357,111 @@ def test_pad_out_of_bound_strategies():
     assert (pad_out_of_bound(f, oob, 'gray')[1] == 128).all()
     with pytest.raises(ValueError):
         pad_out_of_bound([None], [True], 'repeat')               # no valid frame
+
+
+# ---- per-clip clocks (F4) ----
+
+def _clip_set(tmp_path, specs, name='clock_set'):
+    """specs: list of (stem, n_frames, fps). Returns a video StimulusSet."""
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    paths = []
+    for stem, n_frames, fps in specs:
+        p = tmp_path / f'{stem}.mp4'
+        _make_tiny_video(p, n_frames=n_frames, fps=fps)
+        paths.append(str(p))
+    df = pd.DataFrame({'stimulus_id': [s for s, _, _ in specs], 'video_path': paths})
+    stim = StimulusSet(df)
+    stim.identifier = name
+    stim.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
+    return stim
+
+
+def _clock_wrapper(batch_size):
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    return VideoWrapper(model=_make_mock_video_model(8), preprocessing=_mock_preprocess,
+                        identifier='mock-clock', num_frames=4, batch_size=batch_size)
+
+
+def _bare_wrapper():
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    wrapper = object.__new__(VideoWrapper)
+    wrapper._identifier = 'clock-fixture'
+    return wrapper
+
+
+class TestVideoWrapperClipClocks:
+    @pytest.mark.parametrize('order', [('short', 'long'), ('long', 'short')])
+    @pytest.mark.parametrize('batch_size', [1, 2])
+    def test_different_durations_are_refused_in_either_order(self, tmp_path, order, batch_size):
+        # 4 frames @ 5 fps = 800 ms; 10 frames @ 5 fps = 2000 ms.
+        frames = {'short': 4, 'long': 10}
+        stim = _clip_set(tmp_path, [(stem, frames[stem], 5.0) for stem in order])
+        with pytest.raises(ValueError, match='different clocks'):
+            _clock_wrapper(batch_size)(stim, layers=['main_block'])
+
+    @pytest.mark.parametrize('order', [('short', 'long'), ('long', 'short')])
+    def test_extract_batch_keeps_each_clip_duration(self, order):
+        from brainscore.model_helpers.video_wrapper import _default_time_mapping
+        durations = {'short': 100.0, 'long': 1000.0}
+        wrapper = _bare_wrapper()
+        wrapper._num_frames = 2
+        wrapper._max_clip_ms = None
+        wrapper._frame_sampler = lambda path, num_frames: [path] * num_frames
+        wrapper._clip_duration_ms = lambda path: (durations[path], 2, 2.0)
+        wrapper._run_model = lambda frames, layers: {
+            layers[0]: np.zeros((len(frames), 2, 1))}
+        wrapper._t_to_time_ms_fn = _default_time_mapping
+        _, clocks = wrapper._extract_batch(list(order), ['layer'])
+        assert clocks == [_default_time_mapping(2, durations[stem]) for stem in order]
+
+    @pytest.mark.parametrize('clocks', [[[0., 100.], [0., 1000.]],
+                                        [[0., 1000.], [0., 100.]]])
+    def test_package_refuses_different_clocks(self, clocks):
+        from collections import OrderedDict
+        activations = OrderedDict([('layer', [np.zeros((2, 1)), np.zeros((2, 1))])])
+        with pytest.raises(ValueError, match='different clocks'):
+            _bare_wrapper()._package(activations, clocks, ['a.mp4', 'b.mp4'])
+
+    def test_package_refuses_different_bin_counts(self):
+        from collections import OrderedDict
+        activations = OrderedDict([('layer', [np.zeros((2, 1)), np.zeros((3, 1))])])
+        with pytest.raises(ValueError, match='time bins'):
+            _bare_wrapper()._package(activations, [[0., 1.], [0., 1., 2.]],
+                                     ['a.mp4', 'b.mp4'])
+
+    def test_package_accepts_clocks_within_tolerance_and_uses_the_first(self):
+        """Lahner-like spread: 2969.6 ms vs 3066.7 ms clips, 32 bins (3.2%)."""
+        from collections import OrderedDict
+        from brainscore.model_helpers.video_wrapper import _default_time_mapping
+        first = _default_time_mapping(32, 2969.6)
+        second = _default_time_mapping(32, 3066.7)
+        activations = OrderedDict([('layer', [np.zeros((32, 1)), np.ones((32, 1))])])
+        result = _bare_wrapper()._package(activations, [first, second], ['a.mp4', 'b.mp4'])
+        assert result['time_bin_center_ms'].values.tolist() == first
+
+    def test_equal_clocks_are_packaged_exactly_as_before(self):
+        """Equal clocks: values and time coords are exactly the inputs."""
+        from collections import OrderedDict
+        from brainscore.model_helpers.video_wrapper import (
+            _default_time_mapping, _edges_from_centers)
+        clock = _default_time_mapping(4, 2000.0)
+        rng = np.random.default_rng(0)
+        entries = [rng.standard_normal((4, 3)).astype(np.float32) for _ in range(3)]
+        activations = OrderedDict([('layer', entries)])
+        result = _bare_wrapper()._package(activations, [list(clock)] * 3,
+                                          ['a.mp4', 'b.mp4', 'c.mp4'])
+        np.testing.assert_array_equal(result.values, np.stack(entries))
+        assert result.values.dtype == np.float32
+        assert result['time_bin_center_ms'].values.tolist() == clock
+        starts, ends = _edges_from_centers(clock)
+        assert result['time_bin_start_ms'].values.tolist() == starts
+        assert result['time_bin_end_ms'].values.tolist() == ends
+
+    @pytest.mark.parametrize('batch_size', [1, 3])
+    def test_equal_duration_clips_keep_their_shared_clock(self, video_stimulus_set, batch_size):
+        from brainscore.model_helpers.video_wrapper import _default_time_mapping
+        wrapper = _clock_wrapper(batch_size)
+        result = wrapper(video_stimulus_set, layers=['main_block'])
+        duration_ms, _, _ = wrapper._clip_duration_ms(video_stimulus_set['video_path'][0])
+        assert result['time_bin_center_ms'].values.tolist() == _default_time_mapping(
+            4, duration_ms)
