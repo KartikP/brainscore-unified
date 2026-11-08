@@ -385,7 +385,15 @@ def make_server(controller: LabController, frontend: Path, port: int = 8765) -> 
                 if not 0 < length <= 1024 * 1024:
                     raise ValueError("JSON request limit is 1 MiB")
                 data = json.loads(self.rfile.read(length))
-                if self.path == "/api/settings":
+                if self.path == "/api/extract-audio":
+                    from .media import extract_audio
+                    if not isinstance(data, dict) or set(data) != {"asset"}:
+                        raise ValueError("Supply one uploaded video asset")
+                    state = controller.snapshot()
+                    if state["phase"] in ("loading", "validating") or (state["run"] and state["run"]["phase"] in ACTIVE):
+                        raise ValueError("Wait until the current model operation finishes before extracting audio")
+                    self._json(extract_audio(controller.root / "uploads", data["asset"]))
+                elif self.path == "/api/settings":
                     controller.configure_downloads(data)
                     self._json({"allow_model_downloads": controller.snapshot()["allow_model_downloads"]})
                 elif self.path == "/api/export-python":

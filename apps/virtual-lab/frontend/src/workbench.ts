@@ -117,10 +117,27 @@ async function uploadMediaFiles(files: File[], progress: (name: string) => void)
       const result = await response.json(); if (!response.ok) throw new Error(result.error);
       const suffix = file.name.split('.').pop()?.toLowerCase() ?? '';
       const column = ['wav', 'mp3', 'flac', 'ogg'].includes(suffix) ? 'audio_path' : ['mp4', 'mov', 'webm'].includes(suffix) ? 'video_path' : 'image_path';
-      rows.push({ stimulus_id: file.name, [column]: result.asset });
+      const row = { stimulus_id: file.name, [column]: result.asset };
+      if (column === 'video_path' && $<HTMLInputElement>('extract-video-audio').checked && callbacks.state().profile?.in_channels.includes('audio')) {
+        progress(`Extract audio: ${file.name}`);
+        await attachAudio(row);
+      }
+      rows.push(row);
     }
     return rows;
   } finally { uploading = false; callbacks.changed(); }
+}
+
+async function attachAudio(row: Record<string, unknown>): Promise<void> {
+  const result = await callbacks.post('/api/extract-audio', { asset: row.video_path }) as { audio_asset: string | null; preparation?: string };
+  if (!result.audio_asset) {
+    row.audio_extraction = 'No audio stream in the video';
+    callbacks.error('This video has no audio stream. Supply a separate audio file for a subject that requires audio.');
+    return;
+  }
+  row.audio_path = result.audio_asset;
+  row.audio_source = row.video_path;
+  row.audio_preparation = result.preparation;
 }
 
 function sessionExample(notify = true): void {
@@ -219,6 +236,7 @@ export function updateWorkbench(state: Info, busy: boolean): void {
   $('behavior-settings').hidden = requestedOutput() !== 'behavior' || mode !== 'stimuli';
   $('instruction-settings').hidden = mode !== 'stimuli' || !['behavior', 'response_trace'].includes(requestedOutput());
   const format = $<HTMLSelectElement>('stimulus-format').value;
+  $('video-audio-tools').hidden = !['csv', 'media'].includes(format);
   const registered = format === 'registered';
   $('registered-stimulus-editor').hidden = !registered;
   $('media-editor').hidden = format !== 'media';
@@ -236,6 +254,7 @@ export function updateWorkbench(state: Info, busy: boolean): void {
   $<HTMLSelectElement>('model-id').disabled ||= matchingModelCount === 0;
   $<HTMLButtonElement>('load-model').disabled = busy || state.phase === 'loading' || !catalogLoaded || !$<HTMLSelectElement>('model-id').value;
   $<HTMLButtonElement>('load-calibration').disabled = busy || state.phase === 'loading';
+  $<HTMLButtonElement>('extract-existing-audio').disabled = busy || !['csv', 'media'].includes($<HTMLSelectElement>('stimulus-format').value);
   document.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('.experiment-editor input,.experiment-editor select,.experiment-editor textarea').forEach(input => { if (!input.closest('#model-loader')) input.disabled = busy; });
   $<HTMLInputElement>('custom-intervention').disabled = busy || !canIntervene;
   const channel = $<HTMLSelectElement>('session-input').value;
@@ -292,6 +311,22 @@ function stimulusInput(): { rows: Record<string, unknown>[]; stimulus_set: strin
 
 export function initializeWorkbench(api: Callbacks): void {
   callbacks = api;
+  $('extract-existing-audio').onclick = async () => {
+    uploading = true; callbacks.changed();
+    try {
+      const { rows } = stimulusInput();
+      const videos = rows.filter(row => row.video_path && !row.audio_path);
+      if (!videos.length) throw new Error('No video rows without audio are available. Upload a video or supply its uploaded asset in the table.');
+      $('upload-status').hidden = false;
+      for (const row of videos) {
+        $('upload-status').textContent = `Extract audio: ${row.stimulus_id ?? row.video_path}`;
+        await attachAudio(row);
+      }
+      $<HTMLTextAreaElement>('stimulus-text').value = toCSV(rows);
+      $('upload-status').textContent = `${videos.filter(row => row.audio_path).length} video rows now have an audio input`;
+    } catch (problem) { callbacks.error(String(problem)); }
+    finally { uploading = false; callbacks.changed(); }
+  };
   $<HTMLInputElement>('allow-model-downloads').onchange = async () => {
     const allow = $<HTMLInputElement>('allow-model-downloads').checked;
     downloadPolicyPending = true; callbacks.changed();

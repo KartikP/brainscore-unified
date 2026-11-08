@@ -63,6 +63,32 @@ other files and model initialization may follow. Cached loads can remain in the
 preparation phase without a network download. The observer exists only during
 subject loads and restores its hooks on success or failure.
 
+### Videos with sound
+
+For a subject with an audio input, video uploads automatically extract the first
+soundtrack when **Extract the soundtrack for subjects with audio input** is on.
+The stimulus row retains `video_path` and gains `audio_path`: both are explicit
+inputs to one trial. V-JEPA and Wav2Vec2 receive their respective streams. This
+preparation does not fuse their representations or change their declarations.
+
+For videos already in the table, use **Extract audio from current video rows**
+in the Stimuli step, then validate the changed protocol again. Explicit audio
+paths already in a row take precedence. Silent videos remain video-only and show
+an explanation; the importer never invents a silent audio input.
+
+Extraction keeps the original video and creates a mono, 16 kHz, PCM16 WAV file.
+It uses the container's first audio stream, shifts timestamps relative to the
+container start and retains leading gaps. The row records the source video and
+conversion settings. The artifact bundle copies both media files, and the Python
+export uses those same files. Derived WAV files are cached for repeated use.
+
+The lab uses FFmpeg from the system or from the `imageio-ffmpeg` wheel included in
+the lab's dependencies. No model runs during extraction. Operations are serial,
+time-limited to 120 seconds, and reject audio outputs at the 128 MiB limit rather
+than silently keeping truncated audio. Extraction does not run during an active
+model operation. Video-only subjects retain the original upload behavior unless
+the user explicitly extracts a soundtrack.
+
 The same identifier generates the same avatar using SHA-256. Color, accessories,
 and a nine-pixel chest emblem are cosmetic. Input/output badges and available
 tools come from declarations, not the avatar or a model-class test.
