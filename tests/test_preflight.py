@@ -100,6 +100,42 @@ class TestPreflightInScore:
         assert score.attrs['compatibility']['match'] == 'full'
         assert score.attrs['harness_id'] == 'brainscore'
 
+    @patch('brainscore.load_benchmark')
+    @patch('brainscore.load_model')
+    def test_behavior_protocol_comes_from_recorded_measures(
+            self, mock_load_model, mock_load_benchmark):
+        import brainscore
+        from brainscore_core.score_metadata import note_measure
+        from brainscore_core.supported_data_standards.brainio.assemblies import (
+            BehavioralAssembly,
+        )
+
+        model, benchmark = self._make_model_and_benchmark(
+            model_modalities={'vision'},
+            bench_required={'vision'},
+        )
+        model.out_channels = {'behavior'}
+        benchmark.parent = 'behavior'
+        benchmark.requested_output_channels = {'behavior'}
+        score = MagicMock()
+        score.attrs = {}
+
+        def run(candidate):
+            # Core notes each behavioral response it hands to a benchmark.
+            note_measure(BehavioralAssembly(
+                [[1.0, 0.0]], dims=['presentation', 'choice'],
+                attrs={'measure': {'kind': 'reported', 'source': 'reply'}}))
+            return score
+
+        benchmark.side_effect = run
+        mock_load_model.return_value = model
+        mock_load_benchmark.return_value = benchmark
+
+        brainscore.score('test-model', 'test-bench', check_mem=False)
+
+        assert score.attrs['protocol'] == 'behavior:generation'
+        assert score.attrs['measure'] == 'reported'
+
     @patch('brainscore_core.compatibility.check_channel_compatibility')
     @patch('brainscore.load_benchmark')
     @patch('brainscore.load_model')
