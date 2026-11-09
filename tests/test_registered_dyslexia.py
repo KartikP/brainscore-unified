@@ -6,6 +6,7 @@ from PIL import Image
 
 import brainscore
 from brainscore_core.model_interface import StateChange, Selection, Perturbation
+from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 pytestmark = pytest.mark.integration
@@ -104,6 +105,9 @@ def test_registered_model_benchmark_path_and_hook_cleanup(registered_toy):
     candidate = brainscore.load_model('qwen2.5-vl-3b-vwfa')
     benchmark = brainscore.load_benchmark('Yeatman2021-induced_dyslexia-image')
     assert candidate.region_layer_selectors['VWFA'].layer_path == 'blocks.28'
+    # The benchmark addresses each lesion by the layer the recording reports.
+    recording = neural_response(candidate, stimuli, record='VWFA')
+    assert set(recording['layer'].values) == {'blocks.28'}
     score = benchmark(candidate)
     assert np.isfinite(float(score))
     assert set(('baseline_accuracy', 'lesioned_accuracy', 'random_control_accuracy')).issubset(score.attrs)

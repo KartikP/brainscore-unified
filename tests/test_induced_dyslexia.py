@@ -223,14 +223,13 @@ class TestCompositeLocalize:
         assert by_layer['L2'] == [0]
         assert all(s.metadata['n_recorded'] == 2 for s in sels)
 
-    def test_recording_without_layer_sends_functional_selection(self):
-        from brainscore_core.model_interface import FunctionalSelection
+    def test_recording_without_layer_is_refused_before_any_lesion(self):
         cand = _Subject(recording=self._assembly(with_layer=False))
         bench = InducedDyslexia(n_units=1, modality='text', reading_benchmark=_Reader({}),
                                 localizer_stimuli=self._stimuli())
-        (target,) = bench._localize(cand)
-        assert isinstance(target, FunctionalSelection)
-        assert target.recording_target == 'VWFA' and target.n_units == 1
+        with pytest.raises(ValueError, match="no 'layer' coord"):
+            bench._localize(cand)
+        assert cand.sessions == 1      # the recording only; no lesion was sent
 
 
 # -- end to end: real ROAR reading test, participate-only subject -------------
@@ -249,6 +248,7 @@ class _ReaderSubject(Subject):
 
     def __init__(self):
         self.silenced = {}
+        self.applied = []
 
     @staticmethod
     def _units(word):
@@ -261,7 +261,8 @@ class _ReaderSubject(Subject):
         requested = set(session.requested_output_channels)
         if requested == {'perturbation'}:
             change = session.next_input().payload
-            handle = f'h{len(self.silenced)}'
+            handle = f'h{len(self.applied)}'
+            self.applied.append(change.target)
             self.silenced[handle] = set(change.target.indices)
             session.respond(StreamEvent('perturbation', PerturbationApplied(
                 handle, change.target, change.perturbation), 0.0, {}))
@@ -315,3 +316,10 @@ def test_participate_only_subject_runs_the_benchmark(synthetic_roar):
     assert score.attrs['dyslexic'] is True
     assert score.attrs['n_layers_ablated'] == 1
     assert not subject.silenced                           # left as found
+    lesion, control = subject.applied
+    assert (lesion.layer, lesion.indices) == ('L', [0, 1])
+    assert lesion.metadata['unit_population'] == list(range(10))
+    expected = RandomSelection(layer='L', n_units=2, n_total=10, seed=0,
+                               population=list(range(10))).resolve(None)
+    assert (control.layer, control.indices) == ('L', expected.indices)
+    assert control.metadata['unit_population'] == list(range(10))

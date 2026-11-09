@@ -7,7 +7,8 @@ damaged". This converts an induced-dyslexia top-K ablation sweep into a
 registered Brain-Score benchmark
 built on the core ``UnitSelection`` family:
 
-  * :class:`FunctionalSelection` — the real-vs-pseudo Cohen's d localizer (one layer)
+  * the real-vs-pseudo Cohen's d localizer (the :class:`FunctionalSelection`
+                                   statistic, computed per reported layer)
   * :class:`CompositeSelector`   — a multi-layer word-form region (the candidate
                                    declares it in ``region_layer_map``); localized
                                    per reported layer here
@@ -25,10 +26,8 @@ output) is N/A in pre-flight, before any compute. Reading is cleanest on the
 generation path (instruction-following), matching the paper; a readout-path
 model re-fits its linear readout each call (a valid but different measure).
 
-Units are addressed by what the subject reports. When the recording carries a
-``layer`` coord, the benchmark localizes per layer and addresses each lesion by
-that value. When it does not, the lesion target is the unresolved
-:class:`FunctionalSelection`, and the subject maps the region to its own units.
+Units are addressed by what the subject reports: the benchmark localizes per
+value of the recording's ``layer`` coord and addresses each lesion by it.
 
 Score = lesioned reading accuracy (lower => more dyslexic). attrs carry the
 baseline accuracy, the random-ablation control, the *specific* deficit
@@ -41,7 +40,7 @@ drawings / scrambled). Our ROAR corpus has only real/pseudo *words*, so the
 contrast here is real-vs-pseudo — the discriminator-unit variant documented in
 the project's K-sweep finding. Different localizer, same API.
 """
-from typing import List, Union
+from typing import List
 
 import numpy as np
 
@@ -50,7 +49,7 @@ from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.metrics import Score
 from brainscore_core.selection import selection_unit_indices, selection_coordinates
 from brainscore_core.model_interface import (
-    StateChange, Selection, Perturbation, FunctionalSelection, RandomSelection,
+    StateChange, Selection, Perturbation, RandomSelection,
 )
 from brainscore_core.streaming_helpers import apply_state_change, neural_response
 
@@ -107,15 +106,12 @@ class InducedDyslexia(BenchmarkBase):
         )
 
     # -- localization -------------------------------------------------------
-    def _localize(self, candidate) -> List[Union[Selection, FunctionalSelection]]:
+    def _localize(self, candidate) -> List[Selection]:
         """Return the lesion targets: one top-``n_units`` real-vs-pseudo set per layer.
 
-        Records the region once through ``participate``. When the recording
-        reports a ``layer`` coord, each layer is localized here (Cohen's d,
-        highest first) and addressed by that reported value. Without it the
-        units have no address the benchmark can name, so the single target is
-        the unresolved :class:`FunctionalSelection`, which the subject resolves
-        against its own region map when it receives the lesion.
+        Records the region once through ``participate``, localizes each layer
+        the recording reports in its ``layer`` coord (Cohen's d, highest
+        first), and addresses each lesion by that reported layer.
         """
         asm = neural_response(candidate, self._localizer_stimuli,
                               record=self.localizer_region)
@@ -126,12 +122,10 @@ class InducedDyslexia(BenchmarkBase):
         try:
             layer_coord = np.asarray(asm['layer'].values).ravel()
         except KeyError:
-            return [FunctionalSelection(
-                recording_target=self.localizer_region,
-                localizer_stimuli=self._localizer_stimuli,
-                contrast=(['real'], ['pseudo']),
-                contrast_column='image_label',
-                n_units=self.n_units, sign='positive')]
+            raise ValueError(
+                f"induced-dyslexia addresses each lesion by the layer the recording "
+                f"reports; the '{self.localizer_region}' recording has no 'layer' coord "
+                f"on its neuroids.") from None
         # Labels come from the benchmark's own stimuli, matched by stimulus_id,
         # so a subject need not echo stimulus columns back.
         label_of = dict(zip(self._localizer_stimuli['stimulus_id'].values,
@@ -164,18 +158,10 @@ class InducedDyslexia(BenchmarkBase):
     def _reading_accuracy(self, candidate) -> float:
         return float(self._reading(candidate).attrs['raw'])
 
-    def _ablate(self, candidate, targets) -> List[Selection]:
-        """Apply one zeroing lesion per target and return the applied selections.
-
-        A resolved target is returned as sent. An unresolved one is returned as
-        the subject resolved it (the record's ``target``).
-        """
-        applied = []
-        for target in targets:
-            record = apply_state_change(candidate, StateChange(
-                kind='ablation', target=target, perturbation=Perturbation(kind='zero')))
-            applied.append(target if isinstance(target, Selection) else record.target)
-        return applied
+    def _ablate(self, candidate, selections: List[Selection]) -> None:
+        for sel in selections:
+            apply_state_change(candidate, StateChange(
+                kind='ablation', target=sel, perturbation=Perturbation(kind='zero')))
 
     def __call__(self, candidate) -> Score:
         # The benchmark owns resets for the run (rule 4.4) and leaves the
@@ -191,10 +177,10 @@ class InducedDyslexia(BenchmarkBase):
         # word-form lesion. Reset first so a task left by the reading call does
         # not carry into localization.
         candidate.reset()
-        targets = self._localize(candidate)
+        selections = self._localize(candidate)
         candidate.reset()
         try:
-            selections = self._ablate(candidate, targets)
+            self._ablate(candidate, selections)
             lesioned_acc = self._reading_accuracy(candidate)
         finally:
             candidate.reset()
