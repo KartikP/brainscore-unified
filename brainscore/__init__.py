@@ -297,10 +297,16 @@ def score(model_identifier, benchmark_identifier,
     from brainscore_core.memory import check_memory
     from brainscore_core.score_metadata import (
         infer_score_protocol,
-        record_measures,
         requested_output_channels_for_score,
         stamp_score_metadata,
     )
+    try:
+        from brainscore_core.score_metadata import record_measures
+    except ImportError as error:
+        raise ImportError(
+            'brainscore needs a brainscore_core with score_metadata.record_measures '
+            '(core ad7288a or later); install the core revision in install/peer-revisions.json'
+        ) from error
 
     import time as _time
     # accept either an identifier string or an already-built object
