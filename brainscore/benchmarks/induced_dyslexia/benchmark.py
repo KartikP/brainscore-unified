@@ -10,22 +10,29 @@ built on the core ``UnitSelection`` family:
   * :class:`FunctionalSelection` — the real-vs-pseudo Cohen's d localizer (one layer)
   * :class:`CompositeSelector`   — a multi-layer word-form region (the candidate
                                    declares it in ``region_layer_map``); localized
-                                   per-layer here
+                                   per reported layer here
   * :class:`RandomSelection`     — the same-size random lesion at the same layer(s):
                                    the specificity control
-  * ``StateChange(kind='ablation', perturbation='zero')`` — the lesion, applied
-                                   through the candidate's ``state_change_fn``
+  * ``StateChange(kind='ablation', perturbation='zero')`` — the lesion, sent
+                                   with ``apply_state_change``
 
 The reading test is the ROAR lexical-decision benchmark, reused unchanged. The
-candidate must expose a ``state_change_fn`` (e.g.
-``brainscore.perturbation.build_pytorch_ablation_fn``) and a word-form region in
-its ``region_layer_map``. Reading is cleanest on the generation path
-(instruction-following), matching the paper; a readout-path model re-fits its
-linear readout each call (a valid but different measure — flagged in attrs).
+benchmark runs any subject through ``participate`` only (Contract Rules 1.1,
+2.1): it records ``neural:<region>`` for the localizer, sends the lesions as
+``lesion`` events and reads through ``behavior``. It requests those outputs, so
+a subject that cannot record the region or accept a lesion (no ``perturbation``
+output) is N/A in pre-flight, before any compute. Reading is cleanest on the
+generation path (instruction-following), matching the paper; a readout-path
+model re-fits its linear readout each call (a valid but different measure).
 
-Score = lesioned reading accuracy (lower ⇒ more dyslexic). attrs carry the
+Units are addressed by what the subject reports. When the recording carries a
+``layer`` coord, the benchmark localizes per layer and addresses each lesion by
+that value. When it does not, the lesion target is the unresolved
+:class:`FunctionalSelection`, and the subject maps the region to its own units.
+
+Score = lesioned reading accuracy (lower => more dyslexic). attrs carry the
 baseline accuracy, the random-ablation control, the *specific* deficit
-(``random − lesioned``), and a ``dyslexic`` flag — True only when reading falls
+(``random - lesioned``), and a ``dyslexic`` flag: True only when reading falls
 below the 0.65 threshold AND specifically below the random control (so a model
 that simply breaks under any ablation does NOT read as selective dyslexia).
 
@@ -34,18 +41,18 @@ drawings / scrambled). Our ROAR corpus has only real/pseudo *words*, so the
 contrast here is real-vs-pseudo — the discriminator-unit variant documented in
 the project's K-sweep finding. Different localizer, same API.
 """
-import dataclasses
-import os
-from typing import List, Optional
+from typing import List, Union
 
 import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
+from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.metrics import Score
 from brainscore_core.selection import selection_unit_indices, selection_coordinates
 from brainscore_core.model_interface import (
     StateChange, Selection, Perturbation, FunctionalSelection, RandomSelection,
 )
+from brainscore_core.streaming_helpers import apply_state_change, neural_response
 
 from ..roar_yeatman2021.benchmark import (
     Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX,
@@ -57,8 +64,8 @@ class InducedDyslexia(BenchmarkBase):
 
     :param localizer_region: the region (key in the candidate's
         ``region_layer_map``) whose units are word-form-selective. May map to a
-        single layer (uses :class:`FunctionalSelection`) or be a
-        :class:`CompositeSelector` over several layers (localized per layer).
+        single layer or be a :class:`CompositeSelector` over several layers
+        (localized per layer the recording reports).
     :param n_units: how many top-selective units to ablate per layer.
     :param control_seed: seed for the matched :class:`RandomSelection` control.
     :param modality: ``'vision'`` (word images) or ``'text'`` (word strings).
@@ -72,6 +79,14 @@ class InducedDyslexia(BenchmarkBase):
         self.control_seed = control_seed
         self.modality = modality
         self.required_modalities = {modality}
+        # Declarations decide compatibility (rule 5): the benchmark sends the
+        # words and the lesions, and needs the region's activity, the lesion
+        # record and the reading answers back. A subject without any of these
+        # outputs is N/A before any compute.
+        self.required_input_channels = frozenset(
+            modalities_to_input_channels({modality}) | {'lesion'})
+        self.requested_output_channels = frozenset(
+            {'behavior', f'neural:{localizer_region}', 'perturbation'})
 
         # The reading test (reused unchanged) and the localizer stimuli (its
         # train split, which carries the real/pseudo contrast label).
@@ -92,60 +107,41 @@ class InducedDyslexia(BenchmarkBase):
         )
 
     # -- localization -------------------------------------------------------
-    def _region_layers(self, candidate) -> List[str]:
-        selectors = candidate.region_layer_selectors
-        if self.localizer_region not in selectors:
-            raise ValueError(
-                f"induced-dyslexia needs a '{self.localizer_region}' region in the "
-                f"candidate's region_layer_map; have {list(selectors)}")
-        sel = selectors[self.localizer_region]
-        if hasattr(sel, 'layer_paths'):          # CompositeSelector
-            return list(sel.layer_paths)
-        return [sel.layer_path]                   # LayerSelector
+    def _localize(self, candidate) -> List[Union[Selection, FunctionalSelection]]:
+        """Return the lesion targets: one top-``n_units`` real-vs-pseudo set per layer.
 
-    def _localize(self, candidate, layers: List[str]) -> List[Selection]:
-        """Return one top-``n_units`` real-vs-pseudo Selection per layer.
-
-        Single-layer region → idiomatic :class:`FunctionalSelection`. Composite
-        region → record once and compute the same Cohen's d per layer (the core
-        FunctionalSelection is single-layer only).
+        Records the region once through ``participate``. When the recording
+        reports a ``layer`` coord, each layer is localized here (Cohen's d,
+        highest first) and addressed by that reported value. Without it the
+        units have no address the benchmark can name, so the single target is
+        the unresolved :class:`FunctionalSelection`, which the subject resolves
+        against its own region map when it receives the lesion.
         """
-        # Clear any behavioral task left active by a prior reading call — otherwise
-        # process() takes the behavioral path and the localizer records choices,
-        # not neuroids. (No perturbation is active yet at localization time.)
-        candidate.reset()
-        if len(layers) == 1:
-            fs = FunctionalSelection(
-                recording_target=self.localizer_region,
-                localizer_stimuli=self._localizer_stimuli,
-                contrast=(['real'], ['pseudo']),
-                contrast_column='image_label',
-                n_units=self.n_units, sign='positive')
-            sel = fs.resolve(candidate)
-            candidate.reset()
-            # FunctionalSelection labels Selection.layer from the recorded 'layer'
-            # coord; when the assembly carries no such coord it falls back to the
-            # region name. The ablation needs the actual module path, so remap via
-            # the candidate's region_layer_map.
-            actual = candidate.region_layer_selectors[self.localizer_region].layer_path
-            if actual and sel.layer != actual:
-                sel = dataclasses.replace(sel, layer=actual)
-            return [sel]
-        # composite: record the whole region, split by the 'layer' coord
-        candidate.start_recording(self.localizer_region)
-        asm = candidate.process(self._localizer_stimuli)
-        candidate.reset()
+        asm = neural_response(candidate, self._localizer_stimuli,
+                              record=self.localizer_region)
         extra = [d for d in asm.dims if d not in ('presentation', 'neuroid')]
         if extra:
             asm = asm.mean(extra)
         asm = asm.transpose('presentation', 'neuroid')
-        labels = np.asarray(asm['image_label'].values)
-        layer_coord = np.asarray(asm['layer'].values).ravel()
+        try:
+            layer_coord = np.asarray(asm['layer'].values).ravel()
+        except KeyError:
+            return [FunctionalSelection(
+                recording_target=self.localizer_region,
+                localizer_stimuli=self._localizer_stimuli,
+                contrast=(['real'], ['pseudo']),
+                contrast_column='image_label',
+                n_units=self.n_units, sign='positive')]
+        # Labels come from the benchmark's own stimuli, matched by stimulus_id,
+        # so a subject need not echo stimulus columns back.
+        label_of = dict(zip(self._localizer_stimuli['stimulus_id'].values,
+                            self._localizer_stimuli['image_label'].values))
+        labels = np.asarray([label_of[sid] for sid in asm['stimulus_id'].values])
         vals = asm.values
         pos = labels == 'real'
         neg = labels == 'pseudo'
         out = []
-        for L in layers:
+        for L in dict.fromkeys(str(layer) for layer in layer_coord):
             cols = np.where(layer_coord == L)[0]
             sub = vals[:, cols]
             mp, mn = sub[pos].mean(0), sub[neg].mean(0)
@@ -168,39 +164,37 @@ class InducedDyslexia(BenchmarkBase):
     def _reading_accuracy(self, candidate) -> float:
         return float(self._reading(candidate).attrs['raw'])
 
-    def _ablate(self, candidate, selections: List[Selection]) -> None:
-        for sel in selections:
-            candidate.process(StateChange(
-                kind='ablation', target=sel, perturbation=Perturbation(kind='zero')))
+    def _ablate(self, candidate, targets) -> List[Selection]:
+        """Apply one zeroing lesion per target and return the applied selections.
+
+        A resolved target is returned as sent. An unresolved one is returned as
+        the subject resolved it (the record's ``target``).
+        """
+        applied = []
+        for target in targets:
+            record = apply_state_change(candidate, StateChange(
+                kind='ablation', target=target, perturbation=Perturbation(kind='zero')))
+            applied.append(target if isinstance(target, Selection) else record.target)
+        return applied
 
     def __call__(self, candidate) -> Score:
-        if getattr(candidate, '_state_change_fn', None) is None:
-            raise ValueError(
-                "induced-dyslexia requires a candidate with a state_change_fn "
-                "(e.g. brainscore.perturbation.build_pytorch_ablation_fn).")
-        # Keep live extraction for every condition, including third-party
-        # candidates whose caches may not fingerprint perturbation state.
-        # Built-in wrappers now fingerprint hooks, but that is not a requirement
-        # of every Subject accepted by this benchmark.
-        _prev_cache = os.environ.get('RESULTCACHING_DISABLE')
-        os.environ['RESULTCACHING_DISABLE'] = '1'
+        # The benchmark owns resets for the run (rule 4.4) and leaves the
+        # subject without lesions whatever happens (rule 8.3).
         try:
             return self._score(candidate)
         finally:
-            if _prev_cache is None:
-                os.environ.pop('RESULTCACHING_DISABLE', None)
-            else:
-                os.environ['RESULTCACHING_DISABLE'] = _prev_cache
+            candidate.reset()
 
     def _score(self, candidate) -> Score:
-        layers = self._region_layers(candidate)
-
         baseline_acc = self._reading_accuracy(candidate)
 
-        # word-form lesion
-        selections = self._localize(candidate, layers)
+        # word-form lesion. Reset first so a task left by the reading call does
+        # not carry into localization.
+        candidate.reset()
+        targets = self._localize(candidate)
+        candidate.reset()
         try:
-            self._ablate(candidate, selections)
+            selections = self._ablate(candidate, targets)
             lesioned_acc = self._reading_accuracy(candidate)
         finally:
             candidate.reset()
@@ -231,5 +225,5 @@ class InducedDyslexia(BenchmarkBase):
         score.attrs['dyslexia_threshold'] = DYSLEXIA_THRESHOLD
         score.attrs['dyslexic'] = dyslexic
         score.attrs['n_units_per_layer'] = self.n_units
-        score.attrs['n_layers_ablated'] = len(layers)
+        score.attrs['n_layers_ablated'] = len(selections)
         return score
