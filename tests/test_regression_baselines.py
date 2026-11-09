@@ -32,7 +32,9 @@ BASELINES = Path(__file__).parent / 'fixtures' / 'regression-baselines.json'
 #   CPU: IT 0.4174799858892488,  V4 0.4919518163116004, i2n 0.3701657913463906
 # The cause of the delta from the stored baselines is not identified: the
 # device moves scores by up to 4.6e-5, but CPU reproduces only the IT
-# baseline at every stored digit. Environment: Python 3.11.15, numpy 1.26.4,
+# baseline at every stored digit. So MEASURED_TOL is a reference check against
+# the stored values, not a Rule 10.2 dependency qualification; the Rule 10.2
+# test itself is the UMI == upstream equality above. Environment: Python 3.11.15, numpy 1.26.4,
 # scipy 1.17.1, scikit-learn 1.7.2, torch 2.6.0+cu124, torchvision
 # 0.21.0+cu124, xarray 2022.3.0, pandas 2.3.3.
 #
