@@ -17,7 +17,20 @@ from pathlib import Path
 import pytest
 
 BASELINES = Path(__file__).parent / 'fixtures' / 'regression-baselines.json'
-TOL = 0.01   # Historical score tolerance; model-specific qualification is separate.
+# Contract Rule 10.2 tolerance. `production_baseline` is the leaderboard value
+# rounded to 3 decimals, so rounding alone allows |delta| up to 5e-4. The rest
+# (1e-4) covers the measured environment drift, with about 3x margin.
+# Evidence (2026-11-09, g5.4xlarge A10G, cold caches): UMI (core d16e90f,
+# vision 1c2191b, language 06c4066) and clean upstream (vision master c560866,
+# core main 2e1cb4e == PyPI brainscore-core 2.5.0) give bit-for-bit identical
+# scores for alexnet on MajajHong2015.IT-pls (0.41746951668719495),
+# MajajHong2015.V4-pls (0.4919152765977861) and Rajalingham2018-i2n
+# (0.3702114698148112). Both move together from the recorded score_value by
+# at most 3.1e-5 (V4). Environment: Python 3.11.15, numpy 1.26.4, scipy 1.17.1,
+# scikit-learn 1.7.2, torch 2.6.0+cu124, torchvision 0.21.0+cu124, xarray
+# 2022.3.0, pandas 2.3.3. Scope: measured for these three AlexNet pairs only;
+# the other anchored pairs inherit the bound unmeasured.
+TOL = 6e-4
 
 
 def _load_all():
