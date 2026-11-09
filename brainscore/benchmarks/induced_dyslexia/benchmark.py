@@ -179,10 +179,19 @@ class InducedDyslexia(BenchmarkBase):
         """Undo the benchmark's own lesions, newest first, by handle (rule 8.2).
 
         Changes the caller applied before scoring are not touched (rule 8.3).
+        Every undo is attempted even when an earlier one raises, so one failed
+        cleanup never leaves the other lesions in place; the first error is
+        raised after all attempts, as ``reset()`` does in core.
         """
-        while handles:
-            apply_state_change(candidate, StateChange(kind='reset', handle_id=handles[-1]))
-            handles.pop()
+        errors = []
+        for handle in reversed(handles):
+            try:
+                apply_state_change(candidate, StateChange(kind='reset', handle_id=handle))
+            except Exception as error:                       # noqa: BLE001
+                errors.append(error)
+        handles.clear()
+        if errors:
+            raise errors[0]
 
     def __call__(self, candidate) -> Score:
         # Pre-flight cannot require that a subject *accepts* an input: inputs

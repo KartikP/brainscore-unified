@@ -35,6 +35,7 @@ class _Subject(Subject):
         self.sessions = 0
         self.applies = 0
         self.fail_on_lesion = fail_on_lesion
+        self.fail_undo = set()
 
     @property
     def active(self):
@@ -46,6 +47,8 @@ class _Subject(Subject):
         if requested == {'perturbation'}:
             change = session.next_input().payload
             if change.kind == 'reset':
+                if change.handle_id in self.fail_undo:
+                    raise RuntimeError(f'undo of {change.handle_id} failed')
                 del self.lesions[change.handle_id]
                 session.respond(StreamEvent('perturbation', None, 0.0,
                                             {'handle_id': change.handle_id}))
@@ -124,6 +127,15 @@ class TestScoring:
             bench(cand)
         assert cand.applies == fail_on_lesion
         assert cand.lesions == {}
+
+    def test_failed_undo_still_undoes_the_other_lesions(self, monkeypatch):
+        bench, cand, _ = _make({'none': 0.95, 'functional': 0.55, 'random': 0.90},
+                               monkeypatch, self.TWO_LAYERS)
+        # Lesions are sessions 1 and 2; the newest (h2) is undone first and fails.
+        cand.fail_undo = {'h2'}
+        with pytest.raises(RuntimeError, match='undo of h2 failed'):
+            bench(cand)
+        assert cand.lesions == {'h2': 'functional'}   # only the failed one remains
 
     def test_caller_changes_survive_the_run(self, monkeypatch):
         """Rule 8.3: only the benchmark's own lesions are undone, on success and on
