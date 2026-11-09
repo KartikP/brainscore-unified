@@ -21,8 +21,9 @@ The reading test is the ROAR lexical-decision benchmark, reused unchanged. The
 benchmark runs any subject through ``participate`` only (Contract Rules 1.1,
 2.1): it records ``neural:<region>`` for the localizer, sends the lesions as
 ``lesion`` events and reads through ``behavior``. It requests those outputs, so
-a subject that cannot record the region or accept a lesion (no ``perturbation``
-output) is N/A in pre-flight, before any compute. Reading is cleanest on the
+a subject that cannot record the region or report a lesion (no ``perturbation``
+output) is N/A in pre-flight; one that does not take ``lesion`` input is N/A at
+the start of the call, before any compute. Reading is cleanest on the
 generation path (instruction-following), matching the paper; a readout-path
 model re-fits its linear readout each call (a valid but different measure).
 
@@ -47,12 +48,14 @@ from typing import List
 import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.metrics import Score
 from brainscore_core.selection import selection_unit_indices, selection_coordinates
 from brainscore_core.model_interface import (
     StateChange, Selection, Perturbation, RandomSelection,
 )
+from brainscore_core.streaming import parse_channel
 from brainscore_core.streaming_helpers import apply_state_change, neural_response
 
 from ..roar_yeatman2021.benchmark import (
@@ -182,6 +185,15 @@ class InducedDyslexia(BenchmarkBase):
             handles.pop()
 
     def __call__(self, candidate) -> Score:
+        # Pre-flight cannot require that a subject *accepts* an input: inputs
+        # need only overlap (rule 5.2) and `perturbation` does not say which
+        # change families the subject takes. Check the declaration here, before
+        # any compute, so a subject that cannot take a lesion is N/A.
+        if not any(parse_channel(channel)[0] == 'lesion' for channel in candidate.in_channels):
+            raise CompatibilityError(
+                f"Subject '{candidate.identifier}' does not take 'lesion' input, which "
+                f"benchmark '{self.identifier}' sends; in_channels: "
+                f"{sorted(candidate.in_channels)}.")
         return self._score(candidate)
 
     def _score(self, candidate) -> Score:
