@@ -23,25 +23,40 @@ from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
 
 class _Subject(Subject):
     """A participate-only subject. It answers lesion sessions with a record and
-    neural sessions with a canned assembly, and remembers which lesion is active
-    so the fake reader can react."""
+    undoes one lesion per handle, answers neural sessions with a canned
+    assembly, and reports the newest active lesion so the fake reader can react."""
     identifier = 'participate-only-stub'
     in_channels = {'text', 'lesion'}
     out_channels = {'behavior', 'neural:VWFA', 'perturbation'}
 
-    def __init__(self, recording=None):
+    def __init__(self, recording=None, fail_on_lesion=None):
         self.recording = recording
-        self.active = 'none'
+        self.lesions = {}            # handle -> lesion kind, in the order applied
         self.sessions = 0
+        self.applies = 0
+        self.fail_on_lesion = fail_on_lesion
+
+    @property
+    def active(self):
+        return list(self.lesions.values())[-1] if self.lesions else 'none'
 
     def participate(self, session):
         self.sessions += 1
         requested = set(session.requested_output_channels)
         if requested == {'perturbation'}:
             change = session.next_input().payload
-            self.active = change.target.metadata.get('selector', 'functional')
+            if change.kind == 'reset':
+                del self.lesions[change.handle_id]
+                session.respond(StreamEvent('perturbation', None, 0.0,
+                                            {'handle_id': change.handle_id}))
+                return
+            self.applies += 1
+            if self.applies == self.fail_on_lesion:
+                raise RuntimeError('hook failed')
+            handle = f'h{self.sessions}'
+            self.lesions[handle] = change.target.metadata.get('selector', 'functional')
             session.respond(StreamEvent('perturbation', PerturbationApplied(
-                handle_id=f'h{self.sessions}', target=change.target,
+                handle_id=handle, target=change.target,
                 perturbation=change.perturbation), 0.0, {}))
             return
         while session.next_input() is not None:
@@ -49,7 +64,7 @@ class _Subject(Subject):
         session.respond(StreamEvent('neural:VWFA', self.recording, 0.0, {}))
 
     def reset(self):
-        self.active = 'none'
+        self.lesions.clear()
 
 
 class _Reader:
@@ -80,6 +95,11 @@ class TestScoring:
     CANNED = [Selection(layer='L', indices=[0, 1, 2],
                         metadata={'selector': 'functional', 'n_recorded': 10})]
 
+    TWO_LAYERS = [Selection(layer='L', indices=[0], metadata={'selector': 'functional',
+                                                              'n_recorded': 10}),
+                  Selection(layer='M', indices=[0], metadata={'selector': 'functional',
+                                                              'n_recorded': 10})]
+
     @pytest.mark.parametrize('failed_call', [1, 2, 3])
     def test_reading_failure_removes_lesions(self, monkeypatch, failed_call):
         bench, cand, reader = _make(
@@ -93,29 +113,37 @@ class TestScoring:
         monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
         with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)
-        assert cand.active == 'none'
+        assert cand.lesions == {}
 
-    def test_partial_installation_failure_removes_prior_lesion(self, monkeypatch):
-        bench, cand, _ = _make(
-            {'none': 0.95, 'functional': 0.55, 'random': 0.90},
-            monkeypatch, self.CANNED)
-        def partially_install(candidate, selections):
-            candidate.active = 'functional'
-            raise RuntimeError('second hook failed')
-        monkeypatch.setattr(bench, '_ablate', partially_install)
-        with pytest.raises(RuntimeError, match='second hook failed'):
+    @pytest.mark.parametrize('fail_on_lesion', [2, 4])   # second word-form / second control
+    def test_partial_installation_failure_removes_prior_lesion(self, monkeypatch, fail_on_lesion):
+        bench, _, _ = _make({'none': 0.95, 'functional': 0.55, 'random': 0.90},
+                            monkeypatch, self.TWO_LAYERS)
+        cand = _Subject(fail_on_lesion=fail_on_lesion)
+        with pytest.raises(RuntimeError, match='hook failed'):
             bench(cand)
-        assert cand.active == 'none'
+        assert cand.applies == fail_on_lesion
+        assert cand.lesions == {}
 
-    def test_localization_failure_leaves_subject_reset(self, monkeypatch):
-        bench, cand, _ = _make({'none': 0.95}, monkeypatch, self.CANNED)
-        def failing_localize(candidate):
-            candidate.active = 'functional'
-            raise RuntimeError('localizer failed')
-        monkeypatch.setattr(bench, '_localize', failing_localize)
-        with pytest.raises(RuntimeError, match='localizer failed'):
+    def test_caller_changes_survive_the_run(self, monkeypatch):
+        """Rule 8.3: only the benchmark's own lesions are undone, on success and on
+        failure, and every condition is measured on the subject as given."""
+        accs = {'caller': 0.80, 'functional': 0.55, 'random': 0.75}
+        bench, cand, reader = _make(accs, monkeypatch, self.CANNED)
+        cand.lesions['caller-handle'] = 'caller'
+        score = bench(cand)
+        assert cand.lesions == {'caller-handle': 'caller'}
+        assert reader.seen == ['caller', 'functional', 'random']
+        assert score.attrs['baseline_accuracy'] == 0.80
+
+        def failing_read(candidate):
+            if candidate.active == 'functional':
+                raise RuntimeError('synthetic reading failure')
+            return accs[candidate.active]
+        monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
+        with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)
-        assert cand.active == 'none'
+        assert cand.lesions == {'caller-handle': 'caller'}
 
     def test_selective_dyslexia_flagged(self, monkeypatch):
         # word-form lesion tanks reading (0.55); random lesion barely dents (0.90)
@@ -131,7 +159,7 @@ class TestScoring:
         assert float(score) == 0.55
         # intact, then lesioned, then random control; no lesion left afterwards
         assert reader.seen == ['none', 'functional', 'random']
-        assert cand.active == 'none'
+        assert cand.lesions == {}
 
     def test_not_dyslexic_when_above_threshold(self, monkeypatch):
         bench, cand, _ = _make(
@@ -229,7 +257,7 @@ class TestCompositeLocalize:
                                 localizer_stimuli=self._stimuli())
         with pytest.raises(ValueError, match="no 'layer' coord"):
             bench._localize(cand)
-        assert cand.sessions == 1      # the recording only; no lesion was sent
+        assert cand.applies == 0
 
 
 # -- end to end: real ROAR reading test, participate-only subject -------------
@@ -261,6 +289,11 @@ class _ReaderSubject(Subject):
         requested = set(session.requested_output_channels)
         if requested == {'perturbation'}:
             change = session.next_input().payload
+            if change.kind == 'reset':
+                del self.silenced[change.handle_id]
+                session.respond(StreamEvent('perturbation', None, 0.0,
+                                            {'handle_id': change.handle_id}))
+                return
             handle = f'h{len(self.applied)}'
             self.applied.append(change.target)
             self.silenced[handle] = set(change.target.indices)

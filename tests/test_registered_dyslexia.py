@@ -6,7 +6,7 @@ from PIL import Image
 
 import brainscore
 from brainscore_core.model_interface import StateChange, Selection, Perturbation
-from brainscore_core.streaming_helpers import neural_response
+from brainscore_core.streaming_helpers import apply_state_change, neural_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 pytestmark = pytest.mark.integration
@@ -111,24 +111,24 @@ def test_registered_model_benchmark_path_and_hook_cleanup(registered_toy):
     score = benchmark(candidate)
     assert np.isfinite(float(score))
     assert set(('baseline_accuracy', 'lesioned_accuracy', 'random_control_accuracy')).issubset(score.attrs)
-    assert len(net.generated_features) == 3 * len(stimuli)
+    assert len(net.generated_features) == 3 * len(stimuli)  # one reading per condition
     baseline, lesion, control = np.split(torch.cat(net.generated_features).numpy(), 3)
     assert baseline.any()
     assert not lesion.any() and not control.any()  # toy has fewer than 500 units
     assert not net.model.visual.blocks[28]._forward_hooks
     assert not candidate._perturbations.active_perturbations
     # Root agreement is checked explicitly: recording and generate() use the
-    # same module, and a selective perturbation reaches both paths.
-    candidate.start_recording('VWFA')
-    before = candidate.process(stimuli)
-    candidate.process(StateChange('ablation', target=Selection('blocks.28', [0]),
-                                  perturbation=Perturbation('zero')))
-    after = candidate.process(stimuli)
+    # same module, and a selective perturbation reaches both paths. Sessions
+    # only: the reading task the benchmark configured must not change what a
+    # later recording measures (rule 4.5).
+    np.testing.assert_array_equal(neural_response(candidate, stimuli, record='VWFA'), recording)
+    applied = apply_state_change(candidate, StateChange(
+        'ablation', target=Selection('blocks.28', [0]), perturbation=Perturbation('zero')))
+    after = neural_response(candidate, stimuli, record='VWFA')
     np.testing.assert_array_equal(after.values[:, 0], 0)
-    np.testing.assert_array_equal(after.values[:, 1], before.values[:, 1])
-    candidate.reset()
-    candidate.start_recording('VWFA')
-    np.testing.assert_array_equal(candidate.process(stimuli), before)
+    np.testing.assert_array_equal(after.values[:, 1], recording.values[:, 1])
+    apply_state_change(candidate, StateChange(kind='reset', handle_id=applied.handle_id))
+    np.testing.assert_array_equal(neural_response(candidate, stimuli, record='VWFA'), recording)
 
 
 def test_original_registration_is_unchanged(registered_toy):

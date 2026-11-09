@@ -27,7 +27,9 @@ generation path (instruction-following), matching the paper; a readout-path
 model re-fits its linear readout each call (a valid but different measure).
 
 Units are addressed by what the subject reports: the benchmark localizes per
-value of the recording's ``layer`` coord and addresses each lesion by it.
+value of the recording's ``layer`` coord and addresses each lesion by it. The
+benchmark undoes only its own lesions, by handle; changes the caller applied
+before scoring stay in place, and the whole run measures the subject as given.
 
 Score = lesioned reading accuracy (lower => more dyslexic). attrs carry the
 baseline accuracy, the random-ablation control, the *specific* deficit
@@ -158,32 +160,41 @@ class InducedDyslexia(BenchmarkBase):
     def _reading_accuracy(self, candidate) -> float:
         return float(self._reading(candidate).attrs['raw'])
 
-    def _ablate(self, candidate, selections: List[Selection]) -> None:
+    def _ablate(self, candidate, selections: List[Selection], handles: List[str]) -> None:
+        """Apply one zeroing lesion per selection, appending each handle as it lands.
+
+        A failure part-way leaves the handles of the lesions already applied in
+        ``handles``, so the caller can undo exactly those.
+        """
         for sel in selections:
-            apply_state_change(candidate, StateChange(
+            record = apply_state_change(candidate, StateChange(
                 kind='ablation', target=sel, perturbation=Perturbation(kind='zero')))
+            handles.append(record.handle_id)
+
+    @staticmethod
+    def _undo(candidate, handles: List[str]) -> None:
+        """Undo the benchmark's own lesions, newest first, by handle (rule 8.2).
+
+        Changes the caller applied before scoring are not touched (rule 8.3).
+        """
+        while handles:
+            apply_state_change(candidate, StateChange(kind='reset', handle_id=handles[-1]))
+            handles.pop()
 
     def __call__(self, candidate) -> Score:
-        # The benchmark owns resets for the run (rule 4.4) and leaves the
-        # subject without lesions whatever happens (rule 8.3).
-        try:
-            return self._score(candidate)
-        finally:
-            candidate.reset()
+        return self._score(candidate)
 
     def _score(self, candidate) -> Score:
         baseline_acc = self._reading_accuracy(candidate)
 
-        # word-form lesion. Reset first so a task left by the reading call does
-        # not carry into localization.
-        candidate.reset()
+        # word-form lesion
         selections = self._localize(candidate)
-        candidate.reset()
+        handles: List[str] = []
         try:
-            self._ablate(candidate, selections)
+            self._ablate(candidate, selections, handles)
             lesioned_acc = self._reading_accuracy(candidate)
         finally:
-            candidate.reset()
+            self._undo(candidate, handles)
 
         # matched random-ablation control
         controls = [RandomSelection(layer=s.layer, n_units=len(s.indices),
@@ -193,10 +204,10 @@ class InducedDyslexia(BenchmarkBase):
                                     population=s.metadata.get('unit_population')).resolve(candidate)
                     for s in selections]
         try:
-            self._ablate(candidate, controls)
+            self._ablate(candidate, controls, handles)
             random_acc = self._reading_accuracy(candidate)
         finally:
-            candidate.reset()
+            self._undo(candidate, handles)
 
         specific_deficit = random_acc - lesioned_acc      # >0 ⇒ word-form-specific
         dyslexic = bool(lesioned_acc < DYSLEXIA_THRESHOLD and specific_deficit > 0)
