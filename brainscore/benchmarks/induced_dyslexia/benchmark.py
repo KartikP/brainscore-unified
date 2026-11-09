@@ -55,7 +55,6 @@ from brainscore_core.selection import selection_unit_indices, selection_coordina
 from brainscore_core.model_interface import (
     StateChange, Selection, Perturbation, RandomSelection,
 )
-from brainscore_core.streaming import parse_channel
 from brainscore_core.streaming_helpers import apply_state_change, neural_response
 
 from ..roar_yeatman2021.benchmark import (
@@ -198,10 +197,18 @@ class InducedDyslexia(BenchmarkBase):
         # need only overlap (rule 5.2) and `perturbation` does not say which
         # change families the subject takes. Check the declaration here, before
         # any compute, so a subject that cannot take a lesion is N/A.
-        if not any(parse_channel(channel)[0] == 'lesion' for channel in candidate.in_channels):
+        #
+        # A subject receives an event when its in_channels hold the exact
+        # channel or its bare family (core DeclaredInputSession). The lesion
+        # channels sent here are `lesion:<layer>[<start>:<stop>]` and, to undo,
+        # `lesion:<handle>`. Neither address is known before compute, so only
+        # the bare `lesion` family accepts them all; an addressed declaration
+        # such as `lesion:other` would drop the lesion or its undo.
+        if 'lesion' not in set(candidate.in_channels):
             raise CompatibilityError(
-                f"Subject '{candidate.identifier}' does not take 'lesion' input, which "
-                f"benchmark '{self.identifier}' sends; in_channels: "
+                f"Subject '{candidate.identifier}' does not declare the 'lesion' family, "
+                f"which benchmark '{self.identifier}' needs to apply and undo lesions at "
+                f"addresses fixed only after localization; in_channels: "
                 f"{sorted(candidate.in_channels)}.")
         return self._score(candidate)
 

@@ -218,12 +218,15 @@ class TestPreflight:
             check_compatibility(subject, self._bench())
         assert subject.sessions == 0
 
-    def test_subject_without_lesion_input_is_na_before_compute(self):
-        # Declares stimulation and every requested output, but no lesion input.
-        # Pre-flight cannot catch this (inputs need only overlap, rule 5.2), so
-        # the benchmark refuses it from the declaration before any session.
+    @pytest.mark.parametrize('in_channels', [{'text', 'stimulation'}, {'text', 'lesion:other'}])
+    def test_subject_without_lesion_input_is_na_before_compute(self, in_channels):
+        # Declares every requested output, but not the bare lesion family: either
+        # no lesion input, or a lesion address the benchmark will not send (core
+        # would drop the lesion and its undo). Pre-flight cannot catch this
+        # (inputs need only overlap, rule 5.2), so the benchmark refuses it from
+        # the declaration before any session.
         subject = _Subject()
-        subject.in_channels = {'text', 'stimulation'}
+        subject.in_channels = in_channels
         check_compatibility(subject, self._bench())
         with pytest.raises(CompatibilityError, match='lesion'):
             self._bench()(subject)
