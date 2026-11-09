@@ -180,7 +180,8 @@ class InducedDyslexia(BenchmarkBase):
         Changes the caller applied before scoring are not touched (rule 8.3).
         Every undo is attempted even when an earlier one raises, so one failed
         cleanup never leaves the other lesions in place; the first error is
-        raised after all attempts, as ``reset()`` does in core.
+        raised after all attempts. A failed handle stays registered in core,
+        so a later ``reset()`` can retry it.
         """
         errors = []
         for handle in reversed(handles):
@@ -204,6 +205,9 @@ class InducedDyslexia(BenchmarkBase):
         # `lesion:<handle>`. Neither address is known before compute, so only
         # the bare `lesion` family accepts them all; an addressed declaration
         # such as `lesion:other` would drop the lesion or its undo.
+        # ponytail: a subject that lists every possible lesion address one by
+        # one would also work but is refused here; accept addressed lists only
+        # if such a subject appears.
         if 'lesion' not in set(candidate.in_channels):
             raise CompatibilityError(
                 f"Subject '{candidate.identifier}' does not declare the 'lesion' family, "
