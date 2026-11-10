@@ -157,7 +157,8 @@ def run_trials(subject, stimuli, instruction):
     task = TaskContext(task_type='probabilities', label_set=['LEFT', 'RIGHT'],
                        instruction=instruction, metadata={'stimulus_set': stimuli})
     assembly = behavioral_response(subject, task)
-    table = stimuli.set_index('stimulus_id').loc[[str(s) for s in response_stimulus_ids(assembly)]]
+    answered = response_stimulus_ids(assembly, stimuli['stimulus_id'])
+    table = stimuli.set_index('stimulus_id').loc[[str(s) for s in answered]]
     return pd.DataFrame({
         'image_id': table['image_id'].values, 'sample_obj': table['sample_obj'].values,
         'dist_obj': table['dist_obj'].values, 'choice': assembly.values,

@@ -100,16 +100,13 @@ def _as_features(assembly):
 def _in_input_order(assembly, stimuli):
     """Rows of ``assembly`` in the order of ``stimuli``, matched by ``stimulus_id``.
 
-    A response without ``stimulus_id`` keeps the order of presentation.
+    The response must answer each frame exactly once, or this raises.
     """
     from brainscore.presentation import response_stimulus_ids
-    try:
-        answered = [str(s) for s in response_stimulus_ids(assembly)]
-    except KeyError:
-        return assembly
     wanted = [str(s) for s in stimuli['stimulus_id'].values]
-    if answered == wanted or sorted(answered) != sorted(wanted):
-        return assembly  # same order, or a mismatch the row-count check reports
+    answered = [str(s) for s in response_stimulus_ids(assembly, wanted)]
+    if answered == wanted:
+        return assembly
     position = {sid: index for index, sid in enumerate(answered)}
     return assembly.isel(presentation=[position[sid] for sid in wanted])
 

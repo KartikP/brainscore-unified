@@ -9,8 +9,7 @@ def read_stimulus_ids(assembly):
     ``temporal_bin`` (uses 'clip_id').
 
     Tried in order: MultiIndex level 'stimulus_id', MultiIndex level 'clip_id',
-    then a top-level 'stimulus_id'/'clip_id' coord, then a plain presentation
-    index (a subject response whose only presentation coord is stimulus_id).
+    then a top-level 'stimulus_id'/'clip_id' coord.
     """
     if 'presentation' in assembly.indexes:
         idx = assembly.indexes['presentation']
@@ -23,11 +22,6 @@ def read_stimulus_ids(assembly):
     for col in ('stimulus_id', 'clip_id'):
         if col in assembly.coords:
             return list(assembly[col].values)
-    from brainscore.presentation import response_stimulus_ids
-    try:
-        return list(response_stimulus_ids(assembly))
-    except KeyError:
-        pass
     raise KeyError(
         f"assembly has neither 'stimulus_id' nor 'clip_id' on its "
         f"presentation axis; coords={list(assembly.coords)}")
@@ -72,9 +66,21 @@ def takes_audiovisual(subject) -> bool:
 
 
 def record_clips(subject, clips, region: str, time_bins):
-    """Show whole clips; return the subject's response for ``region``."""
+    """Show whole clips; return the subject's response for ``region``.
+
+    The response must answer each clip exactly once (``response_stimulus_ids``).
+    A response whose only presentation coordinate is ``stimulus_id`` gets that
+    coordinate back under its name.
+    """
     from brainscore_core.streaming_helpers import neural_response
-    return neural_response(subject, clips, record=region, time_bins=time_bins)
+    from brainscore.presentation import response_stimulus_ids
+    result = neural_response(subject, clips, record=region, time_bins=time_bins)
+    ids = response_stimulus_ids(result, clips['stimulus_id'])
+    try:
+        result['stimulus_id']
+    except KeyError:
+        result = result.assign_coords(stimulus_id=('presentation', ids))
+    return result
 
 
 def record_frames_per_clip(subject, frames, region: str, time_bins):
@@ -101,12 +107,8 @@ def with_frame_columns(per_frame, frames):
         NeuroidAssembly, walk_coords)
     from brainscore.presentation import response_stimulus_ids
     per_frame = per_frame.transpose('presentation', 'neuroid')
-    ids = response_stimulus_ids(per_frame)
-    table = frames.set_index('stimulus_id')
-    missing = [sid for sid in ids if sid not in table.index]
-    if missing:
-        raise KeyError(f"response rows {missing[:3]} are not in the frame table")
-    rows = table.loc[ids]
+    ids = response_stimulus_ids(per_frame, frames['stimulus_id'])
+    rows = frames.set_index('stimulus_id').loc[ids]
     coords = {
         'stimulus_id': ('presentation', ids),
         'clip_id': ('presentation', rows['clip_id'].values),
