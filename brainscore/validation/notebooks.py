@@ -1,5 +1,6 @@
 """Execute the offline tutorials with fresh kernels and retain failure evidence."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
@@ -98,7 +99,7 @@ def execute(source: Path, destination: Path, timeout: int) -> None:
             nbformat.write(notebook, destination)
 
 
-def run(source: Path, output: Path, timeout: int = 180) -> dict:
+def run(source: Path, output: Path, timeout: int = 180, jobs: int = 1) -> dict:
     """Run the explicit selection; missing, new or failing notebooks fail the check."""
     if source.resolve() == output.resolve() or source.resolve() in output.resolve().parents:
         raise ValueError('Execution output must not overwrite source notebooks')
@@ -119,7 +120,7 @@ def run(source: Path, output: Path, timeout: int = 180) -> dict:
     for folder in SHARED_FOLDERS:
         if (source / folder).exists():
             shutil.copytree(source / folder, output / folder, dirs_exist_ok=True)
-    for name in SELECTED:
+    def run_one(name: str) -> dict:
         path = source / name
         result = {'notebook': name, 'passed': False}
         try:
@@ -129,14 +130,26 @@ def run(source: Path, output: Path, timeout: int = 180) -> dict:
             result['passed'] = True
         except Exception as error:
             result['error'] = f'{type(error).__name__}: {error}'
-        report['results'].append(result)
         print(f"{'PASS' if result['passed'] else 'FAIL'} {name}", flush=True)
+        return result
+
+    def record(result: dict) -> None:
+        report['results'].append(result)
         report['passed'] = (
             not report['missing'] and not report['unclassified']
             and len(report['results']) == len(SELECTED)
             and all(row['passed'] for row in report['results'])
         )
         (output / 'report.json').write_text(json.dumps(report, indent=2) + '\n')
+
+    if jobs <= 1:
+        for name in SELECTED:
+            record(run_one(name))
+    else:
+        # Each notebook has its own kernel process and temporary folder.
+        with ThreadPoolExecutor(max_workers=jobs) as pool:
+            for result in pool.map(run_one, SELECTED):
+                record(result)
     return report
 
 
@@ -145,10 +158,11 @@ def main() -> None:
     parser.add_argument('--source', type=Path, required=True)
     parser.add_argument('--out', type=Path, required=True)
     parser.add_argument('--timeout', type=int, default=180, help='Seconds per cell')
+    parser.add_argument('--jobs', type=int, default=1, help='Notebooks to run at the same time')
     args = parser.parse_args()
-    if args.timeout <= 0:
-        parser.error('--timeout must be positive')
-    raise SystemExit(0 if run(args.source, args.out, args.timeout)['passed'] else 1)
+    if args.timeout <= 0 or args.jobs <= 0:
+        parser.error('--timeout and --jobs must be positive')
+    raise SystemExit(0 if run(args.source, args.out, args.timeout, args.jobs)['passed'] else 1)
 
 
 if __name__ == '__main__':
