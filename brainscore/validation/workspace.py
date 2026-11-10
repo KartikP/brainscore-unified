@@ -122,6 +122,24 @@ SUITES = {
         'unit or integration',
     ],
 }
+# Suites that run on several pytest-xdist workers. Vision and language keep one
+# process: their tests share legacy plugin state.
+PARALLEL = ('core', 'unified')
+WORKERS = '4'
+
+
+def suite_arguments(repo, suite):
+    """Return the pytest selection for one repository.
+
+    UMI_FULL=1 (push to v2, nightly, run-macos label) keeps the qualification
+    tests; every other run deselects them.
+    """
+    suite = list(suite)
+    if repo == 'unified' and '-m' in suite and os.environ.get('UMI_FULL') != '1':
+        suite[suite.index('-m') + 1] += ' and not qualification'
+    if repo in PARALLEL:
+        suite += ['-n', os.environ.get('UMI_PYTEST_WORKERS', WORKERS), '--dist', 'loadgroup']
+    return suite
 
 
 def stage_tests(checkout: Path, destination: Path) -> None:
@@ -200,7 +218,7 @@ def qualify(root, out, *, mode='source', wheels=None):
         log = out.with_name(f'{out.stem}-{repo}.log')
         checks = out.with_name(f'{out.stem}-{repo}-checks.json')
         checks.unlink(missing_ok=True)
-        command = [sys.executable, '-m', 'pytest', *suite, '-q', '-ra',
+        command = [sys.executable, '-m', 'pytest', *suite_arguments(repo, suite), '-q', '-ra',
                    '-p', 'no:cacheprovider', '-p', 'brainscore.validation.required_checks',
                    '-p', 'brainscore.validation.cpu_profile',
                    '--umi-check-report', str(checks), '--umi-repository', repo]
@@ -221,9 +239,12 @@ def qualify(root, out, *, mode='source', wheels=None):
                                TRANSFORMERS_CACHE=str(home / 'huggingface/transformers'),
                                TORCH_HOME=str(home / 'torch'),
                                XDG_CACHE_HOME=str(home / 'cache'), MPLCONFIGDIR=str(home / 'matplotlib'))
+                # The plugin also runs inside xdist workers, which import the
+                # packages too; it reports their source imports back to the guard.
                 command = [sys.executable, '-I', '-m', 'brainscore.validation.installed',
                            '--stage', str(cwd), '--wheels', str(wheels),
-                           '--identity', str(identity), *command[3:]]
+                           '--identity', str(identity), '-p', 'brainscore.validation.installed',
+                           *command[3:]]
             try:
                 run = subprocess.run(command, cwd=cwd, env=run_env, stdout=handle,
                                      stderr=subprocess.STDOUT, timeout=1800)

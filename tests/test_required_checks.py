@@ -75,6 +75,30 @@ def test_required_profile_exit_status(tmp_path, source, code, passed, unexpected
     assert len(evidence['unexpected_skips']) == unexpected
 
 
+def test_required_profile_accounts_for_every_test_under_xdist(tmp_path):
+    import xdist  # noqa: F401  (installed with the test extra; a missing plugin must fail)
+    (tmp_path / 'test_sample.py').write_text(
+        'import pytest\n'
+        'def test_a(): pass\n'
+        'def test_b(): pass\n'
+        'def test_skip(): pytest.skip("missing")\n')
+    report = tmp_path / 'checks.json'
+    env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
+    paths = [str(Path(__file__).resolve().parents[1])]
+    paths.extend(str(Path(part or '.').resolve())
+                 for part in env.get('PYTHONPATH', '').split(os.pathsep))
+    env['PYTHONPATH'] = os.pathsep.join(paths)
+    result = subprocess.run([
+        sys.executable, '-m', 'pytest', str(tmp_path), '-q', '-n', '2', '-p', 'xdist.plugin',
+        '-p', 'brainscore.validation.required_checks', '--umi-check-report', str(report),
+    ], cwd=tmp_path, env=env, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 1, result.stdout + result.stderr
+    evidence = json.loads(report.read_text())
+    assert len(evidence['selected']) == 3
+    assert len(evidence['passed']) == 2
+    assert len(evidence['unexpected_skips']) == 1
+
+
 def test_optional_permission_is_scoped_to_test_and_reason():
     from types import SimpleNamespace
     from brainscore.validation.required_checks import RequiredChecks

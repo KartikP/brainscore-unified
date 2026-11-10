@@ -14,7 +14,8 @@ def pytest_addoption(parser):
 
 def pytest_configure(config):
     output = config.getoption('--umi-check-report')
-    if output:
+    # pytest-xdist workers report to the controller; only the controller records.
+    if output and not hasattr(config, 'workerinput'):
         config.pluginmanager.register(
             RequiredChecks(output, config.getoption('--umi-repository')),
             'umi-required-checks',
@@ -33,6 +34,12 @@ class RequiredChecks:
 
     def pytest_collection_finish(self, session):
         self.selected = [item.nodeid for item in session.items]
+
+    @pytest.hookimpl(optionalhook=True)
+    def pytest_xdist_node_collection_finished(self, node, ids):
+        # With pytest-xdist the controller does not collect; every worker sends
+        # the same list.
+        self.selected = list(ids)
 
     def pytest_deselected(self, items):
         self.deselected.extend(item.nodeid for item in items)

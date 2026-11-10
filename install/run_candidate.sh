@@ -19,7 +19,7 @@
 #                    folder inside --work (for example --work/venvs). Used by
 #                    "all"; GitHub Actions uses its own Python.
 #   --job NAME       Export the environment of this workflow job (offline,
-#                    openpi-client, openpi-instrumentation). GitHub Actions
+#                    tutorials, openpi-client, openpi-instrumentation). GitHub Actions
 #                    sets the same values in the workflow; "all" uses this.
 #
 # Local paths are only read. prepare copies each one (HEAD commit and working
@@ -33,7 +33,9 @@
 #   prepare          Fetch or snapshot the four checkouts; record revisions.
 #   pins             Report pin agreement (install/check_pins.py).
 #   offline          verify build contents example torch install
-#                    installed-checks packages notebooks
+#                    installed-checks packages
+#   tutorials        verify build example torch install notebooks
+#                    (4 notebooks at a time; UMI_NOTEBOOK_JOBS changes that)
 #   openpi-client    verify-core openpi-client-install openpi-client-record
 #                    openpi-client-test
 #   openpi-instrumentation
@@ -96,7 +98,7 @@ die() { echo "run_candidate: $*" >&2; exit 1; }
 job_env() {
     export RESULTCACHING_DISABLE=1 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 BS_INSTALL_DEPENDENCIES=no
     case "$1" in
-        offline) export UMI_TEST_CPU_ONLY=1 ;;
+        offline|tutorials) export UMI_TEST_CPU_ONLY=1 ;;
         openpi-client) ;;
         openpi-instrumentation) export JAX_PLATFORMS=cpu UMI_TEST_CPU_ONLY=1 ;;
         *) die "unknown job: $1" ;;
@@ -419,7 +421,7 @@ phase_packages() {
 phase_notebooks() {
     cd "$TMP_DIR"
     "$PYTHON" -I -m brainscore.validation.notebooks --source "$WORK/unified/notebooks" \
-        --out "$QUAL/notebooks" --timeout 180
+        --out "$QUAL/notebooks" --timeout 180 --jobs "${UMI_NOTEBOOK_JOBS:-4}"
 }
 
 phase_openpi_client_install() {
@@ -478,7 +480,8 @@ phase_openpi_instrumentation_test() {
         2>&1 | tee "$QUAL/openpi-instrumentation.log"
 }
 
-OFFLINE_PHASES="verify build contents example torch install installed-checks packages notebooks"
+OFFLINE_PHASES="verify build contents example torch install installed-checks packages"
+NOTEBOOK_PHASES="verify build example torch install notebooks"
 CLIENT_PHASES="verify-core openpi-client-install openpi-client-record openpi-client-test"
 INSTRUMENTATION_PHASES="verify-core openpi-checkout openpi-torch openpi-instrumentation-install openpi-instrumentation-record openpi-instrumentation-test"
 
@@ -526,6 +529,7 @@ run_job() {
 for phase in "${PHASES[@]}"; do
     case "$phase" in
         offline) run_job offline "$OFFLINE_PHASES" ;;
+        tutorials) run_job tutorials "$NOTEBOOK_PHASES" ;;
         openpi-client) run_job openpi-client "$CLIENT_PHASES" ;;
         openpi-instrumentation) run_job openpi-instrumentation "$INSTRUMENTATION_PHASES" ;;
         all)
@@ -534,9 +538,10 @@ for phase in "${PHASES[@]}"; do
             phase_pins || echo 'warning: pin sites disagree (see the table above)' >&2
             summary=
             status=0
-            for job in offline openpi-client openpi-instrumentation; do
+            for job in offline tutorials openpi-client openpi-instrumentation; do
                 case "$job" in
                     offline) phases=$OFFLINE_PHASES ;;
+                    tutorials) phases=$NOTEBOOK_PHASES ;;
                     openpi-client) phases=$CLIENT_PHASES ;;
                     openpi-instrumentation) phases=$INSTRUMENTATION_PHASES ;;
                 esac

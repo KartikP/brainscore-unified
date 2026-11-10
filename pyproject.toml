@@ -57,6 +57,7 @@ test = [
     "pytest-check",
     "pytest-mock",
     "pytest-timeout",
+    "pytest-xdist",
     "matplotlib",
     "gymnasium",
     "minigrid",
@@ -100,6 +101,8 @@ markers = [
     "integration: marks tests as integration tests (slow, requires real components)",
     "unit: marks tests as unit tests (fast, isolated)",
     "slow: marks tests as slow running tests",
+    "serial: starts subprocesses or measures time; runs alone on one pytest-xdist worker",
+    "qualification: documented examples and qualification runs; push to v2 and nightly only",
 ]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
