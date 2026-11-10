@@ -73,10 +73,13 @@ def test_coggym_reference_profile_reset_and_leaderboard_policy(scored_reference,
     calls, resets = [], []
     candidate = build_trace_subject(
         'fixture', provider=lambda request: calls.append(request) or provider(request),
-        parse=str, provenance={}, reset=resets.append,
+        parse=str, provenance={},
     )
+    # The caller gives the provider's reset to the benchmark; it is never read
+    # from the subject (Contract Rule 2.2).
     benchmark = brainscore.load_benchmark(
         'CogGym.Hu2023Fine.exp1', checkout=root, output_dir=tmp_path / 'default',
+        reset=resets.append,
     )
     score = benchmark(candidate)
     assert benchmark.identifier == 'CogGym.Hu2023Fine.exp1'

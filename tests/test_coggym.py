@@ -9,7 +9,7 @@ import torch
 
 from brainscore.experiments import (
     Ablate, Experiment, RecordActivity, RecordInputsOutputs, TorchInstrumentation,
-    compare_outputs, replay_calls,
+    compare_outputs, replay_sessions,
 )
 from brainscore.harnesses import coggym
 from brainscore.model_helpers.response_trace import build_trace_subject
@@ -92,7 +92,8 @@ def test_requests_preserve_reference_arguments_without_scoring_targets(reference
     }
     assert all(len(call['messages']) == 1 for call in calls)
     assert result.manifest['status'] == 'complete'
-    requests = [event['payload']['args'][0] for event in result.record.events()
+    # Each provider call is recorded as a session input event, not a method call.
+    requests = [event['payload'] for event in result.record.events()
                 if event['kind'] == 'input']
     assert requests[0].t_ms is None
     assert requests[0].meta['matching_trial_ids'] == ['trial-0']
@@ -246,7 +247,7 @@ def test_real_hooks_record_ablate_restore_and_replay(reference, tmp_path):
     assert all((event['payload']['value']['array'] == 0).all() for event in activity)
     replay = Experiment(
         subject=subject,
-        protocol=replay_calls(baseline.directory, methods=['process'], reset=lambda subject: None),
+        protocol=replay_sessions(baseline.directory),
         tools=[RecordInputsOutputs()], output_dir=tmp_path / 'replay',
     ).run()
     assert compare_outputs(baseline.directory, replay.directory)['equal']

@@ -19,7 +19,8 @@ from typing import Any
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY, validate_slider_responses
 from brainscore_core.compatibility import check_channel_compatibility
-from brainscore_core.streaming import StreamEvent
+from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore.instrumentation import ObservedSession
 
 
 REFERENCE_REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
@@ -78,10 +79,17 @@ def _load_reference(checkout):
 
 
 class _SubjectProvider:
-    """Translate CogGym provider calls into the existing response-trace contract."""
+    """Translate CogGym provider calls into response-trace sessions.
 
-    def __init__(self, subject, repetition, experiment, prompt_trials, input_channel):
+    Each provider call is one session with one request event. The subject
+    answers through ``participate`` only (Contract Rule 1.1). The session is
+    wrapped in ``ObservedSession``, so attached tools record the request and
+    the answer as session events.
+    """
+
+    def __init__(self, subject, context, repetition, experiment, prompt_trials, input_channel):
         self.subject = subject
+        self.context = context
         self.experiment = experiment
         self.repetition = repetition
         self.call_index = 0
@@ -98,10 +106,14 @@ class _SubjectProvider:
                   'provider_call': self.call_index, 'matching_trial_ids': trial_ids},
         )
         self.call_index += 1
-        response = self.subject.process(event)
-        if not isinstance(response, StreamEvent) or response.channel != 'response_trace':
+        session = BufferedSession([event], requested_output_channels=('response_trace',))
+        self.subject.participate(ObservedSession(session, self.context))
+        responses = [response for response in session.emitted
+                     if isinstance(response, StreamEvent) and response.channel == 'response_trace']
+        if not responses:
             raise TypeError('CogGym needs a response_trace subject; use build_trace_subject')
-        raw = response.payload['raw']
+        # A streaming subject answers in fragments; the last one holds the complete answer.
+        raw = responses[-1].payload['raw']
         if not isinstance(raw.get('text'), str):
             raise TypeError('CogGym provider output must contain text: str')
         # These fields are part of CogGym's provider contract. Do not invent them.
@@ -239,17 +251,19 @@ class CogGymRunner:
                     path, producer='CogGym evaluator via UMI adapter',
                     description='Reference trial results, summary, and explicit run coverage',
                 )
-            # Translate CogGym provider calls into subject.process() calls.
+            # Translate CogGym provider calls into response-trace sessions.
             # This is where the external evaluator connects to UMI tools.
             return self._run(
                 lambda repetition: _SubjectProvider(
-                    subject, repetition, self.experiment, self._prompt_trials, self.input_channel,
+                    subject, context, repetition, self.experiment, self._prompt_trials,
+                    self.input_channel,
                 ),
                 context.directory / 'coggym', reset, register,
             )
 
+        # The provider records its own sessions, so no subject method is observed.
         return CallableProtocol(
-            f'coggym:{self.experiment}', evaluate, methods=['process'], metadata=self.describe(),
+            f'coggym:{self.experiment}', evaluate, methods=(), metadata=self.describe(),
         )
 
     def run(
