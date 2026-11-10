@@ -143,13 +143,13 @@ def _active(text: str) -> str:
     return '\n'.join(lines)
 
 
-def _token(value: str) -> str:
+def _clean(value: str) -> str:
     return value.strip().strip('\'"')
 
 
 def _matches(text: Optional[str], pattern: re.Pattern) -> list[Optional[str]]:
     """Return every distinct active ref; [None] when the file or entry is absent."""
-    values = sorted({_token(v) for v in pattern.findall(_active(text))}) if text is not None else []
+    values = sorted({_clean(v) for v in pattern.findall(_active(text))}) if text is not None else []
     return values or [None]
 
 
@@ -164,7 +164,7 @@ def _requirement_refs(text: Optional[str]) -> list[Optional[str]]:
     values = set()
     for line in REQUIREMENT_LINE.findall(_active(text)):
         match = REQUIREMENT_REF.search(line)
-        values.add(_token(match.group(1)) if match else line.strip())
+        values.add(_clean(match.group(1)) if match else line.strip())
     return sorted(values) or [None]
 
 

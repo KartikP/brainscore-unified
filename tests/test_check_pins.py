@@ -124,3 +124,32 @@ def test_mismatch_inside_one_workflow_fails(pins, tmp_path):
     root = _repositories(tmp_path)
     _write(root / 'core/.github/workflows/umi-v2.yml', _workflow(UNIFIED, field='c' * 40))
     assert _run(pins, root) == 1
+
+
+def test_github_read_sends_the_token(monkeypatch):
+    spec = importlib.util.spec_from_file_location('check_pins', SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, 'check_pins', module)
+    spec.loader.exec_module(module)
+    monkeypatch.setenv('GH_TOKEN', 'secret')
+    seen = {}
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self):
+            return b'text'
+
+    def urlopen(request, timeout):
+        seen['url'] = request.full_url
+        seen['authorization'] = request.get_header('Authorization')
+        return Response()
+
+    monkeypatch.setattr(module, 'urlopen', urlopen)
+    assert module.github_file('brain-score/core', 'v2', 'requirements-v2.txt') == 'text'
+    assert seen['authorization'] == 'Bearer secret'
+    assert seen['url'].endswith('/repos/brain-score/core/contents/requirements-v2.txt?ref=v2')
