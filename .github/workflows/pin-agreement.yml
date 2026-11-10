@@ -1,0 +1,46 @@
+name: pin agreement
+# Compare this unified revision's peer pins with the core, vision and language
+# pins (default: their unified-model-interface-v2 tips). The infrastructure
+# Jenkins pins are warnings; they need UMI_PIN_READ_TOKEN to be read.
+on:
+  push:
+    branches: [unified-model-interface-v2]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      core:
+        description: core ref (SHA or branch)
+        required: false
+        default: unified-model-interface-v2
+      vision:
+        description: vision ref (SHA or branch)
+        required: false
+        default: unified-model-interface-v2
+      language:
+        description: language ref (SHA or branch)
+        required: false
+        default: unified-model-interface-v2
+permissions:
+  contents: read
+jobs:
+  pins:
+    name: Pin agreement
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: unified
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check every pin site
+        env:
+          GH_TOKEN: ${{ secrets.UMI_PIN_READ_TOKEN || github.token }}
+          CORE_REF: ${{ github.event.inputs.core || 'unified-model-interface-v2' }}
+          VISION_REF: ${{ github.event.inputs.vision || 'unified-model-interface-v2' }}
+          LANGUAGE_REF: ${{ github.event.inputs.language || 'unified-model-interface-v2' }}
+        run: |
+          python -I unified/install/check_pins.py --unified unified \
+            --core "$CORE_REF" --vision "$VISION_REF" --language "$LANGUAGE_REF"

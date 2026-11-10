@@ -126,3 +126,13 @@ downloads are disabled. Cache-integrity tests enable their own temporary caches.
 
 This checks package contents and behavior. The separate new-user trial covers
 installation from the guide, first-time data access and the first benchmark run.
+
+## Check that the pins agree
+
+`check_pins.py` reads the core pin and the unified pin at every site and fails
+when they disagree:
+
+```bash
+python unified/install/check_pins.py --root /path/to/siblings
+python unified/install/check_pins.py --core <sha> --vision my-branch --language ../language
+```
