@@ -30,8 +30,9 @@ def test_job_environment_matches_the_workflow(tmp_path):
     for job in ('offline', 'openpi-client', 'openpi-instrumentation'):
         result = _run('--job', job, 'print-env', work=tmp_path / 'work')
         assert result.returncode == 0, result.stderr
+        # Skip the "==> print-env" phase header.
         printed = dict(line.split('=', 1) for line in result.stdout.splitlines()
-                       if '=' in line)
+                       if '=' in line and not line.startswith('==>'))
         assert printed == {key: str(value) for key, value in jobs[job]['env'].items()}, job
 
 
