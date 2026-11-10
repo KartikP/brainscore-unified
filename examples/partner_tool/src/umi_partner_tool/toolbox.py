@@ -29,7 +29,7 @@ from brainscore.experiments import (
 from brainscore_core.contract import Subject
 from brainscore_core.environment import ArraySpec, MappingSpec
 from brainscore_core.events import EnvironmentResponse, EnvironmentStep
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.streaming import BufferedSession, Session, StreamEvent
 from brainscore_core.streaming_helpers import EnvironmentSession
 from brainscore_core.supported_data_standards.brainio.assemblies import (

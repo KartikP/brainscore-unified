@@ -44,7 +44,7 @@ from brainscore.model_helpers.local_vlm_policy import (
 )
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore_core.events import EnvironmentResponse, Selection
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.streaming_helpers import EnvironmentSession
 
 from example_qualification import (

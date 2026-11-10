@@ -128,7 +128,7 @@ Writing `participate` by hand works for anything. For neural networks, `BrainSco
 | `intervention` | Your function that applies a perturbation and returns how to undo it. | `lesion`, `stimulation` in |
 
 ```python
-from brainscore_core import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
 model = BrainScoreModel(

@@ -29,7 +29,8 @@ from brainscore.experiments import (
 from brainscore.experiments.backends import socket_deadline
 from brainscore.experiments._storage import check_output_directory
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
-from brainscore_core.model_interface import BrainScoreModel, UnifiedModel
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import UnifiedModel
 from brainscore_core.events import EnvironmentStep, Selection
 
 RECEIPT_PROTOCOL = 'brainscore.libero.receipt.v1'

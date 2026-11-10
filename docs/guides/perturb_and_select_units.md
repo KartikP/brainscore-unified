@@ -13,7 +13,8 @@ Three objects describe a perturbation:
 A `BrainScoreModel` applies them through its `intervention` part. For PyTorch networks, build one with forward hooks:
 
 ```python
-from brainscore_core import BrainScoreModel, Perturbation, Selection, StateChange
+from brainscore import BrainScoreModel
+from brainscore_core import Perturbation, Selection, StateChange
 from brainscore.perturbation import build_pytorch_ablation_fn
 
 model = BrainScoreModel(identifier='my-cnn', model=net, extractor={'vision': vision},
@@ -57,7 +58,7 @@ Use held-out stimuli for the localizer and for the test, and several random seed
 ## Regions from several layers
 
 ```python
-from brainscore_core import CompositeSelector
+from brainscore import CompositeSelector
 
 region_layer_map = {'IT': CompositeSelector(layers=(('layer3', (0, 1, 2)), ('layer4', None)))}
 ```

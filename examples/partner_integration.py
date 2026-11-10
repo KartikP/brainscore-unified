@@ -16,7 +16,7 @@ from brainscore.perturbation import build_pytorch_ablation_fn
 from brainscore.harnesses.robotics import ActionSpec, droid_steps, evaluate_droid_episode
 from brainscore.run_record import RunRecord, RunRecorder
 from brainscore_core.events import EnvironmentResponse, StateChange, Selection, Perturbation
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 
 
 def demo(out):

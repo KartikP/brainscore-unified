@@ -73,7 +73,7 @@ A model is one `BrainScoreModel` construction. The optional slots decide which d
 can take (see the architecture map at https://brain-score.github.io/public/UMI/architecture.html for the full router):
 
 ```python
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore import model_registry
 
 def get_model():
@@ -184,7 +184,7 @@ There are two related extension levels:
    reaches it.
 2. **Add a new capability.** In your own package, define typed payloads,
    register their channels with `register_channel`, subclass
-   `brainscore_core.capabilities.Capability` and register it once with
+   `brainscore.capabilities.Capability` and register it once with
    `register_capability`. Models opt in through `capability_config`. No core
    edit is needed.
 

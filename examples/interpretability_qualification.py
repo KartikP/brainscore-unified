@@ -20,7 +20,7 @@ from brainscore.experiments import Experiment, SessionProtocol, TorchInstrumenta
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, load_tool
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.events import Selection
 from brainscore_core.streaming import BufferedSession
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
