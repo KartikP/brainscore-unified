@@ -59,6 +59,29 @@ def test_preflight_builds_taskprotocol_and_recorders_without_running_subject(sub
     assert calls == []
 
 
+def test_passive_export_matches_gui_without_response_labels(subject, tmp_path):
+    from dataclasses import asdict
+    from umi_lab.python_export import python_source
+    from umi_lab.workbench import same_output
+    model, calls = subject
+    configuration = spec(task={'kind': 'passive', 'labels': ['yes', 'no']},
+                         measurements={'behavior': False, 'regions': ['IT']})
+    passive_request = request(configuration)
+    passive_request.fitting_rows = []
+    source = python_source({'kind': 'workbench', 'subject': model.identifier,
+                            'model_source': 'registered', 'request': asdict(passive_request)})
+    namespace = {'__name__': 'exported_experiment', '__file__': str(tmp_path / 'experiment.py')}
+    exec(compile(source, 'experiment.py', 'exec'), namespace)
+    generated = namespace['build_experiment'](model, tmp_path / 'generated', tmp_path)
+    gui, _, _ = build_protocol(model, passive_request, tmp_path, tmp_path / 'gui')
+    assert generated.protocol.task.label_set is None
+    assert gui.protocol.task.label_set is None
+    assert 'label_set=' not in source
+    assert 'umi-lab-protocol-builder-v1' not in source
+    assert calls == []
+    assert same_output(generated.run().value, gui.run().value)
+
+
 def test_protocol_matches_manual_session_and_collects_neural_and_behavior_once(subject, tmp_path):
     from brainscore_core.streaming import BufferedSession
     from brainscore.experiments import ExperimentResult

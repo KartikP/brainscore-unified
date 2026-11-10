@@ -166,7 +166,7 @@ def build_protocol(subject: Any, request: Any, uploads: Path, directory: Path | 
                 raise ValueError("Choice fitting examples need at least two classes drawn from the response labels")
     task = TaskContext(task_type="passive" if kind == "passive" else "probabilities" if kind == "legacy" else None,
                        instruction=settings["instruction"] or None, response=response,
-                       label_set=settings["labels"] or None, fitting_stimuli=fitting,
+                       label_set=(settings["labels"] or None) if kind != "passive" else None, fitting_stimuli=fitting,
                        prefer_path=settings["path"], readout_fit=settings["readout_fit"],
                        present=tuple(settings["present"]) or None)
     if kind != "passive":
@@ -204,8 +204,7 @@ def build_protocol(subject: Any, request: Any, uploads: Path, directory: Path | 
     protocol = TaskProtocol(stimuli, task, identifier=spec.identifier,
                             conditions=[condition["name"] for condition in spec.conditions],
                             repetitions=tuple(range(spec.repetitions)), required_traits=spec.required_traits)
-    experiment = Experiment(subject=subject, protocol=protocol, tools=tools, output_dir=directory,
-                            metadata={"interface": "umi-lab-protocol-builder-v1"})
+    experiment = Experiment(subject=subject, protocol=protocol, tools=tools, output_dir=directory)
     return experiment, spec, notes
 
 
