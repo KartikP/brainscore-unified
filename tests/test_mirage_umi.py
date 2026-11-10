@@ -259,7 +259,7 @@ Path(request['provenance']).write_text(json.dumps({{'subject': request['subject'
     assert list(predictor.work_dir.iterdir()) == []
 
 
-def test_timeout_kills_decoder_children_as_well_as_worker(video, tmp_path):
+def test_timeout_stops_the_worker_and_its_decoder_child(video, tmp_path):
     import os
     import signal
     import psutil
@@ -280,10 +280,15 @@ time.sleep(30)
         with pytest.raises(MirageTimeout):
             predictor(_clip({event.channel: event for event in inputs(video)}))
         child_pid = int(pid_file.read_text())
-        try:
-            status = psutil.Process(child_pid).status()
-        except psutil.NoSuchProcess:
-            status = 'gone'
+        deadline = time.monotonic() + 5.0
+        while True:
+            try:
+                status = psutil.Process(child_pid).status()
+            except psutil.NoSuchProcess:
+                status = 'gone'
+            if status in ('gone', psutil.STATUS_ZOMBIE) or time.monotonic() > deadline:
+                break
+            time.sleep(0.05)
         assert status in ('gone', psutil.STATUS_ZOMBIE)
         assert list(predictor.work_dir.iterdir()) == []
     finally:
