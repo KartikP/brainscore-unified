@@ -15,18 +15,21 @@
 #   --vision VALUE   branch or tag). A peer without a value uses the pin in
 #   --language VALUE unified/install/peer-revisions.json. Unified without a
 #   --unified VALUE  value uses the checkout that holds this script.
-#   --venv DIR       Create a fresh virtual environment per job under DIR
-#                    (used by "all"; GitHub Actions uses its own Python).
+#   --venv DIR       Create a fresh virtual environment per job under DIR, a
+#                    folder inside --work (for example --work/venvs). Used by
+#                    "all"; GitHub Actions uses its own Python.
 #   --job NAME       Export the environment of this workflow job (offline,
 #                    openpi-client, openpi-instrumentation). GitHub Actions
 #                    sets the same values in the workflow; "all" uses this.
 #
-# Local paths are never deleted or modified. They must lie outside --work,
-# and --work must lie outside them. Only clones that this script created
-# under --work are reset, cleaned or removed.
+# Local paths are only read. prepare copies each one (HEAD commit and working
+# tree, including uncommitted files) into a snapshot under --work; builds and
+# Git commands run on the snapshots. Local paths must lie outside --work and
+# --venv, and --work and --venv must lie outside them. Only snapshots and clones
+# that this script created under --work are reset, cleaned or removed.
 #
 # Phases (in the order "all" runs them):
-#   prepare          Fetch or link the four checkouts and record revisions.
+#   prepare          Fetch or snapshot the four checkouts; record revisions.
 #   pins             Report pin agreement (install/check_pins.py).
 #   offline          verify build contents example torch install
 #                    installed-checks packages notebooks
@@ -44,7 +47,7 @@
 #   print-env        Print the environment of --job (used by the tests).
 #
 # Example on a development machine (test four branch tips together):
-#   install/run_candidate.sh --work ~/umi-candidate --venv ~/umi-venvs \
+#   install/run_candidate.sh --work ~/umi-candidate --venv ~/umi-candidate/venvs \
 #     --core brain-score/core@my-branch --vision ~/src/vision \
 #     --language brain-score/language@<sha> --unified ~/src/unified all
 
@@ -78,7 +81,7 @@ while [ $# -gt 0 ]; do
         --vision) VISION=$2; shift 2 ;;
         --language) LANGUAGE=$2; shift 2 ;;
         --unified) UNIFIED=$2; shift 2 ;;
-        -h|--help) sed -n '2,48p' "$SELF"; exit 0 ;;
+        -h|--help) sed -n '2,53p' "$SELF"; exit 0 ;;
         -*) echo "Unknown option: $1" >&2; exit 2 ;;
         *) PHASES+=("$1"); shift ;;
     esac
@@ -131,18 +134,47 @@ check_user_path() {
     fi
 }
 
-WORK=$(planned_path "$WORK")
-# Check every local path before anything is created or changed, including
-# --work itself. GitHub Actions never runs prepare: its checkouts are in --work.
+# A '.' or '..' component could make the planned path differ from the folder
+# that is finally used, so such paths are refused. The remaining components
+# are plain names, and planned_path resolves every existing part physically.
+physical_path() {
+    case "/$1/" in
+        */./*|*/../*) die "$2 must not contain '.' or '..' components: $1" ;;
+    esac
+    planned_path "$1"
+}
+
+WORK=$(physical_path "$WORK" --work)
+[ -z "$VENV" ] || VENV=$(physical_path "$VENV" --venv)
+# Local checkouts are only read: prepare copies each one into a snapshot under
+# --work, and every build and Git command runs on the snapshot. Check every
+# local path before anything is created. GitHub Actions never runs prepare:
+# its checkouts are already in --work and belong to the runner.
 case " ${PHASES[*]} " in
     *" prepare "*|*" all "*)
         for value in "${UNIFIED:-$SCRIPT_UNIFIED}" "$CORE" "$VISION" "$LANGUAGE"; do
             if [ -n "$value" ] && [ -d "$value" ]; then
                 check_user_path "$value"
+                if [ -n "$VENV" ] && { inside "$VENV" "$(canonical "$value")" || inside "$(canonical "$value")" "$VENV"; }; then
+                    die "--venv $VENV overlaps local path $value"
+                fi
             fi
         done
         ;;
 esac
+# Virtual environments live in their own folder under --work, apart from the
+# snapshots and outputs, so --clear can only remove an earlier environment.
+if [ -n "$VENV" ]; then
+    case "$VENV" in
+        "$WORK"/*) ;;
+        *) die "--venv must be a folder inside --work ($WORK)" ;;
+    esac
+    venv_top=${VENV#"$WORK"/}
+    venv_top=${venv_top%%/*}
+    case " core vision language unified openpi wheels example-wheels qualification tmp " in
+        *" $venv_top "*) die "--venv must not be inside $WORK/$venv_top" ;;
+    esac
+fi
 mkdir -p "$WORK"
 RECORD=$WORK/qualification/revisions.json
 QUAL=${UMI_QUALIFICATION:-$WORK/qualification}
@@ -197,14 +229,31 @@ repository_of() {
     esac
 }
 
-# Link a local path (checked by check_user_path first), or fetch a ref.
-place() {
-    local name=$1 value=$2 dest repository ref
+# Copy a local checkout into a snapshot under --work. The source is only read:
+# "git rev-parse" and a local "git clone" read its repository, and tar reads
+# its files. The snapshot has the same HEAD commit and the same working tree,
+# including uncommitted and untracked files, so all later builds and Git
+# commands run on the snapshot and never on the source.
+snapshot() {
+    local name=$1 source dest revision
+    source=$(canonical "$2")
     dest=$(managed_path "$name")
+    revision=$(GIT_OPTIONAL_LOCKS=0 git -C "$source" rev-parse --verify HEAD) \
+        || die "$source is not a Git checkout with a commit"
+    remove_entry "$name"
+    GIT_OPTIONAL_LOCKS=0 git clone -q --no-hardlinks --no-checkout -- "$source" "$dest"
+    touch "$dest/.git/umi-managed"
+    git -C "$dest" checkout -q --detach "$revision"
+    find "$dest" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+    (cd "$source" && tar -cf - --exclude=./.git --exclude=.git .) | (cd "$dest" && tar -xf -)
+    [ "$(git -C "$dest" rev-parse HEAD)" = "$revision" ] || die "snapshot of $source has the wrong HEAD"
+}
+
+# Snapshot a local path (checked by check_user_path first), or fetch a ref.
+place() {
+    local name=$1 value=$2 repository ref
     if [ -d "$value" ]; then
-        value=$(canonical "$value")
-        remove_entry "$name"
-        ln -s "$value" "$dest"
+        snapshot "$name" "$value"
         return
     fi
     repository=$(repository_of "$name")
