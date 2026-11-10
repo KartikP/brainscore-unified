@@ -33,7 +33,8 @@ dependencies:
       - importlib-metadata==4.13.0
       # Language data loading (e.g. wikitext) imports `datasets`; without it the
       # language data path ModuleNotFoundErrors.
-      - datasets==5.0.0
+      # The legacy wikitext plugin requires datasets 2.*.
+      - datasets==2.21.0
       # Test runner, so the documented `pytest tests/` commands work on a fresh env.
       - pytest
       # Hold every transitive dependency (pyarrow, torch, ...) to the tested versions;
