@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#f4f5f6">
+  <meta name="theme-color" content="#f3efe6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#121c2c" media="(prefers-color-scheme: dark)">
   <title>UMI Lab</title>
   <link rel="stylesheet" href="/style.css">
   <script type="module" src="/main.js"></script>
@@ -14,12 +15,21 @@
     <div class="top-meta"><span class="local-dot"></span> Local workspace <span class="version">v0.1</span></div>
   </header>
   <main>
-    <section class="page-heading">
-      <div><h1>Experiment workspace</h1><p class="intro">Configure a subject, run a session, inspect the results.</p></div>
-    </section>
+        <section class="panel bench" id="bench" aria-label="Experiment bench; drop tools here">
+          <div class="bench-top"><div><h1>Experiment record</h1><p class="intro">Configure a subject, run a session, inspect the results.</p></div><span class="status-pill" id="run-status"><i></i> Preparing</span></div>
+          <div class="lab-scene"><canvas id="lab-canvas" width="800" height="360" role="img" aria-label="Pixel art laboratory showing a model subject at an experiment station"></canvas><div class="scene-caption"><span class="scene-coordinate">UMI / Lab 01</span><span id="scene-state">AWAITING SUBJECT</span></div></div>
+          <div class="lab-progress" id="lab-progress" hidden>
+            <p id="lab-activity" role="status" aria-live="polite"></p>
+            <progress id="experiment-progress" aria-label="Overall experiment progress"></progress>
+            <p id="lab-progress-detail" class="subtle"></p>
+          </div>
+          <div class="attached-row"><span class="attached-label">Attached tools</span><div id="attached-tools"></div><span class="drop-hint" id="drop-hint">Drop a tool here</span></div>
+          <div class="condition-strip" id="conditions" aria-label="Experiment conditions"></div>
+          <div class="run-controls"><p id="run-help">Start with a baseline, or attach an ablation tool to compare conditions.</p><button class="secondary" id="stop" hidden>Stop after trial</button><button class="primary" id="run" disabled>Run experiment</button></div>
+          <p id="error" class="error" role="alert" hidden></p>
+        </section>
     <div class="workspace">
       <aside class="setup">
-        <nav class="panel protocol-nav" id="protocol-nav" aria-label="Protocol setup"><h2>Protocol setup</h2><button data-protocol-nav="0" aria-current="step"><span>1</span> Subject</button><button data-protocol-nav="1"><span>2</span> Stimuli</button><button data-protocol-nav="2"><span>3</span> Task and response</button><button data-protocol-nav="3"><span>4</span> Recordings</button><button data-protocol-nav="4"><span>5</span> Conditions</button><button data-protocol-nav="5"><span>6</span> Review and run</button></nav>
         <section class="panel subject-panel">
           <div class="section-label"><h2>Subject</h2><span class="tiny-label" id="subject-status">Loading</span></div>
           <div id="legacy-model-host"><div class="model-loader" id="model-loader"><label for="model-search">Find a model</label><div class="model-search-row"><input type="search" id="model-search" placeholder="Type qwen, gpt, resnet..." autocomplete="off" aria-controls="model-id" disabled><button type="button" id="model-search-clear" class="secondary" aria-label="Clear model search" hidden>Clear</button></div><p class="subtle model-search-status" id="model-search-status" role="status" aria-live="polite">Reading model names...</p><label for="model-id">Registered model</label><select id="model-id" disabled><option value="">Loading model catalog...</option></select><div class="loader-buttons"><button id="load-model" class="primary" disabled>Load subject</button><button id="load-calibration" class="secondary">Calibration circuit</button></div><p class="subtle" id="catalog-count">Reading the model and benchmark registries...</p></div></div>
@@ -49,8 +59,20 @@
       <div class="experiment-column">
         <section class="panel experiment-editor">
           <div class="editor-heading"><div class="section-label"><h2 id="editor-title">Protocol</h2></div><button class="primary" id="run-editor" disabled>Run experiment</button></div>
-          <div class="mode-tabs" role="tablist" aria-label="Experiment workflow"><button data-mode="protocol" role="tab" aria-selected="true">Protocol</button><button data-mode="benchmark" role="tab" aria-selected="false">Benchmark</button><button data-mode="stimuli" role="tab" aria-selected="false">Quick session</button><button data-mode="session" role="tab" aria-selected="false">Event JSON</button><button data-mode="calibration" role="tab" aria-selected="false">Calibration</button></div>
+          <div class="mode-tabs" role="group" aria-label="Experiment workflow">
+            <button type="button" data-mode="protocol" aria-pressed="true">Protocol</button>
+            <details id="workflow-more" class="workflow-more">
+              <summary id="workflow-more-label">More</summary>
+              <div class="workflow-options" role="group" aria-label="More workflows">
+                <button type="button" data-mode="benchmark" aria-pressed="false">Benchmark</button>
+                <button type="button" data-mode="stimuli" aria-pressed="false">Quick session</button>
+                <button type="button" data-mode="session" aria-pressed="false">Event JSON</button>
+                <button type="button" data-mode="calibration" aria-pressed="false">Calibration</button>
+              </div>
+            </details>
+          </div>
           <div id="protocol-editor">
+            <nav class="protocol-nav" id="protocol-nav" aria-label="Protocol setup"><button data-protocol-nav="0" aria-current="step"><span>1</span> Subject</button><button data-protocol-nav="1"><span>2</span> Stimuli</button><button data-protocol-nav="2"><span>3</span> Task</button><button data-protocol-nav="3"><span>4</span> Recordings</button><button data-protocol-nav="4"><span>5</span> Conditions</button><button data-protocol-nav="5"><span>6</span> Review</button></nav>
             <p class="protocol-position" id="protocol-step-position">1 / 6 · Subject</p>
             <section data-protocol-step="0"><h3>Choose a subject</h3><p class="editor-note">Its declarations determine which inputs, responses and recording sites are available. Loading a model does not run the protocol.</p><label for="protocol-name">Protocol name</label><input id="protocol-name" value="my-protocol"><div id="protocol-model-host"></div></section>
             <section data-protocol-step="1" hidden><h3>Prepare the stimuli</h3><p class="editor-note">One row is one trial. Keep stimulus factors, such as noise or word length, as columns in the table. Fitting examples are supplied separately in the task step.</p><div id="protocol-stimuli-host"></div></section>
@@ -80,19 +102,6 @@ A scientist measures the model's response.</textarea></div>
           <div id="calibration-editor" hidden><p class="editor-note">The engineered comparison circuit verifies recording, selective ablation, a random control, and exact restoration. Load it with the Calibration circuit button.</p></div>
           <details id="intervention-editor"><summary>Intervention settings</summary><p class="subtle">Uses the subject's declared lesion or stimulation channel. Baseline, intervention, and restored conditions run independently. Addresses refer to module outputs; append :input for a module's input.</p><label class="check-label"><input type="checkbox" id="custom-intervention"> Enable intervention</label><div class="editor-grid"><div><label for="intervention-target">Target address</label><input id="intervention-target" placeholder="model.layers.14.mlp.down_proj:input"></div><div><label for="intervention-indices">Unit indices (blank = whole target)</label><input id="intervention-indices" placeholder="0,1,2,3"></div><div><label for="intervention-operation">Operation</label><select id="intervention-operation"><option value="zero">Ablate / zero</option><option value="scale">Scale activity</option><option value="drive">Drive / add activity</option></select></div><div><label for="intervention-value">Scale factor / additive amount</label><input type="number" id="intervention-value" value="0" step="0.1"></div></div></details>
           <p class="editor-note" id="workflow-help">Load a registered model, then choose its declared output channel. Inputs and outputs are saved as experiment artifacts.</p>
-        </section>
-        <section class="panel bench" id="bench" aria-label="Experiment bench; drop tools here">
-          <div class="bench-top"><div><h2>Lab</h2></div><span class="status-pill" id="run-status"><i></i> Preparing</span></div>
-          <div class="lab-scene"><canvas id="lab-canvas" width="800" height="360" role="img" aria-label="Pixel art laboratory showing a model subject at an experiment station"></canvas><div class="scene-caption"><span class="scene-coordinate">UMI / Lab 01</span><span id="scene-state">AWAITING SUBJECT</span></div></div>
-          <div class="lab-progress" id="lab-progress" hidden>
-            <p id="lab-activity" role="status" aria-live="polite"></p>
-            <progress id="experiment-progress" aria-label="Overall experiment progress"></progress>
-            <p id="lab-progress-detail" class="subtle"></p>
-          </div>
-          <div class="attached-row"><span class="attached-label">Attached tools</span><div id="attached-tools"></div><span class="drop-hint" id="drop-hint">Drop a tool here</span></div>
-          <div class="condition-strip" id="conditions" aria-label="Experiment conditions"></div>
-          <div class="run-controls"><p id="run-help">Start with a baseline, or attach an ablation tool to compare conditions.</p><button class="secondary" id="stop" hidden>Stop after trial</button><button class="primary" id="run" disabled>Run experiment</button></div>
-          <p id="error" class="error" role="alert" hidden></p>
         </section>
         <section class="panel results">
           <div class="results-heading"><div><h2>Experiment review</h2></div><span class="tiny-label" id="result-time">No run yet</span></div>

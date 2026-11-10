@@ -25,6 +25,7 @@ export const requestedOutput = () => $<HTMLSelectElement>(mode === 'session' ? '
 
 function chooseMode(value: Mode): void {
   mode = value;
+  $<HTMLDetailsElement>('workflow-more').open = false;
   callbacks.changed();
 }
 
@@ -220,9 +221,11 @@ export function updateWorkbench(state: Info, busy: boolean): void {
   }
   if (profile && !restoredForm) { restoredForm = true; restoreRequest(state.run?.request); }
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => {
-    button.setAttribute('aria-selected', String(button.dataset.mode === mode));
+    button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
     button.disabled = busy || (button.dataset.mode === 'calibration' && !profile?.calibration);
   });
+  const activeMode = document.querySelector<HTMLButtonElement>('[data-mode][aria-pressed="true"]');
+  $('workflow-more-label').textContent = mode === 'protocol' ? 'More' : `More: ${activeMode?.textContent || mode}`;
   for (const item of ['protocol', 'benchmark', 'stimuli', 'session', 'calibration']) $(`${item}-editor`).hidden = item === 'stimuli' ? !['protocol', 'stimuli'].includes(mode) : item !== mode;
   const modelHost = $(mode === 'protocol' ? 'protocol-model-host' : 'legacy-model-host');
   if ($('model-loader').parentElement !== modelHost) modelHost.append($('model-loader'));
@@ -337,6 +340,16 @@ export function initializeWorkbench(api: Callbacks): void {
     finally { downloadPolicyPending = false; callbacks.changed(); }
   };
   document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach(button => { button.onclick = () => chooseMode(button.dataset.mode as Mode); });
+  const workflowMore = $<HTMLDetailsElement>('workflow-more');
+  document.addEventListener('click', event => {
+    if (event.target instanceof Node && !workflowMore.contains(event.target)) workflowMore.open = false;
+  });
+  workflowMore.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      workflowMore.open = false;
+      $('workflow-more-label').focus();
+    }
+  });
   const load = async (identifier: string) => {
     try { callbacks.error(''); await callbacks.post('/api/model', { identifier }); callbacks.loading(); }
     catch (problem) { callbacks.error(String(problem)); }

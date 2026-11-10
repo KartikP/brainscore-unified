@@ -20,6 +20,7 @@ export const customIntervention = () => mode !== 'benchmark' && mode !== 'calibr
 export const requestedOutput = () => $(mode === 'session' ? 'session-output' : 'output-channel').value;
 function chooseMode(value) {
     mode = value;
+    $('workflow-more').open = false;
     callbacks.changed();
 }
 function options(id, values, previous = '') {
@@ -285,9 +286,11 @@ export function updateWorkbench(state, busy) {
         restoreRequest(state.run?.request);
     }
     document.querySelectorAll('[data-mode]').forEach(button => {
-        button.setAttribute('aria-selected', String(button.dataset.mode === mode));
+        button.setAttribute('aria-pressed', String(button.dataset.mode === mode));
         button.disabled = busy || (button.dataset.mode === 'calibration' && !profile?.calibration);
     });
+    const activeMode = document.querySelector('[data-mode][aria-pressed="true"]');
+    $('workflow-more-label').textContent = mode === 'protocol' ? 'More' : `More: ${activeMode?.textContent || mode}`;
     for (const item of ['protocol', 'benchmark', 'stimuli', 'session', 'calibration'])
         $(`${item}-editor`).hidden = item === 'stimuli' ? !['protocol', 'stimuli'].includes(mode) : item !== mode;
     const modelHost = $(mode === 'protocol' ? 'protocol-model-host' : 'legacy-model-host');
@@ -430,6 +433,17 @@ export function initializeWorkbench(api) {
         }
     };
     document.querySelectorAll('[data-mode]').forEach(button => { button.onclick = () => chooseMode(button.dataset.mode); });
+    const workflowMore = $('workflow-more');
+    document.addEventListener('click', event => {
+        if (event.target instanceof Node && !workflowMore.contains(event.target))
+            workflowMore.open = false;
+    });
+    workflowMore.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            workflowMore.open = false;
+            $('workflow-more-label').focus();
+        }
+    });
     const load = async (identifier) => {
         try {
             callbacks.error('');
