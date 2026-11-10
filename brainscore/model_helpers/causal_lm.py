@@ -19,8 +19,8 @@ import json
 from copy import deepcopy
 from typing import Any, Mapping, Optional
 
-from brainscore_core.capabilities.registry import register_capability
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore.capabilities.registry import register_capability
+from brainscore import BrainScoreModel
 
 from brainscore.model_helpers.response_trace import _capability, register_trace_channels
 from brainscore.model_helpers.text_wrapper import TextWrapper

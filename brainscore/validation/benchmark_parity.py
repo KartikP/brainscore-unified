@@ -264,7 +264,7 @@ def _compare_snapshots(actual, reference, *, route, case, native_atol, pereira, 
 def _validate_case(case, candidate_factory, benchmark_loader, *,
                    native_atol, score_atol, policy, directory):
     from brainscore import load_benchmark
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore_language.compat.unified_adapter import LanguageModelAdapter
     from brainscore_vision.compat.unified_adapter import VisionModelAdapter
     if os.environ.get('RESULTCACHING_DISABLE') != '1':
@@ -404,7 +404,7 @@ def local_candidate(case, route, *, language_precision='float32', execution_obse
     UMI_PARITY_GPT2 is a local Hugging Face GPT-2 model/tokenizer directory.
     These models test interface parity; they are not scientific layer mappings.
     """
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     def finish(subject, net):
         if execution_observer is not None:
             execution_observer({

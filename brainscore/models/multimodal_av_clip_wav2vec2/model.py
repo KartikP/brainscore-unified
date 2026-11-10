@@ -23,7 +23,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from brainscore_core.model_interface import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel, LayerSelector
 
 
 from ._ids import SUPPORTED_IDENTIFIERS

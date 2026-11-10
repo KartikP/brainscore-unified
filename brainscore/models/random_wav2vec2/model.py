@@ -16,7 +16,7 @@ audio contribution.
 import numpy as np
 import torch
 
-from brainscore_core.model_interface import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel, LayerSelector
 
 
 AUDIO_HF_ID = 'facebook/wav2vec2-base'

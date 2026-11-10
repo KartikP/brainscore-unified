@@ -51,10 +51,9 @@ from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.metrics import Score
-from brainscore_core.selection import selection_unit_indices, selection_coordinates
-from brainscore_core.model_interface import (
-    StateChange, Selection, Perturbation, RandomSelection,
-)
+from brainscore.selection import selection_unit_indices, selection_coordinates
+from brainscore import RandomSelection
+from brainscore_core.model_interface import StateChange, Selection, Perturbation
 from brainscore_core.streaming_helpers import apply_state_change, neural_response
 
 from ..roar_yeatman2021.benchmark import (

@@ -17,7 +17,7 @@ import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore.harnesses.grid_game import (
     GridGameEnv, play_game, greedy_oracle_policy, random_action_policy,
 )

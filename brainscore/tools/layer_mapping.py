@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from brainscore_core.model_interface import CompositeSelector
+from brainscore import CompositeSelector
 
 
 def _per_voxel_pearson(Y_true: np.ndarray, Y_pred: np.ndarray) -> np.ndarray:

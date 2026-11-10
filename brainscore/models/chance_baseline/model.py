@@ -16,9 +16,8 @@ from typing import Any, Dict, Set
 import numpy as np
 import pandas as pd
 
-from brainscore_core.model_interface import (
-    BrainScoreModel, EnvironmentStep, StateChange, UnifiedModel, TaskContext,
-)
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import EnvironmentStep, StateChange, UnifiedModel, TaskContext
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly,
 )

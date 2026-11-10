@@ -16,8 +16,8 @@ Needs transformers 5 (``qwen3_5``) and about 56 GB of accelerator memory in
 bf16; weights are placed automatically across the available devices.
 """
 
-from brainscore_core.brainscore_model import BrainScoreModel
-from brainscore_core.model_interface import LayerSelector
+from brainscore.brainscore_model import BrainScoreModel
+from brainscore import LayerSelector
 
 HF_IDENTIFIER = 'Qwen/Qwen3.6-27B'
 
