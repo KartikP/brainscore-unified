@@ -1,4 +1,4 @@
-"""EWoK accuracy through process(), with ordinary Experiment tools."""
+"""EWoK accuracy through participate(), with ordinary Experiment tools."""
 from collections import defaultdict
 import hashlib
 import json
@@ -11,8 +11,9 @@ from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
-from brainscore_core.streaming import StreamEvent
+from brainscore_core.streaming import BufferedSession, StreamEvent
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
+from brainscore.instrumentation import ObservedSession
 from brainscore.model_helpers.response_trace import register_trace_channels
 
 
@@ -32,6 +33,22 @@ def logprob_accuracy(values: list[float]) -> float:
     def compare(a, b):
         return 1.0 if a > b else 0.5 if a == b else 0.0
     return (compare(values[0], values[1]) + compare(values[3], values[2])) / 2
+
+
+def _ask(subject: Subject, context, request: StreamEvent) -> StreamEvent:
+    """Send one request through ``participate`` and return the subject's answer.
+
+    The session holds the one request and asks for ``response_trace``. The
+    experiment context records the input and every response. A streaming
+    provider sends fragments; the last one carries the final answer, and an
+    unfinished stream is not valid.
+    """
+    session = BufferedSession([request], requested_output_channels=('response_trace',))
+    subject.participate(ObservedSession(session, context))
+    responses = [event for event in session.emitted if event.channel == 'response_trace']
+    if not responses:
+        raise TypeError('EWoK requires a response_trace event')
+    return responses[-1]
 
 
 def _mean_by_version(rows: list[dict]) -> tuple[float, dict]:
@@ -131,9 +148,9 @@ class EWoKBenchmark(BenchmarkBase):
                             contexts2=[r['Context2'] for r in batch],
                             gen_type='constrained', prompt_type='optimized',
                         )
-                    # Route through the subject so tools can observe or intervene.
+                    # Route through participate so tools can observe or intervene.
                     # Expected answers and target-number labels stay in the benchmark.
-                    response = subject.process(StreamEvent(
+                    response = _ask(subject, context, StreamEvent(
                         next(iter(self.required_input_channels)), request, None,
                         {'trial_ids': [r['item_id'] for r in batch]},
                     ))
@@ -192,7 +209,9 @@ class EWoKBenchmark(BenchmarkBase):
         return CallableProtocol(
             self.identifier,
             evaluate,
-            methods=['process'],  # Expose model calls to the attached tools.
+            # No method is observed: each session is recorded through
+            # ObservedSession in _ask, one input and one output per request.
+            methods=(),
             metadata={
                 'protocol': self._mode, 'dataset': self._manifest,
                 'items': len(self._rows), 'batch_size': self._batch_size,

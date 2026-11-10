@@ -15,6 +15,7 @@ from brainscore.benchmarks.ewok.benchmark import logprob_accuracy
 from brainscore.harnesses.ewok import EWoKProvider
 from brainscore.model_helpers.response_trace import build_trace_subject
 from brainscore.experiments import Experiment, RecordInputsOutputs
+from brainscore_core.contract import Subject
 
 pytestmark = pytest.mark.unit
 
@@ -322,3 +323,40 @@ def test_real_hooks_change_score_and_restore(prepared, tmp_path):
         assert not native.model.projection._forward_hooks
     assert outcomes==[1.,.5,1.]
     assert native.model.projection.weight.item()==2.
+
+
+class _ParticipateOnlyReader(Subject):
+    """Answers EWoK requests through participate only: no process, no private state."""
+    identifier = 'participate-only-ewok'
+    in_channels = {'conditional_logprob_request', 'context_choice_request'}
+    out_channels = {'response_trace'}
+
+    def __init__(self, provider):
+        self.provider, self.sessions = provider, 0
+
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        self.sessions += 1
+        assert tuple(session.requested_output_channels) == ('response_trace',)
+        while (event := session.next_input()) is not None:
+            answer = json.loads(self.provider(event.payload)['text'])
+            session.respond(StreamEvent('response_trace', {
+                'raw': {}, 'answer': answer, 'valid': True, 'parse_error': None,
+                'provenance': {}}, event.t_ms, dict(event.meta)))
+
+
+@pytest.mark.parametrize('mode', ['logprobs', 'choice'])
+def test_participate_only_subject_scores_like_the_trace_subject(mode, prepared, tmp_path):
+    provider = EWoKProvider(NativeModel())
+    reader = _ParticipateOnlyReader(provider)
+    assert not hasattr(reader, 'process')
+    benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared,
+                                          batch_size=2, output_dir=tmp_path / 'stub')
+    value = benchmark(reader)
+    reference = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared, batch_size=2,
+                                          output_dir=tmp_path / 'trace')(subject(provider))
+    assert float(value) == float(reference) == 1
+    # One session per request: two batches, four (logprobs) or two (choice) requests each.
+    assert reader.sessions == 2 * (4 if mode == 'logprobs' else 2)
+    record = json.loads((tmp_path / 'stub' / 'experiment.json').read_text())
+    assert record['status'] != 'failed'
