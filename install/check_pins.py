@@ -44,12 +44,18 @@ REPOSITORIES = {
 INFRASTRUCTURE = 'brain-score/infrastructure'
 DEFAULT_BRANCH = 'unified-model-interface-v2'
 CALLERS = ('core', 'vision', 'language')
-SHA = '[0-9a-f]{7,40}'
-REQUIREMENT_CORE = re.compile(rf'brainscore-core\s*@\s*git\+https://github\.com/\S+?\.git@({SHA})')
-USES_UNIFIED = re.compile(rf'uses:\s*KartikP/brainscore-unified/\.github/workflows/offline-tests\.yml@({SHA})')
-INPUT_UNIFIED = re.compile(rf'unified_revision:\s*[\'"]?({SHA})')
-LAYOUT_UNIFIED = re.compile(rf'repository:\s*KartikP/brainscore-unified\s*\n\s*ref:\s*({SHA})')
-JENKINS_UNIFIED = re.compile(rf'^\s*unified_revision=({SHA})\s*$', re.MULTILINE)
+FULL_SHA = re.compile('[0-9a-f]{40}')
+# Each pattern captures the complete ref token of an active (uncommented) line.
+# judge() then requires a full 40-character SHA, so a partial or decorated ref
+# such as "deadbeef-other" is reported as INVALID instead of matching a prefix.
+REQUIREMENT_LINE = re.compile(r'^\s*brainscore-core\b.*$', re.MULTILINE)
+REQUIREMENT_REF = re.compile(r'\.git@([^\s;]+)')
+USES_UNIFIED = re.compile(
+    r'^\s*(?:-\s*)?uses:\s*KartikP/brainscore-unified/\.github/workflows/offline-tests\.yml@(\S+)',
+    re.MULTILINE)
+INPUT_UNIFIED = re.compile(r'^\s*unified_revision:\s*(\S+)', re.MULTILINE)
+LAYOUT_UNIFIED = re.compile(r'repository:\s*KartikP/brainscore-unified\s*\n\s*ref:\s*(\S+)')
+JENKINS_UNIFIED = re.compile(r'^\s*unified_revision=(\S+)', re.MULTILINE)
 
 
 def _token() -> Optional[str]:
@@ -127,9 +133,39 @@ class Row:
     status: str = ''
 
 
+def _active(text: str) -> str:
+    """Drop comment lines and trailing comments, so a comment cannot set a pin."""
+    lines = []
+    for line in text.splitlines():
+        if line.lstrip().startswith('#'):
+            continue
+        lines.append(re.sub(r'\s+#.*$', '', line))
+    return '\n'.join(lines)
+
+
+def _token(value: str) -> str:
+    return value.strip().strip('\'"')
+
+
 def _matches(text: Optional[str], pattern: re.Pattern) -> list[Optional[str]]:
-    values = sorted(set(pattern.findall(text))) if text is not None else []
+    """Return every distinct active ref; [None] when the file or entry is absent."""
+    values = sorted({_token(v) for v in pattern.findall(_active(text))}) if text is not None else []
     return values or [None]
+
+
+def _requirement_refs(text: Optional[str]) -> list[Optional[str]]:
+    """Return the ref of every active brainscore-core requirement.
+
+    An active requirement without a ``.git@<ref>`` part is returned whole, so it
+    is reported as INVALID rather than hidden behind another entry.
+    """
+    if text is None:
+        return [None]
+    values = set()
+    for line in REQUIREMENT_LINE.findall(_active(text)):
+        match = REQUIREMENT_REF.search(line)
+        values.add(_token(match.group(1)) if match else line.strip())
+    return sorted(values) or [None]
 
 
 def collect(sources: dict[str, Source], infrastructure: Optional[Source]) -> list[Row]:
@@ -139,7 +175,7 @@ def collect(sources: dict[str, Source], infrastructure: Optional[Source]) -> lis
     rows.append(Row('core', 'unified install/peer-revisions.json',
                     json.loads(manifest).get('core') if manifest else None))
     for name in ('vision', 'language'):
-        for value in _matches(sources[name].read('requirements-v2.txt'), REQUIREMENT_CORE):
+        for value in _requirement_refs(sources[name].read('requirements-v2.txt')):
             rows.append(Row('core', f'{name} requirements-v2.txt', value))
     caller_pins = set()
     for name in CALLERS:
@@ -147,7 +183,7 @@ def collect(sources: dict[str, Source], infrastructure: Optional[Source]) -> lis
         for pattern, field in ((USES_UNIFIED, 'uses'), (INPUT_UNIFIED, 'unified_revision')):
             for value in _matches(workflow, pattern):
                 rows.append(Row('unified', f'{name} umi-v2.yml {field}', value))
-                if value:
+                if value and FULL_SHA.fullmatch(value):
                     caller_pins.add(value)
     for revision in sorted(caller_pins):
         # The peer manifest of the pinned unified commit decides the core that
@@ -167,22 +203,27 @@ def collect(sources: dict[str, Source], infrastructure: Optional[Source]) -> lis
     return rows
 
 
-def _same(a: str, b: str) -> bool:
-    """Treat an abbreviated SHA as equal to the full SHA it starts."""
-    return a.startswith(b) or b.startswith(a)
+def _valid(value: Optional[str]) -> bool:
+    return isinstance(value, str) and FULL_SHA.fullmatch(value) is not None
 
 
 def judge(rows: list[Row]) -> bool:
-    """Mark each row; return True when every required site agrees."""
+    """Mark each row; return True when every required site agrees.
+
+    Every pin must be a full 40-character SHA, and pins agree only when they
+    are identical.
+    """
     ok = True
     for pin in ('core', 'unified'):
         group = [row for row in rows if row.pin == pin]
-        votes = Counter(row.value for row in group if row.required and row.value)
+        votes = Counter(row.value for row in group if row.required and _valid(row.value))
         expected = votes.most_common(1)[0][0] if votes else None
         for row in group:
             if row.value is None:
                 row.status = 'UNREADABLE'
-            elif expected is None or _same(row.value, expected):
+            elif not _valid(row.value):
+                row.status = 'INVALID'
+            elif expected is None or row.value == expected:
                 row.status = 'ok'
             else:
                 row.status = 'MISMATCH'
@@ -196,7 +237,8 @@ def judge(rows: list[Row]) -> bool:
 
 def table(rows: list[Row]) -> str:
     header = ('pin', 'site', 'value', 'status')
-    body = [(row.pin, row.site, (row.value or '-')[:12], row.status) for row in rows]
+    body = [(row.pin, row.site, row.value[:12] if _valid(row.value) else str(row.value or "-")[:40],
+             row.status) for row in rows]
     widths = [max(len(line[i]) for line in [header, *body]) for i in range(4)]
     lines = ['  '.join(cell.ljust(width) for cell, width in zip(line, widths)) for line in [header, *body]]
     lines.insert(1, '  '.join('-' * width for width in widths))

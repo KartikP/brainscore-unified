@@ -84,10 +84,34 @@ def test_warning_sites_do_not_fail(pins, tmp_path, capsys):
     assert 'warning: mismatch' in capsys.readouterr().out
 
 
-def test_abbreviated_sha_matches_the_full_sha(pins):
+def test_abbreviated_sha_is_invalid(pins):
     rows = [pins.Row('core', 'one', CORE), pins.Row('core', 'two', CORE[:7])]
-    assert pins.judge(rows)
-    assert [row.status for row in rows] == ['ok', 'ok']
+    assert not pins.judge(rows)
+    assert [row.status for row in rows] == ['ok', 'INVALID']
+
+
+def test_decorated_ref_does_not_match_its_prefix(pins, tmp_path, capsys):
+    root = _repositories(tmp_path, vision_core=CORE + '-other')
+    assert _run(pins, root) == 1
+    assert 'INVALID' in capsys.readouterr().out
+
+
+def test_comment_cannot_hide_an_active_requirement(pins, tmp_path, capsys):
+    root = _repositories(tmp_path)
+    _write(root / 'vision/requirements-v2.txt',
+           f'# brainscore-core @ git+https://github.com/brain-score/core.git@{CORE}\n'
+           'brainscore-core @ git+https://github.com/brain-score/core.git@main\n')
+    assert _run(pins, root) == 1
+    out = capsys.readouterr().out
+    assert 'INVALID' in out and 'main' in out
+
+
+def test_commented_workflow_pin_is_ignored(pins, tmp_path):
+    root = _repositories(tmp_path)
+    _write(root / 'vision/.github/workflows/umi-v2.yml',
+           '# uses: KartikP/brainscore-unified/.github/workflows/offline-tests.yml@' + 'c' * 40
+           + '\n' + _workflow(UNIFIED))
+    assert _run(pins, root) == 0
 
 
 def test_missing_required_site_fails(pins, tmp_path):
