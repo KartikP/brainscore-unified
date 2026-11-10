@@ -17,7 +17,7 @@ pretrained weights here.
 """
 import torch.nn as nn
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import (
     load_preprocess_images)
 from brainscore.model_helpers.vision_wrapper import VisionWrapper

@@ -6,13 +6,14 @@ import pandas as pd
 import pytest
 from PIL import Image
 
-from brainscore_core.model_interface import BrainScoreModel, Subject
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import Subject
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 @pytest.fixture(scope='module')
 def model():
-    from brainscore_vision.models.clip_vit_b_32_unified.model import get_model
+    from .model import get_model
     return get_model('clip-vit-b-32')
 
 

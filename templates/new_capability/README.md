@@ -14,7 +14,8 @@ The built-in abilities are `BrainScoreModel` constructor slots. Pass a function:
 | `intervention` | a `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 
 ```python
-from brainscore_core.model_interface import BrainScoreModel, EnvironmentResponse
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import EnvironmentResponse
 
 
 def build_policy():

@@ -44,4 +44,4 @@ To let `RecordActivity` and `Ablate` reach a framework other than PyTorch, imple
 
 ## A new capability
 
-A `Capability` adds a new kind of input handling to `BrainScoreModel` itself, with its own channels. Subclass `Capability` and register it with `register_capability`, both from `brainscore_core.capabilities`. Use this only when the behavior belongs inside the subject; for observing or changing runs, write a tool.
+A `Capability` adds a new kind of input handling to `BrainScoreModel` itself, with its own channels. Subclass `Capability` and register it with `register_capability`, both from `brainscore.capabilities`. Use this only when the behavior belongs inside the subject; for observing or changing runs, write a tool.

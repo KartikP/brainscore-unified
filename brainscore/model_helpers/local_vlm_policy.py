@@ -321,7 +321,7 @@ def build_minigrid_gemma_policy(model_id, *, max_new_tokens=256, revision=None):
 
 def build_grid_player(policy, max_history=4):
     """Wrap a policy in a BrainScoreModel(policy=PolicyWrapper(...))."""
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore.model_helpers.policy_wrapper import PolicyWrapper
     return BrainScoreModel(
         identifier='grid-player', model=None, region_layer_map={},

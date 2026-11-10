@@ -19,9 +19,9 @@ every other model is unchanged.
 """
 from dataclasses import dataclass
 
-from brainscore_core.capabilities import Capability, register_capability
+from brainscore.capabilities import Capability, register_capability
 from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 
 IDENTIFIER = 'example-word-count'   # TODO: your capability's name
 REQUEST = 'example_word_request'    # TODO: input channel (lowercase, digits, underscores)

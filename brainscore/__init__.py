@@ -13,7 +13,13 @@ from pathlib import Path
 from brainscore_core.plugin_management.import_plugin import PluginNotFoundError
 from typing import Dict, Any, Callable
 
-from brainscore_core.model_interface import Subject, BrainScoreModel
+from .brainscore_model import BrainScoreModel
+from .selection import (
+    CompositeSelector, FunctionalSelection, IndexSelection, LayerSelector,
+    RandomSelection, UnitSelection, UnitSelector, selection_coordinates,
+    selection_unit_indices,
+)
+from brainscore_core.model_interface import Subject
 from brainscore_core.benchmarks import Benchmark
 from brainscore_core.metrics import Metric, Score
 

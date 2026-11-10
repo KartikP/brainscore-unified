@@ -237,7 +237,7 @@ def test_save_vision_artifacts(tmp_path):
 import pandas as pd
 import xarray as xr
 
-from brainscore_core.model_interface import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel, LayerSelector
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
 VISION_X = torch.arange(12.).reshape(1, 3, 2, 2)

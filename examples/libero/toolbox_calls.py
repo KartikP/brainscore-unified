@@ -13,7 +13,7 @@ from brainscore.experiments import Experiment, CallableProtocol, RecordInputsOut
 from brainscore.run_record import RunRecord
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
 from brainscore_core.events import EnvironmentStep
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 
 
 def _replay():

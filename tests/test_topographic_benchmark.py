@@ -111,7 +111,7 @@ class TestTopographicBenchmark:
 def test_brainscore_model_session_response_keeps_tissue_coords_like_process():
     """BrainScoreModel returns the same assembly, extra neuroid coords included,
     through neural_response as through start_recording + process."""
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore_core.streaming_helpers import neural_response
 
     template = _assembly(seed=2)
@@ -177,7 +177,7 @@ def test_tissue_coords_of_a_participate_only_subject_reach_the_metric():
 
 def _two_tower_model(identifier):
     """A BrainScoreModel with a vision and a text extractor that answer differently."""
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
 
     def tower(sign):
         def extract(stimuli, layers):

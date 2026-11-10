@@ -9,7 +9,7 @@ import pytest
 pytest.importorskip("gymnasium")
 pytest.importorskip("minigrid")
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.gymnasium_harness import play_gym_episode, random_gym_policy, MINIGRID_ACTIONS
 

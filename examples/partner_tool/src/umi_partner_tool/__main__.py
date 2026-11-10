@@ -2,7 +2,7 @@ import argparse
 import numpy as np
 from brainscore.instrumentation import observe
 from brainscore.run_record import RunRecorder, RunRecord
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.streaming import StreamEvent
 from . import register, LatencyObserver
 

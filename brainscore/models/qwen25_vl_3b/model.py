@@ -26,7 +26,8 @@ from typing import List
 import torch
 from PIL import Image
 
-from brainscore_core.model_interface import BrainScoreModel, Subject
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import Subject
 from brainscore_core.hf_compat import pin_image_processor
 
 

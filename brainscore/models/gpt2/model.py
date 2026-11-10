@@ -9,7 +9,7 @@ Architecture:
   h.{0-11}  -- 12 transformer decoder layers
 """
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 
 
 # Confirmed by sweeping all 12 blocks on Pereira2018, the mapping benchmark:

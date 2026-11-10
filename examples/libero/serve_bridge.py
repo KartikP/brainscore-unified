@@ -26,7 +26,7 @@ import threading
 import time
 
 from brainscore_core.events import EnvironmentStep
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
 from brainscore.run_record import RunRecorder
 

@@ -22,7 +22,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from brainscore_core.model_interface import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel, LayerSelector
 
 
 # ── Audio tower config ─────────────────────────────────────────────

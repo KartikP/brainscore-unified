@@ -11,7 +11,7 @@ already cover the four signal/null permutations).
 """
 import torch
 
-from brainscore_core.model_interface import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel, LayerSelector
 from brainscore_core.hf_compat import pin_image_processor
 
 

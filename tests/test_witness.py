@@ -10,7 +10,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from brainscore_core.model_interface import BrainScoreModel, TaskContext, UnifiedModel
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import TaskContext, UnifiedModel
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.grid_game import GridGameEnv, play_game, greedy_oracle_policy
 from brainscore.witness import Witness

@@ -1,10 +1,7 @@
 """Tests for the v1.5 closed-loop PolicyWrapper (stateful embodied dispatch)."""
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-from brainscore_core.model_interface import (
-    BrainScoreModel,
-    EnvironmentResponse,
-    EnvironmentStep,
-)
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import EnvironmentResponse, EnvironmentStep
 
 
 class TestPolicyWrapper:

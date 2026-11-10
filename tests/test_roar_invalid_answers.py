@@ -2,7 +2,7 @@
 import pytest
 
 from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
-from brainscore_core.brainscore_model import BrainScoreModel
+from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 

@@ -101,7 +101,7 @@ def test_direct_loop_and_session_end_on_the_same_step(max_steps):
     """Goal reached and step limit both stop the direct loop and the session alike."""
     from brainscore.harnesses.grid_game import GridGameEnv, greedy_oracle_policy, play_game
     from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from native_environment_toolbox import direct_episode
 
     for seed in (0, 1, 5):

@@ -475,7 +475,7 @@ def scaffold_registration(profile: ModelProfile, hf_id: Optional[str] = None,
     primary = profile.primary
 
     imports = ["from brainscore import model_registry",
-               "from brainscore_core.model_interface import BrainScoreModel"]
+               "from brainscore import BrainScoreModel"]
     if 'PytorchWrapper' in wrappers:
         imports.append("from brainscore_vision.model_helpers.activations.pytorch "
                        "import PytorchWrapper")
@@ -562,7 +562,7 @@ def auto_register(model: Any,
         evenly-spaced provisional map over the detected blocks is used — runnable
         immediately, refine later with the layer-mapping explorer.
     """
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
 
     profile = inspect_model(model, processor=processor, identifier=identifier)
     rec = profile.primary

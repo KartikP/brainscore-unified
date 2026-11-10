@@ -7,7 +7,7 @@ first, rank those units highest, and build a CompositeSelector over them.
 import numpy as np
 import pytest
 
-from brainscore_core.model_interface import CompositeSelector
+from brainscore import CompositeSelector
 from brainscore.tools.layer_mapping import (
     explore_layer_mapping, score_approaches, score_budget_curve,
     effective_dimensionality, normalize_by_ceiling, per_voxel_train_test,

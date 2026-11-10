@@ -9,7 +9,7 @@ non-trivial and the closed loop is actually doing something.
 import numpy as np
 import pytest
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.grid_game import (
     GridGameEnv, ACTIONS, greedy_oracle_policy, random_action_policy,

@@ -37,7 +37,7 @@ from brainscore.experiments import (
 )
 from brainscore_core.environment import ArraySpec, DiscreteSpec, MappingSpec
 from brainscore_core.events import EnvironmentResponse, EnvironmentStep, Selection
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.streaming_helpers import EnvironmentSession
 
 STEPS = 3

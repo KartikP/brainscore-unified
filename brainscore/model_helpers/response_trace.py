@@ -6,10 +6,10 @@ from functools import lru_cache
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from brainscore_core.capabilities.base import Capability
-from brainscore_core.capabilities.registry import register_capability
+from brainscore.capabilities.base import Capability
+from brainscore.capabilities.registry import register_capability
 from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 
 REQUEST_CHANNELS = {
     'generation_request': 'Text generation request',

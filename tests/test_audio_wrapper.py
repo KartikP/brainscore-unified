@@ -370,7 +370,7 @@ class TestCacheKey:
 class TestColumnToModality:
 
     def test_audio_columns_registered(self):
-        from brainscore_core.model_interface import BrainScoreModel
+        from brainscore import BrainScoreModel
         mapping = BrainScoreModel.COLUMN_TO_MODALITY
         assert mapping.get('audio_path') == 'audio'
         assert mapping.get('audio_file_name') == 'audio'

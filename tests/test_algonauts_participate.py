@@ -82,7 +82,7 @@ def test_answers_are_put_in_frame_order_by_stimulus_id(benchmark):
 
 # ── Old path vs participate on the SAME subject (Contract Rule 10.1) ──────
 
-from brainscore_core.model_interface import BrainScoreModel, CompositeSelector
+from brainscore import BrainScoreModel, CompositeSelector
 from brainscore.benchmarks.algonauts2025 import benchmark as algonauts_module
 
 

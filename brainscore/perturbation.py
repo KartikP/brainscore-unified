@@ -13,9 +13,8 @@ called or the returned cleanup callable is invoked directly.
 Usage::
 
     from brainscore.perturbation import build_pytorch_ablation_fn
-    from brainscore_core.model_interface import (
-        BrainScoreModel, StateChange, Selection, Perturbation,
-    )
+    from brainscore import BrainScoreModel
+    from brainscore_core.model_interface import StateChange, Selection, Perturbation
 
     bs_model = BrainScoreModel(
         identifier='clip-with-ablation',

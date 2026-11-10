@@ -54,7 +54,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 
 
 # --- V-JEPA v1 ViT-L/16 pretrained config (matches vitl16.pth.tar) ---

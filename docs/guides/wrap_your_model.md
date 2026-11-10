@@ -36,7 +36,7 @@ This map is a hypothesis. To choose layers from data, run the layer mapping expl
 **4. Assemble.**
 
 ```python
-from brainscore_core import BrainScoreModel
+from brainscore import BrainScoreModel
 
 model = BrainScoreModel(
     identifier='my-cnn',
@@ -76,7 +76,7 @@ The column name tells the model what kind of input each row holds (`sentence` fo
 Give each tower its own extractor. If two towers use the same layer names, route regions with `LayerSelector`:
 
 ```python
-from brainscore_core import LayerSelector
+from brainscore import LayerSelector
 
 model = BrainScoreModel(
     identifier='my-clip',

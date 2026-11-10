@@ -124,3 +124,16 @@ brainscore = ["benchmarks/rajalingham2018_2afc/*.csv"]
 
 [tool.setuptools.exclude-package-data]
 "*" = ["*.pyc", "**/__pycache__/*"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_unused_ignores = true
+files = [
+    "brainscore/brainscore_model.py",
+    "brainscore/capabilities",
+    "brainscore/selection.py",
+    "brainscore/extractor.py",
+    "brainscore/_model",
+]

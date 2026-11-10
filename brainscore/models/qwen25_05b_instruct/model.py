@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
 
 HF_IDENTIFIER = 'Qwen/Qwen2.5-0.5B-Instruct'
 REVISION = '7ae557604adf67be50417f59c2c2f167def9a775'

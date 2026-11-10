@@ -20,7 +20,8 @@ EnvironmentStep(observation={...}, step_num=3, instruction='pick up the cup',
 A policy maps each `EnvironmentStep` to an `EnvironmentResponse(action=...)`. Give it to `BrainScoreModel` as `policy`:
 
 ```python
-from brainscore_core import BrainScoreModel, EnvironmentResponse
+from brainscore import BrainScoreModel
+from brainscore_core import EnvironmentResponse
 
 agent = BrainScoreModel(identifier='my-agent', policy=lambda step: EnvironmentResponse(action=choose(step)))
 ```

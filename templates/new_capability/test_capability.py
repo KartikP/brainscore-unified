@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 
 from brainscore_core import io_catalog
-from brainscore_core.capabilities import capability_registry
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore.capabilities import capability_registry
+from brainscore import BrainScoreModel
 from brainscore_core.streaming import BufferedSession, StreamEvent
 
 

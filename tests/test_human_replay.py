@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from brainscore_core import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.events import EnvironmentStep
 from brainscore.harnesses.human_replay import (
     HumanAgreementBenchmark, human_agreement, replay_actions)

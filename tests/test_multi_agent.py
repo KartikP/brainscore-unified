@@ -151,7 +151,8 @@ def test_first_tensor_out_handles_tuple_and_hf_object():
 
 # ── typed Message path: first-class agent-to-agent messaging ─────────
 
-from brainscore_core.model_interface import BrainScoreModel, Message
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import Message
 from brainscore.harnesses.multi_agent import MessageMediator, MessageEchoAgent
 
 

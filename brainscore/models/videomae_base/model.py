@@ -32,7 +32,7 @@ from typing import List
 import numpy as np
 import torch
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 
 
 REGION_LAYER_MAP = {

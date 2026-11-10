@@ -113,7 +113,7 @@ def test_intervention_changes_scores_and_reset_restores_them(subject):
 
 def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
     """Record-then-perturb (FunctionalSelection) works on ':input' sites end to end."""
-    from brainscore_core.selection import FunctionalSelection
+    from brainscore.selection import FunctionalSelection
     model, net, _ = subject
     localizer = StimulusSet({'stimulus_id': list('abcd'), 'sentence': ['the cat', 'the dog', 'cat sat', 'dog ran'],
                              'label': ['x', 'x', 'y', 'y']})

@@ -17,9 +17,10 @@ import numpy as np
 import pytest
 
 from brainscore_core import io_catalog
-from brainscore_core.capabilities import capability_registry
+from brainscore.capabilities import capability_registry
 from brainscore_core.compatibility import check_compatibility
-from brainscore_core.model_interface import BrainScoreModel, Subject
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import Subject
 from brainscore_core.streaming import BufferedSession, StreamEvent
 from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -152,7 +153,7 @@ def test_capability_registers_once(capability):
     with pytest.raises(ValueError, match='already registered'):
         capability.register()
     with pytest.raises(ValueError, match='already registered'):
-        from brainscore_core.capabilities import register_capability
+        from brainscore.capabilities import register_capability
         register_capability(capability.WordCountCapability())
 
 
