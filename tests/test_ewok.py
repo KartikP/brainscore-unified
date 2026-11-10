@@ -360,3 +360,89 @@ def test_participate_only_subject_scores_like_the_trace_subject(mode, prepared, 
     assert reader.sessions == 2 * (4 if mode == 'logprobs' else 2)
     record = json.loads((tmp_path / 'stub' / 'experiment.json').read_text())
     assert record['status'] != 'failed'
+
+
+def _old_process_path(subject_, context, request, repetition):
+    """What the benchmark did before it ran through participate."""
+    return subject_.process(request)
+
+
+def _streaming_provider(provider):
+    """Yield the provider's answer as two fragments, the second one final."""
+    def stream(request):
+        text = provider(request)['text']
+        yield {'text': '', 'final': False}
+        yield {'text': text, 'final': True}
+    return stream
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('mode', ['logprobs', 'choice'])
+def test_same_subject_old_process_path_and_participate_give_identical_item_scores(
+        mode, streaming, prepared, tmp_path, monkeypatch):
+    import brainscore.benchmarks.ewok.benchmark as ewok
+    provider = EWoKProvider(NativeModel())
+    candidate = build_trace_subject(
+        'fixture', provider=_streaming_provider(provider) if streaming else provider,
+        parse=json.loads, provenance={'model': 'synthetic-test'}, streaming=streaming,
+        input_channels=['conditional_logprob_request', 'context_choice_request'])
+
+    def run(name):
+        benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared,
+                                              batch_size=2, output_dir=tmp_path / name)
+        return benchmark(candidate), (tmp_path / name / 'item-scores.json').read_bytes()
+
+    new_score, new_items = run('participate')
+    with monkeypatch.context() as patch:
+        patch.setattr(ewok, '_ask', _old_process_path)
+        old_score, old_items = run('process')
+    assert new_items == old_items
+    assert repr(float(new_score)) == repr(float(old_score))
+    for key in ('version_scores', 'domain_scores', 'items', 'invalid_answers'):
+        assert new_score.attrs[key] == old_score.attrs[key]
+
+
+def test_replay_rebuilds_one_session_per_request(prepared, tmp_path):
+    from brainscore.experiments import compare_outputs, replay_sessions
+    from brainscore.run_record import RunRecord
+    provider = EWoKProvider(NativeModel())
+    candidate = subject(provider)
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, batch_size=2)
+    original = Experiment(subject=candidate, protocol=benchmark.protocol(),
+                          tools=[RecordInputsOutputs()], output_dir=tmp_path / 'original').run()
+    events = list(RunRecord(original.directory).events())
+    starts = [e for e in events if e['kind'] == 'repetition_start']
+    # Three items in batches of two, four requests per batch: eight sessions.
+    assert len(starts) == 8 == sum(e['kind'] == 'input' for e in events)
+    by_repetition = {}
+    for event in events:
+        if event['kind'] in ('input', 'output'):
+            by_repetition.setdefault(event['repetition_id'], []).append(event['kind'])
+    assert list(by_repetition.values()) == [['input', 'output']] * 8
+
+    calls = []
+    counting = subject(lambda request: calls.append(request) or provider(request))
+    replay = Experiment(subject=counting, protocol=replay_sessions(original.directory),
+                        tools=[RecordInputsOutputs()], output_dir=tmp_path / 'replay').run()
+    assert len(calls) == 8
+    replayed = list(RunRecord(replay.directory).events())
+    assert sum(e['kind'] == 'repetition_start' for e in replayed) == 8
+    assert compare_outputs(original.directory, replay.directory)['equal']
+
+
+class _UnfinishedReader(_ParticipateOnlyReader):
+    """Sends only a non-final fragment: valid text, but the stream never ends."""
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        while (event := session.next_input()) is not None:
+            answer = json.loads(self.provider(event.payload)['text'])
+            session.respond(StreamEvent('response_trace', {
+                'raw': {}, 'answer': answer, 'valid': True, 'parse_error': None,
+                'provenance': {}, 'final': False}, event.t_ms, dict(event.meta)))
+
+
+def test_unfinished_stream_is_refused_not_scored(prepared, tmp_path):
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared,
+                                          output_dir=tmp_path / 'run')
+    with pytest.raises(ValueError, match='final response'):
+        benchmark(_UnfinishedReader(EWoKProvider(NativeModel())))

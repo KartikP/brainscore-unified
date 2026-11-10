@@ -35,19 +35,31 @@ def logprob_accuracy(values: list[float]) -> float:
     return (compare(values[0], values[1]) + compare(values[3], values[2])) / 2
 
 
-def _ask(subject: Subject, context, request: StreamEvent) -> StreamEvent:
+def _ask(subject: Subject, context, request: StreamEvent, repetition: int) -> StreamEvent:
     """Send one request through ``participate`` and return the subject's answer.
 
-    The session holds the one request and asks for ``response_trace``. The
-    experiment context records the input and every response. A streaming
-    provider sends fragments; the last one carries the final answer, and an
-    unfinished stream is not valid.
+    The session holds the one request and asks for ``response_trace``. It is
+    one repetition of the record, so ``replay_sessions`` rebuilds exactly this
+    session. Replay resets the subject before each repetition; the subject is
+    reset here too, so a replay sees the same subject state. EWoK requests
+    are independent, and the shipped trace subjects keep no state between
+    requests, so this reset does not change their answers.
+
+    A streaming subject sends fragments, and the last one is the answer. The
+    old ``process`` path returned only the final fragment, so a response
+    whose ``final`` flag is present and not True is refused.
     """
     session = BufferedSession([request], requested_output_channels=('response_trace',))
-    subject.participate(ObservedSession(session, context))
+    subject.reset()
+    with context.repetition(repetition):
+        context.publish('session_context',
+                        {'requested_output_channels': session.requested_output_channels})
+        subject.participate(ObservedSession(session, context))
     responses = [event for event in session.emitted if event.channel == 'response_trace']
     if not responses:
         raise TypeError('EWoK requires a response_trace event')
+    if responses[-1].payload.get('final', True) is not True:
+        raise ValueError('EWoK provider ended without a final response')
     return responses[-1]
 
 
@@ -129,6 +141,7 @@ class EWoKBenchmark(BenchmarkBase):
             # Recorded requests contain restricted item text; keep runs private.
             context.directory.chmod(0o700)
             scored = []
+            requests_sent = 0   # one record repetition per request
             for offset in range(0, len(self._rows), self._batch_size):
                 batch = self._rows[offset:offset + self._batch_size]
                 returned = {}
@@ -153,7 +166,8 @@ class EWoKBenchmark(BenchmarkBase):
                     response = _ask(subject, context, StreamEvent(
                         next(iter(self.required_input_channels)), request, None,
                         {'trial_ids': [r['item_id'] for r in batch]},
-                    ))
+                    ), repetition=requests_sent)
+                    requests_sent += 1
                     if not isinstance(response, StreamEvent) or response.channel != 'response_trace':
                         raise TypeError('EWoK requires a response_trace event')
                     if response.payload.get('valid') is not True:
