@@ -63,6 +63,10 @@ def _repository(path: Path) -> Path:
     # A relative link inside the checkout is allowed and copied as a link.
     (path / 'inside.txt').symlink_to('keep.txt')
     subprocess.run(['git', 'init', '-q', str(path)], check=True)
+    # No background gc or maintenance: it would change .git/objects after the
+    # "before" listing and make the unchanged-checkout checks flaky.
+    for key, value in (('gc.auto', '0'), ('maintenance.auto', 'false')):
+        subprocess.run(['git', '-C', str(path), 'config', key, value], check=True)
     subprocess.run([*git, 'add', '-A'], check=True)
     subprocess.run([*git, 'commit', '-q', '-m', 'initial'], check=True)
     (path / 'keep.txt').write_text('uncommitted change')
