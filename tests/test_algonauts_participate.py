@@ -28,7 +28,7 @@ class Recorder(Subject):
     """Answers every requested neural:<region>, optionally in reversed order."""
 
     identifier = 'participate-only'
-    in_channels = frozenset({'vision:still'})
+    in_channels = frozenset({'vision:image'})
     out_channels = frozenset(f'neural:{region}' for region in UNITS)
 
     def __init__(self, reverse=False):

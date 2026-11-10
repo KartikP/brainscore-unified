@@ -7,34 +7,14 @@ from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session
 
 
-class _ProvenanceSession:
-    def __init__(self, session, provenance):
-        self._session, self._provenance = session, provenance
+def _attach(provenance, event):
+    from xarray import DataArray
 
-    def __getattr__(self, name):
-        return getattr(self._session, name)
-
-    @property
-    def complete(self):
-        return self._session.complete
-
-    @complete.setter
-    def complete(self, value):
-        self._session.complete = value
-
-    def next_input(self):
-        return self._session.next_input()
-
-    def respond(self, event):
-        from xarray import DataArray
-
-        payload = event.payload
-        if isinstance(payload, DataArray):
-            payload = payload.assign_attrs(provenance=deepcopy(self._provenance))
-        self._session.respond(replace(event, payload=payload,
-            meta={**event.meta, 'provenance': deepcopy(self._provenance)}))
-
-    emit = respond
+    payload = event.payload
+    if isinstance(payload, DataArray):
+        payload = payload.assign_attrs(provenance=deepcopy(provenance))
+    return replace(event, payload=payload,
+                   meta={**event.meta, 'provenance': deepcopy(provenance)})
 
 
 class ProvenanceSubject(Subject):
@@ -70,7 +50,8 @@ class ProvenanceSubject(Subject):
         return self._subject.traits
 
     def participate(self, session: Session) -> None:
-        self._subject.participate(_ProvenanceSession(session, self._provenance))
+        with session.rewriting_responses(lambda event: _attach(self._provenance, event)):
+            self._subject.participate(session)
 
     def reset(self) -> None:
         self._subject.reset()

@@ -45,7 +45,7 @@ def _load_assembly():
     """TODO: load your real target measurements as a DataAssembly.
 
     Replace this whole function. For naturalistic/temporal data, build the stimulus_set
-    + per-(subject, run) assembly and reuse `brainscore_core/temporal.py`
+    + per-(subject, run) assembly and reuse `brainscore/temporal.py`
     (temporal_bin, hrf_convolve, contiguous_block_cv).
 
     The synthetic stand-in below exists so the template runs before you have data. Note

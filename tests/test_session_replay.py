@@ -12,9 +12,9 @@ from brainscore.experiments import (
 from brainscore.experiments.replay import _equal, read_events
 from brainscore import BrainScoreModel
 from brainscore_core.model_interface import TaskContext
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import (
-    BehavioralSession, StimulusSetSession, StreamingStimulusSetSession,
+    behavior_session, stimulus_session, streaming_stimulus_session,
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -62,7 +62,7 @@ def run(subject, factory, directory, outputs):
     ).run()
 
 
-@pytest.mark.parametrize('session_type', [StimulusSetSession, StreamingStimulusSetSession])
+@pytest.mark.parametrize('session_type', [stimulus_session, streaming_stimulus_session])
 @pytest.mark.parametrize('regions', ['IT', ['V4', 'IT']])
 def test_neural_session_collection_and_replay_preserve_metadata(tmp_path, session_type, regions):
     subject = BrainScoreModel(
@@ -74,7 +74,7 @@ def test_neural_session_collection_and_replay_preserve_metadata(tmp_path, sessio
 
     @contextmanager
     def factory(trial):
-        yield session_type(stimulus_set=stimuli(), record=regions, time_bins=[(70, 170)])
+        yield session_type(stimuli(), record=regions, time_bins=[(70, 170)])
 
     channels = ('neural:IT',) if isinstance(regions, str) else ('neural:V4', 'neural:IT')
     baseline = run(subject, factory, tmp_path / 'baseline', channels)
@@ -111,7 +111,7 @@ def test_behavior_session_collection_and_replay_preserve_task(tmp_path):
 
     @contextmanager
     def factory(trial):
-        yield BehavioralSession(task_context=TaskContext(
+        yield behavior_session(TaskContext(
             task_type='probabilities',
             instruction='Is this an animal?',
             label_set=['yes', 'no'],
@@ -153,7 +153,7 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
     def factory(trial):
         region = trial.identifier
         table = stimuli()
-        session = InMemorySession([
+        session = Session([
             StreamEvent(channel='text', payload=row['sentence'], t_ms=index)
             for index, row in table.iterrows()
         ])

@@ -24,9 +24,9 @@ from brainscore.experiments import (
     SessionProtocol, TorchInstrumentation,
 )
 from brainscore_core.environment import ArraySpec, MappingSpec
-from brainscore_core.events import EnvironmentResponse, EnvironmentStep
 from brainscore import BrainScoreModel
-from brainscore_core.streaming_helpers import EnvironmentSession
+from brainscore_core.streaming import Session
+from brainscore_core.streaming_helpers import EnvironmentSource
 
 
 class CounterEnvironment:
@@ -44,19 +44,15 @@ class CounterEnvironment:
         return ArraySpec((1,), dtype='float32')
 
     def observation(self):
-        return EnvironmentStep(
-            observation={'state': np.array([1 + self.index % 17], dtype=np.float32)},
-            step_num=self.index,
-            is_last=self.index == self.steps,
-        )
+        return {'observation': {'state': np.array([1 + self.index % 17], dtype=np.float32)}}
 
     def reset(self):
         return self.observation()
 
-    def step(self, action):
-        self.actions.update(np.asarray(action).tobytes())
+    def step(self, outputs):
+        self.actions.update(np.asarray(outputs['motor']).tobytes())
         self.index += 1
-        return self.observation()
+        return self.observation(), 'terminal' if self.index == self.steps else None
 
     def close(self):
         self.closed = True
@@ -70,12 +66,12 @@ def _run(directory: Path, steps: int, report: dict) -> dict:
         layer.weight.fill_(2)
     latency = deque(maxlen=1024)
 
-    def policy(step):
+    def policy(row):
         started = time.perf_counter()
         with torch.no_grad():
-            action = layer(torch.from_numpy(step.observation['state'])).numpy().copy()
+            action = layer(torch.from_numpy(row['observation']['state'])).numpy().copy()
         latency.append(time.perf_counter() - started)
-        return EnvironmentResponse(action=action)
+        return {'motor': action}
 
     subject = BrainScoreModel(identifier='fixed-weight-fixture', policy=policy)
     reports = report['conditions']
@@ -86,8 +82,9 @@ def _run(directory: Path, steps: int, report: dict) -> dict:
 
         @contextmanager
         def factory(trial):
-            with EnvironmentSession(environment, require_specs=True, history_limit=0) as session:
-                sessions.append(session)
+            source = EnvironmentSource(environment, require_specs=True, history_limit=0)
+            with Session(source, ('motor',)) as session:
+                sessions.append((session, source))
                 yield session
 
         tools = [] if condition == 'baseline' else [RecordInputsOutputs(max_bytes=128 * 1024**2)]
@@ -113,8 +110,8 @@ def _run(directory: Path, steps: int, report: dict) -> dict:
         tracemalloc.stop()
         require(result.manifest['status'] == 'complete' and environment.closed, 'Incomplete run or unclosed environment')
         require(environment.index == steps and not layer._forward_hooks, 'Missing steps or leaked hooks')
-        require(all(not history for session in sessions for history in (
-            session.input_events, session.action_events, session.emitted)), 'Session retained history')
+        require(all(not history for session, source in sessions for history in (
+            source.input_events, source.action_events, session.emitted)), 'Session retained history')
         activity_count = 0
         if tools:
             for event in result.record.events():
@@ -148,18 +145,17 @@ def check_repeated_failure(subject, layer, directory: Path, steps: int) -> dict:
         environments = []
 
         class Episode(CounterEnvironment):
-            def step(self, action):
+            def step(self, outputs):
                 if condition == 'failure' and len(environments) == 3 and self.index == 1:
                     raise RuntimeError('Injected environment failure after two complete episodes')
-                return super().step(action)
+                return super().step(outputs)
 
         @contextmanager
         def factory(trial):
             environment = Episode(max(steps, 2))
             environments.append(environment)
-            with EnvironmentSession(
-                environment, require_specs=True, history_limit=0,
-            ) as session:
+            source = EnvironmentSource(environment, require_specs=True, history_limit=0)
+            with Session(source, ('motor',)) as session:
                 yield session
 
         tools = [RecordInputsOutputs()]

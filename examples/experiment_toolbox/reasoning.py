@@ -8,7 +8,7 @@ from brainscore.experiments import (
 )
 from brainscore.model_helpers.response_trace import build_trace_subject
 from brainscore.run_record import RunRecord
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 
 
 def provider(request):
@@ -25,7 +25,7 @@ def provider(request):
 @contextmanager
 def make_session(trial):
     # Declare the response type requested from the subject.
-    session = BufferedSession([
+    session = Session([
         StreamEvent('generation_request', {'prompt': 'What is six times seven?'}, 0),
     ])
     session.requested_output_channels = ('response_trace',)

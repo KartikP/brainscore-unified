@@ -21,8 +21,8 @@ Reframed for the unified interface:
     - No dependency on the vision-specific Video/Stimulus class hierarchy
     - No dependency on TemporalInferencer (works for frame-based models)
     - Video → frame extraction via cv2 (``cv2.VideoCapture``), wrapped in
-      ``brainscore_core.temporal.expand_clip_to_frames``
-    - Post-extraction aggregation via ``brainscore_core.temporal.temporal_bin``
+      ``brainscore.temporal.expand_clip_to_frames``
+    - Post-extraction aggregation via ``brainscore.temporal.temporal_bin``
 
 Scoring pipeline:
     1. For each of 1026 videos, extract N frames at fixed timestamps
@@ -75,7 +75,7 @@ from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
 )
-from brainscore_core.temporal import expand_clip_to_frames
+from brainscore.temporal import expand_clip_to_frames
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.benchmarks._scoring_utils import (
     kfold_ridge_predictions,
@@ -149,7 +149,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     model features against the resulting (1026, 20484) neural matrix.
 
     The benchmark reads the subject only through ``participate`` (the core
-    helper ``neural_response``). A subject that declares ``vision:clip``
+    helper ``neural_response``). A subject that declares ``vision:video``
     sees whole clips; any other subject sees frames sampled from each clip.
 
     Regression: PLS with object-level cross-validation (the default used
@@ -385,7 +385,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 
     @staticmethod
     def _is_native_video(candidate) -> bool:
-        """True when the subject declares that it takes clips (``vision:clip``).
+        """True when the subject declares that it takes clips (``vision:video``).
 
         Subjects that take only stills (and legacy adapters, which declare no
         form) are shown frames sampled from each clip instead; the score records
@@ -398,7 +398,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         """Record ``neural:IT`` for every clip through ``participate``.
 
         Returns ``(features (n_videos, n_features), clip_ids, pipeline_mode)``.
-        A subject that declares ``vision:clip`` sees whole clips and keeps its
+        A subject that declares ``vision:video`` sees whole clips and keeps its
         own temporal structure; any other subject sees frames sampled from each
         clip, pooled per clip (Contract Rule 5.9).
         """

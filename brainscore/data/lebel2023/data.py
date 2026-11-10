@@ -228,7 +228,7 @@ def build_word_level(pickle_path=None, context_words: int = DEFAULT_CONTEXT_WORD
     word, so a model's representation of the row is its representation *of that
     word in context*. The row also carries the word's onset time, which is what
     lets features be resampled onto the fMRI grid afterwards
-    (:func:`brainscore_core.temporal.lanczos_downsample`).
+    (:func:`brainscore.temporal.lanczos_downsample`).
 
     This is the alternative to collapsing each TR to a single context window up
     front: it keeps the several words that fall inside one TR distinct, which is

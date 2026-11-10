@@ -39,7 +39,7 @@ def test_external_input_output_state_reset_and_session():
             return set(channels) == {'test_result'}
         def participate(self, model, session):
             while (event := session.next_input()) is not None:
-                session.emit(model.process(event))
+                session.respond(model.process(event))
     register_capability(Tool())
     model = BrainScoreModel('external', capability_config={'external-test': True})
     assert model.process(StreamEvent('test_request', 10, 5)).payload == 11

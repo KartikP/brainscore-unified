@@ -226,7 +226,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         # ── Visual tower ───────────────────────────────────────────
         from .benchmark import VIDEO_DURATION_MS
         time_bins = [(0, VIDEO_DURATION_MS)]
-        # Clips natively when the subject declares vision:clip, frames otherwise.
+        # Clips natively when the subject declares vision:video, frames otherwise.
         from .benchmark import Lahner2024BOLDMoments
         if Lahner2024BOLDMoments._is_native_video(candidate):
             video_stim = self._video_stim_set_for(unique_ids)

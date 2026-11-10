@@ -49,7 +49,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`StimulusSet`** | A table with one row per stimulus; `stimulus_id` links each row to its response. |
 | **Subject** | The participant: anything that declares channels and implements `participate`. |
 | **`TaskContext`** | What the subject is asked to do (`instruction`, or `task_type='passive'`), the form of the answer (`response`: `Choice`, `Scale`, `Text`), labeled `fitting_stimuli` for a readout, and `prefer_path`. |
-| **Visual form** | Whether a subject takes pictures (`vision:still`), video (`vision:clip`) or both, natively. Benchmarks show each stimulus in its own form when the subject has it, and record any adaptation on the score. |
+| **Visual form** | Whether a subject takes pictures (`vision:image`), video (`vision:video`) or both, natively. Benchmarks show each stimulus in its own form when the subject has it, and record any adaptation on the score. |
 | **Prompt** | One trial as a replying model sees it, in order: the instruction, the stimulus parts (in `present` order), then the response's directive. |
 | **Reported / implied** | A reported answer is the model's parsed reply; an implied one is read from its internals (a readout, or a language model's likelihoods). Results say which in `attrs['measure']`. |
 | **Tool** | Equipment attached to an experiment to observe or change the run, without changing the subject. |

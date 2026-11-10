@@ -82,7 +82,7 @@ from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
 )
-from brainscore_core.temporal import (
+from brainscore.temporal import (
     contiguous_block_cv,
     double_gamma_hrf,
     hrf_convolve,
@@ -420,7 +420,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         # IT-mapped features predict whole-cortex BOLD via per-voxel ridge.
         time_bins = [(0, VIDEO_DURATION_MS)]
 
-        # Clips natively when the subject declares vision:clip, frames otherwise.
+        # Clips natively when the subject declares vision:video, frames otherwise.
         from .benchmark import Lahner2024BOLDMoments
         if Lahner2024BOLDMoments._is_native_video(candidate):
             video_stim = self._stim_helper._videos_stimulus_set()

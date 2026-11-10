@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.events import EnvironmentStep
 from brainscore.harnesses.human_replay import (
     HumanAgreementBenchmark, human_agreement, replay_actions)
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
@@ -16,7 +15,7 @@ def subject(policy):
 
 
 def steps(n):
-    return [EnvironmentStep(observation={'state': i}) for i in range(n)]
+    return [{'observation': {'state': i}} for i in range(n)]
 
 
 def test_metric_matches_hand_computation():
@@ -52,7 +51,7 @@ def test_benchmark_separates_human_like_from_random_and_contrary():
         episode = []
         for step in steps(10):
             counts = rng.multinomial(19, [0.1, 0.1, 0.1]).tolist()
-            counts[step.observation['state'] % 3] += 11
+            counts[step['observation']['state'] % 3] += 11
             episode.append((step, counts))
         episodes.append(episode)
     benchmark = HumanAgreementBenchmark('synthetic-human_agreement', episodes, n_actions=3)

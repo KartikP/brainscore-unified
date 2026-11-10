@@ -9,7 +9,7 @@
   "all_predictions_exact_to_original_qualification": true,
   "timing_conditions": {
     "direct": "Native CLI with shared benchmark timing launcher",
-    "umi": "Qualified Subject with BufferedSession, without Experiment",
+    "umi": "Qualified Subject with Session, without Experiment",
     "recorded": "Qualified Subject in Experiment with RecordInputsOutputs"
   },
   "results": {

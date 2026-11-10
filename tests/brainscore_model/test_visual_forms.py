@@ -27,9 +27,9 @@ def _stimuli(column):
     return stimuli
 
 
-@pytest.mark.parametrize('keys, forms', [(('vision',), {'vision:still'}),
-                                         (('video',), {'vision:clip'}),
-                                         (('vision', 'video'), {'vision:still', 'vision:clip'})])
+@pytest.mark.parametrize('keys, forms', [(('vision',), {'vision:image'}),
+                                         (('video',), {'vision:video'}),
+                                         (('vision', 'video'), {'vision:image', 'vision:video'})])
 def test_forms_follow_the_extractor_keys(keys, forms):
     model = BrainScoreModel('m', extractor={key: _extractor(1.0) for key in keys})
     assert 'vision' in model.in_channels
@@ -46,7 +46,7 @@ def test_a_subject_with_both_forms_takes_each_stimulus_natively():
 def test_models_without_an_extractor_declare_the_inputs_they_accept():
     model = BrainScoreModel('judge', supported_modalities={'vision'},
                             answer=lambda stimulus_row, instruction, label_set: label_set[0])
-    assert 'vision:still' in model.in_channels
+    assert 'vision:image' in model.in_channels
 
 
 class _Recorder:
@@ -86,13 +86,12 @@ class _Recorder:
 def test_a_clip_recorded_during_a_task_uses_the_clip_extractor_and_keeps_time():
     from brainscore_core.model_interface import TaskContext
     from brainscore_core.responses import Choice
-    from brainscore_core.streaming import BufferedSession
+    from brainscore_core.streaming_helpers import table_session
     model = BrainScoreModel('m', extractor={'vision': _Recorder(1.0, False), 'video': _Recorder(5.0, True)},
                             region_layer_map={'IT': LayerSelector('blocks.1', modality='vision')},
                             reply=lambda prompt: 'left')
     task = TaskContext(instruction='Which way?', response=Choice(['left', 'right']))
-    session = BufferedSession(stimulus_set=_stimuli('video_path'), task_context=task,
-                              requested_output_channels=['behavior:choice', 'neural:IT'])
+    session = table_session(_stimuli('video_path'), ['behavior:choice', 'neural:IT'], task_context=task)
     model.participate(session)
     recorded = session.collect('neural:IT')
     assert recorded.dims == ('presentation', 'time_bin', 'neuroid')
@@ -104,7 +103,7 @@ def test_a_multi_image_trial_is_recorded_per_image():
     from contextlib import contextmanager
     from brainscore_core.model_interface import TaskContext
     from brainscore_core.responses import Choice
-    from brainscore_core.streaming import BufferedSession
+    from brainscore_core.streaming_helpers import table_session
 
     class PerImage:
         def __call__(self, stimuli, layers, **kwargs):
@@ -127,8 +126,7 @@ def test_a_multi_image_trial_is_recorded_per_image():
     trials = StimulusSet({'stimulus_id': ['t1'], 'rules': ['r.png'], 'word_1': ['a.png'], 'word_2': ['b.png']})
     trials.identifier = 'sequence'
     task = TaskContext(response=Choice(['yes', 'no']), present=('image:rules', 'image:word_1', 'image:word_2'))
-    session = BufferedSession(stimulus_set=trials, task_context=task,
-                              requested_output_channels=['behavior:choice', 'neural:IT'])
+    session = table_session(trials, ['behavior:choice', 'neural:IT'], task_context=task)
     model.participate(session)
     recorded = session.collect('neural:IT')
     assert recorded.dims == ('presentation', 'part', 'neuroid')

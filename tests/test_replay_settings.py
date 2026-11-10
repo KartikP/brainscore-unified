@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from brainscore.experiments import (Experiment, RecordInputsOutputs, SessionProtocol,
                                     compare_outputs, replay_sessions)
 from brainscore_core.model_interface import Subject
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
 
@@ -24,8 +24,7 @@ class _TrialCounter(Subject):
 
 @contextmanager
 def _factory(trial):
-    session = BufferedSession([StreamEvent('text', 'hello', None)],
-                              requested_output_channels=['behavior'])
+    session = Session([StreamEvent('text', 'hello', None)], ['behavior'])
     session.settings = {'number_of_trials': 7, 'require_variance': True}
     yield session
 

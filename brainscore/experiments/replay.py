@@ -5,8 +5,7 @@ import json
 import numpy as np
 import xarray as xr
 from brainscore.run_record import RunRecord
-from brainscore_core.streaming import InMemorySession, StreamEvent
-from brainscore_core.events import EnvironmentStep
+from brainscore_core.streaming import CONTROL_CHANNEL, Session, StreamEvent
 from .runner import SessionProtocol, CallableProtocol, _SESSION_CONTEXT_FIELDS
 
 
@@ -50,7 +49,7 @@ def replay_sessions(directory):
     for event in events:
         key = (event.get('condition', 'default'), event['repetition_id'])
         if event['kind'] == 'input':
-            if not isinstance(event['payload'], (StreamEvent, EnvironmentStep)):
+            if not isinstance(event['payload'], StreamEvent):
                 raise TypeError('Use replay_calls for recorded method calls')
             inputs[key].append(event['payload'])
         elif event['kind'] == 'session_context':
@@ -67,23 +66,19 @@ def replay_sessions(directory):
         from copy import deepcopy
         key = (repetition.condition, repetition.identifier)
         saved = deepcopy(inputs[key])
-        session = InMemorySession(saved)
+        session = Session(saved)
         for name, value in deepcopy(settings[key]).items():
             setattr(session, name, value)
         if 'requested_output_channels' not in settings[key] and trial_outputs[key]:
             # Older records have no request metadata. Keep the observed channel
             # names scoped to this repetition rather than mixing different repetitions.
             session.requested_output_channels = tuple(sorted(trial_outputs[key]))
-        if any(isinstance(event, EnvironmentStep) for event in saved):
-            if not all(isinstance(event, EnvironmentStep) for event in saved):
-                raise ValueError('Cannot mix environment and ordinary stream inputs in a repetition')
-            session.requested_output_channels = ('motor',)
         # SessionProtocol collects results after the final observation.
         session.collect = lambda: [event.payload for event in session.emitted]
         yield session
     return SessionProtocol('saved-session-inputs', factory, conditions=conditions, repetitions=repetitions,
-        input_channels={'observation' if isinstance(e, EnvironmentStep) else e.channel
-                        for group in inputs.values() for e in group},
+        input_channels={e.channel for group in inputs.values() for e in group
+                        if e.channel != CONTROL_CHANNEL},
         output_channels=outputs,
         metadata={**_source(directory), 'mode': 'open_loop_saved_inputs'})
 

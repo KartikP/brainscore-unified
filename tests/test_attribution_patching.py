@@ -13,7 +13,7 @@ from brainscore.experiments import (
 )
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 
 pytestmark = pytest.mark.unit
 
@@ -232,10 +232,10 @@ def test_patch_tool_records_reference_conditions_and_restoration(tmp_path):
         def participate(self, session):
             event = session.next_input()
             value = self.model(torch.tensor(event.payload)).item()
-            session.emit(StreamEvent('behavior', value, None))
+            session.respond(StreamEvent('behavior', value, None))
     @contextmanager
     def session(trial):
-        yield InMemorySession([StreamEvent('stimulus', [1., 2., 4.], None)])
+        yield Session([StreamEvent('stimulus', [1., 2., 4.], None)])
     subject = ModelSubject()
     reference = estimate(subject.model)['reference']
     tool = PatchActivity([Selection('units', [0])], reference=reference, conditions=['patched'])

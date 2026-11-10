@@ -11,7 +11,7 @@ from brainscore.experiments import (
 )
 from brainscore.tools import attach_tools, load_tool
 from brainscore_core.contract import Subject
-from brainscore_core.streaming import BufferedSession, Session, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -41,10 +41,9 @@ class TextFixture(Subject):
                 }), event.t_ms))
 
 
-def make_session(texts: list[str]) -> BufferedSession:
+def make_session(texts: list[str]) -> Session:
     stimuli = StimulusSet({'stimulus_id': [f'item-{i}' for i in range(len(texts))], 'sentence': texts})
-    return BufferedSession([StreamEvent('text', stimuli, None)],
-                           requested_output_channels=['neural:population'])
+    return Session([StreamEvent('text', stimuli, None)], ['neural:population'])
 
 
 def run(directory: Path) -> None:

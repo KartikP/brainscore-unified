@@ -15,7 +15,7 @@ synthetic assemblies in ``tests/test_topographic_benchmark.py``.
 """
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
-from brainscore_core.streaming import BufferedSession, parse_channel
+from brainscore_core.streaming import Session, parse_channel
 from brainscore_core.streaming_helpers import neural_response, stimulus_session
 from brainscore import load_metric
 from brainscore.topographic_support import ensure_tissue_coords, shuffle_tissue_coords
@@ -47,10 +47,9 @@ def _record(candidate, stimulus_set, region):
     if len(present) < 2 or chosen is None:
         return neural_response(candidate, stimulus_set, record=region)
     channel = f'neural:{region}'
-    session = BufferedSession(
+    session = Session(
         [event for event in events if parse_channel(event.channel)[0] == chosen],
-        requested_output_channels=(channel,))
-    session.stimulus_set = stimulus_set
+        (channel,), stimulus_set=stimulus_set)
     candidate.participate(session)
     return session.collect(channel)
 

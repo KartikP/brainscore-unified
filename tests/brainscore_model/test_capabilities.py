@@ -6,7 +6,7 @@ import textwrap
 
 from brainscore.capabilities import capability_registry
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import EnvironmentResponse, EnvironmentStep, Message, Perturbation, PerturbationApplied, Selection, StateChange, TaskContext
+from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange, TaskContext
 
 
 def make_stub_preprocessor(return_value='default_output'):
@@ -125,53 +125,49 @@ def test_behavioral_generation_capability_precedes_readout_and_neural():
     assert 'behavioral-readout' not in model._capability_state
 
 
-def test_closed_loop_capability_dispatches_environment_step():
+def test_closed_loop_capability_dispatches_a_row():
     calls = []
 
-    def action_fn(step):
-        calls.append(step)
-        return EnvironmentResponse(action=[0.0, 1.0])
+    def policy(row):
+        calls.append(row)
+        return {'motor': [0.0, 1.0]}
 
     model = BrainScoreModel(
         identifier='embodied',
         model=None,
         region_layer_map={},
         preprocessors={},
-        action_fn=action_fn,
+        action_fn=policy,
     )
-    step = EnvironmentStep(step_num=7)
+    row = {'observation': {'n': 7}}
 
-    result = model.process(step)
+    result = model.process(row)
 
     assert 'closed-loop' in capability_registry
-    assert isinstance(result, EnvironmentResponse)
-    assert result.action == [0.0, 1.0]
-    assert calls == [step]
+    assert result == {'motor': [0.0, 1.0]}
+    assert calls == [row]
     assert 'closed-loop' in model._capability_state
 
 
-def test_closed_loop_capability_dispatches_message():
+def test_closed_loop_capability_dispatches_a_text_message():
     calls = []
 
-    def action_fn(step):
-        calls.append(step)
-        return Message(content='pong')
+    def policy(row):
+        calls.append(row)
+        return {'text': 'pong'}
 
     model = BrainScoreModel(
         identifier='agent',
         model=None,
         region_layer_map={},
         preprocessors={},
-        action_fn=action_fn,
+        action_fn=policy,
     )
-    message = Message(content='ping')
 
-    result = model.process(message)
+    result = model.process({'text': 'ping'})
 
-    assert isinstance(result, Message)
-    assert result.content == 'pong'
-    assert len(calls) == 1
-    assert calls[0].observation is message
+    assert result == {'text': 'pong'}
+    assert calls == [{'text': 'ping'}]
 
 
 def test_state_change_capability_dispatches_and_tracks_cleanup():
@@ -222,9 +218,9 @@ def test_state_change_capability_dispatches_and_tracks_cleanup():
 def test_capability_config_supplies_builtin_capability_slots():
     calls = []
 
-    def action_fn(step):
-        calls.append(step)
-        return EnvironmentResponse(action='configured')
+    def action_fn(row):
+        calls.append(row)
+        return {'motor': 'configured'}
 
     model = BrainScoreModel(
         identifier='configured-agent',
@@ -233,18 +229,17 @@ def test_capability_config_supplies_builtin_capability_slots():
         preprocessors={},
         capability_config={'action_fn': action_fn},
     )
-    step = EnvironmentStep(step_num=2)
+    row = {'observation': 2}
 
-    result = model.process(step)
+    result = model.process(row)
 
-    assert isinstance(result, EnvironmentResponse)
-    assert result.action == 'configured'
-    assert calls == [step]
+    assert result == {'motor': 'configured'}
+    assert calls == [row]
 
 
 def test_legacy_positional_capability_tail_remains_supported():
-    def action_fn(step):
-        return EnvironmentResponse(action=step.step_num)
+    def action_fn(row):
+        return {'motor': row['observation']}
 
     model = BrainScoreModel(
         'legacy-agent',
@@ -258,10 +253,9 @@ def test_legacy_positional_capability_tail_remains_supported():
         action_fn,
     )
 
-    result = model.process(EnvironmentStep(step_num=5))
+    result = model.process({'observation': 5})
 
-    assert isinstance(result, EnvironmentResponse)
-    assert result.action == 5
+    assert result == {'motor': 5}
 
 
 def test_self_registering_capability_file_dispatches_without_host_edits(tmp_path):

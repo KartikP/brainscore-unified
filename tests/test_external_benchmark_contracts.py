@@ -7,7 +7,7 @@ import pytest
 
 import brainscore
 from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
-from brainscore_core.streaming import StreamEvent, InMemorySession
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore.data.preparation import prepare_dataset
 from brainscore.experiments import Experiment, RecordInputsOutputs
 from brainscore.model_helpers.response_trace import build_trace_subject
@@ -221,7 +221,7 @@ def test_multichannel_trace_subject_keeps_dispatch_and_session_contract():
     )
     assert candidate.in_channels == set(channels)
     events = [StreamEvent(channel, {'value': channel}, None) for channel in channels]
-    session = InMemorySession(events)
+    session = Session(events)
     session.requested_output_channels = {'response_trace'}
     candidate.participate(session)
     assert [event.payload['answer'] for event in session.emitted] == channels

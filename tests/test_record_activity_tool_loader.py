@@ -14,7 +14,7 @@ from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, list_tools, load_tool
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
-from brainscore_core.streaming import BufferedSession, Session, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 
 pytestmark = pytest.mark.unit
 
@@ -35,7 +35,7 @@ class FixtureSubject(Subject):
 def protocol() -> SessionProtocol:
     @contextmanager
     def factory(trial):
-        yield BufferedSession([StreamEvent('stimulus', [[1., 2., 3.]], None)])
+        yield Session([StreamEvent('stimulus', [[1., 2., 3.]], None)])
     return SessionProtocol('record-activity-check', factory, conditions=['baseline', 'lesioned'],
                            input_channels=['stimulus'], output_channels=['behavior'])
 

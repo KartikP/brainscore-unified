@@ -22,9 +22,8 @@ from .test_behavioral_readout import (
     _fake_preprocessor_returning,
     _make_image_stimulus_set,
 )
-from .test_environment_step import (
-    _droid_action_fn,
-    _droid_step,
+from .test_closed_loop_rows import (
+    _droid_row,
     _make_model as _make_environment_model,
 )
 from .test_model_interface import (
@@ -130,7 +129,8 @@ def _native_environment_model(action_fn, model_cls=BrainScoreModel):
         model=None,
         region_layer_map={},
         preprocessors={"vision": lambda stimuli: stimuli},
-        action_fn=action_fn,
+        policy=action_fn,
+        policy_inputs=("vision:image", "proprioception", "instruction"),
     )
 
 
@@ -457,60 +457,57 @@ def test_behavioral_response_matches_legacy_generation_path_exactly():
 
 
 class _SyntheticEnvironment:
-    def __init__(self, steps):
-        self.steps = list(steps)
+    """``count`` rows: reset gives the first; the last is terminal."""
+
+    def __init__(self, count):
+        self.count = count
         self.actions = []
         self.reset_calls = 0
 
     def reset(self):
         self.reset_calls += 1
-        if not self.steps:
-            return None
-        return self.steps[0]
+        return _droid_row("reach the goal")
 
-    def step(self, action):
-        self.actions.append(action)
-        next_index = len(self.actions)
-        if next_index >= len(self.steps):
-            return None
-        return self.steps[next_index]
+    def step(self, outputs):
+        self.actions.append(outputs['motor'])
+        last = len(self.actions) == self.count - 1
+        return _droid_row("reach the goal"), 'terminal' if last else None
 
 
-def _environment_steps(count):
-    steps = []
-    for step_num in range(count):
-        step = _droid_step(step_num=step_num, instruction="reach the goal")
-        step.is_last = step_num == count - 1
-        step.is_terminal = step.is_last
-        steps.append(step)
-    return steps
+def _counting_policy():
+    """A zero-action policy that echoes how many rows it has seen."""
+    calls = []
+
+    def policy(row):
+        calls.append(row)
+        return {'motor': StreamEvent('motor', np.zeros(7, dtype=np.float64), None, {
+            'step_num_seen': len(calls) - 1, 'instruction_seen': row['instruction']})}
+    return policy
 
 
 def _legacy_environment_rollout(subject, environment):
+    """The direct loop: process each row, apply the action, stop at the terminal row."""
     trajectory = []
-    step = environment.reset()
-    while step is not None:
-        response = subject.process(step)
-        trajectory.append(response)
-        if step.is_last or step.is_terminal:
-            break
-        step = environment.step(response.action)
-    return trajectory
+    row = environment.reset()
+    while True:
+        outputs = subject.process(row)
+        trajectory.append(outputs['motor'])
+        row, reason = environment.step({'motor': outputs['motor'].payload})
+        if reason is not None:
+            return trajectory
 
 
 def test_native_environment_participate_preserves_applied_legacy_actions():
-    session = environment_session(_SyntheticEnvironment(_environment_steps(4)))
+    session = environment_session(_SyntheticEnvironment(4))
     native_model = _native_environment_model(
-        _droid_action_fn, model_cls=_ParticipateTrackingBrainScoreModel
+        _counting_policy(), model_cls=_ParticipateTrackingBrainScoreModel
     )
 
     native_model.participate(session)
     native_trajectory = session.collect("motor")
 
-    legacy_model = _make_environment_model(action_fn=_droid_action_fn)
-    legacy_env = _SyntheticEnvironment(_environment_steps(4))
-    # The old loop predicted once after termination; that response was never applied.
-    expected_trajectory = _legacy_environment_rollout(legacy_model, legacy_env)[:-1]
+    legacy_model = _make_environment_model(policy=_counting_policy())
+    expected_trajectory = _legacy_environment_rollout(legacy_model, _SyntheticEnvironment(4))
 
     assert native_model.participate_called is True
     assert native_model.participate_requested_output_channels == ("motor",)
@@ -526,31 +523,25 @@ def test_native_environment_participate_preserves_applied_legacy_actions():
         native_trajectory, expected_trajectory
     ):
         np.testing.assert_array_equal(
-            native_response.action, expected_response.action
+            native_response.payload, expected_response.payload
         )
-        assert native_response.metadata == expected_response.metadata
+        assert native_response.meta["step_num_seen"] == expected_response.meta["step_num_seen"]
 
 
 def test_run_environment_preserves_applied_legacy_actions():
     helper_model = _native_environment_model(
-        _droid_action_fn, model_cls=_ParticipateTrackingBrainScoreModel
+        _counting_policy(), model_cls=_ParticipateTrackingBrainScoreModel
     )
-    helper_env = _SyntheticEnvironment(_environment_steps(4))
+    helper_env = _SyntheticEnvironment(4)
     helper_trajectory = run_environment(helper_model, helper_env)
 
-    legacy_model = _make_environment_model(action_fn=_droid_action_fn)
-    legacy_env = _SyntheticEnvironment(_environment_steps(4))
-    # The old loop predicted once after termination; that response was never applied.
-    expected_trajectory = _legacy_environment_rollout(legacy_model, legacy_env)[:-1]
+    legacy_model = _make_environment_model(policy=_counting_policy())
+    legacy_env = _SyntheticEnvironment(4)
+    expected_trajectory = _legacy_environment_rollout(legacy_model, legacy_env)
 
     assert len(helper_trajectory) == len(expected_trajectory)
-    for helper_response, expected_response in zip(
-        helper_trajectory, expected_trajectory
-    ):
-        np.testing.assert_array_equal(
-            helper_response.action, expected_response.action
-        )
-        assert helper_response.metadata == expected_response.metadata
+    for helper_action, expected_response in zip(helper_trajectory, expected_trajectory):
+        np.testing.assert_array_equal(helper_action, expected_response.payload)
     assert len(helper_env.actions) == len(legacy_env.actions)
     for helper_action, expected_action in zip(helper_env.actions, legacy_env.actions):
         np.testing.assert_array_equal(helper_action, expected_action)
@@ -558,25 +549,14 @@ def test_run_environment_preserves_applied_legacy_actions():
     assert helper_model.participate_requested_output_channels == ("motor",)
 
 
-def test_run_environment_terminates_cleanly_for_zero_and_one_step_envs():
+def test_run_environment_terminates_cleanly_for_a_one_step_env():
     model = _native_environment_model(
-        _droid_action_fn, model_cls=_ParticipateTrackingBrainScoreModel
+        _counting_policy(), model_cls=_ParticipateTrackingBrainScoreModel
     )
-    zero_env = _SyntheticEnvironment([])
-
-    assert run_environment(model, zero_env) == []
-    assert zero_env.actions == []
-    assert model.participate_called is True
-    assert model.participate_requested_output_channels == ("motor",)
-
-    model = _native_environment_model(
-        _droid_action_fn, model_cls=_ParticipateTrackingBrainScoreModel
-    )
-    one_env = _SyntheticEnvironment(_environment_steps(1))
+    one_env = _SyntheticEnvironment(2)
     trajectory = run_environment(model, one_env)
 
-    assert trajectory == []  # Already terminal: no action is requested.
-    assert one_env.actions == []
+    assert len(trajectory) == 1 and len(one_env.actions) == 1  # the terminal row asks for no action
     assert model.participate_called is True
     assert model.participate_requested_output_channels == ("motor",)
 
@@ -651,8 +631,8 @@ def test_native_state_change_reset_restores_baseline():
 
 
 def test_environment_session_emits_motor_events_for_multistep_rollout():
-    session = environment_session(_SyntheticEnvironment(_environment_steps(3)))
-    model = _make_environment_model(action_fn=_droid_action_fn)
+    session = environment_session(_SyntheticEnvironment(3))
+    model = _make_environment_model(policy=_counting_policy())
 
     from brainscore_core.streaming_helpers import drive_environment_session
     drive_environment_session(model, session)
@@ -660,10 +640,7 @@ def test_environment_session_emits_motor_events_for_multistep_rollout():
     assert [event.channel for event in session.emitted] == [
         "motor", "motor",
     ]
-    assert [
-        event.payload.metadata["step_num_seen"]
-        for event in session.emitted
-    ] == [0, 1]
+    assert [event.meta["step_num_seen"] for event in session.emitted] == [0, 1]
     assert [event.meta["step_num"] for event in session.emitted] == [0, 1]
 
 

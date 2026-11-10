@@ -25,7 +25,6 @@ import signal
 import threading
 import time
 
-from brainscore_core.events import EnvironmentStep
 from brainscore import BrainScoreModel
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
 from brainscore.run_record import RunRecorder
@@ -75,12 +74,9 @@ class RecordedPolicy:
         if self.route == 'reference':
             result = self.policy.infer(deepcopy(request))
         else:
-            step = EnvironmentStep(
-                observation=request, instruction=request['prompt'], step_num=self.calls,
-                context={'protocol': 'openpi-libero-preprocessed-chunk'},
-            )
-            response = self.subject.process(step)
-            result = dict(response.metadata['policy_output'], actions=response.action)
+            row = {'observation': request, 'instruction': request['prompt']}
+            response = self.subject.process(row)['motor']
+            result = dict(response.meta['policy_output'], actions=response.payload)
         self.recorder.record('output', deepcopy(result))
         self.calls += 1
         return result

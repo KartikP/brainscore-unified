@@ -420,7 +420,7 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
         predictions — a layer sweep recording many layers in one pass, say —
         can pool them without extracting again.
         """
-        from brainscore_core.temporal import lanczos_downsample
+        from brainscore.temporal import lanczos_downsample
 
         word_stimuli, _, tr_times_by_story = self._word_data()
 

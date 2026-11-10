@@ -208,7 +208,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         """Extract visual + audio features from the candidate.
 
         Visual tower routing:
-        - candidate declares 'vision:clip' → use video stim set, native
+        - candidate declares 'vision:video' → use video stim set, native
           temporal extraction (V-JEPA / VideoMAE / etc.)
         - any other visual candidate (stills only) → use
           frame-aggregation: extract N frames per clip, run CLIP/BLIP-2/
@@ -227,7 +227,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
                 one per output feature column.
         """
         time_bins = [(0, VIDEO_DURATION_MS)]
-        # Clips natively when the subject declares vision:clip, frames otherwise.
+        # Clips natively when the subject declares vision:video, frames otherwise.
         if Lahner2024BOLDMoments._is_native_video(candidate):
             video_assembly = record_clips(
                 candidate, self._video_stim_set(), 'IT', time_bins)
@@ -266,7 +266,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         if not takes_audiovisual(candidate):
             raise ValueError(
                 f"{self.identifier} requires the candidate to take both "
-                f"a visual input ('vision', 'vision:still' or 'vision:clip') AND "
+                f"a visual input ('vision', 'vision:image' or 'vision:video') AND "
                 f"'audio', and to record neural:IT and neural:A1. Got "
                 f"in_channels={sorted(candidate.in_channels)}, "
                 f"out_channels={sorted(candidate.out_channels)}. "

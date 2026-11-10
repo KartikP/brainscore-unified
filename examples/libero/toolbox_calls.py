@@ -12,7 +12,6 @@ import numpy as np
 from brainscore.experiments import Experiment, CallableProtocol, RecordInputsOutputs
 from brainscore.run_record import RunRecord
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
-from brainscore_core.events import EnvironmentStep
 from brainscore import BrainScoreModel
 
 
@@ -34,8 +33,8 @@ def run_calls(policy, source, output_dir, *, report):
     def evaluate(model, context):
         differences = []
         for i, (request, output) in enumerate(calls):
-            actual = model.process(EnvironmentStep(observation=request,
-                instruction=request['prompt'], step_num=i)).action
+            actual = model.process({'observation': request,
+                'instruction': request['prompt']})['motor'].payload
             expected = np.asarray(output['actions'])
             if actual.shape != expected.shape or not np.isfinite(expected).all():
                 raise ValueError('Invalid or mismatched action shape')

@@ -19,8 +19,8 @@ from typing import Any
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY, validate_slider_responses
 from brainscore_core.compatibility import check_channel_compatibility
-from brainscore_core.streaming import BufferedSession, StreamEvent
-from brainscore.instrumentation import ObservedSession
+from brainscore_core.streaming import Session, StreamEvent
+from brainscore.instrumentation import observed
 
 
 REFERENCE_REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
@@ -84,7 +84,7 @@ class _SubjectProvider:
     Each provider call is one session with one request event. The subject
     answers through ``participate`` only (Contract Rule 1.1). Each session is
     one repetition of the run record (``<CogGym repetition>.<call>``) and is
-    wrapped in ``ObservedSession``, so tools record the request and the answer
+    observed with ``observed``, so tools record the request and the answer
     between that session's own boundaries, and ``replay_sessions`` rebuilds
     one session per call. The subject is not reset between calls, as before;
     the provider's reset(repetition) runs only between CogGym repetitions.
@@ -110,11 +110,12 @@ class _SubjectProvider:
         )
         record_repetition = f'{self.repetition}.{self.call_index}'
         self.call_index += 1
-        session = BufferedSession([event], requested_output_channels=('response_trace',))
+        session = Session([event], ('response_trace',))
         with self.context.repetition(record_repetition):
             self.context.publish('session_context',
                                  {'requested_output_channels': session.requested_output_channels})
-            self.subject.participate(ObservedSession(session, self.context))
+            with observed(session, self.context):
+                self.subject.participate(session)
         responses = [response for response in session.emitted
                      if isinstance(response, StreamEvent) and response.channel == 'response_trace']
         if not responses:

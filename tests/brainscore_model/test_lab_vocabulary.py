@@ -3,41 +3,35 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import EnvironmentStep, EnvironmentResponse, StateChange, PerturbationApplied, Perturbation, Selection
-from brainscore_core.streaming import BufferedSession, InMemorySession, Session, StreamEvent
+from brainscore_core.model_interface import StateChange, PerturbationApplied, Perturbation, Selection
+from brainscore_core.streaming import FixedSource, Session, Source, StreamEvent
+from brainscore_core.streaming_helpers import table_session
 
 
-def test_buffered_session_retains_existing_import_and_delivery():
-    assert InMemorySession is BufferedSession
+def test_session_delivers_inputs_and_collects_responses():
     event = StreamEvent(channel='text', payload='hello', t_ms=0)
-    session = BufferedSession(inputs=[event])
+    session = Session([event])
     assert session.next_input() is event
     assert session.next_input() is None
     session.respond(event)
-    session.emit(event)
+    session.respond(event)
     assert session.collect() == [event, event]
 
 
-def test_new_source_accepts_old_subject_and_old_source_accepts_new_subject():
-    class NewSource(Session):
+def test_a_source_receives_the_response_its_session_collects():
+    class Recording(Source):
         def next_input(self):
             return None
 
         def respond(self, event):
             self.response = event
 
-    class OldSource(Session):
-        def next_input(self):
-            return None
-
-        def emit(self, event):
-            self.response = event
-
     event = StreamEvent(channel='behavior', payload='yes', t_ms=None)
-    new, old = NewSource(), OldSource()
-    new.emit(event)
-    old.respond(event)
-    assert new.response is old.response is event
+    source = Recording()
+    session = Session(source)
+    session.respond(event)
+    assert source.response is event
+    assert session.collect() == [event]
 
 
 @pytest.mark.parametrize('public,legacy', [
@@ -59,9 +53,9 @@ def test_legacy_config_cannot_silently_override_public_component(public, legacy)
 
 
 def test_policy_dispatch_is_identical_with_both_spellings():
-    response = EnvironmentResponse(action=np.arange(7, dtype=float))
+    response = {'motor': np.arange(7, dtype=float)}
     policy = lambda event: response
-    event = EnvironmentStep()
+    event = {}
     new = BrainScoreModel(identifier='policy', policy=policy)
     old = BrainScoreModel(identifier='policy', action_fn=policy)
     assert new.process(event) is old.process(event) is response
@@ -94,8 +88,7 @@ def test_extractor_and_buffered_session_work_across_modalities(modality, column)
                                     'neuroid_id': ('neuroid', [0, 1])})
     subject = BrainScoreModel(identifier='extractor', extractor={modality: extract},
                               region_layer_map={'region': 'layer'})
-    session = BufferedSession(stimulus_set=StimulusSet({column: ['one', 'two']}),
-                              requested_output_channels=('neural:region',))
+    session = table_session(StimulusSet({column: ['one', 'two']}), ('neural:region',))
     subject.participate(session)
     np.testing.assert_array_equal(session.collect().values, np.ones((2, 2)))
 
@@ -118,23 +111,18 @@ def test_answer_matches_legacy_behavioral_output():
     xr.testing.assert_identical(*outputs)
 
 
-@pytest.mark.parametrize('spelling', ['emit', 'respond'])
-def test_source_subclasses_can_extend_responses_with_super(spelling):
-    class LegacyExtension(BufferedSession):
-        def emit(self, event):
-            self.calls = getattr(self, 'calls', 0) + 1
-            super().emit(event)
-
-    class NewExtension(LegacyExtension):
+def test_source_subclasses_can_extend_responses_with_super():
+    class Counting(FixedSource):
         def respond(self, event):
-            self.new_calls = getattr(self, 'new_calls', 0) + 1
+            self.calls = getattr(self, 'calls', 0) + 1
             super().respond(event)
 
     event = StreamEvent(channel='behavior', payload='answer', t_ms=0)
-    session = NewExtension()
-    getattr(session, spelling)(event)
+    source = Counting()
+    session = Session(source)
+    session.respond(event)
     assert session.collect() == [event]
-    assert session.calls == session.new_calls == 1
+    assert source.calls == 1
 
 
 # -- Human-facing guidance names the canonical parameters --------------------
@@ -206,10 +194,8 @@ def test_guide_echo_subject_fixture_returns_labeled_behavioral_assembly():
                 session.respond(StreamEvent(channel='behavior', payload=answer,
                                             t_ms=event.t_ms, meta=dict(event.meta)))
 
-    session = BufferedSession(
-        inputs=[StreamEvent(channel='text', payload='hello', t_ms=0.0,
-                            meta={'stimulus_id': 's1'})],
-        requested_output_channels=['behavior'])
+    session = Session([StreamEvent(channel='text', payload='hello', t_ms=0.0,
+                            meta={'stimulus_id': 's1'})], ['behavior'])
     EchoSubject().participate(session=session)
     (response,) = [event.payload for event in session.emitted]
     assert isinstance(response, BehavioralAssembly)
@@ -220,11 +206,8 @@ def test_guide_echo_subject_fixture_returns_labeled_behavioral_assembly():
 
 # -- Missing policy names the canonical parameter ----------------------------
 
-@pytest.mark.parametrize('event', [EnvironmentStep(), 'message'])
+@pytest.mark.parametrize('event', [{}, {'text': 'hello'}])
 def test_missing_policy_names_policy_parameter(event):
-    from brainscore_core.events import Message
-    if event == 'message':
-        event = Message(content='hello')
     subject = BrainScoreModel(identifier='no-policy')
     with pytest.raises(NotImplementedError, match=r'BrainScoreModel\(policy=\.\.\.\)') as error:
         subject.process(event)

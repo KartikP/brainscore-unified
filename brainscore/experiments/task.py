@@ -15,8 +15,7 @@ same presentation that produced the behavior.
 from contextlib import contextmanager
 
 from brainscore_core.events import StateChange
-from brainscore_core.streaming import BufferedSession
-from brainscore_core.streaming_helpers import apply_state_change
+from brainscore_core.streaming_helpers import apply_state_change, table_session
 
 from .runner import SessionProtocol, Tool
 from .tools import RecordInputsOutputs
@@ -37,7 +36,7 @@ class TaskProtocol(SessionProtocol):
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
                  repetitions=(0,), required_traits=(), metadata=None):
-        probe = BufferedSession(stimulus_set=stimuli)
+        probe = table_session(stimuli)
         inputs = set()
         while (event := probe.next_input()) is not None:
             inputs.add(event.channel)
@@ -82,8 +81,7 @@ class TaskProtocol(SessionProtocol):
 
     @contextmanager
     def _session(self, repetition):
-        yield BufferedSession(stimulus_set=self.stimuli, task_context=self.task,
-                              requested_output_channels=sorted(self.output_channels))
+        yield table_session(self.stimuli, sorted(self.output_channels), task_context=self.task)
 
 
 class _ChannelRecorder(RecordInputsOutputs):

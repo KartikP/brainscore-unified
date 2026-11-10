@@ -43,9 +43,10 @@ from brainscore.model_helpers.local_vlm_policy import (
     parse_directional_action, response_for_answer, visual_policy,
 )
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-from brainscore_core.events import EnvironmentResponse, Selection
+from brainscore_core.events import Selection
 from brainscore import BrainScoreModel
-from brainscore_core.streaming_helpers import EnvironmentSession
+from brainscore_core.streaming import Session, StreamEvent
+from brainscore_core.streaming_helpers import EnvironmentSource
 
 from example_qualification import (
     SMOLVLM_MANIFEST,
@@ -64,7 +65,7 @@ LAYER = 'model.text_model.layers.0.mlp.up_proj'
 UNPARSED_ACTION = 0
 
 
-def answer_response(answer: str) -> EnvironmentResponse:
+def answer_response(answer: str) -> StreamEvent:
     """Turn a generated answer into an action, keeping the answer and the parse result."""
     return response_for_answer(answer, parse_directional_action(answer, prefer_last=True),
                                lambda: UNPARSED_ACTION)
@@ -73,15 +74,15 @@ def answer_response(answer: str) -> EnvironmentResponse:
 def with_provenance(policy: Callable, *, provenance: dict[str, Any]) -> Callable:
     """Wrap a policy so every response carries provenance in its metadata.
 
-    The policy may return an EnvironmentResponse or a bare action.
+    The policy may return a motor ``StreamEvent`` or a bare action.
     """
-    def respond(observation, history) -> EnvironmentResponse:
+    def respond(observation, history) -> StreamEvent:
         result = policy(observation, history)
-        if not isinstance(result, EnvironmentResponse):
-            result = EnvironmentResponse(action=result)
-        return replace(result, metadata={
-            **result.metadata,
-            'provenance': deepcopy({**result.metadata.get('provenance', {}), **provenance}),
+        if not isinstance(result, StreamEvent):
+            result = StreamEvent('motor', result, None)
+        return replace(result, meta={
+            **result.meta,
+            'provenance': deepcopy({**result.meta.get('provenance', {}), **provenance}),
         })
 
     return respond
@@ -111,23 +112,23 @@ class _LoggedGrid(GridGameEnvironment):
         super().__init__(env)
         self.applied = []
 
-    def step(self, action):
-        action = self.action_spec().validate(action)
+    def step(self, outputs):
+        action = self.action_spec().validate(outputs['motor'])
         self.applied.append(int(action))
-        return super().step(action)
+        return super().step(outputs)
 
 
 def direct_episode(policy: Callable, seed: int, *, size: int, max_steps: int) -> dict:
     """Reference loop: no session, subject, recorder or hooks.
 
-    The policy may return an EnvironmentResponse or a bare action.
+    The policy may return a motor ``StreamEvent`` or a bare action.
     """
     env = GridGameEnv(size=size, seed=seed, max_steps=max_steps)
     observation = env.reset(seed=seed)
     actions, total = [], 0.
     for _ in range(max_steps):
         result = policy(observation, ())
-        action = int(result.action if isinstance(result, EnvironmentResponse) else result)
+        action = int(result.payload if isinstance(result, StreamEvent) else result)
         observation, reward, done, _ = env.step(action)
         actions.append(action)
         total += reward
@@ -180,7 +181,8 @@ def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | No
             def factory(trial):
                 env = _LoggedGrid(GridGameEnv(size=size, seed=trial.identifier, max_steps=max_steps))
                 environments[trial.identifier] = env
-                with EnvironmentSession(environment=env, seed=trial.identifier, require_specs=True) as session:
+                source = EnvironmentSource(env, seed=trial.identifier, require_specs=True)
+                with Session(source, ('motor',)) as session:
                     yield session
 
             result = Experiment(

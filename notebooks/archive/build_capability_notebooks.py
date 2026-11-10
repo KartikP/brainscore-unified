@@ -187,7 +187,7 @@ NB05 = [
            "`synchronize_modalities`, and the temporal-shift null."),
     ('code', "import numpy as np\n"
              "from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly\n"
-             "from brainscore_core.temporal import synchronize_modalities, hrf_convolve, double_gamma_hrf"),
+             "from brainscore.temporal import synchronize_modalities, hrf_convolve, double_gamma_hrf"),
     ('md', "## Two modality streams on different native rates → one TR grid"),
     ('code', "def stream(n_pres, src_bins, n_neuroid, scale):\n"
              "    nb=len(src_bins); data=np.stack([np.full((n_pres,n_neuroid), b*scale) for b in range(nb)],1)\n"

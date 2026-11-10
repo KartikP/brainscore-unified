@@ -107,7 +107,7 @@ Each role names its channel fields differently; use the one for the object you a
 | Benchmark | `required_input_channels` | `requested_output_channels` |
 | `SessionProtocol` | `input_channels` | `output_channels` |
 
-**Stills and clips.** `vision` is the one visual channel, and a subject also says which forms it takes natively: `vision:still` (pictures) and `vision:clip` (video). A benchmark shows each subject the stimulus in the form people saw it when the subject has that form, and adapts it only when it doesn't (for example, frames from each clip for a picture-only model), recording the adaptation on the score as `attrs['input_adaptation']`.
+**Stills and clips.** `vision` is the one visual channel, and a subject also says which forms it takes natively: `vision:image` (pictures) and `vision:video` (video). A benchmark shows each subject the stimulus in the form people saw it when the subject has that form, and adapts it only when it doesn't (for example, frames from each clip for a picture-only model), recording the adaptation on the score as `attrs['input_adaptation']`.
 
 ```python
 import brainscore

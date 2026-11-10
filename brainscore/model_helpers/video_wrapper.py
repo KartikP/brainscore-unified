@@ -65,7 +65,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuroidAssembly,
 )
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core.temporal import window_plan
+from brainscore.temporal import window_plan
 from brainscore_core.extraction_cache import (
     store_xarray, extraction_fingerprint, wrapper_config, file_inputs,
 )

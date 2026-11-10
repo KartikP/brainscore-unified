@@ -11,7 +11,7 @@ import time
 import uuid
 from typing import Iterator
 
-from brainscore.instrumentation import ObservedSession, observe
+from brainscore.instrumentation import observe, observed
 from brainscore.run_record import PayloadCodec, RunRecord
 from brainscore.experiments._storage import check_output_directory
 from brainscore_core.compatibility import CompatibilityMatch, validate_channels
@@ -231,7 +231,8 @@ class SessionProtocol:
                         }
                         if settings:
                             context.publish('session_context', settings)
-                        subject.participate(ObservedSession(session, context))
+                        with observed(session, context):
+                            subject.participate(session)
                         if not session.complete:
                             raise RuntimeError('Environment session ended before episode completion')
                         if self.collect_outputs:
@@ -252,7 +253,7 @@ class CallableProtocol:
     An evaluator that runs the subject through ``participate`` passes
     ``methods=()``. It then owns the repetitions too: it runs each session
     inside ``context.repetition(identifier)`` and wraps it in
-    ``ObservedSession(session, context)``, so the record holds the input and
+    ``observed(session, context)``, so the record holds the input and
     output events of each session between its own boundaries. It names
     those identifiers in ``repetitions``, so tools can select them. With
     observed methods the one repetition is ``'external'``.

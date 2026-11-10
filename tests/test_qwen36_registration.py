@@ -12,7 +12,7 @@ import torch
 from PIL import Image
 
 from brainscore_core import Perturbation, Selection, StateChange, TaskContext
-from brainscore_core.streaming import BufferedSession
+from brainscore_core.streaming_helpers import table_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.streaming_helpers import apply_state_change
 
@@ -106,7 +106,7 @@ def test_both_towers_are_wired(built):
     assert (text.identifier, text.kwargs['backbone_id']) == ('qwen3.6-27b-text', 'qwen3.6-27b')
     assert {'vision', 'text'} <= set(model.available_modalities)
     # Stills as images, clips as video, from the same vision tower.
-    assert {'vision:still', 'vision:clip'} <= model.in_channels
+    assert {'vision:image', 'vision:video'} <= model.in_channels
     assert model.extractor['video'].kwargs['model'] is vision.kwargs['model']
     assert {'behavior:text', 'behavior:probabilities'} <= model.out_channels
 
@@ -143,8 +143,7 @@ def test_answer_sends_the_image_without_thinking(built, tmp_path):
     stimuli.identifier = 'qwen36-answer-wiring'
     task = TaskContext(task_type='label', label_set=['real', 'pseudo'],
                        instruction='Is this a real word?', prefer_path='generation')
-    session = BufferedSession(stimulus_set=stimuli, task_context=task,
-                              requested_output_channels=['behavior'])
+    session = table_session(stimuli, ['behavior'], task_context=task)
     model.participate(session)
     assert list(session.collect('behavior').values.ravel()) == [0.0, 1.0]   # one-hot over (real, pseudo)
     assert processor.template_kwargs['enable_thinking'] is False

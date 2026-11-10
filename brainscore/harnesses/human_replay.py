@@ -7,8 +7,9 @@ how often two humans agree with each other.
 
 Data format. An episode is a list of ``(step, human_counts)`` pairs:
 
-- ``step`` is the ``EnvironmentStep`` a participant faced (history-relevant
-  order, so a stateful policy sees the same sequence a person did).
+- ``step`` is the row (a mapping of channel -> payload) a participant faced
+  (history-relevant order, so a stateful policy sees the same sequence a
+  person did).
 - ``human_counts[a]`` is how many participants chose action ``a`` in that state.
 
 Steps answered by fewer than two participants are still shown (they keep the
@@ -32,18 +33,16 @@ The normalized score is model agreement / human ceiling. A model that always
 picks the most common human choice can exceed 1; the score is not clipped, so
 that case stays visible.
 """
-from dataclasses import replace
-from typing import Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Sequence, Tuple
 
 import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.environment import DiscreteSpec
-from brainscore_core.events import EnvironmentStep
 from brainscore_core.metrics import Score
 from brainscore_core.streaming_helpers import run_environment
 
-HumanEpisode = Sequence[Tuple[EnvironmentStep, Sequence[int]]]
+HumanEpisode = Sequence[Tuple[Mapping[str, Any], Sequence[int]]]
 
 
 class ReplayEnvironment:
@@ -53,12 +52,10 @@ class ReplayEnvironment:
     episode so every recorded state receives exactly one action.
     """
 
-    def __init__(self, steps: Sequence[EnvironmentStep], n_actions: int):
+    def __init__(self, steps: Sequence[Mapping[str, Any]], n_actions: int):
         if not steps:
             raise ValueError('A replay episode needs at least one step')
-        self._steps = [replace(step, step_num=i, is_first=i == 0,
-                               is_last=False, is_terminal=False)
-                       for i, step in enumerate(steps)]
+        self._steps = [dict(step) for step in steps]
         self._spec = DiscreteSpec(n_actions)
         self._index = 0
 
@@ -69,20 +66,20 @@ class ReplayEnvironment:
         self._index = 0
         return self._steps[0]
 
-    def step(self, action):
-        del action  # ponytail: open-loop replay; the recorded next state is fixed.
+    def step(self, outputs):
+        del outputs  # ponytail: open-loop replay; the recorded next state is fixed.
         self._index += 1
         if self._index < len(self._steps):
-            return self._steps[self._index]
-        last = self._steps[-1]
-        return replace(last, step_num=len(self._steps), is_last=True, is_terminal=True)
+            return self._steps[self._index], None
+        return self._steps[-1], 'terminal'
 
 
-def replay_actions(subject, steps: Sequence[EnvironmentStep], n_actions: int) -> List[int]:
+
+def replay_actions(subject, steps: Sequence[Mapping[str, Any]], n_actions: int) -> List[int]:
     """Reset ``subject``, replay ``steps`` through its ``participate``, return its choices."""
     subject.reset()
     responses = run_environment(subject, ReplayEnvironment(steps, n_actions))
-    actions = [int(np.asarray(response.action).item()) for response in responses]
+    actions = [int(np.asarray(action).item()) for action in responses]
     if len(actions) != len(steps):
         raise RuntimeError(f'Expected {len(steps)} actions, got {len(actions)}')
     return actions

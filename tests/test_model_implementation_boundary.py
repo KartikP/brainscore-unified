@@ -88,8 +88,7 @@ def test_builtin_columns_match_the_constructor_map():
 def test_concrete_subject_keeps_typed_dispatch_order():
     assert [(kind.__name__, handler) for kind, handler in BrainScoreModel._INPUT_HANDLERS] == [
         ('StateChange', '_dispatch_state_change'),
-        ('EnvironmentStep', '_handle_environment_step'),
-        ('Message', '_handle_message'),
+        ('Mapping', '_handle_row'),
     ]
 
 

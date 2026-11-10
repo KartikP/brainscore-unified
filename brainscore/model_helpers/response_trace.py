@@ -126,11 +126,11 @@ class ResponseTraceCapability(Capability):
                 responses = self._stream(model, event)
                 try:
                     for response in responses:
-                        session.emit(response)
+                        session.respond(response)
                 finally:
                     responses.close()
             else:
-                session.emit(model.process(event))
+                session.respond(model.process(event))
 
 
 @lru_cache(maxsize=None)

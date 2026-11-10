@@ -142,7 +142,7 @@ benchmark_registry['your-benchmark'] = lambda: YourBenchmark()
 ```
 
 Then add `from . import your_name` to `brainscore/benchmarks/__init__.py`. For naturalistic /
-temporal data, reuse `core/brainscore_core/temporal.py` (`temporal_bin`, `hrf_convolve`,
+temporal data, reuse `brainscore/temporal.py` (`temporal_bin`, `hrf_convolve`,
 `contiguous_block_cv`, `window_plan`) — see `benchmarks/lahner2024` and `benchmarks/algonauts2025`
 as worked examples. For a clip longer than a video model's native temporal window, set
 `VideoWrapper(..., context_window_ms=...)` to tile it into windows and stitch the per-window

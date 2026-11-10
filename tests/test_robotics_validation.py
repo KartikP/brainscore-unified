@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 from brainscore.robotics import ActionSpec, droid_steps, evaluate_droid_episode, staged_droid_episodes
-from brainscore_core.events import EnvironmentResponse
 
 
 @pytest.fixture
@@ -64,7 +63,7 @@ def test_action_spec_requires_explicit_consistent_semantics(spec, changes, messa
 def test_invalid_first_observation_never_reaches_policy_and_resets(episode, spec, field, value, message):
     episode['steps'][0]['observation'][field] = value
     calls, resets = [], []
-    subject = SimpleNamespace(process=lambda step: calls.append(step), reset=lambda: resets.append(True))
+    subject = SimpleNamespace(process=lambda row: calls.append(row), reset=lambda: resets.append(True))
     with pytest.raises(ValueError, match=message):
         evaluate_droid_episode(subject, episode, action_spec=spec, action_source=lambda row: row['action'])
     assert calls == [] and resets == [True, True]
@@ -96,26 +95,26 @@ def test_named_timestamps_and_snapshots_preserve_source_semantics(episode, spec)
     for index, row in enumerate(episode['steps']):
         row['observation']['time_ms'] = 100. + index * 60.
     pairs = list(droid_steps(episode, action_spec=spec, action_source=lambda row: row['action'], timestamp_key='time_ms'))
-    step, target = pairs[0]
-    assert [pair[0].context['t_ms'] for pair in pairs] == [100., 160.]
-    assert step.context['time_source'] == 'time_ms' and not step.context['time_inferred']
-    assert step.instruction == 'pick up cup'
+    step, target, info = pairs[0]
+    assert [pair[2]['t_ms'] for pair in pairs] == [100., 160.]
+    assert info['time_source'] == 'time_ms' and not info['time_inferred']
+    assert step['instruction'] == 'pick up cup'
     episode['steps'][0]['observation']['wrist_image_left'][:] = 255
     episode['steps'][0]['observation']['joint_position'][:] = 1
     episode['steps'][0]['action'][:] = -1
-    assert not step.observation['cameras']['wrist'].rgb.any()
-    assert not step.observation['proprioception'].joint_position.any()
+    assert not step['vision:image']['wrist'].any()
+    assert not step['proprioception']['joint_position'].any()
     np.testing.assert_array_equal(target, [0.5])
 
 
 @pytest.mark.parametrize('response,error', [
     ({'action': [0.]}, TypeError),
-    (EnvironmentResponse(action=np.array([np.nan])), ValueError),
-    (EnvironmentResponse(action=np.array([2.])), ValueError),
+    ({'motor': np.array([np.nan])}, ValueError),
+    ({'motor': np.array([2.])}, ValueError),
 ])
 def test_invalid_prediction_resets_policy(episode, spec, response, error):
     resets = []
-    subject = SimpleNamespace(process=lambda step: response, reset=lambda: resets.append(True))
+    subject = SimpleNamespace(process=lambda row: response, reset=lambda: resets.append(True))
     with pytest.raises(error):
         evaluate_droid_episode(subject, episode, action_spec=spec, action_source=lambda row: row['action'])
     assert resets == [True, True]

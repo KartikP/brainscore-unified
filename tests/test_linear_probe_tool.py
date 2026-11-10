@@ -18,7 +18,7 @@ from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, list_tools, load_tool, register_tool
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly, NeuroidAssembly,
 )
@@ -64,7 +64,7 @@ class FixtureSubject(Subject):
 def protocol():
     @contextmanager
     def factory(trial):
-        yield InMemorySession([StreamEvent('stimulus', [[-2., 1.], [2., -1.]], None)])
+        yield Session([StreamEvent('stimulus', [[-2., 1.], [2., -1.]], None)])
     return SessionProtocol('probe-check', factory, conditions=['baseline', 'lesioned'],
                            input_channels=['stimulus'], output_channels=['behavior'])
 
@@ -164,7 +164,7 @@ def test_direct_scope_reuses_probe_and_preserves_model_even_on_interrupt(tmp_pat
     with pytest.raises(KeyboardInterrupt):
         with attach_tools(subject, tools=[RecordInputsOutputs(), probe],
                           instrumentation=provider, output_dir=tmp_path / 'scope'):
-            session = InMemorySession([StreamEvent('stimulus', [[2., 1.]], None)])
+            session = Session([StreamEvent('stimulus', [[2., 1.]], None)])
             subject.participate(session)
             raise KeyboardInterrupt()
     assert list(subject.layer._forward_hooks) == [original.id]

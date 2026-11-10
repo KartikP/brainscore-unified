@@ -5,7 +5,7 @@ from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.responses import Choice
-from brainscore_core.streaming import BufferedSession
+from brainscore_core.streaming_helpers import table_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core._evaluation.compatibility import check_channel_compatibility
 
@@ -30,8 +30,7 @@ def one_back(prompt):
 
 
 def _answers(model):
-    session = BufferedSession(stimulus_set=STIMULI, task_context=TASK,
-                              requested_output_channels=['behavior:choice'])
+    session = table_session(STIMULI, ['behavior:choice'], task_context=TASK)
     model.participate(session)
     return list(session.collect('behavior:choice')['raw_answer'].values)
 

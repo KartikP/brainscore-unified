@@ -10,7 +10,7 @@ import pytest
 from brainscore_core import io_catalog
 from brainscore.capabilities import capability_registry
 from brainscore import BrainScoreModel
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 
 
 @pytest.fixture
@@ -38,8 +38,7 @@ def _requests(module, *texts):
 
 def test_session_runs_through_participate(capability):
     subject = capability.build_model(min_length=2)
-    session = BufferedSession(_requests(capability, 'a big red ball', 'go on'),
-                              requested_output_channels=[capability.RESULT])
+    session = Session(_requests(capability, 'a big red ball', 'go on'), [capability.RESULT])
     subject.participate(session)
     answers = session.collect(capability.RESULT)
     assert [event.payload for event in answers] == [
@@ -52,8 +51,7 @@ def test_session_runs_through_participate(capability):
 def test_reset_clears_state_and_the_model_is_reusable(capability):
     subject = capability.build_model()
     for _ in range(2):   # the second pass starts from fresh state after reset
-        session = BufferedSession(_requests(capability, 'one two'),
-                                  requested_output_channels=[capability.RESULT])
+        session = Session(_requests(capability, 'one two'), [capability.RESULT])
         subject.participate(session)
         assert session.collect(capability.RESULT)[0].payload.words_so_far == 2
         subject.reset()
@@ -71,8 +69,7 @@ def test_wrong_payloads_are_rejected(capability):
     # Wrong type, or the right dataclass holding a wrong field: rejected up front.
     for payload in ('not a request', capability.WordRequest(text=42)):
         with pytest.raises(ValueError):
-            BufferedSession([StreamEvent(channel=capability.REQUEST, payload=payload, t_ms=0.0)],
-                            requested_output_channels=[capability.RESULT])
+            Session([StreamEvent(channel=capability.REQUEST, payload=payload, t_ms=0.0)], [capability.RESULT])
         with pytest.raises(ValueError):
             capability.build_model().process(
                 StreamEvent(channel=capability.REQUEST, payload=payload, t_ms=0.0))
@@ -84,8 +81,7 @@ def test_bad_settings_fail_before_counting(capability):
     # A model built directly, bypassing build_model, is checked in setup.
     subject = BrainScoreModel(identifier='direct',
                               capability_config={capability.IDENTIFIER: {'min_length': True}})
-    session = BufferedSession(_requests(capability, 'one two'),
-                              requested_output_channels=[capability.RESULT])
+    session = Session(_requests(capability, 'one two'), [capability.RESULT])
     with pytest.raises(ValueError, match='min_length'):
         subject.participate(session)
     assert session.next_input() is not None   # no request was consumed

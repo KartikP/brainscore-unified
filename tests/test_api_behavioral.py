@@ -121,11 +121,10 @@ class TestGenerationClosure:
 
 
 class TestGameActionFn:
-    """build_api_action_fn drives the embodied game via process(EnvironmentStep)."""
+    """build_api_action_fn drives the embodied game via process(row)."""
 
-    def _env_step(self, n_actions=3, ascii_board=None, is_first=False):
+    def _env_step(self, n_actions=3, ascii_board=None):
         import numpy as np
-        from brainscore_core.model_interface import EnvironmentStep
         obs = {
             'frame': np.zeros((8, 8, 3), dtype='uint8'),
             'instruction': 'reach the goal',
@@ -133,9 +132,7 @@ class TestGameActionFn:
         }
         if ascii_board is not None:
             obs['ascii'] = ascii_board
-        return EnvironmentStep(
-            observation=obs, instruction='reach the goal',
-            is_first=is_first, step_num=0)
+        return {'observation': obs, 'instruction': 'reach the goal'}
 
     def _mock(self, response='Action: 2', counter=None):
         def call(model, system, user_text, image, max_tokens):
@@ -146,11 +143,10 @@ class TestGameActionFn:
 
     def test_parses_action_index(self):
         from brainscore.model_helpers.api_behavioral import build_api_action_fn
-        from brainscore_core.model_interface import EnvironmentResponse
         act = build_api_action_fn(self._mock('Let me think... Action: 2'), 'mock')
-        resp = act(self._env_step(n_actions=3))
-        assert isinstance(resp, EnvironmentResponse)
-        assert int(resp.action) == 2
+        resp = act(self._env_step(n_actions=3))['motor']
+        assert resp.channel == 'motor' and resp.meta['valid']
+        assert int(resp.payload) == 2
 
     def test_frame_sent_as_image(self):
         from brainscore.model_helpers.api_behavioral import build_api_action_fn
@@ -164,8 +160,8 @@ class TestGameActionFn:
     def test_unparseable_falls_back_to_legal_random(self):
         from brainscore.model_helpers.api_behavioral import build_api_action_fn
         act = build_api_action_fn(self._mock('no idea'), 'mock', fallback_seed=0)
-        resp = act(self._env_step(n_actions=3))
-        assert 0 <= int(resp.action) < 3                       # random but legal
+        resp = act(self._env_step(n_actions=3))['motor']
+        assert 0 <= int(resp.payload) < 3                       # random but legal
 
     def test_action_cache(self, tmp_path):
         from brainscore.model_helpers.api_behavioral import build_api_action_fn
@@ -173,27 +169,26 @@ class TestGameActionFn:
         act = build_api_action_fn(self._mock('Action: 0', counter=calls), 'mock',
                                   cache_dir=str(tmp_path))
         s = self._env_step()
-        a, b = act(s), act(s)
-        assert int(a.action) == int(b.action) == 0
+        a, b = act(s)['motor'], act(s)['motor']
+        assert int(a.payload) == int(b.payload) == 0
         assert len(calls) == 1                                 # identical frame -> cached
 
     def test_missing_frame_raises(self):
         from brainscore.model_helpers.api_behavioral import build_api_action_fn
-        from brainscore_core.model_interface import EnvironmentStep
         act = build_api_action_fn(self._mock(), 'mock')
         with pytest.raises(ValueError, match="no 'frame'"):
-            act(EnvironmentStep(observation={'instruction': 'x'}, step_num=0))
+            act({'observation': {'instruction': 'x'}})
 
     def test_ascii_mode_sends_board_no_image(self):
         from brainscore.model_helpers.api_behavioral import build_api_action_fn
         calls = []
         act = build_api_action_fn(self._mock('Action: 1', counter=calls), 'mock',
                                   obs_mode='ascii')
-        resp = act(self._env_step(n_actions=3, ascii_board='P . .\n. . G'))
+        resp = act(self._env_step(n_actions=3, ascii_board='P . .\n. . G'))['motor']
         user_text, image = calls[0]
         assert image is None                  # ascii mode -> no image payload
         assert 'P . .' in user_text           # the text board is in the prompt
-        assert int(resp.action) == 1
+        assert int(resp.payload) == 1
 
     def test_ascii_mode_missing_board_raises(self):
         from brainscore.model_helpers.api_behavioral import build_api_action_fn

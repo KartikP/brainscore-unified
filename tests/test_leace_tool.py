@@ -11,7 +11,7 @@ from brainscore.experiments import Experiment, SessionProtocol, TorchInstrumenta
 from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, load_tool
 from brainscore_core.events import Selection
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from tests.test_ablation_tool_loader import FixtureSubject
 
@@ -124,7 +124,7 @@ def test_session_conditions_keep_baseline_and_restore_model(tmp_path):
 
     @contextmanager
     def factory(trial):
-        yield BufferedSession([StreamEvent('stimulus', values, None)])
+        yield Session([StreamEvent('stimulus', values, None)])
 
     result = Experiment(subject=subject,
         protocol=SessionProtocol('leace', factory, conditions=['baseline', 'lesioned', 'restored'],

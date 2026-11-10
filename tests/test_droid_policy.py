@@ -2,7 +2,6 @@ import numpy as np
 import pytest
 from brainscore.harnesses.droid_policy import DroidPolicy
 from brainscore.robotics import ActionSpec
-from brainscore_core.events import CameraFrame, Proprioception, EnvironmentStep
 
 pytestmark = pytest.mark.unit
 
@@ -13,13 +12,18 @@ def spec():
         1000/15, (-1.,)*7+(0.,), (1.,)*8)
 
 
-def step(n=0, first=False, last=False):
-    return EnvironmentStep(observation={
-        'cameras': {k: CameraFrame(rgb=np.full((3, 4, 3), i, dtype=np.uint8))
-                    for i, k in enumerate(('exterior_1','exterior_2','wrist'))},
-        'proprioception': Proprioception(joint_position=np.zeros(7),
-             cartesian_position=np.zeros(6), gripper_position=np.zeros(1))},
-        instruction='move the cup', step_num=n, is_first=first, is_last=last)
+def step():
+    return {
+        'vision:image': {k: np.full((3, 4, 3), i, dtype=np.uint8)
+                         for i, k in enumerate(('exterior_1', 'exterior_2', 'wrist'))},
+        'proprioception': {'joint_position': np.zeros(7), 'cartesian_position': np.zeros(6),
+                           'gripper_position': np.zeros(1)},
+        'instruction': 'move the cup'}
+
+
+def act(adapter, row):
+    """The motor event the policy returned for one row."""
+    return adapter(row)['motor']
 
 
 class Policy:
@@ -34,28 +38,30 @@ class Policy:
 def test_named_mapping_keeps_targets_out_and_copies_observations():
     policy=Policy(); resets=[]
     adapter=DroidPolicy(policy,action_spec=spec(),reset_policy=lambda:resets.append(1),external_camera='exterior_2')
-    observation=step(first=True)
-    response=adapter(observation)
+    adapter.reset()
+    observation=step()
+    response=act(adapter, observation)
     request=policy.requests[0]
     assert set(request)=={'observation/exterior_image_1_left','observation/wrist_image_left',
         'observation/joint_position','observation/gripper_position','prompt'}
     assert request['prompt']=='move the cup'
     assert np.all(request['observation/exterior_image_1_left']==1)
     request['observation/joint_position'][:]=9
-    assert np.all(observation.observation['proprioception'].joint_position==0)
-    assert response.action.shape==(8,) and resets==[1]
+    assert np.all(observation['proprioception']['joint_position']==0)
+    assert response.payload.shape==(8,) and resets==[1]
 
 
 def test_chunk_queue_clears_between_episodes_and_on_reset():
     policy=Policy(np.arange(24).reshape(3,8)/24)
     adapter=DroidPolicy(policy,action_spec=spec(),reset_policy=lambda:None,action_horizon=3)
-    a=adapter(step(first=True)).action
-    b=adapter(step(1,last=True)).action
+    a=act(adapter, step()).payload
+    b=act(adapter, step()).payload
     assert len(policy.requests)==1 and not np.array_equal(a,b)
-    np.testing.assert_array_equal(adapter(step(first=True)).action,a)
+    adapter.reset()  # BrainScoreModel calls this when an episode begins
+    np.testing.assert_array_equal(act(adapter, step()).payload,a)
     assert len(policy.requests)==2
     adapter.reset()
-    np.testing.assert_array_equal(adapter(step()).action,a)
+    np.testing.assert_array_equal(act(adapter, step()).payload,a)
     assert len(policy.requests)==3
 
 
@@ -64,13 +70,6 @@ def test_chunk_queue_clears_between_episodes_and_on_reset():
 def test_invalid_chunk_is_rejected_without_clipping(actions):
     adapter=DroidPolicy(Policy(actions),action_spec=spec(),reset_policy=lambda:None)
     with pytest.raises(ValueError):adapter(step())
-    assert not adapter._pending
-
-
-def test_out_of_order_step_does_not_use_stale_action():
-    adapter=DroidPolicy(Policy(),action_spec=spec(),reset_policy=lambda:None,action_horizon=3)
-    adapter(step())
-    with pytest.raises(ValueError,match='consecutive'):adapter(step(2))
     assert not adapter._pending
 
 
@@ -85,24 +84,25 @@ def test_chunk_metadata_declares_predictions_execution_and_owner():
     adapter = DroidPolicy(
         policy, action_spec=spec(), reset_policy=lambda: None, action_horizon=2,
     )
-    responses = [adapter(step(n, first=n == 0)) for n in range(3)]
+    responses = [act(adapter, step()) for n in range(3)]
     assert len(policy.requests) == 2
-    assert [r.metadata['chunk_id'] for r in responses] == [0, 0, 1]
-    assert [r.metadata['chunk_index'] for r in responses] == [0, 1, 0]
+    assert [r.meta['chunk_id'] for r in responses] == [0, 0, 1]
+    assert [r.meta['chunk_index'] for r in responses] == [0, 1, 0]
+    assert [r.meta['step_num'] for r in responses] == [0, 1, 2]
     for response in responses:
-        assert response.metadata['prediction_horizon'] == 3
-        assert response.metadata['execution_horizon'] == 2
-        assert response.metadata['scheduler'] == 'policy_adapter'
-        assert response.metadata['action_kind'] == 'single'
-        assert response.metadata['control_period_ms'] == spec().period_ms
+        assert response.meta['prediction_horizon'] == 3
+        assert response.meta['execution_horizon'] == 2
+        assert response.meta['scheduler'] == 'policy_adapter'
+        assert response.meta['action_kind'] == 'single'
+        assert response.meta['control_period_ms'] == spec().period_ms
 
 
 def test_bad_camera_frame_is_rejected_before_inference():
     """Moved from core: the robot harness, not core, validates camera frames."""
     policy = Policy()
     adapter = DroidPolicy(policy, action_spec=spec(), reset_policy=lambda: None)
-    bad = step(first=True)
-    bad.observation['cameras']['wrist'] = CameraFrame(rgb=np.zeros((3, 4, 3), dtype=np.float32))
+    bad = step()
+    bad['vision:image']['wrist'] = np.zeros((3, 4, 3), dtype=np.float32)
     with pytest.raises(ValueError, match='wrist'):
         adapter(bad)
     assert policy.requests == []

@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 
 from brainscore_core.environment import ActionSpec
-from brainscore_core.events import EnvironmentResponse, EnvironmentStep
 from brainscore import BrainScoreModel
-from brainscore_core.streaming_helpers import EnvironmentSession, run_environment
+from brainscore_core.streaming import Session
+from brainscore_core.streaming_helpers import EnvironmentSource, run_environment
 from brainscore.experiments import Experiment, SessionProtocol, RecordInputsOutputs
 from brainscore.experiments.replay import read_events, replay_sessions
 from brainscore.harnesses.grid_game import GridGameEnv, GridGameEnvironment, greedy_oracle_policy, play_game
@@ -50,10 +50,10 @@ def test_grid_limit_is_truncation_and_reset_seed_reproduces_start():
     wrapper = GridGameEnvironment(GridGameEnv(), max_steps=1)
     start = wrapper.reset(seed=12)
     start_again = wrapper.reset(seed=12)
-    np.testing.assert_array_equal(start.observation['frame'], start_again.observation['frame'])
-    result = wrapper.step(0)
-    assert result.is_last
-    assert result.is_terminal == wrapper.solved
+    np.testing.assert_array_equal(start['observation']['frame'], start_again['observation']['frame'])
+    row, reason = wrapper.step({'motor': 0})
+    assert reason == ('terminal' if wrapper.solved else 'truncated')
+    assert row['reward'] is not None
 
 
 def test_gym_session_preserves_seeded_direct_reference():
@@ -102,9 +102,9 @@ def test_session_tools_record_applied_actions_and_replay_saved_observations(tmp_
     sessions = []
     @contextmanager
     def factory(trial):
-        with EnvironmentSession(
-            GridGameEnvironment(GridGameEnv(size=4)), seed=trial.identifier, require_specs=True,
-        ) as session:
+        source = EnvironmentSource(
+            GridGameEnvironment(GridGameEnv(size=4)), seed=trial.identifier, require_specs=True)
+        with Session(source, ('motor',)) as session:
             sessions.append(session)
             yield session
     model = subject()
@@ -118,12 +118,13 @@ def test_session_tools_record_applied_actions_and_replay_saved_observations(tmp_
     ).run()
     events = read_events(result.directory)
     inputs = [e['payload'] for e in events if e['kind'] == 'input']
+    observations = [e for e in inputs if e.channel == 'observation']
     outputs = [e['payload'] for e in events if e['kind'] == 'output']
     applied = [e for e in outputs if e.meta['action_status'] == 'applied']
-    proposed = [e for e in outputs if e.meta['action_status'] == 'proposed']
-    assert len(inputs) == len(applied) + 1
-    assert inputs[-1].is_terminal
-    assert len(applied) == len(proposed) == len(sessions[0].emitted) > 0
+    proposed = applied  # one response event per action: its receipt
+    assert len(observations) == len(applied) + 1
+    assert inputs[0].payload == 'begin' and inputs[-1].meta['reason'] in ('terminal', 'truncated')
+    assert len(applied) == len(sessions[0].emitted) > 0
     assert all(e.t_ms is None for e in outputs)
     assert not model._action_fn.history  # SessionProtocol reset after the trial.
     replay = Experiment(
@@ -131,15 +132,15 @@ def test_session_tools_record_applied_actions_and_replay_saved_observations(tmp_
         tools=[RecordInputsOutputs()], output_dir=tmp_path/'replay',
     ).run()
     replay_outputs = [e['payload'] for e in read_events(replay.directory) if e['kind'] == 'output']
-    assert [e.payload.action for e in replay_outputs] == [e.payload.action for e in proposed]
+    assert [e.payload for e in replay_outputs] == [e.payload for e in proposed]
     assert all(e.meta['action_status'] == 'proposed' for e in replay_outputs)
 
 
 def test_caught_environment_failure_cannot_complete_an_experiment(tmp_path):
     class Broken:
         def reset(self):
-            return EnvironmentStep(observation={})
-        def step(self, action):
+            return {'observation': {}}
+        def step(self, outputs):
             raise RuntimeError('connection lost')
     class Catches(BrainScoreModel):
         def participate(self, session):
@@ -149,11 +150,11 @@ def test_caught_environment_failure_cannot_complete_an_experiment(tmp_path):
                 pass
     @contextmanager
     def factory(trial):
-        with EnvironmentSession(Broken()) as session:
+        with Session(EnvironmentSource(Broken()), ('motor',)) as session:
             yield session
     with pytest.raises(RuntimeError, match='before episode completion'):
         Experiment(
-            subject=Catches('broken', action_fn=lambda step: EnvironmentResponse(0)),
+            subject=Catches('broken', action_fn=lambda row: {'motor': 0}),
             protocol=SessionProtocol('broken', factory),
             tools=[RecordInputsOutputs()], output_dir=tmp_path/'broken',
         ).run()
@@ -167,11 +168,11 @@ def test_early_subject_return_cannot_complete_an_episode(tmp_path):
             session.next_input()
     @contextmanager
     def factory(trial):
-        with EnvironmentSession(GridGameEnvironment(GridGameEnv())) as session:
+        with Session(EnvironmentSource(GridGameEnvironment(GridGameEnv())), ('motor',)) as session:
             yield session
     with pytest.raises(RuntimeError, match='before episode completion'):
         Experiment(
-            subject=Early('early', action_fn=lambda step: EnvironmentResponse(0)),
+            subject=Early('early', action_fn=lambda row: {'motor': 0}),
             protocol=SessionProtocol('grid', factory),
             tools=[RecordInputsOutputs()], output_dir=tmp_path/'early',
         ).run()
@@ -182,13 +183,14 @@ def test_record_episode_without_collecting_retained_history(tmp_path, history_li
     sessions = []
     @contextmanager
     def factory(trial):
-        with EnvironmentSession(
+        source = EnvironmentSource(
             GridGameEnvironment(GridGameEnv(), max_steps=20),
             seed=7,
             require_specs=True,
             history_limit=history_limit,
-        ) as session:
-            sessions.append(session)
+        )
+        with Session(source, ('motor',)) as session:
+            sessions.append((session, source))
             yield session
     result = Experiment(
         subject=subject(),
@@ -203,18 +205,17 @@ def test_record_episode_without_collecting_retained_history(tmp_path, history_li
     ).run()
     assert result.value is None and result.manifest['status'] == 'complete'
     assert result.manifest['plan']['protocol']['config']['collect_outputs'] is False
-    session, = sessions
+    (session, source), = sessions
     assert session.complete
-    assert len(session.input_events) <= history_limit
+    assert len(source.input_events) <= history_limit
     assert len(session.emitted) <= history_limit
-    assert len(session.action_events) <= history_limit
+    assert len(source.action_events) <= history_limit
     events = list(result.record.events())
     applied = [e for e in events if e['kind'] == 'output'
                and e['payload'].meta.get('action_status') == 'applied']
-    proposed = [e for e in events if e['kind'] == 'output'
-                and e['payload'].meta.get('action_status') == 'proposed']
-    inputs = [e for e in events if e['kind'] == 'input']
-    assert len(applied) == len(proposed) == len(inputs) - 1
+    observations = [e for e in events if e['kind'] == 'input'
+                    and e['payload'].channel == 'observation']
+    assert len(applied) == len(observations) - 1
     assert len(applied) > len(session.emitted)
     with pytest.raises(RuntimeError, match='history_limit'):
         session.collect()
@@ -382,27 +383,28 @@ def test_recorded_instrumented_episode_keeps_no_per_step_objects(tmp_path, porta
     import torch
     from brainscore.experiments import (Experiment, RecordActivity, RecordInputsOutputs,
                                         ScaleActivity, TorchInstrumentation)
-    from brainscore_core.events import EnvironmentResponse
     from brainscore import BrainScoreModel
-    from brainscore_core.streaming_helpers import EnvironmentSession
+    from brainscore_core.streaming_helpers import EnvironmentSource
+    from brainscore_core.streaming import Session
     if tracemalloc.is_tracing():
         pytest.skip('tracemalloc already active')
     layer = torch.nn.Linear(1, 1, bias=False)
     marks, blocks, calls = (300, 1500), {}, [0]
 
-    def policy(step):
+    def policy(row):
         calls[0] += 1
         if calls[0] in marks:
             gc.collect()
             blocks[calls[0]] = len(tracemalloc.take_snapshot().traces)
         with torch.no_grad():
-            return EnvironmentResponse(action=layer(torch.from_numpy(step.observation['state'])).numpy().copy())
+            return {'motor': layer(torch.from_numpy(row['observation']['state'])).numpy().copy()}
 
     environment = portable_check.CounterEnvironment(marks[-1])
 
     @contextmanager
     def factory(trial):
-        with EnvironmentSession(environment, require_specs=True, history_limit=0) as session:
+        source = EnvironmentSource(environment, require_specs=True, history_limit=0)
+        with Session(source, ('motor',)) as session:
             yield session
     tracemalloc.start()
     try:

@@ -41,7 +41,7 @@ def _tiny_fixture(drift_after: int | None = None, *, answers: bool = False):
     """A fixed-weight one-layer policy over the mean frame colour.
 
     With drift_after=n, calls after the first n choose a different action.
-    With answers=True, the policy returns an EnvironmentResponse built from a
+    With answers=True, the policy returns a motor StreamEvent built from a
     fixture answer, like the SmolVLM policy, instead of a bare integer. While
     the player is in the left column it answers UNSURE_ANSWER, so the
     fallback is exercised too.
@@ -145,42 +145,41 @@ def test_answer_response_keeps_answer_and_fallback(answer, action, valid):
 
     response = answer_response(answer)
     parsed = parse_directional_action(answer, prefer_last=True)
-    assert response.action == action == (parsed if parsed >= 0 else UNPARSED_ACTION)
-    assert response.metadata['answer'] == answer
-    assert response.metadata['valid'] is valid
-    assert (response.metadata['parse_error'] is None) is valid
-    assert response.metadata['fallback_action'] == (None if valid else UNPARSED_ACTION)
+    assert response.payload == action == (parsed if parsed >= 0 else UNPARSED_ACTION)
+    assert response.meta['answer'] == answer
+    assert response.meta['valid'] is valid
+    assert (response.meta['parse_error'] is None) is valid
+    assert response.meta['fallback_action'] == (None if valid else UNPARSED_ACTION)
 
 
 def test_with_provenance_accepts_responses_and_bare_actions():
-    from brainscore_core.events import EnvironmentResponse
+    from brainscore_core.streaming import StreamEvent
     from native_environment_toolbox import answer_response, direct_episode, with_provenance
 
     provenance = {'model_sha256': 'f' * 64}
     bare = with_provenance(lambda observation, history: 3, provenance=provenance)
     answered = with_provenance(lambda observation, history: answer_response('Action: down'),
                                provenance=provenance)
-    assert bare(None, ()) == EnvironmentResponse(action=3, metadata={'provenance': provenance})
+    assert bare(None, ()) == StreamEvent('motor', 3, None, {'provenance': provenance})
     response = answered(None, ())
-    assert response.action == 1
-    assert response.metadata['provenance'] == provenance
-    assert response.metadata['answer'] == 'Action: down' and response.metadata['valid']
-    response.metadata['provenance']['model_sha256'] = 'changed by a consumer'
-    assert answered(None, ()).metadata['provenance'] == provenance
+    assert response.payload == 1
+    assert response.meta['provenance'] == provenance
+    assert response.meta['answer'] == 'Action: down' and response.meta['valid']
+    response.meta['provenance']['model_sha256'] = 'changed by a consumer'
+    assert answered(None, ()).meta['provenance'] == provenance
     # The direct loop applies the same actions for both policy return types.
     for seed in (0, 1):
         plain = direct_episode(lambda o, h: 1, seed, size=4, max_steps=6)
-        wrapped = direct_episode(lambda o, h: EnvironmentResponse(action=1), seed, size=4, max_steps=6)
+        wrapped = direct_episode(lambda o, h: StreamEvent('motor', 1, None), seed, size=4, max_steps=6)
         assert plain == wrapped
 
 
 def _responses(directory):
-    """The EnvironmentResponses the environment applied, from one Experiment's record."""
+    """The motor events the environment applied, from one Experiment's record."""
     from brainscore.run_record import RunRecord
-    from brainscore_core.events import EnvironmentResponse
-    return [event['payload'].payload for event in RunRecord(directory).events()
+    return [event['payload'] for event in RunRecord(directory).events()
             if event['kind'] == 'output'
-            and isinstance(getattr(event['payload'], 'payload', None), EnvironmentResponse)
+            and getattr(event['payload'], 'channel', None) == 'motor'
             and event['payload'].meta.get('action_status') == 'applied']
 
 
@@ -207,16 +206,16 @@ def test_native_records_response_provenance_and_answers(tmp_path):
         actions = [a for seed in map(str, (0, 1)) for a in (
             report['direct'][seed]['actions'] if condition == 'recorded'
             else report['ablation']['actions'][seed])]
-        assert [r.action for r in responses] == actions
+        assert [r.payload for r in responses] == actions
         for response in responses:
-            assert response.metadata['provenance'] == provenance
-            answer = response.metadata['answer']
+            assert response.meta['provenance'] == provenance
+            answer = response.meta['answer']
             assert answer in (*FIXTURE_ANSWERS, UNSURE_ANSWER)
             expected = answer_response(answer)
-            assert response.action == expected.action
+            assert response.payload == expected.payload
             for key in ('valid', 'parse_error', 'fallback_action'):
-                assert response.metadata[key] == expected.metadata[key]
-            seen_valid.add(response.metadata['valid'])
+                assert response.meta[key] == expected.meta[key]
+            seen_valid.add(response.meta['valid'])
     assert seen_valid == {True, False}, 'the fixture exercises both a parsed answer and the fallback'
 
 

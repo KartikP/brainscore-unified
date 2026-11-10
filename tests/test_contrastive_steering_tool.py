@@ -12,7 +12,7 @@ import torch
 from brainscore.experiments import Experiment, SessionProtocol, TorchInstrumentation
 from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, load_tool
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.events import Selection
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from tests.test_ablation_tool_loader import FixtureSubject
@@ -82,7 +82,7 @@ def test_signed_protocol_conditions_and_multiple_tools_restore(tmp_path):
 
     @contextmanager
     def factory(trial):
-        yield BufferedSession([StreamEvent('stimulus', values, None)])
+        yield Session([StreamEvent('stimulus', values, None)])
 
     result = Experiment(subject=subject,
         protocol=SessionProtocol('steering', factory,

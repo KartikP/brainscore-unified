@@ -199,7 +199,7 @@ class InducedDyslexia(BenchmarkBase):
         # any compute, so a subject that cannot take a lesion is N/A.
         #
         # A subject receives an event when its in_channels hold the exact
-        # channel or its bare family (core DeclaredInputSession). The lesion
+        # channel or its bare family (core Session.declare_inputs). The lesion
         # channels sent here are `lesion:<layer>[<start>:<stop>]` and, to undo,
         # `lesion:<handle>`. Neither address is known before compute, so only
         # the bare `lesion` family accepts them all; an addressed declaration
