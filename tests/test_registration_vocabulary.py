@@ -26,7 +26,7 @@ import pytest
 import xarray as xr
 from PIL import Image
 
-from brainscore_core.model_interface import BrainScoreModel, TaskContext
+from brainscore_core.model_interface import TaskContext
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.streaming_helpers import behavioral_response, neural_response
@@ -200,6 +200,7 @@ def _registration_path(folder):
 
 def _old_wiring(identifier, module, new):
     """The constructor call as it was before the migration, given the same parts."""
+    BrainScoreModel = module.BrainScoreModel
     vision, text = FakeExtractor.instances
     with pytest.warns(DeprecationWarning, match='deprecated'):
         if identifier == 'clip-vit-b-32':
@@ -277,8 +278,8 @@ def _call_logs():
 
 @pytest.mark.parametrize('identifier', sorted(FOLDERS))
 def test_factories_emit_no_deprecated_constructor_warning(build, identifier):
-    _, model = build(identifier)   # build() fails on any DeprecationWarning
-    assert isinstance(model, BrainScoreModel)
+    module, model = build(identifier)   # build() fails on any DeprecationWarning
+    assert isinstance(model, module.BrainScoreModel)
 
 
 def test_registrations_pass_only_public_slot_names():
@@ -294,6 +295,7 @@ def test_registrations_pass_only_public_slot_names():
 
 def test_old_and_new_constructors_normalize_identically(pair):
     identifier, module, old, new = pair
+    BrainScoreModel = module.BrainScoreModel
     vision, text = FakeExtractor.instances
     assert [(key, extractor) for key, extractor in new._extractors.items()] == \
         [('vision', vision), ('text', text)]
@@ -414,6 +416,7 @@ def test_clip_keeps_its_wrappers_and_preprocessing(build, tmp_path):
     ]
     processor, clip = module.loads[0][3], module.loads[2][3]
     assert processor.image_processor == 'pinned-image-processor'
+    BrainScoreModel = module.BrainScoreModel
     vision, text = FakeExtractor.instances
     assert type(vision) is FakePytorchWrapper and type(text) is FakeTextWrapper
     preprocessing = vision.kwargs['preprocessing']
@@ -442,6 +445,7 @@ def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
     ]
     qwen, processor = module.loads[0][3], module.loads[1][3]
     assert processor.image_processor == 'pinned-image-processor'
+    BrainScoreModel = module.BrainScoreModel
     vision, text = FakeExtractor.instances
     assert type(vision) is FakeVLMVisionWrapper and type(text) is FakeTextWrapper
     patch_count_fn = vision.kwargs['patch_count_fn']
