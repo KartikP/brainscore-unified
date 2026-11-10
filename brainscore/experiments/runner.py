@@ -253,12 +253,22 @@ class CallableProtocol:
     ``methods=()``. It then owns the repetitions too: it runs each session
     inside ``context.repetition(identifier)`` and wraps it in
     ``ObservedSession(session, context)``, so the record holds the input and
-    output events of each session between its own boundaries.
+    output events of each session between its own boundaries. It names
+    those identifiers in ``repetitions``, so tools can select them. With
+    observed methods the one repetition is ``'external'``.
     """
-    def __init__(self, identifier, evaluate, *, methods=('process',), metadata=None):
+    def __init__(self, identifier, evaluate, *, methods=('process',), metadata=None,
+                 repetitions=None):
         self.identifier, self.evaluate = identifier, evaluate
         self.methods = tuple(methods)
         self.metadata = dict(metadata or {})
+        if self.methods:
+            if repetitions is not None:
+                raise ValueError("An evaluator with observed methods runs one 'external' "
+                                 'repetition; it cannot name others')
+            self.repetitions = ('external',)
+        else:
+            self.repetitions = tuple(repetitions or ())
 
     def accept_requests(self, channels):
         if channels:
@@ -266,8 +276,11 @@ class CallableProtocol:
                              f'cannot request {sorted(channels)}. Use RecordInputsOutputs or RecordActivity.')
 
     def describe(self):
-        return {'methods': self.methods, 'metadata': self.metadata,
-                'reset_policy': 'owned by external evaluator'}
+        described = {'methods': self.methods, 'metadata': self.metadata,
+                     'reset_policy': 'owned by external evaluator'}
+        if not self.methods:
+            described['repetitions'] = self.repetitions
+        return described
 
     def validate(self, subject):
         # An empty selection is allowed: such an evaluator records its sessions.
