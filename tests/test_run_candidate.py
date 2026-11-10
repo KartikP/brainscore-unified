@@ -60,6 +60,8 @@ def _repository(path: Path) -> Path:
     """A local checkout with a commit, an uncommitted change and an untracked file."""
     _checkout(path)
     git = ['git', '-C', str(path), '-c', 'user.name=Test', '-c', 'user.email=test@example.com']
+    # A relative link inside the checkout is allowed and copied as a link.
+    (path / 'inside.txt').symlink_to('keep.txt')
     subprocess.run(['git', 'init', '-q', str(path)], check=True)
     subprocess.run([*git, 'add', '-A'], check=True)
     subprocess.run([*git, 'commit', '-q', '-m', 'initial'], check=True)
@@ -105,31 +107,53 @@ def test_venv_outside_work_is_refused(tmp_path):
     assert 'must be a folder inside --work' in result.stderr
 
 
-def test_work_entry_not_created_by_the_script_is_never_removed(tmp_path):
-    work = tmp_path / 'work'
-    entry = _checkout(work / 'core')
-    (work / '.umi-candidate').touch()
-    result = _run('--unified', str(_repository(tmp_path / 'unified-src')),
-                  '--core', str(_repository(tmp_path / 'src')), 'prepare', work=work)
-    assert result.returncode != 0
-    assert 'did not create it' in result.stderr
-    assert (entry / 'keep.txt').read_text() == 'user data'
-
-
-def test_replacing_a_link_keeps_its_target(tmp_path):
+def test_non_empty_work_is_refused(tmp_path):
+    user = _repository(tmp_path / 'core-src')
     work = tmp_path / 'work'
     work.mkdir()
-    (work / '.umi-candidate').touch()
-    old = _checkout(tmp_path / 'old')
-    (work / 'core').symlink_to(old)
-    # vision is not a Git checkout, so prepare stops after the core snapshot.
-    _run('--unified', str(_repository(tmp_path / 'unified-src')),
-         '--core', str(_repository(tmp_path / 'src')),
-         '--vision', str(_checkout(tmp_path / 'vision-src')), 'prepare', work=work)
-    assert _listing(old) == {'keep.txt': _listing(old)['keep.txt']}
-    assert (old / 'keep.txt').read_text() == 'user data'
-    assert not (work / 'core').is_symlink()
-    assert (work / 'core' / '.git' / 'umi-managed').is_file()
+    # Contents left by an earlier run, such as a link to a local checkout.
+    (work / 'core').symlink_to(user)
+    before = _listing(user)
+    result = _run('--unified', str(_repository(tmp_path / 'unified-src')), '--core', str(user),
+                  'prepare', work=work)
+    assert result.returncode != 0
+    assert 'must not exist or must be empty' in result.stderr
+    assert _listing(user) == before
+    assert sorted(path.name for path in work.iterdir()) == ['core']
+
+
+def test_git_hooks_never_run(tmp_path):
+    marker = tmp_path / 'hook-ran'
+    hook = f'#!/bin/sh\necho ran >> "{marker}"\n'
+    for folder in (tmp_path / 'hooks', tmp_path / 'template' / 'hooks'):
+        folder.mkdir(parents=True)
+        for name in ('post-checkout', 'pre-commit', 'post-merge'):
+            (folder / name).write_text(hook)
+            (folder / name).chmod(0o755)
+    sources = {name: _repository(tmp_path / f'{name}-src')
+               for name in ('unified', 'core', 'vision', 'language')}
+    # _run sets HOME to the parent of --work, so this is the global Git config.
+    (tmp_path / '.gitconfig').write_text(
+        f'[core]\n\thooksPath = {tmp_path / "hooks"}\n'
+        f'[init]\n\ttemplateDir = {tmp_path / "template"}\n')
+    work = tmp_path / 'work'
+    _run(*[part for name, path in sources.items() for part in (f'--{name}', str(path))],
+         'prepare', work=work)
+    assert (work / 'language' / '.git').is_dir()
+    assert not marker.exists()
+
+
+def test_symlink_out_of_a_local_path_is_refused(tmp_path):
+    outside = _checkout(tmp_path / 'outside')
+    core = _repository(tmp_path / 'core-src')
+    (core / 'escape').symlink_to(outside)
+    work = tmp_path / 'work'
+    result = _run('--unified', str(_repository(tmp_path / 'unified-src')), '--core', str(core),
+                  'prepare', work=work)
+    assert result.returncode != 0
+    assert 'symlinks that lead outside it' in result.stderr
+    assert f'escape -> {outside}' in result.stderr
+    assert not (work / 'core').exists()
 
 
 def test_local_checkouts_are_unchanged_and_snapshotted(tmp_path):
@@ -147,6 +171,7 @@ def test_local_checkouts_are_unchanged_and_snapshotted(tmp_path):
         assert not snapshot.is_symlink()
         assert (snapshot / 'keep.txt').read_text() == 'uncommitted change'
         assert (snapshot / 'untracked.txt').read_text() == 'untracked'
+        assert os.readlink(snapshot / 'inside.txt') == 'keep.txt'
         heads = [subprocess.run(['git', '-C', str(path), 'rev-parse', 'HEAD'], check=True,
                                 capture_output=True, text=True).stdout
                  for path in (source, snapshot)]

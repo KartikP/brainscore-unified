@@ -25,8 +25,9 @@
 # Local paths are only read. prepare copies each one (HEAD commit and working
 # tree, including uncommitted files) into a snapshot under --work; builds and
 # Git commands run on the snapshots. Local paths must lie outside --work and
-# --venv, and --work and --venv must lie outside them. Only snapshots and clones
-# that this script created under --work are reset, cleaned or removed.
+# --venv, and --work and --venv must lie outside them. A local path with a
+# symlink that leads outside it is refused. --work must not exist or must be
+# empty: each run starts clean and nothing is reused. Git hooks never run.
 #
 # Phases (in the order "all" runs them):
 #   prepare          Fetch or snapshot the four checkouts; record revisions.
@@ -160,10 +161,15 @@ case " ${PHASES[*]} " in
                 fi
             fi
         done
+        # Every run starts from an empty --work: nothing from an earlier run (a
+        # clone, a link, a virtual environment or an output folder) is reused.
+        if [ -e "$WORK" ] && [ -n "$(ls -A "$WORK")" ]; then
+            die "--work $WORK must not exist or must be empty; choose a new folder"
+        fi
         ;;
 esac
 # Virtual environments live in their own folder under --work, apart from the
-# snapshots and outputs, so --clear can only remove an earlier environment.
+# snapshots and outputs.
 if [ -n "$VENV" ]; then
     case "$VENV" in
         "$WORK"/*) ;;
@@ -189,37 +195,26 @@ managed_path() {
     esac
 }
 
-# Remove one workspace entry: a symlink (the link only, never its target) or
-# a clone that this script created. Refuse everything else.
-remove_entry() {
-    local path
-    path=$(managed_path "$1")
-    if [ -L "$path" ]; then
-        rm "$path"
-    elif [ -e "$path" ]; then
-        inside "$(canonical "$path")" "$WORK" || die "refusing to remove $path: outside --work"
-        [ -f "$path/.git/umi-managed" ] || die "refusing to remove $path: this script did not create it"
-        rm -rf "$path"
-    fi
+# Every Git command runs without hooks: no global core.hooksPath and no
+# template hooks can run during a clone or checkout.
+git_quiet() { git -c core.hooksPath=/dev/null "$@"; }
+
+# A new entry under --work. --work starts empty, so an existing entry means a
+# second placement in the same run, which is a bug.
+new_entry() {
+    local dest
+    dest=$(managed_path "$1")
+    [ ! -e "$dest" ] && [ ! -L "$dest" ] || die "$dest already exists"
+    echo "$dest"
 }
 
-# Put one exact ref in a workspace-owned clone. A reused clone is reset to the
-# ref and cleaned, as actions/checkout does.
+# Put one exact ref in a new clone under --work.
 fetch_clone() {
     local name=$1 repository=$2 ref=$3 dest
-    dest=$(managed_path "$name")
-    if [ -L "$dest" ] || { [ -e "$dest" ] && [ ! -f "$dest/.git/umi-managed" ]; }; then
-        remove_entry "$name"
-    fi
-    if [ ! -e "$dest" ]; then
-        mkdir "$dest"
-        git init -q "$dest"
-        touch "$dest/.git/umi-managed"
-    fi
-    git -C "$dest" fetch -q --depth 1 "https://github.com/$repository.git" "$ref"
-    git -C "$dest" checkout -q --force --detach FETCH_HEAD
-    git -C "$dest" reset -q --hard FETCH_HEAD
-    git -C "$dest" clean -q -ffdx
+    dest=$(new_entry "$name")
+    git_quiet init -q --template= "$dest"
+    git_quiet -C "$dest" fetch -q --depth 1 "https://github.com/$repository.git" "$ref"
+    git_quiet -C "$dest" checkout -q --detach FETCH_HEAD
 }
 
 repository_of() {
@@ -229,24 +224,45 @@ repository_of() {
     esac
 }
 
+# Print each symlink below $1 (outside .git) whose target resolves outside $1.
+outside_links() {
+    "$PYTHON" -I -c '
+import os, sys
+root = os.path.realpath(sys.argv[1])
+for folder, folders, files in os.walk(root):
+    if folder == root and ".git" in folders:
+        folders.remove(".git")
+    for name in folders + files:
+        path = os.path.join(folder, name)
+        if os.path.islink(path):
+            target = os.path.realpath(path)
+            if os.path.commonpath([root, target]) != root:
+                print(f"{os.path.relpath(path, root)} -> {os.readlink(path)}")
+' "$1"
+}
+
 # Copy a local checkout into a snapshot under --work. The source is only read:
 # "git rev-parse" and a local "git clone" read its repository, and tar reads
 # its files. The snapshot has the same HEAD commit and the same working tree,
 # including uncommitted and untracked files, so all later builds and Git
-# commands run on the snapshot and never on the source.
+# commands run on the snapshot and never on the source. A symlink that leads
+# out of the source would let a build write through the snapshot, so such a
+# source is refused; relative links inside the source are copied as links.
 snapshot() {
-    local name=$1 source dest revision
+    local name=$1 source dest revision links
     source=$(canonical "$2")
-    dest=$(managed_path "$name")
-    revision=$(GIT_OPTIONAL_LOCKS=0 git -C "$source" rev-parse --verify HEAD) \
+    revision=$(GIT_OPTIONAL_LOCKS=0 git_quiet -C "$source" rev-parse --verify HEAD) \
         || die "$source is not a Git checkout with a commit"
-    remove_entry "$name"
-    GIT_OPTIONAL_LOCKS=0 git clone -q --no-hardlinks --no-checkout -- "$source" "$dest"
-    touch "$dest/.git/umi-managed"
-    git -C "$dest" checkout -q --detach "$revision"
+    links=$(outside_links "$source") || die "cannot check the symlinks in $source"
+    if [ -n "$links" ]; then
+        die "$source has symlinks that lead outside it; remove them or give a ref:"$'\n'"$links"
+    fi
+    dest=$(new_entry "$name")
+    GIT_OPTIONAL_LOCKS=0 git_quiet clone -q --template= --no-hardlinks --no-checkout -- "$source" "$dest"
+    git_quiet -C "$dest" checkout -q --detach "$revision"
     find "$dest" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
     (cd "$source" && tar -cf - --exclude=./.git --exclude=.git .) | (cd "$dest" && tar -xf -)
-    [ "$(git -C "$dest" rev-parse HEAD)" = "$revision" ] || die "snapshot of $source has the wrong HEAD"
+    [ "$(git_quiet -C "$dest" rev-parse HEAD)" = "$revision" ] || die "snapshot of $source has the wrong HEAD"
 }
 
 # Snapshot a local path (checked by check_user_path first), or fetch a ref.
@@ -272,13 +288,7 @@ pin_of() {
 
 phase_prepare() {
     local name value overrides=() repository revision
-    # The local paths were checked against --work at startup.
-    if [ -n "$(ls -A "$WORK" | grep -v -e '^qualification$' -e '^tmp$')" ] \
-            && [ ! -f "$WORK/.umi-candidate" ]; then
-        die "$WORK is not empty and was not created by this script"
-    fi
-    touch "$WORK/.umi-candidate"
-    rm -f "$WORK"/.repository-*
+    # The local paths and the empty --work were checked at startup.
     place unified "${UNIFIED:-$SCRIPT_UNIFIED}"
     for name in core vision language; do
         case "$name" in
@@ -287,7 +297,7 @@ phase_prepare() {
         if [ -n "$value" ]; then
             place "$name" "$value"
             repository=$(cat "$WORK/.repository-$name" 2>/dev/null || repository_of "$name")
-            revision=$(git -C "$WORK/$name" rev-parse HEAD)
+            revision=$(git_quiet -C "$WORK/$name" rev-parse HEAD)
             overrides+=(--override "$name=$repository@$revision")
         else
             value=$(pin_of "$name")
@@ -295,15 +305,15 @@ phase_prepare() {
         fi
     done
     repository=$(cat "$WORK/.repository-unified" 2>/dev/null || repository_of unified)
-    revision=$(git -C "$WORK/unified" rev-parse HEAD)
+    revision=$(git_quiet -C "$WORK/unified" rev-parse HEAD)
     CANDIDATE=unified CANDIDATE_REPOSITORY=$repository CANDIDATE_REVISION=$revision \
     UNIFIED_REPOSITORY=$repository UNIFIED_REVISION=$revision \
         "$PYTHON" "$WORK/unified/brainscore/validation/revisions.py" \
         --manifest "$WORK/unified/install/peer-revisions.json" --record "$RECORD" \
         ${overrides[@]+"${overrides[@]}"}
     for name in core vision language unified; do
-        if ! git -C "$WORK/$name" diff --quiet HEAD || \
-                [ -n "$(git -C "$WORK/$name" ls-files --others --exclude-standard)" ]; then
+        if ! git_quiet -C "$WORK/$name" diff --quiet HEAD || \
+                [ -n "$(git_quiet -C "$WORK/$name" ls-files --others --exclude-standard)" ]; then
             echo "note: $name has uncommitted changes; they are built and tested" >&2
         fi
     done
@@ -337,7 +347,7 @@ phase_resolve() {
             overrides+=(--override "$name=$value")
         fi
     done
-    UNIFIED_REVISION=$(git -C "$WORK/unified" rev-parse HEAD) \
+    UNIFIED_REVISION=$(git_quiet -C "$WORK/unified" rev-parse HEAD) \
         "$PYTHON" "$WORK/unified/brainscore/validation/revisions.py" \
         --manifest "$WORK/unified/install/peer-revisions.json" --record "$RECORD" \
         ${overrides[@]+"${overrides[@]}"}
@@ -353,15 +363,6 @@ phase_verify_core() { verify_checkouts core unified; }
 
 phase_build() {
     cd "$WORK"
-    # Only a workspace made by "prepare" can hold wheels from an earlier run.
-    # On GitHub Actions the folders do not exist yet and nothing is removed.
-    if [ -f "$WORK/.umi-candidate" ]; then
-        local dir
-        for dir in wheels example-wheels; do
-            [ ! -L "$WORK/$dir" ] || die "refusing to remove symlink $WORK/$dir"
-            rm -rf "${WORK:?}/$dir"
-        done
-    fi
     "$PYTHON" -m pip install build setuptools==68.2.2 wheel
     local repo
     for repo in core vision language unified; do
@@ -445,15 +446,15 @@ phase_openpi_instrumentation_install() {
 
 record_environment() {
     "$PYTHON" -m pip freeze > "$QUAL/dependencies.txt"
-    git -C "$WORK/unified" rev-parse HEAD > "$QUAL/unified-revision.txt"
-    git -C "$WORK/core" rev-parse HEAD > "$QUAL/core-revision.txt"
+    git_quiet -C "$WORK/unified" rev-parse HEAD > "$QUAL/unified-revision.txt"
+    git_quiet -C "$WORK/core" rev-parse HEAD > "$QUAL/core-revision.txt"
 }
 
 phase_openpi_client_record() { record_environment; }
 
 phase_openpi_instrumentation_record() {
     record_environment
-    git -C "$WORK/openpi" rev-parse HEAD > "$QUAL/openpi-revision.txt"
+    git_quiet -C "$WORK/openpi" rev-parse HEAD > "$QUAL/openpi-revision.txt"
 }
 
 phase_openpi_client_test() {
@@ -499,11 +500,11 @@ run_job() {
         export UMI_QUALIFICATION=$WORK/qualification/$job
         mkdir -p "$UMI_QUALIFICATION"
         if [ -n "$VENV" ]; then
-            if [ -e "$VENV/$job" ] && [ ! -f "$VENV/$job/pyvenv.cfg" ]; then
-                echo "run_candidate: refusing to replace $VENV/$job: not a virtual environment" >&2
+            if [ -e "$VENV/$job" ] || [ -L "$VENV/$job" ]; then
+                echo "run_candidate: $VENV/$job already exists" >&2
                 exit 1
             fi
-            "${UMI_BASE_PYTHON:-python3.11}" -m venv --clear "$VENV/$job" || exit 1
+            "${UMI_BASE_PYTHON:-python3.11}" -m venv "$VENV/$job" || exit 1
             export PATH="$VENV/$job/bin:$PATH" UMI_PYTHON="$VENV/$job/bin/python"
         fi
         for phase in $phases; do

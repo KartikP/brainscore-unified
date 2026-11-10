@@ -145,8 +145,10 @@ Each job gets a fresh virtual environment and its own folder under
 its job, the jobs run independently, and any failure fails the run. Uncommitted
 changes in a local checkout are built and tested: the script copies each local
 checkout into a snapshot under `--work` and builds only the snapshot, so local
-paths are only read. They must lie outside `--work` and `--venv`; `--venv` must
-be a folder inside `--work`. Fetching the private unified repository needs Git credentials.
+paths are only read. They must lie outside `--work` and `--venv`, and must not
+contain symlinks that lead outside them; `--venv` must be a folder inside
+`--work`. `--work` must not exist or must be empty, so give each run a new
+folder. Git hooks never run. Fetching the private unified repository needs Git credentials.
 To run the same set on GitHub, start the offline workflow manually with the
 `core_revision`, `vision_revision` and `language_revision` inputs (full SHAs).
 
