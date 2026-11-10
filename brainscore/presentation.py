@@ -23,3 +23,24 @@ def frames_from_clip(sample_times_ms, aggregate='mean'):
     """The record of showing a stills-only subject frames sampled from each clip."""
     return {'kind': 'frames_from_clip', 'sample_times_ms': [float(t) for t in sample_times_ms],
             'aggregate': aggregate}
+
+
+def response_stimulus_ids(response):
+    """The ``stimulus_id`` of each row of a subject's response assembly.
+
+    Reads the ``stimulus_id`` coordinate (or MultiIndex level). When
+    ``stimulus_id`` is the only presentation coordinate, brainio keeps it as
+    the plain ``presentation`` index without its name, so that index is read.
+    A benchmark joins its own stimulus metadata to these ids; it never relies
+    on the subject to return other columns.
+    """
+    import numpy as np
+    import pandas as pd
+    try:
+        return np.asarray(response['stimulus_id'].values)
+    except KeyError:
+        pass
+    index = response.indexes.get('presentation')
+    if index is None or isinstance(index, pd.MultiIndex):
+        raise KeyError('the response carries no stimulus_id on its presentation axis')
+    return np.asarray(index.values)

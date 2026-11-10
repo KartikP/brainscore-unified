@@ -61,7 +61,9 @@ from brainscore.tools.banded_ridge import (
     banded_ridge_fit_predict,
     ridge_fit_predict,
 )
-from ._util import read_stimulus_ids
+from ._util import (
+    read_stimulus_ids, record_clips, record_frames_per_clip, takes_audiovisual,
+)
 
 from .benchmark_timeresolved import (
     Lahner2024BOLDMoments_timeresolved,
@@ -213,33 +215,29 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         stim_set_ids = set(full_stim['stimulus_id'].astype(str).tolist())
         unique_ids = sorted(unique_event_ids & stim_set_ids)
 
-        # Accept dual-modality models — visual tower can be 'video'
-        # (native-temporal) or 'vision' (frame-aggregation). For
-        # unimodal models, fall back to the parent class's
-        # single-modality extraction.
-        supports = getattr(candidate, 'supported_modalities', set())
-        has_visual = 'video' in supports or 'vision' in supports
-        if not has_visual or 'audio' not in supports:
+        # Accept audio-visual subjects, routed on declared channels only
+        # (Contract Rule 2.2): a visual input (clips natively, or stills shown
+        # as frames), audio, and the neural:IT and neural:A1 outputs. Any
+        # other subject falls back to the parent's single-tower extraction.
+        if not takes_audiovisual(candidate):
             self._modality_per_feature = None
             return super()._extract_per_stimulus_features(candidate)
 
         # ── Visual tower ───────────────────────────────────────────
         from .benchmark import VIDEO_DURATION_MS
-        from brainscore_core.temporal import temporal_bin
-        candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
+        time_bins = [(0, VIDEO_DURATION_MS)]
         # Clips natively when the subject declares vision:clip, frames otherwise.
         from .benchmark import Lahner2024BOLDMoments
         if Lahner2024BOLDMoments._is_native_video(candidate):
             video_stim = self._video_stim_set_for(unique_ids)
-            video_assembly = candidate.process(video_stim)
+            video_assembly = record_clips(candidate, video_stim, 'IT', time_bins)
         else:
-            # Frame-aggregation: expand into N frames, run still-image
-            # path, then mean-pool over time bins.
+            # Frame-aggregation: expand into N frames, show them as stills,
+            # then mean-pool over time bins.
             frame_stim = self._stim_helper._expand_videos()
             frame_stim = frame_stim[frame_stim['clip_id'].isin(unique_ids)]
-            per_frame = candidate.process(frame_stim)
-            video_assembly = temporal_bin(
-                per_frame, time_bins=[(0, VIDEO_DURATION_MS)])
+            video_assembly = record_frames_per_clip(
+                candidate, frame_stim, 'IT', time_bins)
         v_data = video_assembly.values
         if v_data.ndim == 3:    # (presentation, time_bin, neuroid)
             v_features = v_data.mean(axis=1)
@@ -248,9 +246,8 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         v_stim_ids = self._read_stimulus_ids(video_assembly)
 
         # ── Audio tower ────────────────────────────────────────────
-        candidate.start_recording('A1', time_bins=[(0, VIDEO_DURATION_MS)])
         audio_stim = self._audio_stim_set_for(unique_ids)
-        audio_assembly = candidate.process(audio_stim)
+        audio_assembly = record_clips(candidate, audio_stim, 'A1', time_bins)
         a_data = audio_assembly.values
         if a_data.ndim == 3:
             a_features = a_data.mean(axis=1)

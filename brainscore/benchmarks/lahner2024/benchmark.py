@@ -26,8 +26,8 @@ Reframed for the unified interface:
 
 Scoring pipeline:
     1. For each of 1026 videos, extract N frames at fixed timestamps
-    2. Run model's ``process()`` on the expanded StimulusSet
-       (1026 × N rows) → per-frame activations
+    2. Record ``neural:IT`` through ``participate`` (``neural_response``) on
+       the expanded StimulusSet (1026 × N rows) → per-frame activations
     3. ``temporal_bin`` with one bin spanning (0, 3000 ms) → one vector
        per video (mean of frame features)
     4. Average neural assembly across 10 repetitions → one BOLD vector
@@ -75,12 +75,13 @@ from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
 )
-from brainscore_core.temporal import expand_clip_to_frames, temporal_bin
+from brainscore_core.temporal import expand_clip_to_frames
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.benchmarks._scoring_utils import (
     kfold_ridge_predictions,
     pearson_summary,
 )
+from ._util import read_stimulus_ids, record_clips, record_frames_per_clip
 
 
 BIBTEX = """@article{lahner2024modeling,
@@ -147,9 +148,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     at scoring time. We average 10 repetitions per video and correlate
     model features against the resulting (1026, 20484) neural matrix.
 
-    The benchmark uses ``process()`` via the unified interface. Any
-    model that declares a vision preprocessor will route through its
-    activations_model after we expand videos into frame images.
+    The benchmark reads the subject only through ``participate`` (the core
+    helper ``neural_response``). A subject that declares ``vision:clip``
+    sees whole clips; any other subject sees frames sampled from each clip.
 
     Regression: PLS with object-level cross-validation (the default used
     by MajajHong benchmarks). Ceiling: split-half across subjects
@@ -393,37 +394,30 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         from brainscore.presentation import takes_clips
         return takes_clips(candidate)
 
-    def __call__(self, candidate) -> Score:
-        # Configure the model's recording once (both paths use it).
-        candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
+    def _clip_features(self, candidate):
+        """Record ``neural:IT`` for every clip through ``participate``.
 
-        # Dispatch on the model's declared processing style. Video-native
-        # models (VideoMAE, V-JEPA) process a whole video at once and
-        # preserve temporal structure; image models see static frames.
+        Returns ``(features (n_videos, n_features), clip_ids, pipeline_mode)``.
+        A subject that declares ``vision:clip`` sees whole clips and keeps its
+        own temporal structure; any other subject sees frames sampled from each
+        clip, pooled per clip (Contract Rule 5.9).
+        """
+        time_bins = [(0, VIDEO_DURATION_MS)]
         if self._is_native_video(candidate):
-            pipeline_mode = 'video_native'
-            video_stim = self._videos_stimulus_set()
-            result = candidate.process(video_stim)
-            # result dims expected: (presentation, time_bin, neuroid)
-            # Collapse time via mean — Lahner2024 has one BOLD estimate
-            # per video, so we aggregate temporal features to one vector.
+            result = record_clips(candidate, self._videos_stimulus_set(), 'IT', time_bins)
+            # Lahner2024 has one BOLD estimate per video, so a time-resolved
+            # response (presentation, time_bin, neuroid) is averaged over time.
             data = result.values
-            if data.ndim == 3:
-                model_mat = data.mean(axis=1)  # (n_videos, n_features)
-            else:
-                model_mat = data
-            clip_ids = list(result.indexes['presentation'].get_level_values('stimulus_id'))
-        else:
-            pipeline_mode = 'frame_aggregation'
-            frame_stim = self._expand_videos()
-            per_frame = candidate.process(frame_stim)
-            per_video = temporal_bin(
-                per_frame,
-                time_bins=[(0, VIDEO_DURATION_MS)],
-            )
-            model_mat = per_video.values[:, 0, :]  # (n_videos, n_features)
-            clip_ids = list(
-                per_video.indexes['presentation'].get_level_values('clip_id'))
+            model_mat = data.mean(axis=1) if data.ndim == 3 else data
+            return model_mat, read_stimulus_ids(result), 'video_native'
+        per_video = record_frames_per_clip(
+            candidate, self._expand_videos(), 'IT', time_bins)
+        model_mat = per_video.values[:, 0, :]  # (n_videos, n_features)
+        clip_ids = list(per_video.indexes['presentation'].get_level_values('clip_id'))
+        return model_mat, clip_ids, 'frame_aggregation'
+
+    def __call__(self, candidate) -> Score:
+        model_mat, clip_ids, pipeline_mode = self._clip_features(candidate)
 
         # 5. Average neural across repetitions; align to model order
         neural = self._average_repetitions()
