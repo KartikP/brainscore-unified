@@ -27,7 +27,7 @@ separate benchmark.
 ## Pipeline (per model)
 
     1. Discover unique stimuli from events (1102 unique videos).
-    2. Extract per-stimulus features ONCE via model.process(unique_stim_set):
+    2. Record per-stimulus features ONCE through participate (neural_response):
        - video-native models: per-clip features at the model's native time
          bins, always mean-pooled over the time_bin axis to one vector
        - frame-aggregation models: per-clip features (mean of N still frames)
@@ -99,6 +99,7 @@ from .benchmark import (
     BIBTEX,
     Lahner2024BOLDMoments,        # parent class — provides _videos_stimulus_set
 )
+from ._util import read_stimulus_ids, record_clips, record_frames_per_clip
 
 
 # Confirmed scanner / paradigm parameters (from EC2 recon, ds005165 v1.0.4)
@@ -408,7 +409,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         Returns (features array (n_stimuli, n_features), stimulus_ids list).
         """
         from .benchmark import VIDEO_DURATION_MS
-        from brainscore_core.temporal import temporal_bin
 
         # Unique stimulus_ids in events that ALSO appear in our stimulus_set
         unique_event_ids = set(self.events['stimulus_id'].unique().tolist())
@@ -416,9 +416,9 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         stim_set_ids = set(full_stim['stimulus_id'].astype(str).tolist())
         unique_ids = sorted(unique_event_ids & stim_set_ids)
 
-        # Activate the model's recording layer. Mirrors the GLM-beta variant:
+        # Record neural:IT through participate. Mirrors the GLM-beta variant:
         # IT-mapped features predict whole-cortex BOLD via per-voxel ridge.
-        candidate.start_recording('IT', time_bins=[(0, VIDEO_DURATION_MS)])
+        time_bins = [(0, VIDEO_DURATION_MS)]
 
         # Clips natively when the subject declares vision:clip, frames otherwise.
         from .benchmark import Lahner2024BOLDMoments
@@ -426,19 +426,17 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             video_stim = self._stim_helper._videos_stimulus_set()
             # Restrict to the unique_ids we need
             video_stim = video_stim[video_stim['stimulus_id'].isin(unique_ids)]
-            result = candidate.process(video_stim)
+            result = record_clips(candidate, video_stim, 'IT', time_bins)
             data = result.values
             if data.ndim == 3:    # (presentation, time_bin, neuroid) → mean over time
                 features = data.mean(axis=1)
             else:                  # (presentation, neuroid)
                 features = data
-            stimulus_ids = list(
-                result.indexes['presentation'].get_level_values('stimulus_id'))
+            stimulus_ids = read_stimulus_ids(result)
         else:
             frame_stim = self._stim_helper._expand_videos()
             frame_stim = frame_stim[frame_stim['clip_id'].isin(unique_ids)]
-            per_frame = candidate.process(frame_stim)
-            per_video = temporal_bin(per_frame, time_bins=[(0, VIDEO_DURATION_MS)])
+            per_video = record_frames_per_clip(candidate, frame_stim, 'IT', time_bins)
             features = per_video.values[:, 0, :]
             stimulus_ids = list(
                 per_video.indexes['presentation'].get_level_values('clip_id'))

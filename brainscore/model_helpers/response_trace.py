@@ -146,7 +146,6 @@ def build_trace_subject(
     provenance: Mapping[str, Any],
     streaming: bool = False,
     input_channels: Sequence[str] = ('generation_request',),
-    reset: Callable[[int], None] | None = None,
 ) -> BrainScoreModel:
     """Build a subject from provider(request)->dict and parse(text)->answer.
 
@@ -161,19 +160,16 @@ def build_trace_subject(
 
     Declare only request channels the provider actually implements. Text
     generation alone does not imply media support or access to probabilities.
-    Optional reset(repetition) prepares the provider for each CogGym repetition.
     """
     if isinstance(input_channels, str) or not input_channels or set(input_channels) - REQUEST_CHANNELS.keys():
         raise ValueError(f'Declare supported request channels from {sorted(REQUEST_CHANNELS)}')
-    if reset is not None and not callable(reset):
-        raise TypeError('reset must be a reset(repetition) callback')
     channels = tuple(sorted(set(input_channels)))
     register_trace_channels()
     capability = _capability(channels)
     register_capability(capability)
     return BrainScoreModel(identifier, capability_config={capability.identifier: {
         'provider': provider, 'parse': parse, 'provenance': dict(provenance),
-        'streaming': streaming, 'reset': reset}})
+        'streaming': streaming}})
 
 
 def register_trace_channels() -> None:
@@ -189,17 +185,3 @@ def register_trace_channels() -> None:
                 shape_validator=lambda value: isinstance(value, dict)))
         elif io_catalog.get(name).owner != 'brainscore.response_trace':
             raise ValueError(f'Channel {name} already belongs to another extension')
-
-
-def provider_reset(subject: Any) -> Callable[[int], None]:
-    """Find the reset explicitly supplied with a response-trace subject."""
-    from brainscore_core.compatibility import CompatibilityError
-    if isinstance(subject, BrainScoreModel):
-        for name, config in subject.capability_config.items():
-            if name == 'response-trace' or name.startswith('response-trace:'):
-                if callable(config.get('reset')):
-                    return config['reset']
-    raise CompatibilityError(
-        'Supply reset=provider.reset to build_trace_subject or the CogGym benchmark. '
-        'Stateless providers can explicitly use lambda repetition: None.'
-    )

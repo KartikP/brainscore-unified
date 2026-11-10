@@ -30,19 +30,17 @@ EC2 (GPU); the random null runs anywhere.
 import argparse
 import json
 import os
-from typing import Any, Callable, Set
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
 
-from brainscore_core.model_interface import (
-    EnvironmentStep, StateChange, UnifiedModel, TaskContext)
-from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-
 from . import benchmark as B
 from .montage import render_sample, compose_choice_array
-from .score_2afc import _parse_lr
+from .score_2afc import TrialChooser, _parse_lr, run_trials
 from brainscore_core.hf_compat import pin_image_processor
+
+SEQUENTIAL_INSTRUCTION = 'Which option is the same object as the sample you saw? LEFT or RIGHT.'
 
 
 # --------------------------------------------------------------------------- #
@@ -92,49 +90,20 @@ def compose_sequential_trials(trials, n_images, out_dir, seed=0, balance_sides=F
 
 
 # --------------------------------------------------------------------------- #
-# A process()-bearing sequential 2-AFC model (Witness-recordable, same output
-# shape as the simultaneous TwoAFCModel so scoring is identical)
+# A sequential 2-AFC subject that takes part through participate (Witness-
+# recordable, same output shape as the simultaneous TwoAFCModel so scoring is
+# identical)
 # --------------------------------------------------------------------------- #
-class SequentialTwoAFCModel(UnifiedModel):
+class SequentialTwoAFCModel(TrialChooser):
     """Wraps a per-trial ``choose_seq(row) -> 'LEFT'|'RIGHT'`` (which internally
     presents sample-then-choices) into a Subject."""
 
     COLUMN_TO_MODALITY = {'choices_path': 'vision'}   # Witness shows the decision screen
 
     def __init__(self, identifier, choose_seq: Callable[[Any], str], seq_mode='describe',
-                 instruction='Which option is the same object as the sample you saw? LEFT or RIGHT.'):
-        self._identifier = identifier
-        self._choose_seq = choose_seq
-        self._witness_mode = 'generation'
+                 instruction=SEQUENTIAL_INSTRUCTION):
+        super().__init__(identifier, choose_seq, mode='generation', instruction=instruction)
         self._seq_mode = seq_mode
-        self._task_context = TaskContext(task_type='probabilities', label_set=['LEFT', 'RIGHT'],
-                                          instruction=instruction)
-
-    @property
-    def identifier(self): return self._identifier
-    @property
-    def region_layer_map(self): return {}
-    @property
-    def supported_modalities(self) -> Set[str]: return {'vision'}
-    def start_task(self, *a, **k): pass
-    def start_recording(self, *a, **k): pass
-    def reset(self): pass
-
-    def process(self, input_event) -> Any:
-        if isinstance(input_event, (StateChange, EnvironmentStep)):
-            raise NotImplementedError
-        stim = input_event
-        chosen = []
-        for _, row in stim.iterrows():
-            side = self._choose_seq(row)                   # 'LEFT' | 'RIGHT'
-            chosen.append(row['left_obj'] if side == 'LEFT' else row['right_obj'])
-        coords = {
-            'stimulus_id': ('presentation', stim['image_id'].values),
-            'sample_obj': ('presentation', stim['sample_obj'].values),
-            'dist_obj': ('presentation', stim['dist_obj'].values),
-            'truth': ('presentation', stim['sample_obj'].values),
-        }
-        return BehavioralAssembly(np.array(chosen), coords=coords, dims=['presentation'])
 
 
 # --------------------------------------------------------------------------- #
@@ -245,13 +214,8 @@ def main():
     model = SequentialTwoAFCModel(tag, choose_seq, seq_mode=args.seq_mode)
 
     with Witness(model, label=f'{args.model or args.path} · Rajalingham 2-AFC (sequential/{args.seq_mode})') as w:
-        assembly = model.process(stim)
+        choices = run_trials(model, stim, SEQUENTIAL_INSTRUCTION)
 
-    chosen = assembly.values
-    choices = pd.DataFrame({
-        'image_id': assembly['stimulus_id'].values, 'sample_obj': assembly['sample_obj'].values,
-        'dist_obj': assembly['dist_obj'].values, 'choice': chosen,
-        'left_obj': stim['left_obj'].values, 'right_obj': stim['right_obj'].values})
     choices['side'] = np.where(choices['choice'] == choices['left_obj'], 'LEFT', 'RIGHT')
     choices['correct'] = choices['choice'] == choices['sample_obj']
     choices.to_csv(os.path.join(args.out, 'choices.csv'), index=False)

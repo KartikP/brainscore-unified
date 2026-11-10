@@ -12,6 +12,7 @@ from brainscore.benchmarks.coggym.benchmark import CogGymBenchmark
 from brainscore.experiments import Experiment, RecordInputsOutputs
 from brainscore.harnesses import coggym
 from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.contract import Subject
 
 from .test_coggym import reference, make_subject, provider
 
@@ -183,3 +184,56 @@ def test_video_registration_preserves_still_image_instructions(reference):
     benchmark = brainscore.load_benchmark('CogGym.Fu2025Hierarchical.exp1', checkout=root)
     protocol = benchmark.protocol(model='fixture', reset=lambda repetition: None)
     assert set(protocol.metadata['modalities']) == {'text', 'image', 'video'}
+
+
+class _ParticipateOnlySubject(Subject):
+    """A contract subject: declarations, participate and reset; no process()."""
+
+    identifier = "participate-only"
+    in_channels = frozenset({"generation_request"})
+    out_channels = frozenset({"response_trace"})
+
+    def __init__(self):
+        self.requests = []
+
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        while (event := session.next_input()) is not None:
+            self.requests.append(event.payload)
+            raw = provider(event.payload)
+            session.respond(StreamEvent('response_trace', {
+                'raw': raw, 'answer': raw['text'], 'valid': True,
+                'parse_error': None, 'provenance': {}}, event.t_ms, dict(event.meta)))
+
+    def reset(self):
+        pass
+
+
+def test_participate_only_subject_is_scored(scored_reference, tmp_path):
+    root, _ = scored_reference
+    subject = _ParticipateOnlySubject()
+    benchmark = brainscore.load_benchmark(
+        'CogGym.Hu2023Fine.exp1', checkout=root, reset=lambda repetition: None,
+        output_dir=tmp_path / 'run')
+    score = benchmark(subject)
+    assert float(score) == 0.375
+    assert len(subject.requests) == 15
+    events = _record_events(tmp_path / "run")
+    inputs = [event['payload'] for event in events if event['kind'] == 'input']
+    outputs = [event['payload'] for event in events if event['kind'] == 'output']
+    assert len(inputs) == len(outputs) == 15
+    assert all(output.channel == 'response_trace' for output in outputs)
+
+
+def test_reset_is_required_before_any_request(scored_reference):
+    root, _ = scored_reference
+    subject = _ParticipateOnlySubject()
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root)
+    with pytest.raises(CompatibilityError, match='provider.reset'):
+        benchmark(subject)
+    assert subject.requests == []
+
+
+def _record_events(directory):
+    from brainscore.experiments import read_events
+    return read_events(directory)

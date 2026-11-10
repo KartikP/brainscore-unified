@@ -10,9 +10,24 @@ from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
 from brainscore.harnesses.coggym import CogGymRunner, GENERATION_CHANNELS
-from brainscore.model_helpers.response_trace import provider_reset, register_trace_channels
+from brainscore_core.compatibility import CompatibilityError
+from brainscore.model_helpers.response_trace import register_trace_channels
 
 from . import EXPERIMENTS
+
+
+def _require_reset(reset):
+    """The provider's reset(repetition) callback, or an error before any compute.
+
+    The benchmark never reads it from the subject (Contract Rule 2.2): the
+    caller supplies it, because only the caller knows its provider.
+    """
+    if reset is None:
+        raise CompatibilityError(
+            'Supply reset=provider.reset to the CogGym benchmark. '
+            'Stateless providers can explicitly use lambda repetition: None.'
+        )
+    return reset
 
 
 class CogGymBenchmark(BenchmarkBase):
@@ -20,6 +35,8 @@ class CogGymBenchmark(BenchmarkBase):
 
     Supply a pinned checkout or set BRAINSCORE_COGGYM_CHECKOUT. ``reset`` is the
     provider's reset(repetition) callback; it must preserve instrumentation.
+    Scoring needs it: give it here or to ``protocol``. Any subject that answers
+    response-trace sessions through ``participate`` can be scored.
     One repetition is a preliminary evaluation, not a leaderboard replication.
     """
 
@@ -104,9 +121,10 @@ class CogGymBenchmark(BenchmarkBase):
         # directory and artifact registration). CogGym still owns the trial loop.
         def evaluate(subject, context):
             check_channel_compatibility(subject, self)
-            native = runner.protocol(reset=reset if reset is not None else provider_reset(subject))
-            # Call evaluate(), not run(): the outer protocol already observes
-            # subject.process() calls, so nesting observers would record them twice.
+            native = runner.protocol(reset=_require_reset(reset))
+            # Call evaluate(), not run(): the outer protocol already owns the run.
+            # The runner records each request and answer as one session, in its
+            # own record repetition.
             result = native.evaluate(subject, context)
             validation = result['response_validation']
             if validation['status'] == 'invalid':
@@ -149,15 +167,15 @@ class CogGymBenchmark(BenchmarkBase):
         return CallableProtocol(
             self.identifier,
             evaluate,
-            methods=['process'],  # Expose model calls to the attached tools.
+            # The runner records its sessions itself; no subject method is observed.
+            methods=(),
             metadata=runner.describe(),
         )
 
     def __call__(self, candidate: Subject) -> Score:
         """Run benchmark(subject) with input/output recording and return its Score."""
         check_channel_compatibility(candidate, self)
-        reset = self._reset if self._reset is not None else provider_reset(candidate)
-        protocol = self.protocol(model=candidate.identifier, reset=reset)
+        protocol = self.protocol(model=candidate.identifier, reset=_require_reset(self._reset))
         directory = self._output_dir
         if directory is None:
             # Keep implicit recordings only for this call, even if scoring fails.
