@@ -15,6 +15,7 @@ from brainscore.benchmarks.ewok.benchmark import logprob_accuracy
 from brainscore.harnesses.ewok import EWoKProvider
 from brainscore.model_helpers.response_trace import build_trace_subject
 from brainscore.experiments import Experiment, RecordInputsOutputs
+from brainscore_core.contract import Subject
 
 pytestmark = pytest.mark.unit
 
@@ -322,3 +323,228 @@ def test_real_hooks_change_score_and_restore(prepared, tmp_path):
         assert not native.model.projection._forward_hooks
     assert outcomes==[1.,.5,1.]
     assert native.model.projection.weight.item()==2.
+
+
+class _ParticipateOnlyReader(Subject):
+    """Answers EWoK requests through participate only: no process, no private state."""
+    identifier = 'participate-only-ewok'
+    in_channels = {'conditional_logprob_request', 'context_choice_request'}
+    out_channels = {'response_trace'}
+
+    def __init__(self, provider):
+        self.provider, self.sessions = provider, 0
+
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        self.sessions += 1
+        assert tuple(session.requested_output_channels) == ('response_trace',)
+        while (event := session.next_input()) is not None:
+            answer = json.loads(self.provider(event.payload)['text'])
+            session.respond(StreamEvent('response_trace', {
+                'raw': {}, 'answer': answer, 'valid': True, 'parse_error': None,
+                'provenance': {}}, event.t_ms, dict(event.meta)))
+
+
+@pytest.mark.parametrize('mode', ['logprobs', 'choice'])
+def test_participate_only_subject_scores_like_the_trace_subject(mode, prepared, tmp_path):
+    provider = EWoKProvider(NativeModel())
+    reader = _ParticipateOnlyReader(provider)
+    assert not hasattr(reader, 'process')
+    benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared,
+                                          batch_size=2, output_dir=tmp_path / 'stub')
+    value = benchmark(reader)
+    reference = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared, batch_size=2,
+                                          output_dir=tmp_path / 'trace')(subject(provider))
+    assert float(value) == float(reference) == 1
+    # One session per request: two batches, four (logprobs) or two (choice) requests each.
+    assert reader.sessions == 2 * (4 if mode == 'logprobs' else 2)
+    record = json.loads((tmp_path / 'stub' / 'experiment.json').read_text())
+    assert record['status'] != 'failed'
+
+
+def _old_process_path(subject_, context, request, repetition):
+    """What the benchmark did before it ran through participate."""
+    return subject_.process(request)
+
+
+def _streaming_provider(provider):
+    """Yield the provider's answer as two fragments, the second one final."""
+    def stream(request):
+        text = provider(request)['text']
+        yield {'text': '', 'final': False}
+        yield {'text': text, 'final': True}
+    return stream
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('mode', ['logprobs', 'choice'])
+def test_same_subject_old_process_path_and_participate_give_identical_item_scores(
+        mode, streaming, prepared, tmp_path, monkeypatch):
+    import brainscore.benchmarks.ewok.benchmark as ewok
+    provider = EWoKProvider(NativeModel())
+    candidate = build_trace_subject(
+        'fixture', provider=_streaming_provider(provider) if streaming else provider,
+        parse=json.loads, provenance={'model': 'synthetic-test'}, streaming=streaming,
+        input_channels=['conditional_logprob_request', 'context_choice_request'])
+
+    def run(name):
+        benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared,
+                                              batch_size=2, output_dir=tmp_path / name)
+        return benchmark(candidate), (tmp_path / name / 'item-scores.json').read_bytes()
+
+    new_score, new_items = run('participate')
+    with monkeypatch.context() as patch:
+        patch.setattr(ewok, '_ask', _old_process_path)
+        old_score, old_items = run('process')
+    assert new_items == old_items
+    assert repr(float(new_score)) == repr(float(old_score))
+    for key in ('version_scores', 'domain_scores', 'items', 'invalid_answers'):
+        assert new_score.attrs[key] == old_score.attrs[key]
+
+
+def test_replay_rebuilds_one_session_per_request(prepared, tmp_path):
+    from brainscore.experiments import compare_outputs, replay_sessions
+    from brainscore.run_record import RunRecord
+    provider = EWoKProvider(NativeModel())
+    candidate = subject(provider)
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, batch_size=2)
+    original = Experiment(subject=candidate, protocol=benchmark.protocol(),
+                          tools=[RecordInputsOutputs()], output_dir=tmp_path / 'original').run()
+    events = list(RunRecord(original.directory).events())
+    starts = [e for e in events if e['kind'] == 'repetition_start']
+    # Three items in batches of two, four requests per batch: eight sessions.
+    assert len(starts) == 8 == sum(e['kind'] == 'input' for e in events)
+    by_repetition = {}
+    for event in events:
+        if event['kind'] in ('input', 'output'):
+            by_repetition.setdefault(event['repetition_id'], []).append(event['kind'])
+    assert list(by_repetition.values()) == [['input', 'output']] * 8
+
+    calls = []
+    counting = subject(lambda request: calls.append(request) or provider(request))
+    replay = Experiment(subject=counting, protocol=replay_sessions(original.directory),
+                        tools=[RecordInputsOutputs()], output_dir=tmp_path / 'replay').run()
+    assert len(calls) == 8
+    replayed = list(RunRecord(replay.directory).events())
+    assert sum(e['kind'] == 'repetition_start' for e in replayed) == 8
+    assert compare_outputs(original.directory, replay.directory)['equal']
+
+
+class _UnfinishedReader(_ParticipateOnlyReader):
+    """Sends only a non-final fragment: valid text, but the stream never ends."""
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        while (event := session.next_input()) is not None:
+            answer = json.loads(self.provider(event.payload)['text'])
+            session.respond(StreamEvent('response_trace', {
+                'raw': {}, 'answer': answer, 'valid': True, 'parse_error': None,
+                'provenance': {}, 'final': False}, event.t_ms, dict(event.meta)))
+
+
+def test_unfinished_stream_is_refused_not_scored(prepared, tmp_path):
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared,
+                                          output_dir=tmp_path / 'run')
+    with pytest.raises(ValueError, match='final response'):
+        benchmark(_UnfinishedReader(EWoKProvider(NativeModel())))
+
+
+class _TorchNative:
+    """EWoK native model whose answers pass through one linear layer."""
+    def __init__(self):
+        import torch
+        self.model = torch.nn.Sequential()
+        self.model.add_module('projection', torch.nn.Linear(1, 1, bias=False))
+        with torch.no_grad():
+            self.model.projection.weight.fill_(2)
+
+    def score(self, targets, contexts):
+        import torch
+        inputs = torch.tensor([[1.] if (' A ' in t) == (' A ' in c) else [-1.]
+                               for t, c in zip(targets, contexts)])
+        with torch.no_grad():
+            return torch.nn.functional.logsigmoid(self.model(inputs)).flatten().tolist()
+
+
+def test_tools_select_the_repetition_ids_each_request_runs_in(prepared, tmp_path):
+    from brainscore.experiments import Ablate, TorchInstrumentation
+    from brainscore.run_record import RunRecord
+    native = _TorchNative()
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, batch_size=2)
+    assert benchmark.protocol().repetitions == tuple(range(8))
+    result = Experiment(subject=subject(EWoKProvider(native)), protocol=benchmark.protocol(),
+                        tools=[RecordInputsOutputs(), Ablate(['projection'], repetitions=[0])],
+                        instrumentation=TorchInstrumentation(native.model),
+                        output_dir=tmp_path / 'selected').run()
+    starts = [e['repetition_id'] for e in RunRecord(result.directory).events()
+              if e['kind'] == 'intervention_start']
+    assert starts == [0]
+    with pytest.raises(ValueError, match='repetitions must belong'):
+        Experiment(subject=subject(EWoKProvider(native)), protocol=benchmark.protocol(),
+                   tools=[RecordInputsOutputs(), Ablate(['projection'], repetitions=['external'])],
+                   instrumentation=TorchInstrumentation(native.model),
+                   output_dir=tmp_path / 'external').run()
+
+
+def _stateful_intervened_subject():
+    """A trace subject whose answers depend on its own history and on a lesion.
+
+    The provider counts requests and flips its answers on odd ones, so a
+    reset or a repeated call would show. The intervention flips them too,
+    and its cleanup is the only way to undo it.
+    """
+    from brainscore_core.brainscore_model import BrainScoreModel
+    from brainscore_core.events import PerturbationApplied
+    from brainscore.model_helpers.response_trace import _capability, register_trace_channels
+    from brainscore_core.capabilities.registry import register_capability
+    base, state = EWoKProvider(NativeModel()), {'requests': 0, 'lesioned': False}
+
+    def provider(request):
+        values = json.loads(base(request)['text'])
+        flip = (state['requests'] % 2 == 1) != state['lesioned']
+        state['requests'] += 1
+        return {'text': json.dumps([-v for v in values] if flip else values)}
+
+    def intervention(change):
+        state['lesioned'] = True
+
+        def cleanup():
+            state['lesioned'] = False
+        return PerturbationApplied(handle_id='lesion', target=change.target,
+                                   perturbation=change.perturbation, applied_at=0), cleanup
+
+    register_trace_channels()
+    capability = _capability(('conditional_logprob_request', 'context_choice_request'))
+    register_capability(capability)
+    model = BrainScoreModel('stateful-fixture', intervention=intervention, capability_config={
+        capability.identifier: {'provider': provider, 'parse': json.loads,
+                                'provenance': {'model': 'synthetic-test'},
+                                'streaming': False, 'reset': None}})
+    return model, state
+
+
+def test_stateful_subject_inside_a_caller_intervention_scores_like_the_old_path(
+        prepared, tmp_path, monkeypatch):
+    import brainscore.benchmarks.ewok.benchmark as ewok
+    from brainscore_core.events import Perturbation, Selection, StateChange
+    from brainscore.instrumentation import intervene
+    lesion = StateChange(kind='lesion', target=Selection(layer='projection'),
+                         perturbation=Perturbation(kind='zero'))
+
+    def run(name, old_path):
+        model, state = _stateful_intervened_subject()
+        benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared,
+                                              batch_size=2, output_dir=tmp_path / name)
+        with monkeypatch.context() as patch:
+            if old_path:
+                patch.setattr(ewok, '_ask', _old_process_path)
+            # The caller's lesion must survive the run and be undone by its own scope.
+            with intervene(model, lesion):
+                value = benchmark(model)
+                assert state['lesioned']
+        assert not state['lesioned'] and state['requests'] == 8
+        return value, (tmp_path / name / 'item-scores.json').read_bytes()
+
+    new_score, new_items = run('participate', old_path=False)
+    old_score, old_items = run('process', old_path=True)
+    assert new_items == old_items
+    assert repr(float(new_score)) == repr(float(old_score))
