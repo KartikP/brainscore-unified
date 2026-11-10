@@ -22,6 +22,10 @@ from tests.test_umi_review_regressions import language_pair, _stimuli
 
 pytestmark = pytest.mark.integration
 
+# The tolerance guards are domain-independent code. One vision and one language
+# case cover both routes; the factory test above still runs all six cases.
+GUARD_CASES = (CASES[0], PEREIRA_CASES[0])
+
 
 @pytest.mark.parametrize('failure', [False, True])
 def test_snapshot_cleanup_and_hash_compatibility(tmp_path, run_parity_observations, failure):
@@ -210,7 +214,7 @@ def run_parity_observations(language_pair):
     return run
 
 
-@pytest.mark.parametrize('case', CASES, ids=lambda case: case.unified)
+@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.unified)
 @pytest.mark.parametrize('field', ['activation_delta', 'score', 'raw'])
 def test_adapter_guards_cannot_be_relaxed_by_native_tolerances(case, field, run_parity_observations):
     baseline = {'activation_delta': 0, 'score': 0.5, 'raw': 0.25}[field]
@@ -221,7 +225,7 @@ def test_adapter_guards_cannot_be_relaxed_by_native_tolerances(case, field, run_
                                 native_atol=1, score_atol=1)
 
 
-@pytest.mark.parametrize('case', CASES, ids=lambda case: case.unified)
+@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.unified)
 @pytest.mark.parametrize('field', ['score', 'raw'])
 def test_adapter_scores_allow_four_fp32_ulps_with_exact_activations(case, field, run_parity_observations):
     # Controlled scalar perturbations, not invented CI activation arrays.
