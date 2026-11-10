@@ -80,12 +80,70 @@ def test_answers_are_put_in_frame_order_by_stimulus_id(benchmark):
     np.testing.assert_array_equal(features, np.asarray(expected, dtype=np.float32))
 
 
-def test_all_records_every_declared_region_once(benchmark):
-    subject = Recorder()
-    features, _ = benchmark._extract_per_TR_features(
-        subject, _frames(), recording_target='all')
-    assert len(subject.requests) == 1                      # one session for every region
-    assert sorted(subject.requests[0]) == ['neural:IT', 'neural:V4']
-    units = ['shared', 'c', 'a', 'b']                      # IT then V4 (sorted); 'shared' once
-    expected = [[_value(frame, unit) for unit in units] for frame in FRAMES]
-    np.testing.assert_array_equal(features, np.asarray(expected, dtype=np.float32))
+# ── Old path vs participate on the SAME subject (Contract Rule 10.1) ──────
+
+from brainscore_core.model_interface import BrainScoreModel, CompositeSelector
+from brainscore.benchmarks.algonauts2025 import benchmark as algonauts_module
+
+
+class _Extractor:
+    """Deterministic activity per (frame, layer); keeps the stimulus columns."""
+
+    identifier = 'synthetic-algonauts-extractor'
+
+    def __call__(self, stimuli, layers):
+        blocks = [np.array([[float(hash((layer, frame, unit)) % 997) for unit in range(4)]
+                            for frame in stimuli['stimulus_id']]) for layer in layers]
+        return NeuroidAssembly(
+            np.concatenate(blocks, axis=1), dims=['presentation', 'neuroid'], coords={
+                **{column: ('presentation', list(stimuli[column])) for column in stimuli.columns},
+                'layer': ('neuroid', [layer for layer in layers for _ in range(4)]),
+                'neuroid_id': ('neuroid', [f'{layer}.{unit}' for layer in layers for unit in range(4)]),
+            })
+
+
+def _old_record_features(subject, stimuli, region, *, time_bins):
+    """What the benchmark did before it ran through participate."""
+    subject.start_recording(region, time_bins=time_bins)
+    return algonauts_module._as_features(subject.process(stimuli))
+
+
+REGION_MAPS = {
+    'one layer per region': {'V1': 'early', 'V4': 'mid', 'IT': 'late'},
+    'regions share a layer': {'V4': 'late', 'V1': 'early', 'IT': 'late'},
+    'composite overlaps a region': {
+        'V4': 'mid', 'IT': CompositeSelector((('mid', (0, 2)), ('late', None))),
+        'V1': 'early'},
+}
+
+
+@pytest.mark.parametrize('region_map', REGION_MAPS.values(), ids=REGION_MAPS.keys())
+@pytest.mark.parametrize('target', ['IT', 'all'])
+def test_old_and_new_path_give_identical_features(benchmark, monkeypatch, region_map, target):
+    model = BrainScoreModel('synthetic', region_layer_map=region_map,
+                            preprocessors={'vision': _Extractor(), 'text': _Extractor()})
+    new, new_ids = benchmark._extract_per_TR_features(model, _frames(), recording_target=target)
+    with monkeypatch.context() as patch:
+        patch.setattr(algonauts_module, '_record_features', _old_record_features)
+        old, old_ids = benchmark._extract_per_TR_features(model, _frames(), recording_target=target)
+    assert new.dtype == old.dtype and new.shape == old.shape
+    np.testing.assert_array_equal(new, old)
+    assert new_ids == old_ids
+
+
+class _WrongIds(Recorder):
+    """Answers with the right number of rows but one wrong stimulus id."""
+
+    def participate(self, session):
+        stimuli = session_stimuli(session, drain_session_inputs(session))
+        ids = [str(s) for s in stimuli['stimulus_id']][:-1] + ['not_a_frame']
+        for channel in session.requested_output_channels:
+            session.respond(StreamEvent(channel, NeuroidAssembly(
+                np.zeros((len(ids), 2)),
+                coords={'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', ['a', 'b'])},
+                dims=['presentation', 'neuroid']), t_ms=None))
+
+
+def test_a_response_for_other_frames_is_refused(benchmark):
+    with pytest.raises(ValueError, match='exactly once'):
+        benchmark._extract_per_TR_features(_WrongIds(), _frames())

@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
-import pandas as pd
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.execution_plan import ExecutionPlan
@@ -71,17 +70,6 @@ def _ffmpeg_extract_one(args):
     return video_path
 
 
-def _declared_regions(subject) -> List[str]:
-    """Every region the subject declares as a ``neural:<region>`` output, sorted."""
-    from brainscore_core.streaming import parse_channel
-    regions = []
-    for channel in subject.out_channels:
-        family, address = parse_channel(channel)
-        if family == 'neural' and address:
-            regions.append(address)
-    return sorted(regions)
-
-
 def _as_features(assembly):
     """``(values (n_presentations, n_units) float32, neuroid ids or None)``."""
     if 'time_bin' in assembly.dims:
@@ -90,59 +78,28 @@ def _as_features(assembly):
     try:
         feature_ids = assembly['neuroid_id'].values
     except KeyError:
-        # brainio keeps a lone neuroid coordinate as the plain, unnamed index.
-        index = assembly.indexes.get('neuroid')
-        feature_ids = (None if index is None or isinstance(index, pd.MultiIndex)
-                       else np.asarray(index.values))
+        feature_ids = None
     return feats, feature_ids
 
 
-def _in_input_order(assembly, stimuli):
-    """Rows of ``assembly`` in the order of ``stimuli``, matched by ``stimulus_id``.
-
-    The response must answer each frame exactly once, or this raises.
-    """
-    from brainscore.presentation import response_stimulus_ids
-    wanted = [str(s) for s in stimuli['stimulus_id'].values]
-    answered = [str(s) for s in response_stimulus_ids(assembly, wanted)]
-    if answered == wanted:
-        return assembly
-    position = {sid: index for index, sid in enumerate(answered)}
-    return assembly.isel(presentation=[position[sid] for sid in wanted])
-
-
 def _record_features(subject, stimuli, region: str, *, time_bins):
-    """Record the subject's activity through ``participate`` only, in the
-    order of ``stimuli``.
+    """Record ``neural:<region>`` through ``participate`` only, in the order of ``stimuli``.
 
-    ``region`` is one declared region, or ``'all'``: every region the subject
-    declares as ``neural:<region>``, recorded in one session. For ``'all'``
-    the regions are joined in sorted order, and a unit two regions share
-    (same ``neuroid_id``) is kept once.
+    ``region`` is a region the subject records, or ``'all'``. ``neural:all``
+    is the core's address for every mapped region, recorded in one extraction
+    exactly as ``start_recording('all')`` did, so the feature order and count
+    do not change. The response must answer each frame exactly once; its rows
+    are put in the order of ``stimuli`` by ``stimulus_id``.
     """
-    from brainscore_core.streaming_helpers import neural_response, stimulus_session
-    if region != 'all':
-        return _as_features(_in_input_order(
-            neural_response(subject, stimuli, record=region, time_bins=time_bins),
-            stimuli))
-    regions = _declared_regions(subject)
-    if not regions:
-        raise ValueError(f"{subject.identifier} declares no neural:<region> output.")
-    session = stimulus_session(stimuli, record=regions, time_bins=time_bins)
-    subject.participate(session)
-    blocks, ids, seen = [], [], set()
-    for name in regions:
-        feats, feature_ids = _as_features(
-            _in_input_order(session.collect(f'neural:{name}'), stimuli))
-        if feature_ids is None or ids is None:
-            blocks.append(feats)
-            ids = None
-            continue
-        keep = np.array([unit not in seen for unit in feature_ids], dtype=bool)
-        seen.update(feature_ids[keep])
-        blocks.append(feats[:, keep])
-        ids.extend(feature_ids[keep])
-    return np.concatenate(blocks, axis=1), (None if ids is None else np.asarray(ids))
+    from brainscore_core.streaming_helpers import neural_response
+    from brainscore.presentation import response_stimulus_ids
+    response = neural_response(subject, stimuli, record=region, time_bins=time_bins)
+    wanted = [str(s) for s in stimuli['stimulus_id'].values]
+    answered = [str(s) for s in response_stimulus_ids(response, wanted)]
+    if answered != wanted:
+        position = {sid: index for index, sid in enumerate(answered)}
+        response = response.isel(presentation=[position[sid] for sid in wanted])
+    return _as_features(response)
 
 
 class _Algonauts2025Base(BenchmarkBase):
@@ -435,7 +392,7 @@ class _Algonauts2025Base(BenchmarkBase):
         """
         # recording_target is a region the subject declares as neural:<region>
         # (standard, e.g. 'IT', or a region backed by a CompositeSelector), or
-        # the string 'all' (whole-brain over every declared region).
+        # the string 'all' (every mapped region in one extraction, as before).
         feats, feature_ids = _record_features(
             candidate, frame_stim_set, recording_target,
             time_bins=[(0, int(TR_SEC * 1000))])
