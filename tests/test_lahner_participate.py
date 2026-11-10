@@ -83,7 +83,9 @@ def _videos():
 
 
 def _frames():
+    # Like expand_clip_to_frames, each frame row keeps its clip's video_path.
     rows = [{'stimulus_id': f'{clip}_t{int(t_ms)}', 'clip_id': clip, 'frame_time_ms': t_ms,
+             'video_path': f'/clips/{clip}.mp4',
              'image_file_name': f'/frames/{clip}_{int(t_ms)}.jpg'}
             for clip in CLIPS for t_ms in SAMPLE_TIMES_MS]
     frames = StimulusSet(pd.DataFrame(rows))
@@ -124,9 +126,8 @@ def test_frames_are_pooled_per_clip_from_the_benchmark_table():
     subject = Recorder({'vision:still'})
     pooled = _util.record_frames_per_clip(subject, _frames(), 'IT', [(0, 3000)])
     assert list(pooled.indexes['presentation'].get_level_values('clip_id')) == CLIPS
-    expected = np.mean([_unit_values(f'{CLIPS[0]}_t{int(t)}', 'neural:IT')
-                        for t in SAMPLE_TIMES_MS], axis=0)
-    np.testing.assert_allclose(pooled.values[0, 0, :], expected, rtol=1e-6)
+    frames = [_unit_values(f"{CLIPS[0]}_t{int(t)}", "neural:IT") for t in SAMPLE_TIMES_MS]
+    np.testing.assert_array_equal(pooled.values[0, 0, :], np.stack(frames).mean(axis=0))
 
 
 def test_routing_reads_declared_channels_only():
@@ -211,3 +212,166 @@ def test_tr_multimodal_variant_falls_back_to_one_tower_from_declarations(monkeyp
     assert benchmark._modality_per_feature is None
     assert features.shape == (len(CLIPS), N_UNITS)
     assert [channels for channels, _ in subject.seen] == [['neural:IT']]
+
+
+# ── Old path vs participate on the SAME subject (Contract Rule 10.1) ──────
+#
+# The old code called start_recording + process, then temporal_bin on the frame
+# response, and routed on supported_modalities. The functions below are those
+# exact removed lines. Each benchmark runs once through participate and once
+# with them patched in, on the same BrainScoreModel; results must be identical.
+
+from brainscore_core.model_interface import BrainScoreModel
+from brainscore_core.temporal import temporal_bin
+from brainscore.benchmarks.lahner2024 import (
+    benchmark as glm_module, benchmark_multimodal as mm_module,
+    benchmark_timeresolved as tr_module, benchmark_timeresolved_multimodal as trmm_module,
+)
+
+
+class _Extractor:
+    """Deterministic activity per (stimulus, layer); keeps the stimulus columns."""
+
+    identifier = 'synthetic-lahner-extractor'
+
+    def __init__(self, width, salt):
+        self.width, self.salt = width, salt
+
+    def __call__(self, stimuli, layers):
+        blocks = []
+        for layer in layers:
+            blocks.append(np.stack([_unit_values(f'{self.salt}{layer}{sid}', 'x')[:self.width]
+                                    for sid in stimuli['stimulus_id']]))
+        return NeuroidAssembly(
+            np.concatenate(blocks, axis=1), dims=['presentation', 'neuroid'], coords={
+                **{column: ('presentation', list(stimuli[column])) for column in stimuli.columns},
+                'layer': ('neuroid', [layer for layer in layers for _ in range(self.width)]),
+                'neuroid_id': ('neuroid', [f'{layer}.{i}' for layer in layers
+                                           for i in range(self.width)]),
+            })
+
+
+def _model(visual_key):
+    """An audio-visual model; ``vision`` + ``text`` takes stills, ``video`` clips."""
+    preprocessors = {visual_key: _Extractor(3, 'v'), 'audio': _Extractor(2, 'a')}
+    if visual_key == 'vision':
+        preprocessors['text'] = _Extractor(3, 't')   # vision + text, like CLIP
+    return BrainScoreModel(f'synthetic-{visual_key}',
+                           region_layer_map={'IT': 'visual.layer', 'A1': 'audio.layer'},
+                           region_modality_map={'IT': visual_key, 'A1': 'audio'},
+                           preprocessors=preprocessors)
+
+
+def _old_record_clips(subject, clips, region, time_bins):
+    subject.start_recording(region, time_bins=time_bins)
+    return subject.process(clips)
+
+
+def _old_record_frames_per_clip(subject, frames, region, time_bins):
+    subject.start_recording(region, time_bins=time_bins)
+    return temporal_bin(subject.process(frames), time_bins=time_bins)
+
+
+def _old_takes_audiovisual(subject):
+    supports = getattr(subject, 'supported_modalities', set())
+    return ('video' in supports or 'vision' in supports) and 'audio' in supports
+
+
+def _old_path(monkeypatch):
+    for module in (glm_module, mm_module, tr_module, trmm_module):
+        for name, old in (('record_clips', _old_record_clips),
+                          ('record_frames_per_clip', _old_record_frames_per_clip),
+                          ('takes_audiovisual', _old_takes_audiovisual)):
+            if hasattr(module, name):
+                monkeypatch.setattr(module, name, old)
+
+
+def _both(monkeypatch, run):
+    new = run()
+    with monkeypatch.context() as patch:
+        _old_path(patch)
+        old = run()
+    return old, new
+
+
+def _same_score(old, new):
+    assert repr(float(old)) == repr(float(new))
+    np.testing.assert_array_equal(np.asarray(old.attrs['per_voxel_r']),
+                                  np.asarray(new.attrs['per_voxel_r']))
+    assert old.attrs['pipeline'] == new.attrs['pipeline']
+
+
+@pytest.mark.parametrize('visual_key', ['vision', 'video'])
+def test_glm_variant_old_and_new_path_give_the_same_score(monkeypatch, visual_key):
+    benchmark = _glm(Lahner2024BOLDMoments(sample_times_ms=list(SAMPLE_TIMES_MS)), monkeypatch)
+    model = _model(visual_key)
+    old, new = _both(monkeypatch, lambda: benchmark(model))
+    _same_score(old, new)
+    old_features, new_features = _both(monkeypatch, lambda: benchmark._clip_features(model))
+    np.testing.assert_array_equal(old_features[0], new_features[0])
+    assert list(old_features[1]) == list(new_features[1])
+
+
+@pytest.mark.parametrize('visual_key', ['vision', 'video'])
+def test_multimodal_variant_old_and_new_path_give_the_same_score(monkeypatch, visual_key):
+    benchmark = _glm(Lahner2024BOLDMoments_multimodal(), monkeypatch)
+    model = _model(visual_key)
+    old, new = _both(monkeypatch, lambda: benchmark(model))
+    _same_score(old, new)
+
+
+@pytest.mark.parametrize('visual_key', ['vision', 'video'])
+def test_tr_variant_old_and_new_path_give_the_same_features(monkeypatch, visual_key):
+    benchmark = _tr(Lahner2024BOLDMoments_timeresolved(), monkeypatch)
+    model = _model(visual_key)
+    old, new = _both(monkeypatch, lambda: benchmark._extract_per_stimulus_features(model))
+    np.testing.assert_array_equal(old[0], new[0])
+    assert list(old[1]) == list(new[1])
+
+
+@pytest.mark.parametrize('visual_key', ['vision', 'video'])
+def test_tr_multimodal_variant_old_and_new_path_give_the_same_features(monkeypatch, visual_key):
+    benchmark = _tr(Lahner2024BOLDMoments_timeresolved_multimodal(), monkeypatch)
+    monkeypatch.setattr(benchmark, '_video_stim_set_for', lambda ids: _videos())
+    monkeypatch.setattr(benchmark, '_audio_stim_set_for', lambda ids: _audio())
+    model = _model(visual_key)
+
+    def run():
+        features, ids = benchmark._extract_per_stimulus_features(model)
+        return features, ids, list(benchmark._modality_per_feature)
+
+    old, new = _both(monkeypatch, run)
+    np.testing.assert_array_equal(old[0], new[0])
+    assert list(old[1]) == list(new[1]) and old[2] == new[2]
+
+
+def test_frame_pooling_is_identical_to_the_old_temporal_bin(monkeypatch):
+    model = _model('vision')
+    old = _old_record_frames_per_clip(model, _frames(), 'IT', [(0, 3000)])
+    new = _util.record_frames_per_clip(model, _frames(), 'IT', [(0, 3000)])
+    np.testing.assert_array_equal(old.values, new.values)
+    assert list(old['clip_id'].values) == list(new['clip_id'].values)
+
+
+# ── Response ids are checked ──────────────────────────────────────
+
+
+class _WrongIds(Recorder):
+    """Answers with the right number of rows but other stimulus ids."""
+
+    def participate(self, session):
+        stimuli = session_stimuli(session, drain_session_inputs(session))
+        ids = [f'other_{index}' for index in range(len(stimuli))]
+        for channel in session.requested_output_channels:
+            session.respond(StreamEvent(channel, NeuroidAssembly(
+                np.zeros((len(ids), N_UNITS)),
+                coords={'stimulus_id': ('presentation', ids),
+                        'neuroid_id': ('neuroid', list(range(N_UNITS)))},
+                dims=['presentation', 'neuroid']), t_ms=None))
+
+
+@pytest.mark.parametrize('in_channels', [{'vision:clip'}, {'vision:still'}])
+def test_a_response_for_other_stimuli_is_refused(monkeypatch, in_channels):
+    benchmark = _glm(Lahner2024BOLDMoments(sample_times_ms=list(SAMPLE_TIMES_MS)), monkeypatch)
+    with pytest.raises(ValueError, match='exactly once'):
+        benchmark(_WrongIds(in_channels))
