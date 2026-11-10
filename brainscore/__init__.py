@@ -300,6 +300,13 @@ def score(model_identifier, benchmark_identifier,
         requested_output_channels_for_score,
         stamp_score_metadata,
     )
+    try:
+        from brainscore_core.score_metadata import record_measures
+    except ImportError as error:
+        raise ImportError(
+            'brainscore needs a brainscore_core with score_metadata.record_measures '
+            '(core ad7288a or later); install the core revision in install/peer-revisions.json'
+        ) from error
 
     import time as _time
     # accept either an identifier string or an already-built object
@@ -329,7 +336,7 @@ def score(model_identifier, benchmark_identifier,
                                       visual_degrees=declared_visual_degrees(model))
 
     _t0 = _time.time()
-    with weight_fingerprint_scope():
+    with weight_fingerprint_scope(), record_measures() as measures:
         result = benchmark(candidate)
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
@@ -345,8 +352,10 @@ def score(model_identifier, benchmark_identifier,
         result,
         model,
         requested_channels=requested_channels,
-        protocol=infer_score_protocol(model, benchmark, requested_channels),
+        protocol=infer_score_protocol(model, benchmark, requested_channels,
+                                      measures=measures),
         harness_id='brainscore',
+        measures=measures,
     )
     result.attrs['compatibility'] = compatibility.as_attrs()
     return result
