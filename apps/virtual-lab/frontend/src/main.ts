@@ -1,7 +1,7 @@
 import { drawScene, drawAvatar } from './scene.js';
-import { currentMode, initializeWorkbench, updateWorkbench, handleTool, buildRequest, customIntervention, requestedOutput, isUploading, isUpdatingSettings } from './workbench.js';
+import { currentMode, initializeWorkbench, updateWorkbench, resetExperiment, handleTool, buildRequest, customIntervention, requestedOutput, isUploading, isUpdatingSettings } from './workbench.js';
 import { addResponsePlot, addCalibrationPlots, activationExtent, HeatmapScale, type ActivationPreview } from './plots.js';
-import { conditionNames, protocolSpec, protocolMeasurements, protocolHasIntervention, protocolRunReady, protocolStep, protocolDraftMatches, type ProtocolValidation } from './protocol.js';
+import { conditionNames, protocolSpec, protocolMeasurements, protocolHasIntervention, protocolRunReady, protocolIssue, protocolValidationFailed, validateProtocol, protocolStep, protocolDraftMatches, type ProtocolValidation } from './protocol.js';
 import { renderProtocolResults } from './protocol_results.js';
 import { renderProgress } from './progress.js';
 import { replayView, type ReplayView } from './replay.js';
@@ -27,6 +27,25 @@ let replayID = '';
 const activePhases = new Set(['queued', 'running', 'trial_finished', 'cancelling']);
 const toolLabels = { behavior: 'Behavior log', activity: 'Activation probe', ablation: 'Ablation tool' };
 const conditionLabels: Record<string, string> = { baseline: 'Baseline', ablation: 'Ablation', intervention: 'Intervention', random_control: 'Random control', restored: 'Restored', benchmark: 'Benchmark', loading_benchmark: 'Loading benchmark' };
+const modeLabels: Record<string, string> = { benchmark: 'Benchmark', stimuli: 'Quick session', session: 'Event JSON', calibration: 'Calibration' };
+let revealResults = false;
+let runAfterCheck = false;
+
+/** Switch between the rig and the review page. The new page opens as a circle that grows from `origin`. */
+function showView(name: 'build' | 'review', origin?: HTMLElement): void {
+  const apply = () => {
+    document.body.dataset.view = name;
+    $('view-build').setAttribute('aria-pressed', String(name === 'build')); $('view-review').setAttribute('aria-pressed', String(name === 'review'));
+    if (name === 'build') replay?.pause();
+    window.scrollTo(0, 0);
+  };
+  const transition = (document as Document & { startViewTransition?: (update: () => void) => unknown }).startViewTransition;
+  if (!transition || document.body.dataset.view === name || matchMedia('(prefers-reduced-motion: reduce)').matches) { apply(); return; }
+  const box = (origin ?? $(`view-${name}`)).getBoundingClientRect();
+  document.documentElement.style.setProperty('--reveal-x', `${box.left + box.width / 2}px`);
+  document.documentElement.style.setProperty('--reveal-y', `${box.top + box.height / 2}px`);
+  transition.call(document, apply);
+}
 const running = () => Boolean(state.run && activePhases.has(state.run.phase));
 const busy = () => running() || requestPending || isUploading() || isUpdatingSettings() || state.phase === 'validating';
 const currentProtocolResult = () => state.run?.report?.subject === state.profile?.identifier && protocolDraftMatches(state.run?.request);
@@ -143,7 +162,7 @@ function renderState(): void {
     $('subject-id').hidden = profile.title === profile.identifier;
     $('subject-description').textContent = profile.description; $('task-title').textContent = profile.task;
     $('subject-notice').textContent = profile.notice ?? ''; $('subject-notice').hidden = !profile.notice;
-    $('profile-note').textContent = profile.provenance.kind === 'engineered calibration' ? 'Engineered calibration circuit. Load a registered subject above to run benchmarks or supply your own stimuli.' : 'The avatar is generated from the subject identifier. Scientific abilities come from declared input and output channels.';
+    $('profile-note').textContent = profile.provenance.kind === 'engineered calibration' ? 'Engineered calibration circuit. Load a registered participant above to run benchmarks or supply your own stimuli.' : 'The avatar is generated from the participant identifier. Scientific abilities come from declared input and output channels.';
     const channels = $('channels'); channels.replaceChildren();
     for (const channel of [...profile.in_channels.map(x => `in: ${x}`), ...profile.out_channels.map(x => `out: ${x}`)]) {
       const tag = document.createElement('span'); tag.className = 'channel'; tag.textContent = channel; channels.append(tag);
@@ -153,24 +172,33 @@ function renderState(): void {
     if (!profile.targets.some(target => target.name === plan.target)) plan.target = profile.targets[0]?.name ?? 'none';
     select.value = plan.target;
   }
+  document.body.dataset.mode = currentMode();
+  $('rig-mode').hidden = currentMode() === 'protocol';
+  $('rig-mode').textContent = `${modeLabels[currentMode()] ?? currentMode()} workflow \u00b7 ${profile?.identifier ?? 'no participant loaded'}`;
   const run = state.run;
   $<HTMLButtonElement>('replay-tab').disabled = run?.phase !== 'complete';
   if (run?.phase !== 'complete') reviewTab('results');
   renderProgress(run, state.phase, !connectionLost);
-  if (currentMode() !== 'calibration') $('task-title').textContent = currentMode() === 'protocol' ? protocolSpec().identifier || 'New protocol' : currentMode() === 'benchmark' ? 'Registered benchmark' : currentMode() === 'session' ? 'Declared event session' : `Custom stimuli / ${requestedOutput() || 'choose an output'}`;
+  if (run?.phase === 'complete') $('lab-progress').hidden = true;  // the status label and the results already say it is done
+  $('task-title').textContent = currentMode() === 'calibration' ? profile?.task ?? 'Calibration' : currentMode() === 'protocol' ? protocolSpec().identifier || 'New protocol' : currentMode() === 'benchmark' ? 'Registered benchmark' : currentMode() === 'session' ? 'Declared event session' : `Custom stimuli / ${requestedOutput() || 'choose an output'}`;
   const status = $('run-status'); status.replaceChildren(document.createElement('i'));
-  const label = state.phase === 'failed' || state.phase === 'load_failed' ? 'Unavailable' : state.phase === 'loading' ? 'Loading subject' : state.phase === 'validating' ? 'Validating draft' : running() ? run?.phase === 'cancelling' ? 'Stopping' : 'Experiment running' : currentMode() === 'protocol' && !currentProtocolResult() ? 'Protocol draft' : run?.phase === 'complete' ? 'Run complete' : run?.phase === 'failed' ? 'Run failed' : 'Ready to experiment';
+  const label = state.phase === 'failed' || state.phase === 'load_failed' ? 'Unavailable' : state.phase === 'loading' ? 'Loading participant' : state.phase === 'validating' ? 'Validating draft' : running() ? run?.phase === 'cancelling' ? 'Stopping' : 'Experiment running' : currentMode() === 'protocol' && !currentProtocolResult() ? 'Protocol draft' : run?.phase === 'complete' ? 'Run complete' : run?.phase === 'failed' ? 'Run failed' : 'Ready to experiment';
   status.append(document.createTextNode(label)); status.classList.toggle('running', running());
   $('subject-status').textContent = state.phase === 'ready' ? 'Loaded' : state.phase.replaceAll('_', ' ');
-  $('scene-state').textContent = running() ? conditionLabels[run?.condition ?? ''] ?? 'Preparing run' : state.phase === 'ready' ? 'Subject ready' : 'Awaiting subject';
-  const blocked = state.phase !== 'ready' || busy() || currentMode() === 'protocol' && !protocolRunReady();
+  $('scene-state').textContent = running() ? conditionLabels[run?.condition ?? ''] ?? 'Preparing run' : state.phase === 'ready' ? 'Participant ready' : 'Awaiting participant';
+  const protocol = currentMode() === 'protocol';
+  if (runAfterCheck && state.phase !== 'validating') {  // Run checks the setup first, then starts by itself
+    if (protocolRunReady()) { runAfterCheck = false; queueMicrotask(() => $<HTMLButtonElement>('run').click()); }
+    else if (protocolValidationFailed()) { runAfterCheck = false; state.error = undefined; error(protocolValidationFailed()); }
+  }
+  const blocked = state.phase !== 'ready' || busy() || runAfterCheck || protocol && Boolean(protocolIssue());
   $<HTMLButtonElement>('run').disabled = blocked;
   $<HTMLButtonElement>('run-editor').disabled = blocked;
   $('run-editor').hidden = currentMode() === 'protocol' && protocolStep() !== 5;
-  $('run').textContent = $('run-editor').textContent = currentMode() === 'protocol' ? 'Run protocol' : 'Run experiment';
+  $('run').textContent = $('run-editor').textContent = !protocol ? 'Run experiment' : runAfterCheck || state.phase === 'validating' ? 'Checking\u2026' : protocolRunReady() ? 'Run' : 'Check and run';
   $('stop').hidden = !running(); $<HTMLButtonElement>('stop').disabled = run?.phase === 'cancelling';
   $('stop').textContent = currentMode() === 'protocol' ? 'Stop after repetition' : currentMode() === 'benchmark' ? 'Stop after benchmark' : 'Stop after trial';
-  $('run-help').textContent = running() ? 'Stopping waits for the current repetition or whole benchmark and its cleanup.' : currentMode() === 'protocol' ? 'Each stimulus is shown once per condition and repetition. Validate the complete setup in step 6 before running.' : currentMode() === 'benchmark' ? 'Runs the existing benchmark and its pre-flight checks.' : currentMode() !== 'calibration' ? 'Executes your inputs through the subject session interface.' : plan.ablation ? 'Four conditions. Same stimuli. Independent trials, with automatic cleanup.' : 'Start with a baseline, or attach an ablation tool to compare conditions.';
+  $('run-help').textContent = running() ? 'Stopping waits for the current repetition or whole benchmark and its cleanup.' : protocol ? protocolIssue() || (protocolRunReady() ? 'Checked. Each stimulus is shown once per condition and repetition.' : 'Run checks the setup first. Then each stimulus is shown once per condition and repetition.') : currentMode() === 'benchmark' ? 'Runs the existing benchmark and its pre-flight checks.' : currentMode() !== 'calibration' ? 'Executes your inputs through the participant session interface.' : plan.ablation ? 'Four conditions. Same stimuli. Independent trials, with automatic cleanup.' : 'Start with a baseline, or attach an ablation tool to compare conditions.';
   if (state.error) error(state.error);
   else if (run?.phase === 'failed' || run?.phase === 'cancelled') {
     error(run.error || 'Experiment stopped; the plugin supplied no additional message');
@@ -215,6 +243,8 @@ function renderResults(run: Run): void {
   }
   if (report?.note) { const note = document.createElement('p'); note.className = 'result-note'; note.textContent = report.note; content.append(note); }
   $('result-time').textContent = `${run.elapsed_s?.toFixed(2)} s`;
+  $('review-title').textContent = $('task-title').textContent ?? '';
+  if (revealResults) { revealResults = false; showView('review', $('run')); }
   $('downloads').hidden = false;
   $<HTMLAnchorElement>('download-python').href = `/api/runs/${run.id}/experiment.py`;
   $<HTMLAnchorElement>('download-plan').href = `/api/runs/${run.id}/plan.json`;
@@ -319,18 +349,24 @@ async function poll(): Promise<void> {
     if (connectionLost) error('');
     connectionLost = false; renderState();
   } catch (problem) { connectionLost = true; renderProgress(state.run, state.phase, false); error(`Connection lost. ${String(problem)}`); }
-  window.setTimeout(poll, document.hidden ? 5000 : running() || state.phase === 'loading' ? 500 : 2000);
+  window.setTimeout(poll, document.hidden ? 5000 : running() || runAfterCheck || state.phase === 'loading' || state.phase === 'validating' ? 500 : 2000);
 }
 
 $('run').onclick = async () => {
   if (busy()) return;
-  if (currentMode() === 'protocol' && !protocolRunReady()) { error('Review and validate this protocol in step 6 before running.'); return; }
+  if (currentMode() === 'protocol' && !protocolRunReady()) {
+    if (protocolIssue()) { error(protocolIssue()); return; }
+    error(''); runAfterCheck = true; renderState();
+    try { await validateProtocol(); } catch (problem) { runAfterCheck = false; error(String(problem)); renderState(); }
+    return;
+  }
   error(''); requestPending = true; renderState();
   try {
     const calibration = currentMode() === 'calibration';
     const response = await post(calibration ? '/api/runs' : '/api/experiments', calibration ? plan : buildRequest(plan.behavior)) as { id: string };
     state.run = { id: response.id, phase: 'queued', ...(calibration ? { plan: { ...plan } } : {}) };
     error(''); $('downloads').hidden = true;
+    revealResults = true;
     $('result-time').textContent = 'RUNNING';
   } catch (problem) { error(String(problem)); }
   finally { requestPending = false; renderState(); }
@@ -340,6 +376,13 @@ $('stop').onclick = async () => {
   catch (problem) { error(String(problem)); }
 };
 $('run-editor').onclick = () => $<HTMLButtonElement>('run').click();
+$('view-build').onclick = () => showView('build'); $('view-review').onclick = () => showView('review');
+$('edit-experiment').onclick = () => showView('build', $('edit-experiment'));
+$('rerun-experiment').onclick = () => { showView('build', $('rerun-experiment')); $<HTMLButtonElement>('run').click(); };
+for (const id of ['new-experiment', 'reset-experiment']) $(id).onclick = () => {
+  if (busy() || !confirm('Start a new experiment? This clears the current setup. The participant stays loaded.')) return;
+  error(''); resetExperiment(); showView('build', $(id));
+};
 $<HTMLInputElement>('fraction').oninput = event => { plan.fraction = Number((event.target as HTMLInputElement).value); renderTools(); renderState(); };
 $<HTMLSelectElement>('target').onchange = event => { plan.target = (event.target as HTMLSelectElement).value; renderTools(); };
 document.querySelectorAll<HTMLButtonElement>('[data-tool]').forEach(button => {
@@ -357,8 +400,8 @@ $('bench').ondrop = event => {
 initializeWorkbench({ state: () => state, post, changed: renderState, error,
   loading: () => {
     replay?.dispose(); replay = undefined; replayID = ''; $('replay-content').replaceChildren(); reviewTab('results');
-    state.phase = 'loading'; state.error = undefined; state.run = null; shownResult = ''; error('');
-    const note = document.createElement('p'); note.className = 'editor-note'; note.textContent = 'Run an experiment with the loaded subject to inspect its responses.';
+    state.phase = 'loading'; state.error = undefined; state.run = null; shownResult = ''; error(''); showView('build'); $('review-title').textContent = 'No run yet';
+    const note = document.createElement('p'); note.className = 'editor-note'; note.textContent = 'Run an experiment with the loaded participant to inspect its responses.';
     $('result-content').replaceChildren(note); $('downloads').hidden = true; $('result-time').textContent = 'NO RUN YET';
     renderState();
   } });

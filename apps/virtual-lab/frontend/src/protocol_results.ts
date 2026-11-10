@@ -39,7 +39,7 @@ export function renderProtocolResults(report: Record<string, unknown>, container
       const scaleKey = channel.value;
       if (!scales.has(scaleKey)) scales.set(scaleKey, new HeatmapScale());
       render({ kind: 'session', subject: report.subject, output: channel.value, outputs: observations.outputs }, content, scales.get(scaleKey)!);
-      status.textContent = 'Saved data only; inspecting this result does not run the subject. The neural scale is held across inspected conditions and expands if a larger value is found.';
+      status.textContent = 'Saved data only; inspecting this result does not run the participant. The neural scale is held across inspected conditions and expands if a larger value is found.';
     } catch (error) { if (token === request) status.textContent = String(error); }
   };
   condition.onchange = channel.onchange = repetition.onchange = () => void load();

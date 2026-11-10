@@ -92,7 +92,7 @@ export function drawScene(canvas: HTMLCanvasElement, state: SceneState): void {
     for (let bit = 0; bit < 9; bit++) box(x + 21 + bit % 3 * 2, y + 41 + Math.floor(bit / 3) * 2, 2, 2, emblem & (1 << bit) ? eye : face);
   };
   if (state.ready) robot(397, 180 + bob);
-  label('SUBJECT', 394, 287, '#8c9e7c', 8);
+  label('PARTICIPANT', 384, 287, '#8c9e7c', 8);
   // Tool carts appear when attached; the scene mirrors configuration.
   if (state.activity) {
     line([[464, 199], [500, 199], [500, 238], [604, 238]], '#a89bb9', 2);

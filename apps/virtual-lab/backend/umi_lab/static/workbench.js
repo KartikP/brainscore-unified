@@ -1,4 +1,4 @@
-import { initializeProtocol, updateProtocol, protocolRequest, restoreProtocol, protocolSpec, protocolTool } from './protocol.js';
+import { initializeProtocol, updateProtocol, protocolRequest, restoreProtocol, resetProtocol, protocolSpec, protocolTool } from './protocol.js';
 import { renderDownload } from './downloads.js';
 const $ = (id) => document.getElementById(id);
 let mode = 'protocol';
@@ -18,6 +18,18 @@ export const isUploading = () => uploading;
 export const isUpdatingSettings = () => downloadPolicyPending;
 export const customIntervention = () => mode !== 'benchmark' && mode !== 'calibration' && $('custom-intervention').checked;
 export const requestedOutput = () => $(mode === 'session' ? 'session-output' : 'output-channel').value;
+/** Start again from an empty protocol. The loaded participant is kept. */
+export function resetExperiment() {
+    mode = 'protocol';
+    for (const format of Object.keys(stimulusDrafts))
+        delete stimulusDrafts[format];
+    $('stimulus-format').value = 'lines';
+    previousFormat = 'lines';
+    $('stimulus-text').value = $('stimulus-text').defaultValue;
+    $('stimulus-set-id').value = '';
+    resetProtocol();
+    callbacks.changed();
+}
 function chooseMode(value) {
     mode = value;
     $('workflow-more').open = false;
@@ -124,7 +136,7 @@ async function readCatalog() {
         const selected = select.value || (callbacks.state().profile?.calibration ? '' : callbacks.state().profile?.identifier ?? '');
         modelEntries = result.models;
         if (selected && !modelEntries.some(entry => entry.identifier === selected))
-            modelEntries.push({ identifier: selected, source: 'loaded subject' });
+            modelEntries.push({ identifier: selected, source: 'loaded participant' });
         filterModelChoices(selected);
         const benchmarkList = $('benchmark-options');
         benchmarkList.replaceChildren();
@@ -185,7 +197,7 @@ async function attachAudio(row) {
     const result = await callbacks.post('/api/extract-audio', { asset: row.video_path });
     if (!result.audio_asset) {
         row.audio_extraction = 'No audio stream in the video';
-        callbacks.error('This video has no audio stream. Supply a separate audio file for a subject that requires audio.');
+        callbacks.error('This video has no audio stream. Supply a separate audio file for a participant that requires audio.');
         return;
     }
     row.audio_path = result.audio_asset;
@@ -196,7 +208,7 @@ function sessionExample(notify = true) {
     const channel = $('session-input').value;
     const payload = channel === 'generation_request' ? { messages: [{ role: 'user', content: 'Describe what an experiment measures.' }], temperature: 0, max_tokens: 64 }
         : channel === 'conditional_logprob_request' ? { contexts: ['The capital of France is', 'The capital of France is'], targets: [' Paris', ' London'], reduction: 'sum' }
-            : 'A stimulus to present to the subject.';
+            : 'A stimulus to present to the participant.';
     $('session-events').value = JSON.stringify([{ channel, payload, t_ms: null }], null, 2);
     if (notify)
         callbacks.changed();
@@ -332,9 +344,9 @@ export function updateWorkbench(state, busy) {
     const channel = $('session-input').value;
     $('channel-schema').textContent = profile?.schemas?.[channel]?.payload ?? 'JSON-native request channels are supported here. Typed environments and custom schemas use their benchmark or a Python harness.';
     $('workflow-help').textContent = mode === 'benchmark' ? 'The registered benchmark owns its experiment. Exploratory tools are disabled here; its score and provenance are saved.'
-        : mode === 'session' ? 'Send JSON events through the subject’s declared request channels. Environments and non-JSON payloads require a typed harness.'
+        : mode === 'session' ? 'Send JSON events through the participant’s declared request channels. Environments and non-JSON payloads require a typed harness.'
             : mode === 'stimuli' ? 'Choose response_trace for generated text, neural:<region> for activations, or behavior for labeled task responses. Generated text is kept verbatim.'
-                : 'Calibration checks the tools. Load a registered subject to run your own science.';
+                : 'Calibration checks the tools. Load a registered participant to run your own science.';
     $('workflow-help').hidden = mode === 'protocol';
     $('editor-title').textContent = mode === 'protocol' ? 'Protocol' : mode === 'benchmark' ? 'Benchmark' : 'Experiment';
     if (mode === 'protocol')

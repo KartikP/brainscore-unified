@@ -1,7 +1,7 @@
 export function progressView(run, state, connected = true) {
     const active = Boolean(run && ['queued', 'running', 'trial_finished', 'cancelling'].includes(run.phase));
     const completed = run?.phase === 'complete';
-    let activity = !connected ? 'Connection lost; experiment status unavailable' : state === 'loading' ? 'Loading subject' :
+    let activity = !connected ? 'Connection lost; experiment status unavailable' : state === 'loading' ? 'Loading participant' :
         state === 'validating' ? 'Checking protocol compatibility' : run?.phase === 'failed' ? 'Experiment failed' :
             run?.phase === 'cancelled' ? 'Experiment stopped' : completed ? 'Experiment complete' :
                 active ? run?.phase === 'queued' ? 'Preparing experiment' : run?.activity ?? 'Processing experiment' : 'Ready for an experiment';

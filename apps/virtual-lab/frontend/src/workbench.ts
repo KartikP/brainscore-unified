@@ -1,4 +1,4 @@
-import { initializeProtocol, updateProtocol, protocolRequest, restoreProtocol, protocolSpec, protocolTool, type ProtocolSpec, type ProtocolValidation } from './protocol.js';
+import { initializeProtocol, updateProtocol, protocolRequest, restoreProtocol, resetProtocol, protocolSpec, protocolTool, type ProtocolSpec, type ProtocolValidation } from './protocol.js';
 import { renderDownload, type DownloadState } from './downloads.js';
 export type Mode = 'protocol' | 'benchmark' | 'stimuli' | 'session' | 'calibration';
 interface SubjectInfo { identifier: string; in_channels: string[]; out_channels: string[]; traits?: string[]; calibration?: boolean; schemas?: Record<string, { payload: string; addressing?: string; json_input?: boolean }> }
@@ -22,6 +22,16 @@ export const isUploading = () => uploading;
 export const isUpdatingSettings = () => downloadPolicyPending;
 export const customIntervention = () => mode !== 'benchmark' && mode !== 'calibration' && $<HTMLInputElement>('custom-intervention').checked;
 export const requestedOutput = () => $<HTMLSelectElement>(mode === 'session' ? 'session-output' : 'output-channel').value;
+
+/** Start again from an empty protocol. The loaded participant is kept. */
+export function resetExperiment(): void {
+  mode = 'protocol';
+  for (const format of Object.keys(stimulusDrafts)) delete stimulusDrafts[format];
+  $<HTMLSelectElement>('stimulus-format').value = 'lines'; previousFormat = 'lines';
+  $<HTMLTextAreaElement>('stimulus-text').value = $<HTMLTextAreaElement>('stimulus-text').defaultValue;
+  $<HTMLInputElement>('stimulus-set-id').value = '';
+  resetProtocol(); callbacks.changed();
+}
 
 function chooseMode(value: Mode): void {
   mode = value;
@@ -94,7 +104,7 @@ async function readCatalog(): Promise<void> {
     const select = $<HTMLSelectElement>('model-id');
     const selected = select.value || (callbacks.state().profile?.calibration ? '' : callbacks.state().profile?.identifier ?? '');
     modelEntries = result.models;
-    if (selected && !modelEntries.some(entry => entry.identifier === selected)) modelEntries.push({ identifier: selected, source: 'loaded subject' });
+    if (selected && !modelEntries.some(entry => entry.identifier === selected)) modelEntries.push({ identifier: selected, source: 'loaded participant' });
     filterModelChoices(selected);
     const benchmarkList = $('benchmark-options'); benchmarkList.replaceChildren();
     for (const entry of result.benchmarks) { const option = document.createElement('option'); option.value = entry.identifier; option.label = entry.source; benchmarkList.append(option); }
@@ -133,7 +143,7 @@ async function attachAudio(row: Record<string, unknown>): Promise<void> {
   const result = await callbacks.post('/api/extract-audio', { asset: row.video_path }) as { audio_asset: string | null; preparation?: string };
   if (!result.audio_asset) {
     row.audio_extraction = 'No audio stream in the video';
-    callbacks.error('This video has no audio stream. Supply a separate audio file for a subject that requires audio.');
+    callbacks.error('This video has no audio stream. Supply a separate audio file for a participant that requires audio.');
     return;
   }
   row.audio_path = result.audio_asset;
@@ -145,7 +155,7 @@ function sessionExample(notify = true): void {
   const channel = $<HTMLSelectElement>('session-input').value;
   const payload = channel === 'generation_request' ? { messages: [{ role: 'user', content: 'Describe what an experiment measures.' }], temperature: 0, max_tokens: 64 }
     : channel === 'conditional_logprob_request' ? { contexts: ['The capital of France is', 'The capital of France is'], targets: [' Paris', ' London'], reduction: 'sum' }
-      : 'A stimulus to present to the subject.';
+      : 'A stimulus to present to the participant.';
   $<HTMLTextAreaElement>('session-events').value = JSON.stringify([{ channel, payload, t_ms: null }], null, 2);
   if (notify) callbacks.changed();
 }
@@ -263,9 +273,9 @@ export function updateWorkbench(state: Info, busy: boolean): void {
   const channel = $<HTMLSelectElement>('session-input').value;
   $('channel-schema').textContent = profile?.schemas?.[channel]?.payload ?? 'JSON-native request channels are supported here. Typed environments and custom schemas use their benchmark or a Python harness.';
   $('workflow-help').textContent = mode === 'benchmark' ? 'The registered benchmark owns its experiment. Exploratory tools are disabled here; its score and provenance are saved.'
-    : mode === 'session' ? 'Send JSON events through the subject’s declared request channels. Environments and non-JSON payloads require a typed harness.'
+    : mode === 'session' ? 'Send JSON events through the participant’s declared request channels. Environments and non-JSON payloads require a typed harness.'
       : mode === 'stimuli' ? 'Choose response_trace for generated text, neural:<region> for activations, or behavior for labeled task responses. Generated text is kept verbatim.'
-        : 'Calibration checks the tools. Load a registered subject to run your own science.';
+        : 'Calibration checks the tools. Load a registered participant to run your own science.';
   $('workflow-help').hidden = mode === 'protocol';
   $('editor-title').textContent = mode === 'protocol' ? 'Protocol' : mode === 'benchmark' ? 'Benchmark' : 'Experiment';
   if (mode === 'protocol') updateProtocol(profile, busy, state.validation);

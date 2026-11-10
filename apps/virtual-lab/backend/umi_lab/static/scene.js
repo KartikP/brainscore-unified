@@ -154,7 +154,7 @@ export function drawScene(canvas, state) {
     };
     if (state.ready)
         robot(397, 180 + bob);
-    label('SUBJECT', 394, 287, '#8c9e7c', 8);
+    label('PARTICIPANT', 384, 287, '#8c9e7c', 8);
     // Tool carts appear when attached; the scene mirrors configuration.
     if (state.activity) {
         line([[464, 199], [500, 199], [500, 238], [604, 238]], '#a89bb9', 2);
