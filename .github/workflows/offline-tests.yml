@@ -50,9 +50,12 @@ jobs:
         os: [ubuntu-24.04, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
-    defaults:
-      run:
-        shell: bash
+    env:
+      RESULTCACHING_DISABLE: '1'
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      BS_INSTALL_DEPENDENCIES: 'no'
+      UMI_TEST_CPU_ONLY: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -128,9 +131,11 @@ jobs:
     name: OpenPI client protocol
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    defaults:
-      run:
-        shell: bash
+    env:
+      RESULTCACHING_DISABLE: '1'
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      BS_INSTALL_DEPENDENCIES: 'no'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -164,7 +169,7 @@ jobs:
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-client-install
       - name: Record environment and revisions
         if: always()
-        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-record
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-client-record
       - name: Require every client protocol test
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-client-test
       - uses: actions/upload-artifact@v4
@@ -180,9 +185,13 @@ jobs:
     name: OpenPI local instrumentation
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    defaults:
-      run:
-        shell: bash
+    env:
+      RESULTCACHING_DISABLE: '1'
+      HF_HUB_OFFLINE: '1'
+      TRANSFORMERS_OFFLINE: '1'
+      BS_INSTALL_DEPENDENCIES: 'no'
+      JAX_PLATFORMS: cpu
+      UMI_TEST_CPU_ONLY: '1'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -220,7 +229,7 @@ jobs:
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-instrumentation-install
       - name: Record environment and revisions
         if: always()
-        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-record
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-instrumentation-record
       - name: Require every local instrumentation and transport test
         run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-instrumentation-test
       - uses: actions/upload-artifact@v4

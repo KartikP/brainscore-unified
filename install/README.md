@@ -141,8 +141,10 @@ unified/install/run_candidate.sh --work ~/umi-candidate --venv ~/umi-venvs \
 ```
 
 Each job gets a fresh virtual environment and its own folder under
-`~/umi-candidate/qualification`. Uncommitted changes in a local checkout are
-built and tested. Fetching the private unified repository needs Git credentials.
+`~/umi-candidate/qualification`. As on GitHub, a failed step skips the rest of
+its job, the jobs run independently, and any failure fails the run. Uncommitted
+changes in a local checkout are built and tested. The script never changes a
+local path; such paths must lie outside `--work`. Fetching the private unified repository needs Git credentials.
 To run the same set on GitHub, start the offline workflow manually with the
 `core_revision`, `vision_revision` and `language_revision` inputs (full SHAs).
 
