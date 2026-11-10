@@ -15,9 +15,44 @@ synthetic assemblies in ``tests/test_topographic_benchmark.py``.
 """
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
-from brainscore_core.streaming_helpers import neural_response
+from brainscore_core.streaming import BufferedSession, parse_channel
+from brainscore_core.streaming_helpers import neural_response, stimulus_session
 from brainscore import load_metric
 from brainscore.topographic_support import ensure_tissue_coords, shuffle_tissue_coords
+
+# The order in which BrainScoreModel.process picks one input modality from a
+# table that holds several (BrainScoreModel.MODALITY_PRIORITY).
+_INPUT_PRIORITY = ('vision', 'text', 'audio')
+
+
+def _record(candidate, stimulus_set, region):
+    """The candidate's ``neural:<region>`` response, read through ``participate``.
+
+    The benchmark used to call ``process(stimuli)``, which reads one input
+    modality. A session whose inputs span several channel families lets a
+    subject that declares them combine them, so for such a table only the
+    events of the first family in ``_INPUT_PRIORITY`` that the subject
+    declares are sent. The whole table stays the session's ``stimulus_set``,
+    so the subject reads the same table as before. A table with one input
+    family goes through ``neural_response`` unchanged.
+    """
+    full = stimulus_session(stimulus_set, record=region)
+    events = []
+    while (event := full.next_input()) is not None:
+        events.append(event)
+    present = {parse_channel(event.channel)[0] for event in events}
+    declared = {parse_channel(channel)[0] for channel in candidate.in_channels}
+    chosen = next((family for family in _INPUT_PRIORITY
+                   if family in present and family in declared), None)
+    if len(present) < 2 or chosen is None:
+        return neural_response(candidate, stimulus_set, record=region)
+    channel = f'neural:{region}'
+    session = BufferedSession(
+        [event for event in events if parse_channel(event.channel)[0] == chosen],
+        requested_output_channels=(channel,))
+    session.stimulus_set = stimulus_set
+    candidate.participate(session)
+    return session.collect(channel)
 
 
 class TopographicBenchmark(BenchmarkBase):
@@ -43,10 +78,14 @@ class TopographicBenchmark(BenchmarkBase):
         self._null_seed = null_seed
 
     def __call__(self, candidate) -> Score:
-        # Through participate only. The neural response is returned as the
-        # subject built it, so its tissue_x/tissue_y neuroid coords arrive intact.
-        predictions = ensure_tissue_coords(neural_response(
-            candidate, self._stimulus_set, record=self._region))
+        # ponytail: the tissue_x/tissue_y neuroid coords reach this line only
+        # because a neural:<region> payload passes through the session as the
+        # subject built it. The neural catalog entry declares no meta keys or
+        # coords for unit positions; if it ever validates or strips coords,
+        # declare tissue_x/tissue_y there. Guarded by the tissue-coord tests in
+        # tests/test_topographic_benchmark.py.
+        predictions = ensure_tissue_coords(
+            _record(candidate, self._stimulus_set, self._region))
 
         raw = float(self._metric(predictions, self._brain).values)
         null = float(self._metric(
