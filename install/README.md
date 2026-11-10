@@ -127,6 +127,25 @@ downloads are disabled. Cache-integrity tests enable their own temporary caches.
 This checks package contents and behavior. The separate new-user trial covers
 installation from the guide, first-time data access and the first benchmark run.
 
+## Run the offline CI on several candidates
+
+`run_candidate.sh` holds every command of the GitHub Actions offline workflow.
+The workflow calls one phase per step; a Linux machine with Python 3.11 runs all
+of them. Give a local checkout path or `[owner/repo@]ref` for each repository
+that changes; the other peers use the pins in `peer-revisions.json`:
+
+```bash
+unified/install/run_candidate.sh --work ~/umi-candidate --venv ~/umi-venvs \
+  --core ~/src/core --vision brain-score/vision@my-branch \
+  --language ~/src/language --unified ~/src/unified all
+```
+
+Each job gets a fresh virtual environment and its own folder under
+`~/umi-candidate/qualification`. Uncommitted changes in a local checkout are
+built and tested. Fetching the private unified repository needs Git credentials.
+To run the same set on GitHub, start the offline workflow manually with the
+`core_revision`, `vision_revision` and `language_revision` inputs (full SHAs).
+
 ## Check that the pins agree
 
 `check_pins.py` reads the core pin and the unified pin at every site and fails

@@ -1,9 +1,24 @@
 name: offline tests
+# Every step after the checkouts runs install/run_candidate.sh. A development
+# machine runs the same script with "all"; keep the commands in the script.
 on:
   push:
     branches: [unified-model-interface-v2]
   pull_request:
   workflow_dispatch:
+    inputs:
+      core_revision:
+        description: Optional core candidate as full SHA or owner/repo@full-SHA (default is the pin)
+        required: false
+        type: string
+      vision_revision:
+        description: Optional vision candidate as full SHA or owner/repo@full-SHA (default is the pin)
+        required: false
+        type: string
+      language_revision:
+        description: Optional language candidate as full SHA or owner/repo@full-SHA (default is the pin)
+        required: false
+        type: string
   workflow_call:
     inputs:
       candidate:
@@ -35,12 +50,9 @@ jobs:
         os: [ubuntu-24.04, macos-26]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
-    env:
-      RESULTCACHING_DISABLE: '1'
-      HF_HUB_OFFLINE: '1'
-      TRANSFORMERS_OFFLINE: '1'
-      BS_INSTALL_DEPENDENCIES: 'no'
-      UMI_TEST_CPU_ONLY: '1'
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -58,11 +70,10 @@ jobs:
           CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository || github.event.pull_request.head.repo.full_name || github.repository }}
           CANDIDATE_REVISION: ${{ inputs.candidate_revision || github.event.pull_request.head.sha || github.sha }}
           UNIFIED_REPOSITORY: ${{ inputs.unified_revision && 'KartikP/brainscore-unified' || github.event.pull_request.head.repo.full_name || github.repository }}
-        run: |
-          export UNIFIED_REVISION=$(git -C unified rev-parse HEAD)
-          python unified/brainscore/validation/revisions.py \
-            --manifest unified/install/peer-revisions.json \
-            --record qualification/revisions.json
+          OVERRIDE_CORE: ${{ github.event.inputs.core_revision }}
+          OVERRIDE_VISION: ${{ github.event.inputs.vision_revision }}
+          OVERRIDE_LANGUAGE: ${{ github.event.inputs.language_revision }}
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" resolve
       - uses: actions/checkout@v4
         with:
           repository: ${{ steps.peers.outputs.core_repository }}
@@ -82,48 +93,24 @@ jobs:
           persist-credentials: false
           path: language
       - name: Verify checkout revisions before building
-        run: python unified/brainscore/validation/revisions.py --record qualification/revisions.json --verify
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" verify
       - name: Build all four wheels
-        run: |
-          python -m pip install build setuptools==68.2.2 wheel
-          for repo in core vision language unified; do
-            python -m build --wheel --no-isolation --outdir wheels "$repo"
-          done
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" build
       - name: Check package contents and notices
-        run: python unified/brainscore/validation/package_contents.py --wheels wheels --out qualification/package-contents.json
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" contents
       - name: Build the independent example package
-        run: python -m build --wheel --no-isolation --outdir example-wheels unified/examples/partner_tool
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" example
       - name: Install CPU Torch on Linux
         if: runner.os == 'Linux'
-        run: python -m pip install torch==2.13.0 torchvision==0.28.0 --index-url https://download.pytorch.org/whl/cpu
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" torch
       - name: Install coordinated packages
-        run: |
-          unified_wheels=(wheels/brainscore-*.whl)
-          python -m pip install -c unified/install/v2-constraints.txt wheels/*.whl "${unified_wheels[0]}[test]"
-          python -m pip install --no-deps example-wheels/*.whl
-          python -m pip check
-          python -m pip freeze > resolved-dependencies.txt
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" install
       - name: Verify installed packages outside source
-        working-directory: ${{ runner.temp }}
-        run: |
-          python -m brainscore.doctor
-          python "$GITHUB_WORKSPACE/unified/examples/partner_integration.py" --out "$RUNNER_TEMP/partner-demo"
-          python -I -m umi_partner_tool --out "$RUNNER_TEMP/external-tool-demo"
-          python -I -m umi_partner_tool.toolbox --out "$RUNNER_TEMP/installed-examples"
-          python -I -m pytest "$GITHUB_WORKSPACE/unified/tests/test_production_tools.py" "$GITHUB_WORKSPACE/unified/tests/test_droid_policy.py" "$GITHUB_WORKSPACE/unified/examples/partner_tool/tests" -q --import-mode=importlib -p no:cacheprovider --junitxml="$GITHUB_WORKSPACE/qualification/external-examples.xml"
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" installed-checks
       - name: Test the four installed packages
-        working-directory: ${{ runner.temp }}
-        run: |
-          python -I -m brainscore.validation.workspace \
-            --root "$GITHUB_WORKSPACE" \
-            --mode installed --wheels "$GITHUB_WORKSPACE/wheels" \
-            --out "$GITHUB_WORKSPACE/qualification/installed.json"
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" packages
       - name: Execute offline tutorials against installed packages
-        working-directory: ${{ runner.temp }}
-        run: |
-          python -I -m brainscore.validation.notebooks \
-            --source "$GITHUB_WORKSPACE/unified/notebooks" \
-            --out "$GITHUB_WORKSPACE/qualification/notebooks" --timeout 180
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" notebooks
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -141,11 +128,9 @@ jobs:
     name: OpenPI client protocol
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    env:
-      RESULTCACHING_DISABLE: '1'
-      HF_HUB_OFFLINE: '1'
-      TRANSFORMERS_OFFLINE: '1'
-      BS_INSTALL_DEPENDENCIES: 'no'
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -163,11 +148,10 @@ jobs:
           CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository || github.event.pull_request.head.repo.full_name || github.repository }}
           CANDIDATE_REVISION: ${{ inputs.candidate_revision || github.event.pull_request.head.sha || github.sha }}
           UNIFIED_REPOSITORY: ${{ inputs.unified_revision && 'KartikP/brainscore-unified' || github.event.pull_request.head.repo.full_name || github.repository }}
-        run: |
-          export UNIFIED_REVISION=$(git -C unified rev-parse HEAD)
-          python unified/brainscore/validation/revisions.py \
-            --manifest unified/install/peer-revisions.json \
-            --record qualification/revisions.json
+          OVERRIDE_CORE: ${{ github.event.inputs.core_revision }}
+          OVERRIDE_VISION: ${{ github.event.inputs.vision_revision }}
+          OVERRIDE_LANGUAGE: ${{ github.event.inputs.language_revision }}
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" resolve
       - uses: actions/checkout@v4
         with:
           repository: ${{ steps.peers.outputs.core_repository }}
@@ -175,30 +159,14 @@ jobs:
           persist-credentials: false
           path: core
       - name: Verify checkout revisions before installing
-        run: python unified/brainscore/validation/revisions.py --record qualification/revisions.json --verify core unified
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" verify-core
       - name: Install client test environment
-        run: |
-          python -m pip install -c unified/install/v2-constraints.txt ./core -r unified/install/openpi-client-tests.txt
-          python -m pip check
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-client-install
       - name: Record environment and revisions
         if: always()
-        run: |
-          mkdir -p qualification
-          python -m pip freeze > qualification/dependencies.txt
-          git -C unified rev-parse HEAD > qualification/unified-revision.txt
-          git -C core rev-parse HEAD > qualification/core-revision.txt
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-record
       - name: Require every client protocol test
-        working-directory: unified
-        shell: bash
-        env:
-          PYTHONPATH: ${{ github.workspace }}/unified:${{ github.workspace }}/core
-        run: |
-          python -m pytest tests/test_openpi_remote.py -q -ra \
-            -p no:cacheprovider -p brainscore.validation.required_checks \
-            --umi-repository openpi-client \
-            --umi-check-report ../qualification/openpi-client.json \
-            --junitxml=../qualification/openpi-client.xml --timeout=30 \
-            2>&1 | tee ../qualification/openpi-client.log
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-client-test
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -212,13 +180,9 @@ jobs:
     name: OpenPI local instrumentation
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      RESULTCACHING_DISABLE: '1'
-      HF_HUB_OFFLINE: '1'
-      TRANSFORMERS_OFFLINE: '1'
-      BS_INSTALL_DEPENDENCIES: 'no'
-      JAX_PLATFORMS: cpu
-      UMI_TEST_CPU_ONLY: '1'
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -236,11 +200,10 @@ jobs:
           CANDIDATE_REPOSITORY: ${{ inputs.candidate_repository || github.event.pull_request.head.repo.full_name || github.repository }}
           CANDIDATE_REVISION: ${{ inputs.candidate_revision || github.event.pull_request.head.sha || github.sha }}
           UNIFIED_REPOSITORY: ${{ inputs.unified_revision && 'KartikP/brainscore-unified' || github.event.pull_request.head.repo.full_name || github.repository }}
-        run: |
-          export UNIFIED_REVISION=$(git -C unified rev-parse HEAD)
-          python unified/brainscore/validation/revisions.py \
-            --manifest unified/install/peer-revisions.json \
-            --record qualification/revisions.json
+          OVERRIDE_CORE: ${{ github.event.inputs.core_revision }}
+          OVERRIDE_VISION: ${{ github.event.inputs.vision_revision }}
+          OVERRIDE_LANGUAGE: ${{ github.event.inputs.language_revision }}
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" resolve
       - uses: actions/checkout@v4
         with:
           repository: ${{ steps.peers.outputs.core_repository }}
@@ -248,40 +211,18 @@ jobs:
           persist-credentials: false
           path: core
       - name: Verify checkout revisions before installing
-        run: python unified/brainscore/validation/revisions.py --record qualification/revisions.json --verify core unified
-      - uses: actions/checkout@v4
-        with:
-          repository: Physical-Intelligence/openpi
-          ref: 215abfb217dbac7d5f1273282331b9b1866c0479
-          persist-credentials: false
-          path: openpi
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" verify-core
+      - name: Check out OpenPI
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-checkout
       - name: Install CPU Torch
-        run: python -m pip install torch==2.13.0 --index-url https://download.pytorch.org/whl/cpu
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-torch
       - name: Install local instrumentation environment
-        run: |
-          python -m pip install -c unified/install/v2-constraints.txt ./core -r unified/install/openpi-instrumentation-tests.txt
-          python -m pip check
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-instrumentation-install
       - name: Record environment and revisions
         if: always()
-        run: |
-          mkdir -p qualification
-          python -m pip freeze > qualification/dependencies.txt
-          git -C unified rev-parse HEAD > qualification/unified-revision.txt
-          git -C core rev-parse HEAD > qualification/core-revision.txt
-          git -C openpi rev-parse HEAD > qualification/openpi-revision.txt
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-record
       - name: Require every local instrumentation and transport test
-        working-directory: unified
-        shell: bash
-        env:
-          OPENPI_SOURCE: ${{ github.workspace }}/openpi
-          PYTHONPATH: ${{ github.workspace }}/unified:${{ github.workspace }}/core
-        run: |
-          python -m pytest tests/test_openpi_instrumentation.py tests/test_libero_transport.py -q -ra \
-            -p no:cacheprovider -p brainscore.validation.required_checks \
-            --umi-repository openpi-instrumentation \
-            --umi-check-report ../qualification/openpi-instrumentation.json \
-            --junitxml=../qualification/openpi-instrumentation.xml --timeout=120 \
-            2>&1 | tee ../qualification/openpi-instrumentation.log
+        run: bash unified/install/run_candidate.sh --work "$GITHUB_WORKSPACE" openpi-instrumentation-test
       - uses: actions/upload-artifact@v4
         if: always()
         with:
