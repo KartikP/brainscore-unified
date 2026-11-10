@@ -13,6 +13,7 @@ from brainscore.experiments import (
 )
 from brainscore.harnesses import coggym
 from brainscore.model_helpers.response_trace import build_trace_subject
+from brainscore_core.contract import Subject
 
 pytestmark = pytest.mark.unit
 
@@ -279,3 +280,121 @@ def test_changed_reference_checkout_is_rejected(monkeypatch, tmp_path, head, edi
     monkeypatch.setattr(coggym.subprocess, 'check_output', git)
     with pytest.raises(ValueError):
         coggym._check_checkout(tmp_path)
+
+
+# ── Old path vs participate on the SAME subject (Contract Rule 10.1) ──────
+
+def _old_complete_with_metadata(self, system, messages, model, temperature, max_tokens):
+    """What the provider did before it ran through participate: subject.process."""
+    from brainscore_core.streaming import StreamEvent
+    request = dict(system=system, messages=messages, model=model,
+                   temperature=temperature, max_tokens=max_tokens)
+    trial_ids = self.prompt_trials[coggym._prompt_key(system, messages)]
+    event = StreamEvent(
+        self.input_channel, request, t_ms=None,
+        meta={'experiment': self.experiment, 'repetition': self.repetition,
+              'provider_call': self.call_index, 'matching_trial_ids': trial_ids},
+    )
+    self.call_index += 1
+    response = self.subject.process(event)
+    if not isinstance(response, StreamEvent) or response.channel != 'response_trace':
+        raise TypeError('CogGym needs a response_trace subject; use build_trace_subject')
+    raw = response.payload['raw']
+    if not isinstance(raw.get('text'), str):
+        raise TypeError('CogGym provider output must contain text: str')
+    if 'reasoning' not in raw or 'token_usage' not in raw:
+        raise ValueError('Provider output needs reasoning and token_usage (None is allowed)')
+    return raw
+
+
+def _counting_provider(streaming):
+    """A stateful provider: each answer carries how many calls it has served.
+
+    Identical answers on both paths show the same calls in the same order and
+    no subject reset that the old path did not do.
+    """
+    calls = []
+
+    def answer(request):
+        calls.append(request)
+        return f"{request['messages'][0]['content']}#{len(calls)}"
+
+    def plain(request):
+        return {'text': answer(request), 'reasoning': None, 'token_usage': None}
+
+    def stream(request):
+        text = answer(request)
+        yield {'text': '', 'final': False, 'reasoning': None, 'token_usage': None}
+        yield {'text': text, 'final': True, 'reasoning': None, 'token_usage': None}
+
+    return (stream if streaming else plain), calls
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_same_subject_old_process_path_and_participate_give_identical_trials(
+        reference, tmp_path, monkeypatch, streaming):
+    root, _ = reference
+    resets = []
+    provider_fn, calls = _counting_provider(streaming)
+    subject = build_trace_subject('fixture', provider=provider_fn, parse=str,
+                                  provenance={'purpose': 'old vs new'}, streaming=streaming)
+    runner = coggym.CogGymRunner(root, model='fixture', repetitions=2)
+
+    def run(name):
+        result = Experiment(subject=subject, protocol=runner.protocol(reset=resets.append),
+                            tools=[RecordInputsOutputs()], output_dir=tmp_path / name).run()
+        return [json.loads((result.directory / f'coggym/run-{r:03d}.json').read_text())['trials']
+                for r in (1, 2)]
+
+    new = run('participate')
+    with monkeypatch.context() as patch:
+        patch.setattr(coggym._SubjectProvider, 'complete_with_metadata',
+                      _old_complete_with_metadata)
+        old = run('process')
+    assert [trial['response'] for rep in new for trial in rep] == [
+        f'trial-{i}#{n}' for n, i in enumerate([0, 1, 2, 0, 1, 2], start=1)]
+    assert [trial['response'] for rep in old for trial in rep] == [
+        f'trial-{i}#{n}' for n, i in enumerate([0, 1, 2, 0, 1, 2], start=7)]
+    # Same answers apart from the running call count of the shared provider.
+    strip = lambda runs: [[{**t, 'response': t['response'].split('#')[0]} for t in rep]
+                          for rep in runs]
+    assert strip(new) == strip(old)
+    assert resets == [1, 2, 1, 2]
+
+
+class _SessionCounter(Subject):
+    """Answers with how many requests it has seen in the current session."""
+
+    identifier = "session-counter"
+    in_channels = frozenset({"generation_request"})
+    out_channels = frozenset({"response_trace"})
+
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        seen = 0
+        while (event := session.next_input()) is not None:
+            seen += 1
+            raw = {'text': f'{seen}', 'reasoning': None, 'token_usage': None}
+            session.respond(StreamEvent('response_trace', {
+                'raw': raw, 'answer': raw['text'], 'valid': True, 'parse_error': None,
+                'provenance': {}}, event.t_ms, dict(event.meta)))
+
+    def reset(self):
+        pass
+
+
+def test_record_keeps_one_session_per_call_and_replay_rebuilds_them(reference, tmp_path):
+    from brainscore.run_record import RunRecord
+    root, _ = reference
+    runner = coggym.CogGymRunner(root, model='fixture', repetitions=2)
+    original = Experiment(subject=_SessionCounter(),
+                          protocol=runner.protocol(reset=lambda repetition: None),
+                          tools=[RecordInputsOutputs()], output_dir=tmp_path / 'original').run()
+    events = list(RunRecord(original.directory).events())
+    starts = [e['payload']['id'] for e in events if e['kind'] == 'repetition_start']
+    assert starts == ['1.0', '1.1', '1.2', '2.0', '2.1', '2.2']
+    assert sum(e['kind'] == 'input' for e in events) == 6
+    replay = Experiment(subject=_SessionCounter(), protocol=replay_sessions(original.directory),
+                        tools=[RecordInputsOutputs()], output_dir=tmp_path / 'replay').run()
+    # Merged sessions would answer 1, 2, 3, ...; one session per call answers 1 each time.
+    assert compare_outputs(original.directory, replay.directory)['equal']

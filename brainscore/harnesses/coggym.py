@@ -82,9 +82,12 @@ class _SubjectProvider:
     """Translate CogGym provider calls into response-trace sessions.
 
     Each provider call is one session with one request event. The subject
-    answers through ``participate`` only (Contract Rule 1.1). The session is
-    wrapped in ``ObservedSession``, so attached tools record the request and
-    the answer as session events.
+    answers through ``participate`` only (Contract Rule 1.1). Each session is
+    one repetition of the run record (``<CogGym repetition>.<call>``) and is
+    wrapped in ``ObservedSession``, so tools record the request and the answer
+    between that session's own boundaries, and ``replay_sessions`` rebuilds
+    one session per call. The subject is not reset between calls, as before;
+    the provider's reset(repetition) runs only between CogGym repetitions.
     """
 
     def __init__(self, subject, context, repetition, experiment, prompt_trials, input_channel):
@@ -105,14 +108,21 @@ class _SubjectProvider:
             meta={'experiment': self.experiment, 'repetition': self.repetition,
                   'provider_call': self.call_index, 'matching_trial_ids': trial_ids},
         )
+        record_repetition = f'{self.repetition}.{self.call_index}'
         self.call_index += 1
         session = BufferedSession([event], requested_output_channels=('response_trace',))
-        self.subject.participate(ObservedSession(session, self.context))
+        with self.context.repetition(record_repetition):
+            self.context.publish('session_context',
+                                 {'requested_output_channels': session.requested_output_channels})
+            self.subject.participate(ObservedSession(session, self.context))
         responses = [response for response in session.emitted
                      if isinstance(response, StreamEvent) and response.channel == 'response_trace']
         if not responses:
             raise TypeError('CogGym needs a response_trace subject; use build_trace_subject')
-        # A streaming subject answers in fragments; the last one holds the complete answer.
+        # A streaming subject answers in fragments; the last one holds the complete
+        # answer. The old process path returned only a final response.
+        if responses[-1].payload.get('final', True) is not True:
+            raise ValueError('CogGym provider ended without a final response')
         raw = responses[-1].payload['raw']
         if not isinstance(raw.get('text'), str):
             raise TypeError('CogGym provider output must contain text: str')
@@ -237,8 +247,9 @@ class CogGymRunner:
         trial loop and scoring. reset(repetition) clears provider history and
         sampling state as needed, while preserving model instrumentation.
 
-        The whole evaluator occupies UMI trial ``external`` and condition
-        ``default``. CogGym question IDs are call metadata, not tool filters.
+        Each provider call is one record repetition ``<CogGym repetition>.<call>``
+        in condition ``default``. CogGym question IDs are call metadata, not tool
+        filters.
         """
         if not callable(reset):
             raise TypeError('Supply a reset(repetition) callback for your provider')

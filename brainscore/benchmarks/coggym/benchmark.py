@@ -122,9 +122,9 @@ class CogGymBenchmark(BenchmarkBase):
         def evaluate(subject, context):
             check_channel_compatibility(subject, self)
             native = runner.protocol(reset=_require_reset(reset))
-            # Call evaluate(), not run(): the outer protocol already opened the
-            # run's 'external' repetition, and the runner records each request
-            # and answer as session events in it.
+            # Call evaluate(), not run(): the outer protocol already owns the run.
+            # The runner records each request and answer as one session, in its
+            # own record repetition.
             result = native.evaluate(subject, context)
             validation = result['response_validation']
             if validation['status'] == 'invalid':
