@@ -30,3 +30,60 @@ def test_invalid_answers_count_as_wrong():
     assert float(score.attrs['raw']) == pytest.approx(.5)
     assert score.attrs['n_invalid_answers'] == 2
     assert score.attrs['accuracy_real'] == pytest.approx(.5)
+
+
+def test_session_reading_matches_start_task_then_process():
+    """ROAR reads through behavioral_response; on a BrainScoreModel the answers
+    are the ones start_task + process gave before the change."""
+    import numpy as np
+    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+
+    words = {'w1': 'cat', 'w2': 'dog', 'w3': 'sun', 'p1': 'florp', 'p2': 'blick', 'p3': 'zund'}
+
+    def extractor(stimuli, layers):
+        rng = np.random.RandomState(0)
+        table = {sid: rng.randn(4) + (2. if sid.startswith('w') else -2.) for sid in words}
+        rows = np.stack([table[sid] for sid in stimuli['stimulus_id']])
+        return NeuroidAssembly(rows, dims=['presentation', 'neuroid'], coords={
+            **{k: ('presentation', list(stimuli[k])) for k in stimuli.columns},
+            'layer': ('neuroid', [layers[0]] * 4), 'neuroid_id': ('neuroid', list(range(4)))})
+
+    def stimuli(ids):
+        table = StimulusSet({'stimulus_id': ids, 'sentence': [words[i] for i in ids],
+                             'image_label': ['real' if i.startswith('w') else 'pseudo' for i in ids]})
+        table.identifier = f'roar-equivalence-{len(ids)}'
+        return table
+
+    def model():
+        return BrainScoreModel(identifier='readout', extractor={'text': extractor},
+                               region_layer_map={}, behavioral_readout_layer='L')
+
+    benchmark = _benchmark()
+    benchmark.prefer_path = 'readout'
+    benchmark._train_stimuli = stimuli(['w1', 'w2', 'p1', 'p2'])
+    benchmark._test_stimuli = stimuli(['w3', 'p3', 'w1', 'p1'])
+
+    legacy = model()
+    legacy.start_task(TaskContext(task_type='probabilities', label_set=['real', 'pseudo'],
+                                  fitting_stimuli=benchmark._train_stimuli,
+                                  instruction='Is this a real word or a pseudo word?',
+                                  prefer_path='readout'))
+    expected = legacy.process(benchmark._test_stimuli)
+    choices = list(expected['choice'].values)
+    expected_correct = [choices[int(i)] == label for i, label in
+                        zip(expected.values.argmax(axis=1), benchmark._test_stimuli['image_label'])]
+
+    from brainscore_core.streaming_helpers import behavioral_response
+    answered = behavioral_response(model(), TaskContext(
+        task_type='probabilities', label_set=['real', 'pseudo'],
+        fitting_stimuli=benchmark._train_stimuli,
+        instruction='Is this a real word or a pseudo word?', prefer_path='readout',
+        metadata={'stimulus_set': benchmark._test_stimuli}))
+    np.testing.assert_array_equal(answered.values, expected.values)
+    assert list(answered['stimulus_id'].values) == list(expected['stimulus_id'].values)
+    assert list(answered['choice'].values) == choices
+
+    score = benchmark(model())
+    assert float(score.attrs['raw']) == np.mean(expected_correct)
+    assert score.attrs['n_test_stimuli'] == len(expected)

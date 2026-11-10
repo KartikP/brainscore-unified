@@ -217,7 +217,7 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
         state_change_fn=build_pytorch_ablation_fn(net))
     localizer = InducedDyslexia(n_units=1, modality='text',
         reading_benchmark=object(), localizer_stimuli=_stimuli())
-    selections = localizer._localize(model, list(layers))
+    selections = localizer._localize(model)
     for selected in selections:
         assert selected.indices == [4]
         assert selected.metadata['unit_population'] == [4, 1]
