@@ -148,7 +148,8 @@ checkout into a snapshot under `--work` and builds only the snapshot, so local
 paths are only read. They must lie outside `--work` and `--venv`, and must not
 contain symlinks that lead outside them; `--venv` must be a folder inside
 `--work`. `--work` must not exist or must be empty, so give each run a new
-folder. Git hooks never run. Fetching the private unified repository needs Git credentials.
+folder. Use the script on copies (for example an rsync of a worktree to EC2),
+never on the only copy of uncommitted work. Git hooks never run. Fetching the private unified repository needs Git credentials.
 To run the same set on GitHub, start the offline workflow manually with the
 `core_revision`, `vision_revision` and `language_revision` inputs (full SHAs).
 
