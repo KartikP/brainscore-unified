@@ -221,7 +221,7 @@ def test_tr_multimodal_variant_falls_back_to_one_tower_from_declarations(monkeyp
 # exact removed lines. Each benchmark runs once through participate and once
 # with them patched in, on the same BrainScoreModel; results must be identical.
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.temporal import temporal_bin
 from brainscore.benchmarks.lahner2024 import (
     benchmark as glm_module, benchmark_multimodal as mm_module,
