@@ -645,3 +645,41 @@ def test_native_state_change_reset_restores_baseline():
     assert reset_event.meta["reset"] == applied.handle_id
     assert reset_result == applied.handle_id
     assert model_state["output"] == 1.0
+
+
+# --- moved from core (need BrainScoreModel) -------------------------------
+
+
+def test_environment_session_emits_motor_events_for_multistep_rollout():
+    session = environment_session(_SyntheticEnvironment(_environment_steps(3)))
+    model = _make_environment_model(action_fn=_droid_action_fn)
+
+    from brainscore_core.streaming_helpers import drive_environment_session
+    drive_environment_session(model, session)
+
+    assert [event.channel for event in session.emitted] == [
+        "motor", "motor",
+    ]
+    assert [
+        event.payload.metadata["step_num_seen"]
+        for event in session.emitted
+    ] == [0, 1]
+    assert [event.meta["step_num"] for event in session.emitted] == [0, 1]
+
+
+def test_apply_state_change_produces_handle_and_ack_event():
+    fn, state = _counting_state_change_fn()
+    model = _make_state_change_model(state_change_fn=fn)
+    state_change = _ablation_state_change()
+
+    session = state_change_session(state_change)
+    _ = session.next_input()
+    from brainscore_core.streaming_helpers import _drive_state_change_via_process
+    _drive_state_change_via_process(model, session, state_change)
+
+    applied = session.collect("perturbation")
+
+    assert isinstance(applied, PerturbationApplied)
+    assert applied.handle_id in state["installed"]
+    assert session.emitted[0].meta["handle_id"] == applied.handle_id
+    assert session.emitted[0].payload is applied

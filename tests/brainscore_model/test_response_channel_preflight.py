@@ -95,7 +95,7 @@ def test_likelihood_matched_request_is_unchanged():
 
 def test_driver_refuses_addressed_channels_without_a_response_before_task_setup():
     from types import SimpleNamespace
-    from brainscore_core._sessions.drivers import drive_behavior_and_neural_session
+    from brainscore.capabilities.sessions import drive_behavior_and_neural_session
     setup = []
     model = SimpleNamespace(start_task=lambda _: setup.append('start_task'),
                             _behavioral=SimpleNamespace(history=[]))

@@ -114,3 +114,28 @@ def test_a_decoded_saved_generation_record_does_not_change_a_readout_stamp():
 
     assert measures.measures == {('implied', 'readout')}
     assert _protocol(model, measures) == 'behavior:readout'
+
+
+# --- direct sessions (moved from core) ------------------------------------
+
+
+@pytest.mark.parametrize('kind, expected', [('reply', 'behavior:generation'),
+                                            ('likelihood', 'behavior:likelihood')])
+def test_direct_response_task_sessions_are_recorded(kind, expected):
+    from .test_task_responses import _ask, _model
+    from brainscore_core.responses import Choice
+
+    if kind == 'reply':
+        model, _ = _model(replies={s: 'cat' for s in 'abcd'})
+        task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
+        channels = ['behavior:choice']
+    else:
+        model, _ = _model(scores={s: {'cat': -1.0, 'dog': -2.0} for s in 'abcd'})
+        task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
+        channels = ['behavior:choice', 'behavior:probabilities']
+    with record_measures() as measures:
+        session = _ask(model, task, channels)
+        for channel in channels:
+            session.collect(channel)
+
+    assert _protocol(model, measures) == expected
