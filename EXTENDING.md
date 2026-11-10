@@ -193,7 +193,7 @@ The constructor slots available to model authors are:
 | Slot | Fires on | Signature |
 |------|----------|-----------|
 | `answer` | `StimulusSet` + `TaskContext.instruction` | `(*, stimulus_row, instruction, label_set) -> str`, called with keywords |
-| `policy` | `EnvironmentStep` / `Message` | `(env_step) -> EnvironmentResponse` |
+| `policy` | a closed-loop row | `(row) -> {output channel: payload}` |
 | `intervention` | `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 
 An `answer` function receives its arguments by keyword, so use these names:

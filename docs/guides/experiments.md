@@ -90,13 +90,13 @@ When the recorders do not cover what you need, build sessions yourself and attac
 
 ```python
 from contextlib import contextmanager
-from brainscore_core.streaming import BufferedSession
+from brainscore_core.streaming_helpers import table_session
 from brainscore.experiments import (Experiment, SessionProtocol, RecordInputsOutputs,
                                     RecordActivity, Ablate, TorchInstrumentation)
 
 @contextmanager
 def make_session(repetition):                # repetition.condition, repetition.identifier
-    yield BufferedSession(stimulus_set=stimuli, requested_output_channels=['behavior'])
+    yield table_session(stimuli, ['behavior'])
 
 protocol = SessionProtocol(identifier='silence-layer3', session_factory=make_session,
                            conditions=['baseline', 'silenced'], repetitions=[0, 1, 2],

@@ -4,26 +4,25 @@ In a closed-loop task the subject's action decides its next observation: games, 
 
 ## Connect an environment
 
-Your environment needs `reset(seed=None, options=None)` and `step(action)`, each returning an `EnvironmentStep`, and optionally `close()`.
+Your environment needs `reset()` and `step(outputs)`, and optionally `close()`.
+
+- `reset()` returns the first **row**: a mapping of channel to payload.
+- `step(outputs)` receives what the subject did, a mapping of output channel to payload such as `{'motor': action}`. It returns the next row and a reason: `None` while the episode runs, or `'terminal'`, `'truncated'` or `'failure'` when it ends.
 
 ```python
-from brainscore_core import EnvironmentStep
-
-EnvironmentStep(observation={...}, step_num=3, instruction='pick up the cup',
-                is_first=False, is_last=False, is_terminal=False, reward=0.0)
+row = {'observation': {...}, 'instruction': 'pick up the cup', 'reward': 0.0}
 ```
 
 `observation` is defined by your environment. Declaring `observation_spec()` and `action_spec()` (with `ArraySpec`, `ActionSpec` and friends from `brainscore_core.environment`) lets the session validate shapes, units and bounds.
 
 ## Connect a policy
 
-A policy maps each `EnvironmentStep` to an `EnvironmentResponse(action=...)`. Give it to `BrainScoreModel` as `policy`:
+A policy maps each row to a mapping of output channel to payload. Give it to `BrainScoreModel` as `policy`:
 
 ```python
 from brainscore import BrainScoreModel
-from brainscore_core import EnvironmentResponse
 
-agent = BrainScoreModel(identifier='my-agent', policy=lambda step: EnvironmentResponse(action=choose(step)))
+agent = BrainScoreModel(identifier='my-agent', policy=lambda row: {'motor': choose(row)})
 ```
 
 `PolicyWrapper` (in `brainscore.model_helpers.policy_wrapper`) adapts existing policy objects. A subject with its own loop can implement `participate` directly instead.
@@ -31,9 +30,9 @@ agent = BrainScoreModel(identifier='my-agent', policy=lambda step: EnvironmentRe
 ## Run an episode
 
 ```python
-from brainscore_core.streaming_helpers import EnvironmentSession, run_environment
+from brainscore_core.streaming_helpers import environment_session, run_environment
 
-with EnvironmentSession(MyEnvironment(), seed=0) as session:
+with environment_session(MyEnvironment(), seed=0) as session:
     agent.participate(session)
 actions = session.collect('motor')
 agent.reset()
@@ -42,7 +41,7 @@ agent.reset()
 actions = run_environment(agent, MyEnvironment(), seed=0)
 ```
 
-For long episodes, `EnvironmentSession(history_limit=N)` bounds memory.
+For long episodes, `environment_session(..., history_limit=N)` bounds memory.
 
 ## Established robotics evaluators
 

@@ -8,7 +8,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | --- | --- |
 | `Subject`, `participate`, `reset` | [Core concepts 1](../02_core_concepts.md#1-subject), [Lesson 1](../../notebooks/lessons/01_your_first_subject.ipynb) |
 | Channels, `StreamEvent`, the channel catalog | [Core concepts 2-3](../02_core_concepts.md#2-channel) |
-| `BufferedSession`, `EnvironmentSession` | [Core concepts 4](../02_core_concepts.md#4-session) |
+| `Session`, `table_session`, `EnvironmentSource`, control events, trial protocol | [Core concepts 4](../02_core_concepts.md#4-session) |
 | `StimulusSet`, `MultimodalStimulusSet` (stimuli with several input types) | [Write a benchmark](../guides/write_a_benchmark.md) |
 | `Benchmark`, `Score`, compatibility and N/A | [Lesson 2](../../notebooks/lessons/02_your_first_benchmark.ipynb) |
 | `BrainScoreModel` with `extractor` and `region_layer_map` | [Wrap your model](../guides/wrap_your_model.md) |
@@ -26,12 +26,12 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Behavior: `TaskContext` responses (`Choice`, `Scale`, `Text`), reported and implied answers, `reply`, `likelihood`, readout, `prefer_path` | [Behavior](../guides/behavior.md) |
 | Perturbation: `Selection`, `StateChange`, `intervention` | [Perturb and select units](../guides/perturb_and_select_units.md) |
 | Unit selection: `IndexSelection`, `RandomSelection`, `FunctionalSelection` | same |
-| Closed loop: `policy`, `EnvironmentStep`, specs | [Closed loop](../guides/closed_loop.md) |
+| Closed loop: `policy`, rows, `EnvironmentSource`, specs | [Closed loop](../guides/closed_loop.md) |
 | `Experiment`, `TaskProtocol`, `SessionProtocol`, `CallableProtocol`, conditions, trials | [Experiments](../guides/experiments.md) |
 | Recorders: `RecordNeural`, `RecordBehavior` (one presentation for both); `Intervene` | same |
 | Tools: `RecordInputsOutputs`, `RecordActivity`, `Ablate`, `ScaleActivity`, `PatchActivity` | same |
 | `TorchInstrumentation`, `RunRecord`, `replay_sessions`, `compare_outputs` | same |
-| Timed delivery: `WindowedStreamSession`, `RealTimeStreamSession`, `StreamingStimulusSetSession` | [Class map](../03_class_map.md#sessions-protocols-and-experiments) |
+| Timed delivery: `windowed_stream`, `paced_stream`, `streaming_stimulus_session` | [Core concepts 4](../02_core_concepts.md#4-session) |
 | Temporal helpers: `temporal_bin`, HRF convolution, contiguous-block cross-validation | `brainscore.temporal`, [Experiment 10](../../notebooks/experiments/10_story_listening_fmri.ipynb) |
 | Score provenance and status (`score.attrs`, N/A scores) | [Score a model](../guides/score_a_model.md) |
 | Activation caching keyed by weights, settings and inputs | [Perturb and select units](../guides/perturb_and_select_units.md#perturb) |
@@ -62,8 +62,6 @@ Each part has one current name. The older names in the right column still work b
 | `answer=` | `generation_fn=` |
 | `policy=` | `action_fn=` |
 | `intervention=` | `state_change_fn=` |
-| `BufferedSession` | `InMemorySession` |
-| `session.respond(event)` | `session.emit(event)` |
 | `region_layer_map` values with `modality=` | `region_modality_map=` |
 
 `process(...)` is not deprecated, but it is a convenience on `BrainScoreModel` and the adapters, not part of the contract. Benchmarks call `participate`.

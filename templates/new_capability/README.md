@@ -52,7 +52,7 @@ its `setup` checks the model's settings before the first request.
    rather than replacing a registered name.
 3. Opt a model in through `capability_config={IDENTIFIER: settings}`. Other
    models do not gain the channels.
-4. Adapt `test_capability.py` and run it. It runs a `BufferedSession` through
+4. Adapt `test_capability.py` and run it. It runs a `Session` through
    `subject.participate(session)`.
 
 See the [tool-authoring guide](../../docs/guides/extend.md) for channel
