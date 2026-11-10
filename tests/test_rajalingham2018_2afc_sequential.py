@@ -159,3 +159,41 @@ def test_witness_still_observes_the_participate_run():
     assert len(witness.events) == 1
     assert witness.events[0].n_inputs == 2
     assert witness.events[0].mode == 'generation'
+
+
+def _old_driver_choices(model, stim):
+    """What the driver did before: process(stim), then read the assembly.
+
+    The old stub put ``image_id`` on the stimulus_id coord; it is ``image_id`` now.
+    """
+    assembly = model.process(stim)
+    return pd.DataFrame({
+        'image_id': assembly['image_id'].values, 'sample_obj': assembly['sample_obj'].values,
+        'dist_obj': assembly['dist_obj'].values, 'choice': assembly.values,
+        'left_obj': stim['left_obj'].values, 'right_obj': stim['right_obj'].values})
+
+
+@pytest.mark.parametrize('chooser', ['left', 'oracle', 'random'])
+def test_same_subject_old_process_path_and_participate_give_identical_choices(chooser):
+    def make():
+        if chooser == 'left':
+            return lambda row: 'LEFT'
+        if chooser == 'oracle':
+            return lambda row: 'LEFT' if row['left_obj'] == row['sample_obj'] else 'RIGHT'
+        return build_sequential_random_chooser(seed=3)[0]   # fresh seed for each path
+    old = _old_driver_choices(SequentialTwoAFCModel('m', make()), _stim())
+    new = run_trials(SequentialTwoAFCModel('m', make()), _stim(), SEQUENTIAL_INSTRUCTION)
+    pd.testing.assert_frame_equal(old, new)
+
+
+def test_a_response_for_other_trials_is_refused():
+    class Wrong(_ParticipateOnlyChooser):
+        def participate(self, session):
+            stimuli = session_stimuli(session, drain_session_inputs(session))
+            answers = BehavioralAssembly(
+                np.array(list(stimuli['left_obj'])),
+                coords={'stimulus_id': ('presentation', ['trial_0', 'trial_0'])},
+                dims=['presentation'])
+            session.respond(StreamEvent('behavior', answers, t_ms=None))
+    with pytest.raises(ValueError, match='exactly once'):
+        run_trials(Wrong(), _stim(), SEQUENTIAL_INSTRUCTION)
