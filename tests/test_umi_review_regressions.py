@@ -69,13 +69,20 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
         monkeypatch.setattr(benchmark, '_expand_to_per_TR_frames', lambda s=stimuli: s)
         monkeypatch.setattr(benchmark, '_align_features_to_assembly', lambda features, *args: features)
 
-    class Candidate:
-        def start_recording(self, *args, **kwargs):
-            pass
+    from brainscore_core.contract import Subject
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
 
-        def process(self, stimuli):
+    class Candidate(Subject):  # the benchmark reads it through participate only
+        identifier = 'candidate'
+        in_channels = frozenset({'text'})
+        out_channels = frozenset({'neural:IT'})
+
+        def participate(self, session):
+            stimuli = session_stimuli(session, drain_session_inputs(session))
             features = train_features if stimuli.identifier == 'friends' else test_features
-            return _Extractor(features)(stimuli, ['L'])
+            session.respond(StreamEvent(
+                'neural:IT', _Extractor(features)(stimuli, ['L']), t_ms=None))
 
     result = test.generate_predictions(Candidate(), tmp_path, train_benchmark=train, alpha=1e-6)
     np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-4)

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import pandas as pd
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.execution_plan import ExecutionPlan
@@ -68,6 +69,83 @@ def _ffmpeg_extract_one(args):
     ]
     subprocess.run(cmd, check=False, capture_output=True)
     return video_path
+
+
+def _declared_regions(subject) -> List[str]:
+    """Every region the subject declares as a ``neural:<region>`` output, sorted."""
+    from brainscore_core.streaming import parse_channel
+    regions = []
+    for channel in subject.out_channels:
+        family, address = parse_channel(channel)
+        if family == 'neural' and address:
+            regions.append(address)
+    return sorted(regions)
+
+
+def _as_features(assembly):
+    """``(values (n_presentations, n_units) float32, neuroid ids or None)``."""
+    if 'time_bin' in assembly.dims:
+        assembly = assembly.mean(dim='time_bin')
+    feats = assembly.values.astype(np.float32)
+    try:
+        feature_ids = assembly['neuroid_id'].values
+    except KeyError:
+        # brainio keeps a lone neuroid coordinate as the plain, unnamed index.
+        index = assembly.indexes.get('neuroid')
+        feature_ids = (None if index is None or isinstance(index, pd.MultiIndex)
+                       else np.asarray(index.values))
+    return feats, feature_ids
+
+
+def _in_input_order(assembly, stimuli):
+    """Rows of ``assembly`` in the order of ``stimuli``, matched by ``stimulus_id``.
+
+    A response without ``stimulus_id`` keeps the order of presentation.
+    """
+    from brainscore.presentation import response_stimulus_ids
+    try:
+        answered = [str(s) for s in response_stimulus_ids(assembly)]
+    except KeyError:
+        return assembly
+    wanted = [str(s) for s in stimuli['stimulus_id'].values]
+    if answered == wanted or sorted(answered) != sorted(wanted):
+        return assembly  # same order, or a mismatch the row-count check reports
+    position = {sid: index for index, sid in enumerate(answered)}
+    return assembly.isel(presentation=[position[sid] for sid in wanted])
+
+
+def _record_features(subject, stimuli, region: str, *, time_bins):
+    """Record the subject's activity through ``participate`` only, in the
+    order of ``stimuli``.
+
+    ``region`` is one declared region, or ``'all'``: every region the subject
+    declares as ``neural:<region>``, recorded in one session. For ``'all'``
+    the regions are joined in sorted order, and a unit two regions share
+    (same ``neuroid_id``) is kept once.
+    """
+    from brainscore_core.streaming_helpers import neural_response, stimulus_session
+    if region != 'all':
+        return _as_features(_in_input_order(
+            neural_response(subject, stimuli, record=region, time_bins=time_bins),
+            stimuli))
+    regions = _declared_regions(subject)
+    if not regions:
+        raise ValueError(f"{subject.identifier} declares no neural:<region> output.")
+    session = stimulus_session(stimuli, record=regions, time_bins=time_bins)
+    subject.participate(session)
+    blocks, ids, seen = [], [], set()
+    for name in regions:
+        feats, feature_ids = _as_features(
+            _in_input_order(session.collect(f'neural:{name}'), stimuli))
+        if feature_ids is None or ids is None:
+            blocks.append(feats)
+            ids = None
+            continue
+        keep = np.array([unit not in seen for unit in feature_ids], dtype=bool)
+        seen.update(feature_ids[keep])
+        blocks.append(feats[:, keep])
+        ids.extend(feature_ids[keep])
+    return np.concatenate(blocks, axis=1), (None if ids is None else np.asarray(ids))
 
 
 class _Algonauts2025Base(BenchmarkBase):
@@ -358,18 +436,12 @@ class _Algonauts2025Base(BenchmarkBase):
             features: (n_TRs, FEATURE_DIM_CAP) float32
             frame_ids: list of frame_id strings (one per row).
         """
-        # recording_target selects the layer-mapping type: a single region name
-        # (standard, e.g. 'IT'), the string 'all' (whole-brain over every mapped
-        # layer), or a region backed by a CompositeSelector (units across layers).
-        candidate.start_recording(recording_target, time_bins=[(0, int(TR_SEC * 1000))])
-        assembly = candidate.process(frame_stim_set)
-        if 'time_bin' in assembly.dims:
-            assembly = assembly.mean(dim='time_bin')
-        feats = assembly.values.astype(np.float32)
-        try:
-            feature_ids = assembly['neuroid_id'].values
-        except KeyError:
-            feature_ids = None
+        # recording_target is a region the subject declares as neural:<region>
+        # (standard, e.g. 'IT', or a region backed by a CompositeSelector), or
+        # the string 'all' (whole-brain over every declared region).
+        feats, feature_ids = _record_features(
+            candidate, frame_stim_set, recording_target,
+            time_bins=[(0, int(TR_SEC * 1000))])
         if projection is None:
             projection = FeatureProjection(self.FEATURE_DIM_CAP)
             fit_projection = True
@@ -385,7 +457,7 @@ class _Algonauts2025Base(BenchmarkBase):
         n_out = feats.shape[0]
         if n_in != n_out:
             raise ValueError(
-                f"frame_stim_set has {n_in} rows but candidate.process "
+                f"frame_stim_set has {n_in} rows but the subject "
                 f"returned {n_out}; cannot trust input order.")
         frame_ids = list(frame_stim_set['stimulus_id'])
         return feats, frame_ids
