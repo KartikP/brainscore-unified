@@ -3,7 +3,7 @@
 No model weights, no objectome download: synthetic temp images for the
 presentation helpers and a stub chooser for the model, so the presentation +
 assembly-shape contract is verified locally. The real generation run (EC2)
-reuses the same SequentialTwoAFCModel.process path.
+runs the same SequentialTwoAFCModel through participate.
 """
 import numpy as np
 import pandas as pd
@@ -11,7 +11,13 @@ import pytest
 from PIL import Image
 
 from brainscore.benchmarks.rajalingham2018_2afc.montage import render_sample, compose_choice_array
-from brainscore.benchmarks.rajalingham2018_2afc.sequential import SequentialTwoAFCModel, build_sequential_random_chooser
+from brainscore.benchmarks.rajalingham2018_2afc.score_2afc import run_trials
+from brainscore.benchmarks.rajalingham2018_2afc.sequential import (
+    SEQUENTIAL_INSTRUCTION, SequentialTwoAFCModel, build_sequential_random_chooser)
+from brainscore_core.contract import Subject
+from brainscore_core.streaming import StreamEvent
+from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
+from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
 
 @pytest.fixture
@@ -86,3 +92,70 @@ def test_random_chooser_deterministic_and_binary():
     choose2, _ = build_sequential_random_chooser(seed=0)   # a fresh seeded chooser
     again = [choose2({}) for _ in range(20)]
     assert outs == again                                # seeded -> reproducible
+
+
+# ── participate path (Contract Rule 1.1) ──────────────────────────────
+
+class _ParticipateOnlyChooser(Subject):
+    """Declarations, participate and reset only: no process(), no private state.
+
+    It answers LEFT for every trial and returns only stimulus_id with each
+    answer, so the driver must read the trial metadata from its own table.
+    """
+
+    identifier = 'participate-only'
+    in_channels = frozenset({'vision'})
+    out_channels = frozenset({'behavior'})
+
+    def participate(self, session):
+        stimuli = session_stimuli(session, drain_session_inputs(session))
+        answers = BehavioralAssembly(
+            np.array(list(stimuli['left_obj'])),
+            coords={'stimulus_id': ('presentation', stimuli['stimulus_id'].values)},
+            dims=['presentation'])
+        session.respond(StreamEvent('behavior', answers, t_ms=None))
+
+
+def test_participate_only_subject_runs_the_trials():
+    choices = run_trials(_ParticipateOnlyChooser(), _stim(), SEQUENTIAL_INSTRUCTION)
+    assert list(choices['choice']) == ['wrench', 'wrench']
+    assert list(choices['image_id']) == ['img0', 'img1']
+    assert list(choices['sample_obj']) == ['wrench', 'rhino']
+    assert list(choices['dist_obj']) == ['rhino', 'wrench']
+
+
+def test_answers_are_joined_by_stimulus_id_not_by_position():
+    """A subject may answer the trials in any order; the driver joins by id."""
+    class Reversed(_ParticipateOnlyChooser):
+        def participate(self, session):
+            stimuli = session_stimuli(session, drain_session_inputs(session)).iloc[::-1]
+            answers = BehavioralAssembly(
+                np.array(list(stimuli['right_obj'])),
+                coords={'stimulus_id': ('presentation', stimuli['stimulus_id'].values)},
+                dims=['presentation'])
+            session.respond(StreamEvent('behavior', answers, t_ms=None))
+
+    choices = run_trials(Reversed(), _stim(), SEQUENTIAL_INSTRUCTION)
+    assert list(choices['image_id']) == ['img1', 'img0']
+    assert list(choices['choice']) == ['rhino', 'rhino']
+    assert list(choices['sample_obj']) == ['rhino', 'wrench']
+
+
+def test_sequential_model_through_participate_matches_its_process_step():
+    def oracle(row):
+        return 'LEFT' if row['left_obj'] == row['sample_obj'] else 'RIGHT'
+    model = SequentialTwoAFCModel('oracle', oracle)
+    direct = model.process(_stim())
+    choices = run_trials(model, _stim(), SEQUENTIAL_INSTRUCTION)
+    assert list(choices['choice']) == list(direct.values)
+    assert (choices['choice'] == choices['sample_obj']).all()
+
+
+def test_witness_still_observes_the_participate_run():
+    from brainscore.witness import Witness
+    model = SequentialTwoAFCModel('stub', choose_seq=lambda row: 'LEFT')
+    with Witness(model, label='stub') as witness:
+        run_trials(model, _stim(), SEQUENTIAL_INSTRUCTION)
+    assert len(witness.events) == 1
+    assert witness.events[0].n_inputs == 2
+    assert witness.events[0].mode == 'generation'

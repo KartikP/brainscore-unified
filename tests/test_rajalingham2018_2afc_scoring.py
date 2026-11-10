@@ -67,3 +67,23 @@ def test_random_scores_near_zero_and_copy_scores_higher():
     assert np.isfinite(r_rand['raw']) and np.isfinite(r_copy['raw'])
     assert abs(r_rand['raw']) < 0.2          # random ~ 0
     assert r_copy['raw'] > r_rand['raw'] + 0.1   # copying humans clearly beats random
+
+
+def test_two_afc_model_runs_through_participate():
+    """The montage subject answers through participate; trials that share an
+    image (both sides of one condition) stay separate because the driver joins
+    answers to its own trial table by the trial stimulus_id."""
+    from brainscore.benchmarks.rajalingham2018_2afc.score_2afc import (
+        INSTRUCTION_DIRECT, TwoAFCModel, run_trials)
+    stim = pd.DataFrame([
+        {'stimulus_id': 'trial_00000L', 'image_path': 'm0', 'image_id': 'img0',
+         'sample_obj': 'wrench', 'dist_obj': 'rhino', 'left_obj': 'wrench', 'right_obj': 'rhino'},
+        {'stimulus_id': 'trial_00000R', 'image_path': 'm1', 'image_id': 'img0',
+         'sample_obj': 'wrench', 'dist_obj': 'rhino', 'left_obj': 'rhino', 'right_obj': 'wrench'},
+    ])
+    model = TwoAFCModel('left', lambda row: 'LEFT', mode='random', instruction=INSTRUCTION_DIRECT)
+    assert set(model.in_channels) == {'vision'} and set(model.out_channels) == {'behavior'}
+    choices = run_trials(model, stim, INSTRUCTION_DIRECT)
+    assert list(choices['choice']) == ['wrench', 'rhino']
+    assert list(choices['image_id']) == ['img0', 'img0']
+    assert list(choices['left_obj']) == ['wrench', 'rhino']
