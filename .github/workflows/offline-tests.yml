@@ -171,7 +171,7 @@ jobs:
             ${{ runner.temp }}/partner-demo
             ${{ runner.temp }}/external-tool-demo
             ${{ runner.temp }}/installed-examples
-  notebooks:
+  tutorials:
     strategy:
       fail-fast: false
       matrix:

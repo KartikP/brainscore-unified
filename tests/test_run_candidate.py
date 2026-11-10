@@ -27,7 +27,7 @@ def _checkout(path: Path) -> Path:
 
 def test_job_environment_matches_the_workflow(tmp_path):
     jobs = yaml.safe_load(WORKFLOW.read_text())['jobs']
-    for job in ('offline', 'notebooks', 'openpi-client', 'openpi-instrumentation'):
+    for job in ('offline', 'tutorials', 'openpi-client', 'openpi-instrumentation'):
         result = _run('--job', job, 'print-env', work=tmp_path / 'work')
         assert result.returncode == 0, result.stderr
         # Skip the "==> print-env" phase header.
