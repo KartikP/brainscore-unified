@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -12,16 +13,13 @@ CORE = 'a' * 40
 UNIFIED = 'b' * 40
 
 
-def _load():
-    spec = importlib.util.spec_from_file_location('check_pins', SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 @pytest.fixture
 def pins(monkeypatch):
-    module = _load()
+    spec = importlib.util.spec_from_file_location('check_pins', SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    # Dataclasses resolve their module through sys.modules.
+    monkeypatch.setitem(sys.modules, 'check_pins', module)
+    spec.loader.exec_module(module)
     monkeypatch.delenv('GITHUB_STEP_SUMMARY', raising=False)
     served = {UNIFIED: json.dumps({'core': CORE, 'vision': 'c' * 40, 'language': 'd' * 40})}
     monkeypatch.setattr(module, 'github_file',
