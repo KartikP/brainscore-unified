@@ -31,9 +31,24 @@ def _repository(value: str) -> str:
     return value
 
 
+def parse_override(value: str) -> tuple[str, dict]:
+    """Parse ``name=sha`` or ``name=owner/repository@sha`` into one checkout."""
+    name, separator, target = value.partition('=')
+    if not separator or name not in ('core', 'vision', 'language'):
+        raise ValueError(f'Override must be core, vision or language: {value!r}')
+    repository, _, revision = target.rpartition('@')
+    return name, {'repository': _repository(repository or REPOSITORIES[name]),
+                  'revision': _revision(revision)}
+
+
 def resolve(manifest: dict, *, candidate: str, repository: str, revision: str,
-            unified_repository: str, unified_revision: str) -> dict:
-    """Replace only the repository under test; retain all other peer pins."""
+            unified_repository: str, unified_revision: str,
+            overrides: dict | None = None) -> dict:
+    """Replace the repository under test; retain all other peer pins.
+
+    ``overrides`` replaces further peers, so several branch tips can be
+    tested together before any of them is merged or pinned.
+    """
     if candidate not in REPOSITORIES:
         raise ValueError(f'Unknown candidate: {candidate}')
     if set(manifest) != {'core', 'vision', 'language'}:
@@ -50,7 +65,17 @@ def resolve(manifest: dict, *, candidate: str, repository: str, revision: str,
     if candidate == 'unified' and requested != checkouts['unified']:
         raise ValueError('Unified checkout does not match the candidate under test')
     checkouts[candidate] = requested
-    return {'candidate': candidate, 'checkouts': checkouts}
+    for name, checkout in (overrides or {}).items():
+        if name not in ('core', 'vision', 'language'):
+            raise ValueError(f'Only core, vision or language can be overridden: {name}')
+        if name == candidate and checkout != requested:
+            raise ValueError(f'Override for {name} conflicts with the candidate under test')
+        checkouts[name] = {'repository': _repository(checkout['repository']),
+                           'revision': _revision(checkout['revision'])}
+    record = {'candidate': candidate, 'checkouts': checkouts}
+    if overrides:
+        record['overrides'] = sorted(overrides)
+    return record
 
 
 def verify(record: dict, root: Path, names: list[str]) -> None:
@@ -72,6 +97,8 @@ def main() -> None:
     parser.add_argument('--record', type=Path, required=True)
     parser.add_argument('--root', type=Path, default=Path.cwd())
     parser.add_argument('--verify', nargs='*', choices=tuple(REPOSITORIES))
+    parser.add_argument('--override', action='append', default=[], metavar='NAME=[OWNER/REPO@]SHA',
+                        help='Also replace this peer pin (repeat for several peers)')
     args = parser.parse_args()
     if args.verify is not None:
         verify(json.loads(args.record.read_text()), args.root,
@@ -86,13 +113,15 @@ def main() -> None:
         revision=os.environ['CANDIDATE_REVISION'],
         unified_repository=os.environ['UNIFIED_REPOSITORY'],
         unified_revision=os.environ['UNIFIED_REVISION'],
+        overrides=dict(parse_override(value) for value in args.override),
     )
     args.record.parent.mkdir(parents=True, exist_ok=True)
     args.record.write_text(json.dumps(record, indent=2) + '\n')
-    with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
-        for name, checkout in record['checkouts'].items():
-            for key, value in checkout.items():
-                print(f'{name}_{key}={value}', file=output)
+    if os.environ.get('GITHUB_OUTPUT'):
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+            for name, checkout in record['checkouts'].items():
+                for key, value in checkout.items():
+                    print(f'{name}_{key}={value}', file=output)
     print(json.dumps(record, indent=2))
 
 

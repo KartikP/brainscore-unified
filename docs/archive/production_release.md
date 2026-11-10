@@ -111,10 +111,14 @@ python -m brainscore.validation.workspace --root /path/to/sibling/repos --out qu
 
 It records base commits and a digest of local changes. Separate pytest processes
 avoid cross-repository tests-package collisions. Source passes do not certify an
-installation. `release-candidate.yml` builds wheels, installs and exercises them
-outside the source tree, checks dependencies, runs examples, and then runs all four
-source suites on Linux/macOS. Dispatch it with immutable peer commit SHAs after
-the coordinated changes are reviewed and committed. The offline workflow builds and tests the immutable peer revisions in `install/peer-revisions.json`. Its CPU integration results do not replace scientific qualification.
+installation. The offline workflow (`offline-tests.yml`) builds wheels, installs
+and exercises them outside the source tree, checks dependencies, runs examples,
+and then runs all four installed suites on Linux/macOS. By default it tests the
+immutable peer revisions in `install/peer-revisions.json`. To test a coordinated
+candidate, dispatch it manually with the `core_revision`, `vision_revision` and
+`language_revision` inputs (full commit SHAs) after the coordinated changes are
+reviewed and committed. `install/run_candidate.sh ... all` runs the same steps on
+a development machine. Its CPU integration results do not replace scientific qualification.
 
 Run scientific parity against explicitly staged checkpoints and datasets:
 
