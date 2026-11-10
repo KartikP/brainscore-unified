@@ -26,7 +26,8 @@ class BehavioralReadout:
         self.configured_from: Optional[TaskContext] = None
         self._configured_as: Optional[set] = None  # fingerprints of the fitted configuration
         self._stale = False
-        # With memory='session': the session's earlier trials as (prompt, reply).
+        # With memory='trial_history': the episode's earlier trials as (prompt, reply),
+        # kept from begin until end (BrainScoreModel._begin_episode empties it).
         self.history: list = []
         # Response tasks (TaskContext.response): how the answer and probabilities are produced.
         self.response_path: Optional[str] = None
@@ -446,9 +447,9 @@ class BehavioralReadout:
                     outputs['behavior:probabilities'] = _implied(_in_order(values, labels), 'readout')
         else:
             score_first = path == 'generation' and self.probability_source == 'likelihood'
-            remember = owner._memory == 'session'
+            remember = owner._memory == 'trial_history'
             if remember and owner._reply_fn is None and owner._likelihood_fn is None:
-                raise ValueError("memory='session' needs reply= or likelihood=; answer= cannot see "
+                raise ValueError("memory='trial_history' needs reply= or likelihood=; answer= cannot see "
                                  'earlier trials.')
 
             def with_history(prompt):

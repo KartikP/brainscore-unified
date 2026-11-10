@@ -327,6 +327,8 @@ class _ParticipateOnlyListener(Subject):
         self.sessions.append(tuple(session.requested_output_channels))
         ids = []
         while (event := session.next_input()) is not None:
+            if event.channel == 'control':
+                continue
             self.seen.append(event.payload)
             ids.append(event.meta['stimulus_id'])
         ids = ids[::-1]

@@ -76,8 +76,11 @@ class ReplayEnvironment:
 
 
 def replay_actions(subject, steps: Sequence[Mapping[str, Any]], n_actions: int) -> List[int]:
-    """Reset ``subject``, replay ``steps`` through its ``participate``, return its choices."""
-    subject.reset()
+    """Replay ``steps`` through ``participate``, return its choices.
+
+    The episode's ``begin`` clears the subject's episode state; its interventions
+    and task setup stay.
+    """
     responses = run_environment(subject, ReplayEnvironment(steps, n_actions))
     actions = [int(np.asarray(action).item()) for action in responses]
     if len(actions) != len(steps):

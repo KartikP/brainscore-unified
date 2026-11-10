@@ -333,8 +333,8 @@ def test_a_memory_task_rejects_a_subject_without_memory(tmp_path):
     from brainscore_core.responses import Choice
     forgets = BrainScoreModel(identifier='forgets', supported_modalities={'text'}, reply=lambda p: 'no')
     protocol = TaskProtocol(STIMULI, TaskContext(response=Choice(['yes', 'no'])),
-                            required_traits={'memory:session'})
-    with pytest.raises(ValueError, match='memory:session'):
+                            required_traits={'memory:trial_history'})
+    with pytest.raises(ValueError, match='memory:trial_history'):
         Experiment(subject=forgets, protocol=protocol, tools=[RecordBehavior()],
                    output_dir=tmp_path / 'x').validate()
 

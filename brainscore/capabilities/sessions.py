@@ -54,15 +54,20 @@ class NeuralSessions(_SessionCapability):
             drive_behavior_and_neural_session(model, session)
             return
         # A passive session records activity even after a task was configured.
+        model._begin_episode()
+        # A subject that keeps history is shown one trial at a time (same scores,
+        # different arrival), so each independent trial can begin empty.
+        per_trial = (_keeps_history(model)
+                     and (task is None or task.trial_protocol == 'independent'))
         with model._behavioral.suspended():
             from .._model.channels import run_neural_channels
 
             def runner(stimuli, channel_regions, time_bins, multi_modality):
                 return run_neural_channels(model, stimuli, channel_regions,
                                            time_bins, multi_modality)
-            if getattr(session, 'streaming', False):
+            if getattr(session, 'streaming', False) or per_trial:
                 _drivers.drive_neural_session_streaming(
-                    model, session, channel_runner=runner)
+                    model, session, channel_runner=runner, on_begin=model._begin_episode)
             else:
                 _drivers.drive_neural_session(model, session, allow_multi_modality=True,
                                               channel_runner=runner)
@@ -107,9 +112,10 @@ class BehaviorSessions(_SessionCapability):
         if requested != {'behavior'} or (task is not None and task.response is not None):
             drive_behavior_and_neural_session(model, session)
         elif getattr(session, 'streaming', False):
-            _drivers.drive_behavior_session_streaming(model, session)
+            _drivers.drive_behavior_session_streaming(model, session,
+                                                      on_begin=model._begin_episode)
         else:
-            _drivers.drive_behavior_session(model, session)
+            _drivers.drive_behavior_session(model, session, on_begin=model._begin_episode)
 
 
 class MotorSessions(_SessionCapability):
@@ -143,7 +149,7 @@ class MotorSessions(_SessionCapability):
         requested = _drivers.requested_output_channels(session)
         regions = [parse_channel(c)[1] for c in requested if parse_channel(c)[0] == 'neural']
         if not regions:
-            _drivers.drive_environment_session(model, session, on_begin=model._reset_policy)
+            _drivers.drive_environment_session(model, session, on_begin=model._begin_episode)
             return
         recorded = _RecordedPolicy(model, session, regions)
         with recorded:
@@ -170,7 +176,7 @@ class _RecordedPolicy:
 
     def begin(self) -> None:
         self.step = 0
-        self.model._reset_policy()
+        self.model._begin_episode()
 
     def process(self, row):
         outputs = self.model.process(row)
@@ -209,6 +215,11 @@ for _capability in (_NEURAL, BehaviorSessions(), MotorSessions(), PerturbationSe
     register_capability(_capability)
 
 
+def _keeps_history(model) -> bool:
+    """True when the model declares ``memory:trial_history``: only then can a trial see an earlier one."""
+    return 'memory:trial_history' in model.traits
+
+
 def drive_behavior_and_neural_session(model, session, driver: str = "interact") -> None:
     """Record ``neural:<region>`` while the subject does the session's task.
 
@@ -243,16 +254,21 @@ def drive_behavior_and_neural_session(model, session, driver: str = "interact") 
                 f"{sorted(given)}; ask for those or change the response.")
     _drivers.refuse_variance(model, session)
     model.start_task(task_context)
-    model._behavioral.history = []     # memory spans one session, not the next
     stimuli = _drivers.behavior_stimuli_from_session(session, task_context)
     if stimuli is None:
         raise ValueError("Recording during a task needs stimuli to present.")
     # A streaming session gets each trial's outputs as soon as that trial ends;
     # otherwise the whole set is answered and sent at once.
+    # A model without the trait keeps no history, so it can answer the whole table at
+    # once; one that keeps history is answered trial by trial so a begin can fall
+    # between trials.
     streaming = getattr(session, "streaming", False)
     batches = ([(index, _drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]))
-                for index in range(len(stimuli))] if streaming else [(0, stimuli)])
+                for index in range(len(stimuli))]
+               if streaming or _keeps_history(model) else [(0, stimuli)])
     for index, batch in batches:
+        if index == 0 or task_context.trial_protocol == 'independent':
+            model._begin_episode()
         if task_context.response is not None:
             behavior, neural = model._behavioral.respond(batch, answers, regions)
         else:

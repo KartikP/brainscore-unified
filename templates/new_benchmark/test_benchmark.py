@@ -42,8 +42,10 @@ class DummyCandidate(Subject):
         self.requested = tuple(session.requested_output_channels)
         rng = np.random.RandomState(self.seed)
         # One input event per stimulus; answer each with a one-stimulus response.
-        event = session.next_input()
-        while event is not None:
+        # Control events mark where a trial begins and ends; they carry no stimulus.
+        while (event := session.next_input()) is not None:
+            if event.channel == 'control':
+                continue
             response = NeuroidAssembly(
                 rng.randn(1, self.n_neuroids),
                 coords={
@@ -63,7 +65,6 @@ class DummyCandidate(Subject):
                 t_ms=event.t_ms,
                 meta=dict(event.meta),
             ))
-            event = session.next_input()
 
 
 def test_registered_and_loads():

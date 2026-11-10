@@ -129,17 +129,24 @@ def action_spec():
                       'fixture-only', 50., (-1.,)*7, (1.,)*7)
 
 
-def test_droid_no_target_leakage_timing_and_resets(tmp_path):
-    seen, resets = [], []
+def test_droid_no_target_leakage_timing_and_begin(tmp_path):
+    seen = []
     def process(row):
         assert set(row) == {'vision:image', 'proprioception', 'instruction'}
         seen.append(row)
         return {'motor': np.zeros(7)}
-    subject = SimpleNamespace(process=process, reset=lambda: resets.append(True))
+    from brainscore import BrainScoreModel
+    class Policy:
+        begins = 0
+        __call__ = staticmethod(process)
+        def reset(self):
+            self.begins += 1
+    policy = Policy()
+    subject = BrainScoreModel('s', None, {}, {}, None, policy=policy)
     with RunRecorder(tmp_path/'run', metadata={'fixture': True}) as recorder:
         result = evaluate_droid_episode(subject, droid_fixture(), action_spec=action_spec(),
                                          action_source=lambda row: row['action'], recorder=recorder)
-    assert len(resets) == 2 and len(seen) == 2
+    assert policy.begins == 1 and len(seen) == 2
     assert result['evaluation'] == 'recorded_trajectory'
     assert not np.array_equal(result['predictions'], result['targets'])
     outputs = list(RunRecord(tmp_path/'run').outputs())

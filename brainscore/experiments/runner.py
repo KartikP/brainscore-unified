@@ -591,6 +591,7 @@ class Experiment:
             tool.validate(self)
         plan = {'subject': getattr(self.subject, 'identifier', _identity(self.subject)),
                 'subject_type': _identity(self.subject),
+                'subject_traits': sorted(getattr(self.subject, 'traits', ())),
                 'protocol': {'identifier': self.protocol.identifier,
                              'implementation': _identity(self.protocol),
                              'config': self.protocol.describe()},

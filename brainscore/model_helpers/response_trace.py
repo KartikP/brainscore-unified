@@ -119,6 +119,8 @@ class ResponseTraceCapability(Capability):
 
     def participate(self, model, session):
         while (event := session.next_input()) is not None:
+            if event.channel == 'control':
+                continue
             if not self.handles(model, event):
                 raise ValueError(f'Response trace session requires one of {sorted(self.input_channels)}')
             config = model.capability_config[self.identifier]

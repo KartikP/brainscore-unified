@@ -14,7 +14,9 @@ same presentation that produced the behavior.
 """
 from contextlib import contextmanager
 
+from brainscore_core.contract import required_traits_for
 from brainscore_core.events import StateChange
+from brainscore_core.streaming import CONTROL_CHANNEL
 from brainscore_core.streaming_helpers import apply_state_change, table_session
 
 from .runner import SessionProtocol, Tool
@@ -25,8 +27,11 @@ class TaskProtocol(SessionProtocol):
     """Present ``stimuli`` under ``task``, once per condition and repetition.
 
     The task says what the subject does; ``TaskContext(task_type='passive')``
-    is plain viewing. ``required_traits`` (e.g. ``{'memory:session'}``) makes a
-    subject without them fail validation, as a benchmark marks it N/A. The
+    is plain viewing. ``required_traits`` (e.g. ``{'memory:trial_history'}``) makes a
+    subject without them fail validation, as a benchmark marks it N/A. The task's
+    ``trial_protocol`` (``'independent'`` or ``'conversation'``) decides how the
+    session groups trials into episodes; ``conversation`` adds the
+    ``memory:trial_history`` requirement itself. The
     attached recorders say what is measured: each
     session requests exactly their channels. With a readout task, the task's
     ``readout_fit`` says which network the readout is fitted on while a change
@@ -39,11 +44,11 @@ class TaskProtocol(SessionProtocol):
         probe = table_session(stimuli)
         inputs = set()
         while (event := probe.next_input()) is not None:
-            inputs.add(event.channel)
+            if event.channel != CONTROL_CHANNEL:
+                inputs.add(event.channel)
         self.stimuli = stimuli
         self.task = task
-        # e.g. {'memory:session'} for a task whose trials depend on earlier ones.
-        self.required_traits = frozenset(required_traits)
+        self.required_traits = frozenset(required_traits_for(required_traits, task.trial_protocol))
         super().__init__(identifier, self._session, conditions=conditions, repetitions=repetitions,
                          input_channels=inputs, output_channels=(), metadata=metadata)
 
@@ -77,6 +82,7 @@ class TaskProtocol(SessionProtocol):
     def describe(self):
         return {**super().describe(), 'task_type': self.task.task_type,
                 'required_traits': sorted(self.required_traits),
+                'trial_protocol': self.task.trial_protocol,
                 'readout_fit': self.task.readout_fit}
 
     @contextmanager

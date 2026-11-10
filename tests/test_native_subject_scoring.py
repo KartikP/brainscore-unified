@@ -19,6 +19,8 @@ class NativeSubject(Subject):
 
     def participate(self, session):
         while (event := session.next_input()) is not None:
+            if event.channel == "control":
+                continue
             session.respond(StreamEvent(
                 "neural:language_network", np.array([len(event.payload)]),
                 event.t_ms, dict(event.meta),

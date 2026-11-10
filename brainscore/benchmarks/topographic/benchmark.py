@@ -39,7 +39,8 @@ def _record(candidate, stimulus_set, region):
     full = stimulus_session(stimulus_set, record=region)
     events = []
     while (event := full.next_input()) is not None:
-        events.append(event)
+        if event.channel != 'control':
+            events.append(event)
     present = {parse_channel(event.channel)[0] for event in events}
     declared = {parse_channel(channel)[0] for channel in candidate.in_channels}
     chosen = next((family for family in _INPUT_PRIORITY
