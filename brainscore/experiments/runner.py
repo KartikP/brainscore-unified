@@ -250,9 +250,10 @@ class CallableProtocol:
     for baseline and intervention conditions.
 
     An evaluator that runs the subject through ``participate`` passes
-    ``methods=()`` and wraps each session in ``ObservedSession(session,
-    context)``, so its input and output events are recorded instead of
-    method calls.
+    ``methods=()``. It then owns the repetitions too: it runs each session
+    inside ``context.repetition(identifier)`` and wraps it in
+    ``ObservedSession(session, context)``, so the record holds the input and
+    output events of each session between its own boundaries.
     """
     def __init__(self, identifier, evaluate, *, methods=('process',), metadata=None):
         self.identifier, self.evaluate = identifier, evaluate
@@ -279,6 +280,11 @@ class CallableProtocol:
                 raise ValueError(f'Subject does not expose {method}')
 
     def run(self, subject, context):
+        if not self.methods:
+            # The evaluator records sessions, so it also marks where each one
+            # starts and ends: one context.repetition per session, which
+            # replay_sessions turns back into one session each.
+            return self.evaluate(subject, context)
         with context.repetition('external'), observe(subject, context, methods=self.methods):
             return self.evaluate(subject, context)
 
