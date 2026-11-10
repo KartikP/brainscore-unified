@@ -40,17 +40,19 @@ def _ask(subject: Subject, context, request: StreamEvent, repetition: int) -> St
 
     The session holds the one request and asks for ``response_trace``. It is
     one repetition of the record, so ``replay_sessions`` rebuilds exactly this
-    session. Replay resets the subject before each repetition; the subject is
-    reset here too, so a replay sees the same subject state. EWoK requests
-    are independent, and the shipped trace subjects keep no state between
-    requests, so this reset does not change their answers.
+    session. The subject is not reset here, as on the old ``process`` path:
+    a reset would remove interventions the caller applied around the run.
+
+    Known limit: ``replay_sessions`` resets the subject before and after
+    each repetition and this run does not, so the replay of a subject that
+    keeps state between requests, or of a run inside a caller's
+    intervention, can differ from the original.
 
     A streaming subject sends fragments, and the last one is the answer. The
     old ``process`` path returned only the final fragment, so a response
     whose ``final`` flag is present and not True is refused.
     """
     session = BufferedSession([request], requested_output_channels=('response_trace',))
-    subject.reset()
     with context.repetition(repetition):
         context.publish('session_context',
                         {'requested_output_channels': session.requested_output_channels})
@@ -226,6 +228,10 @@ class EWoKBenchmark(BenchmarkBase):
             # No method is observed: each session is recorded through
             # ObservedSession in _ask, one input and one output per request.
             methods=(),
+            # The record repetition ids _ask uses: one per request, counted
+            # from 0. Tools select repetitions by these ids.
+            repetitions=range(math.ceil(len(self._rows) / self._batch_size)
+                              * (4 if self._mode == 'logprobs' else 2)),
             metadata={
                 'protocol': self._mode, 'dataset': self._manifest,
                 'items': len(self._rows), 'batch_size': self._batch_size,

@@ -446,3 +446,105 @@ def test_unfinished_stream_is_refused_not_scored(prepared, tmp_path):
                                           output_dir=tmp_path / 'run')
     with pytest.raises(ValueError, match='final response'):
         benchmark(_UnfinishedReader(EWoKProvider(NativeModel())))
+
+
+class _TorchNative:
+    """EWoK native model whose answers pass through one linear layer."""
+    def __init__(self):
+        import torch
+        self.model = torch.nn.Sequential()
+        self.model.add_module('projection', torch.nn.Linear(1, 1, bias=False))
+        with torch.no_grad():
+            self.model.projection.weight.fill_(2)
+
+    def score(self, targets, contexts):
+        import torch
+        inputs = torch.tensor([[1.] if (' A ' in t) == (' A ' in c) else [-1.]
+                               for t, c in zip(targets, contexts)])
+        with torch.no_grad():
+            return torch.nn.functional.logsigmoid(self.model(inputs)).flatten().tolist()
+
+
+def test_tools_select_the_repetition_ids_each_request_runs_in(prepared, tmp_path):
+    from brainscore.experiments import Ablate, TorchInstrumentation
+    from brainscore.run_record import RunRecord
+    native = _TorchNative()
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, batch_size=2)
+    assert benchmark.protocol().repetitions == tuple(range(8))
+    result = Experiment(subject=subject(EWoKProvider(native)), protocol=benchmark.protocol(),
+                        tools=[RecordInputsOutputs(), Ablate(['projection'], repetitions=[0])],
+                        instrumentation=TorchInstrumentation(native.model),
+                        output_dir=tmp_path / 'selected').run()
+    starts = [e['repetition_id'] for e in RunRecord(result.directory).events()
+              if e['kind'] == 'intervention_start']
+    assert starts == [0]
+    with pytest.raises(ValueError, match='repetitions must belong'):
+        Experiment(subject=subject(EWoKProvider(native)), protocol=benchmark.protocol(),
+                   tools=[RecordInputsOutputs(), Ablate(['projection'], repetitions=['external'])],
+                   instrumentation=TorchInstrumentation(native.model),
+                   output_dir=tmp_path / 'external').run()
+
+
+def _stateful_intervened_subject():
+    """A trace subject whose answers depend on its own history and on a lesion.
+
+    The provider counts requests and flips its answers on odd ones, so a
+    reset or a repeated call would show. The intervention flips them too,
+    and its cleanup is the only way to undo it.
+    """
+    from brainscore_core.brainscore_model import BrainScoreModel
+    from brainscore_core.events import PerturbationApplied
+    from brainscore.model_helpers.response_trace import _capability, register_trace_channels
+    from brainscore_core.capabilities.registry import register_capability
+    base, state = EWoKProvider(NativeModel()), {'requests': 0, 'lesioned': False}
+
+    def provider(request):
+        values = json.loads(base(request)['text'])
+        flip = (state['requests'] % 2 == 1) != state['lesioned']
+        state['requests'] += 1
+        return {'text': json.dumps([-v for v in values] if flip else values)}
+
+    def intervention(change):
+        state['lesioned'] = True
+
+        def cleanup():
+            state['lesioned'] = False
+        return PerturbationApplied(handle_id='lesion', target=change.target,
+                                   perturbation=change.perturbation, applied_at=0), cleanup
+
+    register_trace_channels()
+    capability = _capability(('conditional_logprob_request', 'context_choice_request'))
+    register_capability(capability)
+    model = BrainScoreModel('stateful-fixture', intervention=intervention, capability_config={
+        capability.identifier: {'provider': provider, 'parse': json.loads,
+                                'provenance': {'model': 'synthetic-test'},
+                                'streaming': False, 'reset': None}})
+    return model, state
+
+
+def test_stateful_subject_inside_a_caller_intervention_scores_like_the_old_path(
+        prepared, tmp_path, monkeypatch):
+    import brainscore.benchmarks.ewok.benchmark as ewok
+    from brainscore_core.events import Perturbation, Selection, StateChange
+    from brainscore.instrumentation import intervene
+    lesion = StateChange(kind='lesion', target=Selection(layer='projection'),
+                         perturbation=Perturbation(kind='zero'))
+
+    def run(name, old_path):
+        model, state = _stateful_intervened_subject()
+        benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared,
+                                              batch_size=2, output_dir=tmp_path / name)
+        with monkeypatch.context() as patch:
+            if old_path:
+                patch.setattr(ewok, '_ask', _old_process_path)
+            # The caller's lesion must survive the run and be undone by its own scope.
+            with intervene(model, lesion):
+                value = benchmark(model)
+                assert state['lesioned']
+        assert not state['lesioned'] and state['requests'] == 8
+        return value, (tmp_path / name / 'item-scores.json').read_bytes()
+
+    new_score, new_items = run('participate', old_path=False)
+    old_score, old_items = run('process', old_path=True)
+    assert new_items == old_items
+    assert repr(float(new_score)) == repr(float(old_score))
