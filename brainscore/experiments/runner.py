@@ -248,6 +248,11 @@ class CallableProtocol:
     public methods are observed, including errors caught by the evaluator.
     Instrumentation is scoped to the whole evaluator call. Use separate runs
     for baseline and intervention conditions.
+
+    An evaluator that runs the subject through ``participate`` passes
+    ``methods=()`` and wraps each session in ``ObservedSession(session,
+    context)``, so its input and output events are recorded instead of
+    method calls.
     """
     def __init__(self, identifier, evaluate, *, methods=('process',), metadata=None):
         self.identifier, self.evaluate = identifier, evaluate
@@ -264,7 +269,8 @@ class CallableProtocol:
                 'reset_policy': 'owned by external evaluator'}
 
     def validate(self, subject):
-        if not self.methods or len(set(self.methods)) != len(self.methods):
+        # An empty selection is allowed: such an evaluator records its sessions.
+        if len(set(self.methods)) != len(self.methods):
             raise ValueError('Select distinct methods to observe')
         # The external evaluator names the methods it calls, so checking for them is
         # checking its request, not discovering what the subject can do.
