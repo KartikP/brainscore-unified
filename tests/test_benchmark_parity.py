@@ -11,7 +11,7 @@ import torch
 from PIL import Image
 
 from brainscore_core.metrics import Score
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore.validation.benchmark_parity import (
     ADAPTER_SCORE_ULPS, CASES, PEREIRA_CASES, PEREIRA_NATIVE_ULPS, PEREIRA_SCORE_ATOL,

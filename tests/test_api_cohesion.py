@@ -7,7 +7,8 @@ import pytest
 import torch
 import xarray as xr
 from brainscore.experiments import SessionProtocol, Repetition, TorchInstrumentation
-from brainscore_core.model_interface import FunctionalSelection, Selection
+from brainscore import FunctionalSelection
+from brainscore_core.model_interface import Selection
 from brainscore_core.streaming import InMemorySession
 
 
@@ -116,7 +117,7 @@ def test_unsupported_coordinate_system_is_rejected_before_attaching_tools():
 
 def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_path, monkeypatch):
     from PIL import Image
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
     from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 

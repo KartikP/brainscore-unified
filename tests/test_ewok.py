@@ -492,10 +492,10 @@ def _stateful_intervened_subject():
     reset or a repeated call would show. The intervention flips them too,
     and its cleanup is the only way to undo it.
     """
-    from brainscore_core.brainscore_model import BrainScoreModel
+    from brainscore.brainscore_model import BrainScoreModel
     from brainscore_core.events import PerturbationApplied
     from brainscore.model_helpers.response_trace import _capability, register_trace_channels
-    from brainscore_core.capabilities.registry import register_capability
+    from brainscore.capabilities.registry import register_capability
     base, state = EWoKProvider(NativeModel()), {'requests': 0, 'lesioned': False}
 
     def provider(request):

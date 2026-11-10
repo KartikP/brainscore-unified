@@ -10,7 +10,8 @@ from brainscore.experiments import (
     replay_sessions,
 )
 from brainscore.experiments.replay import _equal, read_events
-from brainscore_core.model_interface import BrainScoreModel, TaskContext
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import TaskContext
 from brainscore_core.streaming import InMemorySession, StreamEvent
 from brainscore_core.streaming_helpers import (
     BehavioralSession, StimulusSetSession, StreamingStimulusSetSession,

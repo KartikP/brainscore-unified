@@ -2,7 +2,8 @@
 import numpy as np
 import pytest
 
-from brainscore_core import BrainScoreModel, TaskContext
+from brainscore import BrainScoreModel
+from brainscore_core import TaskContext
 from brainscore_core.responses import Text
 from brainscore_core.streaming import BufferedSession, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly

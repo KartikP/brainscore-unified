@@ -7,10 +7,8 @@ import pytest
 import torch
 from torch import nn
 
-from brainscore_core.model_interface import (
-    BrainScoreModel, CompositeSelector, RandomSelection,
-    TaskContext, StateChange, Perturbation, EnvironmentStep,
-)
+from brainscore import BrainScoreModel, CompositeSelector, RandomSelection
+from brainscore_core.model_interface import TaskContext, StateChange, Perturbation, EnvironmentStep
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuroidAssembly, BehavioralAssembly,
 )

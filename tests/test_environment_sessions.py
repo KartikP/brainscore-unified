@@ -7,7 +7,7 @@ import pytest
 
 from brainscore_core.environment import ActionSpec
 from brainscore_core.events import EnvironmentResponse, EnvironmentStep
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.streaming_helpers import EnvironmentSession, run_environment
 from brainscore.experiments import Experiment, SessionProtocol, RecordInputsOutputs
 from brainscore.experiments.replay import read_events, replay_sessions
@@ -383,7 +383,7 @@ def test_recorded_instrumented_episode_keeps_no_per_step_objects(tmp_path, porta
     from brainscore.experiments import (Experiment, RecordActivity, RecordInputsOutputs,
                                         ScaleActivity, TorchInstrumentation)
     from brainscore_core.events import EnvironmentResponse
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore_core.streaming_helpers import EnvironmentSession
     if tracemalloc.is_tracing():
         pytest.skip('tracemalloc already active')

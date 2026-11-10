@@ -7,7 +7,7 @@ import pytest
 import torch
 from PIL import Image
 
-from brainscore_core import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
