@@ -7,8 +7,12 @@ registered instance swaps the synthetic brain/candidate for a surface fMRI assem
 topographic model (EC2); the wiring under test is identical.
 """
 import numpy as np
+import pandas as pd
 
+from brainscore_core.contract import Subject
+from brainscore_core.streaming import StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.benchmarks.topographic import TopographicBenchmark
 
 
@@ -34,19 +38,34 @@ def _assembly(seed=0, n_units=64, n_stim=30, smooth=True, with_coords=True):
     return NeuroidAssembly(resp, coords=coords, dims=['presentation', 'neuroid'])
 
 
-class _StubModel:
-    """Minimal candidate: start_recording is a no-op; process returns a fixed assembly."""
+class _StubModel(Subject):
+    """Participate-only candidate: answers neural:IT with a fixed assembly."""
+    identifier = 'participate-only-topographic'
+    in_channels = {'text'}
+    out_channels = {'neural:IT'}
+
     def __init__(self, assembly):
-        self._assembly = assembly
-    def start_recording(self, region, **kw):
-        pass
-    def process(self, stimulus_set, **kw):
-        return self._assembly
+        self.assembly = assembly
+        self.requests = []
+
+    def participate(self, session):
+        self.requests.append(tuple(session.requested_output_channels))
+        while session.next_input() is not None:
+            pass
+        session.respond(StreamEvent('neural:IT', self.assembly, None, {}))
+
+
+def _stimuli(n_stim=30):
+    stimuli = StimulusSet(pd.DataFrame({
+        'stimulus_id': [f's{i}' for i in range(n_stim)],
+        'sentence': [f'stimulus {i}' for i in range(n_stim)]}))
+    stimuli.identifier = 'topographic-demo-stimuli'
+    return stimuli
 
 
 def _benchmark(brain):
     return TopographicBenchmark('topographic-demo', brain_assembly=brain,
-                                stimulus_set=None, region='IT')
+                                stimulus_set=_stimuli(), region='IT')
 
 
 class TestTopographicBenchmark:
@@ -75,3 +94,42 @@ class TestTopographicBenchmark:
         brain = _assembly(seed=1)
         score = _benchmark(brain)(_StubModel(_assembly(seed=2)))
         assert 'raw' in score.attrs and 'null' in score.attrs and 'ceiling' in score.attrs
+
+    def test_runs_a_participate_only_subject_and_keeps_its_tissue_coords(self):
+        from brainscore import load_metric
+        brain = _assembly(seed=1)
+        model = _StubModel(_assembly(seed=2))
+        assert not hasattr(model, 'process') and not hasattr(model, 'start_recording')
+        score = _benchmark(brain)(model)
+        assert model.requests == [('neural:IT',)]
+        # The subject's own positions were scored, not the fallback grid.
+        expected = float(load_metric('topographic-alignment')(model.assembly, brain).values)
+        assert score.attrs['raw'] == expected
+
+
+def test_brainscore_model_session_response_keeps_tissue_coords_like_process():
+    """BrainScoreModel returns the same assembly, extra neuroid coords included,
+    through neural_response as through start_recording + process."""
+    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore_core.streaming_helpers import neural_response
+
+    template = _assembly(seed=2)
+
+    def extract(stimuli, layers):
+        ids = list(stimuli['stimulus_id'])
+        values = template.values      # same 30 stimuli, in table order
+        return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ids),
+            'neuroid_id': ('neuroid', list(range(values.shape[1]))),
+            'layer': ('neuroid', [layers[0]] * values.shape[1]),
+            'tissue_x': ('neuroid', template['tissue_x'].values),
+            'tissue_y': ('neuroid', template['tissue_y'].values)})
+
+    model = BrainScoreModel('topographic-fixture', region_layer_map={'IT': 'sheet'},
+                            extractor={'text': extract})
+    model.start_recording('IT')
+    direct = model.process(_stimuli())
+    model.reset()
+    through_session = neural_response(model, _stimuli(), record='IT')
+    assert through_session.identical(direct)
+    np.testing.assert_array_equal(through_session['tissue_x'].values, template['tissue_x'].values)

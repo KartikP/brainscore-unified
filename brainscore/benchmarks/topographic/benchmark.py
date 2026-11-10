@@ -6,7 +6,7 @@ shuffle-coordinate NULL. The score reported is ``raw - null`` (the spatial signa
 the permutation floor), with both stored in ``attrs``. Predictivity is permutation-invariant
 over units and so is blind to this; the shuffle null makes that explicit.
 
-A *real* registered instance needs (a) a topographic model whose ``process()`` output carries
+A *real* registered instance needs (a) a topographic model whose ``neural:<region>`` response carries
 per-unit ``tissue_x``/``tissue_y`` coords (Topo-Omni's sheet, a TDANN's tissue map, or a conv
 feature-map grid) and (b) a brain assembly with voxel coordinates (e.g. an fsaverage-surface
 fMRI assembly). This module ships the reusable benchmark + factory; register a concrete
@@ -15,6 +15,7 @@ synthetic assemblies in ``tests/test_topographic_benchmark.py``.
 """
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
+from brainscore_core.streaming_helpers import neural_response
 from brainscore import load_metric
 from brainscore.topographic_support import ensure_tissue_coords, shuffle_tissue_coords
 
@@ -25,7 +26,7 @@ class TopographicBenchmark(BenchmarkBase):
     :param brain_assembly: target measurements with voxel coordinates
         (``tissue_x``/``tissue_y`` or ``x``/``y``/``z`` neuroid coords).
     :param stimulus_set: stimuli to drive the candidate (same stimuli the brain saw).
-    :param region: recording target passed to ``candidate.start_recording``.
+    :param region: the region requested from the candidate as ``neural:<region>``.
     :param metric_id: registered metric (default the topographic-alignment metric).
     :param null_seed: seed for the shuffle-coordinate null.
     """
@@ -42,8 +43,10 @@ class TopographicBenchmark(BenchmarkBase):
         self._null_seed = null_seed
 
     def __call__(self, candidate) -> Score:
-        candidate.start_recording(self._region)
-        predictions = ensure_tissue_coords(candidate.process(self._stimulus_set))
+        # Through participate only. The neural response is returned as the
+        # subject built it, so its tissue_x/tissue_y neuroid coords arrive intact.
+        predictions = ensure_tissue_coords(neural_response(
+            candidate, self._stimulus_set, record=self._region))
 
         raw = float(self._metric(predictions, self._brain).values)
         null = float(self._metric(
