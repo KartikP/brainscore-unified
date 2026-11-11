@@ -81,7 +81,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
     # Sends the visual stream and the audio stream; asks for the visual tower
     # (`neural:IT`) and the audio tower (`neural:A1`). Each clip is an independent trial.
-    required_input_channels = frozenset({'vision', 'audio'})
+    required_input_channels = frozenset({'vision:image', 'vision:video', 'audio'})
     requested_output_channels = frozenset({'neural:IT', 'neural:A1'})
     trial_memory = 'none'
 

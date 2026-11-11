@@ -109,9 +109,9 @@ class _Algonauts2025Base(BenchmarkBase):
                    'video_only', 'audio_only', 'language_only')
     BANDED_ALPHA_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
 
-    # Sends one frame per TR on `vision` and asks for the region it records. The
+    # Sends one frame per TR on `vision:image` and asks for the region it records. The
     # benchmark stacks the TRs itself, so the subject keeps no history across frames.
-    required_input_channels = frozenset({'vision'})
+    required_input_channels = frozenset({'vision:image'})
     requested_output_channels = frozenset({'neural:IT'})
     trial_memory = 'none'
 

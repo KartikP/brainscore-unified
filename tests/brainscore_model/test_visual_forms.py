@@ -32,7 +32,7 @@ def _stimuli(column):
                                          (('vision', 'video'), {'vision:image', 'vision:video'})])
 def test_forms_follow_the_extractor_keys(keys, forms):
     model = BrainScoreModel('m', extractor={key: _extractor(1.0) for key in keys})
-    assert 'vision' in model.in_channels
+    assert 'vision' not in model.in_channels
     assert {c for c in model.in_channels if c.startswith('vision:')} == forms
 
 
@@ -131,3 +131,44 @@ def test_a_multi_image_trial_is_recorded_per_image():
     recorded = session.collect('neural:IT')
     assert recorded.dims == ('presentation', 'part', 'neuroid')
     assert list(recorded['part_name'].values) == ['rules', 'word_1', 'word_2']
+
+
+@pytest.mark.parametrize('keys, forms, required', [
+    (('vision',), {'vision:image'}, set()),
+    (('video',), {'vision:video'}, {'vision:video'}),
+    (('vision', 'video'), {'vision:image', 'vision:video'}, set())])
+def test_declared_inputs_are_exactly_the_forms_taken(keys, forms, required):
+    model = BrainScoreModel('m', extractor={key: _extractor(1.0) for key in keys},
+                            required_modalities={'video'} if required else None)
+    assert {c for c in model.in_channels if c.startswith('vision')} == forms
+    assert 'vision' not in model.in_channels
+    assert model.required_channels == required
+
+
+@pytest.mark.parametrize('keys, compatible', [(('vision',), True), (('video',), True),
+                                              (('vision', 'video'), True), (('text',), False)])
+def test_a_benchmark_declaring_both_forms_is_compatible_with_each(keys, compatible):
+    from types import SimpleNamespace
+    from brainscore_core import check_compatibility
+    from brainscore_core.compatibility import CompatibilityError
+    model = BrainScoreModel('m', region_layer_map={'IT': 'layer'},
+                            extractor={key: _extractor(1.0) for key in keys})
+    benchmark = SimpleNamespace(identifier='both-forms',
+                                required_input_channels={'vision:image', 'vision:video'},
+                                requested_output_channels={'neural:IT'})
+    if compatible:
+        check_compatibility(model, benchmark)
+    else:
+        with pytest.raises(CompatibilityError):
+            check_compatibility(model, benchmark)
+
+
+def test_a_benchmark_with_a_bare_vision_channel_is_refused():
+    from types import SimpleNamespace
+    from brainscore_core import check_compatibility
+    from brainscore_core.compatibility import CompatibilityError
+    model = BrainScoreModel('m', region_layer_map={'IT': 'layer'}, extractor={'vision': _extractor(1.0)})
+    benchmark = SimpleNamespace(identifier='bare', required_input_channels={'vision'},
+                                requested_output_channels={'neural:IT'})
+    with pytest.raises(CompatibilityError):
+        check_compatibility(model, benchmark)

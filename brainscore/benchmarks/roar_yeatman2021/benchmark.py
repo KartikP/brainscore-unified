@@ -43,6 +43,7 @@ import numpy as np
 
 from brainscore import load_dataset, load_stimulus_set
 from brainscore_core.benchmarks import BenchmarkBase
+from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response
@@ -208,7 +209,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
             f"got {modality!r}")
         self.modality = modality
         # The word (an image or a string) and the question put to the participant.
-        self.required_input_channels = frozenset({modality, 'instruction'})
+        self.required_input_channels = frozenset(modalities_to_input_channels({modality}) | {'instruction'})
 
         full_stimulus_set = load_stimulus_set('Yeatman2021')
         # Split first on the full set so the train/test partition is the

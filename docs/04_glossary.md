@@ -26,7 +26,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Layer path** | A module's name in the network, such as `layer3.0.conv1`; list them with `named_modules()`. |
 | **`LayerSelector`** | One layer as a region; `modality=` picks the tower in a multi-tower model. |
 | **Metric** | The calculation that compares model outputs with measured data. |
-| **Modality** | A kind of sensory input: `vision` (including video), `text`, `audio`. |
+| **Modality** | A kind of sensory input: `vision` (pictures), `video`, `text`, `audio`. A modality is not a channel. Pictures arrive on `vision:image` and video on `vision:video`. |
 | **N/A** | Not applicable: the pair was not run because declarations do not fit. Never the same as a zero score. |
 | **Neuroid** | One recorded unit of a model or brain. |
 | **Null baseline** | A reference without the signal of interest, such as chance or random features. |

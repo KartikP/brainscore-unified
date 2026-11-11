@@ -400,7 +400,7 @@ def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
     expected = check_compatibility(subject, benchmark).as_attrs()
     assert expected['match'] == 'partial'
     assert expected['consumed_inputs'] == ['text']
-    assert expected['dropped_inputs'] == ['vision']
+    assert expected['dropped_inputs'] == ['vision:image']
     assert plan['protocol']['config']['compatibility'] == expected
     assert net.passes == 0
     assert not experiment.output_dir.exists()
@@ -415,8 +415,8 @@ def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
 
 @pytest.mark.parametrize('mistake, expected', [
     ('output', "cannot produce requested outputs ['neural:IT']"),
-    ('input', "takes in none of the protocol inputs ['vision']"),
-    ('required', "requires inputs absent from the protocol ['vision']"),
+    ('input', "takes in none of the protocol inputs ['vision:image']"),
+    ('required', "requires inputs absent from the protocol ['vision:image']"),
 ])
 def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, expected):
     calls = []

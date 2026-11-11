@@ -66,7 +66,7 @@ def test_multimodal_example_uses_both_inputs(changed_channel):
         subject.reset()
         session = Session([
                 StreamEvent(
-                    channel='vision', payload=image,
+                    channel='vision:image', payload=image,
                     t_ms=None, meta={'stimulus_id': 's'},
                 ),
                 StreamEvent(channel='text', payload=text, t_ms=None, meta={'stimulus_id': 's'}),
@@ -74,7 +74,7 @@ def test_multimodal_example_uses_both_inputs(changed_channel):
         subject.participate(session)
         outputs.append(session.collect(channel='behavior').values)
     assert not np.array_equal(*outputs)
-    assert subject.required_channels == {'vision', 'text'}
+    assert subject.required_channels == {'vision:image', 'text'}
 
 
 def test_missing_multimodal_input_fails_without_a_response():

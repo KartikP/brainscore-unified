@@ -60,11 +60,11 @@ class TestDeclaredChannelsRun:
         assert model.out_channels == {'neural:IT', 'behavior', 'behavior:choice',
                                       'behavior:probabilities', 'behavior:rating', 'behavior:rt',
                                       'motor', 'perturbation'}
-        assert {'vision', 'observation', 'lesion', 'stimulation'} <= model.in_channels
+        assert {'vision:image', 'observation', 'lesion', 'stimulation'} <= model.in_channels
         for output in sorted(model.out_channels):
             bench = FakeBenchmark(identifier=output)
             bench.requested_output_channels = {output}
-            bench.required_input_channels = {'vision'}
+            bench.required_input_channels = {'vision:image'}
             check_compatibility(model, bench)  # registered and produced
 
     def test_every_declared_output_has_one_session_handler(self):
