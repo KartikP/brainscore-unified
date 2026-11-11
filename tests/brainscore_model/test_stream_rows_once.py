@@ -373,8 +373,9 @@ def test_stream_windows_are_unchanged():
 
     model = BrainScoreModel('windows', extractor={'vision': extract},
                             region_layer_map={'IT': LayerSelector('late', modality='vision')})
+    # No ``streaming=True``: a session without a stimulus table is answered one event at a time.
     session = Session(windowed_stream([f'f{i}.png' for i in range(6)], fps=10.0, window_ms=200.0),
-                      ['neural:IT'], streaming=True)
+                      ['neural:IT'])
     model.participate(session)
     assert calls == [['w0_f0', 'w0_f1'], ['w200_f0', 'w200_f1'], ['w400_f0', 'w400_f1']]
     assert [event.meta['stream_index'] for event in session.emitted] == [0, 1, 2]
