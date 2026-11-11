@@ -195,25 +195,12 @@ class InducedDyslexia(BenchmarkBase):
             raise errors[0]
 
     def __call__(self, candidate) -> Score:
-        # Pre-flight cannot require that a subject *accepts* an input: inputs
-        # need only overlap (rule 5.2) and `perturbation` does not say which
-        # change families the subject takes. Check the declaration here, before
-        # any compute, so a subject that cannot take a lesion is N/A.
-        #
-        # A subject receives an event when its in_channels hold the exact
-        # channel or its bare family (core Session.declare_inputs). The lesion
-        # channels sent here are `lesion:<layer>[<start>:<stop>]` and, to undo,
-        # `lesion:<handle>`. Neither address is known before compute, so only
-        # the bare `lesion` family accepts them all; an addressed declaration
-        # such as `lesion:other` would drop the lesion or its undo.
-        # ponytail: a subject that lists every possible lesion address one by
-        # one would also work but is refused here; accept addressed lists only
-        # if such a subject appears.
+        # The subject must declare `lesion` to receive the lesions.
+        # If it does not, the result is N/A before any compute.
         if 'lesion' not in set(candidate.in_channels):
             raise CompatibilityError(
                 f"Subject '{candidate.identifier}' does not declare the 'lesion' family, "
-                f"which benchmark '{self.identifier}' needs to apply and undo lesions at "
-                f"addresses fixed only after localization; in_channels: "
+                f"which benchmark '{self.identifier}' needs to apply and undo lesions; in_channels: "
                 f"{sorted(candidate.in_channels)}.")
         return self._score(candidate)
 

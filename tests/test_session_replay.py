@@ -14,7 +14,7 @@ from brainscore import BrainScoreModel
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import (
-    behavior_session, stimulus_session,
+    stimulus_session,
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -112,11 +112,12 @@ def test_behavior_session_collection_and_replay_preserve_task(tmp_path):
 
     @contextmanager
     def factory(trial):
-        yield behavior_session(TaskContext(
+        table = stimuli()
+        yield stimulus_session(table, ['behavior'], TaskContext(
             task_type='probabilities',
             instruction='Is this an animal?',
             label_set=['yes', 'no'],
-            metadata={'stimulus_set': stimuli()},
+            metadata={'stimulus_set': table},
         ))
 
     baseline = run(subject, factory, tmp_path / 'baseline', ['behavior'])

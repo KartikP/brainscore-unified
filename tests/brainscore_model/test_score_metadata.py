@@ -9,7 +9,7 @@ from brainscore_core.score_metadata import (
     record_measures,
 )
 from brainscore_core.streaming import StreamEvent
-from brainscore_core.streaming_helpers import behavior_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 from .test_behavioral_readout import (
     _fake_preprocessor_returning,
@@ -89,7 +89,7 @@ def test_direct_session_with_a_generation_model_is_recorded():
     task = TaskContext(fitting_stimuli=_stimuli(), metadata={'stimulus_set': _stimuli()},
                        **_GENERATION_TASK)
     with record_measures() as measures:
-        session = behavior_session(task)
+        session = stimulus_session(task.metadata['stimulus_set'], ['behavior'], task)
         model.participate(session)
         session.collect('behavior')
 

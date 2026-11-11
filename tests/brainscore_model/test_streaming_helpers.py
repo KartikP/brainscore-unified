@@ -621,7 +621,7 @@ def test_native_state_change_reset_restores_baseline():
 
     assert model.participate_called is True
     assert model.participate_requested_output_channels == ("perturbation",)
-    assert reset_event.channel == "lesion:ablation-handle"
+    assert reset_event.channel == "lesion"
     assert reset_event.meta["reset"] == applied.handle_id
     assert reset_result == applied.handle_id
     assert model_state["output"] == 1.0

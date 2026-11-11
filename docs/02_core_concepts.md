@@ -33,7 +33,7 @@ The experiment only sees this interface, so a CNN, a language model, a robot pol
 
 ## 2. Channel
 
-A **channel** names one kind of information flowing into or out of a subject. Names are written `family` or `family:address`.
+A **channel** names one kind of information flowing into or out of a subject. Names are written `family` or `family:address`. The intervention channels `lesion`, `stimulation` and `pharmacological` take no address: the target (a layer, units) is in the `StateChange` payload, so a benchmark can choose it while it runs.
 
 | Inputs | Outputs |
 | --- | --- |
@@ -68,7 +68,7 @@ session.collect()
 | A list or generator of events | Inputs are fixed in advance (most benchmarks). |
 | `EnvironmentSource` | Each action changes the next input (games, simulators, robots). `run_environment` builds it for you. |
 
-Three builders make a session: `stimulus_session(stimuli, outputs, task)`, `environment_session(environment, outputs, task)` and `behavior_session(task)`. `Session(source, outputs, task)` takes any other input. The four functions `neural_response`, `behavioral_response`, `apply_state_change` and `run_environment` build a session, run it and return the result.
+Two builders make a session: `stimulus_session(stimuli, outputs, task)` and `environment_session(environment, outputs, task)`. A behavior session is `stimulus_session(stimuli, ['behavior'], task)`: it sends the stimulus rows as events, and the instruction and the fitting stimuli stay on the task. `Session(source, outputs, task)` takes any other input. The four functions `neural_response`, `behavioral_response`, `apply_state_change` and `run_environment` build a session, run it and return the result.
 
 **Row.** A step of a closed-loop task is a row: a mapping of channel to payload, such as `{'observation': ..., 'reward': 0.0}`. A policy receives a row and returns a mapping of output channel to payload, such as `{'motor': action}`.
 

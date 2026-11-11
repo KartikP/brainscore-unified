@@ -87,7 +87,7 @@ def test_the_events_carry_the_trial_memory():
 def _rows():
     from brainscore_core.streaming import StreamEvent
     return [StreamEvent('text', str(i), 0.0, {'stimulus_index': i, 'stimulus_id': f's{i}',
-                                              'column': 'sentence', 'role': 'scoring'})
+                                              'column': 'sentence'})
             for i in range(3)]
 
 
