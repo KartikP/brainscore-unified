@@ -77,7 +77,7 @@ def test_session_benchmark_checks_execution_support_before_compute():
     from brainscore_core.compatibility import check_channel_compatibility, CompatibilityError
     model = BrainScoreModel('motor-only', action_fn=lambda step: None)
     benchmark = SimpleNamespace(identifier='session', uses_session=True,
-        required_input_channels=set(), requested_output_channels={'motor'})
+        required_input_channels={'observation'}, requested_output_channels={'motor'})
     check_channel_compatibility(model, benchmark)
     model.check_session_support = lambda channels: (_ for _ in ()).throw(NotImplementedError('no driver'))
     with pytest.raises(CompatibilityError, match='no driver'):

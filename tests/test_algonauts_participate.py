@@ -147,3 +147,59 @@ class _WrongIds(Recorder):
 def test_a_response_for_other_frames_is_refused(benchmark):
     with pytest.raises(ValueError, match='exactly once'):
         benchmark._extract_per_TR_features(_WrongIds(), _frames())
+
+
+# ── Declarations and a whole score through participate ────────────
+
+import xarray as xr
+
+from tests.benchmark_declarations import assert_declares, assert_preflight
+from brainscore.benchmarks.algonauts2025.benchmark import (
+    Algonauts2025Friends, Algonauts2025FriendsS7, Algonauts2025OOD)
+
+CLIPS = [f'clip{index}' for index in range(6)]
+TRS = 10
+
+
+@pytest.mark.parametrize('factory', [Algonauts2025Friends, Algonauts2025FriendsS7, Algonauts2025OOD])
+def test_every_split_declares_vision_in_and_it_out(factory, tmp_path):
+    benchmark = factory(subject=1, assembly_root=tmp_path)
+    assert_declares(benchmark, {'vision'}, {'neural:IT'})
+    assert_preflight(benchmark)
+
+
+def test_a_whole_score_comes_from_a_participate_only_subject(tmp_path, monkeypatch):
+    benchmark = Algonauts2025Friends(subject=1, assembly_root=tmp_path, stimulus_window=2,
+                                     hrf_delay=1, excluded_samples_start=0, excluded_samples_end=0)
+    stimulus = [clip for clip in CLIPS for _ in range(TRS)]
+    steps = list(range(TRS)) * len(CLIPS)
+    values = np.random.default_rng(0).normal(size=(len(stimulus), 4))
+    benchmark._assembly = xr.DataArray(
+        values, dims=('presentation', 'neuroid'),
+        coords={'stimulus_id': ('presentation', stimulus), 'run': ('presentation', stimulus),
+                't_within_run': ('presentation', steps)})
+    rows = [{'stimulus_id': f'{clip}_t{step:04d}', 'frame_id': f'{clip}_t{step:04d}',
+             'clip_id': clip, 't_within_run': step, 'image_file_name': f'/frames/{clip}/{step}.jpg'}
+            for clip in CLIPS for step in range(TRS)]
+    frames = StimulusSet(pd.DataFrame(rows))
+    frames.identifier = 'synthetic-algonauts-frames'
+    frames.stimulus_paths = {row['stimulus_id']: row['image_file_name'] for row in rows}
+    monkeypatch.setattr(benchmark, '_expand_to_per_TR_frames', lambda: frames)
+
+    class Frames(Recorder):
+        def participate(self, session):
+            stimuli = session_stimuli(session, drain_session_inputs(session))
+            ids = [str(stimulus_id) for stimulus_id in stimuli['stimulus_id']]
+            self.requests.append(list(session.requested_output_channels))
+            rng = np.random.default_rng(1)
+            session.respond(StreamEvent('neural:IT', NeuroidAssembly(
+                rng.normal(size=(len(ids), 3)),
+                coords={'stimulus_id': ('presentation', ids),
+                        'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
+                dims=['presentation', 'neuroid']), t_ms=None))
+
+    subject = Frames()
+    score = benchmark(subject)
+    assert np.isfinite(float(score))
+    assert subject.requests == [['neural:IT']]
+    assert score.attrs['mode'] == 'video_only'

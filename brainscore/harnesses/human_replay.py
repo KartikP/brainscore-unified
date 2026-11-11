@@ -122,6 +122,10 @@ class HumanAgreementBenchmark(BenchmarkBase):
     :param n_actions: size of the discrete action space.
     """
 
+    # Asks for one action per state. Each episode is one trial that starts empty.
+    requested_output_channels = frozenset({'motor'})
+    trial_protocol = 'independent'
+
     def __init__(self, identifier: str, episodes: Sequence[HumanEpisode],
                  n_actions: int, bibtex: str = None):
         if not episodes:
@@ -131,7 +135,9 @@ class HumanAgreementBenchmark(BenchmarkBase):
                 _check_counts(counts, n_actions)
         self.episodes = episodes
         self.n_actions = n_actions
-        self.required_modalities = set()
+        # The recorded states are the inputs: one channel for each key a step holds.
+        self.required_input_channels = frozenset(
+            channel for episode in episodes for step, _ in episode for channel in step)
         counts = [c for episode in episodes for _, c in episode]
         # The ceiling depends only on the human data; any valid action works here.
         self._summary = human_agreement([0] * len(counts), counts)

@@ -79,6 +79,12 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
     """TR-resolved variant that extracts video AND audio per stimulus
     and places both at clip-onset TRs."""
 
+    # Sends the visual stream and the audio stream; asks for the visual tower
+    # (`neural:IT`) and the audio tower (`neural:A1`). Each clip is an independent trial.
+    required_input_channels = frozenset({'vision', 'audio'})
+    requested_output_channels = frozenset({'neural:IT', 'neural:A1'})
+    trial_protocol = 'independent'
+
     VALID_MODES = ('concat', 'per_modality', 'video_only', 'audio_only',
                    'banded')
     # Outer CV of the non-concat modes: shuffled K-fold over whole runs,
@@ -128,9 +134,6 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         )
         if mode != 'concat':
             self._cv_mode = self.POOLED_RUN_KFOLD
-        # Multimodal A+V: audio hard-required; visual tower accepts video OR
-        # vision (accepted_modalities inherited from the timeresolved base).
-        self.required_modalities = {'audio'}
         from pathlib import Path
         self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
         self._mode = mode

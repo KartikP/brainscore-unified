@@ -25,6 +25,16 @@ from brainscore.topographic_support import ensure_tissue_coords, shuffle_tissue_
 _INPUT_PRIORITY = ('vision', 'text', 'audio')
 
 
+def _table_events(stimulus_set, region):
+    """The input events of ``stimulus_set``, without the control events."""
+    full = stimulus_session(stimulus_set, record=region)
+    events = []
+    while (event := full.next_input()) is not None:
+        if event.channel != 'control':
+            events.append(event)
+    return events
+
+
 def _record(candidate, stimulus_set, region):
     """The candidate's ``neural:<region>`` response, read through ``participate``.
 
@@ -36,11 +46,7 @@ def _record(candidate, stimulus_set, region):
     so the subject reads the same table as before. A table with one input
     family goes through ``neural_response`` unchanged.
     """
-    full = stimulus_session(stimulus_set, record=region)
-    events = []
-    while (event := full.next_input()) is not None:
-        if event.channel != 'control':
-            events.append(event)
+    events = _table_events(stimulus_set, region)
     present = {parse_channel(event.channel)[0] for event in events}
     declared = {parse_channel(channel)[0] for channel in candidate.in_channels}
     chosen = next((family for family in _INPUT_PRIORITY
@@ -64,7 +70,12 @@ class TopographicBenchmark(BenchmarkBase):
     :param region: the region requested from the candidate as ``neural:<region>``.
     :param metric_id: registered metric (default the topographic-alignment metric).
     :param null_seed: seed for the shuffle-coordinate null.
+
+    It sends the input channels of the columns of ``stimulus_set`` and asks for
+    ``neural:<region>``. Each stimulus is an independent trial.
     """
+
+    trial_protocol = 'independent'
 
     def __init__(self, identifier, brain_assembly, stimulus_set, region, *,
                  metric_id='topographic-alignment', null_seed=0,
@@ -74,6 +85,9 @@ class TopographicBenchmark(BenchmarkBase):
         self._brain = brain_assembly
         self._stimulus_set = stimulus_set
         self._region = region
+        self.required_input_channels = frozenset(
+            event.channel for event in _table_events(stimulus_set, region))
+        self.requested_output_channels = frozenset({f'neural:{region}'})
         self._metric = load_metric(metric_id)
         self._null_seed = null_seed
 

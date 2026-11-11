@@ -237,3 +237,12 @@ def test_reset_is_required_before_any_request(scored_reference):
 def _record_events(directory):
     from brainscore.experiments import read_events
     return read_events(directory)
+
+
+def test_declares_its_request_in_and_a_trace_out(scored_reference):
+    from tests.benchmark_declarations import assert_declares, assert_preflight
+    root, _ = scored_reference
+    benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
+                                          reset=lambda repetition: None)
+    assert_declares(benchmark, {'generation_request'}, {'response_trace'})
+    assert_preflight(benchmark)

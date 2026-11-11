@@ -73,6 +73,9 @@ class InducedDyslexia(BenchmarkBase):
     :param modality: ``'vision'`` (word images) or ``'text'`` (word strings).
     """
 
+    # One lesion experiment is one pass; the reading trials inside it are independent.
+    trial_protocol = 'independent'
+
     def __init__(self, localizer_region: str = 'VWFA', n_units: int = 500,
                  control_seed: int = 0, modality: str = 'vision',
                  reading_benchmark=None, localizer_stimuli=None):
@@ -80,13 +83,12 @@ class InducedDyslexia(BenchmarkBase):
         self.n_units = n_units
         self.control_seed = control_seed
         self.modality = modality
-        self.required_modalities = {modality}
         # Declarations decide compatibility (rule 5): the benchmark sends the
-        # words and the lesions, and needs the region's activity, the lesion
+        # words, the reading question and the lesions, and needs the region's activity, the lesion
         # record and the reading answers back. A subject without any of these
         # outputs is N/A before any compute.
         self.required_input_channels = frozenset(
-            modalities_to_input_channels({modality}) | {'lesion'})
+            modalities_to_input_channels({modality}) | {'instruction', 'lesion'})
         self.requested_output_channels = frozenset(
             {'behavior', f'neural:{localizer_region}', 'perturbation'})
 

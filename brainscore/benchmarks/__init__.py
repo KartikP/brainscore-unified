@@ -1,7 +1,9 @@
 """Unified Brain-Score benchmarks.
 
-Benchmarks here call `model.process()` directly (no legacy look_at/digest_text
-shims) and require models that implement the `Subject` interface.
+Benchmarks here reach a subject only through a session (a core helper such as
+`neural_response`, which calls `participate`) and declare what they send
+(`required_input_channels`), what they ask for (`requested_output_channels`)
+and how their trials relate (`trial_protocol`).
 """
 
 # Import each benchmark subpackage so its __init__.py runs and registers

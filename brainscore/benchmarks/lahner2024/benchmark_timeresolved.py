@@ -152,6 +152,12 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     Only the neural target and the regression machinery differ.
     """
 
+    # Sends the clips (or frames sampled from them) on `vision` and asks for the
+    # region it records. Each clip is an independent trial.
+    required_input_channels = frozenset({'vision'})
+    requested_output_channels = frozenset({'neural:IT'})
+    trial_protocol = 'independent'
+
     def __init__(
         self,
         ceiling: Optional[float] = None,
@@ -194,8 +200,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),
             bibtex=BIBTEX,
         )
-        # Accepts native-video AND still-image models (frame-aggregation).
-        self.accepted_modalities = {'video', 'vision'}
 
     @property
     def assembly(self) -> NeuronRecordingAssembly:

@@ -75,6 +75,12 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
     overrides ``__call__`` to drive a per-modality extraction.
     """
 
+    # Sends the visual stream and the audio stream; asks for the visual tower
+    # (`neural:IT`) and the audio tower (`neural:A1`). Each clip is an independent trial.
+    required_input_channels = frozenset({'vision', 'audio'})
+    requested_output_channels = frozenset({'neural:IT', 'neural:A1'})
+    trial_protocol = 'independent'
+
     VALID_MODES = ('concat', 'per_modality', 'video_only', 'audio_only',
                    'banded')
     # Banded-ridge α grid. Per-modality α is selected from this grid via
@@ -101,9 +107,6 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
             reliability_threshold=reliability_threshold,
             identifier_suffix=identifier_suffix,
         )
-        # Multimodal A+V: audio hard-required; visual tower accepts video OR
-        # vision (accepted_modalities inherited from the base).
-        self.required_modalities = {'audio'}
         from pathlib import Path
         self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
         # Optional custom voxel mask. When set, overrides the

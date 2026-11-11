@@ -158,6 +158,12 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     passed in).
     """
 
+    # Sends the clips (or frames sampled from them) on `vision` and asks for the
+    # region it records. Trials are independent clips.
+    required_input_channels = frozenset({'vision'})
+    requested_output_channels = frozenset({'neural:IT'})
+    trial_protocol = 'independent'
+
     def __init__(
         self,
         sample_times_ms: List[float] = list(DEFAULT_SAMPLE_TIMES_MS),
@@ -191,10 +197,6 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),
             bibtex=BIBTEX,
         )
-        # Accepts native-video AND still-image models (the frame-aggregation
-        # fallback in __call__) — any-of gate, see compatibility Check 1b.
-        self.accepted_modalities = {'video', 'vision'}
-
     def _get_voxel_mask(self) -> Optional[np.ndarray]:
         """Return a boolean mask over voxels if reliability filtering is on.
 

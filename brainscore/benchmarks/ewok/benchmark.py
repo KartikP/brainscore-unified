@@ -80,6 +80,8 @@ class EWoKBenchmark(BenchmarkBase):
 
     # Declare the messages the subject must accept and return before a run starts.
     requested_output_channels = frozenset({'response_trace'})
+    # Each request is a self-contained batch of items; the subject keeps no history.
+    trial_protocol = 'independent'
     leaderboard_eligible = False
 
     def __init__(

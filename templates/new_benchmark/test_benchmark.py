@@ -85,6 +85,33 @@ def test_scores_a_candidate():
         'report the unceiled value and the ceiling used, so the number stays interpretable'
 
 
+def test_declares_inputs_outputs_and_protocol():
+    """What the benchmark sends, asks for, and how its trials relate."""
+    import brainscore
+    bench = brainscore.load_benchmark('your-benchmark')
+    assert set(bench.required_input_channels) == {'vision'}
+    assert set(bench.requested_output_channels) == {'neural:IT'}
+    assert bench.trial_protocol == 'independent'
+
+
+def test_preflight_accepts_a_match_and_refuses_a_missing_input_or_output():
+    import brainscore
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    bench = brainscore.load_benchmark('your-benchmark')
+    assert check_compatibility(DummyCandidate(), bench).kind == 'full'
+
+    class NoVision(DummyCandidate):
+        in_channels = {'text'}
+
+    class NoIT(DummyCandidate):
+        out_channels = {'neural:V4'}
+
+    with pytest.raises(CompatibilityError, match='takes in none of the inputs'):
+        check_compatibility(NoVision(), bench)
+    with pytest.raises(CompatibilityError, match='cannot produce output channels'):
+        check_compatibility(NoIT(), bench)
+
+
 def test_asks_the_candidate_for_its_region():
     """The session must tell the subject which response to produce."""
     import brainscore

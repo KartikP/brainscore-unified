@@ -244,6 +244,11 @@ def _ridge_per_voxel_alpha(X_train, Y_train, X_test, stories_train, alpha_grid,
 class LeBel2023Encoding(BenchmarkBase):
     """Voxelwise encoding score over all measured cortical vertices."""
 
+    # Sends the story words as text; each row carries its own context, so trials
+    # are independent. The requested region is set from `region` in __init__.
+    required_input_channels = frozenset({'text'})
+    trial_protocol = 'independent'
+
     def __init__(self, identifier='LeBel2023-UTS03-encoding', region='language_system',
                  delays=DEFAULT_DELAYS, alpha_grid=DEFAULT_ALPHA_GRID,
                  n_splits=5, context_window_tr=5, max_targets=None,
@@ -253,6 +258,7 @@ class LeBel2023Encoding(BenchmarkBase):
         super().__init__(identifier=identifier, ceiling=Score(1.0),
                          version=1, parent='neural_language', bibtex=BIBTEX)
         self._region = region
+        self.requested_output_channels = frozenset({f'neural:{region}'})
         self._delays = tuple(delays)
         self._alpha_grid = tuple(alpha_grid)
         self._n_splits = n_splits
