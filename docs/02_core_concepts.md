@@ -70,9 +70,9 @@ session.collect()
 
 **Row.** A step of a closed-loop task is a row: a mapping of channel to payload, such as `{'observation': ..., 'reward': 0.0}`. A policy receives a row and returns a mapping of output channel to payload, such as `{'motor': action}`.
 
-**Control events.** A session also sends three events on the `control` channel. `begin` opens an episode. `respond` asks the subject to answer now. `end` closes the episode and says why: `terminal`, `truncated` or `failure`. A subject can skip them.
+**Control events.** A session also sends three events on the `control` channel. `begin` opens an episode. `respond` asks the subject to answer now. `end` closes the episode and says why: `terminal`, `truncated` or `failure`. A subject receives them only if it lists `control` among the channels it declares. A subject that does not declare `control` never sees them. A subject with the trait `memory:trial_history` must declare it, or pre-flight rejects it. A benchmark does not list `control` among its inputs.
 
-**Trial protocol.** A task says how trials group into episodes, with `TaskContext(trial_protocol=...)`. With `independent` (the default), each trial is its own episode, so the subject keeps nothing from earlier trials. With `conversation`, all trials are one episode, so the subject sees its earlier trials and answers. A subject that keeps this history declares the trait `memory:trial_history` (for `BrainScoreModel`, `memory='trial_history'`), and `conversation` needs it. `begin` clears the history; it keeps lesions and the task setup.
+**Trial memory.** A task says how long a subject keeps its trials, with `TaskContext(trial_memory=...)`. With `none` (the default), each trial is its own episode, so the subject keeps nothing from earlier trials. With `conversation`, all trials are one episode, so the subject sees its earlier trials and answers. A subject that keeps this history declares the trait `memory:trial_history` (for `BrainScoreModel`, `memory='trial_history'`), and `conversation` needs it. `begin` clears the history; it keeps lesions and the task setup.
 
 ## 5. Benchmark, metric and score
 

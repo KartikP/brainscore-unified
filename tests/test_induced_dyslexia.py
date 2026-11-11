@@ -205,7 +205,7 @@ class TestPreflight:
     def test_declares_what_it_sends_and_needs(self):
         bench = self._bench()
         assert bench.required_input_channels == {'text', 'instruction', 'lesion'}
-        assert bench.trial_protocol == 'independent'
+        assert bench.trial_memory == 'none'
         assert bench.requested_output_channels == {'behavior', 'neural:VWFA', 'perturbation'}
 
     def test_compatible_subject_matches(self):

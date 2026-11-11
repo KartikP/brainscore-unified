@@ -2,7 +2,7 @@
 
 A benchmark states what it sends (``required_input_channels``), what it asks
 for (``requested_output_channels``) and how its trials relate
-(``trial_protocol``). Pre-flight compares these with a subject's declarations
+(``trial_memory``). Pre-flight compares these with a subject's declarations
 by exact channel name, so the tests below need no model, no data and no session.
 """
 import pytest
@@ -32,11 +32,11 @@ class Declared(Subject):
         raise AssertionError('pre-flight must not run a session')
 
 
-def assert_declares(benchmark, inputs, outputs, protocol='independent'):
+def assert_declares(benchmark, inputs, outputs, protocol='none'):
     """The declarations are present and exactly these."""
     assert set(benchmark.required_input_channels) == set(inputs)
     assert set(benchmark.requested_output_channels) == set(outputs)
-    assert benchmark.trial_protocol == protocol
+    assert benchmark.trial_memory == protocol
 
 
 def assert_preflight(benchmark):

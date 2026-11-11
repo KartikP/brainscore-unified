@@ -83,7 +83,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
     # (`neural:IT`) and the audio tower (`neural:A1`). Each clip is an independent trial.
     required_input_channels = frozenset({'vision', 'audio'})
     requested_output_channels = frozenset({'neural:IT', 'neural:A1'})
-    trial_protocol = 'independent'
+    trial_memory = 'none'
 
     VALID_MODES = ('concat', 'per_modality', 'video_only', 'audio_only',
                    'banded')

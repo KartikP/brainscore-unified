@@ -42,10 +42,7 @@ class DummyCandidate(Subject):
         self.requested = tuple(session.requested_output_channels)
         rng = np.random.RandomState(self.seed)
         # One input event per stimulus; answer each with a one-stimulus response.
-        # Control events mark where a trial begins and ends; they carry no stimulus.
         while (event := session.next_input()) is not None:
-            if event.channel == 'control':
-                continue
             response = NeuroidAssembly(
                 rng.randn(1, self.n_neuroids),
                 coords={
@@ -91,7 +88,7 @@ def test_declares_inputs_outputs_and_protocol():
     bench = brainscore.load_benchmark('your-benchmark')
     assert set(bench.required_input_channels) == {'vision'}
     assert set(bench.requested_output_channels) == {'neural:IT'}
-    assert bench.trial_protocol == 'independent'
+    assert bench.trial_memory == 'none'
 
 
 def test_preflight_accepts_a_match_and_refuses_a_missing_input_or_output():

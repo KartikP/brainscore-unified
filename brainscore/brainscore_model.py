@@ -181,11 +181,11 @@ class BrainScoreModel(UnifiedModel):
             A stateful extractor (a recurrent model) keeps its own state the same
             way. A ``begin`` clears that history and the episode state of every
             part; it leaves interventions and the task setup. Under the
-            ``independent`` trial protocol every trial is its own episode, so
+            ``none`` trial memory every trial is its own episode, so
             the history is empty at each trial; under ``conversation`` it grows
             until ``end`` and never carries over to the next episode, session,
             repetition or condition. ``None`` (default): the model keeps no
-            history, so every trial starts empty under either protocol.
+            history, so every trial starts empty under either trial memory.
             ``reset()`` also clears the task setup and the interventions.
         :param policy: ``row -> {output channel: payload}``; chooses an action for
             closed-loop / embodied evaluation. A row is a mapping of channel ->
@@ -341,7 +341,8 @@ class BrainScoreModel(UnifiedModel):
 
     @property
     def in_channels(self):
-        return super().in_channels | self._visual_forms() | set().union(
+        # ``control``: the begin and respond signals clear episode state and group a closed-loop step.
+        return super().in_channels | {'control'} | self._visual_forms() | set().union(
             *(c.declared_input_channels(self) for c in self._declared_capabilities()))
 
     def _visual_forms(self):

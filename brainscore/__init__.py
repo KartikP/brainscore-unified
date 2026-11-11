@@ -371,7 +371,7 @@ def score(model_identifier, benchmark_identifier,
         measures=measures,
     )
     result.attrs['compatibility'] = compatibility.as_attrs()
-    result.attrs['trial_protocol'] = getattr(benchmark, 'trial_protocol', 'independent')
+    result.attrs['trial_memory'] = getattr(benchmark, 'trial_memory', 'none')
     return result
 
 

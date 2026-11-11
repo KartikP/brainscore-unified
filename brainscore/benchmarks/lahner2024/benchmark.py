@@ -162,7 +162,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     # region it records. Trials are independent clips.
     required_input_channels = frozenset({'vision'})
     requested_output_channels = frozenset({'neural:IT'})
-    trial_protocol = 'independent'
+    trial_memory = 'none'
 
     def __init__(
         self,

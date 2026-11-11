@@ -62,10 +62,11 @@ class _Mover(Subject):
     """A subject with only ``participate``: it answers every step with action 0."""
 
     identifier = 'participate-only-mover'
-    in_channels = {'observation', 'instruction', 'reward'}
+    in_channels = {'observation', 'instruction', 'reward', 'control'}
     out_channels = {'motor'}
 
     def participate(self, session):
+        session.declare_inputs(self.in_channels)
         while (event := session.next_input()) is not None:
             if event.channel == 'control' and event.payload == RESPOND:
                 session.respond(StreamEvent('motor', 0, event.t_ms, {}))

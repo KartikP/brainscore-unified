@@ -124,7 +124,7 @@ class HumanAgreementBenchmark(BenchmarkBase):
 
     # Asks for one action per state. Each episode is one trial that starts empty.
     requested_output_channels = frozenset({'motor'})
-    trial_protocol = 'independent'
+    trial_memory = 'none'
 
     def __init__(self, identifier: str, episodes: Sequence[HumanEpisode],
                  n_actions: int, bibtex: str = None):

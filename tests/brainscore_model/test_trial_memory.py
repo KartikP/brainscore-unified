@@ -11,7 +11,7 @@ from brainscore_core.events import Perturbation, PerturbationApplied, Selection,
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.responses import Text
-from brainscore_core.streaming import Session, begin_event, with_trial_protocol
+from brainscore_core.streaming import Session, begin_event, _with_trial_memory
 from brainscore_core.streaming_helpers import apply_state_change, table_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -19,11 +19,11 @@ pytestmark = pytest.mark.unit
 
 N = 5
 STIMULI = StimulusSet({'stimulus_id': [f's{i}' for i in range(N)], 'sentence': list('abcde')})
-STIMULI.identifier = 'trial-protocol'
+STIMULI.identifier = 'trial-memory'
 
 
 def _task(protocol):
-    return TaskContext(instruction='Say anything.', response=Text(), trial_protocol=protocol)
+    return TaskContext(instruction='Say anything.', response=Text(), trial_memory=protocol)
 
 
 def _history_lengths(model, protocol, stimuli=STIMULI, session=None):
@@ -37,12 +37,12 @@ def _model(memory):
                            reply=lambda prompt: str(len(prompt.history)))
 
 
-def test_independent_trials_start_empty_in_any_order():
+def test_trials_without_memory_start_empty_in_any_order():
     model = _model('trial_history')
-    assert _history_lengths(model, 'independent') == ['0'] * N
+    assert _history_lengths(model, 'none') == ['0'] * N
     shuffled = STIMULI.iloc[[3, 0, 4, 1, 2]]
     shuffled.identifier = 'shuffled'
-    assert _history_lengths(model, 'independent', shuffled) == ['0'] * N
+    assert _history_lengths(model, 'none', shuffled) == ['0'] * N
 
 
 def test_a_conversation_accumulates_and_the_next_episode_restarts():
@@ -54,7 +54,7 @@ def test_a_conversation_accumulates_and_the_next_episode_restarts():
 
 def test_a_subject_without_the_trait_always_has_empty_history():
     model = _model(None)
-    assert _history_lengths(model, 'independent') == ['0'] * N
+    assert _history_lengths(model, 'none') == ['0'] * N
     assert _history_lengths(model, 'conversation') == ['0'] * N
 
 
@@ -62,24 +62,24 @@ class _ConversationBenchmark:
     identifier = 'conversation'
     required_input_channels = {'text'}
     requested_output_channels = {'behavior:text'}
-    trial_protocol = 'conversation'
+    trial_memory = 'conversation'
 
 
-def test_a_conversation_protocol_requires_the_trait_and_nothing_else_is_declared():
+def test_a_conversation_memory_requires_the_trait_and_nothing_else_is_declared():
     with pytest.raises(CompatibilityError, match='memory:trial_history'):
         check_channel_compatibility(_model(None), _ConversationBenchmark())
     check_channel_compatibility(_model('trial_history'), _ConversationBenchmark())
-    with pytest.raises(ValueError, match='trial_protocol'):
-        TaskContext(task_type='passive', trial_protocol='chat')
+    with pytest.raises(ValueError, match='trial_memory'):
+        TaskContext(task_type='passive', trial_memory='chat')
 
 
-def test_the_events_carry_the_protocol():
+def test_the_events_carry_the_trial_memory():
     def marks(protocol):
-        events = list(with_trial_protocol(_rows(), protocol))
+        events = list(_with_trial_memory(_rows(), protocol))
         return [e.payload if e.channel == 'control' else 'row' for e in events]
-    assert marks('independent') == ['begin', 'row', 'end'] * 3
+    assert marks('none') == ['begin', 'row', 'end'] * 3
     assert marks('conversation') == ['begin'] + ['row'] * 3 + ['end']
-    session = table_session(STIMULI, task_context=_task('independent'))
+    session = table_session(STIMULI, task_context=_task('none')).declare_inputs({'control', 'text'})
     controls = [e.payload for e in iter(session.next_input, None) if e.channel == 'control']
     assert controls == ['begin', 'end'] * N
 
@@ -195,7 +195,7 @@ def _lesionable(handles):
 
 def test_a_benchmark_that_leaves_its_lesion_fails_and_one_that_undoes_it_passes():
     result = score(_lesionable([]), _Benchmark(undo=True), check_mem=False)
-    assert result.attrs['subject_traits'] == () and result.attrs['trial_protocol'] == 'independent'
+    assert result.attrs['subject_traits'] == () and result.attrs['trial_memory'] == 'none'
     with pytest.raises(RuntimeError, match='left perturbation handle'):
         score(_lesionable([]), _Benchmark(undo=False), check_mem=False)
 
@@ -219,13 +219,13 @@ def test_the_record_tracks_handles_applied_and_undone_across_sessions():
     assert record.applied == {'h0', 'h1'} and record.unreleased == {'h1'}
 
 
-def test_the_experiment_plan_records_traits_and_trial_protocol(tmp_path):
+def test_the_experiment_plan_records_traits_and_trial_memory(tmp_path):
     from brainscore.experiments import Experiment, RecordBehavior, TaskProtocol
     protocol = TaskProtocol(STIMULI, _task('conversation'))
     plan = Experiment(subject=_model('trial_history'), protocol=protocol,
                       tools=[RecordBehavior()], output_dir=tmp_path / 'run').validate()
     assert plan['subject_traits'] == ['memory:trial_history']
-    assert plan['protocol']['config']['trial_protocol'] == 'conversation'
+    assert plan['protocol']['config']['trial_memory'] == 'conversation'
     assert 'memory:trial_history' in plan['protocol']['config']['required_traits']
     with pytest.raises(ValueError, match='memory:trial_history'):
         Experiment(subject=_model(None), protocol=protocol, tools=[RecordBehavior()],

@@ -3,7 +3,7 @@
 Benchmarks here reach a subject only through a session (a core helper such as
 `neural_response`, which calls `participate`) and declare what they send
 (`required_input_channels`), what they ask for (`requested_output_channels`)
-and how their trials relate (`trial_protocol`).
+and how their trials relate (`trial_memory`).
 """
 
 # Import each benchmark subpackage so its __init__.py runs and registers

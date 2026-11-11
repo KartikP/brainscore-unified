@@ -16,7 +16,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Compatibility** | The pre-flight check, from declarations only, of whether a subject can take part in a benchmark. Failing pairs are N/A. |
 | **`CompositeSelector`** | A region defined by units from several layers. |
 | **Condition** | A setting compared within an experiment, such as `baseline` or `silenced`. |
-| **Control events** | Three events on the `control` channel: `begin` opens an episode, `respond` asks the subject to answer, `end` closes the episode and says why (`terminal`, `truncated` or `failure`). |
+| **Control events** | Three events on the `control` channel: `begin` opens an episode, `respond` asks the subject to answer, `end` closes the episode and says why (`terminal`, `truncated` or `failure`). A subject gets them only if it declares the `control` input. |
 | **`EnvironmentSource`** | A source that drives an environment (`reset`, `step`): each action changes the next row. |
 | **Event (`StreamEvent`)** | One item on a channel: `channel`, `payload`, `t_ms`, `meta`. |
 | **Experiment** | A subject, a protocol, tools and an output folder, run together. Produces a saved record; need not produce a score. |
@@ -52,7 +52,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Visual form** | Whether a subject takes pictures (`vision:image`), video (`vision:video`) or both, natively. Benchmarks show each stimulus in its own form when the subject has it, and record any adaptation on the score. |
 | **Prompt** | One trial as a replying model sees it, in order: the instruction, the stimulus parts (in `present` order), then the response's directive. |
 | **Reported / implied** | A reported answer is the model's parsed reply; an implied one is read from its internals (a readout, or a language model's likelihoods). Results say which in `attrs['measure']`. |
-| **Trial protocol** | How a task groups trials into episodes: `independent` (default; each trial is its own episode) or `conversation` (one episode, history kept; needs the trait `memory:trial_history`). |
+| **Trial memory** | How long a subject keeps its trials: `none` (default; each trial is its own episode) or `conversation` (one episode, history kept; needs the trait `memory:trial_history`). |
 | **Tool** | Equipment attached to an experiment to observe or change the run, without changing the subject. |
 | **Row** | One closed-loop step: a mapping of channel to payload. A policy answers it with a mapping of output channel to payload. |
 | **Trait `memory:trial_history`** | A subject declares it when it keeps earlier trials and its answers from `begin` until `end`. A `BrainScoreModel` declares it with `memory='trial_history'`. |

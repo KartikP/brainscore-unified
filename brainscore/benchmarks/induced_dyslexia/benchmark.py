@@ -74,7 +74,7 @@ class InducedDyslexia(BenchmarkBase):
     """
 
     # One lesion experiment is one pass; the reading trials inside it are independent.
-    trial_protocol = 'independent'
+    trial_memory = 'none'
 
     def __init__(self, localizer_region: str = 'VWFA', n_units: int = 500,
                  control_seed: int = 0, modality: str = 'vision',

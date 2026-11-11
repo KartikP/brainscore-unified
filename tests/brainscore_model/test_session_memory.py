@@ -18,7 +18,7 @@ STIMULI.identifier = 'one-back'
 TASK = TaskContext(instruction='Is this word the same as the previous one?',
                    response=Choice(['yes', 'no']))
 CONVERSATION = TaskContext(instruction='Is this word the same as the previous one?',
-                           response=Choice(['yes', 'no']), trial_protocol='conversation')
+                           response=Choice(['yes', 'no']), trial_memory='conversation')
 
 
 def _word(prompt):

@@ -184,9 +184,6 @@ class ParticipateOnlySubject(Subject):
     def participate(self, session):
         event = session.next_input()
         while event is not None:
-            if event.channel == 'control':
-                event = session.next_input()
-                continue
             stimulus_id = event.meta['stimulus_id']
             values = np.random.RandomState(zlib.crc32(str(stimulus_id).encode())).randn(1, 16)
             response = NeuroidAssembly(

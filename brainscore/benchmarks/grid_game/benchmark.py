@@ -59,7 +59,7 @@ class GridGameBenchmark(BenchmarkBase):
     """
 
     # Each episode is one trial that starts with an empty history.
-    trial_protocol = 'independent'
+    trial_memory = 'none'
 
     def __init__(self, size: int = 5, n_episodes: int = 15,
                  max_steps: int = 20, base_seed: int = 500):

@@ -8,7 +8,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | --- | --- |
 | `Subject`, `participate`, `reset` | [Core concepts 1](../02_core_concepts.md#1-subject), [Lesson 1](../../notebooks/lessons/01_your_first_subject.ipynb) |
 | Channels, `StreamEvent`, the channel catalog | [Core concepts 2-3](../02_core_concepts.md#2-channel) |
-| `Session`, `table_session`, `EnvironmentSource`, control events, trial protocol | [Core concepts 4](../02_core_concepts.md#4-session) |
+| `Session`, `table_session`, `EnvironmentSource`, control events, trial memory | [Core concepts 4](../02_core_concepts.md#4-session) |
 | `StimulusSet`, `MultimodalStimulusSet` (stimuli with several input types) | [Write a benchmark](../guides/write_a_benchmark.md) |
 | `Benchmark`, `Score`, compatibility and N/A | [Lesson 2](../../notebooks/lessons/02_your_first_benchmark.ipynb) |
 | `BrainScoreModel` with `extractor` and `region_layer_map` | [Wrap your model](../guides/wrap_your_model.md) |

@@ -58,7 +58,7 @@ class NeuralSessions(_SessionCapability):
         # A subject that keeps history is shown one trial at a time (same scores,
         # different arrival), so each independent trial can begin empty.
         per_trial = (_keeps_history(model)
-                     and (task is None or task.trial_protocol == 'independent'))
+                     and (task is None or task.trial_memory == 'none'))
         with model._behavioral.suspended():
             from .._model.channels import run_neural_channels
 
@@ -267,7 +267,7 @@ def drive_behavior_and_neural_session(model, session, driver: str = "interact") 
                 for index in range(len(stimuli))]
                if streaming or _keeps_history(model) else [(0, stimuli)])
     for index, batch in batches:
-        if index == 0 or task_context.trial_protocol == 'independent':
+        if index == 0 or task_context.trial_memory == 'none':
             model._begin_episode()
         if task_context.response is not None:
             behavior, neural = model._behavioral.respond(batch, answers, regions)

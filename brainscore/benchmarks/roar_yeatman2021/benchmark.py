@@ -197,7 +197,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
     # Asks for the word's label (`behavior`); every word is an independent trial.
     # The input channel is the modality of the variant, set in __init__.
     requested_output_channels = frozenset({'behavior'})
-    trial_protocol = 'independent'
+    trial_memory = 'none'
 
     def __init__(self, modality: str = 'vision', *, prefer_path: str = 'auto'):
         if prefer_path not in ('auto', 'generation', 'readout'):

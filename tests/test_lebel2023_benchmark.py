@@ -327,8 +327,6 @@ class _ParticipateOnlyListener(Subject):
         self.sessions.append(tuple(session.requested_output_channels))
         ids = []
         while (event := session.next_input()) is not None:
-            if event.channel == 'control':
-                continue
             self.seen.append(event.payload)
             ids.append(event.meta['stimulus_id'])
         ids = ids[::-1]
@@ -521,8 +519,7 @@ class TestDeclarations:
                 self.sessions.append(tuple(session.requested_output_channels))
                 sent = []
                 while (event := session.next_input()) is not None:
-                    if event.channel != 'control':
-                        sent.append(event.meta['stimulus_id'])
+                    sent.append(event.meta['stimulus_id'])
                 values = np.stack([np.random.default_rng(sum(map(ord, i))).normal(size=3)
                                    for i in sent]).astype(np.float32)
                 session.respond(StreamEvent('neural:language_system', NeuroidAssembly(

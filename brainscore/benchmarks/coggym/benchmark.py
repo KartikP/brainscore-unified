@@ -44,7 +44,7 @@ class CogGymBenchmark(BenchmarkBase):
     required_input_channels = frozenset({'generation_request'})
     requested_output_channels = frozenset({'response_trace'})
     # Each request carries the whole conversation so far; the subject keeps no history.
-    trial_protocol = 'independent'
+    trial_memory = 'none'
     leaderboard_eligible = False
 
     def __init__(

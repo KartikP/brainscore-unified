@@ -113,7 +113,7 @@ class _Algonauts2025Base(BenchmarkBase):
     # benchmark stacks the TRs itself, so the subject keeps no history across frames.
     required_input_channels = frozenset({'vision'})
     requested_output_channels = frozenset({'neural:IT'})
-    trial_protocol = 'independent'
+    trial_memory = 'none'
 
     def __init__(
         self,

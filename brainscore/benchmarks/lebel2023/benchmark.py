@@ -247,7 +247,7 @@ class LeBel2023Encoding(BenchmarkBase):
     # Sends the story words as text; each row carries its own context, so trials
     # are independent. The requested region is set from `region` in __init__.
     required_input_channels = frozenset({'text'})
-    trial_protocol = 'independent'
+    trial_memory = 'none'
 
     def __init__(self, identifier='LeBel2023-UTS03-encoding', region='language_system',
                  delays=DEFAULT_DELAYS, alpha_grid=DEFAULT_ALPHA_GRID,

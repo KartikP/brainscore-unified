@@ -84,10 +84,11 @@ def test_a_participate_only_subject_gets_a_score():
 
     class Mover(Subject):
         identifier = 'participate-only-mover'
-        in_channels = {'observation'}
+        in_channels = {'observation', 'control'}
         out_channels = {'motor'}
 
         def participate(self, session):
+            session.declare_inputs(self.in_channels)
             while (event := session.next_input()) is not None:
                 if event.channel == 'control' and event.payload == RESPOND:
                     session.respond(StreamEvent('motor', 0, event.t_ms, {}))

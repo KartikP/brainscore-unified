@@ -26,13 +26,8 @@ _INPUT_PRIORITY = ('vision', 'text', 'audio')
 
 
 def _table_events(stimulus_set, region):
-    """The input events of ``stimulus_set``, without the control events."""
-    full = stimulus_session(stimulus_set, record=region)
-    events = []
-    while (event := full.next_input()) is not None:
-        if event.channel != 'control':
-            events.append(event)
-    return events
+    """The input events of ``stimulus_set`` (a session sends no control events unless asked)."""
+    return list(iter(stimulus_session(stimulus_set, record=region).next_input, None))
 
 
 def _record(candidate, stimulus_set, region):
@@ -75,7 +70,7 @@ class TopographicBenchmark(BenchmarkBase):
     ``neural:<region>``. Each stimulus is an independent trial.
     """
 
-    trial_protocol = 'independent'
+    trial_memory = 'none'
 
     def __init__(self, identifier, brain_assembly, stimulus_set, region, *,
                  metric_id='topographic-alignment', null_seed=0,

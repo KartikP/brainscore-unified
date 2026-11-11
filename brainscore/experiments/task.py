@@ -29,7 +29,7 @@ class TaskProtocol(SessionProtocol):
     The task says what the subject does; ``TaskContext(task_type='passive')``
     is plain viewing. ``required_traits`` (e.g. ``{'memory:trial_history'}``) makes a
     subject without them fail validation, as a benchmark marks it N/A. The task's
-    ``trial_protocol`` (``'independent'`` or ``'conversation'``) decides how the
+    ``trial_memory`` (``'none'`` or ``'conversation'``) decides how the
     session groups trials into episodes; ``conversation`` adds the
     ``memory:trial_history`` requirement itself. The
     attached recorders say what is measured: each
@@ -48,7 +48,7 @@ class TaskProtocol(SessionProtocol):
                 inputs.add(event.channel)
         self.stimuli = stimuli
         self.task = task
-        self.required_traits = frozenset(required_traits_for(required_traits, task.trial_protocol))
+        self.required_traits = frozenset(required_traits_for(required_traits, task.trial_memory))
         super().__init__(identifier, self._session, conditions=conditions, repetitions=repetitions,
                          input_channels=inputs, output_channels=(), metadata=metadata)
 
@@ -82,7 +82,7 @@ class TaskProtocol(SessionProtocol):
     def describe(self):
         return {**super().describe(), 'task_type': self.task.task_type,
                 'required_traits': sorted(self.required_traits),
-                'trial_protocol': self.task.trial_protocol,
+                'trial_memory': self.task.trial_memory,
                 'readout_fit': self.task.readout_fit}
 
     @contextmanager
