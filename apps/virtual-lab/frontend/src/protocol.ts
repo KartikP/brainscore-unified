@@ -153,7 +153,7 @@ function issue(step: number): string {
     if (!spec.conditions.length || spec.conditions.length > 12) return 'Provide between one and twelve conditions.';
     if (spec.conditions.some(condition => !condition.name) || new Set(spec.conditions.map(condition => condition.name)).size !== spec.conditions.length) return 'Give each condition a distinct, nonempty name.';
     if (!Number.isInteger(spec.repetitions) || spec.repetitions < 1 || spec.repetitions > 100) return 'Choose 1–100 independent repetitions.';
-    if (spec.task.trial_memory === 'conversation' && !profile?.traits?.includes('memory:trial_history')) return 'This participant does not keep earlier trials, so the trials cannot run as one conversation. Choose that each trial starts fresh.';
+    if (spec.task.trial_memory === 'history' && !profile?.traits?.includes('memory:trial_history')) return 'This participant does not keep earlier trials, so the trials cannot run with history. Choose that each trial starts fresh.';
     for (const condition of spec.conditions) {
       const change = condition.intervention;
       if (!change) continue;
@@ -280,7 +280,7 @@ function showReview(): void {
   const rows: [string, string][] = [['Protocol', spec.identifier], ['Participant', profile?.identifier ?? ''],
     ['Stimuli', stimuli.stimulus_set || `${stimuli.rows.length} rows`], ['Task', spec.task.kind === 'passive' ? 'Plain viewing' : `${spec.task.kind} · ${spec.task.path}`],
     ['Response', spec.task.kind === 'choice' || spec.task.kind === 'legacy' ? spec.task.labels.join(', ') : spec.task.kind],
-    ['Readout fitting', spec.task.readout_fit], ['Memory across trials', spec.task.trial_memory === 'conversation' ? 'Kept: the trials form one conversation' : 'None: each trial starts fresh'], ['Recordings', requestedRecordings(spec).join(', ')],
+    ['Readout fitting', spec.task.readout_fit], ['Memory across trials', spec.task.trial_memory === 'history' ? 'History: the subject keeps what it took in and answered on earlier trials' : 'None: each trial starts fresh'], ['Recordings', requestedRecordings(spec).join(', ')],
     ['Conditions', spec.conditions.map(condition => condition.name).join(', ')], ['Repetitions', String(spec.repetitions)],
     ['Trial schedule', `${spec.conditions.length} conditions × ${spec.repetitions} repetitions × ${stimuli.stimulus_set ? 'registered stimuli' : `${stimuli.rows.length} stimuli`}`]];
   const table = document.createElement('dl'); table.className = 'protocol-summary';

@@ -103,7 +103,7 @@ class YourBenchmark(BenchmarkBase):
     required_input_channels = frozenset({'vision:image'})
     # Outputs: the exact channel you request, e.g. 'neural:<region>' or 'behavior'.
     requested_output_channels = frozenset({'neural:IT'})   # TODO: your region
-    # 'none': every trial starts empty. 'conversation' needs memory:trial_history.
+    # 'none': every trial starts empty. 'history' needs memory:trial_history.
     trial_memory = 'none'
     uses_session = True
 

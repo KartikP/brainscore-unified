@@ -27,7 +27,7 @@ _INPUT_PRIORITY = ('vision', 'text', 'audio')
 
 def _table_events(stimulus_set, region):
     """The input events of ``stimulus_set`` (a session sends no control events unless asked)."""
-    return list(iter(stimulus_session(stimulus_set, record=region).next_input, None))
+    return list(iter(stimulus_session(stimulus_set, [f'neural:{region}']).next_input, None))
 
 
 def _record(candidate, stimulus_set, region):

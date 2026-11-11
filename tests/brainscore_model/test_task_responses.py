@@ -9,7 +9,7 @@ import pytest
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -46,7 +46,7 @@ def _model(replies=None, scores=None, readout=False):
 
 
 def _ask(model, task, channels):
-    session = table_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task_context=task)
     model.participate(session)
     return session
 
@@ -170,7 +170,7 @@ def test_an_unordered_multi_part_stimulus_fails_before_any_reply():
                             reply=lambda prompt: calls.append(prompt) or 'left')
     both = StimulusSet({'stimulus_id': ['a'], 'sentence': ['x'], 'video_path': ['v.mp4']})
     both.identifier = 'both-parts'
-    session = table_session(both, ['behavior:choice'], task_context=TaskContext(
+    session = stimulus_session(both, ['behavior:choice'], task_context=TaskContext(
         instruction='Which way?', response=Choice(['left', 'right'])))
     with pytest.raises(ValueError, match='present'):
         model.participate(session)

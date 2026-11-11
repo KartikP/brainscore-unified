@@ -21,7 +21,7 @@ score = brainscore.score('<some-model>', '<your-id>')
 
 This template records responses with `neural_response(subject=..., stimulus_set=..., record='IT', time_bins=...)`, which runs a session through `subject.participate(session)`. Any `Subject` can be scored: a `BrainScoreModel`, a legacy adapter, or a subject that implements only `participate`. For behavioral tasks use `behavioral_response(subject, task_context)`. Do not call `start_recording`, `start_task` or `process` directly; a session-native `Subject` does not promise them.
 
-The benchmark declares its input channels (`required_input_channels`), its requested output channels (`requested_output_channels`) and its `trial_memory` (`'none'` or `'conversation'`). `score()` refuses a benchmark that declares no inputs.
+The benchmark declares its input channels (`required_input_channels`), its requested output channels (`requested_output_channels`) and its `trial_memory` (`'none'` or `'history'`). `score()` refuses a benchmark that declares no inputs.
 
 Before opening a PR, complete the
 [benchmark addition checklist](../../docs/archive/benchmark_addition_checklist.md) and attach the evidence

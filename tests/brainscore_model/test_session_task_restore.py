@@ -170,12 +170,12 @@ def test_a_neutral_session_keeps_the_remembered_readout():
 def test_a_reset_inside_a_session_stands(monkeypatch):
     """Review finding P2: the scope does not bring back a task that reset() cleared."""
     from brainscore.capabilities.sessions import NeuralSessions
-    from brainscore_core.streaming_helpers import table_session
+    from brainscore_core.streaming_helpers import stimulus_session
     model, _ = _model()
     model.start_task(_task(labels=('bird', 'fish')))
     monkeypatch.setattr(NeuralSessions, 'participate',
                         lambda self, subject, session: subject.reset())
-    model.participate(table_session(_images(), ['neural:IT']))
+    model.participate(stimulus_session(_images(), ['neural:IT']))
     assert model._behavioral.task_context is None
     assert model._behavioral.readout_classifier is None
     model.start_recording('IT')

@@ -83,12 +83,12 @@ def test_passive_export_matches_gui_without_response_labels(subject, tmp_path):
 
 
 def test_protocol_matches_manual_session_and_collects_neural_and_behavior_once(subject, tmp_path):
-    from brainscore_core.streaming_helpers import table_session
+    from brainscore_core.streaming_helpers import stimulus_session
     from brainscore.experiments import ExperimentResult
     model, calls = subject
     experiment, _, _ = build_protocol(model, request(), tmp_path)
-    session = table_session(experiment.protocol.stimuli, ['behavior:choice', 'behavior:probabilities', 'neural:IT'],
-                            task_context=experiment.protocol.task)
+    session = stimulus_session(experiment.protocol.stimuli, ['behavior:choice', 'behavior:probabilities', 'neural:IT'],
+                               experiment.protocol.task)
     model.participate(session)
     expected_behavior, expected_neural = session.collect('behavior:choice'), session.collect('neural:IT')
     model.reset()
@@ -131,11 +131,11 @@ def test_missing_region_trait_and_response_fail_without_inference(subject, tmp_p
     assert calls == []
 
 
-def test_conversation_memory_needs_the_trait_and_the_record_shows_traits_and_memory(subject, tmp_path):
+def test_history_memory_needs_the_trait_and_the_record_shows_traits_and_memory(subject, tmp_path):
     model, calls = subject
-    conversation = spec(task={**spec()['task'], 'trial_memory': 'conversation'})
+    history = spec(task={**spec()['task'], 'trial_memory': 'history'})
     with pytest.raises(ValueError, match='memory:trial_history'):
-        validate_protocol(model, request(conversation), tmp_path)
+        validate_protocol(model, request(history), tmp_path)
     assert calls == []
     with pytest.raises(ValueError):
         ProtocolSpec.parse(spec(task={**spec()['task'], 'trial_memory': 'session'}))

@@ -5,7 +5,7 @@ import pytest
 from brainscore import BrainScoreModel
 from brainscore_core.model_interface import StateChange, PerturbationApplied, Perturbation, Selection
 from brainscore_core.streaming import FixedSource, Session, Source, StreamEvent
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 
 
 def test_session_delivers_inputs_and_collects_responses():
@@ -88,7 +88,7 @@ def test_extractor_and_buffered_session_work_across_modalities(modality, column)
                                     'neuroid_id': ('neuroid', [0, 1])})
     subject = BrainScoreModel(identifier='extractor', extractor={modality: extract},
                               region_layer_map={'region': 'layer'})
-    session = table_session(StimulusSet({column: ['one', 'two']}), ('neural:region',))
+    session = stimulus_session(StimulusSet({column: ['one', 'two']}), ('neural:region',))
     subject.participate(session)
     np.testing.assert_array_equal(session.collect().values, np.ones((2, 2)))
 

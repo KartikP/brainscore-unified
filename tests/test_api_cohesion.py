@@ -282,7 +282,7 @@ def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefe
         def participate(self, session):
             tasks.append(session.task_context)
             while (event := session.next_input()) is not None:
-                if event.channel != 'text' or event.meta.get('role') == 'fitting':
+                if event.channel != 'text':
                     continue
                 label = truth[event.meta['stimulus_id']]
                 session.respond(StreamEvent(

@@ -191,9 +191,9 @@ def stimulus_table(rows: list[dict], uploads: Path) -> Any:
 def table_inputs(table: Any) -> tuple:
     """The input channels a stimulus table presents: read from the session's own events."""
     from brainscore_core.streaming import CONTROL_CHANNEL
-    from brainscore_core.streaming_helpers import table_session
+    from brainscore_core.streaming_helpers import stimulus_session
 
-    session = table_session(table)
+    session = stimulus_session(table)
     channels = set()
     while (event := session.next_input()) is not None:
         if event.channel != CONTROL_CHANNEL:
@@ -309,7 +309,7 @@ def run_session(subject: Any, request: Request, directory: Path, uploads: Path,
     from brainscore.experiments import Experiment, SessionProtocol, RecordInputsOutputs
     from brainscore_core import TaskContext
     from brainscore_core.streaming import Session, StreamEvent
-    from brainscore_core.streaming_helpers import behavior_session, table_session
+    from brainscore_core.streaming_helpers import stimulus_session
 
     if request.output not in subject.out_channels:
         raise ValueError(f"Subject does not declare output {request.output}")
@@ -345,11 +345,11 @@ def run_session(subject: Any, request: Request, directory: Path, uploads: Path,
 
             @contextmanager
             def factory(trial: Any) -> Any:
-                yield behavior_session(task)
+                yield stimulus_session(table, ('behavior',), task)
         elif request.output.startswith("neural:"):
             @contextmanager
             def factory(trial: Any) -> Any:
-                yield table_session(table, (request.output,))
+                yield stimulus_session(table, (request.output,))
         elif request.output == "response_trace" and "generation_request" in subject.in_channels:
             if "sentence" not in table.columns or set(inputs) != {"text"}:
                 raise ValueError("Text generation needs a sentence column; other payloads require their declared request channel")

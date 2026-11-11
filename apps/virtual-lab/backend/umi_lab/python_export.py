@@ -279,8 +279,8 @@ def session_parts(request) -> Parts:
         session = f"Session(events, requested_output_channels=({literal(request.output)},))"
     else:
         add_tables(parts, request)
-        parts.need('brainscore_core.streaming_helpers', 'table_session')
-        parts.body += ("probe = table_session(stimuli)\n"
+        parts.need('brainscore_core.streaming_helpers', 'stimulus_session')
+        parts.body += ("probe = stimulus_session(stimuli)\n"
                        "inputs_declared = sorted({event.channel for event in iter(probe.next_input, None)\n"
                        "                          if event.channel != 'control'})\n")
         if request.output == 'behavior':
@@ -288,10 +288,9 @@ def session_parts(request) -> Parts:
             parts.body += (f"task = TaskContext(task_type='probabilities', instruction={literal(request.instruction or None)},\n"
                            f"    label_set={literal(request.labels or None)}, fitting_stimuli=fitting,\n"
                            f"    prefer_path={literal(request.prefer_path)}, metadata={{'stimulus_set': stimuli}})\n")
-            parts.need('brainscore_core.streaming_helpers', 'behavior_session')
-            session = 'behavior_session(task)'
+            session = "stimulus_session(stimuli, ('behavior',), task)"
         elif request.output.startswith('neural:'):
-            session = f"table_session(stimuli, ({literal(request.output)},))"
+            session = f"stimulus_session(stimuli, ({literal(request.output)},))"
         elif request.output == 'response_trace':
             parts.body += f'''events = [StreamEvent("generation_request", {{
     "system": {literal(request.instruction or None)},

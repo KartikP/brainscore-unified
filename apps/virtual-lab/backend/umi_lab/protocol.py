@@ -74,8 +74,8 @@ class ProtocolSpec:
         if task.get("readout_fit", "current") not in ("current", "intact"):
             raise ValueError("Fit the readout on the current or intact network")
         task["readout_fit"] = task.get("readout_fit", "current")
-        if task.get("trial_memory", "none") not in ("none", "conversation"):
-            raise ValueError("Trial memory must be none (each trial starts fresh) or conversation (the subject keeps earlier trials)")
+        if task.get("trial_memory", "none") not in ("none", "history"):
+            raise ValueError("Trial memory must be none (each trial starts fresh) or history (the subject keeps what it took in and answered on earlier trials)")
         task["trial_memory"] = task.get("trial_memory", "none")
         present = task.get("present", [])
         if not isinstance(present, list) or len(present) > 32 or any(not isinstance(part, str) or not part.strip() or len(part) > 200 for part in present):

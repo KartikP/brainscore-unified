@@ -12,7 +12,7 @@ import torch
 from PIL import Image
 
 from brainscore_core import Perturbation, Selection, StateChange, TaskContext
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.streaming_helpers import apply_state_change
 
@@ -143,7 +143,7 @@ def test_answer_sends_the_image_without_thinking(built, tmp_path):
     stimuli.identifier = 'qwen36-answer-wiring'
     task = TaskContext(task_type='label', label_set=['real', 'pseudo'],
                        instruction='Is this a real word?', prefer_path='generation')
-    session = table_session(stimuli, ['behavior'], task_context=task)
+    session = stimulus_session(stimuli, ['behavior'], task_context=task)
     model.participate(session)
     assert list(session.collect('behavior').values.ravel()) == [0.0, 1.0]   # one-hot over (real, pseudo)
     assert processor.template_kwargs['enable_thinking'] is False
