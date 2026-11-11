@@ -319,4 +319,4 @@ def test_documented_leace_example_runs(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'baseline restored exactly' in result.stdout
     record = RunRecord(tmp_path / 'demo' / 'experiment')
-    assert len([e for e in record.events() if e['kind'] == 'probe']) == 6
+    assert len([e for e in record.events() if e['kind'] == 'probe']) == 12
