@@ -208,6 +208,7 @@ def protocol_parts(request) -> Parts:
         ('label_set', (task['labels'] or None) if kind != 'passive' else None, None),
         ('prefer_path', task['path'], None),
         ('readout_fit', task['readout_fit'], 'current'),
+        ('trial_memory', task['trial_memory'], 'none'),
         ('present', tuple(task['present']) or None, None),
     ]
     args = [f'{name}={literal(value)}' for name, value, default in settings if value != default]
@@ -259,32 +260,11 @@ def protocol_parts(request) -> Parts:
     return parts
 
 
-SESSION_CLASSES = '''\
-class FiniteSession(BufferedSession):
-    complete = False
-    def next_input(self):
-        event = super().next_input()
-        if event is None:
-            self.complete = True
-        return event
-
-class FiniteBehaviorSession(BehavioralSession):
-    complete = False
-    def next_input(self):
-        event = super().next_input()
-        if event is None:
-            self.complete = True
-        return event
-
-'''
-
-
 def session_parts(request) -> Parts:
     parts = Parts()
     parts.need('contextlib', 'contextmanager')
     parts.need('brainscore.experiments', 'Experiment', 'SessionProtocol')
-    parts.need('brainscore_core.streaming', 'BufferedSession', 'StreamEvent')
-    parts.need('brainscore_core.streaming_helpers', 'BehavioralSession')
+    parts.need('brainscore_core.streaming', 'Session', 'StreamEvent')
     if request.mode == 'session':
         if not request.events:
             raise ValueError('Add at least one input event')
@@ -296,19 +276,22 @@ def session_parts(request) -> Parts:
                             f'EVENTS = {rows_literal(request.events)}\n')
         parts.body += ("events = [StreamEvent(row['channel'], row['payload'], row.get('t_ms'), row.get('meta', {})) for row in EVENTS]\n"
                        "inputs_declared = sorted({event.channel for event in events})\n")
-        session = f"FiniteSession(events, requested_output_channels=({literal(request.output)},))"
+        session = f"Session(events, requested_output_channels=({literal(request.output)},))"
     else:
         add_tables(parts, request)
-        parts.need('brainscore_core.streaming_helpers', 'STIMULUS_COLUMN_TO_MODALITY')
-        parts.body += 'inputs_declared = sorted({modality for column, modality in STIMULUS_COLUMN_TO_MODALITY.items() if column in stimuli.columns})\n'
+        parts.need('brainscore_core.streaming_helpers', 'table_session')
+        parts.body += ("probe = table_session(stimuli)\n"
+                       "inputs_declared = sorted({event.channel for event in iter(probe.next_input, None)\n"
+                       "                          if event.channel != 'control'})\n")
         if request.output == 'behavior':
             parts.need('brainscore_core', 'TaskContext')
             parts.body += (f"task = TaskContext(task_type='probabilities', instruction={literal(request.instruction or None)},\n"
                            f"    label_set={literal(request.labels or None)}, fitting_stimuli=fitting,\n"
                            f"    prefer_path={literal(request.prefer_path)}, metadata={{'stimulus_set': stimuli}})\n")
-            session = 'FiniteBehaviorSession(task)'
+            parts.need('brainscore_core.streaming_helpers', 'behavior_session')
+            session = 'behavior_session(task)'
         elif request.output.startswith('neural:'):
-            session = f"FiniteSession(stimulus_set=stimuli, requested_output_channels=({literal(request.output)},))"
+            session = f"table_session(stimuli, ({literal(request.output)},))"
         elif request.output == 'response_trace':
             parts.body += f'''events = [StreamEvent("generation_request", {{
     "system": {literal(request.instruction or None)},
@@ -318,10 +301,10 @@ def session_parts(request) -> Parts:
     for _, row in stimuli.iterrows()]
 inputs_declared = ["generation_request"]
 '''
-            session = "FiniteSession(events, requested_output_channels=('response_trace',))"
+            session = "Session(events, requested_output_channels=('response_trace',))"
         else:
             raise ValueError('Use a declared neural output, behavior or response_trace for stimuli')
-    parts.body += '\n' + SESSION_CLASSES + f'@contextmanager\ndef session_factory(repetition):\n    yield {session}\n\n'
+    parts.body += f'\n@contextmanager\ndef session_factory(repetition):\n    yield {session}\n\n'
     tools = []
     if request.record:
         parts.need('brainscore.experiments', 'RecordInputsOutputs')

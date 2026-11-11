@@ -10,7 +10,6 @@ import importlib.util
 import json
 import math
 from pathlib import Path
-from types import SimpleNamespace
 import time
 from typing import Any, Callable
 
@@ -189,6 +188,19 @@ def stimulus_table(rows: list[dict], uploads: Path) -> Any:
     return table
 
 
+def table_inputs(table: Any) -> tuple:
+    """The input channels a stimulus table presents: read from the session's own events."""
+    from brainscore_core.streaming import CONTROL_CHANNEL
+    from brainscore_core.streaming_helpers import table_session
+
+    session = table_session(table)
+    channels = set()
+    while (event := session.next_input()) is not None:
+        if event.channel != CONTROL_CHANNEL:
+            channels.add(event.channel)
+    return tuple(sorted(channels))
+
+
 def response_preview(value: Any) -> dict:
     """Summarize outputs with bounded previews; full arrays stay in artifacts."""
     import numpy as np
@@ -277,9 +289,8 @@ def same_output(left: Any, right: Any) -> bool:
 
 
 def intervention_tool(subject: Any, change: dict) -> Any:
-    from brainscore.experiments import Tool
+    from brainscore.experiments import Intervene
     from brainscore_core.events import Perturbation, Selection, StateChange
-    from brainscore_core.streaming_helpers import apply_state_change
 
     operation = change.get("operation", "zero")
     channel = "lesion" if operation == "zero" else "stimulation"
@@ -289,38 +300,16 @@ def intervention_tool(subject: Any, change: dict) -> Any:
                                target=Selection(layer=change["target"], indices=change.get("indices")),
                                perturbation=Perturbation(kind=operation, scale=change.get("value", 0),
                                                          amount=change.get("value", 0)))
-
-    class Intervention(Tool):
-        name = "subject_intervention"
-        phase = "intervene"
-
-        def describe(self) -> dict:
-            return change
-
-        @contextmanager
-        def attach(self, context: Any) -> Any:
-            if context.condition != "intervention":
-                yield
-                return
-            applied = apply_state_change(subject, state_change)
-            try:
-                context.publish("intervention_start", applied, source=self.name)
-                yield
-            finally:
-                apply_state_change(subject, StateChange(kind="reset", handle_id=applied.handle_id))
-                context.publish("intervention_end", {"handle_id": applied.handle_id}, source=self.name)
-
-    return Intervention()
+    return Intervene(state_change, conditions=["intervention"], name="subject_intervention")
 
 
 def run_session(subject: Any, request: Request, directory: Path, uploads: Path,
                 send: Callable, cancelled: Callable) -> dict:
     from brainscore import load_stimulus_set
     from brainscore.experiments import Experiment, SessionProtocol, RecordInputsOutputs
-    from brainscore_core.model_interface import TaskContext
-    from brainscore_core.streaming import StreamEvent
-    from brainscore_core.streaming_helpers import STIMULUS_COLUMN_TO_MODALITY
-    from .sessions import FiniteBehaviorSession, FiniteSession
+    from brainscore_core import TaskContext
+    from brainscore_core.streaming import Session, StreamEvent
+    from brainscore_core.streaming_helpers import behavior_session, table_session
 
     if request.output not in subject.out_channels:
         raise ValueError(f"Subject does not declare output {request.output}")
@@ -344,10 +333,10 @@ def run_session(subject: Any, request: Request, directory: Path, uploads: Path,
 
         @contextmanager
         def factory(trial: Any) -> Any:
-            yield FiniteSession(events, requested_output_channels=(request.output,))
+            yield Session(events, requested_output_channels=(request.output,))
     else:
         table = load_stimulus_set(request.stimulus_set) if request.stimulus_set else stimulus_table(request.rows, uploads)
-        inputs = tuple(sorted({modality for column, modality in STIMULUS_COLUMN_TO_MODALITY.items() if column in table.columns}))
+        inputs = table_inputs(table)
         if request.output == "behavior":
             fitting = stimulus_table(request.fitting_rows, uploads) if request.fitting_rows else None
             task = TaskContext(task_type="probabilities", instruction=request.instruction or None,
@@ -356,11 +345,11 @@ def run_session(subject: Any, request: Request, directory: Path, uploads: Path,
 
             @contextmanager
             def factory(trial: Any) -> Any:
-                yield FiniteBehaviorSession(task)
+                yield behavior_session(task)
         elif request.output.startswith("neural:"):
             @contextmanager
             def factory(trial: Any) -> Any:
-                yield FiniteSession(stimulus_set=table, requested_output_channels=(request.output,))
+                yield table_session(table, (request.output,))
         elif request.output == "response_trace" and "generation_request" in subject.in_channels:
             if "sentence" not in table.columns or set(inputs) != {"text"}:
                 raise ValueError("Text generation needs a sentence column; other payloads require their declared request channel")
@@ -374,7 +363,7 @@ def run_session(subject: Any, request: Request, directory: Path, uploads: Path,
 
             @contextmanager
             def factory(trial: Any) -> Any:
-                yield FiniteSession(events, requested_output_channels=(request.output,))
+                yield Session(events, requested_output_channels=(request.output,))
         else:
             raise ValueError("For generation or other request channels, use Session JSON mode")
     if not (set(inputs) & set(subject.in_channels)) or set(subject.required_channels) - set(inputs):
@@ -387,29 +376,16 @@ def run_session(subject: Any, request: Request, directory: Path, uploads: Path,
     if request.intervention:
         tools.append(intervention_tool(subject, request.intervention))
     conditions = ("baseline", "intervention", "restored") if request.intervention else ("baseline",)
-    from brainscore_core.compatibility import check_compatibility
-    declaration = SimpleNamespace(identifier="umi-workbench-session-v1",
-                                  required_input_channels=set(inputs),
-                                  requested_output_channels={request.output})
-    match = check_compatibility(subject, declaration)
-    if match is None:
-        raise RuntimeError("This workbench requires the v3 core compatibility result; select a matching core with --core")
-
-    class MatchedProtocol(SessionProtocol):
-        def validate(self, candidate: Any) -> None:
-            # Keep the common trial/reset loop, but use the v3 declaration-only
-            # pre-flight instead of the older runner's full-match-only gate.
-            check_compatibility(candidate, declaration)
-
-    experiment = Experiment(subject=subject, protocol=MatchedProtocol(
+    experiment = Experiment(subject=subject, protocol=SessionProtocol(
         "umi-workbench-session-v1", factory, input_channels=inputs, output_channels=(request.output,),
         conditions=conditions, repetitions=tuple(range(request.repeats))), tools=tools,
-        output_dir=directory, metadata={"workbench_request": asdict(request), "compatibility": match.as_attrs()})
+        output_dir=directory, metadata={"workbench_request": asdict(request)})
+    compatibility = experiment.validate()["protocol"]["config"].get("compatibility")
     started = time.perf_counter()
     result = experiment.run()
     elapsed = time.perf_counter() - started
     report = {"kind": "session", "subject": subject.identifier, "output": request.output,
-              "compatibility": match.as_attrs(),
+              "compatibility": compatibility, "subject_traits": sorted(subject.traits),
               "outputs": [{"condition": condition, "response": response_preview(result.value[index * request.repeats])}
                           for index, condition in enumerate(conditions)],
               "restored_exact": same_output(result.value[0], result.value[-1]) if request.intervention else None,
@@ -457,6 +433,8 @@ def run_benchmark(subject: Any, request: Request, directory: Path,
     value = result.value
     report = {"kind": "benchmark", "status": "complete", "benchmark": request.benchmark,
               "subject": subject.identifier, "score": response_preview(value),
+              "subject_traits": sorted(value.attrs.get("subject_traits", ())),
+              "trial_memory": value.attrs.get("trial_memory", "none"),
               "note": "Executed by brainscore.score with its compatibility and memory checks; the benchmark protocol is unchanged."}
     return {"report": report, "elapsed_s": time.perf_counter() - started,
             "artifacts": result.manifest["artifacts"], "directory": str(directory)}

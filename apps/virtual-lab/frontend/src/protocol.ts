@@ -2,7 +2,7 @@ export interface ProtocolTask {
   kind: string; instruction: string; labels: string[]; probabilities: boolean;
   confidence?: { low: number; high: number; step: number | null };
   scale?: { low: number; high: number; step: number | null };
-  path: string; readout_fit: string; present: string[];
+  path: string; readout_fit: string; present: string[]; trial_memory: string;
 }
 export interface ProtocolCondition { name: string; intervention?: { target: string; indices: number[] | null; axis: number | null; operation: string; value: number } | null }
 export interface ProtocolSpec {
@@ -85,7 +85,7 @@ export function protocolSpec(): ProtocolSpec {
   const kind = value('protocol-task');
   const task: ProtocolTask = { kind, instruction: value('protocol-instruction'), labels: list(value('protocol-labels')),
     probabilities: kind === 'choice' && checked('protocol-probabilities'), path: value('protocol-path'),
-    readout_fit: value('protocol-fit-policy'), present: list(value('protocol-present')) };
+    readout_fit: value('protocol-fit-policy'), present: list(value('protocol-present')), trial_memory: value('protocol-trial-memory') };
   if (kind === 'rating') task.scale = { low: numeric('protocol-scale-low'), high: numeric('protocol-scale-high'), step: value('protocol-scale-step') === '' ? null : numeric('protocol-scale-step') };
   if (kind === 'choice' && checked('protocol-confidence')) task.confidence = { low: numeric('protocol-confidence-low'), high: numeric('protocol-confidence-high'), step: 1 };
   const conditions = [...$('protocol-conditions').querySelectorAll<HTMLElement>('.protocol-condition')].map(card => {
@@ -97,7 +97,7 @@ export function protocolSpec(): ProtocolSpec {
   });
   return { identifier: value('protocol-name'), task, measurements: { behavior: checked('protocol-record-behavior'), replay: checked('protocol-record-replay'),
     regions: [...$('protocol-regions').querySelectorAll<HTMLInputElement>('input:checked')].map(input => input.value) },
-    conditions, repetitions: numeric('protocol-repetitions'), required_traits: checked('protocol-memory') ? ['memory:session'] : [] };
+    conditions, repetitions: numeric('protocol-repetitions'), required_traits: [] };
 }
 
 export function protocolRequest(stimuli = api.stimuli()): Record<string, unknown> {
@@ -153,7 +153,7 @@ function issue(step: number): string {
     if (!spec.conditions.length || spec.conditions.length > 12) return 'Provide between one and twelve conditions.';
     if (spec.conditions.some(condition => !condition.name) || new Set(spec.conditions.map(condition => condition.name)).size !== spec.conditions.length) return 'Give each condition a distinct, nonempty name.';
     if (!Number.isInteger(spec.repetitions) || spec.repetitions < 1 || spec.repetitions > 100) return 'Choose 1–100 independent repetitions.';
-    if (spec.required_traits.some(trait => !profile?.traits?.includes(trait))) return 'This participant does not declare session memory.';
+    if (spec.task.trial_memory === 'conversation' && !profile?.traits?.includes('memory:trial_history')) return 'This participant does not keep earlier trials, so the trials cannot run as one conversation. Choose that each trial starts fresh.';
     for (const condition of spec.conditions) {
       const change = condition.intervention;
       if (!change) continue;
@@ -280,7 +280,7 @@ function showReview(): void {
   const rows: [string, string][] = [['Protocol', spec.identifier], ['Participant', profile?.identifier ?? ''],
     ['Stimuli', stimuli.stimulus_set || `${stimuli.rows.length} rows`], ['Task', spec.task.kind === 'passive' ? 'Plain viewing' : `${spec.task.kind} · ${spec.task.path}`],
     ['Response', spec.task.kind === 'choice' || spec.task.kind === 'legacy' ? spec.task.labels.join(', ') : spec.task.kind],
-    ['Readout fitting', spec.task.readout_fit], ['Recordings', requestedRecordings(spec).join(', ')],
+    ['Readout fitting', spec.task.readout_fit], ['Memory across trials', spec.task.trial_memory === 'conversation' ? 'Kept: the trials form one conversation' : 'None: each trial starts fresh'], ['Recordings', requestedRecordings(spec).join(', ')],
     ['Conditions', spec.conditions.map(condition => condition.name).join(', ')], ['Repetitions', String(spec.repetitions)],
     ['Trial schedule', `${spec.conditions.length} conditions × ${spec.repetitions} repetitions × ${stimuli.stimulus_set ? 'registered stimuli' : `${stimuli.rows.length} stimuli`}`]];
   const table = document.createElement('dl'); table.className = 'protocol-summary';
@@ -353,7 +353,7 @@ export function updateProtocol(nextProfile: ProtocolProfile | null, nextBusy: bo
 
 export function restoreProtocol(spec: ProtocolSpec): void {
   spec = Object.assign({ identifier: 'my-protocol', repetitions: 1, required_traits: [], conditions: [{ name: 'baseline' }] }, spec, {
-    task: Object.assign({ kind: 'passive', instruction: '', labels: [], probabilities: false, path: 'auto', readout_fit: 'current', present: [] }, spec.task),
+    task: Object.assign({ kind: 'passive', instruction: '', labels: [], probabilities: false, path: 'auto', readout_fit: 'current', present: [], trial_memory: 'none' }, spec.task),
     measurements: Object.assign({ behavior: false, regions: [], replay: false }, spec.measurements) });
   $<HTMLInputElement>('protocol-name').value = spec.identifier;
   $<HTMLSelectElement>('protocol-task').value = spec.task.kind;
@@ -373,7 +373,7 @@ export function restoreProtocol(spec: ProtocolSpec): void {
   $<HTMLInputElement>('protocol-record-replay').checked = spec.measurements.replay;
   renderRegions(spec.measurements.regions);
   $<HTMLInputElement>('protocol-repetitions').value = String(spec.repetitions);
-  $<HTMLInputElement>('protocol-memory').checked = spec.required_traits.includes('memory:session');
+  $<HTMLSelectElement>('protocol-trial-memory').value = spec.task.trial_memory;
   $('protocol-conditions').replaceChildren(...spec.conditions.map(conditionCard));
 }
 

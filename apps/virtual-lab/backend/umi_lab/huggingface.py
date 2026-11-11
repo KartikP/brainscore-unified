@@ -24,8 +24,7 @@ def create_profile() -> LabProfile:
     from transformers.utils.hub import cached_file
     from brainscore.experiments import TorchInstrumentation
     from brainscore.model_helpers.causal_lm import build_causal_lm_subject
-    from brainscore_core.streaming import StreamEvent
-    from .sessions import FiniteSession
+    from brainscore_core.streaming import Session, StreamEvent
 
     identifier = os.environ.get("UMI_LAB_MODEL", "gpt2")
     layer = os.environ.get("UMI_LAB_TARGET", "transformer.h.6.mlp.c_proj")
@@ -66,7 +65,7 @@ def create_profile() -> LabProfile:
     def make_session(trial: object) -> object:
         # One request scores both alternatives in the same batch. No UI calls
         # enter the forward loop; tokenization and extraction remain in Python.
-        yield FiniteSession([StreamEvent("conditional_logprob_request", {
+        yield Session([StreamEvent("conditional_logprob_request", {
             "contexts": [prompt for prompt in prompts for _ in range(2)],
             "targets": [city for _ in prompts for city in (" Paris", " London")],
             "reduction": "sum",

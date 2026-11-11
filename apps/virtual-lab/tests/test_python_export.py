@@ -37,7 +37,7 @@ def configuration(**changes):
 
 @pytest.mark.parametrize('kind,reply', [('text', 'A written answer.'), ('rating', '4'), ('choice', 'yes')])
 def test_generated_task_matches_gui_outputs_without_needing_the_lab_at_runtime(tmp_path, kind, reply):
-    from brainscore_core import BrainScoreModel
+    from brainscore import BrainScoreModel
     calls = []
     subject = BrainScoreModel('export-fixture', supported_modalities={'text'},
                              reply=lambda prompt: calls.append(prompt) or reply)
@@ -58,7 +58,7 @@ def test_generated_task_matches_gui_outputs_without_needing_the_lab_at_runtime(t
 
 def test_fitting_joint_recordings_conditions_and_cleanup_match_gui(tmp_path):
     import torch
-    from brainscore_core import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
     from brainscore.perturbation import build_pytorch_ablation_fn
     net = torch.nn.Sequential(torch.nn.Identity())
@@ -142,7 +142,7 @@ def test_help_needs_no_umi_install_and_benchmark_is_an_explicit_score_call(tmp_p
 
 def test_validate_only_does_not_run_inference_or_create_a_run(monkeypatch, tmp_path, capsys):
     import brainscore
-    from brainscore_core import BrainScoreModel
+    from brainscore import BrainScoreModel
     calls = []
     subject = BrainScoreModel('export-fixture', supported_modalities={'text'}, reply=lambda prompt: calls.append(prompt) or 'answer')
     request = Request(mode='protocol', rows=[{'sentence': 'question'}], protocol=configuration())

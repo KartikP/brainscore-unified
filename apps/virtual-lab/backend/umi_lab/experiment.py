@@ -78,10 +78,6 @@ def build_experiment(profile: LabProfile, plan: Plan, directory: Path,
     required = set(profile.subject.required_channels) - inputs
     if not (inputs & set(profile.subject.in_channels)) or missing or required:
         raise ValueError(f"Incompatible declarations: outputs={sorted(missing)}, required={sorted(required)}")
-    if inputs - set(profile.subject.in_channels):
-        # The installed SessionProtocol currently requires a full input match.
-        # Refuse explicitly rather than claim a partial run that it cannot make.
-        raise ValueError("This runner version requires a full input match; use a compatible profile")
 
     tools = []
     if plan.behavior or plan.activity:

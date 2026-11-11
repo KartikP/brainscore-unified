@@ -32,7 +32,7 @@ def request(configuration=None):
 
 @pytest.fixture
 def subject():
-    from brainscore_core import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
     calls = []
     def extract(stimuli, layers):
@@ -83,12 +83,12 @@ def test_passive_export_matches_gui_without_response_labels(subject, tmp_path):
 
 
 def test_protocol_matches_manual_session_and_collects_neural_and_behavior_once(subject, tmp_path):
-    from brainscore_core.streaming import BufferedSession
+    from brainscore_core.streaming_helpers import table_session
     from brainscore.experiments import ExperimentResult
     model, calls = subject
     experiment, _, _ = build_protocol(model, request(), tmp_path)
-    session = BufferedSession(stimulus_set=experiment.protocol.stimuli, task_context=experiment.protocol.task,
-        requested_output_channels=['behavior:choice', 'behavior:probabilities', 'neural:IT'])
+    session = table_session(experiment.protocol.stimuli, ['behavior:choice', 'behavior:probabilities', 'neural:IT'],
+                            task_context=experiment.protocol.task)
     model.participate(session)
     expected_behavior, expected_neural = session.collect('behavior:choice'), session.collect('neural:IT')
     model.reset()
@@ -123,12 +123,26 @@ def test_conditions_and_repetitions_keep_separate_saved_results(subject, tmp_pat
 def test_missing_region_trait_and_response_fail_without_inference(subject, tmp_path):
     model, calls = subject
     invalid = [spec(measurements={'behavior': True, 'regions': ['missing']}),
-               spec(required_traits=['memory:session']),
+               spec(required_traits=['memory:trial_history']),
                spec(task={'kind': 'text'}, measurements={'behavior': False, 'regions': ['IT']})]
     for configuration in invalid:
         with pytest.raises(ValueError):
             validate_protocol(model, request(configuration), tmp_path)
     assert calls == []
+
+
+def test_conversation_memory_needs_the_trait_and_the_record_shows_traits_and_memory(subject, tmp_path):
+    model, calls = subject
+    conversation = spec(task={**spec()['task'], 'trial_memory': 'conversation'})
+    with pytest.raises(ValueError, match='memory:trial_history'):
+        validate_protocol(model, request(conversation), tmp_path)
+    assert calls == []
+    with pytest.raises(ValueError):
+        ProtocolSpec.parse(spec(task={**spec()['task'], 'trial_memory': 'session'}))
+    result = run_protocol(model, request(), tmp_path / 'experiment', tmp_path, lambda update: None, lambda: False)
+    assert result['report']['trial_memory'] == 'none'
+    assert result['report']['subject_traits'] == []
+    assert validate_protocol(model, request(), tmp_path)['trial_memory'] == 'none'
 
 
 def test_multimodal_trial_order_is_checked_before_any_forward(subject, tmp_path):
@@ -183,7 +197,7 @@ def test_protocol_validation_receipt_is_bound_to_exact_draft_and_model(tmp_path)
 
 @pytest.mark.parametrize('kind, reply, expected', [('text', 'A written answer.', 'A written answer.'), ('rating', '4', 4.)])
 def test_reported_text_and_rating_follow_public_responses_and_saved_views(tmp_path, kind, reply, expected):
-    from brainscore_core import BrainScoreModel
+    from brainscore import BrainScoreModel
     seen = []
     def respond(prompt):
         seen.append(prompt)
@@ -207,7 +221,7 @@ def test_reported_text_and_rating_follow_public_responses_and_saved_views(tmp_pa
 
 def test_intervention_is_condition_specific_and_restored_with_joint_recording(tmp_path):
     import torch
-    from brainscore_core import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
     from brainscore.perturbation import build_pytorch_ablation_fn
     from brainscore.experiments import ExperimentResult

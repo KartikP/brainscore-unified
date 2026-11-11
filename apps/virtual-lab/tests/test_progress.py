@@ -19,7 +19,7 @@ def test_live_phases_count_only_successful_repetitions_and_throttle_inputs(monke
     event('repetition_start')
     event('session_context', {})
     for _ in range(1000):
-        event('input', StreamEvent('vision', object(), None))
+        event('input', StreamEvent('vision:image', object(), None))
     assert [update['activity'] for update in updates] == [
         'Preparing repetition', 'Viewing stimuli and generating responses']
     assert updates[-1]['progress']['completed'] == 0

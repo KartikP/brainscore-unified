@@ -46,7 +46,7 @@ class ProtocolSpec:
         identifier = text(value.get("identifier", "my-protocol"), "Protocol name")
         if len(identifier) > 200:
             raise ValueError("Protocol names must be at most 200 characters")
-        task = dict(fields(value.get("task", {}), {"kind", "instruction", "labels", "probabilities", "confidence", "scale", "path", "readout_fit", "present"}, "task"))
+        task = dict(fields(value.get("task", {}), {"kind", "instruction", "labels", "probabilities", "confidence", "scale", "path", "readout_fit", "present", "trial_memory"}, "task"))
         kind = task.get("kind", "passive")
         if kind not in ("passive", "choice", "rating", "text", "legacy"):
             raise ValueError("Choose plain viewing, choice, rating, text or legacy choices")
@@ -74,6 +74,9 @@ class ProtocolSpec:
         if task.get("readout_fit", "current") not in ("current", "intact"):
             raise ValueError("Fit the readout on the current or intact network")
         task["readout_fit"] = task.get("readout_fit", "current")
+        if task.get("trial_memory", "none") not in ("none", "conversation"):
+            raise ValueError("Trial memory must be none (each trial starts fresh) or conversation (the subject keeps earlier trials)")
+        task["trial_memory"] = task.get("trial_memory", "none")
         present = task.get("present", [])
         if not isinstance(present, list) or len(present) > 32 or any(not isinstance(part, str) or not part.strip() or len(part) > 200 for part in present):
             raise ValueError("Trial part order must be a list of named parts")
@@ -168,7 +171,7 @@ def build_protocol(subject: Any, request: Any, uploads: Path, directory: Path | 
                        instruction=settings["instruction"] or None, response=response,
                        label_set=(settings["labels"] or None) if kind != "passive" else None, fitting_stimuli=fitting,
                        prefer_path=settings["path"], readout_fit=settings["readout_fit"],
-                       present=tuple(settings["present"]) or None)
+                       present=tuple(settings["present"]) or None, trial_memory=settings["trial_memory"])
     if kind != "passive":
         for _, row in stimuli.iterrows():
             trial_prompt(task, row)  # check explicit multimodal ordering without a forward pass
@@ -213,6 +216,7 @@ def validate_protocol(subject: Any, request: Any, uploads: Path) -> dict:
     plan = experiment.validate()
     config = plan["protocol"]["config"]
     return {"identifier": spec.identifier, "subject": subject.identifier,
+            "subject_traits": sorted(subject.traits), "trial_memory": spec.task["trial_memory"],
             "stimuli": len(experiment.protocol.stimuli), "conditions": [condition["name"] for condition in spec.conditions],
             "repetitions": spec.repetitions, "channels": config["output_channels"],
             "compatibility": config.get("compatibility"), "tools": [tool["name"] for tool in plan["tools"]],
@@ -229,6 +233,7 @@ def run_protocol(subject: Any, request: Any, directory: Path, uploads: Path,
     elapsed = time.perf_counter() - started
     config = plan["protocol"]["config"]
     return {"report": {"kind": "protocol", "subject": subject.identifier, "identifier": spec.identifier,
+                       "subject_traits": sorted(subject.traits), "trial_memory": spec.task["trial_memory"],
                        "conditions": [condition["name"] for condition in spec.conditions],
                        "repetitions": spec.repetitions, "stimuli": len(experiment.protocol.stimuli),
                        "channels": config["output_channels"], "compatibility": config.get("compatibility"),

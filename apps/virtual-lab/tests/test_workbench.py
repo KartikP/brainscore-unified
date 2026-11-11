@@ -62,7 +62,7 @@ def test_choice_preview_distinguishes_unique_tied_and_invalid_values():
 
 
 def test_neural_stimulus_session_collects_an_assembly(tmp_path):
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
     def extract(stimuli, layers):
@@ -138,7 +138,7 @@ def test_new_json_catalog_entry_works_without_ui_dispatch_changes(tmp_path):
 
 def test_custom_intervention_runs_through_subject_and_restores(tmp_path):
     import torch
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore.perturbation import build_pytorch_ablation_fn
     model = torch.nn.Sequential(torch.nn.Identity())
 
@@ -159,7 +159,7 @@ def test_custom_intervention_runs_through_subject_and_restores(tmp_path):
 def test_existing_benchmark_path_preserves_direct_score(monkeypatch, tmp_path):
     import brainscore
     from brainscore_core.metrics import Score
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core import TaskContext
     from brainscore_core.streaming_helpers import behavioral_response
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 

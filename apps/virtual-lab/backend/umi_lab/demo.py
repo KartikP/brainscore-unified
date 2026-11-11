@@ -10,8 +10,9 @@ def create_profile() -> LabProfile:
     import numpy as np
     import torch
     from brainscore.experiments import TorchInstrumentation
-    from brainscore_core.model_interface import BrainScoreModel, TaskContext
-    from .sessions import FiniteBehaviorSession
+    from brainscore import BrainScoreModel
+    from brainscore_core import TaskContext
+    from brainscore_core.streaming_helpers import behavior_session
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
     model = torch.nn.Linear(8, 8, bias=False).eval()
@@ -39,7 +40,7 @@ def create_profile() -> LabProfile:
 
     @contextmanager
     def make_session(trial: object) -> object:
-        yield FiniteBehaviorSession(TaskContext(
+        yield behavior_session(TaskContext(
             task_type="probabilities", instruction="Is the first number greater or less?",
             label_set=["greater", "less"], metadata={"stimulus_set": table},
         ))

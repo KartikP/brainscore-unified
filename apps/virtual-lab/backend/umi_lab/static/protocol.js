@@ -71,7 +71,7 @@ export function protocolSpec() {
     const kind = value('protocol-task');
     const task = { kind, instruction: value('protocol-instruction'), labels: list(value('protocol-labels')),
         probabilities: kind === 'choice' && checked('protocol-probabilities'), path: value('protocol-path'),
-        readout_fit: value('protocol-fit-policy'), present: list(value('protocol-present')) };
+        readout_fit: value('protocol-fit-policy'), present: list(value('protocol-present')), trial_memory: value('protocol-trial-memory') };
     if (kind === 'rating')
         task.scale = { low: numeric('protocol-scale-low'), high: numeric('protocol-scale-high'), step: value('protocol-scale-step') === '' ? null : numeric('protocol-scale-step') };
     if (kind === 'choice' && checked('protocol-confidence'))
@@ -85,7 +85,7 @@ export function protocolSpec() {
     });
     return { identifier: value('protocol-name'), task, measurements: { behavior: checked('protocol-record-behavior'), replay: checked('protocol-record-replay'),
             regions: [...$('protocol-regions').querySelectorAll('input:checked')].map(input => input.value) },
-        conditions, repetitions: numeric('protocol-repetitions'), required_traits: checked('protocol-memory') ? ['memory:session'] : [] };
+        conditions, repetitions: numeric('protocol-repetitions'), required_traits: [] };
 }
 export function protocolRequest(stimuli = api.stimuli()) {
     return { mode: 'protocol', ...stimuli, fitting_rows: value('protocol-fitting') ? api.parseCSV(value('protocol-fitting')) : [], protocol: protocolSpec() };
@@ -173,8 +173,8 @@ function issue(step) {
             return 'Give each condition a distinct, nonempty name.';
         if (!Number.isInteger(spec.repetitions) || spec.repetitions < 1 || spec.repetitions > 100)
             return 'Choose 1–100 independent repetitions.';
-        if (spec.required_traits.some(trait => !profile?.traits?.includes(trait)))
-            return 'This participant does not declare session memory.';
+        if (spec.task.trial_memory === 'conversation' && !profile?.traits?.includes('memory:trial_history'))
+            return 'This participant does not keep earlier trials, so the trials cannot run as one conversation. Choose that each trial starts fresh.';
         for (const condition of spec.conditions) {
             const change = condition.intervention;
             if (!change)
@@ -356,7 +356,7 @@ function showReview() {
     const rows = [['Protocol', spec.identifier], ['Participant', profile?.identifier ?? ''],
         ['Stimuli', stimuli.stimulus_set || `${stimuli.rows.length} rows`], ['Task', spec.task.kind === 'passive' ? 'Plain viewing' : `${spec.task.kind} · ${spec.task.path}`],
         ['Response', spec.task.kind === 'choice' || spec.task.kind === 'legacy' ? spec.task.labels.join(', ') : spec.task.kind],
-        ['Readout fitting', spec.task.readout_fit], ['Recordings', requestedRecordings(spec).join(', ')],
+        ['Readout fitting', spec.task.readout_fit], ['Memory across trials', spec.task.trial_memory === 'conversation' ? 'Kept: the trials form one conversation' : 'None: each trial starts fresh'], ['Recordings', requestedRecordings(spec).join(', ')],
         ['Conditions', spec.conditions.map(condition => condition.name).join(', ')], ['Repetitions', String(spec.repetitions)],
         ['Trial schedule', `${spec.conditions.length} conditions × ${spec.repetitions} repetitions × ${stimuli.stimulus_set ? 'registered stimuli' : `${stimuli.rows.length} stimuli`}`]];
     const table = document.createElement('dl');
@@ -454,7 +454,7 @@ export function updateProtocol(nextProfile, nextBusy, nextValidation) {
 }
 export function restoreProtocol(spec) {
     spec = Object.assign({ identifier: 'my-protocol', repetitions: 1, required_traits: [], conditions: [{ name: 'baseline' }] }, spec, {
-        task: Object.assign({ kind: 'passive', instruction: '', labels: [], probabilities: false, path: 'auto', readout_fit: 'current', present: [] }, spec.task),
+        task: Object.assign({ kind: 'passive', instruction: '', labels: [], probabilities: false, path: 'auto', readout_fit: 'current', present: [], trial_memory: 'none' }, spec.task),
         measurements: Object.assign({ behavior: false, regions: [], replay: false }, spec.measurements)
     });
     $('protocol-name').value = spec.identifier;
@@ -477,7 +477,7 @@ export function restoreProtocol(spec) {
     $('protocol-record-replay').checked = spec.measurements.replay;
     renderRegions(spec.measurements.regions);
     $('protocol-repetitions').value = String(spec.repetitions);
-    $('protocol-memory').checked = spec.required_traits.includes('memory:session');
+    $('protocol-trial-memory').value = spec.task.trial_memory;
     $('protocol-conditions').replaceChildren(...spec.conditions.map(conditionCard));
 }
 export function initializeProtocol(callbacks) {

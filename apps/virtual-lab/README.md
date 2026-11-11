@@ -210,7 +210,7 @@ and `docs/guides/experiments.md`:
 5. **Conditions:** name independent subject states, optionally attach a zero,
    scale or drive intervention with an explicit target and units, and choose
    repetitions. Choose whether a readout is fitted on the current or intact
-   network in step 3. Session memory is an explicit requirement, when needed.
+   network in step 3. Choose the memory across trials: none (each trial starts fresh) or kept (the trials form one conversation; the participant must declare that it can remember). The saved record shows the participant's traits and this choice.
 6. **Review and run:** inspect the complete configuration and click **Validate
    setup**. Validation builds a real `TaskProtocol` with the selected tools
    and calls `Experiment.validate()` without inference. **Run protocol** becomes
