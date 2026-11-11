@@ -20,7 +20,7 @@ flowchart LR
         P["participate(session)"]
         MOD[Model: network, policy, API, ...]
     end
-    S -- "input events on channels<br/>(vision, text, audio, observation, lesion)" --> P
+    S -- "input events on channels<br/>(vision:image, text, audio, observation, lesion)" --> P
     P <--> MOD
     P -- "response events on channels<br/>(behavior, neural:IT, motor)" --> M
     M --> SC[Score or saved record]
@@ -29,7 +29,7 @@ flowchart LR
 Read it left to right:
 
 1. The **experiment** (or a **benchmark**, which is an experiment with a fixed scoring rule) decides what to present.
-2. Inputs travel as **events** on named **channels**, such as `vision` or `text`.
+2. Inputs travel as **events** on named **channels**, such as `vision:image` or `text`.
 3. The **subject** is the participant. It receives the inputs through a **session** and responds. Inside, it may run a neural network, a robot policy, a remote API or a simple rule. The experiment does not need to know which.
 4. Responses travel back as events on output channels, such as `behavior` (choices), `neural:IT` (activity standing in for brain area IT) or `motor` (actions).
 5. The experiment compares the responses with measured data and produces a **score**, or saves everything for later analysis.

@@ -178,7 +178,7 @@ def benchmark(monkeypatch):
 class ParticipateOnlySubject(Subject):
     """Deterministic subject with no start_recording or process."""
     identifier = 'participate-only'
-    in_channels = {'vision'}
+    in_channels = {'vision:image'}
     out_channels = {'neural:IT'}
 
     def participate(self, session):

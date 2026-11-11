@@ -64,7 +64,7 @@ def test_undeclared_events_are_skipped_and_declared_ones_delivered():
     session = Session([
         StreamEvent('text', 'not for this subject', 0.0,
                     meta={'stimulus_id': 't', 'column': 'sentence'}),
-        StreamEvent('vision', '/tmp/a.png', 0.0,
+        StreamEvent('vision:image', '/tmp/a.png', 0.0,
                     meta={'stimulus_id': 'a', 'column': 'image_path'}),
     ], ['neural:IT'])
     model.participate(session)

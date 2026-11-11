@@ -106,7 +106,7 @@ class TrialChooser(Subject):
     ``process(stimuli)`` is its own typed step, kept so a Witness can observe it.
     """
 
-    in_channels = frozenset({'vision'})
+    in_channels = frozenset({'vision:image'})
     out_channels = frozenset({'behavior'})
 
     def __init__(self, identifier, choose: Callable[[Any], str], mode: str, instruction: str):

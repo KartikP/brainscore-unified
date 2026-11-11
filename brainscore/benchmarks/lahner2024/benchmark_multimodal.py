@@ -77,7 +77,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
 
     # Sends the visual stream and the audio stream; asks for the visual tower
     # (`neural:IT`) and the audio tower (`neural:A1`). Each clip is an independent trial.
-    required_input_channels = frozenset({'vision', 'audio'})
+    required_input_channels = frozenset({'vision:image', 'vision:video', 'audio'})
     requested_output_channels = frozenset({'neural:IT', 'neural:A1'})
     trial_memory = 'none'
 
@@ -269,7 +269,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         if not takes_audiovisual(candidate):
             raise ValueError(
                 f"{self.identifier} requires the candidate to take both "
-                f"a visual input ('vision', 'vision:image' or 'vision:video') AND "
+                f"a visual input ('vision:image' or 'vision:video') AND "
                 f"'audio', and to record neural:IT and neural:A1. Got "
                 f"in_channels={sorted(candidate.in_channels)}, "
                 f"out_channels={sorted(candidate.out_channels)}. "

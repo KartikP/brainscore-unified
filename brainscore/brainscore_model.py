@@ -12,7 +12,8 @@ from ._model.behavioral import BehavioralReadout
 from ._model.capability_config import normalize_capability_config
 from brainscore_core.contract import UnifiedModel, TaskContext
 from ._model.dispatch import InputDispatcher, register_input_handler
-from brainscore_core.io_catalog import BUILTIN_STIMULUS_COLUMNS, canonical_modality
+from brainscore_core.io_catalog import (BUILTIN_STIMULUS_COLUMNS, MODALITY_TO_INPUT_CHANNEL,
+                                        canonical_modality)
 from brainscore_core.events import (
     InputEvent,
     OutputEvent,
@@ -314,6 +315,7 @@ class BrainScoreModel(UnifiedModel):
                 f"an input it does not declare."
         )
         self._required_modalities = required
+        self._required_keys = set(required_modalities or ())   # raw: 'video' stays 'video'
         self._backbone_id = backbone_id or identifier
 
     @property
@@ -342,13 +344,18 @@ class BrainScoreModel(UnifiedModel):
     @property
     def in_channels(self):
         # ``control``: the begin and respond signals clear episode state and group a closed-loop step.
-        return super().in_channels | {'control'} | self._visual_forms() | set().union(
+        # A visual input names its form: a ``vision`` key takes stills (``vision:image``), a
+        # ``video`` key takes clips (``vision:video``). The raw keys give the forms.
+        return self._input_channels(self._preprocessors) | {'control'} | set().union(
             *(c.declared_input_channels(self) for c in self._declared_capabilities()))
 
-    def _visual_forms(self):
-        """The visual forms taken natively: a ``vision`` key takes stills, a ``video`` key clips."""
-        forms = {'vision': 'vision:image', 'video': 'vision:video'}
-        return {forms[key] for key in self._preprocessors if key in forms}
+    @property
+    def required_channels(self):
+        return self._input_channels(self._required_keys)
+
+    @staticmethod
+    def _input_channels(modalities):
+        return {MODALITY_TO_INPUT_CHANNEL.get(m, m) for m in modalities}
 
     @property
     def traits(self):

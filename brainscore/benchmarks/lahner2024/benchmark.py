@@ -158,9 +158,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     passed in).
     """
 
-    # Sends the clips (or frames sampled from them) on `vision` and asks for the
-    # region it records. Trials are independent clips.
-    required_input_channels = frozenset({'vision'})
+    # Sends the clips on `vision:video`, or frames sampled from them on `vision:image`, by the
+    # subject's declared form, and asks for the region it records. Trials are independent clips.
+    required_input_channels = frozenset({'vision:image', 'vision:video'})
     requested_output_channels = frozenset({'neural:IT'})
     trial_memory = 'none'
 

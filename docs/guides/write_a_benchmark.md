@@ -11,7 +11,7 @@ from brainscore_core.streaming_helpers import table_session
 class MyITBenchmark(Benchmark):
     identifier = 'MyLab2026.IT-pls'
     uses_session = True
-    required_input_channels = {'vision'}          # what the benchmark provides
+    required_input_channels = {'vision:image'}    # what the benchmark provides
     requested_output_channels = {'neural:IT'}     # what it needs back
 
     def __init__(self, stimuli, measured, metric, ceiling):

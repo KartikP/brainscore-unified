@@ -71,7 +71,7 @@ def main() -> None:
     def factory(_trial):
         metadata = {'stimulus_id': 'demo-clip'}
         yield Session([
-            StreamEvent('vision', local_video.resolve(), None, metadata.copy()),
+            StreamEvent('vision:video', local_video.resolve(), None, metadata.copy()),
             StreamEvent('audio', local_video.resolve(), None, metadata.copy()),
             StreamEvent('text', ' '.join(word['word'] for word in words), None,
                         {**metadata, 'transcript': words}),
@@ -81,7 +81,7 @@ def main() -> None:
         subject=subject,
         protocol=SessionProtocol(
             'mirage-native-fidelity', factory,
-            input_channels=('vision', 'audio', 'text'), output_channels=(OUTPUT_CHANNEL,),
+            input_channels=('vision:video', 'audio', 'text'), output_channels=(OUTPUT_CHANNEL,),
         ),
         tools=(RecordInputsOutputs(),), output_dir=args.out / 'record',
         metadata={'purpose': 'integration fidelity; no human response data or fitting'},

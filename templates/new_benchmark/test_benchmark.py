@@ -31,7 +31,7 @@ class DummyCandidate(Subject):
     """
 
     identifier = 'dummy-candidate'
-    in_channels = {'vision'}
+    in_channels = {'vision:image'}
     out_channels = {'neural:IT'}
 
     def __init__(self, n_neuroids=16, seed=0):
@@ -86,7 +86,7 @@ def test_declares_inputs_outputs_and_protocol():
     """What the benchmark sends, asks for, and how its trials relate."""
     import brainscore
     bench = brainscore.load_benchmark('your-benchmark')
-    assert set(bench.required_input_channels) == {'vision'}
+    assert set(bench.required_input_channels) == {'vision:image'}
     assert set(bench.requested_output_channels) == {'neural:IT'}
     assert bench.trial_memory == 'none'
 

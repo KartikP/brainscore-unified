@@ -225,12 +225,12 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     subject = namespace['ImageSubject'](ToFloat().eval())
     inputs = np.ones((1, 3, 1, 1), dtype=np.uint8)  # one 3-channel 1x1 uint8 image
     def session():
-        return Session([StreamEvent(channel='vision', payload=inputs.copy(), t_ms=0)], ['behavior'])
+        return Session([StreamEvent(channel='vision:image', payload=inputs.copy(), t_ms=0)], ['behavior'])
     class SessionBenchmark(Benchmark):
         identifier = 'notebook-channel-transfer'
         parent = 'behavioral'
         uses_session = True
-        required_input_channels = {'vision'}
+        required_input_channels = {'vision:image'}
         requested_output_channels = {'behavior'}
         def __call__(self, candidate):
             run = session()
@@ -242,7 +242,7 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
         subject=subject,
         protocol=SessionProtocol(
             identifier='notebook-channels', session_factory=lambda repetition: nullcontext(session()),
-            input_channels=['vision'], output_channels=['behavior'],
+            input_channels=['vision:image'], output_channels=['behavior'],
         ),
         output_dir=tmp_path / 'experiment',
     )

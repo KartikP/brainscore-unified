@@ -256,7 +256,7 @@ def test_external_marker_that_does_not_match_the_table_is_never_merged(change):
         elif change == 'foreign_column':
             meta['column'] = 'image_path'
     if change == 'wrong_channel':
-        events = [StreamEvent('vision', e.payload, e.t_ms, meta=e.meta) for e in events]
+        events = [StreamEvent('vision:image', e.payload, e.t_ms, meta=e.meta) for e in events]
         session = Session(events, ['neural:A'], streaming=True)
         session.stimulus_set = table()
         assert all(_table_row_position(session, e) is None for e in events)

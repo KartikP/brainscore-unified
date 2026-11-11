@@ -31,7 +31,7 @@ def validate_cameras(cameras) -> None:
         raise ValueError('Environment cameras must be a name-to-frame mapping.')
     issues = []
     for name, rgb in cameras.items():
-        issues += [f"camera '{name}': {m}" for m in check_payload('vision', rgb)]
+        issues += [f"camera '{name}': {m}" for m in check_payload('vision:image', rgb)]
         shape = getattr(rgb, 'shape', None)
         if shape is not None and not (len(shape) == 3 and shape[-1] == 3):
             issues.append(f"camera '{name}': rgb shape {tuple(shape)} is not "

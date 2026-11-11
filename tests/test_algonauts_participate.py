@@ -164,7 +164,7 @@ TRS = 10
 @pytest.mark.parametrize('factory', [Algonauts2025Friends, Algonauts2025FriendsS7, Algonauts2025OOD])
 def test_every_split_declares_vision_in_and_it_out(factory, tmp_path):
     benchmark = factory(subject=1, assembly_root=tmp_path)
-    assert_declares(benchmark, {'vision'}, {'neural:IT'})
+    assert_declares(benchmark, {'vision:image'}, {'neural:IT'})
     assert_preflight(benchmark)
 
 

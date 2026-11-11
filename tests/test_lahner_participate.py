@@ -132,8 +132,9 @@ def test_frames_are_pooled_per_clip_from_the_benchmark_table():
 
 def test_routing_reads_declared_channels_only():
     assert _util.takes_audiovisual(Recorder({'vision:video', 'audio'}, regions=('IT', 'A1')))
-    assert _util.takes_audiovisual(Recorder({'vision', 'audio'}, regions=('IT', 'A1')))
+    assert _util.takes_audiovisual(Recorder({'vision:image', 'audio'}, regions=('IT', 'A1')))
     assert not _util.takes_audiovisual(Recorder({'vision:video'}, regions=('IT', 'A1')))
+    assert not _util.takes_audiovisual(Recorder({'vision', 'audio'}, regions=('IT', 'A1')))   # a bare name is no form
     assert not _util.takes_audiovisual(Recorder({'vision:video', 'audio'}, regions=('IT',)))
 
 
@@ -406,12 +407,12 @@ TWO_TOWERS = [
 @pytest.mark.parametrize('factory', SINGLE_TOWER, ids=lambda f: f.__name__)
 def test_single_tower_variants_declare_vision_in_and_it_out(factory):
     benchmark = factory()
-    assert_declares(benchmark, {'vision'}, {'neural:IT'})
+    assert_declares(benchmark, {'vision:image', 'vision:video'}, {'neural:IT'})
     assert_preflight(benchmark)
 
 
 @pytest.mark.parametrize('factory', TWO_TOWERS, ids=lambda f: f.__name__)
 def test_audio_visual_variants_declare_both_towers(factory):
     benchmark = factory()
-    assert_declares(benchmark, {'vision', 'audio'}, {'neural:IT', 'neural:A1'})
+    assert_declares(benchmark, {'vision:image', 'vision:video', 'audio'}, {'neural:IT', 'neural:A1'})
     assert_preflight(benchmark)
