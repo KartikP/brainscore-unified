@@ -2,7 +2,7 @@
 import pytest
 import torch
 
-from brainscore_core.brainscore_model import BrainScoreModel
+from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.perturbation import build_pytorch_ablation_fn

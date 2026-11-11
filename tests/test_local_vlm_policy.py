@@ -64,12 +64,12 @@ def test_unparsed_answer_is_marked_and_plays_the_fallback():
     from brainscore.model_helpers.local_vlm_policy import response_for_answer
     stats = {'parse_miss': 0}
     missed = response_for_answer('no idea', -1, lambda: 3, stats)
-    assert missed.action == 3 and stats['parse_miss'] == 1
-    assert missed.metadata == {'answer': 'no idea', 'valid': False,
+    assert missed.channel == 'motor' and missed.payload == 3 and stats['parse_miss'] == 1
+    assert missed.meta == {'answer': 'no idea', 'valid': False,
                                'parse_error': 'the answer names no action', 'fallback_action': 3}
     parsed = response_for_answer('Action: up', 0, lambda: 3, stats)
-    assert parsed.action == 0 and parsed.metadata['valid'] and stats['parse_miss'] == 1
-    assert parsed.metadata['parse_error'] is None and parsed.metadata['fallback_action'] is None
+    assert parsed.payload == 0 and parsed.meta['valid'] and stats['parse_miss'] == 1
+    assert parsed.meta['parse_error'] is None and parsed.meta['fallback_action'] is None
 
 
 def test_visual_policy_runs_a_loaded_model_and_keeps_the_random_fallback():
@@ -97,8 +97,8 @@ def test_visual_policy_runs_a_loaded_model_and_keeps_the_random_fallback():
     policy, stats = visual_policy(Model(), Processor())
     frame = {'frame': np.zeros((8, 8, 3), np.uint8)}
     first, second = policy(frame, ()), policy(frame, ())
-    assert first.action == 2 and first.metadata['valid']
+    assert first.payload == 2 and first.meta['valid']
     # Unparsed answers draw the same seeded actions the builders always used.
-    assert second.action == np.random.RandomState(0).randint(0, 4)
-    assert not second.metadata['valid'] and second.metadata['answer'] == 'I am not sure'
+    assert second.payload == np.random.RandomState(0).randint(0, 4)
+    assert not second.meta['valid'] and second.meta['answer'] == 'I am not sure'
     assert stats == {'calls': 2, 'parse_miss': 1}

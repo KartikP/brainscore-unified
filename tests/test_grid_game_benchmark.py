@@ -52,3 +52,32 @@ def test_registered():
     assert 'GridGame-reach-5x5' in brainscore.benchmark_registry
     bm = brainscore.load_benchmark('GridGame-reach-5x5')
     assert isinstance(bm, GridGameBenchmark)
+
+
+from brainscore_core.contract import Subject
+from brainscore_core.streaming import RESPOND, StreamEvent
+
+
+class _Mover(Subject):
+    """A subject with only ``participate``: it answers every step with action 0."""
+
+    identifier = 'participate-only-mover'
+    in_channels = {'observation', 'instruction', 'reward', 'control'}
+    out_channels = {'motor'}
+
+    def participate(self, session):
+        session.declare_inputs(self.in_channels)
+        while (event := session.next_input()) is not None:
+            if event.channel == 'control' and event.payload == RESPOND:
+                session.respond(StreamEvent('motor', 0, event.t_ms, {}))
+
+
+def test_declares_the_rows_it_sends_and_the_action_it_needs(bench):
+    from tests.benchmark_declarations import assert_declares, assert_preflight
+    assert_declares(bench, {'observation', 'instruction', 'reward'}, {'motor'})
+    assert_preflight(bench)
+
+
+def test_a_participate_only_subject_gets_a_score(bench):
+    score = bench(_Mover())
+    assert 0.0 <= score.attrs['raw'] <= 1.0

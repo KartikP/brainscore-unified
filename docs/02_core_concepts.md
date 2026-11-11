@@ -13,6 +13,7 @@ A **subject** is the participant in an experiment. It is any Python object that 
 | `out_channels` | The output channels it can produce. |
 | `participate(session)` | The one evaluation method: read inputs, send responses, return when inputs run out. |
 | `reset()` | Optional. Clears run state (history, active perturbations) between independent runs. |
+| `traits` | Optional. Properties a benchmark may require, such as `memory:trial_history`. |
 
 ```python
 from brainscore_core import Subject
@@ -36,9 +37,9 @@ A **channel** names one kind of information flowing into or out of a subject. Na
 
 | Inputs | Outputs |
 | --- | --- |
-| `vision` (images and video), `text`, `audio`, `observation` (environment state), `instruction`, `lesion`, `stimulation` | `behavior` (choices, ratings), `neural:<region>` (activity standing in for a brain region, such as `neural:IT`), `motor` (actions), `perturbation` |
+| `vision:image` (pictures), `vision:video` (clips), `text`, `audio`, `observation` (environment state), `instruction`, `lesion`, `stimulation` | `behavior` (choices, ratings), `neural:<region>` (activity standing in for a brain region, such as `neural:IT`), `motor` (actions), `perturbation` |
 
-Channel names come from a shared catalog, so a benchmark and a subject mean the same thing by `vision`. You can register new families (see [Extend UMI](guides/extend.md)).
+Channel names come from a shared catalog, and they match by exact name: `vision:image` does not stand for `vision` or for `vision:video`. You can register new families (see [Extend UMI](guides/extend.md)).
 
 ## 3. Event
 
@@ -50,23 +51,28 @@ StreamEvent(channel='text', payload='elephant', t_ms=0)
 
 ## 4. Session
 
-A **session** is one run of an experiment with one subject. It has two methods: `next_input()` returns the next input event or `None` when there are no more, and `respond(event)` accepts a response. `collect()` returns the responses afterwards.
+A **session** is one run of an experiment with one subject. There is one session class, `Session`. You build it from a **source** of inputs, the outputs you request and the task. A source is a list or generator of events, or an environment. A session has two methods: `next_input()` returns the next input event or `None` when there are no more, and `respond(event)` accepts a response. `collect()` returns the responses afterwards. The session gives the subject only the channels it declares.
 
 ```python
-from brainscore_core.streaming import BufferedSession
+from brainscore_core.streaming import Session
 
-session = BufferedSession(inputs=[StreamEvent('text', w, t_ms=i * 500) for i, w in enumerate(['cat', 'elephant'])])
+session = Session([StreamEvent('text', w, t_ms=i * 500) for i, w in enumerate(['cat', 'elephant'])])
 WordLengthReader().participate(session)
 session.collect()
 ```
 
-**Sessions do not have to stream.** One event can carry a whole batch, and `BufferedSession(stimulus_set=...)` delivers a full stimulus table. Streaming one input at a time, time windows and real-time clocks are options, not requirements. Session types:
+**Sessions do not have to stream.** One event can carry a whole batch, and `table_session(stimulus_set, ...)` (from `brainscore_core.streaming_helpers`) delivers a full stimulus table. Streaming one input at a time, time windows and real-time pacing are options. Windows and pacing are generators that you give to `Session` as its source.
 
-| Session | Use it when |
+| Source | Use it when |
 | --- | --- |
-| `BufferedSession` | Inputs are fixed in advance (most benchmarks). |
-| `EnvironmentSession` | Each action changes the next input (games, simulators, robots). |
-| `StreamingStimulusSetSession`, `WindowedStreamSession`, `RealTimeStreamSession` | Delivery timing matters. Advanced. |
+| A list or generator of events | Inputs are fixed in advance (most benchmarks). |
+| `EnvironmentSource` | Each action changes the next input (games, simulators, robots). `run_environment` builds it for you. |
+
+**Row.** A step of a closed-loop task is a row: a mapping of channel to payload, such as `{'observation': ..., 'reward': 0.0}`. A policy receives a row and returns a mapping of output channel to payload, such as `{'motor': action}`.
+
+**Control events.** A session also sends three events on the `control` channel. `begin` opens an episode. `respond` asks the subject to answer now. `end` closes the episode and says why: `terminal`, `truncated` or `failure`. A subject receives them only if it lists `control` among the channels it declares. A subject that does not declare `control` never sees them. A subject with the trait `memory:trial_history` must declare it, or pre-flight rejects it. A benchmark does not list `control` among its inputs.
+
+**Trial memory.** A task says how long a subject keeps its trials, with `TaskContext(trial_memory=...)`. With `none` (the default), each trial is its own episode, so the subject keeps nothing from earlier trials. With `conversation`, all trials are one episode, so the subject sees its earlier trials and answers. A subject that keeps this history declares the trait `memory:trial_history` (for `BrainScoreModel`, `memory='trial_history'`), and `conversation` needs it. `begin` clears the history; it keeps lesions and the task setup.
 
 ## 5. Benchmark, metric and score
 
@@ -82,7 +88,7 @@ class ToyReadingTimes(Benchmark):
     requested_output_channels = {'behavior'}
 
     def __call__(self, subject):
-        session = BufferedSession(inputs=[...])   # present the stimuli
+        session = Session([...])   # present the stimuli
         subject.participate(session)
         return Score(my_metric(session.collect(), measured_data))
 ```
@@ -107,7 +113,7 @@ Each role names its channel fields differently; use the one for the object you a
 | Benchmark | `required_input_channels` | `requested_output_channels` |
 | `SessionProtocol` | `input_channels` | `output_channels` |
 
-**Stills and clips.** `vision` is the one visual channel, and a subject also says which forms it takes natively: `vision:still` (pictures) and `vision:clip` (video). A benchmark shows each subject the stimulus in the form people saw it when the subject has that form, and adapts it only when it doesn't (for example, frames from each clip for a picture-only model), recording the adaptation on the score as `attrs['input_adaptation']`.
+**Pictures and clips.** A subject says which visual forms it takes natively: `vision:image` (pictures) and `vision:video` (video). A benchmark shows each subject the stimulus in the form people saw it when the subject has that form, and adapts it only when it doesn't (for example, frames from each clip for a picture-only model), recording the adaptation on the score as `attrs['input_adaptation']`.
 
 ```python
 import brainscore
@@ -128,7 +134,7 @@ Writing `participate` by hand works for anything. For neural networks, `BrainSco
 | `intervention` | Your function that applies a perturbation and returns how to undo it. | `lesion`, `stimulation` in |
 
 ```python
-from brainscore_core import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore.model_helpers.vision_wrapper import VisionWrapper
 
 model = BrainScoreModel(

@@ -12,7 +12,7 @@ from brainscore.experiments import (
 )
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 
 pytestmark = pytest.mark.unit
 
@@ -45,7 +45,7 @@ def test_intervention_validation_names_the_selected_tool(tool_class, invalid):
 def test_selected_units_conditions_and_recording_order(tmp_path):
     class Model(Subject):
         identifier = 'scaled'
-        in_channels, out_channels = {'stimulus'}, {'behavior'}
+        in_channels, out_channels = {'observation'}, {'behavior'}
 
         def __init__(self):
             self.layer = torch.nn.Identity()
@@ -55,11 +55,11 @@ def test_selected_units_conditions_and_recording_order(tmp_path):
 
         def participate(self, session):
             event = session.next_input()
-            session.emit(StreamEvent('behavior', self.layer(torch.tensor(event.payload)).numpy(), None))
+            session.respond(StreamEvent('behavior', self.layer(torch.tensor(event.payload)).numpy(), None))
 
     @contextmanager
     def factory(trial):
-        yield InMemorySession([StreamEvent('stimulus', [2., 4.], None)])
+        yield Session([StreamEvent('observation', [2., 4.], None)])
 
     subject = Model()
     result = Experiment(

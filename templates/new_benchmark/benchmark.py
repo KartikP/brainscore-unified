@@ -45,7 +45,7 @@ def _load_assembly():
     """TODO: load your real target measurements as a DataAssembly.
 
     Replace this whole function. For naturalistic/temporal data, build the stimulus_set
-    + per-(subject, run) assembly and reuse `brainscore_core/temporal.py`
+    + per-(subject, run) assembly and reuse `brainscore/temporal.py`
     (temporal_bin, hrf_convolve, contiguous_block_cv).
 
     The synthetic stand-in below exists so the template runs before you have data. Note
@@ -97,8 +97,13 @@ def _ceiling() -> Score:
 
 class YourBenchmark(BenchmarkBase):
     # What the benchmark shows and what it asks for, checked before any compute.
-    required_input_channels = {'vision'}
-    requested_output_channels = {'neural:IT'}   # TODO: your region
+    # Inputs: the channel names of what the human participants received, as bare
+    # families ('vision', 'text', 'audio'); a subject matches each name exactly.
+    required_input_channels = frozenset({'vision'})
+    # Outputs: the exact channel you request, e.g. 'neural:<region>' or 'behavior'.
+    requested_output_channels = frozenset({'neural:IT'})   # TODO: your region
+    # 'none': every trial starts empty. 'conversation' needs memory:trial_history.
+    trial_memory = 'none'
     uses_session = True
 
     def __init__(self):

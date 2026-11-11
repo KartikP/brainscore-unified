@@ -1,0 +1,20 @@
+name: nightly v2
+# GitHub runs schedules only from the default branch (unified-model-interface).
+# This file must exist there. It starts the full offline run (macOS, qualification
+# tests, examples) on unified-model-interface-v2.
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+permissions:
+  actions: write
+  contents: read
+jobs:
+  dispatch:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Start the full run on v2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run offline-tests.yml --repo "$GITHUB_REPOSITORY" --ref unified-model-interface-v2

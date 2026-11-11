@@ -9,14 +9,14 @@ from brainscore.experiments import (
 from brainscore.model_helpers.response_trace import build_trace_subject
 from brainscore.run_record import RunRecord
 from brainscore_core.contract import Subject
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 
 pytestmark = pytest.mark.unit
 
 
 @contextmanager
 def session(trial):
-    active = InMemorySession([StreamEvent('generation_request', {'prompt': '6 * 7?'}, 10)])
+    active = Session([StreamEvent('generation_request', {'prompt': '6 * 7?'}, 10)])
     active.requested_output_channels = ('response_trace',)
     yield active
 
@@ -99,10 +99,10 @@ class StreamingSubject(Subject):
                 {'text': '7 is 42.', 'format': 'delta', 'kind': 'chain_of_thought'},
                 {'text': '6 times 7 is 42.', 'format': 'snapshot', 'kind': 'summary'},
             ]):
-                session.emit(StreamEvent('response_trace', {'raw': {'reasoning': block}}, request.t_ms + offset))
+                session.respond(StreamEvent('response_trace', {'raw': {'reasoning': block}}, request.t_ms + offset))
                 if self.fail:
                     raise RuntimeError('provider disconnected')
-            session.emit(StreamEvent('response_trace', {'raw': {'text': '42'}, 'answer': 42}, 20))
+            session.respond(StreamEvent('response_trace', {'raw': {'text': '42'}, 'answer': 42}, 20))
 
 
 def test_stream_fragments_keep_order_and_are_not_combined(tmp_path):

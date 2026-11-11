@@ -6,7 +6,7 @@ import pytest
 
 pytestmark = pytest.mark.slow  # loads real CLIP / GPT-2 weights — run on demand
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 

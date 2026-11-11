@@ -6,8 +6,6 @@ must snapshot them in on_start. Observation failures propagate explicitly.
 Use distinct subject instances for concurrent experiments.
 """
 
-from brainscore_core.streaming import StreamEvent
-
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 import threading
@@ -105,39 +103,31 @@ def intervene(subject, state_change):
         subject.process(StateChange(kind='reset', handle_id=applied.handle_id))
 
 
-class ObservedSession:
-    """Record session inputs and outputs without changing the session protocol.
+@contextmanager
+def observed(session, sink):
+    """Record the session's inputs and outputs to ``sink.record(direction, event)``.
 
-    The sink implements record(direction, event). Pass this proxy to participate().
-    Its properties and collect() are delegated to the original session.
+    Wrap the call that runs a subject: ``with observed(session, sink):
+    subject.participate(session)``. Inputs are recorded as the source delivers
+    them, before the subject's input filter; outputs as the subject responds.
+    A closed-loop source also reports each action proposal and receipt, with its
+    status; a failed action goes to ``sink.on_error`` too.
     """
+    last = []
 
-    def __init__(self, session, sink):
-        self.session, self.sink = session, sink
+    def on_error(event, error):
+        report = getattr(sink, 'on_error', None)
+        if callable(report):
+            report(Call('emit', (event,), {}), error)
 
-    def __getattr__(self, name):
-        return getattr(self.session, name)
+    def on_action(event):
+        last[:] = [event]
+        sink.record('output', event)
 
-    def next_input(self):
-        event = self.session.next_input()
-        if event is not None:
-            self.sink.record('input', event)
-        return event
+    def on_output(event):
+        if not (last and event is last[0]):  # a receipt is already recorded
+            sink.record('output', event)
 
-    def emit(self, event: StreamEvent) -> None:
-        """Compatibility entry point for existing subjects."""
-        return self.respond(event)
-
-    def respond(self, event: StreamEvent) -> None:
-        respond = getattr(self.session, 'respond', None) or self.session.emit
-        if not getattr(self.session, 'records_action_execution', False):
-            self.sink.record('output', event)
-            return respond(event)
-        try:
-            with self.session.observe_actions(lambda saved: self.sink.record('output', saved)):
-                return respond(event)
-        except BaseException as error:
-            on_error = getattr(self.sink, 'on_error', None)
-            if callable(on_error):
-                on_error(Call('emit', (event,), {}), error)
-            raise
+    with session.observe(lambda event: sink.record('input', event), on_output,
+                         on_error, on_action):
+        yield session

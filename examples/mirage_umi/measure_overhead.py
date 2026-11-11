@@ -18,7 +18,7 @@ import numpy as np
 from brainscore.experiments import Experiment, RecordInputsOutputs, SessionProtocol
 from brainscore.models.mirage import MirageRuntime, MirageSubject
 from brainscore.models.mirage.model import Clip, OUTPUT_CHANNEL, SUBJECTS
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 
 
 MODES = ('direct', 'umi', 'recorded')
@@ -131,12 +131,12 @@ def main() -> None:
                 @contextmanager
                 def factory(_trial):
                     metadata = {'stimulus_id': case}
-                    yield BufferedSession([
+                    yield Session([
                         StreamEvent('vision', video, None, metadata.copy()),
                         StreamEvent('audio', video, None, metadata.copy()),
                         StreamEvent('text', ' '.join(item['word'] for item in words), None,
                                     {**metadata, 'transcript': words}),
-                    ], requested_output_channels=(OUTPUT_CHANNEL,))
+                    ], (OUTPUT_CHANNEL,))
 
                 subject = MirageSubject(predictor=predict, subject=subject_id)
                 start = time.perf_counter()
@@ -200,7 +200,7 @@ def main() -> None:
                 print(json.dumps(row), flush=True)
     summary = {'conditions': {
         'direct': 'Native CLI plus benchmark-only phase timers',
-        'umi': 'Qualified subject with BufferedSession, no experiment recorder',
+        'umi': 'Qualified subject with Session, no experiment recorder',
         'recorded': 'Qualified subject in Experiment with RecordInputsOutputs',
     }, 'cache_policy': 'One unmeasured warmup per mode and case; no cache clearing',
         'process_policy': 'Fresh native Python process per call, shared timer launcher',

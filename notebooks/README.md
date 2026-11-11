@@ -28,7 +28,7 @@ If the result cache points to an unmounted drive, set `RESULTCACHING_HOME` to a 
 | 6 | [Behavior](lessons/06_behavior.ipynb) | `TaskContext` and its `response` (`Choice`, `Scale`, `Text`); reported versus implied answers |
 | 7 | [Perturb a model](lessons/07_perturb_a_model.ipynb) | `Selection`, `Perturbation`, `StateChange`, `intervention`, undo |
 | 8 | [Choose units](lessons/08_choose_units.ipynb) | Functional localizers, matched random controls, `CompositeSelector` |
-| 9 | [Closed loop](lessons/09_closed_loop.ipynb) | Environments, `policy`, `EnvironmentSession` |
+| 9 | [Closed loop](lessons/09_closed_loop.ipynb) | Environments, rows, `policy`, `environment_session` |
 | 10 | [From an experiment to a benchmark](lessons/10_run_an_experiment.ipynb) | Choose a model, design a task, attach recorders, run, inspect and reuse the protocol in a benchmark |
 | 11 | [Interventions in an experiment](lessons/11_interventions_in_an_experiment.ipynb) | `Intervene` per condition, functional and matched random lesions, recording activity and answers together |
 

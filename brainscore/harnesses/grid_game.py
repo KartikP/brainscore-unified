@@ -1,13 +1,12 @@
 """Grid navigation environment and policy examples.
 
-GridGameEnvironment declares observations/actions for EnvironmentSession.
+GridGameEnvironment declares observations/actions for an EnvironmentSource.
 The oracle reads privileged _state; visual policies use the rendered frame.
 """
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from brainscore_core.model_interface import EnvironmentStep
 from brainscore_core.environment import ArraySpec, DiscreteSpec, MappingSpec, TextSpec
 from brainscore_core.streaming_helpers import run_environment
 
@@ -141,7 +140,7 @@ class GridGameEnvironment:
     """Wrap grid observations and actions for one turn-based environment session.
 
     The rendered view and privileged oracle state are unchanged. There is no
-    physical clock: step_num counts decisions and t_ms is unknown.
+    physical clock: steps count decisions and t_ms is unknown.
     """
 
     def __init__(self, env: GridGameEnv, *, max_steps=None):
@@ -166,7 +165,7 @@ class GridGameEnvironment:
     def action_spec(self):
         return DiscreteSpec(len(ACTIONS))
 
-    def reset(self, *, seed=None, options=None) -> EnvironmentStep:
+    def reset(self, *, seed=None, options=None) -> Dict[str, Any]:
         if options:
             raise ValueError('GridGameEnvironment has no reset options')
         obs = self.env.reset(seed=seed)
@@ -174,23 +173,18 @@ class GridGameEnvironment:
         self.total_reward = 0.
         self.solved = False
         self.optimal_steps = self.env._manhattan()
-        return EnvironmentStep(
-            observation=obs, instruction=obs['instruction'],
-            is_first=True, step_num=0,
-        )
+        return {'observation': obs, 'instruction': obs['instruction']}
 
-    def step(self, action) -> EnvironmentStep:
-        action = self.action_spec().validate(action)
+    def step(self, outputs) -> Tuple[Dict[str, Any], Optional[str]]:
+        action = self.action_spec().validate(outputs['motor'])
         obs, reward, done, info = self.env.step(action)
         self._step_num += 1
         self.total_reward += reward
         self.solved = bool(info['reached_goal'])
-        return EnvironmentStep(
-            observation=obs, instruction=obs['instruction'],
-            step_num=self._step_num, reward=reward,
-            is_terminal=self.solved,
-            is_last=bool(done or self._step_num >= self.max_steps),
-        )
+        row = {'observation': obs, 'instruction': obs['instruction'], 'reward': reward}
+        if self.solved:
+            return row, 'terminal'
+        return row, 'truncated' if (done or self._step_num >= self.max_steps) else None
 
 
 def greedy_oracle_policy(observation: Dict[str, Any], history) -> int:
@@ -225,14 +219,14 @@ def random_action_policy(seed: int = 0) -> Callable:
 
 def play_game(model, env: GridGameEnv, max_steps: Optional[int] = None,
               *, seed=None) -> Dict[str, Any]:
-    """Run one grid episode through EnvironmentSession; return the usual score.
+    """Run one grid episode through an EnvironmentSource; return the usual score.
 
     The caller owns subject reset. SessionProtocol provides isolated trials when
     using tools or comparing conditions.
     """
     wrapper = GridGameEnvironment(env, max_steps=max_steps)
     responses = run_environment(model, wrapper, seed=seed, require_specs=True)
-    actions = [int(np.asarray(response.action).item()) for response in responses]
+    actions = [int(np.asarray(action).item()) for action in responses]
     taken = len(actions)
     return {
         'solved': wrapper.solved,

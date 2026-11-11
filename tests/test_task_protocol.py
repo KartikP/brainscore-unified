@@ -9,10 +9,10 @@ import numpy as np
 import pytest
 import torch
 
-from brainscore_core.brainscore_model import BrainScoreModel
+from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.model_interface import TaskContext
-from brainscore_core.selection import LayerSelector
+from brainscore.selection import LayerSelector
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.experiments import (Experiment, Intervene, RecordBehavior, RecordNeural,
@@ -333,8 +333,8 @@ def test_a_memory_task_rejects_a_subject_without_memory(tmp_path):
     from brainscore_core.responses import Choice
     forgets = BrainScoreModel(identifier='forgets', supported_modalities={'text'}, reply=lambda p: 'no')
     protocol = TaskProtocol(STIMULI, TaskContext(response=Choice(['yes', 'no'])),
-                            required_traits={'memory:session'})
-    with pytest.raises(ValueError, match='memory:session'):
+                            required_traits={'memory:trial_history'})
+    with pytest.raises(ValueError, match='memory:trial_history'):
         Experiment(subject=forgets, protocol=protocol, tools=[RecordBehavior()],
                    output_dir=tmp_path / 'x').validate()
 

@@ -13,7 +13,13 @@ from pathlib import Path
 from brainscore_core.plugin_management.import_plugin import PluginNotFoundError
 from typing import Dict, Any, Callable
 
-from brainscore_core.model_interface import Subject, BrainScoreModel
+from .brainscore_model import BrainScoreModel
+from .selection import (
+    CompositeSelector, FunctionalSelection, IndexSelection, LayerSelector,
+    RandomSelection, UnitSelection, UnitSelector, selection_coordinates,
+    selection_unit_indices,
+)
+from brainscore_core.model_interface import Subject
 from brainscore_core.benchmarks import Benchmark
 from brainscore_core.metrics import Metric, Score
 
@@ -300,6 +306,13 @@ def score(model_identifier, benchmark_identifier,
         requested_output_channels_for_score,
         stamp_score_metadata,
     )
+    try:
+        from brainscore_core.score_metadata import record_measures
+    except ImportError as error:
+        raise ImportError(
+            'brainscore needs a brainscore_core with score_metadata.record_measures '
+            '(core ad7288a or later); install the core revision in install/peer-revisions.json'
+        ) from error
 
     import time as _time
     # accept either an identifier string or an already-built object
@@ -329,8 +342,15 @@ def score(model_identifier, benchmark_identifier,
                                       visual_degrees=declared_visual_degrees(model))
 
     _t0 = _time.time()
-    with weight_fingerprint_scope():
+    with weight_fingerprint_scope(), record_measures() as measures:
         result = benchmark(candidate)
+    # The run must leave the subject as it found it: every perturbation a session
+    # of the benchmark applied is undone. Perturbations the caller applied stay.
+    if measures.unreleased:
+        raise RuntimeError(
+            f"Benchmark '{benchmark_id}' left perturbation handle(s) "
+            f"{sorted(measures.unreleased)} active on subject '{model_id}'; a benchmark "
+            "must undo every change it applies (StateChange(kind='reset', handle_id=...)).")
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
     # Benchmarks can supply a qualified identity for settings or data subsets.
@@ -345,10 +365,13 @@ def score(model_identifier, benchmark_identifier,
         result,
         model,
         requested_channels=requested_channels,
-        protocol=infer_score_protocol(model, benchmark, requested_channels),
+        protocol=infer_score_protocol(model, benchmark, requested_channels,
+                                      measures=measures),
         harness_id='brainscore',
+        measures=measures,
     )
     result.attrs['compatibility'] = compatibility.as_attrs()
+    result.attrs['trial_memory'] = getattr(benchmark, 'trial_memory', 'none')
     return result
 
 

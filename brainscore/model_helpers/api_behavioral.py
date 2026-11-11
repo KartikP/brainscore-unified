@@ -274,7 +274,7 @@ def build_api_generation_fn(
 
 # ── closed-loop game: action_fn ───────────────────────────────
 # The video game is agentic, not forced-choice: it drives the model through
-# process(EnvironmentStep) -> EnvironmentResponse one tick at a time (see
+# process(row) -> {'motor': action} one tick at a time (see
 # brainscore.harnesses.gymnasium_harness.play_gym_episode). This builds an
 # action_fn closure that shows the rendered frame + the legal-action menu to an
 # API model and parses back an action index. Same providers/cache as above.
@@ -319,7 +319,7 @@ def build_api_action_fn(
     fallback_seed: int = 0,
     history_window: int = 0,
 ) -> Callable:
-    """Build an ``action_fn(env_step) -> EnvironmentResponse`` that plays a grid
+    """Build a ``policy(row) -> {'motor': StreamEvent}`` that plays a grid
     episode (GridGameEnv or Gymnasium/MiniGrid) via a closed-weight API model.
 
     :param obs_mode: ``'vision'`` (default) sends the rendered RGB frame as an
@@ -351,7 +351,7 @@ def build_api_action_fn(
     """
     if obs_mode not in ('vision', 'ascii'):
         raise ValueError(f"obs_mode must be 'vision' or 'ascii'; got {obs_mode!r}")
-    from brainscore_core.model_interface import EnvironmentResponse
+    from brainscore_core.streaming import StreamEvent
     import numpy as np
 
     call = provider if callable(provider) else PROVIDERS[provider]
@@ -391,11 +391,11 @@ def build_api_action_fn(
         trace.clear()
         rng.seed(fallback_seed)
 
-    def act(env_step) -> 'EnvironmentResponse':
-        if env_step.is_first:
-            reset()
-        obs = env_step.observation or {}
-        instruction = obs.get('instruction') or getattr(env_step, 'instruction', '') or ''
+    def act(row):
+        # The episode's first call finds an empty trace: BrainScoreModel calls
+        # act.reset() when an episode begins.
+        obs = row.get('observation') or {}
+        instruction = obs.get('instruction') or row.get('instruction') or ''
         legal = obs.get('legal_actions') or {}
         n = len(legal) or 7
         menu = ('\n'.join(f"  {i}: {d}" for i, d in sorted(legal.items()))
@@ -407,7 +407,7 @@ def build_api_action_fn(
             board = obs.get('ascii')
             if board is None:
                 raise ValueError("build_api_action_fn(obs_mode='ascii'): "
-                                 "EnvironmentStep.observation has no 'ascii'.")
+                                 "the row's observation has no 'ascii'.")
             image = None
             payload = hashlib.sha256(str(board).encode('utf-8')).hexdigest()[:16]
             prompt = (
@@ -419,7 +419,7 @@ def build_api_action_fn(
             frame = obs.get('frame')
             if frame is None:
                 raise ValueError("build_api_action_fn(obs_mode='vision'): "
-                                 "EnvironmentStep.observation has no 'frame'.")
+                                 "the row's observation has no 'frame'.")
             media, b64 = _encode_frame(frame, frame_resize)
             image = (media, b64)
             payload = hashlib.sha256(b64.encode('utf-8')).hexdigest()[:16]
@@ -433,15 +433,15 @@ def build_api_action_fn(
         response = None
         key = None
         if cache is not None:
-            # Include step_num so a stuck state (unchanged observation) at
-            # different ticks does NOT collapse to one cached action — that
-            # would freeze the agent in a no-op loop. Same (seed-deterministic)
-            # trajectory still reproduces on re-run. Caching a closed loop is
-            # inherently fraught; prefer cache_dir=None for fresh per-tick calls.
-            step_num = getattr(env_step, 'step_num', '')
+            # Include the policy's own step count (reset with its episode state)
+            # so a stuck state (unchanged observation) at different ticks does
+            # NOT collapse to one cached action; that would freeze the agent in
+            # a no-op loop. Re-running the same episode still replays from the
+            # cache. Caching a closed loop is inherently fraught; prefer
+            # cache_dir=None for fresh per-tick calls.
             key = hashlib.sha256(
                 '|'.join([provider_name, model, prompt, payload,
-                          str(step_num), str(system_prompt), str(max_tokens)]).encode()
+                          str(len(trace)), str(system_prompt), str(max_tokens)]).encode()
             ).hexdigest()
             response = cache.get(key)
         if response is None:
@@ -452,13 +452,13 @@ def build_api_action_fn(
         parsed = _parse_action_index(response, n)
         fallback = parsed is None
         idx = int(rng.randint(0, n)) if fallback else parsed
-        trace.append({'step': getattr(env_step, 'step_num', len(trace)),
+        trace.append({'step': len(trace),
                       'response': response, 'action': idx, 'fallback': fallback,
                       'payload': payload})
-        return EnvironmentResponse(action=idx, metadata={
+        return {'motor': StreamEvent('motor', idx, None, {
             'raw_response': response, 'valid': not fallback,
             'fallback': fallback, 'model': model, 'provider': provider_name,
-        })
+        })}
 
     act.reset = reset
     act.trace = trace

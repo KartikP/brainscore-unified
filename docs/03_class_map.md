@@ -92,7 +92,7 @@ from brainscore.model_helpers.audio_wrapper import AudioWrapper
 | Part | Signature | Ready-made builders |
 | --- | --- | --- |
 | `answer` | `(stimulus_row, instruction, label_set) -> label` | `build_api_generation_fn` (hosted APIs) |
-| `policy` | `EnvironmentStep -> EnvironmentResponse` | `PolicyWrapper` |
+| `policy` | `row -> {output channel: payload}` | `PolicyWrapper` |
 | `intervention` | `StateChange -> (PerturbationApplied, undo_function)` | `build_pytorch_ablation_fn(net)` |
 | `behavioral_readout_layer` | a layer path | |
 
@@ -107,32 +107,30 @@ classDiagram
         <<union>>
     }
     InputEvent <|-- StimulusSet : stimuli (vision, text, audio)
-    InputEvent <|-- EnvironmentStep : observation
+    InputEvent <|-- Row : closed-loop step
     InputEvent <|-- StateChange : lesion / stimulation
-    InputEvent <|-- Message
     OutputEvent <|-- NeuroidAssembly : neural
     OutputEvent <|-- BehavioralAssembly : behavior
-    OutputEvent <|-- EnvironmentResponse : motor
     OutputEvent <|-- PerturbationApplied : perturbation
-    OutputEvent <|-- Message
 ```
 
-Each is carried as the `payload` of a `StreamEvent` on the matching channel. `Message` is both an input and an output, so one subject's reply can be another subject's input.
+Each is carried as the `payload` of a `StreamEvent` on the matching channel. A closed-loop step is a **row**: a plain mapping of channel to payload. A policy answers with a mapping of output channel to payload, such as `{'motor': action}`.
 
 ## Sessions, protocols and experiments
 
 ```mermaid
 classDiagram
     class Session {
-        <<abstract>>
         next_input()
         respond(event)
         collect()
     }
-    Session <|-- BufferedSession : fixed inputs
-    Session <|-- EnvironmentSession : closed loop
-    Session <|-- WindowedStreamSession : timed delivery
-    Session <|-- RealTimeStreamSession : timed delivery
+    class Source {
+        next_input()
+    }
+    Session o-- Source : events come from
+    Source <|-- FixedSource : fixed inputs
+    Source <|-- EnvironmentSource : closed loop
     class SessionProtocol {
         session_factory(repetition)
         conditions
@@ -172,8 +170,8 @@ classDiagram
 | Names | Module |
 | --- | --- |
 | `Subject`, `BrainScoreModel`, `TaskContext`, `Benchmark`, `Score`, selections, events, `check_compatibility` | `brainscore_core` |
-| `StreamEvent`, `BufferedSession` | `brainscore_core.streaming` |
-| `EnvironmentSession`, `run_environment`, `neural_response`, `apply_state_change` | `brainscore_core.streaming_helpers` |
+| `StreamEvent`, `Session`, `FixedSource` | `brainscore_core.streaming` |
+| `run_environment`, `neural_response`, `apply_state_change` | `brainscore_core.streaming_helpers` |
 | `score`, `load_model`, `load_benchmark` | `brainscore` |
 | Wrappers | `brainscore.model_helpers.<name>_wrapper` |
 | `Experiment`, protocols, tools, replay | `brainscore.experiments` |

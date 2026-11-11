@@ -33,7 +33,7 @@ policy server before each run. Replaying saved outputs needs no inference;
 This first integration covers the selected policy, not arbitrary recurrent
 policies or robot hardware. The bridge returns a complete action chunk; the
 reference evaluator chooses and applies actions. It does not exercise UMI's
-`EnvironmentSession` driver or internal model interventions.
+closed-loop session driver or internal model interventions.
 
 ## Pinned sources
 

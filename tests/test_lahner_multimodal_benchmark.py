@@ -24,7 +24,7 @@ def test_multimodal_model_registered():
 def test_benchmark_rejects_unimodal_candidate():
     """An audio-less candidate must raise immediately, not silently
     produce video-only output under a multimodal label."""
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
 
     audio_only = BrainScoreModel(
         identifier='video-only',

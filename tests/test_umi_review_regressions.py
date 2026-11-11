@@ -7,10 +7,8 @@ import pytest
 import torch
 from torch import nn
 
-from brainscore_core.model_interface import (
-    BrainScoreModel, CompositeSelector, RandomSelection,
-    TaskContext, StateChange, Perturbation, EnvironmentStep,
-)
+from brainscore import BrainScoreModel, CompositeSelector, RandomSelection
+from brainscore_core.model_interface import TaskContext, StateChange, Perturbation
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuroidAssembly, BehavioralAssembly,
 )
@@ -69,13 +67,20 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
         monkeypatch.setattr(benchmark, '_expand_to_per_TR_frames', lambda s=stimuli: s)
         monkeypatch.setattr(benchmark, '_align_features_to_assembly', lambda features, *args: features)
 
-    class Candidate:
-        def start_recording(self, *args, **kwargs):
-            pass
+    from brainscore_core.contract import Subject
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
 
-        def process(self, stimuli):
+    class Candidate(Subject):  # the benchmark reads it through participate only
+        identifier = 'candidate'
+        in_channels = frozenset({'text'})
+        out_channels = frozenset({'neural:IT'})
+
+        def participate(self, session):
+            stimuli = session_stimuli(session, drain_session_inputs(session))
             features = train_features if stimuli.identifier == 'friends' else test_features
-            return _Extractor(features)(stimuli, ['L'])
+            session.respond(StreamEvent(
+                'neural:IT', _Extractor(features)(stimuli, ['L']), t_ms=None))
 
     result = test.generate_predictions(Candidate(), tmp_path, train_benchmark=train, alpha=1e-6)
     np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-4)
@@ -217,7 +222,7 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
         state_change_fn=build_pytorch_ablation_fn(net))
     localizer = InducedDyslexia(n_units=1, modality='text',
         reading_benchmark=object(), localizer_stimuli=_stimuli())
-    selections = localizer._localize(model, list(layers))
+    selections = localizer._localize(model)
     for selected in selections:
         assert selected.indices == [4]
         assert selected.metadata['unit_population'] == [4, 1]
@@ -252,9 +257,9 @@ def test_model_reset_clears_policy_history(bound_method):
     from brainscore.model_helpers.policy_wrapper import PolicyWrapper
     wrapper = PolicyWrapper(lambda observation, history: len(history))
     model = BrainScoreModel('policy', action_fn=wrapper.__call__ if bound_method else wrapper)
-    assert model.process(EnvironmentStep(observation={})).action == 0
+    assert model.process({'observation': {}}) == {'motor': 0}
     model.reset()
-    assert model.process(EnvironmentStep(observation={})).action == 0
+    assert model.process({'observation': {}}) == {'motor': 0}
 
 
 def test_vision_adapter_reset_reaches_real_commitment():

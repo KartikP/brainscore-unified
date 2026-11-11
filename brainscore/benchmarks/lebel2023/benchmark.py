@@ -24,6 +24,7 @@ import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
+from brainscore_core.streaming_helpers import neural_response
 
 from .._scoring_utils import pearson_summary, run_kfold_masks
 from ...tools.banded_ridge import (
@@ -42,6 +43,17 @@ BIBTEX = """@article{lebel2023natural,
 TR_SEC = 2.0
 DEFAULT_DELAYS = (1, 2, 3, 4)
 DEFAULT_ALPHA_GRID = (1e4, 1e5, 1e6, 3e6, 1e7, 3e7, 1e8)
+
+
+def _record(candidate, stimulus_set, region):
+    """The candidate's ``neural:<region>`` response to ``stimulus_set``.
+
+    Runs through ``participate`` only, so any subject that declares the
+    region can be scored. The old path also passed ``recording_type='fMRI'``.
+    No session field is needed for it: ``BrainScoreModel`` ignores the value,
+    and the language legacy adapter records with ``'fMRI'`` when none is given.
+    """
+    return neural_response(candidate, stimulus_set, record=region)
 
 
 def _delay_within_stories(features, story_ids, delays):
@@ -232,6 +244,11 @@ def _ridge_per_voxel_alpha(X_train, Y_train, X_test, stories_train, alpha_grid,
 class LeBel2023Encoding(BenchmarkBase):
     """Voxelwise encoding score over all measured cortical vertices."""
 
+    # Sends the story words as text; each row carries its own context, so trials
+    # are independent. The requested region is set from `region` in __init__.
+    required_input_channels = frozenset({'text'})
+    trial_memory = 'none'
+
     def __init__(self, identifier='LeBel2023-UTS03-encoding', region='language_system',
                  delays=DEFAULT_DELAYS, alpha_grid=DEFAULT_ALPHA_GRID,
                  n_splits=5, context_window_tr=5, max_targets=None,
@@ -241,6 +258,7 @@ class LeBel2023Encoding(BenchmarkBase):
         super().__init__(identifier=identifier, ceiling=Score(1.0),
                          version=1, parent='neural_language', bibtex=BIBTEX)
         self._region = region
+        self.requested_output_channels = frozenset({f'neural:{region}'})
         self._delays = tuple(delays)
         self._alpha_grid = tuple(alpha_grid)
         self._n_splits = n_splits
@@ -267,8 +285,7 @@ class LeBel2023Encoding(BenchmarkBase):
         too large for the scoring environment, or a deliberately uninformative
         null — can be scored through exactly this path.
         """
-        candidate.start_recording(self._region, recording_type='fMRI')
-        predictions = candidate.process(stimulus_set)
+        predictions = _record(candidate, stimulus_set, self._region)
         return self._align_features(predictions, assembly)
 
     def __call__(self, candidate) -> Score:
@@ -399,8 +416,8 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
     def _model_features(self, candidate, stimulus_set, assembly):
         """Read one feature per word, then resample onto the TR grid."""
         word_stimuli, _, _ = self._word_data()
-        candidate.start_recording(self._region, recording_type='fMRI')
-        return self._pool_predictions(candidate.process(word_stimuli), assembly)
+        return self._pool_predictions(
+            _record(candidate, word_stimuli, self._region), assembly)
 
     def _pool_predictions(self, predictions, assembly):
         """Resample per-word model output onto the fMRI sampling grid.
@@ -409,7 +426,7 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
         predictions — a layer sweep recording many layers in one pass, say —
         can pool them without extracting again.
         """
-        from brainscore_core.temporal import lanczos_downsample
+        from brainscore.temporal import lanczos_downsample
 
         word_stimuli, _, tr_times_by_story = self._word_data()
 

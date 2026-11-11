@@ -19,19 +19,12 @@ import tempfile
 # Keep offline selections explicit: mixed files contain real-model/data tests.
 SUITES = {
     'core': [
-        'tests/test_api_cohesion.py',
-        'tests/test_lab_vocabulary.py',
         'tests/test_external_extensions.py',
-        'tests/test_capabilities.py',
-        'tests/test_model_interface.py',
-        'tests/test_constructor_ergonomics.py',
         'tests/test_channel_compatibility.py',
-        'tests/test_device_agnostic_env.py',
         'tests/test_streaming.py',
         'tests/test_streaming_helpers.py',
         'tests/test_environment_contract.py',
         'tests/test_streaming_behavior.py',
-        'tests/test_payload_validation.py',
         'tests/test_io_catalog.py',
         'tests/test_io_catalog_preflight.py',
         'tests/test_channel_registry.py',
@@ -42,32 +35,24 @@ SUITES = {
         'tests/test_legacy_facade.py',
         'tests/test_typed_convenience.py',
         'tests/test_session_view.py',
-        'tests/test_partial_inputs.py',
         'tests/test_subject_channels.py',
         'tests/test_subject_rename.py',
         'tests/test_model_interface_public_api.py',
         'tests/test_plugin_management/test_plugin_command_paths.py',
         'tests/test_compatibility.py',
-        'tests/test_state_change.py',
         'tests/test_extraction_cache.py',
         'tests/test_runtime_dependencies.py',
         'tests/test_preflight.py',
         'tests/test_leaderboard_eligibility.py',
         'tests/test_assembly_builder.py',
-        'tests/test_behavioral_readout.py',
-        'tests/test_composite_selector.py',
-        'tests/test_dispatch_cache.py',
         'tests/test_env_check.py',
-        'tests/test_environment_step.py',
         'tests/test_execution_plan.py',
         'tests/test_hf_compat.py',
         'tests/test_memory.py',
-        'tests/test_message.py',
         'tests/test_metrics/test___init__.py',
         'tests/test_multimodal.py',
         'tests/test_nulls.py',
         'tests/test_numeric.py',
-        'tests/test_out_channels.py',
         'tests/test_plugin_management/test_benchmarks.py',
         'tests/test_plugin_management/test_parse_plugin_changes.py',
         'tests/test_score_metadata.py',
@@ -75,9 +60,7 @@ SUITES = {
         'tests/test_streaming_perception.py',
         'tests/test_streaming_realtime.py',
         'tests/test_streaming_windowed.py',
-        'tests/test_synchronize_modalities.py',
-        'tests/test_temporal.py',
-        'tests/test_unit_selection.py',
+        'tests/test_stream_rows_once.py',
     ],
     'vision': [
         'tests/test_package_contents.py',
@@ -122,6 +105,24 @@ SUITES = {
         'unit or integration',
     ],
 }
+# Suites that run on several pytest-xdist workers. Vision and language keep one
+# process: their tests share legacy plugin state.
+PARALLEL = ('core', 'unified')
+WORKERS = '4'
+
+
+def suite_arguments(repo, suite):
+    """Return the pytest selection for one repository.
+
+    UMI_FULL=1 (push to v2, nightly, run-macos label) keeps the qualification
+    tests; every other run deselects them.
+    """
+    suite = list(suite)
+    if repo == 'unified' and '-m' in suite and os.environ.get('UMI_FULL') != '1':
+        suite[suite.index('-m') + 1] += ' and not qualification'
+    if repo in PARALLEL:
+        suite += ['-n', os.environ.get('UMI_PYTEST_WORKERS', WORKERS), '--dist', 'loadgroup']
+    return suite
 
 
 def stage_tests(checkout: Path, destination: Path) -> None:
@@ -200,7 +201,7 @@ def qualify(root, out, *, mode='source', wheels=None):
         log = out.with_name(f'{out.stem}-{repo}.log')
         checks = out.with_name(f'{out.stem}-{repo}-checks.json')
         checks.unlink(missing_ok=True)
-        command = [sys.executable, '-m', 'pytest', *suite, '-q', '-ra',
+        command = [sys.executable, '-m', 'pytest', *suite_arguments(repo, suite), '-q', '-ra',
                    '-p', 'no:cacheprovider', '-p', 'brainscore.validation.required_checks',
                    '-p', 'brainscore.validation.cpu_profile',
                    '--umi-check-report', str(checks), '--umi-repository', repo]
@@ -221,9 +222,12 @@ def qualify(root, out, *, mode='source', wheels=None):
                                TRANSFORMERS_CACHE=str(home / 'huggingface/transformers'),
                                TORCH_HOME=str(home / 'torch'),
                                XDG_CACHE_HOME=str(home / 'cache'), MPLCONFIGDIR=str(home / 'matplotlib'))
+                # The plugin also runs inside xdist workers, which import the
+                # packages too; it reports their source imports back to the guard.
                 command = [sys.executable, '-I', '-m', 'brainscore.validation.installed',
                            '--stage', str(cwd), '--wheels', str(wheels),
-                           '--identity', str(identity), *command[3:]]
+                           '--identity', str(identity), '-p', 'brainscore.validation.installed',
+                           *command[3:]]
             try:
                 run = subprocess.run(command, cwd=cwd, env=run_env, stdout=handle,
                                      stderr=subprocess.STDOUT, timeout=1800)

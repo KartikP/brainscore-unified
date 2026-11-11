@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 
 
 # ── BrainScoreModel construction ─────────────────────────────────────

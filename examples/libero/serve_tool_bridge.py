@@ -29,8 +29,9 @@ from brainscore.experiments import (
 from brainscore.experiments.backends import socket_deadline
 from brainscore.experiments._storage import check_output_directory
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
-from brainscore_core.model_interface import BrainScoreModel, UnifiedModel
-from brainscore_core.events import EnvironmentStep, Selection
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import UnifiedModel
+from brainscore_core.events import Selection
 
 RECEIPT_PROTOCOL = 'brainscore.libero.receipt.v1'
 SUITES = ('libero_spatial', 'libero_object', 'libero_goal', 'libero_10')
@@ -252,14 +253,9 @@ class Bridge:
                          'Call for an unexpected episode')
                 position += 1
             response = model.process(
-                EnvironmentStep(
-                    observation=message,
-                    instruction=message['prompt'],
-                    step_num=served,
-                    context={'umi_call': annotation},
-                )
-            )
-            result = dict(response.metadata['policy_output'], actions=response.action)
+                {'observation': message, 'instruction': message['prompt']}
+            )['motor']
+            result = dict(response.meta['policy_output'], actions=response.payload)
             _send(socket, codec, result, self.idle_timeout)
             calls[position] += 1
             served += 1

@@ -2,7 +2,8 @@
 trial tables with stimulus columns and answer details, and GridGame compatibility."""
 import pytest
 
-from brainscore_core import BrainScoreModel, TaskContext
+from brainscore import BrainScoreModel
+from brainscore_core import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.experiments import (Experiment, ExperimentResult, RecordBehavior,

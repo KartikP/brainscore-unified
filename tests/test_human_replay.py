@@ -1,8 +1,7 @@
 import numpy as np
 import pytest
 
-from brainscore_core import BrainScoreModel
-from brainscore_core.events import EnvironmentStep
+from brainscore import BrainScoreModel
 from brainscore.harnesses.human_replay import (
     HumanAgreementBenchmark, human_agreement, replay_actions)
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
@@ -16,7 +15,7 @@ def subject(policy):
 
 
 def steps(n):
-    return [EnvironmentStep(observation={'state': i}) for i in range(n)]
+    return [{'observation': {'state': i}} for i in range(n)]
 
 
 def test_metric_matches_hand_computation():
@@ -52,7 +51,7 @@ def test_benchmark_separates_human_like_from_random_and_contrary():
         episode = []
         for step in steps(10):
             counts = rng.multinomial(19, [0.1, 0.1, 0.1]).tolist()
-            counts[step.observation['state'] % 3] += 11
+            counts[step['observation']['state'] % 3] += 11
             episode.append((step, counts))
         episodes.append(episode)
     benchmark = HumanAgreementBenchmark('synthetic-human_agreement', episodes, n_actions=3)
@@ -69,3 +68,31 @@ def test_benchmark_separates_human_like_from_random_and_contrary():
 def test_counts_must_match_action_space():
     with pytest.raises(ValueError, match='non-negative integers'):
         HumanAgreementBenchmark('bad', [[(steps(1)[0], [1, 1, 1])]], n_actions=2)
+
+
+def test_declares_the_recorded_steps_in_and_the_action_out():
+    from tests.benchmark_declarations import assert_declares, assert_preflight
+    episode = [(step, [3, 1]) for step in steps(3)]
+    benchmark = HumanAgreementBenchmark('declared', [episode], n_actions=2)
+    assert_declares(benchmark, {'observation'}, {'motor'})
+    assert_preflight(benchmark)
+
+
+def test_a_participate_only_subject_gets_a_score():
+    from brainscore_core.contract import Subject
+    from brainscore_core.streaming import RESPOND, StreamEvent
+
+    class Mover(Subject):
+        identifier = 'participate-only-mover'
+        in_channels = {'observation', 'control'}
+        out_channels = {'motor'}
+
+        def participate(self, session):
+            session.declare_inputs(self.in_channels)
+            while (event := session.next_input()) is not None:
+                if event.channel == 'control' and event.payload == RESPOND:
+                    session.respond(StreamEvent('motor', 0, event.t_ms, {}))
+
+    episode = [(step, [3, 1]) for step in steps(4)]
+    score = HumanAgreementBenchmark('mover', [episode], n_actions=2)(Mover())
+    assert score.attrs['n_scored_states'] == 4

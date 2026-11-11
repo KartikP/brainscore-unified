@@ -11,7 +11,7 @@ import time
 import uuid
 from typing import Iterator
 
-from brainscore.instrumentation import ObservedSession, observe
+from brainscore.instrumentation import observe, observed
 from brainscore.run_record import PayloadCodec, RunRecord
 from brainscore.experiments._storage import check_output_directory
 from brainscore_core.compatibility import CompatibilityMatch, validate_channels
@@ -231,7 +231,8 @@ class SessionProtocol:
                         }
                         if settings:
                             context.publish('session_context', settings)
-                        subject.participate(ObservedSession(session, context))
+                        with observed(session, context):
+                            subject.participate(session)
                         if not session.complete:
                             raise RuntimeError('Environment session ended before episode completion')
                         if self.collect_outputs:
@@ -248,11 +249,27 @@ class CallableProtocol:
     public methods are observed, including errors caught by the evaluator.
     Instrumentation is scoped to the whole evaluator call. Use separate runs
     for baseline and intervention conditions.
+
+    An evaluator that runs the subject through ``participate`` passes
+    ``methods=()``. It then owns the repetitions too: it runs each session
+    inside ``context.repetition(identifier)`` and wraps it in
+    ``observed(session, context)``, so the record holds the input and
+    output events of each session between its own boundaries. It names
+    those identifiers in ``repetitions``, so tools can select them. With
+    observed methods the one repetition is ``'external'``.
     """
-    def __init__(self, identifier, evaluate, *, methods=('process',), metadata=None):
+    def __init__(self, identifier, evaluate, *, methods=('process',), metadata=None,
+                 repetitions=None):
         self.identifier, self.evaluate = identifier, evaluate
         self.methods = tuple(methods)
         self.metadata = dict(metadata or {})
+        if self.methods:
+            if repetitions is not None:
+                raise ValueError("An evaluator with observed methods runs one 'external' "
+                                 'repetition; it cannot name others')
+            self.repetitions = ('external',)
+        else:
+            self.repetitions = tuple(repetitions or ())
 
     def accept_requests(self, channels):
         if channels:
@@ -260,11 +277,15 @@ class CallableProtocol:
                              f'cannot request {sorted(channels)}. Use RecordInputsOutputs or RecordActivity.')
 
     def describe(self):
-        return {'methods': self.methods, 'metadata': self.metadata,
-                'reset_policy': 'owned by external evaluator'}
+        described = {'methods': self.methods, 'metadata': self.metadata,
+                     'reset_policy': 'owned by external evaluator'}
+        if not self.methods:
+            described['repetitions'] = self.repetitions
+        return described
 
     def validate(self, subject):
-        if not self.methods or len(set(self.methods)) != len(self.methods):
+        # An empty selection is allowed: such an evaluator records its sessions.
+        if len(set(self.methods)) != len(self.methods):
             raise ValueError('Select distinct methods to observe')
         # The external evaluator names the methods it calls, so checking for them is
         # checking its request, not discovering what the subject can do.
@@ -273,6 +294,11 @@ class CallableProtocol:
                 raise ValueError(f'Subject does not expose {method}')
 
     def run(self, subject, context):
+        if not self.methods:
+            # The evaluator records sessions, so it also marks where each one
+            # starts and ends: one context.repetition per session, which
+            # replay_sessions turns back into one session each.
+            return self.evaluate(subject, context)
         with context.repetition('external'), observe(subject, context, methods=self.methods):
             return self.evaluate(subject, context)
 
@@ -565,6 +591,7 @@ class Experiment:
             tool.validate(self)
         plan = {'subject': getattr(self.subject, 'identifier', _identity(self.subject)),
                 'subject_type': _identity(self.subject),
+                'subject_traits': sorted(getattr(self.subject, 'traits', ())),
                 'protocol': {'identifier': self.protocol.identifier,
                              'implementation': _identity(self.protocol),
                              'config': self.protocol.describe()},

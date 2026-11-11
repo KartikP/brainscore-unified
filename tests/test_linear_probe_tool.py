@@ -18,7 +18,7 @@ from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, list_tools, load_tool, register_tool
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly, NeuroidAssembly,
 )
@@ -50,7 +50,7 @@ def fitted(**kwargs):
 
 class FixtureSubject(Subject):
     identifier = 'probe-fixture'
-    in_channels, out_channels = {'stimulus'}, {'behavior'}
+    in_channels, out_channels = {'observation'}, {'behavior'}
 
     def __init__(self):
         self.layer = torch.nn.Identity()
@@ -64,9 +64,9 @@ class FixtureSubject(Subject):
 def protocol():
     @contextmanager
     def factory(trial):
-        yield InMemorySession([StreamEvent('stimulus', [[-2., 1.], [2., -1.]], None)])
+        yield Session([StreamEvent('observation', [[-2., 1.], [2., -1.]], None)])
     return SessionProtocol('probe-check', factory, conditions=['baseline', 'lesioned'],
-                           input_channels=['stimulus'], output_channels=['behavior'])
+                           input_channels=['observation'], output_channels=['behavior'])
 
 
 @pytest.mark.parametrize('classes', [2, 3])
@@ -164,7 +164,7 @@ def test_direct_scope_reuses_probe_and_preserves_model_even_on_interrupt(tmp_pat
     with pytest.raises(KeyboardInterrupt):
         with attach_tools(subject, tools=[RecordInputsOutputs(), probe],
                           instrumentation=provider, output_dir=tmp_path / 'scope'):
-            session = InMemorySession([StreamEvent('stimulus', [[2., 1.]], None)])
+            session = Session([StreamEvent('observation', [[2., 1.]], None)])
             subject.participate(session)
             raise KeyboardInterrupt()
     assert list(subject.layer._forward_hooks) == [original.id]
@@ -319,5 +319,5 @@ def test_documented_cpu_example_runs_without_downloads(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'Restored baseline exactly' in result.stdout
     events = list(RunRecord(tmp_path / 'demo' / 'experiment').events())
-    assert len([event for event in events if event['kind'] == 'probe']) == 4
-    assert len([event for event in events if event['kind'] == 'activity']) == 4
+    assert len([event for event in events if event['kind'] == 'probe']) == 8
+    assert len([event for event in events if event['kind'] == 'activity']) == 8

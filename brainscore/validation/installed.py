@@ -8,7 +8,9 @@ import importlib
 from importlib import metadata
 import io
 import json
+import os
 from pathlib import Path
+import shutil
 import sys
 import sysconfig
 import zipfile
@@ -80,10 +82,11 @@ def verify_wheels(directory: Path) -> dict:
 class InstalledImports:
     """Reject source imports introduced during collection or test execution."""
 
-    def __init__(self, packages: dict) -> None:
+    def __init__(self, packages: dict, worker_reports: Path | None = None) -> None:
         self.roots = {name: Path(info['import_root']) for name, info in packages.items()}
         self.checked = set()
         self.violations = set()
+        self.worker_reports = worker_reports
 
     def check(self) -> None:
         for name, module in list(sys.modules.items()):
@@ -106,8 +109,31 @@ class InstalledImports:
     @pytest.hookimpl(tryfirst=True)
     def pytest_sessionfinish(self, session, exitstatus) -> None:
         self.check()
+        if self.worker_reports is not None:
+            if hasattr(session.config, 'workerinput'):
+                if self.violations:
+                    (self.worker_reports / f'{os.getpid()}.json').write_text(
+                        json.dumps(sorted(self.violations)))
+            else:
+                for report in self.worker_reports.glob('*.json'):
+                    self.violations.update(json.loads(report.read_text()))
         if self.violations:
             session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
+# pytest-xdist workers import the packages in their own processes. main() exports
+# these two variables; "-p brainscore.validation.installed" then registers the
+# same guard in every worker, which writes its violations for the controller.
+ROOTS_ENV = 'UMI_INSTALLED_ROOTS'
+REPORTS_ENV = 'UMI_INSTALLED_WORKER_REPORTS'
+
+
+def pytest_configure(config) -> None:
+    if hasattr(config, 'workerinput') and os.environ.get(ROOTS_ENV):
+        packages = {name: {'import_root': root}
+                    for name, root in json.loads(os.environ[ROOTS_ENV]).items()}
+        config.pluginmanager.register(
+            InstalledImports(packages, Path(os.environ[REPORTS_ENV])), 'umi-worker-import-guard')
 
 
 def main() -> int:
@@ -120,7 +146,13 @@ def main() -> int:
     args.identity.parent.mkdir(parents=True, exist_ok=True)
     try:
         report['packages'] = verify_wheels(args.wheels)
-        guard = InstalledImports(report['packages'])
+        worker_reports = args.identity.parent / (args.identity.stem + '-workers')
+        shutil.rmtree(worker_reports, ignore_errors=True)
+        worker_reports.mkdir(parents=True)
+        os.environ[ROOTS_ENV] = json.dumps(
+            {name: info['import_root'] for name, info in report['packages'].items()})
+        os.environ[REPORTS_ENV] = str(worker_reports)
+        guard = InstalledImports(report['packages'], worker_reports)
         # Only copied tests and fixtures are here, never the package source.
         # This also lets peer tests import helpers from their own tests package.
         sys.path.insert(0, str(args.stage))

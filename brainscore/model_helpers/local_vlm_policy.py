@@ -2,7 +2,7 @@
 
 The local-weights twin of ``api_behavioral.build_api_action_fn``: turn a HF
 vision-language or text model into a one-tick game policy
-``policy(observation, history) -> EnvironmentResponse`` that ``PolicyWrapper``
+``policy(observation, history) -> StreamEvent`` (a ``motor`` event) that ``PolicyWrapper``
 drives through a closed-loop session. Each response keeps the model's
 answer and whether it parsed (``answer``, ``valid``, ``parse_error``,
 ``fallback_action``; see ``io_catalog.RESPONSE_META_KEYS``). These builders were consolidated
@@ -25,7 +25,7 @@ runs of a model ladder.
 import re
 
 import numpy as np
-from brainscore_core.events import EnvironmentResponse
+from brainscore_core.streaming import StreamEvent
 from brainscore_core.hf_compat import pin_image_processor
 
 WORD_TO_ACTION = {'up': 0, 'down': 1, 'left': 2, 'right': 3}
@@ -98,7 +98,7 @@ def response_for_answer(answer, action, fallback, stats=None):
         action = fallback()
         if stats is not None:
             stats['parse_miss'] += 1
-    return EnvironmentResponse(action=action, metadata={
+    return StreamEvent('motor', action, None, {
         'answer': answer, 'valid': valid,
         'parse_error': None if valid else 'the answer names no action',
         'fallback_action': None if valid else action,
@@ -321,7 +321,7 @@ def build_minigrid_gemma_policy(model_id, *, max_new_tokens=256, revision=None):
 
 def build_grid_player(policy, max_history=4):
     """Wrap a policy in a BrainScoreModel(policy=PolicyWrapper(...))."""
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore.model_helpers.policy_wrapper import PolicyWrapper
     return BrainScoreModel(
         identifier='grid-player', model=None, region_layer_map={},

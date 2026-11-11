@@ -86,7 +86,7 @@ def chat_inputs(model, processor, prompt, template=None):
                 raise NotImplementedError(f'chat models here cannot be shown a {kind!r} part')
         return content
 
-    # Earlier trials of the session (memory='session') become earlier turns.
+    # Earlier trials of the episode (memory='trial_history') become earlier turns.
     messages = []
     for earlier, answered in prompt.history:
         messages.append({'role': 'user', 'content': content_of(earlier.parts)})

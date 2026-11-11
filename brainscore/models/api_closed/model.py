@@ -7,7 +7,7 @@ a ``BrainScoreModel`` with a ``generation_fn`` (the API closure) and NO
 encoding. Scoring requires the provider's API key in the environment
 (``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY``); registration + load do not.
 """
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore.model_helpers.api_behavioral import build_api_generation_fn
 
 # identifier -> (provider, model id, declared modalities). Pin dated snapshots

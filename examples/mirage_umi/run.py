@@ -16,7 +16,7 @@ from brainscore.experiments import (
 )
 from brainscore.models.mirage import MirageRuntime, MirageSubject
 from brainscore.models.mirage.model import OUTPUT_CHANNEL, SUBJECTS
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 
 
 def main() -> None:
@@ -70,12 +70,12 @@ def main() -> None:
     @contextmanager
     def factory(_trial):
         metadata = {'stimulus_id': 'demo-clip'}
-        yield BufferedSession([
+        yield Session([
             StreamEvent('vision', local_video.resolve(), None, metadata.copy()),
             StreamEvent('audio', local_video.resolve(), None, metadata.copy()),
             StreamEvent('text', ' '.join(word['word'] for word in words), None,
                         {**metadata, 'transcript': words}),
-        ], requested_output_channels=(OUTPUT_CHANNEL,))
+        ], (OUTPUT_CHANNEL,))
 
     result = Experiment(
         subject=subject,

@@ -387,7 +387,7 @@ class TestAutoRegisterLive:
 
         bs_model = auto_register(model, identifier='tiny-vision-test',
                                  preprocessing=preprocessing)
-        from brainscore_core.model_interface import BrainScoreModel
+        from brainscore import BrainScoreModel
         assert isinstance(bs_model, BrainScoreModel)
         # provisional vision map wired
         assert set(bs_model._region_layer_map_dict) == {'V1', 'V2', 'V4', 'IT'}

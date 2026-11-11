@@ -23,7 +23,7 @@ Our implementation:
 5. `attrs['dyslexic']` flag: True if raw accuracy < 0.65 (paper's threshold).
 
 This is unified-interface-native: it uses BrainScoreModel's behavioral
-readout (start_task(TaskContext(task_type='probabilities', ...)) +
+readout (TaskContext(task_type='probabilities', ...) +
 process(test_stimuli) -> BehavioralAssembly).
 
 Data are resolved through the unified data plugin:
@@ -45,6 +45,7 @@ from brainscore import load_dataset, load_stimulus_set
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import TaskContext
+from brainscore_core.streaming_helpers import behavioral_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -193,6 +194,11 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
 
     SUPPORTED_MODALITIES = SUPPORTED_MODALITIES
 
+    # Asks for the word's label (`behavior`); every word is an independent trial.
+    # The input channel is the modality of the variant, set in __init__.
+    requested_output_channels = frozenset({'behavior'})
+    trial_memory = 'none'
+
     def __init__(self, modality: str = 'vision', *, prefer_path: str = 'auto'):
         if prefer_path not in ('auto', 'generation', 'readout'):
             raise ValueError("prefer_path must be 'auto', 'generation', or 'readout'.")
@@ -201,7 +207,8 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
             f"modality must be one of {self.SUPPORTED_MODALITIES}; "
             f"got {modality!r}")
         self.modality = modality
-        self.required_modalities = {modality}
+        # The word (an image or a string) and the question put to the participant.
+        self.required_input_channels = frozenset({modality, 'instruction'})
 
         full_stimulus_set = load_stimulus_set('Yeatman2021')
         # Split first on the full set so the train/test partition is the
@@ -234,11 +241,11 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
             label_set=['real', 'pseudo'],
             instruction='Is this a real word or a pseudo word?',
             prefer_path=self.prefer_path,
+            # The 100-item test set is what gets answered; fitting stimuli only
+            # train a readout.
+            metadata={'stimulus_set': self._test_stimuli},
         )
-        candidate.start_task(task_context)
-
-        # Predict on the 100-item test set
-        predictions = candidate.process(self._test_stimuli)
+        predictions = behavioral_response(candidate, task_context)
         choice_values = list(predictions['choice'].values)
 
         # argmax over choices to get predicted label per stimulus

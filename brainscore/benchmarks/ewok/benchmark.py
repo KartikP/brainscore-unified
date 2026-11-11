@@ -1,4 +1,4 @@
-"""EWoK accuracy through process(), with ordinary Experiment tools."""
+"""EWoK accuracy through participate(), with ordinary Experiment tools."""
 from collections import defaultdict
 import hashlib
 import json
@@ -11,8 +11,9 @@ from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
-from brainscore_core.streaming import StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
+from brainscore.instrumentation import observed
 from brainscore.model_helpers.response_trace import register_trace_channels
 
 
@@ -34,6 +35,37 @@ def logprob_accuracy(values: list[float]) -> float:
     return (compare(values[0], values[1]) + compare(values[3], values[2])) / 2
 
 
+def _ask(subject: Subject, context, request: StreamEvent, repetition: int) -> StreamEvent:
+    """Send one request through ``participate`` and return the subject's answer.
+
+    The session holds the one request and asks for ``response_trace``. It is
+    one repetition of the record, so ``replay_sessions`` rebuilds exactly this
+    session. The subject is not reset here, as on the old ``process`` path:
+    a reset would remove interventions the caller applied around the run.
+
+    Known limit: ``replay_sessions`` resets the subject before and after
+    each repetition and this run does not, so the replay of a subject that
+    keeps state between requests, or of a run inside a caller's
+    intervention, can differ from the original.
+
+    A streaming subject sends fragments, and the last one is the answer. The
+    old ``process`` path returned only the final fragment, so a response
+    whose ``final`` flag is present and not True is refused.
+    """
+    session = Session([request], ('response_trace',))
+    with context.repetition(repetition):
+        context.publish('session_context',
+                        {'requested_output_channels': session.requested_output_channels})
+        with observed(session, context):
+            subject.participate(session)
+    responses = [event for event in session.emitted if event.channel == 'response_trace']
+    if not responses:
+        raise TypeError('EWoK requires a response_trace event')
+    if responses[-1].payload.get('final', True) is not True:
+        raise ValueError('EWoK provider ended without a final response')
+    return responses[-1]
+
+
 def _mean_by_version(rows: list[dict]) -> tuple[float, dict]:
     """Average items within each dataset version, then weight versions equally."""
     groups = defaultdict(list)
@@ -48,6 +80,8 @@ class EWoKBenchmark(BenchmarkBase):
 
     # Declare the messages the subject must accept and return before a run starts.
     requested_output_channels = frozenset({'response_trace'})
+    # Each request is a self-contained batch of items; the subject keeps no history.
+    trial_memory = 'none'
     leaderboard_eligible = False
 
     def __init__(
@@ -112,6 +146,7 @@ class EWoKBenchmark(BenchmarkBase):
             # Recorded requests contain restricted item text; keep runs private.
             context.directory.chmod(0o700)
             scored = []
+            requests_sent = 0   # one record repetition per request
             for offset in range(0, len(self._rows), self._batch_size):
                 batch = self._rows[offset:offset + self._batch_size]
                 returned = {}
@@ -131,12 +166,13 @@ class EWoKBenchmark(BenchmarkBase):
                             contexts2=[r['Context2'] for r in batch],
                             gen_type='constrained', prompt_type='optimized',
                         )
-                    # Route through the subject so tools can observe or intervene.
+                    # Route through participate so tools can observe or intervene.
                     # Expected answers and target-number labels stay in the benchmark.
-                    response = subject.process(StreamEvent(
+                    response = _ask(subject, context, StreamEvent(
                         next(iter(self.required_input_channels)), request, None,
                         {'trial_ids': [r['item_id'] for r in batch]},
-                    ))
+                    ), repetition=requests_sent)
+                    requests_sent += 1
                     if not isinstance(response, StreamEvent) or response.channel != 'response_trace':
                         raise TypeError('EWoK requires a response_trace event')
                     if response.payload.get('valid') is not True:
@@ -192,7 +228,13 @@ class EWoKBenchmark(BenchmarkBase):
         return CallableProtocol(
             self.identifier,
             evaluate,
-            methods=['process'],  # Expose model calls to the attached tools.
+            # No method is observed: each session is recorded through
+            # observed in _ask, one input and one output per request.
+            methods=(),
+            # The record repetition ids _ask uses: one per request, counted
+            # from 0. Tools select repetitions by these ids.
+            repetitions=range(math.ceil(len(self._rows) / self._batch_size)
+                              * (4 if self._mode == 'logprobs' else 2)),
             metadata={
                 'protocol': self._mode, 'dataset': self._manifest,
                 'items': len(self._rows), 'batch_size': self._batch_size,

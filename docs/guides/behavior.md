@@ -34,10 +34,9 @@ TaskContext(instruction='Which way does the ball move?', present=('text', 'video
 Run the task through a session, or attach `RecordBehavior` in an [experiment](experiments.md):
 
 ```python
-from brainscore_core.streaming import BufferedSession
+from brainscore_core.streaming_helpers import table_session
 
-session = BufferedSession(stimulus_set=test_stimuli, task_context=task,
-                          requested_output_channels=['behavior:choice'])
+session = table_session(test_stimuli, ['behavior:choice'], task_context=task)
 model.participate(session)
 choices = session.collect('behavior:choice')   # BehavioralAssembly: presentation x choice
 model.reset()

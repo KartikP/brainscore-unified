@@ -7,8 +7,9 @@ import pytest
 import torch
 import xarray as xr
 from brainscore.experiments import SessionProtocol, Repetition, TorchInstrumentation
-from brainscore_core.model_interface import FunctionalSelection, Selection
-from brainscore_core.streaming import InMemorySession
+from brainscore import FunctionalSelection
+from brainscore_core.model_interface import Selection
+from brainscore_core.streaming import Session
 
 
 @pytest.mark.parametrize('axis,expected_count', [(None, 1), (-1, 6), (1, 12)])
@@ -61,7 +62,7 @@ def test_factory_argument_does_not_change_when_conditions_are_added(conditions):
     @contextmanager
     def factory(repetition):
         requests.append(repetition)
-        yield InMemorySession()
+        yield Session(())
     protocol = SessionProtocol(identifier='stable', session_factory=factory, conditions=conditions)
     subject = SimpleNamespace(reset=lambda: None, participate=lambda session: None)
     context = SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None)
@@ -74,7 +75,7 @@ def test_identifier_factory_is_an_explicit_compatibility_option():
     @contextmanager
     def factory(identifier):
         requests.append(identifier)
-        yield InMemorySession()
+        yield Session(())
     protocol = SessionProtocol(identifier='old', session_factory=factory, factory_argument='identifier')
     protocol.run(SimpleNamespace(reset=lambda: None, participate=lambda session: None),
                  SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None))
@@ -116,7 +117,7 @@ def test_unsupported_coordinate_system_is_rejected_before_attaching_tools():
 
 def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_path, monkeypatch):
     from PIL import Image
-    from brainscore_core.model_interface import BrainScoreModel
+    from brainscore import BrainScoreModel
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
     from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
@@ -218,13 +219,13 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     namespace = dict(Subject=Subject, torch=torch, np=np, StreamEvent=StreamEvent,
                      BehavioralAssembly=BehavioralAssembly)
     exec(compile(ast.Module(body=[adapter], type_ignores=[]), '<notebook-adapter>', 'exec'), namespace)
-    subject = namespace['ImageSubject'](torch.nn.Linear(3, 2).eval())
-    inputs = np.array([[1., 2., 3.]], dtype=np.float32)
+    class ToFloat(torch.nn.Module):
+        def forward(self, pixels):
+            return torch.nn.functional.linear(pixels.flatten(1).float(), torch.ones(2, 3))
+    subject = namespace['ImageSubject'](ToFloat().eval())
+    inputs = np.ones((1, 3, 1, 1), dtype=np.uint8)  # one 3-channel 1x1 uint8 image
     def session():
-        return InMemorySession(
-            inputs=[StreamEvent(channel='vision', payload=inputs.copy(), t_ms=0)],
-            requested_output_channels=['behavior'],
-        )
+        return Session([StreamEvent(channel='vision', payload=inputs.copy(), t_ms=0)], ['behavior'])
     class SessionBenchmark(Benchmark):
         identifier = 'notebook-channel-transfer'
         parent = 'behavioral'
@@ -251,8 +252,9 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
 @pytest.mark.parametrize('prefer_path', ['auto', 'generation', 'readout'])
 def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefer_path):
     from brainscore.benchmarks.roar_yeatman2021 import benchmark as module
+    from brainscore_core import Subject
+    from brainscore_core.streaming import StreamEvent
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     ids = [f's{i}' for i in range(500)]
     labels = ['real'] * 250 + ['pseudo'] * 250
     stimuli = StimulusSet({'stimulus_id': ids, 'sentence': ids, 'image_label': labels})
@@ -269,16 +271,28 @@ def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefe
     suffix = '' if prefer_path == 'auto' else f'-{prefer_path}'
     assert benchmark.identifier == f'Yeatman2021-lexical_decision-text{suffix}'
     tasks = []
-    def predict(stimuli):
-        return BehavioralAssembly(
-            np.array([[1, 0] if label == 'real' else [0, 1] for label in stimuli.image_label]),
-            dims=('presentation', 'choice'),
-            coords={'stimulus_id': ('presentation', list(stimuli.stimulus_id)),
-                    'stimulus_index': ('presentation', np.arange(len(stimuli))),
-                    'choice': ('choice', ['real', 'pseudo'])},
-        )
-    result = benchmark(SimpleNamespace(start_task=tasks.append, process=predict))
+    truth = dict(zip(stimuli.stimulus_id, stimuli.image_label))
+
+    class Reader(Subject):
+        # A contract subject: participate() and declarations only.
+        identifier = 'roar-participate-only'
+        in_channels = {'text'}
+        out_channels = {'behavior'}
+
+        def participate(self, session):
+            tasks.append(session.task_context)
+            while (event := session.next_input()) is not None:
+                if event.channel != 'text' or event.meta.get('role') == 'fitting':
+                    continue
+                label = truth[event.meta['stimulus_id']]
+                session.respond(StreamEvent(
+                    'behavior', np.array([1., 0.] if label == 'real' else [0., 1.]),
+                    event.t_ms, {'stimulus_id': event.meta['stimulus_id'],
+                                 'label_set': ['real', 'pseudo']}))
+
+    result = benchmark(Reader())
     assert tasks[0].prefer_path == prefer_path
+    assert result.attrs['n_test_stimuli'] == len(benchmark._test_stimuli)
     assert float(result) == 1
     assert result.attrs['requested_behavioral_path'] == prefer_path
     assert not set(benchmark._train_stimuli.stimulus_id) & set(benchmark._test_stimuli.stimulus_id)

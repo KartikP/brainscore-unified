@@ -22,7 +22,7 @@ from brainscore.experiments import (
     RecordReasoning,
     TorchInstrumentation,
     compare_outputs,
-    replay_calls,
+    replay_sessions,
 )
 from brainscore.harnesses.coggym import CogGymRunner
 from brainscore.model_helpers.response_trace import build_trace_subject
@@ -244,14 +244,12 @@ def qualify(args, model_id: str, report: dict[str, Any]) -> None:
             'restored trials match direct trials')
     report['restored_outputs_match'] = True
 
-    # Replay sends the saved model calls again; it does not rerun CogGym.
+    # Replay sends the saved requests again, one session per recorded call; it
+    # does not rerun CogGym. Reset the provider as the recorded run did first.
+    provider.reset(1)
     replay = Experiment(
         subject=subject,
-        protocol=replay_calls(
-            recorded.directory,
-            methods=['process'],
-            reset=lambda subject: provider.reset(1),
-        ),
+        protocol=replay_sessions(recorded.directory),
         tools=[RecordInputsOutputs()],
         output_dir=args.output_dir / 'replay',
     ).run()

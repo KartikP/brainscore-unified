@@ -73,7 +73,7 @@ A model is one `BrainScoreModel` construction. The optional slots decide which d
 can take (see the architecture map at https://brain-score.github.io/public/UMI/architecture.html for the full router):
 
 ```python
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore import model_registry
 
 def get_model():
@@ -142,7 +142,7 @@ benchmark_registry['your-benchmark'] = lambda: YourBenchmark()
 ```
 
 Then add `from . import your_name` to `brainscore/benchmarks/__init__.py`. For naturalistic /
-temporal data, reuse `core/brainscore_core/temporal.py` (`temporal_bin`, `hrf_convolve`,
+temporal data, reuse `brainscore/temporal.py` (`temporal_bin`, `hrf_convolve`,
 `contiguous_block_cv`, `window_plan`) — see `benchmarks/lahner2024` and `benchmarks/algonauts2025`
 as worked examples. For a clip longer than a video model's native temporal window, set
 `VideoWrapper(..., context_window_ms=...)` to tile it into windows and stitch the per-window
@@ -184,7 +184,7 @@ There are two related extension levels:
    reaches it.
 2. **Add a new capability.** In your own package, define typed payloads,
    register their channels with `register_channel`, subclass
-   `brainscore_core.capabilities.Capability` and register it once with
+   `brainscore.capabilities.Capability` and register it once with
    `register_capability`. Models opt in through `capability_config`. No core
    edit is needed.
 
@@ -193,7 +193,7 @@ The constructor slots available to model authors are:
 | Slot | Fires on | Signature |
 |------|----------|-----------|
 | `answer` | `StimulusSet` + `TaskContext.instruction` | `(*, stimulus_row, instruction, label_set) -> str`, called with keywords |
-| `policy` | `EnvironmentStep` / `Message` | `(env_step) -> EnvironmentResponse` |
+| `policy` | a closed-loop row | `(row) -> {output channel: payload}` |
 | `intervention` | `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 
 An `answer` function receives its arguments by keyword, so use these names:

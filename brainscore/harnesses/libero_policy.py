@@ -8,7 +8,7 @@ from copy import deepcopy
 
 import numpy as np
 
-from brainscore_core.events import EnvironmentResponse, EnvironmentStep
+from brainscore_core.streaming import StreamEvent
 
 
 class LiberoChunkPolicy:
@@ -17,7 +17,11 @@ class LiberoChunkPolicy:
     The seven outputs are the LIBERO controller's six end-effector commands
     and gripper command, in the checkpoint's convention. They are not seven
     joint velocities. Controller scaling remains in the reference environment.
+    A row carries the prepared request on ``observation`` and the prompt on
+    ``instruction``; construct the model with ``policy_inputs=LiberoChunkPolicy.inputs``.
     """
+
+    inputs = ('observation', 'instruction')
 
     def __init__(self, policy, *, execution_horizon=None):
         if not callable(getattr(policy, 'infer', None)):
@@ -28,10 +32,8 @@ class LiberoChunkPolicy:
         self.policy = policy
         self.execution_horizon = execution_horizon
 
-    def __call__(self, step):
-        if not isinstance(step, EnvironmentStep):
-            raise TypeError('Expected EnvironmentStep')
-        observation = step.observation
+    def __call__(self, row):
+        observation = row['observation']
         request = {}
         for name in ('observation/image', 'observation/wrist_image'):
             image = np.asarray(observation[name])
@@ -42,9 +44,9 @@ class LiberoChunkPolicy:
         if state.shape != (8,) or state.dtype.kind not in 'fiu' or not np.isfinite(state).all():
             raise ValueError('Expected eight finite LIBERO state values')
         request['observation/state'] = state.copy()
-        if not isinstance(step.instruction, str):
+        if not isinstance(row.get('instruction'), str):
             raise ValueError('Expected a text instruction')
-        request['prompt'] = step.instruction
+        request['prompt'] = row['instruction']
         result = self.policy.infer(request)
         actions = np.asarray(result['actions'])
         if (actions.ndim != 2 or actions.shape[0] == 0 or actions.shape[1] != 7
@@ -52,12 +54,9 @@ class LiberoChunkPolicy:
             raise ValueError('Expected a nonempty finite action chunk with shape (horizon, 7)')
         if self.execution_horizon is not None and self.execution_horizon > len(actions):
             raise ValueError('Predicted chunk does not cover execution_horizon')
-        return EnvironmentResponse(
-            action=actions.copy(),
-            metadata={
-                'policy_output': deepcopy({k: v for k, v in result.items() if k != 'actions'}),
-                'action_kind': 'chunk', 'prediction_horizon': len(actions),
-                'execution_horizon': self.execution_horizon,
-                'scheduler': 'external_evaluator',
-            },
-        )
+        return {'motor': StreamEvent('motor', actions.copy(), None, {
+            'policy_output': deepcopy({k: v for k, v in result.items() if k != 'actions'}),
+            'action_kind': 'chunk', 'prediction_horizon': len(actions),
+            'execution_horizon': self.execution_horizon,
+            'scheduler': 'external_evaluator',
+        })}

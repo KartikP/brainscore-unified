@@ -28,6 +28,6 @@ and any EC2-only verification.
 ## Worked references (read these)
 
 - `brainscore/benchmarks/roar_yeatman2021/` — behavioral (generation + readout paths).
-- `brainscore/benchmarks/induced_dyslexia/` — perturbation (`process(StateChange)` + random null).
+- `brainscore/benchmarks/induced_dyslexia/` — perturbation (`apply_state_change` + random null).
 - `brainscore/benchmarks/lahner2024/` — naturalistic fMRI encoding (temporal kit, ROI variants).
 - `brainscore/benchmarks/algonauts2025/` — multimodal movie fMRI (video+audio+text, banded ridge).

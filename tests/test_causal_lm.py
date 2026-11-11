@@ -113,7 +113,7 @@ def test_intervention_changes_scores_and_reset_restores_them(subject):
 
 def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
     """Record-then-perturb (FunctionalSelection) works on ':input' sites end to end."""
-    from brainscore_core.selection import FunctionalSelection
+    from brainscore.selection import FunctionalSelection
     model, net, _ = subject
     localizer = StimulusSet({'stimulus_id': list('abcd'), 'sentence': ['the cat', 'the dog', 'cat sat', 'dog ran'],
                              'label': ['x', 'x', 'y', 'y']})
@@ -130,9 +130,9 @@ def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
 # Through participate(): the contract's only evaluation method.
 
 def _session_ask(model, channel, payload):
-    from brainscore_core.streaming import BufferedSession
-    session = BufferedSession([StreamEvent(channel, payload, None, {})],
-                              requested_output_channels=['response_trace'])
+    from brainscore_core.streaming import Session
+    from brainscore_core.streaming_helpers import table_session
+    session = Session([StreamEvent(channel, payload, None, {})], ['response_trace'])
     model.participate(session)
     (response,) = session.emitted
     assert response.channel == 'response_trace' and response.payload['valid'] is True
@@ -235,11 +235,12 @@ def test_an_empty_chat_context_is_conditioned_on_the_template(subject):
 # Provenance travels with neural responses as well as response traces.
 
 def test_neural_responses_carry_a_copy_of_the_provenance(subject):
-    from brainscore_core.streaming import BufferedSession
+    from brainscore_core.streaming import Session
+    from brainscore_core.streaming_helpers import table_session
     from brainscore_core.streaming_helpers import neural_response
     model, _, _ = subject
     expected = {'identifier': 'tiny-qwen', 'revision': 'test'}
-    session = BufferedSession(stimulus_set=_stimuli(), requested_output_channels=['neural:mlp_in'])
+    session = table_session(_stimuli(), ['neural:mlp_in'])
     model.participate(session)
     (event,) = session.emitted
     assert event.meta == {'driver': 'interact', 'record': 'mlp_in'}  # record format unchanged

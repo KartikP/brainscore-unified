@@ -16,7 +16,7 @@ from brainscore.experiments import (
 from brainscore.tools import attach_tools, load_tool
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
-from brainscore_core.streaming import BufferedSession, Session, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 
 pytestmark = pytest.mark.unit
 
@@ -25,7 +25,7 @@ ADDRESSES = ['projection:input', 'projection:other', 'projection:input:input']
 
 class FixtureSubject(Subject):
     identifier = 'input-site-preflight-fixture'
-    in_channels, out_channels = {'stimulus'}, {'behavior'}
+    in_channels, out_channels = {'observation'}, {'behavior'}
 
     def __init__(self) -> None:
         self.layer = torch.nn.Linear(3, 2)
@@ -40,9 +40,9 @@ class FixtureSubject(Subject):
 def protocol() -> SessionProtocol:
     @contextmanager
     def factory(trial):
-        yield BufferedSession([StreamEvent('stimulus', [[1., 2., 3.]], None)])
+        yield Session([StreamEvent('observation', [[1., 2., 3.]], None)])
     return SessionProtocol('input-site-preflight', factory, conditions=['baseline'],
-                           input_channels=['stimulus'], output_channels=['behavior'])
+                           input_channels=['observation'], output_channels=['behavior'])
 
 
 def _no_hooks(module):

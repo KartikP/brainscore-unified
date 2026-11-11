@@ -17,7 +17,7 @@ from brainscore.models.mirage import MirageRuntime, MirageSubject
 from brainscore.models.mirage.model import OUTPUT_CHANNEL, Prediction
 from brainscore.models.mirage.runtime import MirageRuntimeError, MirageTimeout
 from brainscore_core.contract import Subject
-from brainscore_core.streaming import BufferedSession, Session, StreamEvent
+from brainscore_core.streaming import Session, Source, StreamEvent
 
 pytestmark = pytest.mark.unit
 
@@ -58,7 +58,7 @@ def test_native_subject_satisfies_subject_through_participate(video):
     assert isinstance(subject, Subject)
     assert 'participate' in vars(MirageSubject)
     assert not any('interact' in vars(cls) for cls in MirageSubject.__mro__)
-    session = BufferedSession(inputs(video), requested_output_channels=(OUTPUT_CHANNEL,))
+    session = Session(inputs(video), (OUTPUT_CHANNEL,))
     subject.participate(session)
     assert [event.channel for event in session.emitted] == [OUTPUT_CHANNEL]
 
@@ -68,7 +68,7 @@ def test_subject_preserves_native_values_dtype_labels_and_time_grid(video):
     subject = MirageSubject(predictor=predictor)
     assert subject.in_channels == subject.required_channels == {'vision', 'audio', 'text'}
     assert subject.out_channels == {OUTPUT_CHANNEL}
-    session = BufferedSession(inputs(video), requested_output_channels=(OUTPUT_CHANNEL,))
+    session = Session(inputs(video), (OUTPUT_CHANNEL,))
     subject.participate(session)
     assembly = session.collect(OUTPUT_CHANNEL)
     assert assembly.dims == ('presentation', 'neuroid')
@@ -113,7 +113,7 @@ def test_malformed_clip_fails_before_native_compute(video, tmp_path, defect):
         requested = 'neural:IT'
     predictor = NativeFixture()
     subject = MirageSubject(predictor=predictor)
-    session = BufferedSession(events, requested_output_channels=(requested,))
+    session = Session(events, (requested,))
     with pytest.raises((ValueError, TypeError)):
         subject.participate(session)
     assert predictor.calls == []
@@ -121,28 +121,24 @@ def test_malformed_clip_fails_before_native_compute(video, tmp_path, defect):
 
 
 def test_subject_answers_complete_clip_before_next_reactive_input(video):
-    class ReactiveSession(Session):
-        requested_output_channels = (OUTPUT_CHANNEL,)
-
+    class Reactive(Source):
         def __init__(self):
             self.position = 0
-            self.emitted = []
+            self.session = None
 
         def next_input(self):
             if self.position == 3:
-                assert len(self.emitted) == 1
+                assert len(self.session.emitted) == 1
                 return None
             event = inputs(video)[self.position]
             self.position += 1
             return event
 
-        def respond(self, event):
-            self.emitted.append(event)
-
     predictor = NativeFixture()
     subject = MirageSubject(predictor=predictor)
     for _ in range(2):
-        session = ReactiveSession()
+        source = Reactive()
+        session = source.session = Session(source, (OUTPUT_CHANNEL,))
         subject.participate(session)
         assert len(session.emitted) == 1
         subject.reset()
@@ -154,7 +150,7 @@ def test_recording_copies_inputs_and_replay_reruns_without_original_file(video, 
 
     @contextmanager
     def factory(_trial):
-        yield BufferedSession(inputs(video), requested_output_channels=(OUTPUT_CHANNEL,))
+        yield Session(inputs(video), (OUTPUT_CHANNEL,))
 
     original = Experiment(
         subject=MirageSubject(predictor=predictor),
@@ -229,7 +225,7 @@ def test_invalid_native_output_is_not_emitted(video, defect):
         return Prediction(values, {'subject': subject})
 
     subject = MirageSubject(predictor=predictor)
-    session = BufferedSession(inputs(video), requested_output_channels=(OUTPUT_CHANNEL,))
+    session = Session(inputs(video), (OUTPUT_CHANNEL,))
     with pytest.raises(ValueError):
         subject.participate(session)
     assert session.emitted == []
@@ -259,7 +255,7 @@ Path(request['provenance']).write_text(json.dumps({{'subject': request['subject'
     assert list(predictor.work_dir.iterdir()) == []
 
 
-def test_timeout_kills_decoder_children_as_well_as_worker(video, tmp_path):
+def test_timeout_stops_the_worker_and_its_decoder_child(video, tmp_path):
     import os
     import signal
     import psutil
@@ -280,10 +276,15 @@ time.sleep(30)
         with pytest.raises(MirageTimeout):
             predictor(_clip({event.channel: event for event in inputs(video)}))
         child_pid = int(pid_file.read_text())
-        try:
-            status = psutil.Process(child_pid).status()
-        except psutil.NoSuchProcess:
-            status = 'gone'
+        deadline = time.monotonic() + 5.0
+        while True:
+            try:
+                status = psutil.Process(child_pid).status()
+            except psutil.NoSuchProcess:
+                status = 'gone'
+            if status in ('gone', psutil.STATUS_ZOMBIE) or time.monotonic() > deadline:
+                break
+            time.sleep(0.05)
         assert status in ('gone', psutil.STATUS_ZOMBIE)
         assert list(predictor.work_dir.iterdir()) == []
     finally:

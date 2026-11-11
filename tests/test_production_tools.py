@@ -8,7 +8,7 @@ import pytest
 from brainscore.instrumentation import observe, intervene
 from brainscore.run_record import RunRecord, RunRecorder
 from brainscore.harnesses.robotics import ActionSpec, evaluate_droid_episode
-from brainscore_core.events import EnvironmentResponse, StateChange
+from brainscore_core.events import StateChange
 
 pytestmark = pytest.mark.unit
 
@@ -129,18 +129,24 @@ def action_spec():
                       'fixture-only', 50., (-1.,)*7, (1.,)*7)
 
 
-def test_droid_no_target_leakage_timing_and_resets(tmp_path):
-    seen, resets = [], []
-    def process(step):
-        assert set(step.observation) == {'cameras', 'proprioception'}
-        assert 'action' not in step.context and step.reward is None
-        seen.append(step)
-        return EnvironmentResponse(action=np.zeros(7))
-    subject = SimpleNamespace(process=process, reset=lambda: resets.append(True))
+def test_droid_no_target_leakage_timing_and_begin(tmp_path):
+    seen = []
+    def process(row):
+        assert set(row) == {'vision:image', 'proprioception', 'instruction'}
+        seen.append(row)
+        return {'motor': np.zeros(7)}
+    from brainscore import BrainScoreModel
+    class Policy:
+        begins = 0
+        __call__ = staticmethod(process)
+        def reset(self):
+            self.begins += 1
+    policy = Policy()
+    subject = BrainScoreModel('s', None, {}, {}, None, policy=policy)
     with RunRecorder(tmp_path/'run', metadata={'fixture': True}) as recorder:
         result = evaluate_droid_episode(subject, droid_fixture(), action_spec=action_spec(),
                                          action_source=lambda row: row['action'], recorder=recorder)
-    assert len(resets) == 2 and [s.context['t_ms'] for s in seen] == [0, 50]
+    assert policy.begins == 1 and len(seen) == 2
     assert result['evaluation'] == 'recorded_trajectory'
     assert not np.array_equal(result['predictions'], result['targets'])
     outputs = list(RunRecord(tmp_path/'run').outputs())
@@ -155,10 +161,10 @@ def test_action_validation(action):
 
 def test_trace_preserves_invalid_response_and_session(tmp_path):
     from brainscore.model_helpers.response_trace import build_trace_subject
-    from brainscore_core.streaming import InMemorySession, StreamEvent
+    from brainscore_core.streaming import Session, StreamEvent
     model = build_trace_subject('fixture', provider=lambda req: {'text': 'unparseable', 'tokens': [1]},
                                 parse=int, provenance={'provider': 'fixture'})
-    session = InMemorySession([StreamEvent('generation_request', {'prompt': 'a'}, 12)])
+    session = Session([StreamEvent('generation_request', {'prompt': 'a'}, 12)])
     session.requested_output_channels = ('response_trace',)
     model.participate(session)
     result = session.emitted[0]
@@ -169,14 +175,15 @@ def test_trace_preserves_invalid_response_and_session(tmp_path):
 
 def test_api_episode_reset():
     from brainscore.model_helpers.api_behavioral import build_api_action_fn
-    from brainscore_core.events import EnvironmentStep
     prompts = []
     def provider(model, system, prompt, image, max_tokens):
         prompts.append(prompt)
         return 'Action: 0'
     act = build_api_action_fn(provider, 'fixture', obs_mode='ascii', history_window=8)
     for first in (True, False, True):
-        act(EnvironmentStep(observation={'ascii': 'P G', 'legal_actions': {0: 'stay'}}, is_first=first))
+        if first:
+            act.reset()  # BrainScoreModel calls this when an episode begins
+        act({'observation': {'ascii': 'P G', 'legal_actions': {0: 'stay'}}})
     assert 'recent moves' in prompts[1].lower()
     assert 'recent moves' not in prompts[2].lower()
     assert len(act.trace) == 1

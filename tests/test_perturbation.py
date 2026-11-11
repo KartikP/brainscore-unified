@@ -7,13 +7,8 @@ import pytest
 
 torch = pytest.importorskip('torch')
 
-from brainscore_core.model_interface import (
-    BrainScoreModel,
-    Perturbation,
-    PerturbationApplied,
-    Selection,
-    StateChange,
-)
+from brainscore import BrainScoreModel
+from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore.perturbation import build_pytorch_ablation_fn
 
 

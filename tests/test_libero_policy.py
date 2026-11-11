@@ -11,7 +11,6 @@ import pytest
 
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
 from brainscore.run_record import RunRecord, RunRecorder
-from brainscore_core.events import EnvironmentStep
 
 
 def example_module(name):
@@ -65,12 +64,12 @@ def test_adapter_does_not_leak_targets_or_mutate_inputs():
     original['target'] = np.ones(7)
     policy = FixturePolicy()
     adapter = LiberoChunkPolicy(policy)
-    output = adapter(EnvironmentStep(observation=original, instruction=original['prompt']))
+    output = adapter({'observation': original, 'instruction': original['prompt']})['motor']
     assert set(policy.requests[0]) == set(request())
     policy.requests[0]['observation/image'][:] = 0
     np.testing.assert_array_equal(original['observation/image'], request()['observation/image'])
-    output.action[:] = 0
-    assert output.metadata['policy_output']['state'][1] == 1
+    output.payload[:] = 0
+    assert output.meta['policy_output']['state'][1] == 1
 
 
 @pytest.mark.parametrize('actions', [np.zeros(7), np.zeros((0, 7)), np.zeros((3, 8)),
@@ -80,7 +79,7 @@ def test_invalid_actions_fail_without_becoming_a_benchmark_result(actions):
         def infer(self, observation):
             return {'actions': actions}
     with pytest.raises(ValueError, match='action chunk'):
-        LiberoChunkPolicy(BadPolicy())(EnvironmentStep(observation=request(), instruction='task'))
+        LiberoChunkPolicy(BadPolicy())({'observation': request(), 'instruction': 'task'})
 
 
 @pytest.mark.parametrize('key,value', [('observation/state', np.zeros(7)),
@@ -91,7 +90,7 @@ def test_invalid_observations_do_not_reach_policy(key, value):
     observation[key] = value
     policy = FixturePolicy()
     with pytest.raises(ValueError):
-        LiberoChunkPolicy(policy)(EnvironmentStep(observation=observation, instruction='task'))
+        LiberoChunkPolicy(policy)({'observation': observation, 'instruction': 'task'})
     assert not policy.requests
 
 
@@ -453,21 +452,21 @@ def test_comparison_detects_pairing_errors_and_reports_both_disagreement_directi
 def test_chunk_metadata_does_not_change_external_scheduling():
     policy = FixturePolicy()
     response = LiberoChunkPolicy(policy, execution_horizon=5)(
-        EnvironmentStep(observation=request(), instruction='task')
-    )
-    assert response.action.shape == (10, 7)
-    assert response.metadata['prediction_horizon'] == 10
-    assert response.metadata['execution_horizon'] == 5
-    assert response.metadata['scheduler'] == 'external_evaluator'
-    assert response.metadata['action_kind'] == 'chunk'
-    unknown = LiberoChunkPolicy(policy)(EnvironmentStep(observation=request(), instruction='task'))
-    assert unknown.metadata['execution_horizon'] is None
+        {'observation': request(), 'instruction': 'task'}
+    )['motor']
+    assert response.payload.shape == (10, 7)
+    assert response.meta['prediction_horizon'] == 10
+    assert response.meta['execution_horizon'] == 5
+    assert response.meta['scheduler'] == 'external_evaluator'
+    assert response.meta['action_kind'] == 'chunk'
+    unknown = LiberoChunkPolicy(policy)({'observation': request(), 'instruction': 'task'})['motor']
+    assert unknown.meta['execution_horizon'] is None
 
 
 def test_chunk_must_cover_declared_execution_horizon():
     with pytest.raises(ValueError, match='execution_horizon'):
         LiberoChunkPolicy(FixturePolicy(), execution_horizon=11)(
-            EnvironmentStep(observation=request(), instruction='task')
+            {'observation': request(), 'instruction': 'task'}
         )
 
 

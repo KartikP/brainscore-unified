@@ -9,7 +9,6 @@ import numpy as np
 import torch
 from torch import nn
 
-from brainscore_core.model_interface import EnvironmentStep, EnvironmentResponse
 from brainscore.harnesses.multi_agent import (
     multi_agent_rollout, DialogueMediator, EchoAgent)
 from brainscore.activation_window import ActivationWindow
@@ -51,10 +50,10 @@ class TinyTorchAgent:
         self.identifier = identifier
         self.net = nn.Sequential(nn.Linear(dim, 6), nn.ReLU(), nn.Linear(6, 3))
 
-    def process(self, step):
+    def process(self, row):
         x = torch.ones(1, 4)
         out = self.net(x)
-        return EnvironmentResponse(action=out.detach().numpy().ravel().tolist())
+        return {'text': out.detach().numpy().ravel().tolist()}
 
 
 def test_activations_captured_for_both_agents_during_rollout():
@@ -149,32 +148,31 @@ def test_first_tensor_out_handles_tuple_and_hf_object():
     assert _first_tensor_out(HF()).shape == (1, 5)
 
 
-# ── typed Message path: first-class agent-to-agent messaging ─────────
+# ── message path: a message is text with the sender in the event meta ──
 
-from brainscore_core.model_interface import BrainScoreModel, Message
+from brainscore import BrainScoreModel
+from brainscore_core.streaming import StreamEvent
 from brainscore.harnesses.multi_agent import MessageMediator, MessageEchoAgent
 
 
-def test_message_mediator_routes_typed_messages():
-    """Each agent emits a Message; the peer consumes that same Message next turn."""
+def test_message_mediator_routes_text_events_with_the_sender_in_meta():
+    """Each agent emits text; the peer consumes that same text next turn."""
     alice, bob = MessageEchoAgent('alice'), MessageEchoAgent('bob')
     med = MessageMediator(task='greet')
     transcript = multi_agent_rollout([alice, bob], med, n_turns=2)
-    # every recorded action is a typed Message, and history is typed Messages
-    assert all(isinstance(e['action'], Message) for e in transcript)
-    assert all(isinstance(m, Message) for m in med.history)
-    # bob heard alice's utterance (routing through the typed channel)
+    assert all(isinstance(m, StreamEvent) and m.channel == 'text' for m in med.history)
+    assert [m.meta['sender'] for m in med.history] == ['alice', 'bob', 'alice', 'bob']
+    # bob heard alice's utterance (routing through the text channel)
     bob_first = next(e for e in transcript if e['agent'] == 'bob')
-    assert 'alice: heard<greet>' in bob_first['action'].content
+    assert 'alice: heard<greet>' in bob_first['action']
 
 
-def test_rollout_drives_brainscoremodel_via_process_message():
-    """A real BrainScoreModel agent (action_fn) is driven through process(Message)."""
-    def responder(step):
-        msg = step.observation              # process(Message) wraps it here
-        return Message(content=f'ack<{msg.content}>', sender='bsm')
-    agent = BrainScoreModel('bsm', None, {}, {}, None, action_fn=responder)
+def test_rollout_drives_brainscoremodel_via_process_row():
+    """A real BrainScoreModel agent (policy) is driven through process(row)."""
+    def responder(row):
+        return {'text': f"ack<{row['text']}>"}
+    agent = BrainScoreModel('bsm', None, {}, {}, None, policy=responder)
     med = MessageMediator(task='hi')
     transcript = multi_agent_rollout([agent], med, n_turns=1)
-    assert transcript[0]['action'].content == 'ack<hi>'
-    assert isinstance(med.history[0], Message)
+    assert transcript[0]['action'] == 'ack<hi>'
+    assert med.history[0].meta['sender'] == 'bsm'

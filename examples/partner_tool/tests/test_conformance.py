@@ -6,7 +6,7 @@ check runs before the first action, in two explicit stages:
 
 1. Cheap: Experiment(...).validate(), also called by run(). A bad declaration
    raises with no output directory, no reset(), no step() and no model call.
-2. Initialization: EnvironmentSession(environment=env, require_specs=True, seed=...) and one
+2. Initialization: EnvironmentSource(env, require_specs=True, seed=...) and one
    next_input(). The first observation is checked against observation_spec()
    before any step().
 
@@ -14,7 +14,7 @@ What a declaration does not say is unknown, not a default:
 - describe() reports an undeclared observation or action spec as None.
 - ArraySpec and DiscreteSpec carry no units, coordinate frame or control
   period. Only ActionSpec declares those, and it requires all three.
-- An observation without t_ms has no physical clock: its context has
+- An observation without t_ms has no physical clock: its event has
   t_ms=None and time_source='step_index' (step counts, not milliseconds).
 
 External evaluators have further declarations that are tested in the unified
@@ -36,9 +36,10 @@ from brainscore.experiments import (
     SessionProtocol, TorchInstrumentation,
 )
 from brainscore_core.environment import ArraySpec, DiscreteSpec, MappingSpec
-from brainscore_core.events import EnvironmentResponse, EnvironmentStep, Selection
-from brainscore_core.model_interface import BrainScoreModel
-from brainscore_core.streaming_helpers import EnvironmentSession
+from brainscore_core.events import Selection
+from brainscore import BrainScoreModel
+from brainscore_core.streaming import Session
+from brainscore_core.streaming_helpers import EnvironmentSource
 
 STEPS = 3
 
@@ -61,15 +62,14 @@ class PartnerEnvironment:
         state = np.array([self.steps / STEPS, 0.5], dtype=np.float32)
         if self.bad_observation is not None:
             state = self.bad_observation
-        return EnvironmentStep(observation={'state': state}, step_num=self.steps,
-                               is_first=self.steps == 0, is_last=self.steps == STEPS)
+        return {'observation': {'state': state}}, ('terminal' if self.steps == STEPS else None)
 
     def reset(self, *, seed=None):
         self.resets += 1
         self.steps = 0
-        return self._step()
+        return self._step()[0]
 
-    def step(self, action):
+    def step(self, outputs):
         self.steps += 1
         return self._step()
 
@@ -86,11 +86,11 @@ class Partner:
         self.environment = PartnerEnvironment(observation)
         self.calls = 0
 
-    def policy(self, step):
+    def policy(self, row):
         self.calls += 1
         with torch.no_grad():
-            scores = self.layer(torch.from_numpy(step.observation['state']))
-        return EnvironmentResponse(action=int(scores.argmax()))
+            scores = self.layer(torch.from_numpy(row['observation']['state']))
+        return {'motor': int(scores.argmax())}
 
     def subject(self, *, with_policy=True):
         return BrainScoreModel(identifier='partner-policy',
@@ -98,8 +98,8 @@ class Partner:
 
     @contextmanager
     def session(self, trial):
-        with EnvironmentSession(environment=self.environment, seed=trial.identifier,
-                                require_specs=True) as session:
+        source = EnvironmentSource(self.environment, seed=trial.identifier, require_specs=True)
+        with Session(source, ('motor',)) as session:
             yield session
 
     def native(self, **kwargs):
@@ -111,10 +111,10 @@ class Partner:
         def partner_evaluator(subject, context):
             # The external evaluator owns its loop, resets and scoring.
             env = self.environment
-            step, total = env.reset(seed=7), 0
-            while not step.is_last:
-                total += int(subject.process(step).action)
-                step = env.step(0)
+            row, total, reason = env.reset(seed=7), 0, None
+            while reason is None:
+                total += int(subject.process(row)['motor'])
+                row, reason = env.step({'motor': 0})
             return {'score': total}
         return CallableProtocol(identifier='partner-evaluator', evaluate=partner_evaluator,
                                 methods=methods)
@@ -198,7 +198,8 @@ def test_unwritable_output_parent_fails_before_any_work(tmp_path):
 ])
 def test_first_observation_is_checked_before_any_step(observation):
     partner = Partner(observation)
-    with EnvironmentSession(environment=partner.environment, require_specs=True, seed=3) as session:
+    with Session(EnvironmentSource(partner.environment, require_specs=True, seed=3),
+                 ('motor',)) as session:
         with pytest.raises(ValueError):
             session.next_input()
     assert partner.environment.resets == 1 and partner.environment.steps == 0
@@ -208,18 +209,21 @@ def test_first_observation_is_checked_before_any_step(observation):
 def test_undeclared_specs_are_unknown_not_defaults():
     class Untyped:
         def reset(self, *, seed=None):
-            return EnvironmentStep(observation={'state': np.zeros(2)}, step_num=0, is_first=True)
+            return {'observation': {'state': np.zeros(2)}}
 
-        def step(self, action):
+        def step(self, outputs):
             raise AssertionError('not reached')
 
     with pytest.raises(TypeError):
-        EnvironmentSession(environment=Untyped(), require_specs=True)
-    with EnvironmentSession(environment=Untyped(), seed=1) as session:
-        description = session.describe()
+        EnvironmentSource(Untyped(), require_specs=True)
+    source = EnvironmentSource(Untyped(), seed=1)
+    with Session(source, ('motor',)) as session:
+        description = source.describe()
         assert description['observation_spec'] is None and description['action_spec'] is None
+        begin = session.next_input()
         first = session.next_input()
-    assert first.context['t_ms'] is None and first.context['time_source'] == 'step_index'
+    assert begin.payload == 'begin'
+    assert first.t_ms is None and first.meta['time_source'] == 'step_index'
 
 
 def test_declared_action_spec_has_no_units_frame_or_period():

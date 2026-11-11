@@ -4,7 +4,7 @@ import pandas as pd
 
 import brainscore
 from brainscore_core.metrics import Score
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -61,3 +61,26 @@ def test_score_wraps_a_legacy_benchmark_and_not_a_typed_one():
     assert typed.attrs['candidate'] == 'BrainScoreModel'
     np.testing.assert_array_equal(legacy.attrs['output'].values, typed.attrs['output'].values)
     assert legacy.attrs['compatibility']['match'] == 'full'
+
+
+class _VisionNeuralBenchmark(_LegacyBenchmark):
+    """What a legacy vision NeuralBenchmark does to its candidate."""
+
+    def preallocate_memory(self, *args, **kwargs):
+        pass
+
+
+def test_typed_model_scores_identically_to_process(monkeypatch):
+    import brainscore_vision
+
+    model = BrainScoreModel('typed', region_layer_map={'IT': 'layer'},
+                            extractor={'vision': _Extractor()}, visual_degrees=8)
+    benchmark = _VisionNeuralBenchmark()
+    monkeypatch.setattr(brainscore_vision, 'import_plugin', lambda *a, **k: None)
+    monkeypatch.setitem(brainscore_vision.benchmark_registry, 'legacy-test', lambda: benchmark)
+    monkeypatch.setattr(brainscore_vision, 'load_model', lambda _: model)
+    score = brainscore_vision._run_score('m', 'legacy-test', check_mem=False)
+    assert score.attrs['candidate'] == 'LegacyBenchmarkFacade'
+    assert score.attrs['degrees'] == 8
+    model.start_recording('IT', time_bins=[(70, 170)])
+    np.testing.assert_array_equal(score.attrs['output'].values, model.process(benchmark.stimuli).values)

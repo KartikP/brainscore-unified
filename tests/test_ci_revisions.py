@@ -91,3 +91,31 @@ def test_bootstrap_cli_needs_no_installed_brainscore_package(tmp_path):
     assert result.returncode == 0, result.stderr
     assert json.loads(record.read_text())['checkouts']['language']['revision'] == HEAD
     assert f'language_revision={HEAD}\n' in output.read_text()
+
+
+def test_overrides_replace_several_peers_together():
+    from brainscore.validation.revisions import parse_override
+
+    overrides = dict(parse_override(value) for value in
+                     ('vision=' + 'f' * 40, 'language=contributor/language@' + '9' * 40))
+    record = candidate_record('core', overrides=overrides)
+    assert record['checkouts']['core']['revision'] == HEAD
+    assert record['checkouts']['vision'] == {'repository': 'brain-score/vision', 'revision': 'f' * 40}
+    assert record['checkouts']['language'] == {
+        'repository': 'contributor/language', 'revision': '9' * 40,
+    }
+    assert record['overrides'] == ['language', 'vision']
+
+
+@pytest.mark.parametrize('value', ['unified=' + 'f' * 40, 'core=main', 'core', 'core=fork/core@abc'])
+def test_invalid_override_is_rejected(value):
+    from brainscore.validation.revisions import parse_override
+
+    with pytest.raises(ValueError):
+        parse_override(value)
+
+
+def test_override_cannot_replace_the_candidate_under_test():
+    with pytest.raises(ValueError, match='conflicts'):
+        candidate_record('core', overrides={
+            'core': {'repository': 'brain-score/core', 'revision': 'f' * 40}})

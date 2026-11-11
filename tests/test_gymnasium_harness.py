@@ -1,4 +1,4 @@
-"""Tests for the Gymnasium harness — drive a standard env through process(EnvironmentStep).
+"""Tests for the Gymnasium harness — drive a standard env through a closed-loop session.
 
 Uses a random policy (no GPU, no model weights) so it runs anywhere gymnasium+minigrid
 are installed. The required CI profile rejects skips when either is absent.
@@ -9,7 +9,7 @@ import pytest
 pytest.importorskip("gymnasium")
 pytest.importorskip("minigrid")
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.gymnasium_harness import play_gym_episode, random_gym_policy, MINIGRID_ACTIONS
 
@@ -29,7 +29,7 @@ def test_play_gym_episode_runs_and_reports():
 
 
 def test_episode_drives_process_environment_step(monkeypatch):
-    """Confirm the loop actually calls model.process with EnvironmentStep carrying a frame."""
+    """Confirm the loop actually calls model.process with a row carrying a frame."""
     seen = {}
     model = _random_model()
     orig = model.process
@@ -37,8 +37,7 @@ def test_episode_drives_process_environment_step(monkeypatch):
     def spy(ev):
         seen.setdefault('events', 0)
         seen['events'] += 1
-        assert type(ev).__name__ == 'EnvironmentStep'
-        assert 'frame' in ev.observation and np.asarray(ev.observation['frame']).ndim == 3
+        assert 'frame' in ev['observation'] and np.asarray(ev['observation']['frame']).ndim == 3
         return orig(ev)
 
     model.process = spy

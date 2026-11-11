@@ -2,7 +2,7 @@
 from dataclasses import dataclass, field
 import numpy as np
 
-from brainscore_core.capabilities import Capability, register_capability
+from brainscore.capabilities import Capability, register_capability
 from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
 
 

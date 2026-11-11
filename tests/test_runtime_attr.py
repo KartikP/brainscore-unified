@@ -13,7 +13,7 @@ class _FakeModel:
     available_modalities = set()
     required_modalities = set()
     region_layer_map = {}
-    in_channels = set()
+    in_channels = {'text'}
     out_channels = set()
     required_channels = set()
 
@@ -26,7 +26,7 @@ class _FakeScore:
 class _FakeBenchmark:
     identifier = 'fake-benchmark'
     required_modalities = set()
-    required_input_channels = set()
+    required_input_channels = {'text'}
     requested_output_channels = set()
 
     def __call__(self, model):

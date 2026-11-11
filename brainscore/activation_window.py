@@ -3,7 +3,7 @@
 `PerceptWindow` taps a model's INPUT (a `forward_pre_hook`); `ActivationWindow`
 taps its LAYER OUTPUTS (a `forward_hook`), so you can collect hidden activations
 while the model runs — crucially, **including inside an embodied or multi-agent
-rollout**, where `process(EnvironmentStep)` dispatches to `action_fn` and never
+rollout**, where `process(row)` dispatches to the `policy` and never
 touches the `start_recording → NeuroidAssembly` path. It is non-invasive (hooks,
 no extra forward pass), strided/capped, and decoupled from the dispatch path:
 the hook fires whenever the layer's `forward()` runs.

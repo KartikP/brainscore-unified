@@ -5,7 +5,7 @@ dispatch branches process() can take (see
 https://brain-score.github.io/public/UMI/architecture.html for the full router):
   - extractor     -> neural recording + behavioral readout
   - answer        -> behavioral answers in words (instruction-following)
-  - policy        -> closed loop (EnvironmentStep)
+  - policy        -> closed loop (a row of channel -> payload)
   - intervention  -> lesion/perturbation (StateChange)
 Leave a slot as None if the model doesn't support that capability.
 
@@ -17,7 +17,7 @@ pretrained weights here.
 """
 import torch.nn as nn
 
-from brainscore_core.model_interface import BrainScoreModel
+from brainscore import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import (
     load_preprocess_images)
 from brainscore.model_helpers.vision_wrapper import VisionWrapper
