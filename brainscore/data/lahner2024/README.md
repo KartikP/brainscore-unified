@@ -34,7 +34,7 @@ python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks --help
 The time-resolved converter accepts `--data-cache`, `--output-path` and
 `--events-path`. Do not enable its optional upload flag for a local build.
 
-**Local workflow gap:** the registered loaders still fetch hosted artifacts;
+Local workflow gap: the registered loaders still fetch hosted artifacts;
 these scripts do not yet form a shared `brainscore.data prepare` workflow with
 registered local output loading. The ordinary GLM-beta assembly and the
 prepared time-resolved assembly are different targets, not interchangeable.

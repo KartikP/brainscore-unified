@@ -10,18 +10,17 @@ The built-in abilities are `BrainScoreModel` constructor slots. Pass a function:
 |------|---------|-----------|
 | `extractor` | stimuli, for recording | `{modality: wrapper}`; each wrapper takes `(stimuli, layers=...)` |
 | `answer` | a `StimulusSet` + `TaskContext.instruction` | `(stimulus_row, instruction, label_set) -> str` |
-| `policy` | an `EnvironmentStep` / `Message` | `(env_step) -> EnvironmentResponse` |
+| `policy` | a row (a mapping of channel -> payload) | `(row) -> {output channel: payload}` |
 | `intervention` | a `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 
 ```python
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import EnvironmentResponse
 
 
 def build_policy():
-    def policy(env_step):
-        # TODO: look at env_step.observation and choose an action.
-        return EnvironmentResponse(action=0)
+    def policy(row):
+        # TODO: look at row['observation'] and choose an action.
+        return {'motor': 0}
     return policy
 
 
@@ -53,7 +52,7 @@ its `setup` checks the model's settings before the first request.
    rather than replacing a registered name.
 3. Opt a model in through `capability_config={IDENTIFIER: settings}`. Other
    models do not gain the channels.
-4. Adapt `test_capability.py` and run it. It runs a `BufferedSession` through
+4. Adapt `test_capability.py` and run it. It runs a `Session` through
    `subject.participate(session)`.
 
 See the [tool-authoring guide](../../docs/guides/extend.md) for channel

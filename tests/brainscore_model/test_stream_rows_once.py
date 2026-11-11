@@ -19,10 +19,10 @@ import pandas as pd
 import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore_core._sessions.buffered import StimulusSetSession
 from brainscore_core._sessions.payloads import _stimulus_events, _table_row_position
-from brainscore_core._sessions.perception import StreamingStimulusSetSession, WindowedStreamSession
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core._sessions.perception import streaming_stimulus_session, windowed_stream
+from brainscore_core.streaming import Session, StreamEvent
+from brainscore_core.streaming_helpers import table_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -59,11 +59,8 @@ def text_model(calls):
 
 def streaming_session(kind, stimuli, record='A'):
     if kind == 'streaming':
-        return StreamingStimulusSetSession(stimuli, record=record)
-    if kind == 'buffered':
-        return BufferedSession(stimulus_set=stimuli, streaming=True,
-                               requested_output_channels=[f'neural:{record}'])
-    session = StimulusSetSession(stimuli, record=record)    # compatibility class
+        return streaming_stimulus_session(stimuli, record=record)
+    session = table_session(stimuli, [f'neural:{record}'])
     session.streaming = True
     return session
 
@@ -102,7 +99,7 @@ def test_two_column_table_gives_one_output_per_row(kind):
 def test_streamed_rows_equal_the_batch_rows(kind):
     calls = []
     model = text_model(calls)
-    batch = BufferedSession(stimulus_set=table(), requested_output_channels=['neural:A'])
+    batch = table_session(table(), ['neural:A'])
     model.participate(batch)
     stream = streaming_session(kind, table())
     model.participate(stream)
@@ -112,16 +109,26 @@ def test_streamed_rows_equal_the_batch_rows(kind):
 
 def test_batch_session_with_two_columns_is_unchanged():
     calls = []
-    session = BufferedSession(stimulus_set=table(), requested_output_channels=['neural:A'])
+    session = table_session(table(), ['neural:A'])
     text_model(calls).participate(session)
     assert calls == [['a', 'b']]
     assert len(session.emitted) == 1
 
 
 def test_streaming_session_still_holds_at_most_one_row():
-    session = StreamingStimulusSetSession(table(ids=list('abcdef')), record='A')
-    text_model([]).participate(session)
-    assert session.max_events_held <= 2           # one row's two input columns
+    calls = []
+    rows = table(ids=list('abcdef'))
+    pull = rows.iterrows
+
+    def watched():
+        for position, row in enumerate(pull()):
+            # a row is pulled only after the previous one was presented
+            assert len(calls) >= position, 'the table was read ahead of the subject'
+            yield row
+
+    rows.iterrows = watched
+    text_model(calls).participate(streaming_stimulus_session(rows, record='A'))
+    assert len(calls) == 6
 
 
 def test_two_extractors_record_one_row_once_per_channel():
@@ -143,7 +150,7 @@ def test_two_extractors_record_one_row_once_per_channel():
                                               'A1': LayerSelector('mid', modality='audio')})
     stimuli = StimulusSet({'stimulus_id': IDS, 'image_path': ['a.png', 'bb.png'],
                            'audio_path': ['a.wav', 'bbb.wav']})
-    session = StreamingStimulusSetSession(stimuli, record=['IT', 'A1'])
+    session = streaming_stimulus_session(stimuli, record=['IT', 'A1'])
     model.participate(session)
     assert sorted(calls) == [('a', ['a']), ('a', ['b']), ('v', ['a']), ('v', ['b'])]
     assert presented(session, 'neural:IT') == [['a'], ['b']]
@@ -155,7 +162,7 @@ def test_view_that_drops_a_stream_still_presents_each_row_once():
     calls = []
     stimuli = StimulusSet({'stimulus_id': IDS, 'image_path': ['a.png', 'b.png'],
                            'sentence': ['a-words', 'b-words']})
-    session = StreamingStimulusSetSession(stimuli, record='A')
+    session = streaming_stimulus_session(stimuli, record='A')
     text_model(calls).participate(session)
     assert calls == [['a'], ['b']]
 
@@ -163,14 +170,14 @@ def test_view_that_drops_a_stream_still_presents_each_row_once():
 def test_repeated_index_labels_keep_distinct_rows():
     """v5 defect: distinct stimuli that share an index label are not merged."""
     calls = []
-    session = StreamingStimulusSetSession(table(ids=['a', 'b', 'c'], index=[7, 7, 8]), record='A')
+    session = streaming_stimulus_session(table(ids=['a', 'b', 'c'], index=[7, 7, 8]), record='A')
     text_model(calls).participate(session)
     assert calls == [['a'], ['b'], ['c']]
 
 
 def test_repeated_stimulus_ids_in_the_table_stay_separate_presentations():
     calls = []
-    session = StreamingStimulusSetSession(table(ids=['a', 'a']), record='A')
+    session = streaming_stimulus_session(table(ids=['a', 'a']), record='A')
     text_model(calls).participate(session)
     assert calls == [['a'], ['a']]
 
@@ -179,7 +186,7 @@ def test_row_cut_short_is_presented_and_never_dropped():
     events = [e for e in _stimulus_events(table()) if not (e.meta['stimulus_id'] == 'a'
                                                           and e.meta['column'] == 'text')]
     calls = []
-    session = BufferedSession(events, streaming=True, requested_output_channels=['neural:A'])
+    session = Session(events, ['neural:A'], streaming=True)
     session.stimulus_set = table()
     text_model(calls).participate(session)
     assert calls == [['a'], ['b']]
@@ -204,7 +211,7 @@ def external(meta_list, channel='text'):
 
 def run_external(events, stimuli=None):
     calls = []
-    session = BufferedSession(events, streaming=True, requested_output_channels=['neural:A'])
+    session = Session(events, ['neural:A'], streaming=True)
     if stimuli is not None:
         session.stimulus_set = stimuli
     text_model(calls).participate(session)
@@ -250,7 +257,7 @@ def test_external_marker_that_does_not_match_the_table_is_never_merged(change):
             meta['column'] = 'image_path'
     if change == 'wrong_channel':
         events = [StreamEvent('vision', e.payload, e.t_ms, meta=e.meta) for e in events]
-        session = BufferedSession(events, streaming=True, requested_output_channels=['neural:A'])
+        session = Session(events, ['neural:A'], streaming=True)
         session.stimulus_set = table()
         assert all(_table_row_position(session, e) is None for e in events)
         return
@@ -272,21 +279,13 @@ def test_events_of_one_row_at_different_times_are_separate():
 # --- settings replaced before and after init ------------------------------------
 
 @pytest.mark.parametrize('kind', ['buffered', 'streaming'])
-def test_settings_installed_before_init_keep_one_output_per_row(kind):
+def test_settings_installed_with_the_session_keep_one_output_per_row(kind):
     original = {'number_of_trials': 3, '_table_rows': 'user-token'}
-    if kind == 'buffered':
-        class Source(BufferedSession):
-            def __init__(self):
-                self.settings = original
-                super().__init__(stimulus_set=table(), streaming=True,
-                                 requested_output_channels=['neural:A'])
-    else:
-        class Source(StreamingStimulusSetSession):
-            def __init__(self):
-                self.settings = original
-                super().__init__(table(), record='A')
+    session = (table_session(table(), ['neural:A'], settings=original) if kind == 'buffered'
+               else streaming_stimulus_session(table(), record='A'))
+    session.streaming = True
+    session.settings = original
     calls = []
-    session = Source()
     text_model(calls).participate(session)
     assert calls == [['a'], ['b']]
     assert session.settings == {'number_of_trials': 3, '_table_rows': 'user-token'}
@@ -311,14 +310,14 @@ def test_nested_session_groups_its_own_rows_only():
     def extract(stimuli, layers):
         seen.extend(stimuli['stimulus_id'])
         if stimuli['stimulus_id'].iloc[0] == 'a' and not inner_outputs:
-            inner = StreamingStimulusSetSession(table(ids=['inner']), record='A')
+            inner = streaming_stimulus_session(table(ids=['inner']), record='A')
             text_model(inner_calls).participate(inner)
             inner_outputs.append(presented(inner))
         return text_extractor([])(stimuli, layers)
 
     model = BrainScoreModel('outer', extractor={'text': extract},
                             region_layer_map={'A': LayerSelector('late', modality='text')})
-    session = StreamingStimulusSetSession(table(), record='A')
+    session = streaming_stimulus_session(table(), record='A')
     model.participate(session)
     assert seen == ['a', 'b']
     assert inner_outputs == [[['inner']]]
@@ -327,7 +326,7 @@ def test_nested_session_groups_its_own_rows_only():
 
 def replay(events, source_session, settings=True):
     """What brainscore.experiments.replay_sessions builds from a record."""
-    session = BufferedSession(deepcopy(events))
+    session = Session(deepcopy(events))
     session.stimulus_set = deepcopy(source_session.stimulus_set)
     session.streaming = True
     session.requested_output_channels = ('neural:A',)
@@ -337,7 +336,7 @@ def replay(events, source_session, settings=True):
 
 
 def test_replayed_new_record_presents_each_row_once_every_time():
-    source = StreamingStimulusSetSession(table(), record='A')
+    source = streaming_stimulus_session(table(), record='A')
     events = drain(source)
     model = text_model(calls := [])
     counts = []
@@ -351,7 +350,7 @@ def test_replayed_new_record_presents_each_row_once_every_time():
 
 def test_replayed_base_record_keeps_base_outputs():
     """A base record has no row marker: it replays exactly as base ran it."""
-    source = StreamingStimulusSetSession(table(), record='A')
+    source = streaming_stimulus_session(table(), record='A')
     base_events = drain(source)
     for event in base_events:
         del event.meta['table_row']
@@ -374,7 +373,8 @@ def test_stream_windows_are_unchanged():
 
     model = BrainScoreModel('windows', extractor={'vision': extract},
                             region_layer_map={'IT': LayerSelector('late', modality='vision')})
-    session = WindowedStreamSession([f'f{i}.png' for i in range(6)], fps=10.0, window_ms=200.0, record='IT')
+    session = Session(windowed_stream([f'f{i}.png' for i in range(6)], fps=10.0, window_ms=200.0),
+                      ['neural:IT'], streaming=True)
     model.participate(session)
     assert calls == [['w0_f0', 'w0_f1'], ['w200_f0', 'w200_f1'], ['w400_f0', 'w400_f1']]
     assert [event.meta['stream_index'] for event in session.emitted] == [0, 1, 2]
@@ -394,11 +394,11 @@ def test_v5_external_stream_positions_do_not_erase_distinct_presentations(positi
 
     model = BrainScoreModel('ext', extractor={'vision': extract},
                             region_layer_map={'IT': LayerSelector('late', modality='vision')})
-    events = [StreamEvent('vision:still', Path(sid + '.png'), float(i),
+    events = [StreamEvent('vision:image', Path(sid + '.png'), float(i),
                           meta={'column': 'image_path', 'stimulus_id': sid, 'stimulus_position': pos,
                                 'episode_id': i, 'table_row': pos})
               for i, (sid, pos) in enumerate(zip(IDS, positions))]
-    session = BufferedSession(events, streaming=True, requested_output_channels=['neural:IT'])
+    session = Session(events, ['neural:IT'], streaming=True)
     model.participate(session)
     assert len(calls) == 2
     assert session.collect('neural:IT').sizes['presentation'] == 2
@@ -417,7 +417,7 @@ def test_v6_independent_sessions_with_equal_markers_stay_local():
     calls = []
     model = text_model(calls)
     for ids in (['a', 'b'], ['c', 'd']):
-        session = StreamingStimulusSetSession(table(ids=ids), record='A')
+        session = streaming_stimulus_session(table(ids=ids), record='A')
         model.participate(session)
         assert len(session.emitted) == 2
     assert calls == [['a'], ['b'], ['c'], ['d']]

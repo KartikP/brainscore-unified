@@ -43,6 +43,8 @@ class CogGymBenchmark(BenchmarkBase):
     # Declare the messages the subject must accept and return before a run starts.
     required_input_channels = frozenset({'generation_request'})
     requested_output_channels = frozenset({'response_trace'})
+    # Each request carries the whole conversation so far; the subject keeps no history.
+    trial_memory = 'none'
     leaderboard_eligible = False
 
     def __init__(

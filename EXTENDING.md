@@ -142,7 +142,7 @@ benchmark_registry['your-benchmark'] = lambda: YourBenchmark()
 ```
 
 Then add `from . import your_name` to `brainscore/benchmarks/__init__.py`. For naturalistic /
-temporal data, reuse `core/brainscore_core/temporal.py` (`temporal_bin`, `hrf_convolve`,
+temporal data, reuse `brainscore/temporal.py` (`temporal_bin`, `hrf_convolve`,
 `contiguous_block_cv`, `window_plan`) — see `benchmarks/lahner2024` and `benchmarks/algonauts2025`
 as worked examples. For a clip longer than a video model's native temporal window, set
 `VideoWrapper(..., context_window_ms=...)` to tile it into windows and stitch the per-window
@@ -193,7 +193,7 @@ The constructor slots available to model authors are:
 | Slot | Fires on | Signature |
 |------|----------|-----------|
 | `answer` | `StimulusSet` + `TaskContext.instruction` | `(*, stimulus_row, instruction, label_set) -> str`, called with keywords |
-| `policy` | `EnvironmentStep` / `Message` | `(env_step) -> EnvironmentResponse` |
+| `policy` | a closed-loop row | `(row) -> {output channel: payload}` |
 | `intervention` | `StateChange` | `(state_change) -> (PerturbationApplied, cleanup)` |
 
 An `answer` function receives its arguments by keyword, so use these names:

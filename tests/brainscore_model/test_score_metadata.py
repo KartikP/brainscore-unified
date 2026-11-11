@@ -9,6 +9,7 @@ from brainscore_core.score_metadata import (
     record_measures,
 )
 from brainscore_core.streaming import StreamEvent
+from brainscore_core.streaming_helpers import behavior_session
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 from .test_behavioral_readout import (
     _fake_preprocessor_returning,
@@ -83,13 +84,12 @@ def test_brainscore_model_stamps_do_not_change(model_factory, task_kwargs, expec
 
 def test_direct_session_with_a_generation_model_is_recorded():
     """participate + collect, without behavioral_response or the facade."""
-    from brainscore_core.streaming import BufferedSession
 
     model = _generation_model()
     task = TaskContext(fitting_stimuli=_stimuli(), metadata={'stimulus_set': _stimuli()},
                        **_GENERATION_TASK)
     with record_measures() as measures:
-        session = BufferedSession(task_context=task, requested_output_channels=['behavior'])
+        session = behavior_session(task)
         model.participate(session)
         session.collect('behavior')
 

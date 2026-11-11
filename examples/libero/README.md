@@ -1,8 +1,8 @@
 # Reproduce a trained policy on LIBERO
 
-**Transport results:** both routes passed 10/10 smoke trials and 221 saved requests matched exactly. The full Spatial run later completed: reference 496/500 successes, UMI 488/500. Those closed-loop outcomes were not equivalent.
+Transport results: both routes passed 10/10 smoke trials and 221 saved requests matched exactly. The full Spatial run later completed: reference 496/500 successes, UMI 488/500. Those closed-loop outcomes were not equivalent.
 
-**Historical internal-tools check (October 6, 2026):** a separate ten-task check passed after a GPU recording fix. Baseline, recording and ablation each succeeded on 10/10 tasks; baseline and recording matched all 223 observations/action chunks exactly. See the [qualification report](../../docs/archive/qualification/2026-10-06-openpi-tools.md).
+Historical internal-tools check (October 6, 2026): a separate ten-task check passed after a GPU recording fix. Baseline, recording and ablation each succeeded on 10/10 tasks; baseline and recording matched all 223 observations/action chunks exactly. See the [qualification report](../../docs/archive/qualification/2026-10-06-openpi-tools.md).
 
 For the design and steps to reuse in another benchmark, read
 [Connect a robotics benchmark](../../docs/archive/robotics_benchmark_integration.md).
@@ -16,11 +16,11 @@ environment. No core contract or scientific scoring dependencies change.
 
 ## What the three runs establish
 
-1. **Reference:** official evaluator, recording proxy, original trained policy.
-2. **Replay:** identical saved requests, in order, through UMI and a fresh policy
+1. Reference: official evaluator, recording proxy, original trained policy.
+2. Replay: identical saved requests, in order, through UMI and a fresh policy
    server. Every predicted action must match exactly (`atol=rtol=0`). A mismatch
    stops the script for investigation; do not widen tolerance after seeing it.
-3. **UMI:** official evaluator controls the simulator through the UMI bridge.
+3. UMI: official evaluator controls the simulator through the UMI bridge.
    Compare per-trial outcomes and success rates against the reference.
 
 The reference proxy records calls but does not dispatch them through a subject.
@@ -33,7 +33,7 @@ policy server before each run. Replaying saved outputs needs no inference;
 This first integration covers the selected policy, not arbitrary recurrent
 policies or robot hardware. The bridge returns a complete action chunk; the
 reference evaluator chooses and applies actions. It does not exercise UMI's
-`EnvironmentSession` driver or internal model interventions.
+closed-loop session driver or internal model interventions.
 
 ## Pinned sources
 
@@ -101,7 +101,7 @@ checkout and evaluation code unchanged; save the resulting dependency freeze.
 - `*/videos/`: a distinct video for each completed trial.
 - `*.log`, `*-freeze.txt`, `images.json`, `nvidia-smi.txt`: execution evidence.
 
-**Transport captures.** A `serve_bridge.py` record closes `complete` only if its
+Transport captures. A `serve_bridge.py` record closes `complete` only if its
 one evaluator connection was closed by the evaluator before the bridge stopped,
 and every request has its recorded reply. A stop during a call, a stop while the
 evaluator is still connected, no connection at all, or a policy failure closes it
@@ -188,7 +188,7 @@ Who owns what on each route:
 | `run_tools.sh` (`serve_tool_bridge.py`) | LIBERO evaluator (`evaluate.py`) | `serve_tools.py` | bridge runs `Experiment` with `RecordInputsOutputs`, `RecordActivity`, `Ablate`; tools act inside each inference request |
 | `qualify_tools.py` / `qualify_remote_tools.py` | the script (saved requests, no simulator) | local or `serve_tools.py` policy | same tools, on identical inputs |
 
-**Closed-loop inputs are not matched after an intervention.** On the tool route the
+Closed-loop inputs are not matched after an intervention. On the tool route the
 simulator responds to the actions the policy returns. Once an ablation changes an
 action, every later observation differs from the baseline run, so per-call
 comparison of internals or actions across conditions is not meaningful there.
@@ -234,11 +234,11 @@ python examples/libero/serve_tool_bridge.py \
 
 Add `--suite`, `--trials-per-task` and `--execution-horizon 5` (the evaluator's `replan_steps`); the bridge refuses an evaluator whose start message disagrees. Run the evaluator only through `evaluate.py` on port 8001, from a unified checkout: it loads the standard-library `brainscore/experiments/backends/socket_deadline.py` by path, without installing brainscore (`run_pair.sh` mounts the checkout read-only). The bridge uses the same `LiberoChunkPolicy` and common experiment tools; LIBERO still owns physics, observations, scheduling and success scoring. `--mode baseline` omits internal tools; `--mode ablation` additionally silences projection unit 0. Restart the policy server for each matched condition.
 
-**Completion.** On one connection the bridge sends a hello naming its UMI run, the evaluator declares its suite, tasks and step limits, and each request carries its call index and episode. After writing `report.json`, the evaluator sends a receipt: per episode, chunks received, actions whose `env.step` returned, wait steps, errors and how it ended. The bridge accepts it only if every episode in the declared order ended by success or the step limit, its calls match the calls served, and executed actions fill whole chunks except possibly the last. A receipt is evaluator testimony, checked for consistency; it is not independent proof. A served chunk is not evidence that its actions ran.
+Completion. On one connection the bridge sends a hello naming its UMI run, the evaluator declares its suite, tasks and step limits, and each request carries its call index and episode. After writing `report.json`, the evaluator sends a receipt: per episode, chunks received, actions whose `env.step` returned, wait steps, errors and how it ended. The bridge accepts it only if every episode in the declared order ended by success or the step limit, its calls match the calls served, and executed actions fill whole chunks except possibly the last. A receipt is evaluator testimony, checked for consistency; it is not independent proof. A served chunk is not evidence that its actions ran.
 
 The bridge acknowledges `complete` only after `Experiment.run` has saved its records; the evaluator writes the answer to `finish.json` and exits 0 only for a complete report and acknowledgment. A disconnect, idle timeout (`--idle-timeout`, 900 s), rejected receipt or failed save marks the bridge record failed. A lost or late inference reply closes the evaluator connection; nothing is resent, and the remaining episodes fail.
 
-**Transport limits.** Operational defaults, not measured budgets.
+Transport limits. Operational defaults, not measured budgets.
 
 | Connection | Limit | Default |
 |---|---|---|
@@ -269,7 +269,7 @@ For matched GPU processes, preserve baseline compilation choices with `XLA_FLAGS
 
 `qualify_remote_tools.py` takes the same `--checkpoint`, `--record`, `--report` and `--out` paths as the local qualification script, and tests direct-versus-remote inference before simulator use. Both scripts record the checkpoint content hash and the source evidence, write `qualification.json` with `status: failed` and the error when a check fails, and use explicit checks that still run under `python -O`.
 
-The `run_tools.sh` baseline is the UMI tool route **without tools**, not the native
+The `run_tools.sh` baseline is the UMI tool route without tools, not the native
 reference from `run_pair.sh`. Its intervention targets unit 0 of `action_out_proj`
 at denoising iterations 0 and 1 of the default ten iterations. Closed-loop outcome
 differences are descriptive; use the same-input checks to establish action parity.

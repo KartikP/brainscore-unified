@@ -109,6 +109,12 @@ class _Algonauts2025Base(BenchmarkBase):
                    'video_only', 'audio_only', 'language_only')
     BANDED_ALPHA_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
 
+    # Sends one frame per TR on `vision` and asks for the region it records. The
+    # benchmark stacks the TRs itself, so the subject keeps no history across frames.
+    required_input_channels = frozenset({'vision'})
+    requested_output_channels = frozenset({'neural:IT'})
+    trial_memory = 'none'
+
     def __init__(
         self,
         subject: int,
@@ -148,9 +154,6 @@ class _Algonauts2025Base(BenchmarkBase):
             ceiling=Score(1.0),
             bibtex=BIBTEX,
         )
-        # Vision-frames benchmark: per-TR frames run through the candidate's
-        # vision tower. (Becomes multimodal when audio/text towers land, #78.)
-        self.required_modalities = {'vision'}
 
     @property
     def assembly(self):

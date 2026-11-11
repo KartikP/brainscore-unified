@@ -1,7 +1,7 @@
 """Clips through a vision-language model's own video processor (Qwen-VL style).
 
 Register it under the ``video`` key next to the still-image extractor, so the
-subject declares that it takes clips natively (``vision:clip``):
+subject declares that it takes clips natively (``vision:video``):
 
     extractor={'vision': VisionWrapper(..., kind='vlm'),
                'video': VLMVideoWrapper(model.model.visual, processor, identifier=...)}

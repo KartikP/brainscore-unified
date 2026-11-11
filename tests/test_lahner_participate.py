@@ -123,7 +123,7 @@ def _glm(benchmark, monkeypatch):
 
 
 def test_frames_are_pooled_per_clip_from_the_benchmark_table():
-    subject = Recorder({'vision:still'})
+    subject = Recorder({'vision:image'})
     pooled = _util.record_frames_per_clip(subject, _frames(), 'IT', [(0, 3000)])
     assert list(pooled.indexes['presentation'].get_level_values('clip_id')) == CLIPS
     frames = [_unit_values(f"{CLIPS[0]}_t{int(t)}", "neural:IT") for t in SAMPLE_TIMES_MS]
@@ -131,18 +131,18 @@ def test_frames_are_pooled_per_clip_from_the_benchmark_table():
 
 
 def test_routing_reads_declared_channels_only():
-    assert _util.takes_audiovisual(Recorder({'vision:clip', 'audio'}, regions=('IT', 'A1')))
+    assert _util.takes_audiovisual(Recorder({'vision:video', 'audio'}, regions=('IT', 'A1')))
     assert _util.takes_audiovisual(Recorder({'vision', 'audio'}, regions=('IT', 'A1')))
-    assert not _util.takes_audiovisual(Recorder({'vision:clip'}, regions=('IT', 'A1')))
-    assert not _util.takes_audiovisual(Recorder({'vision:clip', 'audio'}, regions=('IT',)))
+    assert not _util.takes_audiovisual(Recorder({'vision:video'}, regions=('IT', 'A1')))
+    assert not _util.takes_audiovisual(Recorder({'vision:video', 'audio'}, regions=('IT',)))
 
 
 # ── GLM-beta variant ──────────────────────────────────────────────
 
 
 @pytest.mark.parametrize('in_channels, pipeline, rows', [
-    ({'vision:clip'}, 'video_native', len(CLIPS)),
-    ({'vision:still'}, 'frame_aggregation', len(CLIPS) * len(SAMPLE_TIMES_MS)),
+    ({'vision:video'}, 'video_native', len(CLIPS)),
+    ({'vision:image'}, 'frame_aggregation', len(CLIPS) * len(SAMPLE_TIMES_MS)),
 ])
 def test_glm_variant_scores_a_participate_only_subject(monkeypatch, in_channels, pipeline, rows):
     benchmark = _glm(Lahner2024BOLDMoments(sample_times_ms=list(SAMPLE_TIMES_MS)), monkeypatch)
@@ -160,7 +160,7 @@ def test_glm_variant_scores_a_participate_only_subject(monkeypatch, in_channels,
 
 def test_multimodal_variant_scores_a_participate_only_subject(monkeypatch):
     benchmark = _glm(Lahner2024BOLDMoments_multimodal(), monkeypatch)
-    subject = Recorder({'vision:clip', 'audio'}, regions=('IT', 'A1'))
+    subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'))
     score = benchmark(subject)
     assert np.isfinite(float(score))
     assert [channels for channels, _ in subject.seen] == [['neural:IT'], ['neural:A1']]
@@ -168,7 +168,7 @@ def test_multimodal_variant_scores_a_participate_only_subject(monkeypatch):
 
 def test_multimodal_variant_is_refused_before_any_compute(monkeypatch):
     benchmark = _glm(Lahner2024BOLDMoments_multimodal(), monkeypatch)
-    subject = Recorder({'vision:clip'}, regions=('IT',))
+    subject = Recorder({'vision:video'}, regions=('IT',))
     with pytest.raises(ValueError, match='both'):
         benchmark(subject)
     assert subject.seen == []
@@ -186,7 +186,7 @@ def _tr(benchmark, monkeypatch):
     return benchmark
 
 
-@pytest.mark.parametrize('in_channels', [{'vision:clip'}, {'vision:still'}])
+@pytest.mark.parametrize('in_channels', [{'vision:video'}, {'vision:image'}])
 def test_tr_variant_extracts_features_through_participate(monkeypatch, in_channels):
     benchmark = _tr(Lahner2024BOLDMoments_timeresolved(), monkeypatch)
     features, stimulus_ids = benchmark._extract_per_stimulus_features(Recorder(in_channels))
@@ -198,7 +198,7 @@ def test_tr_multimodal_variant_extracts_both_towers_through_participate(monkeypa
     benchmark = _tr(Lahner2024BOLDMoments_timeresolved_multimodal(), monkeypatch)
     monkeypatch.setattr(benchmark, '_video_stim_set_for', lambda ids: _videos())
     monkeypatch.setattr(benchmark, '_audio_stim_set_for', lambda ids: _audio())
-    subject = Recorder({'vision:clip', 'audio'}, regions=('IT', 'A1'))
+    subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'))
     features, stimulus_ids = benchmark._extract_per_stimulus_features(subject)
     assert features.shape == (len(CLIPS), 2 * N_UNITS)
     assert list(benchmark._modality_per_feature) == ['video'] * N_UNITS + ['audio'] * N_UNITS
@@ -207,7 +207,7 @@ def test_tr_multimodal_variant_extracts_both_towers_through_participate(monkeypa
 
 def test_tr_multimodal_variant_falls_back_to_one_tower_from_declarations(monkeypatch):
     benchmark = _tr(Lahner2024BOLDMoments_timeresolved_multimodal(), monkeypatch)
-    subject = Recorder({'vision:clip'}, regions=('IT',))
+    subject = Recorder({'vision:video'}, regions=('IT',))
     features, _ = benchmark._extract_per_stimulus_features(subject)
     assert benchmark._modality_per_feature is None
     assert features.shape == (len(CLIPS), N_UNITS)
@@ -222,7 +222,7 @@ def test_tr_multimodal_variant_falls_back_to_one_tower_from_declarations(monkeyp
 # with them patched in, on the same BrainScoreModel; results must be identical.
 
 from brainscore import BrainScoreModel
-from brainscore_core.temporal import temporal_bin
+from brainscore.temporal import temporal_bin
 from brainscore.benchmarks.lahner2024 import (
     benchmark as glm_module, benchmark_multimodal as mm_module,
     benchmark_timeresolved as tr_module, benchmark_timeresolved_multimodal as trmm_module,
@@ -370,8 +370,48 @@ class _WrongIds(Recorder):
                 dims=['presentation', 'neuroid']), t_ms=None))
 
 
-@pytest.mark.parametrize('in_channels', [{'vision:clip'}, {'vision:still'}])
+@pytest.mark.parametrize('in_channels', [{'vision:video'}, {'vision:image'}])
 def test_a_response_for_other_stimuli_is_refused(monkeypatch, in_channels):
     benchmark = _glm(Lahner2024BOLDMoments(sample_times_ms=list(SAMPLE_TIMES_MS)), monkeypatch)
     with pytest.raises(ValueError, match='exactly once'):
         benchmark(_WrongIds(in_channels))
+
+
+# ── Declarations (Contract Rules 5.1, 5.2, 5.12) ──────────────────
+
+from tests.benchmark_declarations import assert_declares, assert_preflight
+from brainscore.benchmarks.lahner2024 import benchmark as _glm_module
+from brainscore.benchmarks.lahner2024 import benchmark_timeresolved as _tr_module
+from brainscore.benchmarks.lahner2024 import benchmark_multimodal as _mm_module
+from brainscore.benchmarks.lahner2024 import benchmark_timeresolved_multimodal as _trmm_module
+
+SINGLE_TOWER = [
+    _glm_module.Lahner2024BOLDMoments,
+    _glm_module.Lahner2024BOLDMoments_visualROI,
+    _tr_module.Lahner2024BOLDMoments_timeresolved,
+    _tr_module.Lahner2024BOLDMoments_timeresolved_visualROI,
+    _tr_module.Lahner2024BOLDMoments_timeresolved_improved,
+    _tr_module.Lahner2024BOLDMoments_timeresolved_improved_visualROI,
+]
+TWO_TOWERS = [
+    _mm_module.Lahner2024BOLDMoments_multimodal,
+    _mm_module.Lahner2024BOLDMoments_multimodal_visualROI,
+    _mm_module.Lahner2024BOLDMoments_multimodal_auditoryROI,
+    _trmm_module.Lahner2024BOLDMoments_timeresolved_multimodal,
+    _trmm_module.Lahner2024BOLDMoments_timeresolved_multimodal_visualROI,
+    _trmm_module.Lahner2024BOLDMoments_timeresolved_multimodal_auditoryROI,
+]
+
+
+@pytest.mark.parametrize('factory', SINGLE_TOWER, ids=lambda f: f.__name__)
+def test_single_tower_variants_declare_vision_in_and_it_out(factory):
+    benchmark = factory()
+    assert_declares(benchmark, {'vision'}, {'neural:IT'})
+    assert_preflight(benchmark)
+
+
+@pytest.mark.parametrize('factory', TWO_TOWERS, ids=lambda f: f.__name__)
+def test_audio_visual_variants_declare_both_towers(factory):
+    benchmark = factory()
+    assert_declares(benchmark, {'vision', 'audio'}, {'neural:IT', 'neural:A1'})
+    assert_preflight(benchmark)

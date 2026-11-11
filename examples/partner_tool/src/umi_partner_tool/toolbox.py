@@ -28,10 +28,9 @@ from brainscore.experiments import (
 )
 from brainscore_core.contract import Subject
 from brainscore_core.environment import ArraySpec, MappingSpec
-from brainscore_core.events import EnvironmentResponse, EnvironmentStep
 from brainscore import BrainScoreModel
-from brainscore_core.streaming import BufferedSession, Session, StreamEvent
-from brainscore_core.streaming_helpers import EnvironmentSession
+from brainscore_core.streaming import Session, StreamEvent
+from brainscore_core.streaming_helpers import EnvironmentSource
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly,
     NeuroidAssembly,
@@ -159,25 +158,20 @@ class FeedbackEnvironment:
     def action_spec(self) -> ArraySpec:
         return ArraySpec(shape=(1,), dtype='float32', lower=-1.0, upper=1.0)
 
-    def observation(self) -> EnvironmentStep:
-        return EnvironmentStep(
-            observation={
-                'state': np.array([1.0 - self.position, self.position], dtype=np.float32),
-            },
-            step_num=self.steps,
-            is_first=self.steps == 0,
-            is_last=self.steps == 3,
-        )
+    def observation(self) -> dict:
+        return {'observation': {
+            'state': np.array([1.0 - self.position, self.position], dtype=np.float32),
+        }}
 
-    def reset(self, *, seed: int | None = None) -> EnvironmentStep:
+    def reset(self, *, seed: int | None = None) -> dict:
         self.position = 0.0
         self.steps = 0
         return self.observation()
 
-    def step(self, action: np.ndarray) -> EnvironmentStep:
-        self.position += float(action[0]) * 0.1
+    def step(self, outputs: dict) -> tuple[dict, str | None]:
+        self.position += float(outputs['motor'][0]) * 0.1
         self.steps += 1
-        return self.observation()
+        return self.observation(), 'terminal' if self.steps == 3 else None
 
 
 def make_example(name: str) -> tuple[Subject, Callable, torch.nn.Module]:
@@ -185,23 +179,24 @@ def make_example(name: str) -> tuple[Subject, Callable, torch.nn.Module]:
     if name == 'robotics':
         layer = population()
 
-        def policy(step: EnvironmentStep) -> EnvironmentResponse:
+        def policy(row: dict) -> dict:
             with torch.no_grad():
-                activity = layer(torch.from_numpy(step.observation['state']))
-            return EnvironmentResponse(
-                action=torch.tanh(activity[:1]).numpy(),
-                metadata={'provenance': {**PROVENANCE, 'model': 'synthetic-policy'}},
-            )
+                activity = layer(torch.from_numpy(row['observation']['state']))
+            return {'motor': StreamEvent(
+                'motor', torch.tanh(activity[:1]).numpy(), None,
+                {'provenance': {**PROVENANCE, 'model': 'synthetic-policy'}},
+            )}
 
         subject = BrainScoreModel(identifier='synthetic-policy', policy=policy)
 
         @contextmanager
-        def session_factory(trial) -> Iterator[EnvironmentSession]:
-            with EnvironmentSession(
-                environment=FeedbackEnvironment(),
+        def session_factory(trial) -> Iterator[Session]:
+            source = EnvironmentSource(
+                FeedbackEnvironment(),
                 seed=trial.identifier,
                 require_specs=True,
-            ) as session:
+            )
+            with Session(source, ('motor',)) as session:
                 yield session
 
         return subject, session_factory, layer
@@ -225,10 +220,9 @@ def make_example(name: str) -> tuple[Subject, Callable, torch.nn.Module]:
     )
 
     @contextmanager
-    def session_factory(trial) -> Iterator[BufferedSession]:
+    def session_factory(trial) -> Iterator[Session]:
         # Static stimuli have no physical clock. IDs group image/text pairs.
-        yield BufferedSession(
-            inputs=[
+        yield Session([
                 StreamEvent(
                     channel=channel,
                     payload=payload,
@@ -237,9 +231,7 @@ def make_example(name: str) -> tuple[Subject, Callable, torch.nn.Module]:
                 )
                 for index in range(3)
                 for channel, payload in payloads.items()
-            ],
-            requested_output_channels=sorted(subject.out_channels),
-        )
+            ], sorted(subject.out_channels))
 
     return subject, session_factory, subject.population
 
@@ -254,7 +246,7 @@ def saved_values(directory: Path) -> dict[str, list[np.ndarray]]:
             if output.channel == 'motor' and output.meta['action_status'] != 'proposed':
                 continue
             response = output.payload
-            value = response.action if output.channel == 'motor' else response.values
+            value = response if output.channel == 'motor' else response.values
             values[event['condition']].append(np.asarray(value))
     return values
 

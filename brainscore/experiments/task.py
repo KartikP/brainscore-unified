@@ -14,9 +14,10 @@ same presentation that produced the behavior.
 """
 from contextlib import contextmanager
 
+from brainscore_core.contract import required_traits_for
 from brainscore_core.events import StateChange
-from brainscore_core.streaming import BufferedSession
-from brainscore_core.streaming_helpers import apply_state_change
+from brainscore_core.streaming import CONTROL_CHANNEL
+from brainscore_core.streaming_helpers import apply_state_change, table_session
 
 from .runner import SessionProtocol, Tool
 from .tools import RecordInputsOutputs
@@ -26,8 +27,11 @@ class TaskProtocol(SessionProtocol):
     """Present ``stimuli`` under ``task``, once per condition and repetition.
 
     The task says what the subject does; ``TaskContext(task_type='passive')``
-    is plain viewing. ``required_traits`` (e.g. ``{'memory:session'}``) makes a
-    subject without them fail validation, as a benchmark marks it N/A. The
+    is plain viewing. ``required_traits`` (e.g. ``{'memory:trial_history'}``) makes a
+    subject without them fail validation, as a benchmark marks it N/A. The task's
+    ``trial_memory`` (``'none'`` or ``'conversation'``) decides how the
+    session groups trials into episodes; ``conversation`` adds the
+    ``memory:trial_history`` requirement itself. The
     attached recorders say what is measured: each
     session requests exactly their channels. With a readout task, the task's
     ``readout_fit`` says which network the readout is fitted on while a change
@@ -37,14 +41,14 @@ class TaskProtocol(SessionProtocol):
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
                  repetitions=(0,), required_traits=(), metadata=None):
-        probe = BufferedSession(stimulus_set=stimuli)
+        probe = table_session(stimuli)
         inputs = set()
         while (event := probe.next_input()) is not None:
-            inputs.add(event.channel)
+            if event.channel != CONTROL_CHANNEL:
+                inputs.add(event.channel)
         self.stimuli = stimuli
         self.task = task
-        # e.g. {'memory:session'} for a task whose trials depend on earlier ones.
-        self.required_traits = frozenset(required_traits)
+        self.required_traits = frozenset(required_traits_for(required_traits, task.trial_memory))
         super().__init__(identifier, self._session, conditions=conditions, repetitions=repetitions,
                          input_channels=inputs, output_channels=(), metadata=metadata)
 
@@ -78,12 +82,12 @@ class TaskProtocol(SessionProtocol):
     def describe(self):
         return {**super().describe(), 'task_type': self.task.task_type,
                 'required_traits': sorted(self.required_traits),
+                'trial_memory': self.task.trial_memory,
                 'readout_fit': self.task.readout_fit}
 
     @contextmanager
     def _session(self, repetition):
-        yield BufferedSession(stimulus_set=self.stimuli, task_context=self.task,
-                              requested_output_channels=sorted(self.output_channels))
+        yield table_session(self.stimuli, sorted(self.output_channels), task_context=self.task)
 
 
 class _ChannelRecorder(RecordInputsOutputs):

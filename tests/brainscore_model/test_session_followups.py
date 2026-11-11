@@ -18,7 +18,7 @@ import pytest
 from brainscore import BrainScoreModel, CompositeSelector, LayerSelector
 from brainscore_core import TaskContext
 from brainscore_core.assembly_builder import concat_neuroid_assemblies
-from brainscore_core.streaming import BufferedSession
+from brainscore_core.streaming_helpers import table_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly, walk_coords
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.responses import Choice
@@ -279,8 +279,7 @@ def model(extract=output, identifier='one-at-a-time'):
 
 
 def run(m, regions):
-    s = BufferedSession(stimulus_set=StimulusSet({'stimulus_id': ['a', 'b'], 'sentence': ['x', 'x']}),
-                        requested_output_channels=['neural:' + r for r in regions])
+    s = table_session(StimulusSet({'stimulus_id': ['a', 'b'], 'sentence': ['x', 'x']}), ['neural:' + r for r in regions])
     m.participate(s)
     return s
 
@@ -427,8 +426,7 @@ def test_the_model_is_released_after_a_failed_session(error):
 
 def test_an_unsupported_session_releases_the_model():
     m = model()
-    session = BufferedSession(stimulus_set=StimulusSet({'stimulus_id': ['a'], 'sentence': ['x']}),
-                              requested_output_channels=['behavior'])
+    session = table_session(StimulusSet({'stimulus_id': ['a'], 'sentence': ['x']}), ['behavior'])
     with pytest.raises(Exception):
         m.participate(session)                  # no answer part: refused before any compute
     assert_same_output(run(m, ['A']).collect('neural:A'), alone('A'))

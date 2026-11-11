@@ -3,7 +3,9 @@ import numpy as np
 import pytest
 import xarray as xr
 from brainscore import BrainScoreModel, LayerSelector, CompositeSelector
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
+from brainscore_core.streaming_helpers import table_session
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -15,7 +17,7 @@ class Extractor:
 
     def __call__(self, stimuli, *, layers):
         self.calls.append(layers)
-        return xr.DataArray(
+        return NeuroidAssembly(
             np.full((len(stimuli), 4 * len(layers)), self.value),
             dims=('presentation', 'neuroid'),
             coords={'layer': ('neuroid', np.repeat(layers, 4)),
@@ -81,18 +83,15 @@ def test_raw_layer_has_same_meaning_alone_or_in_list(target):
 def test_common_session_collects_neural_output_without_helper_class():
     model = BrainScoreModel(identifier='session', region_layer_map={'IT': 'x'},
                             activations_model={'vision': Extractor()})
-    session = InMemorySession(stimulus_set=StimulusSet({'image_path': ['x']}),
-                              requested_output_channels=('neural:IT',))
+    session = table_session(StimulusSet({'image_path': ['x']}), ('neural:IT',))
     model.participate(session)
     assert session.collect().shape == (1, 4)
 
 
-def test_common_session_keeps_custom_events_and_rejects_ambiguous_inputs():
-    session = InMemorySession(inputs=[StreamEvent('text', 'hello', 0)])
-    session.emit(StreamEvent('custom', 7, 0))
+def test_common_session_keeps_custom_events():
+    session = Session([StreamEvent('text', 'hello', 0)])
+    session.respond(StreamEvent('custom', 7, 0))
     assert session.collect()[0].payload == 7
-    with pytest.raises(ValueError, match='not both'):
-        InMemorySession(inputs=[StreamEvent('text', 'hello', 0)], stimulus_set=StimulusSet({'sentence': ['x']}))
 
 
 def test_explicit_source_is_independent_of_behavioral_task_configuration():
@@ -111,8 +110,7 @@ def test_explicit_source_is_independent_of_behavioral_task_configuration():
     from types import SimpleNamespace
     subject = SimpleNamespace(start_task=lambda context: None,
                               process=lambda stimuli: generate(None, stimuli, task))
-    session = InMemorySession(stimulus_set=explicit, task_context=task,
-                              requested_output_channels=['behavior'])
+    session = table_session(explicit, ['behavior'], task_context=task)
     _drive_behavior_session_via_process(subject, session)
     assert seen == ['actual']
     assert session.collect().shape == (1,)
@@ -140,8 +138,7 @@ def test_variadic_legacy_wrapper_is_normalized_without_identifier_discovery():
 def test_neural_events_work_without_a_stimulus_table():
     model = BrainScoreModel(identifier='events', region_layer_map={'language': 'x'},
                             activations_model={'text': Extractor()})
-    session = InMemorySession(inputs=[StreamEvent(channel='text', payload='hello', t_ms=0)],
-                              requested_output_channels=['neural:language'])
+    session = Session([StreamEvent(channel='text', payload='hello', t_ms=0)], ['neural:language'])
     model.participate(session)
     assert session.collect().shape == (1, 4)
 
@@ -155,11 +152,9 @@ def test_generation_declares_instruction_input_for_replay():
 def test_common_session_collects_batch_and_streamed_assemblies(streaming):
     model = BrainScoreModel(identifier='delivery', region_layer_map={'language': 'x'},
                             activations_model={'text': Extractor()})
-    session = InMemorySession(
-        stimulus_set=StimulusSet({'sentence': ['one', 'two'], 'stimulus_id': ['1', '2']}),
-        requested_output_channels=['neural:language'],
-        streaming=streaming,
-    )
+    session = table_session(StimulusSet({'sentence': ['one', 'two'], 'stimulus_id': ['1', '2']}),
+                            ['neural:language'])
+    session.streaming = streaming
     model.participate(session)
     assert session.collect().shape == (2, 4)
 

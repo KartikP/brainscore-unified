@@ -8,7 +8,7 @@ import torch
 from torch import nn
 
 from brainscore import BrainScoreModel, CompositeSelector, RandomSelection
-from brainscore_core.model_interface import TaskContext, StateChange, Perturbation, EnvironmentStep
+from brainscore_core.model_interface import TaskContext, StateChange, Perturbation
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuroidAssembly, BehavioralAssembly,
 )
@@ -257,9 +257,9 @@ def test_model_reset_clears_policy_history(bound_method):
     from brainscore.model_helpers.policy_wrapper import PolicyWrapper
     wrapper = PolicyWrapper(lambda observation, history: len(history))
     model = BrainScoreModel('policy', action_fn=wrapper.__call__ if bound_method else wrapper)
-    assert model.process(EnvironmentStep(observation={})).action == 0
+    assert model.process({'observation': {}}) == {'motor': 0}
     model.reset()
-    assert model.process(EnvironmentStep(observation={})).action == 0
+    assert model.process({'observation': {}}) == {'motor': 0}
 
 
 def test_vision_adapter_reset_reaches_real_commitment():

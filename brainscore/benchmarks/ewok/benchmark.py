@@ -11,9 +11,9 @@ from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
-from brainscore.instrumentation import ObservedSession
+from brainscore.instrumentation import observed
 from brainscore.model_helpers.response_trace import register_trace_channels
 
 
@@ -52,11 +52,12 @@ def _ask(subject: Subject, context, request: StreamEvent, repetition: int) -> St
     old ``process`` path returned only the final fragment, so a response
     whose ``final`` flag is present and not True is refused.
     """
-    session = BufferedSession([request], requested_output_channels=('response_trace',))
+    session = Session([request], ('response_trace',))
     with context.repetition(repetition):
         context.publish('session_context',
                         {'requested_output_channels': session.requested_output_channels})
-        subject.participate(ObservedSession(session, context))
+        with observed(session, context):
+            subject.participate(session)
     responses = [event for event in session.emitted if event.channel == 'response_trace']
     if not responses:
         raise TypeError('EWoK requires a response_trace event')
@@ -79,6 +80,8 @@ class EWoKBenchmark(BenchmarkBase):
 
     # Declare the messages the subject must accept and return before a run starts.
     requested_output_channels = frozenset({'response_trace'})
+    # Each request is a self-contained batch of items; the subject keeps no history.
+    trial_memory = 'none'
     leaderboard_eligible = False
 
     def __init__(
@@ -226,7 +229,7 @@ class EWoKBenchmark(BenchmarkBase):
             self.identifier,
             evaluate,
             # No method is observed: each session is recorded through
-            # ObservedSession in _ask, one input and one output per request.
+            # observed in _ask, one input and one output per request.
             methods=(),
             # The record repetition ids _ask uses: one per request, counted
             # from 0. Tools select repetitions by these ids.

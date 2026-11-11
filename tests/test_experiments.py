@@ -9,13 +9,13 @@ from brainscore.experiments import (Experiment, SessionProtocol, CallableProtoco
     RecordInputsOutputs, RecordActivity, Ablate, TorchInstrumentation, Tool)
 from brainscore.run_record import RunRecord
 from brainscore_core.contract import Subject
-from brainscore_core.streaming import InMemorySession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 pytestmark = pytest.mark.unit
 
 
 class FixtureSubject(Subject):
     identifier = 'fixture'
-    in_channels = {'stimulus'}
+    in_channels = {'observation'}
     out_channels = {'behavior', 'activity'}
     def __init__(self):
         self.layer = torch.nn.Linear(2, 2, bias=False)
@@ -29,16 +29,16 @@ class FixtureSubject(Subject):
         while (event := session.next_input()) is not None:
             value = self.layer(torch.tensor(event.payload, dtype=torch.float32))
             self.state += 1
-            session.emit(StreamEvent('behavior', value.detach().numpy(), event.t_ms,
+            session.respond(StreamEvent('behavior', value.detach().numpy(), event.t_ms,
                                      {'state': self.state}))
 
 
 def protocol():
     @contextmanager
     def factory(repetition):
-        yield InMemorySession([StreamEvent('stimulus', [1., 2.], 12)])
+        yield Session([StreamEvent('observation', [1., 2.], 12)])
     return SessionProtocol('fixture', factory, repetitions=('baseline', 'ablation'),
-                          input_channels=('stimulus',), output_channels=('behavior',))
+                          input_channels=('observation',), output_channels=('behavior',))
 
 
 def rows(path):
@@ -78,16 +78,16 @@ def test_session_intervention_order_reset_and_cleanup(tmp_path):
 def test_identical_api_for_domain_payloads(tmp_path, domain, payload):
     class Echo(Subject):
         identifier = domain
-        in_channels = {'custom_input'}
-        out_channels = {'custom_output'}
+        in_channels = {'observation'}
+        out_channels = {'motor'}
         def participate(self, session):
             while (event := session.next_input()) is not None:
-                session.emit(StreamEvent('custom_output', event.payload, event.t_ms))
+                session.respond(StreamEvent('motor', event.payload, event.t_ms))
     @contextmanager
     def factory(repetition):
-        yield InMemorySession([StreamEvent('custom_input', payload, 5)])
+        yield Session([StreamEvent('observation', payload, 5)])
     result = Experiment(subject=Echo(), protocol=SessionProtocol(domain, factory,
-        input_channels=['custom_input'], output_channels=['custom_output']),
+        input_channels=['observation'], output_channels=['motor']),
         tools=[RecordInputsOutputs()], output_dir=tmp_path/domain).run()
     output = next(e for e in rows(result.directory) if e['kind'] == 'output')
     assert output['payload'].t_ms == 5
@@ -238,7 +238,7 @@ def test_cancellation_and_resource_cleanup(tmp_path, exception):
     @contextmanager
     def factory(repetition):
         try:
-            yield InMemorySession([])
+            yield Session([])
         finally:
             closed.append(True)
     subject.participate = lambda session: (_ for _ in ()).throw(exception)
@@ -310,7 +310,7 @@ def test_snapshot_before_mutation_and_multiple_outputs(tmp_path):
         def participate(self, session):
             event = session.next_input()
             event.payload[:] = [9, 9]
-            session.emit(StreamEvent('behavior', event.payload, 12))
+            session.respond(StreamEvent('behavior', event.payload, 12))
             event.payload[:] = [8, 8]
     result = Experiment(subject=Mutating(), protocol=protocol(),
         tools=[RecordInputsOutputs()], output_dir=tmp_path/'run').run()
@@ -397,11 +397,11 @@ def test_conditions_repetitions_shared_record_and_replay(tmp_path):
     @contextmanager
     def factory(repetition):
         requests.append((repetition.condition, repetition.identifier))
-        yield InMemorySession([StreamEvent('stimulus', [repetition.identifier + 1., 2.], 12)])
+        yield Session([StreamEvent('observation', [repetition.identifier + 1., 2.], 12)])
 
     schedule = SessionProtocol('conditions', factory,
         conditions=['normal', 'silenced', 'restored'], repetitions=[0, 1],
-        input_channels=['stimulus'], output_channels=['behavior'])
+        input_channels=['observation'], output_channels=['behavior'])
     provider = TorchInstrumentation(torch.nn.ModuleDict({'layer': subject.layer}))
     def tools():
         return [RecordInputsOutputs(),
@@ -494,7 +494,7 @@ def test_activity_callback_snapshot_survives_inplace_operations():
 
 def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
     """One Repetition contains multiple inputs; resets separate independent sessions."""
-    from brainscore_core.streaming import BufferedSession
+    from brainscore_core.streaming import Session
 
     class StatefulSubject(Subject):
         identifier = 'stateful'
@@ -517,7 +517,7 @@ def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
     sessions = []
     @contextmanager
     def factory(repetition):
-        session = BufferedSession(inputs=[
+        session = Session([
             StreamEvent(channel='text', payload='first', t_ms=0),
             StreamEvent(channel='text', payload='second', t_ms=1),
         ])
@@ -845,7 +845,7 @@ def test_tool_bridge_rejects_reused_directory_before_connecting(tmp_path, monkey
 
 
 def test_session_protocol_relies_on_the_declared_contract(tmp_path):
-    duck = SimpleNamespace(identifier='duck', in_channels={'stimulus'}, out_channels={'behavior'},
+    duck = SimpleNamespace(identifier='duck', in_channels={'observation'}, out_channels={'behavior'},
                            participate=lambda session: None, reset=lambda: None)
     with pytest.raises(TypeError, match='requires a Subject'):
         protocol().validate(duck)
@@ -853,7 +853,7 @@ def test_session_protocol_relies_on_the_declared_contract(tmp_path):
     @contextmanager
     def factory(repetition):
         yield SimpleNamespace(next_input=lambda: None)
-    undeclared = SessionProtocol('fixture', factory, input_channels=('stimulus',),
+    undeclared = SessionProtocol('fixture', factory, input_channels=('observation',),
                                  output_channels=('behavior',))
     with pytest.raises(TypeError, match='must return a Session'):
         Experiment(subject=FixtureSubject(), protocol=undeclared, output_dir=tmp_path / 'run').run()

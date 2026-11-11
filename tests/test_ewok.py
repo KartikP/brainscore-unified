@@ -548,3 +548,12 @@ def test_stateful_subject_inside_a_caller_intervention_scores_like_the_old_path(
     old_score, old_items = run('process', old_path=True)
     assert new_items == old_items
     assert repr(float(new_score)) == repr(float(old_score))
+
+
+@pytest.mark.parametrize('mode, channel', [('logprobs', 'conditional_logprob_request'),
+                                           ('choice', 'context_choice_request')])
+def test_declares_its_request_in_and_a_trace_out(mode, channel, prepared):
+    from tests.benchmark_declarations import assert_declares, assert_preflight
+    benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
+    assert_declares(benchmark, {channel}, {'response_trace'})
+    assert_preflight(benchmark)

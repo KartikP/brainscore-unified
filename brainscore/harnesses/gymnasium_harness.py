@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from brainscore_core.model_interface import EnvironmentStep
 from brainscore_core.environment import ArraySpec, DiscreteSpec, MappingSpec, TextSpec
 from brainscore_core.streaming_helpers import run_environment
 
@@ -80,26 +79,20 @@ class GymnasiumEnvironment:
         self.steps = 0
         self.total_reward = self.last_reward = 0.
         self.terminated = self.truncated = False
-        observation = self._observation(obs)
-        return EnvironmentStep(
-            observation=observation, instruction=self.mission,
-            is_first=True, step_num=0,
-        )
+        return {'observation': self._observation(obs), 'instruction': self.mission}
 
-    def step(self, action):
-        action = self._action_spec.validate(action)
+    def step(self, outputs):
+        action = self._action_spec.validate(outputs['motor'])
         obs, reward, terminated, truncated, self.last_info = self.env.step(action)
         self.steps += 1
         self.last_reward = float(reward)
         self.total_reward += self.last_reward
         self.terminated = bool(terminated)
         self.truncated = bool(truncated or (self.steps >= self.max_steps and not terminated))
-        observation = self._observation(obs)
-        return EnvironmentStep(
-            observation=observation, instruction=self.mission, step_num=self.steps,
-            reward=self.last_reward, is_terminal=self.terminated,
-            is_last=self.terminated or self.truncated,
-        )
+        row = {'observation': self._observation(obs), 'instruction': self.mission,
+               'reward': self.last_reward}
+        reason = 'terminal' if self.terminated else 'truncated' if self.truncated else None
+        return row, reason
 
     def close(self):
         self.env.close()
@@ -108,7 +101,7 @@ class GymnasiumEnvironment:
 def play_gym_episode(model, env_id: str, max_steps: int = 60, seed: int = 0,
                      action_descriptions: Optional[Dict[int, str]] = None,
                      n_actions: Optional[int] = None) -> Dict[str, Any]:
-    """Run a rendered, discrete Gymnasium episode through EnvironmentSession.
+    """Run a rendered, discrete Gymnasium episode through an EnvironmentSource.
 
     MiniGrid uses terminal positive reward as success. Other environments must
     provide info['is_success']; otherwise solved is None (unknown). The caller
@@ -137,7 +130,7 @@ def play_gym_episode(model, env_id: str, max_steps: int = 60, seed: int = 0,
         'env_id': env_id, 'seed': seed, 'mission': wrapper.mission,
         'solved': None if solved is None else bool(solved),
         'steps': len(responses), 'total_reward': round(wrapper.total_reward, 4),
-        'actions': [int(np.asarray(response.action).item()) for response in responses],
+        'actions': [int(np.asarray(action).item()) for action in responses],
         'optimal_unknown': True,
     }
 

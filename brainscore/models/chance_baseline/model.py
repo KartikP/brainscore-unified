@@ -17,7 +17,9 @@ import numpy as np
 import pandas as pd
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import EnvironmentStep, StateChange, UnifiedModel, TaskContext
+from collections.abc import Mapping
+
+from brainscore_core.model_interface import StateChange, UnifiedModel, TaskContext
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly,
 )
@@ -68,7 +70,7 @@ class ChanceBaseline(UnifiedModel):
         self._task_context = None
 
     def process(self, input_event) -> Any:
-        if isinstance(input_event, (StateChange, EnvironmentStep)):
+        if isinstance(input_event, (StateChange, Mapping)):
             raise NotImplementedError
         stimuli = input_event
         if self._task_context is None or not self._task_context.label_set:

@@ -233,3 +233,14 @@ def test_same_subject_old_process_path_and_participate_give_the_same_score(stimu
     assert repr(score.attrs['raw']) == repr(old_raw)
     assert repr(score.attrs['null']) == repr(old_null)
     assert repr(float(score)) == repr(old_raw - old_null)
+
+
+def test_declares_the_stimulus_channels_in_and_the_region_out():
+    from tests.benchmark_declarations import assert_declares, assert_preflight
+    benchmark = _benchmark(_assembly(seed=1))
+    assert_declares(benchmark, {'text'}, {'neural:IT'})
+    assert_preflight(benchmark)
+    two_inputs = TopographicBenchmark('two-inputs', brain_assembly=_assembly(seed=1),
+                                      stimulus_set=_two_input_stimuli(), region='V4')
+    assert_declares(two_inputs, {'vision', 'text'}, {'neural:V4'})
+    assert_preflight(two_inputs)

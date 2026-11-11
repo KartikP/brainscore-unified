@@ -5,7 +5,8 @@ import pytest
 from brainscore import BrainScoreModel
 from brainscore_core import TaskContext
 from brainscore_core.responses import Text
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
+from brainscore_core.streaming_helpers import table_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.provenance import ProvenanceSubject
@@ -27,8 +28,7 @@ def test_declared_subject_records_neural_outputs_with_separate_provenance():
         assert getattr(subject, name) == getattr(raw, name)
     stimuli = StimulusSet([{'stimulus_id': 'a', 'sentence': 'test'}])
     task = TaskContext(task_type='passive')
-    session = BufferedSession(stimulus_set=stimuli, task_context=task,
-                              requested_output_channels=['neural:IT'])
+    session = table_session(stimuli, ['neural:IT'], task_context=task)
     subject.participate(session)
     result = session.collect('neural:IT')
     np.testing.assert_array_equal(result, np.ones((1, 2)))
@@ -46,8 +46,7 @@ def test_text_task_and_reset_delegate_without_discovering_model_abilities():
     subject = ProvenanceSubject(raw, {'dtype': 'bfloat16'})
     stimuli = StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}])
     def run():
-        session = BufferedSession(stimulus_set=stimuli,
-            task_context=TaskContext(response=Text()), requested_output_channels=['behavior:text'])
+        session = table_session(stimuli, ['behavior:text'], task_context=TaskContext(response=Text()))
         subject.participate(session)
         return session.collect('behavior:text')
     first = run()
@@ -59,16 +58,19 @@ def test_text_task_and_reset_delegate_without_discovering_model_abilities():
     assert len(prompts) == 2
 
 
-def test_event_metadata_shares_values_without_mutating_source_and_forwards_completion():
-    from brainscore.model_helpers.provenance import _ProvenanceSession
+def test_event_metadata_shares_values_without_mutating_source():
+    from brainscore.model_helpers.provenance import ProvenanceSubject
     assembly = NeuroidAssembly([[1., np.nan]], dims=['presentation', 'neuroid'], attrs={'original': True})
-    target = BufferedSession()
-    wrapped = _ProvenanceSession(target, {'dtype': 'bfloat16'})
-    wrapped.complete = False
     event = StreamEvent('neural:IT', assembly, None, {'driver': 'fixture'})
-    wrapped.respond(event)
+
+    class Responder:
+        def participate(self, session):
+            session.respond(event)
+
+    target = Session(())
+    ProvenanceSubject(Responder(), {'dtype': 'bfloat16'}).participate(target)
     saved = target.emitted[0]
-    assert not target.complete
+    assert target.complete
     assert np.shares_memory(saved.payload.values, assembly.values)
     assert saved.payload.attrs['original'] is True
     assert 'provenance' not in assembly.attrs and 'provenance' not in event.meta
@@ -84,6 +86,6 @@ def test_failure_and_reset_are_not_swallowed():
     raw = FailingSubject()
     subject = ProvenanceSubject(raw, {})
     with pytest.raises(RuntimeError, match='original failure'):
-        subject.participate(BufferedSession())
+        subject.participate(Session(()))
     subject.reset()
     assert raw.reset_called

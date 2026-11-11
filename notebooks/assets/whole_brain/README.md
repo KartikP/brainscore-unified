@@ -9,7 +9,7 @@ These assets show GPT-2 predicting one participant's (UTS03) fMRI responses duri
 
 ## Saved run
 
-October 6, 2026: median r **0.1013**, mean r 0.1134; all 20,484 scores are finite. GPT-2 inference used Apple MPS; regression ran locally on the CPU. Evaluation and export took 203 seconds after downloading the inputs.
+October 6, 2026: median r 0.1013, mean r 0.1134; all 20,484 scores are finite. GPT-2 inference used Apple MPS; regression ran locally on the CPU. Evaluation and export took 203 seconds after downloading the inputs.
 
 ## Protocol
 
@@ -31,4 +31,4 @@ python notebooks/figure_sources/measure_whole_brain.py
 python notebooks/figure_sources/render_whole_brain_figures.py
 ```
 
-To redraw the bundled measurements, run only the second command. The notebook's live smoke example scores a 2,000-location subset and does not overwrite these full-cortex figures.
+To redraw the bundled measurements, run only the second command. The live smoke example in archived notebook `archive/16_whole_brain_encoding.ipynb` scores a 2,000-location subset and does not overwrite these full-cortex figures.

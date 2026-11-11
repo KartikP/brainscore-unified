@@ -22,7 +22,8 @@ from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, load_tool
 from brainscore import BrainScoreModel
 from brainscore_core.events import Selection
-from brainscore_core.streaming import BufferedSession
+from brainscore_core.streaming import Session
+from brainscore_core.streaming_helpers import table_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from example_qualification import environment, qualification_report, require, verify_model_identity
 
@@ -41,9 +42,9 @@ def sentences() -> tuple[list[str], list[str], list[str], list[str]]:
     return training, ['red', 'blue'] * 16, testing, ['red', 'blue'] * 4
 
 
-def session(texts: list[str]) -> BufferedSession:
+def session(texts: list[str]) -> Session:
     stimuli = StimulusSet({'stimulus_id': [f'item-{i}' for i in range(len(texts))], 'sentence': texts})
-    return BufferedSession(stimulus_set=stimuli, requested_output_channels=['neural:population'])
+    return table_session(stimuli, ['neural:population'])
 
 
 def weights_digest(model: Any) -> str:

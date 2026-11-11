@@ -477,3 +477,63 @@ class TestPoolPredictionsSeam:
         assert benchmark._model_features(candidate, 'STIM', assembly) == 'pooled'
         # The word rows, not the per-TR set passed in, reach the subject.
         assert candidate.seen == [f'words {i}' for i in words['stimulus_id']]
+
+
+class TestDeclarations:
+    """Contract Rules 5.1, 5.2, 5.12: what it sends, asks for, and how trials relate."""
+
+    @pytest.mark.parametrize('identifier', [
+        'LeBel2023-UTS03-encoding', 'LeBel2023-UTS03-encoding-smoke',
+        'LeBel2023-UTS03-encoding-contextwindow', 'LeBel2023-UTS03-encoding-languagemask'])
+    def test_every_variant_declares_text_in_and_the_language_system_out(self, identifier):
+        from brainscore import load_benchmark
+        from tests.benchmark_declarations import assert_declares, assert_preflight
+        benchmark = load_benchmark(identifier)
+        assert_declares(benchmark, {'text'}, {'neural:language_system'})
+        assert_preflight(benchmark)
+
+    def test_the_requested_region_follows_the_region_argument(self):
+        from brainscore.benchmarks.lebel2023.benchmark import LeBel2023Encoding
+        assert LeBel2023Encoding(region='A1').requested_output_channels == {'neural:A1'}
+
+    def test_a_whole_score_comes_from_a_participate_only_subject(self):
+        import pandas as pd
+        from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+        from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+        from brainscore_core.streaming import StreamEvent
+        from brainscore.benchmarks.lebel2023.benchmark import LeBel2023Encoding
+
+        rng = np.random.default_rng(0)
+        stories = np.repeat([f's{i}' for i in range(6)], 40)
+        ids = [f'{story}_tr{i:03d}' for story, i in zip(stories, np.tile(np.arange(40), 6))]
+        stimuli = StimulusSet(pd.DataFrame({'stimulus_id': ids, 'sentence': ['x'] * len(ids)}))
+        stimuli.stimulus_paths = {}
+        assembly = NeuroidAssembly(
+            rng.normal(size=(len(ids), 4)).astype(np.float32), dims=('presentation', 'neuroid'),
+            coords={'stimulus_id': ('presentation', ids), 'story_id': ('presentation', stories),
+                    'neuroid_id': ('neuroid', [f'v{i}' for i in range(4)]),
+                    'vertex_index': ('neuroid', np.arange(4))})
+
+        class Listener(_ParticipateOnlyListener):
+            def participate(self, session):
+                self.sessions.append(tuple(session.requested_output_channels))
+                sent = []
+                while (event := session.next_input()) is not None:
+                    sent.append(event.meta['stimulus_id'])
+                values = np.stack([np.random.default_rng(sum(map(ord, i))).normal(size=3)
+                                   for i in sent]).astype(np.float32)
+                session.respond(StreamEvent('neural:language_system', NeuroidAssembly(
+                    values, dims=['presentation', 'neuroid'],
+                    coords={'stimulus_id': ('presentation', sent),
+                            'order': ('presentation', list(range(len(sent)))),
+                            'neuroid_id': ('neuroid', list(range(3))),
+                            'layer': ('neuroid', ['fixture'] * 3)}), None, {}))
+
+        class Synthetic(LeBel2023Encoding):
+            def _data(self):
+                return stimuli, assembly
+
+        subject = Listener()
+        score = Synthetic(identifier='synthetic', n_splits=3)(subject)
+        assert np.isfinite(float(score))
+        assert subject.sessions == [('neural:language_system',)]

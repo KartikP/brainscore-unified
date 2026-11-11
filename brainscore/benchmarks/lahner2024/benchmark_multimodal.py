@@ -75,6 +75,12 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
     overrides ``__call__`` to drive a per-modality extraction.
     """
 
+    # Sends the visual stream and the audio stream; asks for the visual tower
+    # (`neural:IT`) and the audio tower (`neural:A1`). Each clip is an independent trial.
+    required_input_channels = frozenset({'vision', 'audio'})
+    requested_output_channels = frozenset({'neural:IT', 'neural:A1'})
+    trial_memory = 'none'
+
     VALID_MODES = ('concat', 'per_modality', 'video_only', 'audio_only',
                    'banded')
     # Banded-ridge α grid. Per-modality α is selected from this grid via
@@ -101,9 +107,6 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
             reliability_threshold=reliability_threshold,
             identifier_suffix=identifier_suffix,
         )
-        # Multimodal A+V: audio hard-required; visual tower accepts video OR
-        # vision (accepted_modalities inherited from the base).
-        self.required_modalities = {'audio'}
         from pathlib import Path
         self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
         # Optional custom voxel mask. When set, overrides the
@@ -208,7 +211,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         """Extract visual + audio features from the candidate.
 
         Visual tower routing:
-        - candidate declares 'vision:clip' → use video stim set, native
+        - candidate declares 'vision:video' → use video stim set, native
           temporal extraction (V-JEPA / VideoMAE / etc.)
         - any other visual candidate (stills only) → use
           frame-aggregation: extract N frames per clip, run CLIP/BLIP-2/
@@ -227,7 +230,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
                 one per output feature column.
         """
         time_bins = [(0, VIDEO_DURATION_MS)]
-        # Clips natively when the subject declares vision:clip, frames otherwise.
+        # Clips natively when the subject declares vision:video, frames otherwise.
         if Lahner2024BOLDMoments._is_native_video(candidate):
             video_assembly = record_clips(
                 candidate, self._video_stim_set(), 'IT', time_bins)
@@ -266,7 +269,7 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         if not takes_audiovisual(candidate):
             raise ValueError(
                 f"{self.identifier} requires the candidate to take both "
-                f"a visual input ('vision', 'vision:still' or 'vision:clip') AND "
+                f"a visual input ('vision', 'vision:image' or 'vision:video') AND "
                 f"'audio', and to record neural:IT and neural:A1. Got "
                 f"in_channels={sorted(candidate.in_channels)}, "
                 f"out_channels={sorted(candidate.out_channels)}. "

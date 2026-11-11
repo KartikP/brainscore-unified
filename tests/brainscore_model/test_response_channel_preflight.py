@@ -5,7 +5,7 @@ import pytest
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.responses import Choice
-from brainscore_core.streaming import BufferedSession
+from brainscore_core.streaming_helpers import table_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -47,8 +47,7 @@ def _likelihood_model():
 
 
 def _ask(model, task, channels):
-    session = BufferedSession(stimulus_set=STIMULI, task_context=task,
-                              requested_output_channels=channels)
+    session = table_session(STIMULI, channels, task_context=task)
     model.participate(session)
     return session
 
@@ -99,8 +98,7 @@ def test_driver_refuses_addressed_channels_without_a_response_before_task_setup(
     setup = []
     model = SimpleNamespace(start_task=lambda _: setup.append('start_task'),
                             _behavioral=SimpleNamespace(history=[]))
-    session = BufferedSession(stimulus_set=STIMULI, task_context=TaskContext(task_type='probabilities'),
-                              requested_output_channels=['behavior:probabilities'])
+    session = table_session(STIMULI, ['behavior:probabilities'], task_context=TaskContext(task_type='probabilities'))
     with pytest.raises(ValueError, match='TaskContext'):
         drive_behavior_and_neural_session(model, session)
     assert setup == []

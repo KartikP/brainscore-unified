@@ -15,7 +15,7 @@ from brainscore.instrumentation import observe, intervene
 from brainscore.perturbation import build_pytorch_ablation_fn
 from brainscore.harnesses.robotics import ActionSpec, droid_steps, evaluate_droid_episode
 from brainscore.run_record import RunRecord, RunRecorder
-from brainscore_core.events import EnvironmentResponse, StateChange, Selection, Perturbation
+from brainscore_core.events import StateChange, Selection, Perturbation
 from brainscore import BrainScoreModel
 
 
@@ -26,10 +26,10 @@ def demo(out):
     network = torch.nn.Sequential(torch.nn.Linear(7, 12), torch.nn.Tanh(),
                                   torch.nn.Linear(12, 7), torch.nn.Tanh()).eval()
 
-    def policy(step):
+    def policy(row):
         with torch.no_grad():
-            state = torch.tensor(step.observation['proprioception'].joint_position, dtype=torch.float32)
-            return EnvironmentResponse(action=network(state).numpy())
+            state = torch.tensor(row['proprioception']['joint_position'], dtype=torch.float32)
+            return {'motor': network(state).numpy()}
 
     model = BrainScoreModel('synthetic-robot-policy', model=network, policy=policy,
                             intervention=build_pytorch_ablation_fn(network))
@@ -61,16 +61,16 @@ def demo(out):
                 'call': capture.call, 'values': capture.tensor.numpy()})
 
     # A paired intervention on one fixed observation, outside episode reset.
-    step, _ = next(droid_steps({'steps': rows}, action_spec=spec,
+    step, _, _ = next(droid_steps({'steps': rows}, action_spec=spec,
                                action_source=lambda row: row['action']))
     with RunRecorder(out/'intervention', metadata={
             'model': model.identifier, 'data': 'synthetic fixture', 'seed': 0,
             'protocol': 'fixed-observation baseline/ablation/recovery'}) as record:
         with observe(model, record):
-            baseline = model.process(step).action
+            baseline = model.process(step)['motor']
             with intervene(model, StateChange('ablation', Selection('0'), Perturbation('zero'))):
-                ablated = model.process(step).action
-            recovered = model.process(step).action
+                ablated = model.process(step)['motor']
+            recovered = model.process(step)['motor']
     np.testing.assert_array_equal(recovered, baseline)
     assert not np.array_equal(ablated, baseline)
 
@@ -81,7 +81,7 @@ def demo(out):
         'observed_calls': len(tool.durations),
         'intervention_changed_action': bool(not np.array_equal(ablated, baseline)),
         'intervention_recovery_exact': bool(np.array_equal(recovered, baseline)),
-        'action_mse': float(np.mean([(event.payload.action-event.meta['target'])**2 for event in motors])),
+        'action_mse': float(np.mean([(event.payload-event.meta['target'])**2 for event in motors])),
         'time_ms': [event.t_ms for event in motors],
         'claim': 'Recorded observation/action and activation integration; not robot task success'}
     (out/'summary.json').write_text(json.dumps(summary, indent=2)+'\n')

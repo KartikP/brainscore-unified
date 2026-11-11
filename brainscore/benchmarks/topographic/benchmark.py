@@ -15,7 +15,7 @@ synthetic assemblies in ``tests/test_topographic_benchmark.py``.
 """
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
-from brainscore_core.streaming import BufferedSession, parse_channel
+from brainscore_core.streaming import Session, parse_channel
 from brainscore_core.streaming_helpers import neural_response, stimulus_session
 from brainscore import load_metric
 from brainscore.topographic_support import ensure_tissue_coords, shuffle_tissue_coords
@@ -23,6 +23,11 @@ from brainscore.topographic_support import ensure_tissue_coords, shuffle_tissue_
 # The order in which BrainScoreModel.process picks one input modality from a
 # table that holds several (BrainScoreModel.MODALITY_PRIORITY).
 _INPUT_PRIORITY = ('vision', 'text', 'audio')
+
+
+def _table_events(stimulus_set, region):
+    """The input events of ``stimulus_set`` (a session sends no control events unless asked)."""
+    return list(iter(stimulus_session(stimulus_set, record=region).next_input, None))
 
 
 def _record(candidate, stimulus_set, region):
@@ -36,10 +41,7 @@ def _record(candidate, stimulus_set, region):
     so the subject reads the same table as before. A table with one input
     family goes through ``neural_response`` unchanged.
     """
-    full = stimulus_session(stimulus_set, record=region)
-    events = []
-    while (event := full.next_input()) is not None:
-        events.append(event)
+    events = _table_events(stimulus_set, region)
     present = {parse_channel(event.channel)[0] for event in events}
     declared = {parse_channel(channel)[0] for channel in candidate.in_channels}
     chosen = next((family for family in _INPUT_PRIORITY
@@ -47,10 +49,9 @@ def _record(candidate, stimulus_set, region):
     if len(present) < 2 or chosen is None:
         return neural_response(candidate, stimulus_set, record=region)
     channel = f'neural:{region}'
-    session = BufferedSession(
+    session = Session(
         [event for event in events if parse_channel(event.channel)[0] == chosen],
-        requested_output_channels=(channel,))
-    session.stimulus_set = stimulus_set
+        (channel,), stimulus_set=stimulus_set)
     candidate.participate(session)
     return session.collect(channel)
 
@@ -64,7 +65,12 @@ class TopographicBenchmark(BenchmarkBase):
     :param region: the region requested from the candidate as ``neural:<region>``.
     :param metric_id: registered metric (default the topographic-alignment metric).
     :param null_seed: seed for the shuffle-coordinate null.
+
+    It sends the input channels of the columns of ``stimulus_set`` and asks for
+    ``neural:<region>``. Each stimulus is an independent trial.
     """
+
+    trial_memory = 'none'
 
     def __init__(self, identifier, brain_assembly, stimulus_set, region, *,
                  metric_id='topographic-alignment', null_seed=0,
@@ -74,6 +80,9 @@ class TopographicBenchmark(BenchmarkBase):
         self._brain = brain_assembly
         self._stimulus_set = stimulus_set
         self._region = region
+        self.required_input_channels = frozenset(
+            event.channel for event in _table_events(stimulus_set, region))
+        self.requested_output_channels = frozenset({f'neural:{region}'})
         self._metric = load_metric(metric_id)
         self._null_seed = null_seed
 

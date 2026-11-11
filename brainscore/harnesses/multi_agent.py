@@ -1,105 +1,99 @@
-"""Multi-agent rollout harness — connect two (or more) subjects so each one's
+"""Multi-agent rollout harness: connect two (or more) subjects so each one's
 output becomes the next agent's observation.
 
-The unified interface gives the per-agent tick: ``process(EnvironmentStep) ->
-EnvironmentResponse`` via each agent's ``action_fn``. This harness owns the
-*loop* and the *routing*: a :class:`Mediator` turns one agent's action into the
-next agent's observation and holds the shared state (a conversation transcript,
-a gridworld, a market book, …). That output→observation routing is the whole
-substance of "two agents interacting"; everything else is per-agent dispatch the
-interface already provides.
+The unified interface gives the per-agent tick: ``process(row) -> outputs`` via
+each agent's ``policy``, where a row is a mapping of channel -> payload. This
+harness owns the *loop* and the *routing*: a :class:`Mediator` turns one agent's
+output into the next agent's row and holds the shared state (a conversation
+transcript, a gridworld, a market book, ...). That output-to-observation routing
+is the whole substance of "two agents interacting"; everything else is per-agent
+dispatch the interface already provides.
 
     mediator = DialogueMediator(task='agree on a meeting time')
     transcript = multi_agent_rollout([alice, bob], mediator, n_turns=8)
 
+A message between agents is text: a ``StreamEvent`` on ``text`` with the sender
+in ``meta['sender']``.
+
 To study the interaction, wrap each agent in :class:`brainscore.witness.Witness`
 (what each saw/did per tick) and :class:`brainscore.activation_window.Activation
-Window` (per-tick hidden activations) for the duration of the rollout — both
+Window` (per-tick hidden activations) for the duration of the rollout; both
 fire on the same ``process()`` calls this loop drives, giving time-aligned
 traces from both agents over a shared interaction.
 
-Any object with ``.identifier`` and ``.process(EnvironmentStep) ->
-EnvironmentResponse`` is a valid agent (a BrainScoreModel with an ``action_fn``,
-or any Subject). The harness is duck-typed and device-agnostic — it stays
-out of ``core``, like the other harnesses.
+Any object with ``.identifier`` and ``.process(row) -> outputs`` is a valid agent
+(a BrainScoreModel with a ``policy``, or any Subject). The harness is duck-typed
+and device-agnostic; it stays out of ``core``, like the other harnesses.
 """
-from typing import Any, Dict, List, Optional, Sequence, Union
+from dataclasses import replace
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
-from brainscore_core.model_interface import (
-    EnvironmentStep, EnvironmentResponse, Message)
+from brainscore_core.streaming import StreamEvent
 
 
 class Mediator:
-    """Routes agent outputs into the next agent's observation and holds shared
-    state. Subclass for a specific world.
+    """Routes agent outputs into the next agent's row and holds shared state.
+    Subclass for a specific world.
 
-    ``observe(agent_id, incoming)`` builds the observation the agent perceives
-    this tick (``incoming`` is the previous agent's action, or ``None`` on the
-    first tick). ``apply(agent_id, action)`` folds the agent's action into the
+    ``observe(agent_id, incoming)`` builds the row the agent perceives this tick
+    (``incoming`` is the previous agent's output event, or ``None`` on the first
+    tick). ``apply(agent_id, event)`` folds the agent's output event into the
     shared state.
     """
     task: Optional[str] = None
 
-    def observe(self, agent_id: str, incoming: Any) -> Any:
+    def observe(self, agent_id: str, incoming: Optional[StreamEvent]) -> Mapping[str, Any]:
         raise NotImplementedError
 
-    def apply(self, agent_id: str, action: Any) -> None:
+    def apply(self, agent_id: str, event: StreamEvent) -> None:
         raise NotImplementedError
 
 
 class DialogueMediator(Mediator):
     """A turn-taking conversation. Each agent observes the running transcript and
-    the peer's last utterance; its action is appended as the next utterance.
+    the peer's last utterance; its output is appended as the next utterance.
 
-    This is the shared-world mediator in its simplest form: the utterance rides
-    inside ``observation`` as plain text in a dict. For first-class typed
-    agent-to-agent messaging — where an agent emits a :class:`Message` and the
-    peer consumes that same ``Message`` via ``process(Message)`` — use
-    :class:`MessageMediator` instead (the OutputEvent-symmetry path, now shipped).
+    The utterance rides inside ``observation`` as plain text in a dict. For a
+    message on the ``text`` channel with the sender in its meta, use
+    :class:`MessageMediator`.
     """
 
     def __init__(self, task: Optional[str] = None):
         self.task = task
         self.history: List[Dict[str, Any]] = []
 
-    def observe(self, agent_id: str, incoming: Any) -> Dict[str, Any]:
-        return {'instruction': self.task, 'incoming': incoming,
-                'history': list(self.history)}
+    def observe(self, agent_id: str, incoming: Optional[StreamEvent]) -> Dict[str, Any]:
+        return {'observation': {'instruction': self.task,
+                                'incoming': None if incoming is None else incoming.payload,
+                                'history': list(self.history)},
+                'instruction': self.task}
 
-    def apply(self, agent_id: str, action: Any) -> None:
-        self.history.append({'agent': agent_id, 'utterance': action})
+    def apply(self, agent_id: str, event: StreamEvent) -> None:
+        self.history.append({'agent': agent_id, 'utterance': event.payload})
 
 
 class MessageMediator(Mediator):
-    """Typed agent-to-agent messaging — the first-class communicative path.
+    """Agent-to-agent messaging on the ``text`` channel.
 
-    Each agent receives the peer's last :class:`Message` directly (or a task-seed
-    Message on the first turn), and emits the next Message. Because ``observe``
-    returns a ``Message``, :func:`multi_agent_rollout` hands it to the agent via
-    ``process(Message)`` — the symmetric I/O path, where one agent's output type
-    *is* the next agent's input type, no plain-text-in-dict bridging. The shared
-    transcript is a list of typed ``Message`` objects on ``self.history``.
+    Each agent receives the peer's last message as ``row['text']`` (or the task as
+    a seed message on the first turn); ``row['observation']`` names the sender,
+    the recipient and the history. The shared transcript is a list of ``text``
+    events on ``self.history``, each with ``meta['sender']``.
     """
 
     def __init__(self, task: Optional[str] = None):
         self.task = task
-        self.history: List[Message] = []
+        self.history: List[StreamEvent] = []
 
-    def observe(self, agent_id: str, incoming: Any) -> Message:
-        if isinstance(incoming, Message):
-            return Message(content=incoming.content, sender=incoming.sender,
-                           recipient=agent_id,
-                           metadata={'task': self.task,
-                                     'history': [m.content for m in self.history]})
-        # first turn: seed the conversation with the task as a Message
-        return Message(content=self.task, sender='task', recipient=agent_id,
-                       metadata={'task': self.task})
+    def observe(self, agent_id: str, incoming: Optional[StreamEvent]) -> Dict[str, Any]:
+        content = self.task if incoming is None else incoming.payload
+        sender = 'task' if incoming is None else incoming.meta.get('sender')
+        return {'text': content,
+                'observation': {'sender': sender, 'recipient': agent_id, 'task': self.task,
+                                'history': [m.payload for m in self.history]}}
 
-    def apply(self, agent_id: str, action: Any) -> None:
-        msg = action if isinstance(action, Message) else Message(content=action)
-        if msg.sender is None:
-            msg.sender = agent_id
-        self.history.append(msg)
+    def apply(self, agent_id: str, event: StreamEvent) -> None:
+        self.history.append(event)
 
 
 def _agent_id(agent) -> str:
@@ -108,13 +102,15 @@ def _agent_id(agent) -> str:
 
 def multi_agent_rollout(agents: Union[Sequence, Dict[str, Any]],
                         mediator: Mediator, n_turns: int,
-                        order: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+                        order: Optional[List[str]] = None,
+                        channel: str = 'text') -> List[Dict[str, Any]]:
     """Run a turn-taking rollout: every turn, each agent observes (via the
-    mediator) → ``process(EnvironmentStep)`` → its action is routed back through
-    the mediator into the next agent's observation.
+    mediator) -> ``process(row)`` -> its output on ``channel`` is routed back
+    through the mediator into the next agent's row.
 
-    Returns a transcript: a list of ``{turn, agent, action}`` in firing order.
-    The shared state lives on ``mediator`` (e.g. ``mediator.history``).
+    Returns a transcript: a list of ``{turn, agent, action}`` in firing order,
+    where ``action`` is the payload sent on ``channel``. The shared state lives on
+    ``mediator`` (e.g. ``mediator.history``).
     """
     if isinstance(agents, dict):
         agent_list = [agents[k] for k in (order or list(agents.keys()))]
@@ -124,51 +120,43 @@ def multi_agent_rollout(agents: Union[Sequence, Dict[str, Any]],
         raise ValueError("multi_agent_rollout needs at least one agent")
 
     transcript: List[Dict[str, Any]] = []
-    last_action: Any = None
+    last: Optional[StreamEvent] = None
     for t in range(n_turns):
         for agent in agent_list:
             aid = _agent_id(agent)
-            obs = mediator.observe(aid, last_action)
-            # A Message observation is handed over as a first-class input event
-            # (process(Message)); anything else is wrapped as an EnvironmentStep.
-            if isinstance(obs, (Message, EnvironmentStep)):
-                event = obs
-            else:
-                event = EnvironmentStep(observation=obs, step_num=t,
-                                        instruction=getattr(mediator, 'task', None))
-            resp = agent.process(event)
-            # EnvironmentResponse → unwrap to its action; a Message stays a Message.
-            action = resp.action if isinstance(resp, EnvironmentResponse) else resp
-            mediator.apply(aid, action)
-            last_action = action
-            transcript.append({'turn': t, 'agent': aid, 'action': action})
+            outputs = agent.process(mediator.observe(aid, last))
+            value = outputs[channel]
+            event = value if isinstance(value, StreamEvent) else StreamEvent(channel, value, None)
+            event = replace(event, meta={'sender': aid, **event.meta})
+            mediator.apply(aid, event)
+            last = event
+            transcript.append({'turn': t, 'agent': aid, 'action': event.payload})
     return transcript
 
 
 class EchoAgent:
-    """Trivial demo agent — echoes what it heard. No weights, for examples/tests.
+    """Trivial demo agent that echoes what it heard. No weights, for examples/tests.
 
-    Shows the agent contract: ``.identifier`` + ``.process(EnvironmentStep) ->
-    EnvironmentResponse``. A real agent is a BrainScoreModel whose ``action_fn``
-    runs a forward pass (which an ActivationWindow then captures)."""
+    Shows the agent contract: ``.identifier`` + ``.process(row) -> outputs``. A real
+    agent is a BrainScoreModel whose ``policy`` runs a forward pass (which an
+    ActivationWindow then captures)."""
 
     def __init__(self, identifier: str):
         self.identifier = identifier
 
-    def process(self, step: EnvironmentStep) -> EnvironmentResponse:
-        incoming = step.observation.get('incoming') if isinstance(step.observation, dict) else None
-        return EnvironmentResponse(action=f'{self.identifier}: heard<{incoming}>')
+    def process(self, row: Mapping[str, Any]) -> Dict[str, Any]:
+        observation = row.get('observation')
+        incoming = observation.get('incoming') if isinstance(observation, dict) else None
+        return {'text': f'{self.identifier}: heard<{incoming}>'}
 
 
 class MessageEchoAgent:
-    """Trivial typed-message demo agent — consumes a :class:`Message` and emits a
-    :class:`Message`, the symmetric contract. Pairs with :class:`MessageMediator`.
-    A real agent is a BrainScoreModel whose ``action_fn`` returns a Message."""
+    """Trivial message demo agent: reads ``row['text']`` and answers on ``text``.
+    Pairs with :class:`MessageMediator`."""
 
     def __init__(self, identifier: str):
         self.identifier = identifier
 
-    def process(self, event) -> Message:
-        content = event.content if isinstance(event, Message) else event
-        return Message(content=f'{self.identifier}: heard<{content}>',
-                       sender=self.identifier)
+    def process(self, row: Mapping[str, Any]) -> Dict[str, Any]:
+        return {'text': StreamEvent('text', f"{self.identifier}: heard<{row['text']}>", None,
+                                    {'sender': self.identifier})}

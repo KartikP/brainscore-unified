@@ -1,4 +1,4 @@
-"""Lahner2024 shows a subject clips when it declares it takes them (vision:clip),
+"""Lahner2024 shows a subject clips when it declares it takes them (vision:video),
 and frames sampled from each clip otherwise. The route comes from declarations,
 never from raw extractor keys."""
 from brainscore.brainscore_model import BrainScoreModel

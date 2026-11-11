@@ -7,7 +7,7 @@ import pytest
 
 import brainscore
 from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
-from brainscore_core.streaming import StreamEvent, InMemorySession
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore.data.preparation import prepare_dataset
 from brainscore.experiments import Experiment, RecordInputsOutputs
 from brainscore.model_helpers.response_trace import build_trace_subject
@@ -219,13 +219,13 @@ def test_multichannel_trace_subject_keeps_dispatch_and_session_contract():
         'multi', provider=lambda request: {'text': request['value']},
         parse=str, provenance={}, input_channels=channels,
     )
-    assert candidate.in_channels == set(channels)
+    assert candidate.in_channels == set(channels) | {'control'}
     events = [StreamEvent(channel, {'value': channel}, None) for channel in channels]
-    session = InMemorySession(events)
+    session = Session(events)
     session.requested_output_channels = {'response_trace'}
     candidate.participate(session)
     assert [event.payload['answer'] for event in session.emitted] == channels
     # Creating another subject must not change the first subject's declarations.
     other = make_subject(provider)
-    assert other.in_channels == {'generation_request'}
-    assert candidate.in_channels == set(channels)
+    assert other.in_channels == {'generation_request', 'control'}
+    assert candidate.in_channels == set(channels) | {'control'}

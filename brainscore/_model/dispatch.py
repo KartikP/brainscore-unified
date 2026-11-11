@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Set, Tuple
 
 from ..capabilities import enabled_capabilities
-from brainscore_core.events import EnvironmentStep, Message, OutputEvent, StateChange
+from brainscore_core.events import OutputEvent, StateChange
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.io_catalog import canonical_modality
 
@@ -206,10 +206,7 @@ class InputDispatcher:
     def dispatch_state_change(self, input_event: 'StateChange') -> OutputEvent:
         return self.process_capabilities(input_event)
 
-    def handle_environment_step(self, input_event: 'EnvironmentStep') -> OutputEvent:
-        return self.process_capabilities(input_event)
-
-    def handle_message(self, input_event: 'Message') -> OutputEvent:
+    def handle_row(self, input_event) -> OutputEvent:
         return self.process_capabilities(input_event)
 
     def handle_stimulus_set(self, stimuli,

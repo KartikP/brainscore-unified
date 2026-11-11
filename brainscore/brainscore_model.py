@@ -5,7 +5,8 @@ from contextlib import contextmanager
 from copy import copy
 from dataclasses import replace
 from types import MappingProxyType
-from typing import Mapping, Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from collections.abc import Mapping
+from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from ._model.behavioral import BehavioralReadout
 from ._model.capability_config import normalize_capability_config
@@ -13,9 +14,7 @@ from brainscore_core.contract import UnifiedModel, TaskContext
 from ._model.dispatch import InputDispatcher, register_input_handler
 from brainscore_core.io_catalog import BUILTIN_STIMULUS_COLUMNS, canonical_modality
 from brainscore_core.events import (
-    EnvironmentStep,
     InputEvent,
-    Message,
     OutputEvent,
     StateChange,
 )
@@ -103,8 +102,7 @@ class BrainScoreModel(UnifiedModel):
 
     _INPUT_HANDLERS: List[Tuple[type, str]] = [
         (StateChange, '_dispatch_state_change'),
-        (EnvironmentStep, '_handle_environment_step'),
-        (Message, '_handle_message'),
+        (Mapping, '_handle_row'),
     ]
 
     BEHAVIORAL_TASK_TYPES = BehavioralReadout.BEHAVIORAL_TASK_TYPES
@@ -128,6 +126,8 @@ class BrainScoreModel(UnifiedModel):
         behavioral_readout_layer: Optional[str] = None,
         generation_fn: Optional[Callable] = None,
         action_fn: Optional[Callable] = None,
+        policy_inputs: Iterable[str] = ('observation',),
+        policy_outputs: Iterable[str] = ('motor',),
         state_change_fn: Optional[Callable] = None,
         supported_modalities: Optional[Set[str]] = None,
         required_modalities: Optional[Set[str]] = None,
@@ -174,14 +174,28 @@ class BrainScoreModel(UnifiedModel):
             probability}``; scores candidate replies without generating. Gives
             choices and their implied probabilities. Run the prompt on its own
             before any candidate, so a recording during scoring is the prompt pass.
-        :param memory: ``'session'`` keeps what the model saw and said across the
-            trials of a session, until ``reset()``: each trial's prompt and reply
-            reach ``reply`` and ``likelihood`` as ``prompt.history``. It declares
-            the ``memory:session`` trait. A stateful extractor (a recurrent model)
-            keeps its own state the same way. ``None`` (default): every trial is
-            independent.
-        :param policy: ``EnvironmentStep -> EnvironmentResponse``; chooses an
-            action for closed-loop / embodied evaluation.
+        :param memory: ``'trial_history'``: the model keeps earlier trials, earlier
+            steps and its responses from ``begin`` until ``end``; each trial's
+            prompt and reply reach ``reply`` and ``likelihood`` as
+            ``prompt.history``. It declares the ``memory:trial_history`` trait.
+            A stateful extractor (a recurrent model) keeps its own state the same
+            way. A ``begin`` clears that history and the episode state of every
+            part; it leaves interventions and the task setup. Under the
+            ``none`` trial memory every trial is its own episode, so
+            the history is empty at each trial; under ``conversation`` it grows
+            until ``end`` and never carries over to the next episode, session,
+            repetition or condition. ``None`` (default): the model keeps no
+            history, so every trial starts empty under either trial memory.
+            ``reset()`` also clears the task setup and the interventions.
+        :param policy: ``row -> {output channel: payload}``; chooses an action for
+            closed-loop / embodied evaluation. A row is a mapping of channel ->
+            payload for one step; the policy needs no Brain-Score import. A value
+            may be a ``StreamEvent`` to attach meta (telemetry). A policy that keeps
+            episode state defines ``reset()``; it runs when an episode begins.
+        :param policy_inputs: the input channels the policy reads (default
+            ``('observation',)``); a session sends it only these.
+        :param policy_outputs: the output channels the policy answers on (default
+            ``('motor',)``); a benchmark may request any of them.
         :param intervention: ``StateChange -> (PerturbationApplied, cleanup)``;
             applies a lesion / stimulation and returns its cleanup function.
         :param generation_fn: compatibility parameter (deprecated); use ``answer``.
@@ -275,10 +289,12 @@ class BrainScoreModel(UnifiedModel):
             'behavioral_readout_layer')
         self._generation_fn = capability_values.get('generation_fn')
         self._reply_fn, self._likelihood_fn = reply, likelihood
-        if memory not in (None, 'session'):
-            raise ValueError("memory must be None or 'session'")
+        if memory not in (None, 'trial_history'):
+            raise ValueError("memory must be None or 'trial_history'")
         self._memory = memory
         self._action_fn = capability_values.get('action_fn')
+        self._policy_inputs = frozenset(policy_inputs)
+        self._policy_outputs = frozenset(policy_outputs)
         self._state_change_fn = capability_values.get('state_change_fn')
 
         self._recorder = Recorder(self)
@@ -325,17 +341,18 @@ class BrainScoreModel(UnifiedModel):
 
     @property
     def in_channels(self):
-        return super().in_channels | self._visual_forms() | set().union(
+        # ``control``: the begin and respond signals clear episode state and group a closed-loop step.
+        return super().in_channels | {'control'} | self._visual_forms() | set().union(
             *(c.declared_input_channels(self) for c in self._declared_capabilities()))
 
     def _visual_forms(self):
         """The visual forms taken natively: a ``vision`` key takes stills, a ``video`` key clips."""
-        forms = {'vision': 'vision:still', 'video': 'vision:clip'}
+        forms = {'vision': 'vision:image', 'video': 'vision:video'}
         return {forms[key] for key in self._preprocessors if key in forms}
 
     @property
     def traits(self):
-        return {'memory:session'} if self._memory == 'session' else set()
+        return {'memory:trial_history'} if self._memory == 'trial_history' else set()
 
     @property
     def out_channels(self):
@@ -555,7 +572,7 @@ class BrainScoreModel(UnifiedModel):
         a ``StimulusSet`` / ``MultimodalStimulusSet`` -> ``NeuroidAssembly`` of
         recorded activations (call ``start_recording`` first); a ``StateChange``
         -> ``PerturbationApplied`` (apply) or ``None`` (reset); an
-        ``EnvironmentStep`` -> ``EnvironmentResponse`` (needs ``policy``).
+        row (a mapping of channel -> payload) -> outputs mapping (needs ``policy``).
         Native benchmarks evaluate subjects through sessions or the typed
         helpers in ``brainscore_core.streaming_helpers``; ``process`` is not
         available on every subject.
@@ -568,7 +585,7 @@ class BrainScoreModel(UnifiedModel):
         output = self._dispatcher.process(input_event, multi_modality)
         time_bins = self._recorder.time_bins
         if time_bins is not None and len(time_bins) > 1 and not isinstance(
-                input_event, (StateChange, EnvironmentStep, Message)):
+                input_event, (StateChange, Mapping)):
             # Honor every requested time bin: a static response is repeated
             # across several bins, as legacy vision models do.
             from brainscore_core.legacy_facade import repeat_over_time_bins
@@ -589,17 +606,13 @@ class BrainScoreModel(UnifiedModel):
         with _one_session_at_a_time(self):
             handler = self.check_session_support(requested_output_channels(session))
             from .capabilities.registry import _setup_once
-            from brainscore_core.session_view import DeclaredInputSession
             _setup_once(self, handler)
             # A task the session configures ends with the session (rule 4.5).
             with self._behavioral.session_scope():
-                handler.participate(self, DeclaredInputSession(session, self.in_channels))
+                handler.participate(self, session.declare_inputs(self.in_channels))
 
-    def _handle_environment_step(self, input_event: 'EnvironmentStep') -> OutputEvent:
-        return self._dispatcher.handle_environment_step(input_event)
-
-    def _handle_message(self, input_event: 'Message') -> OutputEvent:
-        return self._dispatcher.handle_message(input_event)
+    def _handle_row(self, input_event: Mapping) -> OutputEvent:
+        return self._dispatcher.handle_row(input_event)
 
     def _handle_stimulus_set(self, stimuli,
                              multi_modality: bool = False) -> OutputEvent:
@@ -695,14 +708,8 @@ class BrainScoreModel(UnifiedModel):
                 component.reset()
             except Exception as error:
                 failures.append(error)
-        # Callable capabilities and extractors may own episode/history state.
-        # Reset each provider once, including bound-method registrations.
-        providers = [self._action_fn, self._generation_fn, self._reply_fn, self._likelihood_fn,
-                     self._activations_model,
-                     *self._preprocessors.values(), *self._extractors.values()]
-        seen = set()
-        from .capabilities import capability_registry
         for identifier, state in self._capability_state.items():
+            from .capabilities import capability_registry
             capability = capability_registry.get(identifier)
             if capability is not None:
                 try:
@@ -710,19 +717,46 @@ class BrainScoreModel(UnifiedModel):
                     self._capability_setup_done.discard(identifier)
                 except Exception as error:
                     failures.append(error)
-        for provider in providers:
-            provider = getattr(provider, '__self__', provider)
-            if provider is None or provider is self or id(provider) in seen:
-                continue
-            seen.add(id(provider))
-            reset = getattr(provider, 'reset', None)
-            if callable(reset):
-                try:
-                    reset()
-                except Exception as error:
-                    failures.append(error)
+        failures.extend(self._reset_providers())
         if failures:
             raise RuntimeError('A model provider failed to reset; the model is not clean.') from failures[0]
+
+    def _reset_providers(self) -> list:
+        """Clear the episode state of every part once; return the failures.
+
+        Callable capabilities and extractors may own episode/history state.
+        A bound-method registration resets its owner.
+        """
+        providers = [self._action_fn, self._generation_fn, self._reply_fn, self._likelihood_fn,
+                     self._activations_model,
+                     *self._preprocessors.values(), *self._extractors.values()]
+        seen, failures = set(), []
+        for provider in providers:
+            try:
+                self._reset_provider(provider, seen)
+            except Exception as error:
+                failures.append(error)
+        return failures
+
+    def _begin_episode(self) -> None:
+        """What a ``begin`` does: history ``h`` becomes empty; weights, interventions
+        and the task setup stay. Clears the kept trials and the episode state of the
+        parts (policy, extractors, reply and likelihood functions). The one method
+        every session kind calls when an episode begins."""
+        self._behavioral.history = []
+        failures = self._reset_providers()
+        if failures:
+            raise RuntimeError('A model provider failed to clear its episode state.') from failures[0]
+
+    def _reset_provider(self, provider, seen: Set[int]) -> None:
+        """Reset one provider (a callable part or extractor) once; a bound method resets its owner."""
+        provider = getattr(provider, '__self__', provider)
+        if provider is None or provider is self or id(provider) in seen:
+            return
+        seen.add(id(provider))
+        reset = getattr(provider, 'reset', None)
+        if callable(reset):
+            reset()
 
     def _dispatch_state_change(self, state_change: 'StateChange') -> Any:
         try:

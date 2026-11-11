@@ -8,7 +8,6 @@ import numpy as np
 import pytest
 
 from brainscore.robotics import ActionSpec, droid_steps, evaluate_droid_episode, staged_droid_episodes
-from brainscore_core.events import EnvironmentResponse
 
 
 @pytest.fixture
@@ -53,6 +52,23 @@ def test_action_spec_requires_explicit_consistent_semantics(spec, changes, messa
         replace(spec, **changes)
 
 
+class _Policy:
+    """A policy that counts the episode-state clears (``begin``) it receives."""
+    def __init__(self, process):
+        self.process, self.begins = process, 0
+
+    def __call__(self, row):
+        return self.process(row)
+
+    def reset(self):
+        self.begins += 1
+
+
+def _subject(policy):
+    from brainscore import BrainScoreModel
+    return BrainScoreModel('s', None, {}, {}, None, policy=policy)
+
+
 @pytest.mark.parametrize('field,value,message', [
     ('joint_position', np.zeros(6), 'joint_position'),
     ('cartesian_position', np.full(6, np.nan), 'cartesian_position'),
@@ -61,13 +77,13 @@ def test_action_spec_requires_explicit_consistent_semantics(spec, changes, messa
     ('exterior_image_1_left', np.zeros((2, 3, 4), dtype=np.uint8), 'uint8 image'),
     ('exterior_image_2_left', np.zeros((2, 3, 3)), 'uint8 image'),
 ])
-def test_invalid_first_observation_never_reaches_policy_and_resets(episode, spec, field, value, message):
+def test_invalid_first_observation_never_reaches_policy_and_begins_once(episode, spec, field, value, message):
     episode['steps'][0]['observation'][field] = value
-    calls, resets = [], []
-    subject = SimpleNamespace(process=lambda step: calls.append(step), reset=lambda: resets.append(True))
+    calls = []
+    policy = _Policy(lambda row: calls.append(row))
     with pytest.raises(ValueError, match=message):
-        evaluate_droid_episode(subject, episode, action_spec=spec, action_source=lambda row: row['action'])
-    assert calls == [] and resets == [True, True]
+        evaluate_droid_episode(_subject(policy), episode, action_spec=spec, action_source=lambda row: row['action'])
+    assert calls == [] and policy.begins == 1
 
 
 @pytest.mark.parametrize('times', [(0., 0.), (1., 0.), (0., np.nan), (0., np.inf)])
@@ -96,29 +112,28 @@ def test_named_timestamps_and_snapshots_preserve_source_semantics(episode, spec)
     for index, row in enumerate(episode['steps']):
         row['observation']['time_ms'] = 100. + index * 60.
     pairs = list(droid_steps(episode, action_spec=spec, action_source=lambda row: row['action'], timestamp_key='time_ms'))
-    step, target = pairs[0]
-    assert [pair[0].context['t_ms'] for pair in pairs] == [100., 160.]
-    assert step.context['time_source'] == 'time_ms' and not step.context['time_inferred']
-    assert step.instruction == 'pick up cup'
+    step, target, info = pairs[0]
+    assert [pair[2]['t_ms'] for pair in pairs] == [100., 160.]
+    assert info['time_source'] == 'time_ms' and not info['time_inferred']
+    assert step['instruction'] == 'pick up cup'
     episode['steps'][0]['observation']['wrist_image_left'][:] = 255
     episode['steps'][0]['observation']['joint_position'][:] = 1
     episode['steps'][0]['action'][:] = -1
-    assert not step.observation['cameras']['wrist'].rgb.any()
-    assert not step.observation['proprioception'].joint_position.any()
+    assert not step['vision:image']['wrist'].any()
+    assert not step['proprioception']['joint_position'].any()
     np.testing.assert_array_equal(target, [0.5])
 
 
 @pytest.mark.parametrize('response,error', [
     ({'action': [0.]}, TypeError),
-    (EnvironmentResponse(action=np.array([np.nan])), ValueError),
-    (EnvironmentResponse(action=np.array([2.])), ValueError),
+    ({'motor': np.array([np.nan])}, ValueError),
+    ({'motor': np.array([2.])}, ValueError),
 ])
-def test_invalid_prediction_resets_policy(episode, spec, response, error):
-    resets = []
-    subject = SimpleNamespace(process=lambda step: response, reset=lambda: resets.append(True))
+def test_invalid_prediction_still_begins_the_episode_once(episode, spec, response, error):
+    policy = _Policy(lambda row: response)
     with pytest.raises(error):
-        evaluate_droid_episode(subject, episode, action_spec=spec, action_source=lambda row: row['action'])
-    assert resets == [True, True]
+        evaluate_droid_episode(_subject(policy), episode, action_spec=spec, action_source=lambda row: row['action'])
+    assert policy.begins == 1
 
 
 def test_staged_data_requires_existing_directory(tmp_path):

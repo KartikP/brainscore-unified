@@ -9,7 +9,7 @@ import xarray as xr
 from brainscore.experiments import SessionProtocol, Repetition, TorchInstrumentation
 from brainscore import FunctionalSelection
 from brainscore_core.model_interface import Selection
-from brainscore_core.streaming import InMemorySession
+from brainscore_core.streaming import Session
 
 
 @pytest.mark.parametrize('axis,expected_count', [(None, 1), (-1, 6), (1, 12)])
@@ -62,7 +62,7 @@ def test_factory_argument_does_not_change_when_conditions_are_added(conditions):
     @contextmanager
     def factory(repetition):
         requests.append(repetition)
-        yield InMemorySession()
+        yield Session(())
     protocol = SessionProtocol(identifier='stable', session_factory=factory, conditions=conditions)
     subject = SimpleNamespace(reset=lambda: None, participate=lambda session: None)
     context = SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None)
@@ -75,7 +75,7 @@ def test_identifier_factory_is_an_explicit_compatibility_option():
     @contextmanager
     def factory(identifier):
         requests.append(identifier)
-        yield InMemorySession()
+        yield Session(())
     protocol = SessionProtocol(identifier='old', session_factory=factory, factory_argument='identifier')
     protocol.run(SimpleNamespace(reset=lambda: None, participate=lambda session: None),
                  SimpleNamespace(repetition=lambda *a, **k: nullcontext(), publish=lambda *a: None))
@@ -219,13 +219,13 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     namespace = dict(Subject=Subject, torch=torch, np=np, StreamEvent=StreamEvent,
                      BehavioralAssembly=BehavioralAssembly)
     exec(compile(ast.Module(body=[adapter], type_ignores=[]), '<notebook-adapter>', 'exec'), namespace)
-    subject = namespace['ImageSubject'](torch.nn.Linear(3, 2).eval())
-    inputs = np.array([[1., 2., 3.]], dtype=np.float32)
+    class ToFloat(torch.nn.Module):
+        def forward(self, pixels):
+            return torch.nn.functional.linear(pixels.flatten(1).float(), torch.ones(2, 3))
+    subject = namespace['ImageSubject'](ToFloat().eval())
+    inputs = np.ones((1, 3, 1, 1), dtype=np.uint8)  # one 3-channel 1x1 uint8 image
     def session():
-        return InMemorySession(
-            inputs=[StreamEvent(channel='vision', payload=inputs.copy(), t_ms=0)],
-            requested_output_channels=['behavior'],
-        )
+        return Session([StreamEvent(channel='vision', payload=inputs.copy(), t_ms=0)], ['behavior'])
     class SessionBenchmark(Benchmark):
         identifier = 'notebook-channel-transfer'
         parent = 'behavioral'

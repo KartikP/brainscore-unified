@@ -1,7 +1,7 @@
 """Tests for the closed-loop grid video game harness.
 
 Validates (a) the environment mechanics, (b) that a model drives the loop end
-to end through ``process(EnvironmentStep)``, (c) that the greedy oracle solves
+to end through ``process(row)``, (c) that the greedy oracle solves
 wall-free boards optimally, and (d) — the null requirement — that a random
 action policy is clearly worse than the oracle. (d) is what proves the task is
 non-trivial and the closed loop is actually doing something.
@@ -79,7 +79,7 @@ class TestClosedLoop:
         assert res['efficiency'] == 1.0
 
     def test_process_dispatches_to_action_fn(self):
-        # The loop must go through model.process(EnvironmentStep), not a side door.
+        # The loop must go through model.process(row), not a side door.
         env = GridGameEnv(size=5, seed=3)
         calls = {'n': 0}
 
@@ -129,7 +129,6 @@ class TestRunEnvironmentContract:
 
     def test_adapter_drives_via_run_environment(self):
         from brainscore_core.streaming_helpers import run_environment
-        from brainscore_core.model_interface import EnvironmentResponse
         from brainscore.harnesses.grid_game import GridGameEnvironment
 
         env = GridGameEnv(size=6, seed=7, n_walls=0)
@@ -138,16 +137,16 @@ class TestRunEnvironmentContract:
 
         assert isinstance(motor, list)                       # the documented return type
         assert len(motor) >= 1
-        assert all(isinstance(r, EnvironmentResponse) for r in motor)
+        assert all(isinstance(a, int) for a in motor)
         # oracle on a wall-free board solves -> loop terminates before the step cap
         assert len(motor) < env.max_steps
         assert env.agent_pos == env.goal_pos                 # terminated on the goal
 
     def test_raw_gridgameenv_violates_the_contract(self):
-        # The underlying env returns a dict / gym tuple, so the generic helper
-        # rejects it — proving the adapter is required (and guarding the contract).
+        # The underlying env returns a bare observation dict, not a row of channels,
+        # so the generic helper rejects it: the adapter is required (guards the contract).
         from brainscore_core.streaming_helpers import run_environment
         env = GridGameEnv(size=4, seed=0)
         model = _embodied_model(greedy_oracle_policy)
-        with pytest.raises(TypeError, match="EnvironmentStep"):
+        with pytest.raises(ValueError, match="channel"):
             run_environment(model, env)

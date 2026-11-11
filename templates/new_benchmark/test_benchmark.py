@@ -42,8 +42,7 @@ class DummyCandidate(Subject):
         self.requested = tuple(session.requested_output_channels)
         rng = np.random.RandomState(self.seed)
         # One input event per stimulus; answer each with a one-stimulus response.
-        event = session.next_input()
-        while event is not None:
+        while (event := session.next_input()) is not None:
             response = NeuroidAssembly(
                 rng.randn(1, self.n_neuroids),
                 coords={
@@ -63,7 +62,6 @@ class DummyCandidate(Subject):
                 t_ms=event.t_ms,
                 meta=dict(event.meta),
             ))
-            event = session.next_input()
 
 
 def test_registered_and_loads():
@@ -82,6 +80,33 @@ def test_scores_a_candidate():
     assert np.isfinite(float(score)), 'benchmark returned a non-finite score'
     assert 'raw' in score.attrs and 'ceiling' in score.attrs, \
         'report the unceiled value and the ceiling used, so the number stays interpretable'
+
+
+def test_declares_inputs_outputs_and_protocol():
+    """What the benchmark sends, asks for, and how its trials relate."""
+    import brainscore
+    bench = brainscore.load_benchmark('your-benchmark')
+    assert set(bench.required_input_channels) == {'vision'}
+    assert set(bench.requested_output_channels) == {'neural:IT'}
+    assert bench.trial_memory == 'none'
+
+
+def test_preflight_accepts_a_match_and_refuses_a_missing_input_or_output():
+    import brainscore
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    bench = brainscore.load_benchmark('your-benchmark')
+    assert check_compatibility(DummyCandidate(), bench).kind == 'full'
+
+    class NoVision(DummyCandidate):
+        in_channels = {'text'}
+
+    class NoIT(DummyCandidate):
+        out_channels = {'neural:V4'}
+
+    with pytest.raises(CompatibilityError, match='takes in none of the inputs'):
+        check_compatibility(NoVision(), bench)
+    with pytest.raises(CompatibilityError, match='cannot produce output channels'):
+        check_compatibility(NoIT(), bench)
 
 
 def test_asks_the_candidate_for_its_region():

@@ -6,7 +6,7 @@ See `EXTENDING.md` (Seam 2) for the contract.
 ## Use it
 
 1. Copy this folder to `brainscore/benchmarks/<your_name>/`.
-2. Edit `benchmark.py` — implement `_load_assembly()` (your measurements + stimulus_set),
+2. Edit `benchmark.py`. Implement `_load_assembly()` (your measurements + stimulus_set),
    `_ceiling()`, and `__call__(candidate)`. Pick your metric via `load_metric(...)`.
 3. Pick your identifier in `benchmark_registry['<your-id>']`.
 4. Add `from . import <your_name>` to `brainscore/benchmarks/__init__.py`.
@@ -20,6 +20,9 @@ score = brainscore.score('<some-model>', '<your-id>')
 ## The interface contract
 
 This template records responses with `neural_response(subject=..., stimulus_set=..., record='IT', time_bins=...)`, which runs a session through `subject.participate(session)`. Any `Subject` can be scored: a `BrainScoreModel`, a legacy adapter, or a subject that implements only `participate`. For behavioral tasks use `behavioral_response(subject, task_context)`. Do not call `start_recording`, `start_task` or `process` directly; a session-native `Subject` does not promise them.
+
+The benchmark declares its input channels (`required_input_channels`), its requested output channels (`requested_output_channels`) and its `trial_memory` (`'none'` or `'conversation'`). `score()` refuses a benchmark that declares no inputs.
+
 Before opening a PR, complete the
 [benchmark addition checklist](../../docs/archive/benchmark_addition_checklist.md) and attach the evidence
 for data-plugin loading, null floor, ceiling, modality ablations, timing assumptions, score attrs,
@@ -27,7 +30,7 @@ and any EC2-only verification.
 
 ## Worked references (read these)
 
-- `brainscore/benchmarks/roar_yeatman2021/` — behavioral (generation + readout paths).
-- `brainscore/benchmarks/induced_dyslexia/` — perturbation (`process(StateChange)` + random null).
-- `brainscore/benchmarks/lahner2024/` — naturalistic fMRI encoding (temporal kit, ROI variants).
-- `brainscore/benchmarks/algonauts2025/` — multimodal movie fMRI (video+audio+text, banded ridge).
+- `brainscore/benchmarks/roar_yeatman2021/`: behavioral (generation + readout paths).
+- `brainscore/benchmarks/induced_dyslexia/`: perturbation (`apply_state_change` + random null).
+- `brainscore/benchmarks/lahner2024/`: naturalistic fMRI encoding (temporal kit, ROI variants).
+- `brainscore/benchmarks/algonauts2025/`: multimodal movie fMRI (video+audio+text, banded ridge).

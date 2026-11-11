@@ -11,8 +11,7 @@ import pytest
 
 from brainscore.experiments import read_events
 from brainscore_core import io_catalog
-from brainscore_core.events import EnvironmentResponse
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import DataAssembly
 import umi_partner_tool
 from umi_partner_tool.toolbox import EXAMPLES, make_example, run, saved_values
@@ -33,13 +32,13 @@ def test_record_intervene_restore_and_replay(tmp_path, name):
     original = tmp_path / 'examples' / name
     events = read_events(original)
     outputs = [event for event in events if event['kind'] == 'output']
-    assert len(outputs) == 18
+    assert len(outputs) == 18  # an action has a proposal and a receipt
     assert {event['condition'] for event in outputs} == {'baseline', 'silenced', 'restored'}
     for event in outputs:
         response = event['payload']
         assert not io_catalog.payload_type_notes(response.channel, response.payload)
-        assert isinstance(response.payload, EnvironmentResponse if name == 'robotics' else DataAssembly)
-        provenance = (response.payload.metadata if name == 'robotics' else response.meta)['provenance']
+        assert isinstance(response.payload, np.ndarray if name == 'robotics' else DataAssembly)
+        provenance = response.meta['provenance']
         assert provenance['device'] == 'cpu' and provenance['dtype'] == 'float32'
         assert len(provenance['weights_sha256']) == 64
         assert provenance['packages']['umi-partner-tool-example']
@@ -62,19 +61,16 @@ def test_multimodal_example_uses_both_inputs(changed_channel):
     subject, _, _ = make_example('vlm')
     outputs = []
     for index in range(2):
-        image = np.full((4, 4, 3), index if changed_channel == 'vision' else 1)
+        image = np.full((4, 4, 3), index if changed_channel == 'vision' else 1, dtype=np.uint8)
         text = 'three different words' if changed_channel == 'text' and index else 'one'
         subject.reset()
-        session = BufferedSession(
-            inputs=[
+        session = Session([
                 StreamEvent(
                     channel='vision', payload=image,
                     t_ms=None, meta={'stimulus_id': 's'},
                 ),
                 StreamEvent(channel='text', payload=text, t_ms=None, meta={'stimulus_id': 's'}),
-            ],
-            requested_output_channels=['behavior'],
-        )
+            ], ['behavior'])
         subject.participate(session)
         outputs.append(session.collect(channel='behavior').values)
     assert not np.array_equal(*outputs)
@@ -83,12 +79,9 @@ def test_multimodal_example_uses_both_inputs(changed_channel):
 
 def test_missing_multimodal_input_fails_without_a_response():
     subject, _, _ = make_example('vlm')
-    session = BufferedSession(
-        inputs=[StreamEvent(
+    session = Session([StreamEvent(
             channel='text', payload='incomplete', t_ms=None, meta={'stimulus_id': 's'},
-        )],
-        requested_output_channels=['behavior'],
-    )
+        )], ['behavior'])
     with pytest.raises(ValueError, match='all its inputs'):
         subject.participate(session)
     assert session.emitted == []
@@ -106,10 +99,10 @@ def test_feedback_uses_the_action_and_keeps_step_counts_out_of_time(tmp_path):
     events = read_events(tmp_path / 'examples' / 'robotics')
     states = {}
     for event in events:
-        if event['kind'] == 'input':
-            step = event['payload']
-            assert step.context['t_ms'] is None
-            states.setdefault(event['condition'], []).append(step.observation['state'])
+        if event['kind'] == 'input' and event['payload'].channel == 'observation':
+            row = event['payload']
+            assert row.t_ms is None
+            states.setdefault(event['condition'], []).append(row.payload['state'])
     assert not np.array_equal(states['baseline'][0], states['baseline'][1])
     np.testing.assert_array_equal(states['silenced'][0], states['silenced'][1])
 

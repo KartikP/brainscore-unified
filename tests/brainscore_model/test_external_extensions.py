@@ -39,7 +39,7 @@ def test_external_input_output_state_reset_and_session():
             return set(channels) == {'test_result'}
         def participate(self, model, session):
             while (event := session.next_input()) is not None:
-                session.emit(model.process(event))
+                session.respond(model.process(event))
     register_capability(Tool())
     model = BrainScoreModel('external', capability_config={'external-test': True})
     assert model.process(StreamEvent('test_request', 10, 5)).payload == 11
@@ -77,7 +77,7 @@ def test_session_benchmark_checks_execution_support_before_compute():
     from brainscore_core.compatibility import check_channel_compatibility, CompatibilityError
     model = BrainScoreModel('motor-only', action_fn=lambda step: None)
     benchmark = SimpleNamespace(identifier='session', uses_session=True,
-        required_input_channels=set(), requested_output_channels={'motor'})
+        required_input_channels={'observation'}, requested_output_channels={'motor'})
     check_channel_compatibility(model, benchmark)
     model.check_session_support = lambda channels: (_ for _ in ()).throw(NotImplementedError('no driver'))
     with pytest.raises(CompatibilityError, match='no driver'):

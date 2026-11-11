@@ -58,15 +58,18 @@ class GridGameBenchmark(BenchmarkBase):
         are ``base_seed + i`` so every candidate sees the identical boards.
     """
 
+    # Each episode is one trial that starts with an empty history.
+    trial_memory = 'none'
+
     def __init__(self, size: int = 5, n_episodes: int = 15,
                  max_steps: int = 20, base_seed: int = 500):
         self.size = size
         self.n_episodes = n_episodes
         self.max_steps = max_steps
         self.base_seed = base_seed
-        self.required_modalities = set()   # closed-loop: no perceptual-modality gate
-        # The game sends observations and needs actions: a subject without a policy is N/A.
-        self.required_input_channels = frozenset({'observation'})
+        # Every row holds the view, the goal and the last reward; the game needs actions,
+        # so a subject without a policy is N/A.
+        self.required_input_channels = frozenset({'observation', 'instruction', 'reward'})
         self.requested_output_channels = frozenset({'motor'})
 
         common = dict(n_episodes=n_episodes, size=size,

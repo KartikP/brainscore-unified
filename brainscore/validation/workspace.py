@@ -61,8 +61,6 @@ SUITES = {
         'tests/test_streaming_realtime.py',
         'tests/test_streaming_windowed.py',
         'tests/test_stream_rows_once.py',
-        'tests/test_synchronize_modalities.py',
-        'tests/test_temporal.py',
     ],
     'vision': [
         'tests/test_package_contents.py',

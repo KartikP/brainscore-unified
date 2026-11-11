@@ -1,12 +1,17 @@
 """Connect a caller-supplied OpenPI-style policy to the UMI action provider."""
 import numpy as np
 
-from brainscore_core.events import EnvironmentResponse, EnvironmentStep
+from brainscore_core.streaming import StreamEvent
 from brainscore.robotics import validate_cameras
 
 
 class DroidPolicy:
-    """Map DROID observations to ``policy.infer(request)['actions']``.
+    """Map DROID rows to ``policy.infer(request)['actions']``.
+
+    A row carries named cameras on ``vision:image`` (``exterior_1``,
+    ``exterior_2``, ``wrist``), body state on ``proprioception`` and the task text
+    on ``instruction``; construct the model with ``policy_inputs=DroidPolicy.inputs``.
+    The model calls ``reset()`` when an episode begins.
 
     No weights, network client, hardware, or image transforms are created here.
     The supplied policy owns preprocessing and inference. ``reset_policy`` must
@@ -14,6 +19,8 @@ class DroidPolicy:
     paired comparisons are intended. ``action_spec`` describes the eight policy
     outputs; its units and bounds must match the checkpoint and chosen protocol.
     """
+
+    inputs = ('vision:image', 'proprioception', 'instruction')
 
     def __init__(self, policy, *, action_spec, reset_policy, external_camera='exterior_1',
                  action_horizon=1):
@@ -33,38 +40,30 @@ class DroidPolicy:
         self.external_camera = external_camera
         self.action_horizon = action_horizon
         self._pending = []
-        self._next_step = None
+        self._step_num = 0
         self._chunk_id = -1
         self._chunk_index = 0
         self._prediction_horizon = None
 
     def reset(self):
         self._pending.clear()
-        self._next_step = None
+        self._step_num = 0
         self._chunk_id = -1
         self._chunk_index = 0
         self._prediction_horizon = None
         self.reset_policy()
 
-    def __call__(self, step):
-        if not isinstance(step, EnvironmentStep):
-            raise TypeError('DroidPolicy expects an EnvironmentStep')
-        if step.is_first:
-            self.reset()
-        if self._next_step is not None and step.step_num != self._next_step:
-            self._pending.clear()
-            self._next_step = None
-            raise ValueError('Steps must be consecutive; reset before starting another episode')
+    def __call__(self, row):
         if not self._pending:
-            cameras = step.observation['cameras']
+            cameras = row['vision:image']
             validate_cameras(cameras)
-            body = step.observation['proprioception']
+            body = row['proprioception']
             request = {
-                'observation/exterior_image_1_left': np.array(cameras[self.external_camera].rgb, copy=True),
-                'observation/wrist_image_left': np.array(cameras['wrist'].rgb, copy=True),
-                'observation/joint_position': np.array(body.joint_position, copy=True),
-                'observation/gripper_position': np.array(body.gripper_position, copy=True),
-                'prompt': step.instruction or '',
+                'observation/exterior_image_1_left': np.array(cameras[self.external_camera], copy=True),
+                'observation/wrist_image_left': np.array(cameras['wrist'], copy=True),
+                'observation/joint_position': np.array(body['joint_position'], copy=True),
+                'observation/gripper_position': np.array(body['gripper_position'], copy=True),
+                'prompt': row.get('instruction') or '',
             }
             try:
                 actions = np.asarray(self.policy.infer(request)['actions'])
@@ -73,23 +72,19 @@ class DroidPolicy:
                 checked = [self.action_spec.validate(action) for action in actions]
             except BaseException:
                 self._pending.clear()
-                self._next_step = None
                 raise
             self._pending = checked[:self.action_horizon]
             self._prediction_horizon = len(checked)
             self._chunk_id += 1
             self._chunk_index = 0
-        response = EnvironmentResponse(action=self._pending.pop(0), metadata={
+        response = StreamEvent('motor', self._pending.pop(0), None, {
             'action_horizon': self.action_horizon, 'external_camera': self.external_camera,
-            'step_num': step.step_num, 'action_transform': 'none',
+            'step_num': self._step_num, 'action_transform': 'none',
             'prediction_horizon': self._prediction_horizon,
             'execution_horizon': self.action_horizon,
             'chunk_id': self._chunk_id, 'chunk_index': self._chunk_index,
             'scheduler': 'policy_adapter', 'action_kind': 'single',
             'control_period_ms': self.action_spec.period_ms})
         self._chunk_index += 1
-        self._next_step = step.step_num + 1
-        if step.is_last:
-            self._pending.clear()
-            self._next_step = None
-        return response
+        self._step_num += 1
+        return {'motor': response}

@@ -146,8 +146,8 @@ def get_model(identifier: str) -> BrainScoreModel:
         max_length=128,
     )
 
-    # Clips go through the model's own video processor (vision:clip); stills
-    # through the image path above (vision:still). Both record the same tower.
+    # Clips go through the model's own video processor (vision:video); stills
+    # through the image path above (vision:image). Both record the same tower.
     from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
     from brainscore.model_helpers.replies import chat_parts
     video = VLMVideoWrapper(visual, processor, identifier=f'{identifier}-video')

@@ -92,7 +92,7 @@ def record_frames_per_clip(subject, frames, region: str, time_bins):
     of each response row are joined from that table by ``stimulus_id``.
     """
     from brainscore_core.streaming_helpers import neural_response
-    from brainscore_core.temporal import temporal_bin
+    from brainscore.temporal import temporal_bin
     per_frame = neural_response(subject, frames, record=region, time_bins=time_bins)
     return temporal_bin(with_frame_columns(per_frame, frames), time_bins=time_bins)
 

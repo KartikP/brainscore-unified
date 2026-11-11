@@ -30,7 +30,7 @@ import json
 import os
 import time
 from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 # Event-type tags
 STIMULUS, STATE_CHANGE, ENV_STEP = 'stimulus_set', 'state_change', 'environment_step'
@@ -119,7 +119,7 @@ class Witness:
         cls = type(input_event).__name__
         if cls == 'StateChange':
             return STATE_CHANGE
-        if cls == 'EnvironmentStep':
+        if isinstance(input_event, Mapping):
             return ENV_STEP
         return STIMULUS
 
@@ -155,7 +155,7 @@ class Witness:
         if et == ENV_STEP:
             ev.n_inputs = 1
             ev.saw.append(self._env_step_view(input_event))
-            ev.instruction = getattr(input_event, 'instruction', ev.instruction)
+            ev.instruction = input_event.get('instruction', ev.instruction)
             return
         if et == STATE_CHANGE:
             ev.n_inputs = 1
@@ -220,21 +220,19 @@ class Witness:
             views.append(view)
         return views
 
-    def _env_step_view(self, step):
+    def _env_step_view(self, row):
         view = {'modalities': ['embodied']}
-        # frame may live in observation['frame'] or cameras
+        # the frame may live in observation['frame'] or on the camera streams
         frame = None
-        obs = getattr(step, 'observation', None)
+        obs = row.get('observation')
         if isinstance(obs, dict) and 'frame' in obs:
             frame = obs['frame']
-        cams = getattr(step, 'cameras', None)
+        cams = row.get('vision:image')
         if frame is None and isinstance(cams, dict) and cams:
-            cf = next(iter(cams.values()))
-            frame = getattr(cf, 'rgb', cf)
+            frame = next(iter(cams.values()))
         if frame is not None:
             view['frame_shape'] = list(getattr(frame, 'shape', []))
             view['_frame'] = frame                      # kept for rendering; stripped from json
-        view['step_num'] = getattr(step, 'step_num', None)
         return view
 
     def _state_change_view(self, sc):
@@ -246,9 +244,9 @@ class Witness:
                 'perturbation': str(perturbation) if perturbation is not None else None}
 
     def _record_output(self, ev, out):
-        cls = type(out).__name__
-        if cls == 'EnvironmentResponse':
-            action = getattr(out, 'action', None)
+        if isinstance(out, Mapping):
+            action = out.get('motor')
+            action = getattr(action, 'payload', action)
             try:
                 import numpy as np
                 action = np.asarray(action).reshape(-1).tolist()

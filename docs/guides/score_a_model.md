@@ -17,7 +17,7 @@ What happens:
 
 1. **Compatibility check.** The subject's declared channels are compared with what the benchmark provides and requests. An incompatible pair raises `CompatibilityError` and is reported as N/A, not zero. See [Core concepts, section 6](../02_core_concepts.md#6-compatibility).
 2. **Memory check.** One stimulus is run to estimate the memory the full benchmark needs. Pass `check_mem=False` to skip it.
-3. **The benchmark runs** the subject through sessions and returns a `Score`.
+3. **The benchmark runs** the subject through sessions and returns a `Score`. If the benchmark leaves a perturbation active on the subject, `score` fails.
 
 ## Find models and benchmarks
 
@@ -36,4 +36,4 @@ The first run downloads model weights and benchmark data. Large checkpoints stop
 
 - **Raw** is the metric value. **Ceiled** divides by the benchmark's ceiling and can exceed 1.
 - Compare a model with a **null baseline** (chance, or the same architecture with random weights) before interpreting it. [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb) shows why.
-- The score's `attrs` record provenance: compatibility result, behavioral path, model and benchmark identifiers.
+- The score's `attrs` record provenance: compatibility result, behavioral path, model and benchmark identifiers, the subject's traits (`subject_traits`) and the trial memory (`trial_memory`).

@@ -82,7 +82,7 @@ from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
 )
-from brainscore_core.temporal import (
+from brainscore.temporal import (
     contiguous_block_cv,
     double_gamma_hrf,
     hrf_convolve,
@@ -152,6 +152,12 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     Only the neural target and the regression machinery differ.
     """
 
+    # Sends the clips (or frames sampled from them) on `vision` and asks for the
+    # region it records. Each clip is an independent trial.
+    required_input_channels = frozenset({'vision'})
+    requested_output_channels = frozenset({'neural:IT'})
+    trial_memory = 'none'
+
     def __init__(
         self,
         ceiling: Optional[float] = None,
@@ -194,8 +200,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),
             bibtex=BIBTEX,
         )
-        # Accepts native-video AND still-image models (frame-aggregation).
-        self.accepted_modalities = {'video', 'vision'}
 
     @property
     def assembly(self) -> NeuronRecordingAssembly:
@@ -420,7 +424,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         # IT-mapped features predict whole-cortex BOLD via per-voxel ridge.
         time_bins = [(0, VIDEO_DURATION_MS)]
 
-        # Clips natively when the subject declares vision:clip, frames otherwise.
+        # Clips natively when the subject declares vision:video, frames otherwise.
         from .benchmark import Lahner2024BOLDMoments
         if Lahner2024BOLDMoments._is_native_video(candidate):
             video_stim = self._stim_helper._videos_stimulus_set()

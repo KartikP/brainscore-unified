@@ -15,7 +15,7 @@ from brainscore.benchmarks.lahner2024.benchmark_timeresolved import TR_SEC
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved_multimodal import (
     Lahner2024BOLDMoments_timeresolved_multimodal,
 )
-from brainscore_core.temporal import double_gamma_hrf, hrf_convolve
+from brainscore.temporal import double_gamma_hrf, hrf_convolve
 
 PREFIX = 'Lahner2024-fMRI-naturalistic'
 TR_SUFFIXES = (

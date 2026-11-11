@@ -1,7 +1,7 @@
 """Run the capability and benchmark templates as shipped.
 
 The capability template is registered with isolated registries and driven
-through ``BufferedSession`` + ``subject.participate``. The benchmark template
+through ``Session`` + ``subject.participate``. The benchmark template
 scores a subject that implements only ``participate``, and scores a
 ``BrainScoreModel`` exactly as the earlier ``start_recording`` + ``process``
 code did. All inputs are small synthetic fixtures; no scores here are evidence
@@ -21,7 +21,7 @@ from brainscore.capabilities import capability_registry
 from brainscore_core.compatibility import check_compatibility
 from brainscore import BrainScoreModel
 from brainscore_core.model_interface import Subject
-from brainscore_core.streaming import BufferedSession, StreamEvent
+from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
@@ -72,8 +72,7 @@ def test_capability_runs_through_participate_with_state_and_reset(capability):
     subject = capability.build_model(min_length=3)
     assert subject.check_session_support({capability.RESULT}) is capability_registry[capability.IDENTIFIER]
     for _ in range(2):   # the second round reuses the same subject after reset
-        session = BufferedSession(_requests(capability, 'a red ball rolls', 'two cats'),
-                                  requested_output_channels=[capability.RESULT])
+        session = Session(_requests(capability, 'a red ball rolls', 'two cats'), [capability.RESULT])
         subject.participate(session)
         answers = session.collect(capability.RESULT)
         assert [event.payload for event in answers] == [
@@ -95,17 +94,15 @@ def test_capability_is_opt_in_per_model(capability):
 
 @pytest.mark.parametrize('payload', ['text', {'text': 'a b'}, None])
 def test_capability_rejects_wrong_payload_types(capability, payload):
-    with pytest.raises(ValueError, match='catalog validation'):
-        BufferedSession([StreamEvent(channel=capability.REQUEST, payload=payload, t_ms=0.0)],
-                        requested_output_channels=[capability.RESULT])
+    with pytest.raises(ValueError, match='channel catalog'):
+        Session([StreamEvent(channel=capability.REQUEST, payload=payload, t_ms=0.0)], [capability.RESULT])
 
 
 @pytest.mark.parametrize('text', [42, None, b'a b', ['a', 'b']])
 def test_capability_rejects_invalid_request_fields_before_compute(capability, text):
     request = capability.WordRequest(text=text)
-    with pytest.raises(ValueError, match='catalog validation'):
-        BufferedSession([StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0)],
-                        requested_output_channels=[capability.RESULT])
+    with pytest.raises(ValueError, match='channel catalog'):
+        Session([StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0)], [capability.RESULT])
     subject = capability.build_model()
     with pytest.raises(ValueError, match='shape_validator'):
         subject.process(StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0))
@@ -134,8 +131,7 @@ def test_capability_model_refuses_an_invalid_result(capability):
                                       {'min_length': '2'}, {}, None, False])
 def test_capability_checks_settings_in_setup_before_compute(capability, settings):
     subject = BrainScoreModel(identifier='direct', capability_config={capability.IDENTIFIER: settings})
-    session = BufferedSession(_requests(capability, 'one two'),
-                              requested_output_channels=[capability.RESULT])
+    session = Session(_requests(capability, 'one two'), [capability.RESULT])
     with pytest.raises(ValueError, match='min_length'):
         subject.participate(session)
     assert session.next_input() is not None and session.emitted == []   # nothing consumed or answered
@@ -164,9 +160,8 @@ def test_capability_readme_example_runs():
     namespace = {}
     for block in blocks:
         exec(compile(block, 'new_capability/README.md', 'exec'), namespace)
-    from brainscore_core.model_interface import EnvironmentResponse, EnvironmentStep
-    response = namespace['model'].process(EnvironmentStep(observation={}, step_num=0))
-    assert isinstance(response, EnvironmentResponse)
+    response = namespace['model'].process({'observation': {}})
+    assert response == {'motor': 0}
 
 
 # --- new_benchmark -----------------------------------------------------------------

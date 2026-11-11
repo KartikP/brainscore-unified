@@ -10,7 +10,7 @@ import torch
 from brainscore import load_model, model_registry
 from brainscore_core import TaskContext
 from brainscore_core.responses import Text
-from brainscore_core.streaming import BufferedSession
+from brainscore_core.streaming_helpers import table_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.models.qwen25_vl_3b import model as registration
 
@@ -79,8 +79,7 @@ def test_bf16_is_a_separate_lazy_registration_and_uses_pinned_precision(build):
     assert [entry['identifier'] for entry in wrappers] == ['qwen2.5-vl-3b-bf16-vision', 'qwen2.5-vl-3b-bf16-text']
     assert {'behavior:text', 'neural:IT', 'neural:language_system'} <= subject.out_channels
     assert 'lesion' not in subject.in_channels
-    session = BufferedSession(stimulus_set=StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}]),
-        task_context=TaskContext(response=Text()), requested_output_channels=['behavior:text'])
+    session = table_session(StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}]), ['behavior:text'], task_context=TaskContext(response=Text()))
     subject.participate(session)
     response = session.collect('behavior:text')
     assert response.values.tolist() == ['Yes']
