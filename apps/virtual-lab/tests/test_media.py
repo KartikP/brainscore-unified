@@ -72,8 +72,8 @@ def test_extracted_pair_satisfies_a_subject_that_requires_video_and_audio(tmp_pa
     result = extract_audio(source.parent, source.name)
     class AudiovisualSubject(Subject):
         identifier = 'paired-fixture'
-        in_channels = {'vision', 'vision:video', 'audio'}
-        required_channels = {'vision', 'audio'}
+        in_channels = {'vision:video', 'audio'}
+        required_channels = {'vision:video', 'audio'}
         out_channels = {'neural:IT', 'neural:A1'}
         def participate(self, session):
             raise AssertionError('Preflight must not run the subject')

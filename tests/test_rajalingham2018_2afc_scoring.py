@@ -82,7 +82,7 @@ def test_two_afc_model_runs_through_participate():
          'sample_obj': 'wrench', 'dist_obj': 'rhino', 'left_obj': 'rhino', 'right_obj': 'wrench'},
     ])
     model = TwoAFCModel('left', lambda row: 'LEFT', mode='random', instruction=INSTRUCTION_DIRECT)
-    assert set(model.in_channels) == {'vision'} and set(model.out_channels) == {'behavior'}
+    assert set(model.in_channels) == {'vision:image'} and set(model.out_channels) == {'behavior'}
     choices = run_trials(model, stim, INSTRUCTION_DIRECT)
     assert list(choices['choice']) == ['wrench', 'rhino']
     assert list(choices['image_id']) == ['img0', 'img0']

@@ -38,7 +38,7 @@ class NativeFixture:
 def inputs(video, *, identifier='clip'):
     meta = {'stimulus_id': identifier}
     return [
-        StreamEvent('vision', video, None, meta.copy()),
+        StreamEvent('vision:video', video, None, meta.copy()),
         StreamEvent('audio', video, None, meta.copy()),
         StreamEvent('text', 'hello', None, {
             **meta, 'transcript': [{'word': 'hello', 'onset': 0.0, 'duration': 0.5}],
@@ -66,7 +66,7 @@ def test_native_subject_satisfies_subject_through_participate(video):
 def test_subject_preserves_native_values_dtype_labels_and_time_grid(video):
     predictor = NativeFixture()
     subject = MirageSubject(predictor=predictor)
-    assert subject.in_channels == subject.required_channels == {'vision', 'audio', 'text'}
+    assert subject.in_channels == subject.required_channels == {'vision:video', 'audio', 'text'}
     assert subject.out_channels == {OUTPUT_CHANNEL}
     session = Session(inputs(video), (OUTPUT_CHANNEL,))
     subject.participate(session)
@@ -155,7 +155,7 @@ def test_recording_copies_inputs_and_replay_reruns_without_original_file(video, 
     original = Experiment(
         subject=MirageSubject(predictor=predictor),
         protocol=SessionProtocol('mirage-fixture', factory,
-                                 input_channels=('vision', 'audio', 'text'),
+                                 input_channels=('vision:video', 'audio', 'text'),
                                  output_channels=(OUTPUT_CHANNEL,)),
         tools=(RecordInputsOutputs(),), output_dir=tmp_path / 'record',
     ).run()

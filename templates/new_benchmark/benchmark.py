@@ -97,9 +97,10 @@ def _ceiling() -> Score:
 
 class YourBenchmark(BenchmarkBase):
     # What the benchmark shows and what it asks for, checked before any compute.
-    # Inputs: the channel names of what the human participants received, as bare
-    # families ('vision', 'text', 'audio'); a subject matches each name exactly.
-    required_input_channels = frozenset({'vision'})
+    # Inputs: the channel names of what the human participants received, by
+    # name ('vision:image', 'vision:video', 'text', 'audio'); a subject matches each
+    # name exactly. A visual input names its form: an image or a video.
+    required_input_channels = frozenset({'vision:image'})
     # Outputs: the exact channel you request, e.g. 'neural:<region>' or 'behavior'.
     requested_output_channels = frozenset({'neural:IT'})   # TODO: your region
     # 'none': every trial starts empty. 'conversation' needs memory:trial_history.

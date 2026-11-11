@@ -32,7 +32,7 @@ def test_a_fused_extractor_declares_each_input_and_runs_once():
     fused = Fused()
     model = BrainScoreModel('fused', extractor={('vision', 'text'): fused},
                             region_layer_map={'A': 'layers.3'})
-    assert {'vision', 'text', 'vision:image'} <= model.in_channels
+    assert {'text', 'vision:image'} <= model.in_channels
     both = StimulusSet({'stimulus_id': ['a', 'b'], 'image_path': ['a.png', 'b.png'],
                         'sentence': ['one', 'two']})
     both.identifier = 'fused-both'

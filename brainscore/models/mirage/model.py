@@ -46,7 +46,7 @@ class Predictor(Protocol):
 
 
 def _clip(events: dict[str, StreamEvent]) -> Clip:
-    vision, audio, text = (events[name] for name in ('vision', 'audio', 'text'))
+    vision, audio, text = (events[name] for name in ('vision:video', 'audio', 'text'))
     identifiers = [event.meta.get('stimulus_id') for event in events.values()]
     if any(not isinstance(value, str) or not value for value in identifiers):
         raise ValueError('Every stream needs a nonempty stimulus_id')
@@ -91,8 +91,8 @@ def _clip(events: dict[str, StreamEvent]) -> Clip:
 class MirageSubject(Subject):
     """Predict parcel-wise BOLD for complete audiovisual clips, without refitting."""
 
-    in_channels = {'vision', 'audio', 'text'}
-    required_channels = {'vision', 'audio', 'text'}
+    in_channels = {'vision:video', 'audio', 'text'}
+    required_channels = {'vision:video', 'audio', 'text'}
     out_channels = {OUTPUT_CHANNEL}
 
     def __init__(self, *, predictor: Predictor, subject: str = 'sub-01') -> None:

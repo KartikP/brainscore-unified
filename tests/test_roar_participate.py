@@ -10,7 +10,8 @@ from tests.test_induced_dyslexia import _ReaderSubject, synthetic_roar  # noqa: 
 @pytest.mark.parametrize('modality', ['vision', 'text'])
 def test_declares_the_word_and_the_question_in_and_behavior_out(synthetic_roar, modality):
     benchmark = Yeatman2021LexicalDecision(modality=modality)
-    assert_declares(benchmark, {modality, 'instruction'}, {'behavior'})
+    word = {'vision': 'vision:image', 'text': 'text'}[modality]
+    assert_declares(benchmark, {word, 'instruction'}, {'behavior'})
     assert_preflight(benchmark)
 
 

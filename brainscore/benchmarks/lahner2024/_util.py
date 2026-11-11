@@ -42,7 +42,7 @@ def _families(channels):
 
 def takes_vision(subject) -> bool:
     """Whether the subject declares any visual input (stills, clips or both)."""
-    return 'vision' in _families(subject.in_channels)
+    return bool(set(subject.in_channels) & {'vision:image', 'vision:video'})
 
 
 def takes_audio(subject) -> bool:

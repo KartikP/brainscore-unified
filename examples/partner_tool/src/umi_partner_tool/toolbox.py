@@ -203,13 +203,13 @@ def make_example(name: str) -> tuple[Subject, Callable, torch.nn.Module]:
 
     image = np.ones((4, 4, 3), dtype=np.uint8)
     configurations = {
-        'vision': ({'vision': image}, lambda x: [float(x['vision'].mean()), 0.5]),
+        'vision': ({'vision:image': image}, lambda x: [float(x['vision:image'].mean()), 0.5]),
         'language': ({'text': 'a short sentence'}, lambda x: [len(x['text'].split()) / 10, 0.5]),
         'vlm': (
-            {'vision': image, 'text': 'describe this'},
-            lambda x: [float(x['vision'].mean()), len(x['text'].split()) / 10],
+            {'vision:image': image, 'text': 'describe this'},
+            lambda x: [float(x['vision:image'].mean()), len(x['text'].split()) / 10],
         ),
-        'brain_behavior': ({'vision': image}, lambda x: [float(x['vision'].mean()), 0.4]),
+        'brain_behavior': ({'vision:image': image}, lambda x: [float(x['vision:image'].mean()), 0.4]),
     }
     payloads, encode = configurations[name]
     subject = DemonstrationSubject(

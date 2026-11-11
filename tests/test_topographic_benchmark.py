@@ -242,5 +242,5 @@ def test_declares_the_stimulus_channels_in_and_the_region_out():
     assert_preflight(benchmark)
     two_inputs = TopographicBenchmark('two-inputs', brain_assembly=_assembly(seed=1),
                                       stimulus_set=_two_input_stimuli(), region='V4')
-    assert_declares(two_inputs, {'vision', 'text'}, {'neural:V4'})
+    assert_declares(two_inputs, {'vision:image', 'text'}, {'neural:V4'})
     assert_preflight(two_inputs)

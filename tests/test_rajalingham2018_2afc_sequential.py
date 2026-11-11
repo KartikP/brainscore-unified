@@ -104,7 +104,7 @@ class _ParticipateOnlyChooser(Subject):
     """
 
     identifier = 'participate-only'
-    in_channels = frozenset({'vision'})
+    in_channels = frozenset({'vision:image'})
     out_channels = frozenset({'behavior'})
 
     def participate(self, session):

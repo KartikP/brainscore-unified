@@ -79,7 +79,7 @@ def test_neural_stimulus_session_collects_an_assembly(tmp_path):
     partial = Request(rows=[{"sentence": "cat", "image_path": "image.png"}], output="neural:language")
     result = run_session(subject, partial, tmp_path / "partial", tmp_path, lambda update: None, lambda: False)
     assert result["report"]["compatibility"]["match"] == "partial"
-    assert result["report"]["compatibility"]["dropped_inputs"] == ["vision"]
+    assert result["report"]["compatibility"]["dropped_inputs"] == ["vision:image"]
 
 
 def test_session_json_uses_real_declared_capability(tmp_path):

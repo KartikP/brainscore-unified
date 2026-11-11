@@ -132,7 +132,7 @@ def main() -> None:
                 def factory(_trial):
                     metadata = {'stimulus_id': case}
                     yield Session([
-                        StreamEvent('vision', video, None, metadata.copy()),
+                        StreamEvent('vision:video', video, None, metadata.copy()),
                         StreamEvent('audio', video, None, metadata.copy()),
                         StreamEvent('text', ' '.join(item['word'] for item in words), None,
                                     {**metadata, 'transcript': words}),
@@ -163,7 +163,7 @@ def main() -> None:
                     result = Experiment(
                         subject=subject,
                         protocol=SessionProtocol(
-                            'mirage-overhead', factory, input_channels=('vision', 'audio', 'text'),
+                            'mirage-overhead', factory, input_channels=('vision:video', 'audio', 'text'),
                             output_channels=(OUTPUT_CHANNEL,),
                         ),
                         tools=(RecordInputsOutputs(),), output_dir=trial / 'experiment',
