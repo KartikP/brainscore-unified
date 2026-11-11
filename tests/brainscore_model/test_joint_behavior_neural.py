@@ -16,7 +16,7 @@ from brainscore_core.events import Perturbation, PerturbationApplied, Selection,
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.selection import LayerSelector
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -105,7 +105,7 @@ def _model(net, extractor_type=ToyExtractor, **kwargs):
 
 
 def _run(model, task, channels):
-    session = table_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task_context=task)
     model.participate(session)
     return session
 
@@ -165,7 +165,7 @@ def test_undeclared_region_is_not_supported():
 def test_neural_session_after_a_task_returns_activity():
     model = _model(ToyNet())
     model.start_task(GENERATE)
-    session = table_session(STIMULI, ['neural:A'])
+    session = stimulus_session(STIMULI, ['neural:A'])
     model.participate(session)
     assert isinstance(session.collect('neural:A'), NeuroidAssembly)
 
@@ -189,7 +189,7 @@ def test_neural_only_session_under_a_task_records_during_the_task():
 def test_passive_task_records_plain_viewing_unchanged():
     net = ToyNet()
     passive = TaskContext(task_type='passive')
-    session = table_session(STIMULI, ['neural:A'], task_context=passive)
+    session = stimulus_session(STIMULI, ['neural:A'], task_context=passive)
     _model(net).participate(session)
     recorded = session.collect('neural:A')
     np.testing.assert_array_equal(recorded.values, [ToyNet().forward(s)['early'] for s in 'abc'])

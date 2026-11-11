@@ -4,7 +4,7 @@ import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore.selection import LayerSelector
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -36,7 +36,7 @@ def test_a_fused_extractor_declares_each_input_and_runs_once():
     both = StimulusSet({'stimulus_id': ['a', 'b'], 'image_path': ['a.png', 'b.png'],
                         'sentence': ['one', 'two']})
     both.identifier = 'fused-both'
-    session = table_session(both, ['neural:A'])
+    session = stimulus_session(both, ['neural:A'])
     model.participate(session)
     recorded = session.collect('neural:A')
     assert len(fused.calls) == 1 and fused.calls[0] == ['image_path', 'sentence']
@@ -57,6 +57,6 @@ def test_single_input_extractors_still_take_single_input_stimuli():
                             region_layer_map={'A': LayerSelector('layers.3', modality='vision')})
     images = StimulusSet({'stimulus_id': ['a'], 'image_path': ['a.png']})
     images.identifier = 'images-only'
-    session = table_session(images, ['neural:A'])
+    session = stimulus_session(images, ['neural:A'])
     model.participate(session)
     assert session.collect('neural:A').dims == ('presentation', 'neuroid')

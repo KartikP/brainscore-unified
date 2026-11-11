@@ -14,7 +14,6 @@ from brainscore import capabilities
 from brainscore.capabilities import Capability, register_capability
 from brainscore import BrainScoreModel
 from brainscore_core.streaming import StreamEvent
-from brainscore_core.streaming_helpers import table_session
 from brainscore_core.streaming_helpers import (
     neural_response, stimulus_session,
 )
@@ -103,7 +102,7 @@ def test_typed_drivers_keep_the_recorded_pre_rename_driver_labels(streaming, met
     """
     model = BrainScoreModel('labels', region_layer_map={'IT': 'layer'},
                             extractor={'vision': _features})
-    session = table_session(_images(2), ['neural:IT'])
+    session = stimulus_session(_images(2), ['neural:IT'])
     session.streaming = streaming
     model.participate(session)
     assert [event.meta for event in session.emitted] == meta

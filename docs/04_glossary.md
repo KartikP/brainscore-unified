@@ -52,7 +52,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Visual form** | Whether a subject takes pictures (`vision:image`), video (`vision:video`) or both, natively. Benchmarks show each stimulus in its own form when the subject has it, and record any adaptation on the score. |
 | **Prompt** | One trial as a replying model sees it, in order: the instruction, the stimulus parts (in `present` order), then the response's directive. |
 | **Reported / implied** | A reported answer is the model's parsed reply; an implied one is read from its internals (a readout, or a language model's likelihoods). Results say which in `attrs['measure']`. |
-| **Trial memory** | How long a subject keeps its trials: `none` (default; each trial is its own episode) or `conversation` (one episode, history kept; needs the trait `memory:trial_history`). |
+| **Trial memory** | How long a subject keeps its trials: `none` (default; each trial is its own episode) or `history` (one episode; the subject keeps what it took in and answered on earlier trials; needs the trait `memory:trial_history`). |
 | **Tool** | Equipment attached to an experiment to observe or change the run, without changing the subject. |
 | **Row** | One closed-loop step: a mapping of channel to payload. A policy answers it with a mapping of output channel to payload. |
 | **Trait `memory:trial_history`** | A subject declares it when it keeps earlier trials and its answers from `begin` until `end`. A `BrainScoreModel` declares it with `memory='trial_history'`. |

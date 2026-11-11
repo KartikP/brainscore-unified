@@ -4,7 +4,7 @@ import pytest
 import xarray as xr
 from brainscore import BrainScoreModel, LayerSelector, CompositeSelector
 from brainscore_core.streaming import Session, StreamEvent
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -83,7 +83,7 @@ def test_raw_layer_has_same_meaning_alone_or_in_list(target):
 def test_common_session_collects_neural_output_without_helper_class():
     model = BrainScoreModel(identifier='session', region_layer_map={'IT': 'x'},
                             activations_model={'vision': Extractor()})
-    session = table_session(StimulusSet({'image_path': ['x']}), ('neural:IT',))
+    session = stimulus_session(StimulusSet({'image_path': ['x']}), ('neural:IT',))
     model.participate(session)
     assert session.collect().shape == (1, 4)
 
@@ -110,7 +110,7 @@ def test_explicit_source_is_independent_of_behavioral_task_configuration():
     from types import SimpleNamespace
     subject = SimpleNamespace(start_task=lambda context: None,
                               process=lambda stimuli: generate(None, stimuli, task))
-    session = table_session(explicit, ['behavior'], task_context=task)
+    session = stimulus_session(explicit, ['behavior'], task_context=task)
     _drive_behavior_session_via_process(subject, session)
     assert seen == ['actual']
     assert session.collect().shape == (1,)
@@ -152,7 +152,7 @@ def test_generation_declares_instruction_input_for_replay():
 def test_common_session_collects_batch_and_streamed_assemblies(streaming):
     model = BrainScoreModel(identifier='delivery', region_layer_map={'language': 'x'},
                             activations_model={'text': Extractor()})
-    session = table_session(StimulusSet({'sentence': ['one', 'two'], 'stimulus_id': ['1', '2']}),
+    session = stimulus_session(StimulusSet({'sentence': ['one', 'two'], 'stimulus_id': ['1', '2']}),
                             ['neural:language'])
     session.streaming = streaming
     model.participate(session)

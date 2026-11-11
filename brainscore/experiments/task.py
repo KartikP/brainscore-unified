@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from brainscore_core.contract import required_traits_for
 from brainscore_core.events import StateChange
 from brainscore_core.streaming import CONTROL_CHANNEL
-from brainscore_core.streaming_helpers import apply_state_change, table_session
+from brainscore_core.streaming_helpers import apply_state_change, stimulus_session
 
 from .runner import SessionProtocol, Tool
 from .tools import RecordInputsOutputs
@@ -29,7 +29,7 @@ class TaskProtocol(SessionProtocol):
     The task says what the subject does; ``TaskContext(task_type='passive')``
     is plain viewing. ``required_traits`` (e.g. ``{'memory:trial_history'}``) makes a
     subject without them fail validation, as a benchmark marks it N/A. The task's
-    ``trial_memory`` (``'none'`` or ``'conversation'``) decides how the
+    ``trial_memory`` (``'none'`` or ``'history'``) decides how the
     session groups trials into episodes; ``conversation`` adds the
     ``memory:trial_history`` requirement itself. The
     attached recorders say what is measured: each
@@ -41,7 +41,7 @@ class TaskProtocol(SessionProtocol):
 
     def __init__(self, stimuli, task, *, identifier='task', conditions=None,
                  repetitions=(0,), required_traits=(), metadata=None):
-        probe = table_session(stimuli)
+        probe = stimulus_session(stimuli)
         inputs = set()
         while (event := probe.next_input()) is not None:
             if event.channel != CONTROL_CHANNEL:
@@ -87,7 +87,7 @@ class TaskProtocol(SessionProtocol):
 
     @contextmanager
     def _session(self, repetition):
-        yield table_session(self.stimuli, sorted(self.output_channels), task_context=self.task)
+        yield stimulus_session(self.stimuli, sorted(self.output_channels), task_context=self.task)
 
 
 class _ChannelRecorder(RecordInputsOutputs):

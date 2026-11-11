@@ -14,7 +14,7 @@ from brainscore import BrainScoreModel
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import (
-    behavior_session, stimulus_session, streaming_stimulus_session,
+    stimulus_session,
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -62,9 +62,9 @@ def run(subject, factory, directory, outputs):
     ).run()
 
 
-@pytest.mark.parametrize('session_type', [stimulus_session, streaming_stimulus_session])
+@pytest.mark.parametrize('streaming', [False, True])
 @pytest.mark.parametrize('regions', ['IT', ['V4', 'IT']])
-def test_neural_session_collection_and_replay_preserve_metadata(tmp_path, session_type, regions):
+def test_neural_session_collection_and_replay_preserve_metadata(tmp_path, streaming, regions):
     subject = BrainScoreModel(
         identifier='length',
         model=None,
@@ -72,11 +72,12 @@ def test_neural_session_collection_and_replay_preserve_metadata(tmp_path, sessio
         region_layer_map={'IT': 'length', 'V4': 'early_length'},
     )
 
+    channels = ('neural:IT',) if isinstance(regions, str) else ('neural:V4', 'neural:IT')
+
     @contextmanager
     def factory(trial):
-        yield session_type(stimuli(), record=regions, time_bins=[(70, 170)])
+        yield stimulus_session(stimuli(), channels, time_bins=[(70, 170)], streaming=streaming)
 
-    channels = ('neural:IT',) if isinstance(regions, str) else ('neural:V4', 'neural:IT')
     baseline = run(subject, factory, tmp_path / 'baseline', channels)
     assembly = baseline.value[0] if isinstance(regions, str) else baseline.value[0]['neural:IT']
     assert isinstance(assembly, NeuroidAssembly)
@@ -111,11 +112,12 @@ def test_behavior_session_collection_and_replay_preserve_task(tmp_path):
 
     @contextmanager
     def factory(trial):
-        yield behavior_session(TaskContext(
+        table = stimuli()
+        yield stimulus_session(table, ['behavior'], TaskContext(
             task_type='probabilities',
             instruction='Is this an animal?',
             label_set=['yes', 'no'],
-            metadata={'stimulus_set': stimuli()},
+            metadata={'stimulus_set': table},
         ))
 
     baseline = run(subject, factory, tmp_path / 'baseline', ['behavior'])

@@ -6,7 +6,7 @@ Already have a `TaskProtocol`? Follow the [experiment-to-benchmark walkthrough](
 
 ```python
 from brainscore_core import Benchmark, Score
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 
 class MyITBenchmark(Benchmark):
     identifier = 'MyLab2026.IT-pls'
@@ -19,7 +19,7 @@ class MyITBenchmark(Benchmark):
         self._metric, self._ceiling = metric, ceiling
 
     def __call__(self, subject):
-        session = table_session(self._stimuli, ['neural:IT'], time_bins=[(70, 170)])
+        session = stimulus_session(self._stimuli, ['neural:IT'], time_bins=[(70, 170)])
         subject.participate(session)
         raw = self._metric(session.collect(), self._measured)
         score = Score(float(raw) / self._ceiling)
@@ -34,7 +34,7 @@ class MyITBenchmark(Benchmark):
 | --- | --- |
 | Stimuli | A `StimulusSet` (one row per stimulus, a `stimulus_id` column, and a column per input type such as `image_path` or `sentence`), or your own list of `StreamEvent`s. |
 | Declarations | `required_input_channels`, `requested_output_channels`, and any `required_traits` such as `memory:trial_history`. Channels match by exact name. Compatibility compares these with the subject's declarations. |
-| Session | Usually `table_session(stimuli, outputs)`. Add `task_context=TaskContext(...)` for behavior; `TaskContext(trial_memory='conversation')` keeps the subject's history across trials. With the default `trial_memory`, a second answer to one trial is an error; an answer belongs to the trial named by the row identity in its metadata. For closed-loop tasks, use `run_environment` ([Closed loop](closed_loop.md)). |
+| Session | Usually `stimulus_session(stimuli, outputs)`. Add a `TaskContext(...)` as the third argument for behavior; `TaskContext(trial_memory='history')` keeps the subject's history across trials. With the default `trial_memory`, a second answer to one trial is an error; an answer belongs to the trial named by the row identity in its metadata. For closed-loop tasks, use `run_environment` ([Closed loop](closed_loop.md)). |
 | Metric | Any function of model output and measured data. Brain-Score ships metrics such as PLS regression, ridge regression, RSA and accuracy (`brainscore.load_metric`). |
 | Ceiling | An estimate of how well the data can be predicted, for example split-half reliability. Leave it out and report the raw value if you have none. |
 | Reference data | Measured responses in an assembly whose `presentation` dimension carries `stimulus_id` and at least one more coordinate (a condition, a category, a subject). A dimension with only one coordinate keeps its values as the dimension's index and loses the coordinate's name, so `reference['stimulus_id']` would fail. |
