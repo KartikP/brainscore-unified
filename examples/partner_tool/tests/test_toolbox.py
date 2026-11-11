@@ -32,7 +32,7 @@ def test_record_intervene_restore_and_replay(tmp_path, name):
     original = tmp_path / 'examples' / name
     events = read_events(original)
     outputs = [event for event in events if event['kind'] == 'output']
-    assert len(outputs) == (9 if name == 'robotics' else 18)
+    assert len(outputs) == 18  # an action has a proposal and a receipt
     assert {event['condition'] for event in outputs} == {'baseline', 'silenced', 'restored'}
     for event in outputs:
         response = event['payload']
@@ -61,7 +61,7 @@ def test_multimodal_example_uses_both_inputs(changed_channel):
     subject, _, _ = make_example('vlm')
     outputs = []
     for index in range(2):
-        image = np.full((4, 4, 3), index if changed_channel == 'vision' else 1)
+        image = np.full((4, 4, 3), index if changed_channel == 'vision' else 1, dtype=np.uint8)
         text = 'three different words' if changed_channel == 'text' and index else 'one'
         subject.reset()
         session = Session([

@@ -57,7 +57,7 @@ def verify_tool_run(directory, report, rows, experiment, *, reconcile_unacknowle
         if event['kind'] == 'evaluator_receipt':
             receipts.append(event['payload'])
         elif event['kind'] == 'input' and event['payload'].get('method') == 'process':
-            annotations.append(event['payload']['args'][0].context['umi_call'])
+            annotations.append(event['payload']['args'][0]['umi_call'])
     _check(len(receipts) == 1, 'Expected exactly one recorded evaluator receipt')
     receipt = receipts[0]
     _check(receipt['report_sha256'] == report_sha256 and receipt['run_id'] == run_id,
