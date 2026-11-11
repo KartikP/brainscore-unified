@@ -5,10 +5,10 @@ Keep experiment setup in notebooks and longer plotting code here. Images are dis
 Run from the repository root with the notebook dependencies installed:
 
 ```bash
-# Run notebook 15's deterministic examples and render their measured timings.
+# Run the deterministic examples of archived notebook 15 and render their measured timings.
 python notebooks/figure_sources/render_streaming_figures.py
 
-# Render notebook 16's stored real-data scores. No model inference required.
+# Render the stored real-data scores of archived notebook 16. No model inference required.
 python notebooks/figure_sources/render_whole_brain_figures.py
 
 # Optional: repeat the full scientific evaluation before rendering.

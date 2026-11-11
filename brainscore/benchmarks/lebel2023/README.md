@@ -1,4 +1,4 @@
-# LeBel2023 — whole-cortex encoding
+# LeBel2023 whole-cortex encoding
 
 Predict all 20484 measured cortical vertices of one participant (UTS03) listening to 25
 spoken stories. No anatomical mask is applied: every vertex is a target, including the
@@ -15,25 +15,26 @@ LITCoder).
 | `LeBel2023-UTS03-encoding` | per word, Lanczos-resampled | all 20484 | the benchmark |
 | `LeBel2023-UTS03-encoding-smoke` | per word, Lanczos-resampled | random 2000 | pipeline checks only |
 | `LeBel2023-UTS03-encoding-contextwindow` | one context window per TR, last token | all 20484 | retained for comparison |
+| `LeBel2023-UTS03-encoding-languagemask` | same as the benchmark | all 20484, summarised inside the LanA mask | the reference pipeline's statistic (needs the LanA atlas, see below) |
 
 The smoke variant's number is not comparable to a full run. Full runs take ~70 s
 and peak near 8 GB.
 
 ## Data
 
-The pickle is not fetched automatically. Point `BRAINSCORE_LEBEL_PICKLE` at it, or place it
+With the default settings the loaders fetch hosted files and check their sha1. For other context settings, build the data from the source pickle: point `BRAINSCORE_LEBEL_PICKLE` at it, or place it
 at `~/Downloads/assembly_lebel_uts03.pkl`. The first load converts it to a
 `NeuroidAssembly` and caches the result under `~/.brainscore-umi-cache/lebel2023`
-(override with `BRAINSCORE_LEBEL_CACHE`); later loads take under a second.
+(override with `BRAINSCORE_LEBEL_CACHE`); later loads take under a second. See the [data README](../../data/lebel2023/README.md).
 
 Two properties of the source drive `data.py`:
 
 - It references `encoding.*` classes that are not installed, so it is read with an
   unpickler that substitutes permissive stand-ins.
-- `tr_times` is 15 entries longer than `brain_data` for every story, split **10 from the
-  head and 5 from the tail**, so `brain_data[i]` was acquired at `tr_times[i + 10]`. The
-  reference pipeline hardcodes this as `downsampled[10:-5]`. **The count does not
-  determine the direction** — both splits satisfy `len(tr_times) == n_tr + 15`, which is
+- `tr_times` is 15 entries longer than `brain_data` for every story, split 10 from the
+  head and 5 from the tail, so `brain_data[i]` was acquired at `tr_times[i + 10]`. The
+  reference pipeline hardcodes this as `downsampled[10:-5]`. The count does not
+  determine the direction. Both splits satisfy `len(tr_times) == n_tr + 15`, which is
   all the loader can assert, and getting it backwards places features five samples early.
   That inversion made the regression fit BOLD from words up to six seconds in the future
   and roughly halved every score here before it was caught; it is now pinned by
@@ -46,19 +47,18 @@ story during scoring.
 
 One stimulus row per spoken word, each carrying the running 32-word context ending at
 that word, so the model's representation of a row is its representation of that word in
-context. About **5.9 words fall inside each 2 s sample**; their features are resampled
+context. About 5.9 words fall inside each 2 s sample. Their features are resampled
 onto the fMRI grid with a windowed-sinc (Lanczos) filter, low-passed at the sampling
-rate. Collapsing each TR to a single value instead — which the `-contextwindow` variant
-does — discards the other words and costs about 20% of the score.
+rate. The `-contextwindow` variant collapses each TR to a single value instead. That discards the other words and costs about 20% of the score.
 
 Model features are then copied at delays of 1–4 TRs and
 concatenated, letting each vertex learn its own hemodynamic lag rather than assuming a
 fixed HRF. Cross-validation holds out whole stories, because adjacent TRs within a story
 are correlated enough that a random split leaks. The ridge penalty is selected per fold on
-*held-out stories*, not a random row subset — a random inner split picks a penalty about an
+*held-out stories*, not a random row subset. A random inner split picks a penalty about an
 order of magnitude too small.
 
-Reported value: median held-out Pearson r across vertices. **Raw, not ceiling-normalised.**
+Reported value: median held-out Pearson r across vertices. The value is raw, not ceiling-normalised.
 Each story is heard once, so no noise ceiling is estimable. Compare against the nulls
 below, not against ceiling-normalised benchmarks such as MajajHong or Pereira.
 
@@ -68,17 +68,13 @@ All 20484 vertices, held-out median Pearson r.
 
 | Model | Layer | median r | mean r | frac r > 0 | p99 | best vertex |
 |---|---|---|---|---|---|---|
-| Qwen3.6-27B | 40 of 64 | **0.1318** | 0.1432 | 96.5% | 0.414 | 0.592 |
+| Qwen3.6-27B | 40 of 64 | 0.1318 | 0.1432 | 96.5% | 0.414 | 0.592 |
 | GPT-2 (124M) | 11 of 12 | 0.1013 | 0.1134 | 95.3% | 0.360 | 0.543 |
 
 These are the scores at each model's registered layer, which is what `score()` returns.
 Qwen leads by 30% at the median and separates further in the tail (p99 0.414 against
 0.360), where a language-responsive vertex would sit. Part of that gap is a layer
-difference rather than a model difference — see below.
-
-Qwen figures published here before the alignment fix were measured on the inverted time
-axis and the per-TR path; they were discarded rather than rescaled, and this row is a
-fresh run.
+difference rather than a model difference (see below).
 
 Most of cortex is barely predicted and a minority is predicted well, which is the
 distribution a whole-brain benchmark exists to show.
@@ -88,13 +84,13 @@ distribution a whole-brain benchmark exists to show.
 Both models swept on all 20484 vertices, every layer recorded in one pass
 (`start_recording([...])`) and scored from the shared recording.
 
-| Qwen3.6-27B | 0 | 5 | 10 | 15 | 20 | 25 | **30** | 35 | 40 | 45 | 50 | 55 | 60 | 63 |
+| Qwen3.6-27B | 0 | 5 | 10 | 15 | 20 | 25 | 30 | 35 | 40 | 45 | 50 | 55 | 60 | 63 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| median r | .063 | .082 | .097 | .116 | .123 | .126 | **.132** | .129 | .132 | .129 | .131 | .126 | .126 | .117 |
+| median r | .063 | .082 | .097 | .116 | .123 | .126 | .132 | .129 | .132 | .129 | .131 | .126 | .126 | .117 |
 
-| GPT-2 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | **7** | 8 | 9 | 10 | 11 |
+| GPT-2 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| median r | .082 | .083 | .086 | .088 | .098 | .101 | .104 | **.112** | .108 | .110 | .106 | .101 |
+| median r | .082 | .083 | .086 | .088 | .098 | .101 | .104 | .112 | .108 | .110 | .106 | .101 |
 
 Qwen was swept at stride 5 rather than 4 or 8: it places a full-attention block every 4th
 position, so a stride sharing a factor with 4 samples one kind of block and reports that
@@ -107,9 +103,9 @@ three ways:
 |---|---|---|---|
 | registered layer | 0.1318 (L40) | 0.1013 (h.11) | +30% |
 | best of sweep | 0.1320 (L30) | 0.1124 (h.7) | +17% |
-| **plateau mean** | **0.1306** | **0.1069** | **+22%** |
+| plateau mean | 0.1306 | 0.1069 | +22% |
 
-**Quote +22%.** Best-of-sweep flatters whichever model happens to spike: GPT-2's best sits
+Quote +22%. Best-of-sweep flatters whichever model happens to spike: GPT-2's best sits
 1.39 sd above its own plateau against Qwen's 1.09, so picking maxima rewards its noisier
 curve. The registered-layer row flatters Qwen for the opposite reason: GPT-2 is registered
 at `h.11`, which is 0.011 below its best block *here* but is the block its mapping
@@ -122,7 +118,7 @@ the unified Pereira variant showed native models one bare sentence at a time whe
 legacy path had always supplied the running passage context; with the two paths aligned,
 Pereira's depth curve peaks at the last block again.
 
-Sweeping gained Qwen **+0.0003** over its inherited layer. The layer was carried over from
+Sweeping gained Qwen +0.0003 over its inherited layer. The layer was carried over from
 a sweep run at the inverted alignment, so it was a guess; the plateau is broad enough
 (0.1306 ± 0.0013 across L30-L50) that the guess cost nothing. `layers.40` stays.
 
@@ -132,13 +128,13 @@ a sweep run at the inverted alignment, so it was a guess; the plateau is broad e
 |---|---|
 | per-TR context, last token, inverted trim | 0.0422 |
 | + word-level features, Lanczos-resampled | 0.0511 |
-| + corrected 10/5 trim alignment | **0.1013** |
+| + corrected 10/5 trim alignment | 0.1013 |
 
 (GPT-2 at `h.11` throughout, so the rows differ only in the pipeline change named.)
 
 The alignment fix is worth about 2x on its own. Two independent checks support it rather
 than an argmax over candidate splits: the reference pipeline hardcodes `[10:-5]`, and the
-FIR-delay curve only rises to a 9-12 s plateau — reproducing LITcoder's Figure 3B — once
+FIR-delay curve only rises to a 9-12 s plateau (reproducing LITcoder's Figure 3B) once
 the alignment is right. At the inverted trim that curve fell monotonically, which was
 previously and wrongly explained as context and delays being substitutes.
 
@@ -153,15 +149,15 @@ and measured before the alignment fix:
 | word-level, last | 0.0445 |
 | word-level, sum | 0.0478 |
 | word-level, average | 0.0490 |
-| **word-level, Lanczos** | **0.0525** |
+| word-level, Lanczos | 0.0525 |
 
 The ordering `last < sum ~ average < Lanczos` reproduces the reference pipeline's.
 
 ### Language-network mask
 
 `language_mask.py` builds the LanA language-network mask on this surface, so the
-reference pipeline's statistic — a **mean within the mask** — can be reported next to this
-benchmark's **median over all cortex**. The atlas is an external Fedorenko-lab resource
+reference pipeline's statistic (a mean within the mask) can be reported next to this
+benchmark's median over all cortex. The atlas is an external Fedorenko-lab resource
 ([osf.io/kzwbh](https://osf.io/kzwbh/)); download its *FS Atlas* archive and point
 `BRAINSCORE_LANA_ATLAS` at the directory. Without it the mask tests skip and nothing else
 changes.
@@ -171,10 +167,10 @@ vertices. This benchmark selects one shared ridge penalty across its targets, so
 on a subset would move that penalty too, and the masked and unmasked numbers would stop
 describing the same model.
 
-| Model | cortex median | cortex mean | LanA median | **LanA mean** |
+| Model | cortex median | cortex mean | LanA median | LanA mean |
 |---|---|---|---|---|
-| Qwen3.6-27B (L40) | 0.1318 | 0.1432 | 0.2297 | **0.2345** |
-| GPT-2 (h.11) | 0.1013 | 0.1134 | 0.1837 | **0.1926** |
+| Qwen3.6-27B (L40) | 0.1318 | 0.1432 | 0.2297 | 0.2345 |
+| GPT-2 (h.11) | 0.1013 | 0.1134 | 0.1837 | 0.1926 |
 
 The mask lifts both models by about 1.7x, which is the check that it is the right set of
 vertices: an equal-sized random mask scores 0.1430 ± 0.0018 against Qwen's 0.2345, putting
@@ -182,7 +178,7 @@ LanA 50 sd above chance.
 
 Two assumptions in building it are silent if wrong, so both are tested rather than
 asserted. The atlas ships at fsaverage7 and this benchmark is fsaverage5, taken as the
-leading 10242 vertices — valid because FreeSurfer's icosahedra are hierarchical, confirmed
+leading 10242 vertices. This is valid because FreeSurfer's icosahedra are hierarchical, confirmed
 by the fact that those vertices are spaced 2.056 +/- 0.114 deg apart, a regular ico5 mesh,
 where a random subset of the same size gives 1.05 +/- 0.485. And the mask assumes both the
 atlas and this data order the hemispheres left-first: swapping them costs 0.103 (56 sd),
@@ -192,10 +188,10 @@ left-hemisphere, as a left-lateralised language network should be.
 ### Comparison to LITcoder
 
 With the mask in place the comparison is finally like-for-like. LITcoder reports ~0.21 for
-GPT-2 as a mean within LanA; **we get 0.1926, within 8%.**
+GPT-2 as a mean within LanA; we get 0.1926, within 8%.
 
-All four protocol rows that once separated the two numbers are now matched — mask,
-statistic, within-TR pooling, and FIR delays. Extending the delays from 2-8 s to 2-12 s to
+All four protocol rows that once separated the two numbers are now matched: mask,
+statistic, within-TR pooling and FIR delays. Extending the delays from 2-8 s to 2-12 s to
 cover their 9-12 s plateau moved the masked mean by -0.0002 (whole-cortex median 0.1013 to
 0.1038, both at `h.11`), so the delay row, which was the leading suspect, is not the
 explanation.
@@ -204,9 +200,9 @@ The residual 8% is smaller than the one parameter still unknown. Their mask file
 bring-your-own, and the top-10% convention here is read off its *filename*, not a stated
 threshold. The masked mean is strongly sensitive to that choice:
 
-| top fraction | 2% | 5% | **10%** | 15% | 20% |
+| top fraction | 2% | 5% | 10% | 15% | 20% |
 |---|---|---|---|---|---|
-| GPT-2 LanA mean | 0.264 | 0.224 | **0.193** | 0.177 | 0.163 |
+| GPT-2 LanA mean | 0.264 | 0.224 | 0.193 | 0.177 | 0.163 |
 
 Their 0.21 sits at roughly top-7%. The remaining 8% is well inside that spread, so no
 conclusion is drawn from it.
@@ -219,7 +215,7 @@ Run these before trusting any new result on this benchmark.
 |---|---|
 | GPT-2 | +0.1001 |
 | timing-shuffled | +0.0032 |
-| constant features | undefined — no varying prediction |
+| constant features | undefined (no varying prediction) |
 
 (2000-vertex subset.) Re-run after the alignment fix, since a change that doubles a score
 is exactly when the floor needs rechecking. The shuffled null sits at zero and 95.1% of
@@ -228,33 +224,33 @@ vertices are positive, so the increase is signal rather than an artifact.
 The constant null caught a real design error. An earlier version zero-padded the opening
 TRs of each story where the delayed copies had no history. That padding was identical
 across stories and aligned with the large BOLD response to a story starting, so a model
-carrying no stimulus information scored 0.054 against GPT-2's 0.063 — the benchmark was
+carrying no stimulus information scored 0.054 against GPT-2's 0.063. The benchmark was
 mostly measuring story onsets. Those TRs are now excluded rather than padded
 (`_delay_within_stories` returns a `has_full_history` mask), which is regression-tested in
 `tests/test_lebel2023_benchmark.py::TestDelays::test_constant_features_carry_no_signal_after_masking`.
 
 ## Known limits
 
-- **One participant.** Nothing here separates this brain from brains in general.
-- **No noise ceiling.** Needs the repeated stories from LeBel's design to become
+- One participant. Nothing here separates this brain from brains in general.
+- No noise ceiling. Needs the repeated stories from LeBel's design to become
   normalisable.
-- **No anatomy attached.** The pickle carries no vertex-to-region mapping, so vertices are
+- No anatomy attached. The pickle carries no vertex-to-region mapping, so vertices are
   identified by index only. The space itself is settled: the LITcoder paper states its
-  whole-surface LeBel analyses are fsaverage5, ~22k vertices, subject UTS03 — this data.
+  whole-surface LeBel analyses are fsaverage5, ~22k vertices, subject UTS03, which is this data.
   Adding a region coord needs an atlas projected to that surface, not a resolution of any
   ambiguity.
-- **Per-target ridge penalties do not help here.** Fitting one penalty per vertex, as
+- Per-target ridge penalties do not help here. Fitting one penalty per vertex, as
   reference pipelines do by default, scored 31% *below* a single shared penalty, and
   nesting the selection over four inner folds barely recovered it. Broken down by
   signal strength it only breaks even on the best-predicted 5% and loses elsewhere:
   selecting a penalty per target needs per-target signal-to-noise high enough to select
   on, which whole-cortex data at this SNR does not have. Available as
   `per_voxel_alpha=True`; off by default.
-- **Registered layers are chosen elsewhere, on purpose.** GPT-2 is read at `h.11`, the
+- Registered layers are chosen elsewhere, on purpose. GPT-2 is read at `h.11`, the
   block its mapping benchmark (Pereira2018) selects. This benchmark's own best block is
   `h.7` (0.1124 against 0.1013), and reading it there because it wins here would be
   best-of-sweep. Qwen's `layers.40` is confirmed on-plateau and needs no change.
-- **Qwen3.6-27B needs four accelerators.** It is registered and scores through the normal
-  `process()` path, but at bf16 it is 54 GB and was run on 4x A10G. `device_map='auto'`
+- Qwen3.6-27B needs four accelerators. It is registered and scores through the normal
+  scoring path, but at bf16 it is 54 GB and was run on 4x A10G. `device_map='auto'`
   left to itself packs each card to the brim and then OOMs on activations, so the plugin
   reserves 22% of each device (`WEIGHT_FRACTION`).
