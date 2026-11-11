@@ -10,6 +10,8 @@
 #   UMI_POLICY_PYTHON     pinned OpenPI runtime with the UMI packages importable
 #   UMI_BRIDGE_PYTHON     UMI environment with websockets and the pinned openpi-client
 #   UMI_EVALUATOR_PYTHON  LIBERO runtime (Python 3.8) for evaluate.py
+# Optional: UMI_PAIRED_SEED (uint32): controlled tool comparison, not upstream
+#   benchmark replication. Unset preserves upstream policy randomness.
 # Optional: UMI_READY_SECONDS (server readiness bound, default 1200),
 #   UMI_POLICY_PORT / UMI_BRIDGE_PORT (default 8000 / 8001). Simulator settings such as
 #   MUJOCO_GL are taken from the caller's environment.
@@ -41,6 +43,11 @@ done
 [[ ${#modes[@]} -le 2 ]] || fail "Use each mode only once"
 if [[ ${#modes[@]} -eq 2 ]]; then
   [[ ${modes[0]} != "${modes[1]}" ]] || fail "Use each mode only once"
+fi
+paired_args=()
+if [[ -n ${UMI_PAIRED_SEED:-} ]]; then
+  [[ $UMI_PAIRED_SEED =~ ^[0-9]{1,10}$ ]] && ((10#$UMI_PAIRED_SEED < 4294967296)) || fail "UMI_PAIRED_SEED must be a uint32"
+  paired_args=(--paired-seed "$UMI_PAIRED_SEED")
 fi
 ready_seconds=${UMI_READY_SECONDS:-1200}
 [[ $ready_seconds =~ ^[0-9]+$ ]] && ((ready_seconds >= 1)) || fail "UMI_READY_SECONDS must be a positive integer"
@@ -126,7 +133,7 @@ run_condition() {
   PYTHONPATH="$bridge_path" "$UMI_BRIDGE_PYTHON" "$script_dir/serve_tool_bridge.py" \
     --upstream "ws://127.0.0.1:$policy_port" --port "$bridge_port" --mode "$mode" \
     --suite "$suite" --trials-per-task "$trials" --execution-horizon 5 \
-    --out "$evidence_dir/$mode-records" >"$evidence_dir/$mode-bridge.log" 2>&1 &
+    --out "$evidence_dir/$mode-records" ${paired_args[@]+"${paired_args[@]}"} >"$evidence_dir/$mode-bridge.log" 2>&1 &
   bridge_pid=$!
   pids+=("$bridge_pid")
   wait_ready "$bridge_port" "$bridge_pid" "$evidence_dir/$mode-bridge.log"

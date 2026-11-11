@@ -209,6 +209,8 @@ class BoundedClient:
             self.run_id = run_id
             self.bridge = {key: self.metadata.get(key)
                            for key in ('receipt_protocol', 'umi_run_id', 'experiment_tools')}
+            if 'policy_randomness' in self.metadata:
+                self.bridge['policy_randomness'] = self.metadata['policy_randomness']
 
     def _exchange(self, data, timeout):
         if self.broken:

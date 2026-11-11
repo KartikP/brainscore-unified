@@ -12,11 +12,14 @@ has saved its records. Only then is the 'complete' acknowledgment sent.
 
 import argparse
 import hashlib
+import json
 import logging
 import math
 from pathlib import Path
 import threading
 from typing import Any
+
+import numpy as np
 from brainscore.experiments import (
     Experiment,
     CallableProtocol,
@@ -127,9 +130,60 @@ def _best_effort(socket, codec, message, timeout):
         logging.warning('Could not send %s: %r', message, error)
 
 
+class PairedNoiseClient:
+    """Qualification-only noise for the pinned pi05_libero policy.
+
+    Each task/trial/call has its own seed. Extra calls in another episode
+    cannot shift it. This is a controlled tool comparison, not upstream
+    benchmark replication. OpenPI still owns all model and action transforms.
+    """
+
+    def __init__(self, client: Any, *, seed: int, suite: str) -> None:
+        _require(type(seed) is int and 0 <= seed < 2**32, 'paired_seed must be a uint32')
+        self.client, self.seed, self.suite = client, seed, suite
+        self.pending = None
+
+    def describe(self) -> dict[str, Any]:
+        return {
+            'mode': 'paired-tools-v1',
+            'seed': self.seed,
+            'suite': self.suite,
+            'algorithm': 'sha256-json/PCG64/standard_normal-float32',
+            # The pinned pi05_libero model samples 10 padded 32-component actions.
+            # These are model-space noise dimensions, not executed robot actions.
+            'noise_shape': [10, 32],
+            'numpy_version': np.__version__,
+            'benchmark_replication': False,
+        }
+
+    def prepare(self, *, task: str, trial: int, call: int) -> dict[str, Any]:
+        """Prepare exactly one call; return its reproducible noise receipt."""
+        _require(self.pending is None, 'Previous paired call was not consumed')
+        _require(isinstance(task, str) and bool(task) and _count(trial) and _count(call),
+                 'Invalid paired call identity')
+        identity = ['paired-tools-v1', self.seed, self.suite, task, trial, call]
+        digest = hashlib.sha256(json.dumps(identity, ensure_ascii=True,
+                                          separators=(',', ':')).encode()).digest()
+        generator = np.random.Generator(np.random.PCG64(int.from_bytes(digest, 'big')))
+        noise = generator.standard_normal((10, 32), dtype=np.float32)
+        receipt = dict(self.describe(), task=task, trial=trial, call=call,
+                       seed_sha256=digest.hex(),
+                       noise_sha256=hashlib.sha256(noise.astype('<f4').tobytes()).hexdigest())
+        self.pending = noise, receipt
+        return dict(receipt)
+
+    def infer(self, observation: dict[str, Any]) -> dict[str, Any]:
+        """Consume the prepared noise once, including when inference fails."""
+        _require(self.pending is not None, 'Paired call identity was not prepared')
+        noise, receipt = self.pending
+        self.pending = None
+        output = self.client.infer(observation, noise=noise)
+        return dict(output, qualification_randomness=receipt)
+
+
 class Bridge:
     def __init__(self, upstream, output, mode, *, suite, trials_per_task, horizon,
-                 idle_timeout=900):
+                 idle_timeout=900, paired_seed=None):
         _require(mode in MODES and suite in SUITES, 'Unknown mode or suite')
         _require(_count(trials_per_task, 1, 50) and _count(horizon, 1),
                  'trials_per_task must be an integer from 1 to 50 and horizon a positive integer')
@@ -138,6 +192,10 @@ class Bridge:
         self.upstream, self.output, self.mode = upstream, Path(output), mode
         self.suite, self.trials_per_task, self.horizon = suite, trials_per_task, horizon
         self.idle_timeout = idle_timeout
+        if paired_seed is not None:
+            _require(type(paired_seed) is int and 0 <= paired_seed < 2**32,
+                     'paired_seed must be a uint32')
+        self.paired_seed = paired_seed
         self.lock = threading.Lock()
         self.connection = 0
 
@@ -154,9 +212,13 @@ class Bridge:
             check_output_directory(destination)
             self.connection += 1
             with OpenPIPolicyClient(self.upstream) as client:
+                paired = (PairedNoiseClient(client, seed=self.paired_seed, suite=self.suite)
+                          if self.paired_seed is not None else None)
+                randomness = paired.describe() if paired is not None else {'mode': 'upstream'}
                 subject = BrainScoreModel(
                     identifier='pi05-libero',
-                    policy=LiberoChunkPolicy(client, execution_horizon=self.horizon),
+                    policy=LiberoChunkPolicy(paired if paired is not None else client,
+                                             execution_horizon=self.horizon),
                 )
                 target = Selection(layer='action_out_proj', indices=[0])
                 tools = [RecordInputsOutputs()]
@@ -173,13 +235,16 @@ class Bridge:
                     subject=subject,
                     protocol=CallableProtocol(
                         identifier='libero-evaluator',
-                        evaluate=lambda model, context: self.serve(socket, codec, model, context, state),
+                        evaluate=lambda model, context: self.serve(
+                            socket, codec, model, context, state, paired=paired,
+                        ),
                     ),
                     tools=tools,
                     instrumentation=RemoteOpenPIInstrumentation(client),
                     output_dir=self.output / f'connection-{self.connection}',
                     metadata={
                         'mode': self.mode,
+                        'policy_randomness': randomness,
                         'evaluator_owns_resets_and_scoring': True,
                         'receipt_protocol': RECEIPT_PROTOCOL,
                         'suite': self.suite,
@@ -210,7 +275,8 @@ class Bridge:
                 self.lock.release()
 
     def serve(self, socket: Any, codec: Any, model: UnifiedModel,
-              context: Any, state: dict[str, Any]) -> dict[str, Any]:
+              context: Any, state: dict[str, Any], *,
+              paired: PairedNoiseClient | None = None) -> dict[str, Any]:
         """Serve one evaluation; a disconnect or timeout before the receipt fails the run.
 
         Each wait for the evaluator and each send to it is bounded by idle_timeout.
@@ -225,7 +291,9 @@ class Bridge:
         _send(socket, codec, {'experiment_tools': self.mode, 'receipt_protocol': RECEIPT_PROTOCOL,
                               'umi_run_id': run_id, 'suite': self.suite,
                               'trials_per_task': self.trials_per_task,
-                              'execution_horizon': self.horizon}, self.idle_timeout)
+                              'execution_horizon': self.horizon,
+                              'policy_randomness': (paired.describe() if paired is not None
+                                                    else {'mode': 'upstream'})}, self.idle_timeout)
         message = receive()
         _require(set(message) == {'umi/start'}, 'Expected the evaluator start message')
         start = message['umi/start']
@@ -252,12 +320,17 @@ class Bridge:
                 _require(position + 1 < len(keys) and key == keys[position + 1],
                          'Call for an unexpected episode')
                 position += 1
+            call_context = {'umi_call': annotation}
+            if paired is not None:
+                call_context['policy_randomness'] = paired.prepare(
+                    task=key[0], trial=key[1], call=calls[position],
+                )
             response = model.process(
                 EnvironmentStep(
                     observation=message,
                     instruction=message['prompt'],
                     step_num=served,
-                    context={'umi_call': annotation},
+                    context=call_context,
                 )
             )
             result = dict(response.metadata['policy_output'], actions=response.action)
@@ -289,11 +362,13 @@ if __name__ == '__main__':
     # Bounds each wait for and send to the evaluator. Must exceed evaluate.py's
     # --infer-timeout; an operational default, not a budget.
     p.add_argument('--idle-timeout', type=_seconds, default=900)
+    p.add_argument('--paired-seed', type=int,
+                   help='Qualification only: match sampling noise by task, trial and call')
     a = p.parse_args()
     if not 1 <= a.trials_per_task <= 50 or a.execution_horizon < 1:
         p.error('Use 1 to 50 trials per task and a positive execution horizon')
     bridge = Bridge(a.upstream, a.out, a.mode, suite=a.suite, trials_per_task=a.trials_per_task,
-                    horizon=a.execution_horizon, idle_timeout=a.idle_timeout)
+                    horizon=a.execution_horizon, idle_timeout=a.idle_timeout, paired_seed=a.paired_seed)
     with serve(
         bridge.handler, '127.0.0.1', a.port, compression=None, max_size=64 * 1024 * 1024
     ) as server:

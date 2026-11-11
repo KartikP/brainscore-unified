@@ -444,6 +444,14 @@ def test_comparison_detects_pairing_errors_and_reports_both_disagreement_directi
     assert report['scope'] == {'reference': 'transport', 'umi': 'transport'}
     assert report['reference_only_successes'] == report['umi_only_successes'] == 1
     assert report['success_rate_difference'] == 0
+    # Refuse to mix paired-tools qualification with upstream sampling.
+    path = tmp_path / 'umi/report.json'
+    original = json.loads(path.read_text())
+    changed = dict(original, bridge={'policy_randomness': {'mode': 'paired-tools-v1', 'seed': 7}})
+    path.write_text(json.dumps(changed))
+    with pytest.raises(ValueError, match='randomness'):
+        module.compare(tmp_path / 'reference', tmp_path / 'umi')
+    path.write_text(json.dumps(original))
     rows[0]['initial_state_sha256'] = 'wrong'
     (tmp_path / 'umi/trials.jsonl').write_text(''.join(json.dumps(row) + '\n' for row in rows))
     with pytest.raises(ValueError, match='Initial state mismatch'):
@@ -874,3 +882,78 @@ def test_original_evaluator_error_survives_failed_cleanup_and_unsaved_report(tmp
     with pytest.raises(KeyError, match='original evaluator error'):
         evaluate.run(upstream, source, evaluator_args(tmp_path))
     assert upstream.closed and not (tmp_path / 'out/report.json').exists()
+
+
+class NoiseFixture:
+    def __init__(self, fail=False):
+        self.noises = []
+        self.fail = fail
+
+    def infer(self, observation, *, noise):
+        self.noises.append(noise.copy())
+        if self.fail:
+            raise RuntimeError('inference failed')
+        return {'actions': noise[:, :7].copy()}
+
+
+def test_paired_noise_is_independent_of_previous_episode_lengths():
+    module = example_module('serve_tool_bridge')
+    outputs = []
+    for extra_calls in (0, 7):
+        client = module.PairedNoiseClient(NoiseFixture(), seed=7, suite='libero_spatial')
+        for call in range(extra_calls):
+            client.prepare(task='earlier task', trial=0, call=call)
+            client.infer(request())
+        receipt = client.prepare(task='drawer task', trial=0, call=0)
+        result = client.infer(request())
+        outputs.append(result)
+        assert receipt == result['qualification_randomness']
+        assert receipt['noise_shape'] == [10, 32]
+        assert receipt['benchmark_replication'] is False
+    np.testing.assert_array_equal(outputs[0]['actions'], outputs[1]['actions'])
+    assert outputs[0]['qualification_randomness'] == outputs[1]['qualification_randomness']
+
+
+@pytest.mark.parametrize('change', [
+    {'task': 'another task'}, {'trial': 1}, {'call': 1}, {'seed': 8}, {'suite': 'libero_goal'},
+])
+def test_paired_noise_distinguishes_task_trial_call_and_seed(change):
+    module = example_module('serve_tool_bridge')
+    outputs = []
+    for updates in ({}, change):
+        settings = dict(seed=7, suite='libero_spatial', task='drawer task', trial=0, call=0)
+        settings.update(updates)
+        fixture = NoiseFixture()
+        client = module.PairedNoiseClient(fixture, seed=settings.pop('seed'), suite=settings.pop('suite'))
+        client.prepare(**settings)
+        client.infer(request())
+        outputs.append(fixture.noises[0])
+    assert not np.array_equal(*outputs)
+
+
+@pytest.mark.parametrize('seed', [-1, 2**32, True, 1.5])
+def test_paired_noise_rejects_invalid_seeds(seed):
+    with pytest.raises(ValueError, match='uint32'):
+        example_module('serve_tool_bridge').PairedNoiseClient(NoiseFixture(), seed=seed, suite='libero_spatial')
+
+
+def test_paired_noise_is_consumed_once_even_on_failure():
+    client = example_module('serve_tool_bridge').PairedNoiseClient(
+        NoiseFixture(fail=True), seed=0, suite='libero_spatial',
+    )
+    with pytest.raises(ValueError, match='not prepared'):
+        client.infer(request())
+    client.prepare(task='drawer task', trial=0, call=0)
+    with pytest.raises(ValueError, match='not consumed'):
+        client.prepare(task='drawer task', trial=0, call=1)
+    with pytest.raises(RuntimeError, match='inference failed'):
+        client.infer(request())
+    with pytest.raises(ValueError, match='not prepared'):
+        client.infer(request())
+
+
+@pytest.mark.parametrize('seed', ['-1', '4294967296', 'true', '1.5'])
+def test_launcher_rejects_invalid_paired_seed_before_starting(tmp_path, seed):
+    result = run_tools(tmp_path, 'libero_spatial', '1', '60', UMI_PAIRED_SEED=seed)
+    assert result.returncode == 2 and 'uint32' in result.stderr
+    assert not (tmp_path / 'evidence').exists()

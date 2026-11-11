@@ -1,0 +1,206 @@
+{
+  "unified_revision": "9d8a8b5898e35a53a1f491557834a5a9e358adb0",
+  "core_revision": "20f9a749fbbdbebadc2beef73072df1dcb318085",
+  "coggym_revision": "a1cd9df1118fec80eba7463de237d1497d77e041",
+  "model_revision": "851bf6e806efd8d0a36b00ddf55e13ccb7b8cd0a",
+  "molmospaces_revision": "735138876887eb64650742631b8dda841dd264bf",
+  "openpi_revision": "711487f019e5f03b254d427d4523b1f0805a4814",
+  "objaverse_version": "20251016_from_20250610",
+  "coggym": {
+    "experiment": "Levine2020Logic/exp3",
+    "calls_per_route": 16,
+    "new_model_calls": 48,
+    "profile": {
+      "model": "Qwen/Qwen3.5-4B",
+      "temperature": 1.0,
+      "max_tokens": 512
+    },
+    "repetitions": 1,
+    "native_r2": 0.006981193559190357,
+    "runner_r2": 0.006981193559190357,
+    "registered_r2": 0.006981193559190357,
+    "requests_exact": true,
+    "trial_results_exact": true,
+    "thinking": false,
+    "benchmark_identifier": "CogGym.Levine2020Logic.exp3.repeats-1.tokens-512.temperature-1.0",
+    "interpretation": "Fresh matched inference, one repetition, thinking disabled; not leaderboard replication"
+  },
+  "molmo_saved_inputs": [
+    {
+      "call": 0,
+      "native_repeat_exact": true,
+      "umi_exact": true,
+      "recording_exact": true,
+      "archived_server_exact": false,
+      "max_archived_difference": 0.012180331778673281
+    },
+    {
+      "call": 49,
+      "native_repeat_exact": true,
+      "umi_exact": true,
+      "recording_exact": true,
+      "archived_server_exact": true,
+      "max_archived_difference": 0.0
+    },
+    {
+      "call": 98,
+      "native_repeat_exact": true,
+      "umi_exact": true,
+      "recording_exact": true,
+      "archived_server_exact": true,
+      "max_archived_difference": 0.0
+    }
+  ],
+  "molmo_native_repeatability": {
+    "comparison": "two native-only runs, same first task, separate policy servers",
+    "initial_physics_exact": true,
+    "fields": {
+      "actions": {
+        "different_values": 10,
+        "max_difference": 0.012180331778673281
+      },
+      "observation/exterior_image_1_left": {
+        "different_values": 0,
+        "max_difference": 0.0
+      },
+      "observation/wrist_image_left": {
+        "different_values": 0,
+        "max_difference": 0.0
+      }
+    }
+  },
+  "molmo_shared_first_differences": [
+    {
+      "call": "000000",
+      "field": "actions",
+      "different_values": 0,
+      "total_values": 80,
+      "max_difference": 0.0
+    },
+    {
+      "call": "000000",
+      "field": "observation/exterior_image_1_left",
+      "different_values": 1,
+      "total_values": 150528,
+      "max_difference": 1.0
+    },
+    {
+      "call": "000000",
+      "field": "observation/wrist_image_left",
+      "different_values": 0,
+      "total_values": 150528,
+      "max_difference": 0.0
+    },
+    {
+      "call": "000001",
+      "field": "actions",
+      "different_values": 0,
+      "total_values": 80,
+      "max_difference": 0.0
+    },
+    {
+      "call": "000001",
+      "field": "observation/exterior_image_1_left",
+      "different_values": 0,
+      "total_values": 150528,
+      "max_difference": 0.0
+    },
+    {
+      "call": "000001",
+      "field": "observation/wrist_image_left",
+      "different_values": 2,
+      "total_values": 150528,
+      "max_difference": 1.0
+    },
+    {
+      "call": "000002",
+      "field": "actions",
+      "different_values": 30,
+      "total_values": 80,
+      "max_difference": 0.013465512690344017
+    },
+    {
+      "call": "000002",
+      "field": "observation/exterior_image_1_left",
+      "different_values": 0,
+      "total_values": 150528,
+      "max_difference": 0.0
+    },
+    {
+      "call": "000002",
+      "field": "observation/wrist_image_left",
+      "different_values": 6,
+      "total_values": 150528,
+      "max_difference": 1.0
+    }
+  ],
+  "media": {
+    "clips": 9,
+    "all_passed": true,
+    "checks": [
+      {
+        "path": "molmo-native/simulator-states/000/video-1080p.mp4",
+        "passed": true,
+        "width": 1920,
+        "height": 1080,
+        "nb_read_frames": "281"
+      },
+      {
+        "path": "molmo-native/simulator-states/001/video-1080p.mp4",
+        "passed": true,
+        "width": 1920,
+        "height": 1080,
+        "nb_read_frames": "500"
+      },
+      {
+        "path": "molmo-recording/simulator-states/000/video-1080p.mp4",
+        "passed": true,
+        "width": 1920,
+        "height": 1080,
+        "nb_read_frames": "500"
+      },
+      {
+        "path": "molmo-recording/simulator-states/001/video-1080p.mp4",
+        "passed": true,
+        "width": 1920,
+        "height": 1080,
+        "nb_read_frames": "500"
+      },
+      {
+        "path": "molmo-shared-native/simulator-states/000/video-1080p.mp4",
+        "passed": true,
+        "width": 1920,
+        "height": 1080,
+        "nb_read_frames": "500"
+      },
+      {
+        "path": "molmo-shared-recording/simulator-states/000/video-1080p.mp4",
+        "passed": true,
+        "width": 1920,
+        "height": 1080,
+        "nb_read_frames": "500"
+      },
+      {
+        "path": "molmo-shared-umi/simulator-states/000/video-1080p.mp4",
+        "passed": true,
+        "width": 1920,
+        "height": 1080,
+        "nb_read_frames": "500"
+      },
+      {
+        "path": "molmo-umi/simulator-states/000/video-1080p.mp4",
+        "passed": true,
+        "width": 1920,
+        "height": 1080,
+        "nb_read_frames": "500"
+      },
+      {
+        "path": "molmo-umi/simulator-states/001/video-1080p.mp4",
+        "passed": true,
+        "width": 1920,
+        "height": 1080,
+        "nb_read_frames": "500"
+      }
+    ]
+  }
+}
