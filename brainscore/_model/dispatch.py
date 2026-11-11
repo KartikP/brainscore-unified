@@ -109,9 +109,12 @@ def normalize_extractors(owner, preprocessors, activations_model):
         fused = [(frozenset(canonical_modality(m) for m in key), value)
                  for key, value in activations_model.items() if isinstance(key, tuple)]
         extractors = {}
-        for types, value in fused:
-            for modality in types:
-                extractors.setdefault(modality, value)
+        # The raw key names stay: ``video`` declares ``vision:video``. Dispatch
+        # canonicalizes when it looks an extractor up.
+        for key, value in activations_model.items():
+            if isinstance(key, tuple):
+                for modality in key:
+                    extractors.setdefault(modality, value)
         extractors.update({key: value for key, value in activations_model.items()
                            if not isinstance(key, tuple)})
         owner._fused_extractors = fused
