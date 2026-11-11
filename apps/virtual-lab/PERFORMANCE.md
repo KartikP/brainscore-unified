@@ -113,7 +113,7 @@ so drag-and-drop is implemented but not verified by the browser automation run.
 The existing unified unit suite reached 87 passed, two skipped, and five failures
 before its configured early stop. Four failures were the pre-existing mismatch
 between `SessionProtocol`'s required `complete` receipt and the checked-out core's
-`BufferedSession`; another was an unavailable result-cache directory. Focused
+old buffered session (that class is now the `Session` that `table_session` returns); another was an unavailable result-cache directory. Focused
 existing experiment tests reproduce the same completion mismatch. This app adds
 its own finite-session completion adapters and does not edit library code.
 The environment also reports an existing scikit-learn 1.5.2 pin outside UMI's
