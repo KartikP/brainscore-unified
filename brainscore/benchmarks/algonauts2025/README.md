@@ -1,107 +1,39 @@
 # Algonauts 2025 benchmark
 
-Predicts fMRI responses to multimodal naturalistic movies. Three modalities
-(audio + visual + transcript), four CNeuroMod subjects, 1000-parcel Schaefer
-target. Post-challenge leaderboard open indefinitely on Codabench.
+The benchmark predicts fMRI responses to multimodal naturalistic movies. The data come from four CNeuroMod subjects (1, 2, 3 and 5) with a 1000-parcel Schaefer target and TR = 1.49 s. The challenge ships audio, video and transcripts. The post-challenge leaderboard on Codabench stays open.
 
-## Status
+## Registered benchmarks
 
-Feature projection protocol: `generate_predictions()` fits SVD on Friends
-training frames and applies that same transform to S7/OOD frames. The historical
-Friends CV path fits SVD on all input frames before its run-level splits; it is
-transductive feature preprocessing, not an inductive estimate for unseen inputs.
-Scores carry `feature_projection_protocol=transductive_svd_all_input_frames`.
-Neither protocol fits SVD to held-out BOLD targets. Held-out prediction must use
-the same subject, stimulus window, and HRF delay as its training encoder.
+`__init__.py` registers 12 identifiers: three splits for each of four subjects.
 
-**Scaffold only — no data, no model scoring yet.** Files in this directory
-define the benchmark structure; data acquisition + assembly preparation
-happen on EC2 (see below). Running any of the registered benchmarks
-without the data present will raise `FileNotFoundError`.
+| Identifier | Split | How to use it |
+|---|---|---|
+| `Algonauts2025-friends-sub{01,02,03,05}` | Friends S1-S6 and Movie10, with measured fMRI | `benchmark(model)` scores the model with cross-validation. |
+| `Algonauts2025-friends-s7-sub{...}` | Friends S7, held out | Call `generate_predictions(model, out_dir)`. |
+| `Algonauts2025-ood-sub{...}` | Out-of-distribution movies, held out | Call `generate_predictions(model, out_dir)`. |
 
-## Phase plan
+Calling a held-out benchmark directly raises `ValueError`, because the data has no ground truth. `generate_predictions` fits a ridge encoder on the same subject's Friends data. It writes one `sub-<NN>_<split>.npy` file of shape `(n_TRs, 1000)`. Zip these files in the Codabench layout and upload them. The repository ships no zip bundler.
 
-1. **Data acquisition** (EC2, 1–6 hours). Run
-   DataLad on the validation
-   instance. Pulls ~100 GB across stimuli + 4-subject fMRI .h5 files.
-2. **Assembly preparation** (EC2, ~30 min).
-   `python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly`
-   reads the per-subject .h5 files, converts to a brainio
-   `NeuroidAssembly` keyed by (subject, movie_split, TR), uploads to
-   our S3 bucket. One-time cost.
-3. **Baseline reproduction** (EC2, ~1 hour). Reproduce the SlowR50 +
-   librosa + text-embedding baseline that the challenge organizers
-   ship. Calibration check: our scores should match theirs within
-   rounding.
-4. **Our models** (EC2, ~2 hours). Score V-JEPA + Wav2Vec2 + GPT-2 (or
-   a stronger LM) via banded ridge through the multimodal pipeline.
-5. **Codabench submission** (local, instant). Format predicted Friends
-   S7 and OOD parcel arrays, upload .npy archive to Codabench.
+## What the benchmark asks of a model
 
-## Why this benchmark
+Each benchmark declares `vision` as its required input channel. It requests the `neural:IT` output channel and uses `trial_memory = 'none'`. The benchmark sends one frame per TR, stacks `stimulus_window` TRs (default 5), shifts them by `hrf_delay` TRs (default 3), fits a ridge regression per subject and reports the median per-parcel Pearson r.
 
-It's the M12-full target — long-form continuous-naturalistic A+V+T
-fMRI prediction. All the wrappers, banded ridge, temporal alignment,
-and validation protocol we built for Lahner generalize directly.
+`mode` selects the feature blocks: `video_only` (default), `audio_only`, `language_only`, `concat`, `per_modality` or `banded`. The modes that need audio or language features raise an error until the model supplies those blocks. The published Wav2Vec2 and MiniLM baseline reproduction is not part of the maintained benchmark.
 
-| Lahner (already done) | Algonauts 2025 |
-|---|---|
-| 3-second clips, GLM-betas | Continuous TRs, time-series |
-| 1026 stimuli | ~65 hours of stimuli |
-| 1 dataset | Friends + Movie10 + OOD |
-| Audio + Video | Audio + Video + **Transcript** |
-| 10 subjects, cross-subject CV | 4 subjects, **per-subject** training |
-| fsaverage5 surface | Schaefer 1000-parcel |
+Feature projection: `generate_predictions()` fits the SVD on Friends training frames and applies the same transform to S7 and OOD frames. The Friends cross-validation path fits the SVD on all input frames before it splits runs. That step is transductive, so the score carries `feature_projection_protocol=transductive_svd_all_input_frames`. Neither path fits the SVD to held-out BOLD targets. A held-out prediction must use the same subject, stimulus window and HRF delay as its training encoder.
 
-## Files (what each thing does)
+## Files
 
-- `benchmark.py` — `Algonauts2025Friends`, `Algonauts2025FriendsS7`,
-  `Algonauts2025OOD` classes. Inherit from `BenchmarkBase`. Score via
-  banded ridge with three feature groups (V/A/L). Stub `__call__`
-  raises NotImplementedError until assembly is built.
-- `brainscore/data/algonauts2025/data_packaging/prepare_assembly.py` — One-time data
-  pipeline. Run on EC2 after download. Reads .h5 files, builds
-  `NeuralAssembly`, writes the local data-plugin artifacts.
-- Submission bundling (not shipped; ~120 lines) — take a benchmark's
-  per-parcel predictions, format as Codabench expects, save .zip for upload.
-- `__init__.py` — Registry entries for 3 splits × 4 subjects = 12
-  benchmark identifiers.
+- `benchmark.py`: the `Algonauts2025Friends`, `Algonauts2025FriendsS7` and `Algonauts2025OOD` classes.
+- `projection.py`, `scoring.py`: the SVD projection and the scoring modes.
+- `brainscore/data/algonauts2025/data_packaging/prepare_assembly.py`: builds the assemblies from the native files. See the data [README](../../data/algonauts2025/README.md).
 
-## Data layout (after `python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly` runs)
+## Data
 
-```
-~/.brainio/<sha>/algonauts2025_friends_sub01.nc   (~5 GB per subject)
-~/.brainio/<sha>/algonauts2025_friends_sub02.nc
-...
-~/.brainio/<sha>/algonauts2025_movie10_sub01.nc
-~/.brainio/<sha>/algonauts2025_friends_s7_sub01.nc   (held out — no fMRI)
-~/.brainio/<sha>/algonauts2025_ood_sub01.nc          (held out — no fMRI)
-~/.brainio/<sha>/algonauts2025_stim_friends.csv      (movie_split metadata)
-~/.brainio/<sha>/algonauts2025_transcripts/          (per-TR word lists)
-```
+Without prepared data, a registered benchmark raises `FileNotFoundError`. Prepare the data first with the command in the data README. Each assembly has the shape `(time_bin, neuroid)` with 1000 Schaefer parcels per subject. Metadata maps each TR to its movie, episode, split and run.
 
-Each `.nc` file: `(time_bin, neuroid)` shape with TR=1.49s, 1000 Schaefer
-parcels per subject. Stim metadata maps each TR to (movie, episode,
-split, run).
+## Choices to know about
 
-## Caveats / open questions
-
-1. **Per-subject training.** Each subject gets their own ridge fits.
-   That's standard practice in encoding-model literature but means we
-   need 4× the compute compared to cross-subject pooled.
-2. **Transcript handling.** The .tsv has per-TR aligned word lists
-   with onset times. Two options for the language tower:
-   - Run TextWrapper (`per_token` mode) on each TR's word list,
-     mean-pool features per TR.
-   - Run TextWrapper on a longer context window (e.g., the full
-     episode), then slice by word onset to get per-TR features.
-   The second is more powerful but more involved. Plan A first.
-3. **Stimulus window.** The challenge baseline uses `stimulus_window=5`
-   TRs (concatenated 5-TR feature stacks per fMRI sample). Banded
-   ridge will scale linearly with feature count; with 5×1024 video +
-   5×768 audio + 5×768 text features, X is ~13k columns. Manageable.
-4. **HRF delay.** Baseline uses `hrf_delay=3` (shift features 3 TRs
-   forward). Or use `hrf_convolve` with a proper double-gamma. Both
-   are options — need to pick one before scoring.
-5. **OOD test set held out.** We get one shot per submission cycle on
-   Codabench. Iterate on Friends-S7 leaderboard first.
+1. Each subject gets its own ridge fits, so the compute is four times that of a pooled fit.
+2. The default `stimulus_window=5` and `hrf_delay=3` follow the challenge baseline. You can use `hrf_convolve` from `brainscore.temporal` instead of the fixed shift.
+3. Codabench allows one submission per cycle on the OOD set. Iterate on Friends S7 first.

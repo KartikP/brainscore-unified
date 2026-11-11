@@ -9,13 +9,13 @@ Install MIRAGE's pinned upstream requirements in the worker, including torch
 Keep model assets, caches and generated output outside Git on a storage volume
 with sufficient free space.
 
-### Runtime boundary
+## Runtime boundary
 
-- `runtime.py` runs in the Python 3.11 UMI host. It stages one clip, starts the
+- `brainscore/models/mirage/runtime.py` runs in the Python 3.11 UMI host. It stages one clip, starts the
   configured Python executable, enforces the whole-process timeout, terminates
   the process group on timeout/interruption, reads predictions and provenance,
   and removes temporary files.
-- `worker.py` runs in the separate Python 3.12 environment. It checks the pinned
+- `brainscore/models/mirage/worker.py` runs in the separate Python 3.12 environment. It checks the pinned
   MIRAGE source and checkpoint, calls upstream `run_inference`, and writes the
   output array and provenance for the host.
 

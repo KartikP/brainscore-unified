@@ -8,16 +8,11 @@ UMI is a v2 source candidate. See the [release policy](docs/archive/production_r
 
 ## Layout
 
-- `brainscore/model_helpers/` — extraction wrappers: image, text,
-  VLM-vision, video, audio, tensor, and the stateful `PolicyWrapper` for
-  closed-loop sessions.
-- `brainscore/harnesses/` — environment and subject harnesses (robotics
-  environment harness; human-harness scaffold).
-- `brainscore/models/` — registered models (CLIP, Qwen-VL, BLIP-2, V-JEPA,
-  null controls, and others).
-- `brainscore/benchmarks/` — registered benchmarks (ROAR, MajajHong-unified,
-  Pereira-unified, Lahner2024, Algonauts2025, and others).
-- `brainscore/metrics/` — scoring metrics.
+- `brainscore/model_helpers/`: extraction wrappers for image, text, VLM vision, video and audio, and the stateful `PolicyWrapper` for closed-loop sessions.
+- `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, human-harness scaffold).
+- `brainscore/models/`: registered models (CLIP, Qwen-VL, BLIP-2, V-JEPA, null controls and others).
+- `brainscore/benchmarks/`: registered benchmarks (ROAR, MajajHong-unified, Pereira-unified, Lahner2024, Algonauts2025 and others).
+- `brainscore/metrics/`: scoring metrics.
 
 ## Install
 
@@ -81,6 +76,6 @@ interface is exercised, but the result is not a brain-alignment claim.
 | Audio wrapper | Wav2Vec2-style features | structurally-tested | Construction, stimulus columns, aggregation, truncation, and cache keys are unit-tested without weights. |
 | Audio+video fMRI | Lahner2024 multimodal | EC2-only | Registry, mode validation, null controls, and modality tagging are local; real forward/data runs are EC2-only. |
 | Movie multimodal fMRI | Algonauts2025 / CNeuroMod | EC2-only | Twelve benchmark entries and scoring kernels are guarded locally; the data assembly is about 100 GB on EC2. |
-| State-change perturbation | `process(StateChange)` | structurally-tested | Hook install, indexed ablation, concurrent handles, and reset are tested on a toy torch model. |
-| Closed-loop action | GridGame `action_fn` | demo-only | Floor, ceiling, deterministic boards, and registration are tested; the game is an interface demo. |
+| State-change perturbation | `apply_state_change` | structurally-tested | Hook install, indexed ablation, concurrent handles, and reset are tested on a toy torch model. |
+| Closed-loop action | GridGame `policy` | demo-only | Floor, ceiling, deterministic boards, and registration are tested; the game is an interface demo. |
 | Closed-weight API behavior | OpenRouter / OpenAI-compatible | structurally-tested | Provider registration, lazy model construction, parsing, image payloads, and cache behavior are mocked locally. |

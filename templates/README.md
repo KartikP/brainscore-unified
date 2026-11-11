@@ -2,7 +2,7 @@
 
 Starting points for all five extension seams: model, benchmark, metric, data and
 capability. Each folder is a runnable skeleton with `TODO` markers, a `README.md`, and
-tests that define the contract. `../docs/concepts.md` covers the vocabulary and
+tests that define the contract. `../docs/02_core_concepts.md` covers the vocabulary and
 `../EXTENDING.md` the contracts.
 
 | Template | Seam | Implements | Loadable via |

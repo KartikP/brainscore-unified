@@ -6,7 +6,7 @@ dataset used by both EWoK benchmarks.
 
 ## 1. Install the file readers
 
-After installing the four UMI packages, run from the **unified repository root**:
+After installing the four UMI packages, run from the unified repository root:
 
 ```bash
 python -m pip install -c install/v2-constraints.txt -e '.[ewok-data]'
@@ -14,7 +14,7 @@ python -m pip install -c install/v2-constraints.txt -e '.[ewok-data]'
 
 ## 2. Choose a source
 
-**Files you already have:** provide a native CSV or Parquet file, or a directory
+Files you already have: provide a native CSV or Parquet file, or a directory
 containing those tables. Keep the authors' text and columns unchanged.
 
 ```bash
@@ -34,7 +34,7 @@ A [paper checkout](https://github.com/ewok-core/ewok-paper) containing
 password supplied under the authors' terms. The builder reads their corrected
 inclusion table and applies their final exclusions.
 
-**Hosted files:** obtain approval for the
+Hosted files: obtain approval for the
 [Hugging Face dataset](https://huggingface.co/datasets/ewok-core/ewok-core-1.0)
 and authenticate with `hf auth login` or `HF_TOKEN`. Then run:
 

@@ -53,11 +53,3 @@ the earlier focused diagnostic's larger peak was about 28 GiB. All model
 processes were released afterward. The 126 targeted unit/lab checks passed;
 two HTTP checks required rerunning with loopback socket permission. Existing
 scikit-learn environment drift remains outside this generated-reply check.
-
-Local receipts are under `.runtime/qwen-bf16-registration/`,
-with the guard log in `qwen-bf16-registration-guard/` and the artifact verification
-receipt in `qwen-bf16-registration-verified.json`. Pinned-revision asset preflight
-was refined after model construction; the compared loader dtype/revision and
-inference paths did not change. The focused cache tests cover that refinement.
-The preserved historical commands and receipts name the original lab checkout
-where the comparisons ran, before this change was separated for review.

@@ -7,7 +7,7 @@ the architecture map at https://brain-score.github.io/public/UMI/architecture.ht
 
 1. Copy this folder to `brainscore/models/<your_name>/`.
 2. Edit `model.py`: load your backbone, configure its wrapper, and pass `extractor={'vision': wrapper}` (or `text`/`audio`). Set `region_layer_map` to the layers you will record.
-3. Edit `__init__.py` — pick your identifier in `model_registry['<your-id>']`.
+3. Edit `__init__.py`. Pick your identifier in `model_registry['<your-id>']`.
 4. Add `from . import <your_name>` to `brainscore/models/__init__.py`.
 5. Adapt `test_model.py` and run it.
 
@@ -20,11 +20,11 @@ score = brainscore.score('<your-id>', '<some-benchmark>')
 ## Shortcut
 
 For most standard models, the `auto_register` tool infers the wrapper, layers, and a provisional
-`region_layer_map` for you — start there, then refine the layer map with the layer-mapping explorer.
+`region_layer_map` for you. Start there, then refine the layer map with the layer-mapping explorer.
 
 ## Worked references (read these)
 
-- `brainscore/models/clip_vit_b_32/` — vision + text VLM, behavioral readout.
-- `brainscore/models/vjepa_v1/` — native-temporal video (VideoWrapper, vendored backbone).
-- `brainscore/models/api_closed/` — output-only API model (`answer` and `supported_modalities`; no extraction wrapper).
-- `brainscore/models/multimodal_av_vjepa_wav2vec2/` — two extraction wrappers with modality routing in their region selectors.
+- `brainscore/models/clip_vit_b_32/`: vision + text VLM, behavioral readout.
+- `brainscore/models/vjepa_v1/`: native-temporal video (VideoWrapper, vendored backbone).
+- `brainscore/models/api_closed/`: output-only API model (`answer` and `supported_modalities`; no extraction wrapper).
+- `brainscore/models/multimodal_av_vjepa_wav2vec2/`: two extraction wrappers with modality routing in their region selectors.

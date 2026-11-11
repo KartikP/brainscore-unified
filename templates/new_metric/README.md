@@ -1,15 +1,15 @@
 # Template: a new metric
 
-A metric is a new **alignment axis** — it compares two assemblies and returns a `Score`.
+A metric is a new alignment axis. It compares two assemblies and returns a `Score`.
 This is the seam the field is moving along (beyond linear predictivity → representational,
 topographic, behavioral, causal). See `EXTENDING.md` (Seam 3) for the full contract.
 
 ## Use it
 
 1. Copy this folder to `brainscore/metrics/<your_name>/`.
-2. Edit `metric.py` — implement `__call__(assembly1, assembly2) -> Score`. Document the coords
+2. Edit `metric.py`. Implement `__call__(assembly1, assembly2) -> Score`. Document the coords
    each assembly must carry, and fail loudly on a mismatch.
-3. Edit `__init__.py` — pick your identifier in `metric_registry['<your-id>']`.
+3. Edit `__init__.py`. Pick your identifier in `metric_registry['<your-id>']`.
 4. Add `from . import <your_name>` to `brainscore/metrics/__init__.py`.
 5. Adapt `test_metric.py` and run it (`pytest brainscore/metrics/<your_name>/test_metric.py`).
 

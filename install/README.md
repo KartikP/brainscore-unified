@@ -22,7 +22,7 @@ already exists.
 ## With the four repositories already present
 
 `setup.sh` and the environment file are for a machine with no checkout. If `core/`,
-`vision/`, `language/` and `unified/` already sit side by side, skip both — the pins live
+`vision/`, `language/` and `unified/` already sit side by side, skip both. The pins live
 in the packages, so pip alone is enough:
 
 ~~~bash
@@ -34,7 +34,7 @@ python -m pip check
 python -m brainscore.doctor
 ~~~
 
-**Do not point conda at `install/environment-unified.yml` in place.** Its `-e ./core`
+Do not point conda at `install/environment-unified.yml` in place. Its `-e ./core`
 entries are relative, and conda runs its pip step from *the file's own directory*, so
 `./core` becomes `unified/install/core`:
 
@@ -43,7 +43,7 @@ ERROR: ./core is not a valid editable requirement.
 CondaEnvException: Pip failed
 ~~~
 
-Invoking conda from the workspace root does not help — the file itself has to be there.
+Invoking conda from the workspace root does not help. The file itself has to be there.
 `setup.sh` downloads it to the workspace root, which is why the bootstrap never hits
 this. To use the file directly, `cp` it beside the repositories first.
 
