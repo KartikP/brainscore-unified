@@ -220,6 +220,7 @@ def test_undeclared_specs_are_unknown_not_defaults():
     with Session(source, ('motor',)) as session:
         description = source.describe()
         assert description['observation_spec'] is None and description['action_spec'] is None
+        session.declare_inputs({'control', 'observation'})
         begin = session.next_input()
         first = session.next_input()
     assert begin.payload == 'begin'

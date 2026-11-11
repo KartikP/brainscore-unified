@@ -253,7 +253,7 @@ class Bridge:
                          'Call for an unexpected episode')
                 position += 1
             response = model.process(
-                {'observation': message, 'instruction': message['prompt']}
+                {'observation': message, 'instruction': message['prompt'], 'umi_call': annotation}
             )['motor']
             result = dict(response.meta['policy_output'], actions=response.payload)
             _send(socket, codec, result, self.idle_timeout)

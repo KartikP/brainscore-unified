@@ -242,6 +242,9 @@ def saved_values(directory: Path) -> dict[str, list[np.ndarray]]:
     for event in read_events(directory):
         if event['kind'] == 'output':
             output = event['payload']
+            # A live action has both a proposal and a receipt. Compare it once.
+            if output.channel == 'motor' and output.meta['action_status'] != 'proposed':
+                continue
             response = output.payload
             value = response if output.channel == 'motor' else response.values
             values[event['condition']].append(np.asarray(value))
