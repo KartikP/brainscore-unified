@@ -3,8 +3,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore_core._sessions.perception import streaming_stimulus_session
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -41,6 +40,6 @@ def _counts(build, order):
 
 @pytest.mark.parametrize('order', [[0, 1, 2], [2, 0, 1]])
 def test_independent_trials_start_at_zero_in_both_sessions(order):
-    table = _counts(lambda s, record: table_session(s, [f'neural:{record}'], record=record), order)
-    lazy = _counts(streaming_stimulus_session, order)
+    table = _counts(lambda s, record: stimulus_session(s, [f'neural:{record}']), order)
+    lazy = _counts(lambda s, record: stimulus_session(s, [f'neural:{record}'], streaming=True), order)
     assert table == lazy == [0.0] * 3

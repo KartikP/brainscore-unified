@@ -5,12 +5,12 @@ import xarray as xr
 from brainscore import BrainScoreModel
 from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange, TaskContext
 from brainscore_core.streaming import StreamEvent
+from brainscore_core._sessions.buffered import _state_change_session
 from brainscore_core.streaming_helpers import (
     apply_state_change,
     environment_session,
     behavioral_response,
     neural_response,
-    state_change_session,
     run_environment,
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import (
@@ -614,7 +614,7 @@ def test_native_state_change_reset_restores_baseline():
     assert model.participate_requested_output_channels == ("perturbation",)
 
     reset = StateChange(kind="reset", handle_id=applied.handle_id)
-    reset_session = state_change_session(reset)
+    reset_session = _state_change_session(reset)
     reset_event = reset_session.next_input()
     model.participate_called = False
     reset_result = apply_state_change(model, reset)
@@ -649,7 +649,7 @@ def test_apply_state_change_produces_handle_and_ack_event():
     model = _make_state_change_model(state_change_fn=fn)
     state_change = _ablation_state_change()
 
-    session = state_change_session(state_change)
+    session = _state_change_session(state_change)
     _ = session.next_input()
     from brainscore_core.streaming_helpers import _drive_state_change_via_process
     _drive_state_change_via_process(model, session, state_change)

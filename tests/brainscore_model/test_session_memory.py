@@ -5,7 +5,7 @@ from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.responses import Choice
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core._evaluation.compatibility import check_channel_compatibility
 
@@ -18,7 +18,7 @@ STIMULI.identifier = 'one-back'
 TASK = TaskContext(instruction='Is this word the same as the previous one?',
                    response=Choice(['yes', 'no']))
 CONVERSATION = TaskContext(instruction='Is this word the same as the previous one?',
-                           response=Choice(['yes', 'no']), trial_memory='conversation')
+                           response=Choice(['yes', 'no']), trial_memory='history')
 
 
 def _word(prompt):
@@ -32,7 +32,7 @@ def one_back(prompt):
 
 
 def _answers(model, task=TASK):
-    session = table_session(STIMULI, ['behavior:choice'], task_context=task)
+    session = stimulus_session(STIMULI, ['behavior:choice'], task_context=task)
     model.participate(session)
     return list(session.collect('behavior:choice')['raw_answer'].values)
 

@@ -86,12 +86,12 @@ class _Recorder:
 def test_a_clip_recorded_during_a_task_uses_the_clip_extractor_and_keeps_time():
     from brainscore_core.model_interface import TaskContext
     from brainscore_core.responses import Choice
-    from brainscore_core.streaming_helpers import table_session
+    from brainscore_core.streaming_helpers import stimulus_session
     model = BrainScoreModel('m', extractor={'vision': _Recorder(1.0, False), 'video': _Recorder(5.0, True)},
                             region_layer_map={'IT': LayerSelector('blocks.1', modality='vision')},
                             reply=lambda prompt: 'left')
     task = TaskContext(instruction='Which way?', response=Choice(['left', 'right']))
-    session = table_session(_stimuli('video_path'), ['behavior:choice', 'neural:IT'], task_context=task)
+    session = stimulus_session(_stimuli('video_path'), ['behavior:choice', 'neural:IT'], task_context=task)
     model.participate(session)
     recorded = session.collect('neural:IT')
     assert recorded.dims == ('presentation', 'time_bin', 'neuroid')
@@ -103,7 +103,7 @@ def test_a_multi_image_trial_is_recorded_per_image():
     from contextlib import contextmanager
     from brainscore_core.model_interface import TaskContext
     from brainscore_core.responses import Choice
-    from brainscore_core.streaming_helpers import table_session
+    from brainscore_core.streaming_helpers import stimulus_session
 
     class PerImage:
         def __call__(self, stimuli, layers, **kwargs):
@@ -126,7 +126,7 @@ def test_a_multi_image_trial_is_recorded_per_image():
     trials = StimulusSet({'stimulus_id': ['t1'], 'rules': ['r.png'], 'word_1': ['a.png'], 'word_2': ['b.png']})
     trials.identifier = 'sequence'
     task = TaskContext(response=Choice(['yes', 'no']), present=('image:rules', 'image:word_1', 'image:word_2'))
-    session = table_session(trials, ['behavior:choice', 'neural:IT'], task_context=task)
+    session = stimulus_session(trials, ['behavior:choice', 'neural:IT'], task_context=task)
     model.participate(session)
     recorded = session.collect('neural:IT')
     assert recorded.dims == ('presentation', 'part', 'neuroid')

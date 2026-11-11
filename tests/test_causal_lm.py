@@ -131,7 +131,7 @@ def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
 
 def _session_ask(model, channel, payload):
     from brainscore_core.streaming import Session
-    from brainscore_core.streaming_helpers import table_session
+    from brainscore_core.streaming_helpers import stimulus_session
     session = Session([StreamEvent(channel, payload, None, {})], ['response_trace'])
     model.participate(session)
     (response,) = session.emitted
@@ -236,11 +236,11 @@ def test_an_empty_chat_context_is_conditioned_on_the_template(subject):
 
 def test_neural_responses_carry_a_copy_of_the_provenance(subject):
     from brainscore_core.streaming import Session
-    from brainscore_core.streaming_helpers import table_session
+    from brainscore_core.streaming_helpers import stimulus_session
     from brainscore_core.streaming_helpers import neural_response
     model, _, _ = subject
     expected = {'identifier': 'tiny-qwen', 'revision': 'test'}
-    session = table_session(_stimuli(), ['neural:mlp_in'])
+    session = stimulus_session(_stimuli(), ['neural:mlp_in'])
     model.participate(session)
     (event,) = session.emitted
     assert event.meta == {'driver': 'interact', 'record': 'mlp_in'}  # record format unchanged

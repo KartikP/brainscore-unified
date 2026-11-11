@@ -61,18 +61,20 @@ WordLengthReader().participate(session)
 session.collect()
 ```
 
-**Sessions do not have to stream.** One event can carry a whole batch, and `table_session(stimulus_set, ...)` (from `brainscore_core.streaming_helpers`) delivers a full stimulus table. Streaming one input at a time, time windows and real-time pacing are options. Windows and pacing are generators that you give to `Session` as its source.
+**Sessions do not have to stream.** One event can carry a whole batch, and `stimulus_session(stimulus_set, outputs, task)` (from `brainscore_core.streaming_helpers`) delivers a full stimulus table. Pass `streaming=True` to deliver one row at a time. Streaming one input at a time, time windows and real-time pacing are options. Windows and pacing are generators that you give to `Session` as its source.
 
 | Source | Use it when |
 | --- | --- |
 | A list or generator of events | Inputs are fixed in advance (most benchmarks). |
 | `EnvironmentSource` | Each action changes the next input (games, simulators, robots). `run_environment` builds it for you. |
 
+Three builders make a session: `stimulus_session(stimuli, outputs, task)`, `environment_session(environment, outputs, task)` and `behavior_session(task)`. `Session(source, outputs, task)` takes any other input. The four functions `neural_response`, `behavioral_response`, `apply_state_change` and `run_environment` build a session, run it and return the result.
+
 **Row.** A step of a closed-loop task is a row: a mapping of channel to payload, such as `{'observation': ..., 'reward': 0.0}`. A policy receives a row and returns a mapping of output channel to payload, such as `{'motor': action}`.
 
 **Control events.** A session also sends three events on the `control` channel. `begin` opens an episode. `respond` asks the subject to answer now. `end` closes the episode and says why: `terminal`, `truncated` or `failure`. A subject receives them only if it lists `control` among the channels it declares. A subject that does not declare `control` never sees them. A subject with the trait `memory:trial_history` must declare it, or pre-flight rejects it. A benchmark does not list `control` among its inputs.
 
-**Trial memory.** A task says how long a subject keeps its trials, with `TaskContext(trial_memory=...)`. With `none` (the default), each trial is its own episode, so the subject keeps nothing from earlier trials. With `conversation`, all trials are one episode, so the subject sees its earlier trials and answers. A subject that keeps this history declares the trait `memory:trial_history` (for `BrainScoreModel`, `memory='trial_history'`), and `conversation` needs it. `begin` clears the history; it keeps lesions and the task setup.
+**Trial memory.** A task says how long a subject keeps its trials, with `TaskContext(trial_memory=...)`. With `none` (the default), each trial is its own episode, so the subject keeps nothing from earlier trials. With `history`, all trials are one episode, so the subject keeps what it took in and answered on earlier trials (a conversation is one example). A subject that keeps this history declares the trait `memory:trial_history` (for `BrainScoreModel`, `memory='trial_history'`), and `history` needs it. `begin` clears the history; it keeps lesions and the task setup.
 
 ## 5. Benchmark, metric and score
 

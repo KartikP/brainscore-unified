@@ -9,7 +9,7 @@ import pytest
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.responses import Choice
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore.selection import CompositeSelector, LayerSelector
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -82,7 +82,7 @@ def _model(net, region_map=None):
 
 
 def _run(model, task, channels, streaming=False):
-    session = table_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task_context=task)
     session.streaming = streaming
     model.participate(session)
     return session

@@ -20,9 +20,9 @@ import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore_core._sessions.payloads import _stimulus_events, _table_row_position
-from brainscore_core._sessions.perception import streaming_stimulus_session, windowed_stream
+from brainscore_core._sessions.perception import windowed_stream
 from brainscore_core.streaming import Session, StreamEvent
-from brainscore_core.streaming_helpers import table_session
+from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -59,8 +59,8 @@ def text_model(calls):
 
 def streaming_session(kind, stimuli, record='A'):
     if kind == 'streaming':
-        return streaming_stimulus_session(stimuli, record=record)
-    session = table_session(stimuli, [f'neural:{record}'])
+        return stimulus_session(stimuli, [f'neural:{record}'], streaming=True)
+    session = stimulus_session(stimuli, [f'neural:{record}'])
     session.streaming = True
     return session
 
@@ -99,7 +99,7 @@ def test_two_column_table_gives_one_output_per_row(kind):
 def test_streamed_rows_equal_the_batch_rows(kind):
     calls = []
     model = text_model(calls)
-    batch = table_session(table(), ['neural:A'])
+    batch = stimulus_session(table(), ['neural:A'])
     model.participate(batch)
     stream = streaming_session(kind, table())
     model.participate(stream)
@@ -109,7 +109,7 @@ def test_streamed_rows_equal_the_batch_rows(kind):
 
 def test_batch_session_with_two_columns_is_unchanged():
     calls = []
-    session = table_session(table(), ['neural:A'])
+    session = stimulus_session(table(), ['neural:A'])
     text_model(calls).participate(session)
     assert calls == [['a', 'b']]
     assert len(session.emitted) == 1
@@ -127,7 +127,7 @@ def test_streaming_session_still_holds_at_most_one_row():
             yield row
 
     rows.iterrows = watched
-    text_model(calls).participate(streaming_stimulus_session(rows, record='A'))
+    text_model(calls).participate(stimulus_session(rows, ['neural:A'], streaming=True))
     assert len(calls) == 6
 
 
@@ -150,7 +150,7 @@ def test_two_extractors_record_one_row_once_per_channel():
                                               'A1': LayerSelector('mid', modality='audio')})
     stimuli = StimulusSet({'stimulus_id': IDS, 'image_path': ['a.png', 'bb.png'],
                            'audio_path': ['a.wav', 'bbb.wav']})
-    session = streaming_stimulus_session(stimuli, record=['IT', 'A1'])
+    session = stimulus_session(stimuli, ['neural:IT', 'neural:A1'], streaming=True)
     model.participate(session)
     assert sorted(calls) == [('a', ['a']), ('a', ['b']), ('v', ['a']), ('v', ['b'])]
     assert presented(session, 'neural:IT') == [['a'], ['b']]
@@ -162,7 +162,7 @@ def test_view_that_drops_a_stream_still_presents_each_row_once():
     calls = []
     stimuli = StimulusSet({'stimulus_id': IDS, 'image_path': ['a.png', 'b.png'],
                            'sentence': ['a-words', 'b-words']})
-    session = streaming_stimulus_session(stimuli, record='A')
+    session = stimulus_session(stimuli, ['neural:A'], streaming=True)
     text_model(calls).participate(session)
     assert calls == [['a'], ['b']]
 
@@ -170,14 +170,14 @@ def test_view_that_drops_a_stream_still_presents_each_row_once():
 def test_repeated_index_labels_keep_distinct_rows():
     """v5 defect: distinct stimuli that share an index label are not merged."""
     calls = []
-    session = streaming_stimulus_session(table(ids=['a', 'b', 'c'], index=[7, 7, 8]), record='A')
+    session = stimulus_session(table(ids=['a', 'b', 'c'], index=[7, 7, 8]), ['neural:A'], streaming=True)
     text_model(calls).participate(session)
     assert calls == [['a'], ['b'], ['c']]
 
 
 def test_repeated_stimulus_ids_in_the_table_stay_separate_presentations():
     calls = []
-    session = streaming_stimulus_session(table(ids=['a', 'a']), record='A')
+    session = stimulus_session(table(ids=['a', 'a']), ['neural:A'], streaming=True)
     text_model(calls).participate(session)
     assert calls == [['a'], ['a']]
 
@@ -281,8 +281,8 @@ def test_events_of_one_row_at_different_times_are_separate():
 @pytest.mark.parametrize('kind', ['buffered', 'streaming'])
 def test_settings_installed_with_the_session_keep_one_output_per_row(kind):
     original = {'number_of_trials': 3, '_table_rows': 'user-token'}
-    session = (table_session(table(), ['neural:A'], settings=original) if kind == 'buffered'
-               else streaming_stimulus_session(table(), record='A'))
+    session = (stimulus_session(table(), ['neural:A'], settings=original) if kind == 'buffered'
+               else stimulus_session(table(), ['neural:A'], streaming=True))
     session.streaming = True
     session.settings = original
     calls = []
@@ -310,14 +310,14 @@ def test_nested_session_groups_its_own_rows_only():
     def extract(stimuli, layers):
         seen.extend(stimuli['stimulus_id'])
         if stimuli['stimulus_id'].iloc[0] == 'a' and not inner_outputs:
-            inner = streaming_stimulus_session(table(ids=['inner']), record='A')
+            inner = stimulus_session(table(ids=['inner']), ['neural:A'], streaming=True)
             text_model(inner_calls).participate(inner)
             inner_outputs.append(presented(inner))
         return text_extractor([])(stimuli, layers)
 
     model = BrainScoreModel('outer', extractor={'text': extract},
                             region_layer_map={'A': LayerSelector('late', modality='text')})
-    session = streaming_stimulus_session(table(), record='A')
+    session = stimulus_session(table(), ['neural:A'], streaming=True)
     model.participate(session)
     assert seen == ['a', 'b']
     assert inner_outputs == [[['inner']]]
@@ -336,7 +336,7 @@ def replay(events, source_session, settings=True):
 
 
 def test_replayed_new_record_presents_each_row_once_every_time():
-    source = streaming_stimulus_session(table(), record='A')
+    source = stimulus_session(table(), ['neural:A'], streaming=True)
     events = drain(source)
     model = text_model(calls := [])
     counts = []
@@ -350,7 +350,7 @@ def test_replayed_new_record_presents_each_row_once_every_time():
 
 def test_replayed_base_record_keeps_base_outputs():
     """A base record has no row marker: it replays exactly as base ran it."""
-    source = streaming_stimulus_session(table(), record='A')
+    source = stimulus_session(table(), ['neural:A'], streaming=True)
     base_events = drain(source)
     for event in base_events:
         del event.meta['table_row']
@@ -417,7 +417,7 @@ def test_v6_independent_sessions_with_equal_markers_stay_local():
     calls = []
     model = text_model(calls)
     for ids in (['a', 'b'], ['c', 'd']):
-        session = streaming_stimulus_session(table(ids=ids), record='A')
+        session = stimulus_session(table(ids=ids), ['neural:A'], streaming=True)
         model.participate(session)
         assert len(session.emitted) == 2
     assert calls == [['a'], ['b'], ['c'], ['d']]
