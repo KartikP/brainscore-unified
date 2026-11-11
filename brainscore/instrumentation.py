@@ -110,13 +110,24 @@ def observed(session, sink):
     Wrap the call that runs a subject: ``with observed(session, sink):
     subject.participate(session)``. Inputs are recorded as the source delivers
     them, before the subject's input filter; outputs as the subject responds.
-    A closed-loop action that fails to execute also goes to ``sink.on_error``.
+    A closed-loop source also reports each action proposal and receipt, with its
+    status; a failed action goes to ``sink.on_error`` too.
     """
+    last = []
+
     def on_error(event, error):
         report = getattr(sink, 'on_error', None)
         if callable(report):
             report(Call('emit', (event,), {}), error)
 
-    with session.observe(lambda event: sink.record('input', event),
-                         lambda event: sink.record('output', event), on_error):
+    def on_action(event):
+        last[:] = [event]
+        sink.record('output', event)
+
+    def on_output(event):
+        if not (last and event is last[0]):  # a receipt is already recorded
+            sink.record('output', event)
+
+    with session.observe(lambda event: sink.record('input', event), on_output,
+                         on_error, on_action):
         yield session
