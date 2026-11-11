@@ -169,9 +169,23 @@ class TestGameActionFn:
         act = build_api_action_fn(self._mock('Action: 0', counter=calls), 'mock',
                                   cache_dir=str(tmp_path))
         s = self._env_step()
-        a, b = act(s)['motor'], act(s)['motor']
+        a = act(s)['motor']
+        act.reset()                                            # a new episode begins
+        b = act(s)['motor']
         assert int(a.payload) == int(b.payload) == 0
-        assert len(calls) == 1                                 # identical frame -> cached
+        assert len(calls) == 1                                 # identical frame, same step -> cached
+
+    def test_action_cache_keyed_by_step(self, tmp_path):
+        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        calls = []
+        act = build_api_action_fn(self._mock('Action: 0', counter=calls), 'mock',
+                                  cache_dir=str(tmp_path))
+        s = self._env_step()
+        act(s), act(s)
+        assert len(calls) == 2                                 # same view, two steps
+        act.reset()
+        act(s), act(s)
+        assert len(calls) == 2                                 # re-run replays from cache
 
     def test_missing_frame_raises(self):
         from brainscore.model_helpers.api_behavioral import build_api_action_fn

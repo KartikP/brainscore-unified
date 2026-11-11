@@ -433,14 +433,15 @@ def build_api_action_fn(
         response = None
         key = None
         if cache is not None:
-            # The key is the prompt and the observation: a row has no step index.
-            # With history_window > 0 the prompt carries the recent moves, which
-            # tells ticks apart; with 0 an unchanged observation replays the same
-            # cached action. Caching a closed loop is inherently fraught; prefer
+            # Include the policy's own step count (reset with its episode state)
+            # so a stuck state (unchanged observation) at different ticks does
+            # NOT collapse to one cached action; that would freeze the agent in
+            # a no-op loop. Re-running the same episode still replays from the
+            # cache. Caching a closed loop is inherently fraught; prefer
             # cache_dir=None for fresh per-tick calls.
             key = hashlib.sha256(
                 '|'.join([provider_name, model, prompt, payload,
-                          str(system_prompt), str(max_tokens)]).encode()
+                          str(len(trace)), str(system_prompt), str(max_tokens)]).encode()
             ).hexdigest()
             response = cache.get(key)
         if response is None:
