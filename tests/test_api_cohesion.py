@@ -219,8 +219,11 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     namespace = dict(Subject=Subject, torch=torch, np=np, StreamEvent=StreamEvent,
                      BehavioralAssembly=BehavioralAssembly)
     exec(compile(ast.Module(body=[adapter], type_ignores=[]), '<notebook-adapter>', 'exec'), namespace)
-    subject = namespace['ImageSubject'](torch.nn.Linear(3, 2).eval())
-    inputs = np.array([[1., 2., 3.]], dtype=np.float32)
+    class ToFloat(torch.nn.Module):
+        def forward(self, pixels):
+            return torch.nn.functional.linear(pixels.flatten(1).float(), torch.ones(2, 3))
+    subject = namespace['ImageSubject'](ToFloat().eval())
+    inputs = np.ones((1, 3, 1, 1), dtype=np.uint8)  # one 3-channel 1x1 uint8 image
     def session():
         return Session([StreamEvent(channel='vision', payload=inputs.copy(), t_ms=0)], ['behavior'])
     class SessionBenchmark(Benchmark):

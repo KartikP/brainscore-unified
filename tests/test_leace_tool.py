@@ -124,11 +124,11 @@ def test_session_conditions_keep_baseline_and_restore_model(tmp_path):
 
     @contextmanager
     def factory(trial):
-        yield Session([StreamEvent('stimulus', values, None)])
+        yield Session([StreamEvent('observation', values, None)])
 
     result = Experiment(subject=subject,
         protocol=SessionProtocol('leace', factory, conditions=['baseline', 'lesioned', 'restored'],
-                                 input_channels=['stimulus'], output_channels=['behavior']),
+                                 input_channels=['observation'], output_channels=['behavior']),
         tools=[load_tool('record-io'), eraser],
         instrumentation=TorchInstrumentation({'population': subject.layer}),
         output_dir=tmp_path / 'run').run()

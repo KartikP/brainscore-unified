@@ -19,7 +19,7 @@ pytestmark = pytest.mark.unit
 
 class FixtureSubject(Subject):
     identifier = 'loaded-record-io-fixture'
-    in_channels, out_channels = {'stimulus'}, {'behavior'}
+    in_channels, out_channels = {'observation'}, {'behavior'}
 
     def __init__(self) -> None:
         self.layer = torch.nn.Identity()
@@ -33,8 +33,8 @@ class FixtureSubject(Subject):
 def protocol() -> SessionProtocol:
     @contextmanager
     def factory(trial):
-        yield Session([StreamEvent('stimulus', [[1., 2.]], None)])
-    return SessionProtocol('record-io-check', factory, input_channels=['stimulus'],
+        yield Session([StreamEvent('observation', [[1., 2.]], None)])
+    return SessionProtocol('record-io-check', factory, input_channels=['observation'],
                            output_channels=['behavior'], repetitions=[0, 1])
 
 

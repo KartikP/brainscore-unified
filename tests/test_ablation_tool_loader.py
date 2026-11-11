@@ -20,7 +20,7 @@ pytestmark = pytest.mark.unit
 
 class FixtureSubject(Subject):
     identifier = 'loaded-ablation-fixture'
-    in_channels, out_channels = {'stimulus'}, {'behavior'}
+    in_channels, out_channels = {'observation'}, {'behavior'}
 
     def __init__(self) -> None:
         self.layer = torch.nn.Identity()
@@ -34,9 +34,9 @@ class FixtureSubject(Subject):
 def protocol() -> SessionProtocol:
     @contextmanager
     def factory(trial):
-        yield Session([StreamEvent('stimulus', [[1., 2., 3.]], None)])
+        yield Session([StreamEvent('observation', [[1., 2., 3.]], None)])
     return SessionProtocol('loaded-ablation', factory, conditions=['baseline', 'lesioned'],
-                           repetitions=[0, 1], input_channels=['stimulus'], output_channels=['behavior'])
+                           repetitions=[0, 1], input_channels=['observation'], output_channels=['behavior'])
 
 
 def test_loader_returns_existing_implementation_and_fresh_instances():

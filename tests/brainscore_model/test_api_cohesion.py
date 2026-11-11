@@ -5,6 +5,7 @@ import xarray as xr
 from brainscore import BrainScoreModel, LayerSelector, CompositeSelector
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import table_session
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -16,7 +17,7 @@ class Extractor:
 
     def __call__(self, stimuli, *, layers):
         self.calls.append(layers)
-        return xr.DataArray(
+        return NeuroidAssembly(
             np.full((len(stimuli), 4 * len(layers)), self.value),
             dims=('presentation', 'neuroid'),
             coords={'layer': ('neuroid', np.repeat(layers, 4)),

@@ -13,7 +13,6 @@ from brainscore.tools import attach_tools, load_tool
 from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 class TextFixture(Subject):
@@ -28,22 +27,22 @@ class TextFixture(Subject):
 
     def participate(self, session: Session) -> None:
         while (event := session.next_input()) is not None:
-            stimuli = event.payload
-            vectors = [[1. if 'red' in text else -1., 1. if 'square' in text else -1.]
-                       for text in stimuli['sentence']]
+            text = event.payload
+            vectors = [[1. if 'red' in text else -1., 1. if 'square' in text else -1.]]
             activity = self.population(torch.tensor(vectors)).detach().numpy()
             session.respond(StreamEvent('neural:population', NeuroidAssembly(
                 activity, dims=('presentation', 'neuroid'), coords={
-                    'stimulus_id': ('presentation', stimuli['stimulus_id'].tolist()),
-                    'sentence': ('presentation', stimuli['sentence'].tolist()),
+                    'stimulus_id': ('presentation', [event.meta['stimulus_id']]),
+                    'sentence': ('presentation', [text]),
                     'unit_index': ('neuroid', list(range(4))),
                     'layer': ('neuroid', ['population'] * 4),
                 }), event.t_ms))
 
 
 def make_session(texts: list[str]) -> Session:
-    stimuli = StimulusSet({'stimulus_id': [f'item-{i}' for i in range(len(texts))], 'sentence': texts})
-    return Session([StreamEvent('text', stimuli, None)], ['neural:population'])
+    events = [StreamEvent('text', text, None, {'stimulus_id': f'item-{i}'})
+              for i, text in enumerate(texts)]
+    return Session(events, ['neural:population'])
 
 
 def run(directory: Path) -> None:

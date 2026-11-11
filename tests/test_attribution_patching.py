@@ -226,7 +226,7 @@ def test_malformed_reference_rejected_before_attachment(change):
 def test_patch_tool_records_reference_conditions_and_restoration(tmp_path):
     class ModelSubject(Subject):
         identifier = 'patch-fixture'
-        in_channels, out_channels = {'stimulus'}, {'behavior'}
+        in_channels, out_channels = {'observation'}, {'behavior'}
         def __init__(self): self.model = LinearModel()
         def reset(self): pass
         def participate(self, session):
@@ -235,7 +235,7 @@ def test_patch_tool_records_reference_conditions_and_restoration(tmp_path):
             session.respond(StreamEvent('behavior', value, None))
     @contextmanager
     def session(trial):
-        yield Session([StreamEvent('stimulus', [1., 2., 4.], None)])
+        yield Session([StreamEvent('observation', [1., 2., 4.], None)])
     subject = ModelSubject()
     reference = estimate(subject.model)['reference']
     tool = PatchActivity([Selection('units', [0])], reference=reference, conditions=['patched'])

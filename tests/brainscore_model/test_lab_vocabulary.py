@@ -79,11 +79,11 @@ def test_intervention_cleanup_on_reset():
 @pytest.mark.parametrize('modality,column', [('vision', 'image_path'), ('text', 'sentence'),
                                           ('audio', 'audio_path'), ('video', 'video_path')])
 def test_extractor_and_buffered_session_work_across_modalities(modality, column):
-    import xarray as xr
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
     def extract(stimuli, *, layers):
-        return xr.DataArray(np.ones((len(stimuli), 2)), dims=('presentation', 'neuroid'),
+        return NeuroidAssembly(np.ones((len(stimuli), 2)), dims=('presentation', 'neuroid'),
                             coords={'layer': ('neuroid', [layers[0]] * 2),
                                     'neuroid_id': ('neuroid', [0, 1])})
     subject = BrainScoreModel(identifier='extractor', extractor={modality: extract},

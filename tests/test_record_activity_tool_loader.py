@@ -21,7 +21,7 @@ pytestmark = pytest.mark.unit
 
 class FixtureSubject(Subject):
     identifier = 'loaded-record-activity-fixture'
-    in_channels, out_channels = {'stimulus'}, {'behavior'}
+    in_channels, out_channels = {'observation'}, {'behavior'}
 
     def __init__(self) -> None:
         self.layer = torch.nn.Identity()
@@ -35,9 +35,9 @@ class FixtureSubject(Subject):
 def protocol() -> SessionProtocol:
     @contextmanager
     def factory(trial):
-        yield Session([StreamEvent('stimulus', [[1., 2., 3.]], None)])
+        yield Session([StreamEvent('observation', [[1., 2., 3.]], None)])
     return SessionProtocol('record-activity-check', factory, conditions=['baseline', 'lesioned'],
-                           input_channels=['stimulus'], output_channels=['behavior'])
+                           input_channels=['observation'], output_channels=['behavior'])
 
 
 def test_loader_returns_existing_recorder_with_names_and_positions():

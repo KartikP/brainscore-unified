@@ -739,8 +739,8 @@ class _XArrayActivationsModel:
         self.call_args = None
 
     def __call__(self, stimuli, layers=None, **kwargs):
-        import xarray as xr
         import numpy as np
+        from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
         self.call_args = {'stimuli': stimuli, 'layers': layers}
         # Default to one neuroid even when caller passes empty layers,
         # mimicking real wrappers that extract at a default location.
@@ -748,7 +748,7 @@ class _XArrayActivationsModel:
         n_neuroid = len(layers)
         n_pres = 2
         data = np.zeros((n_pres, n_neuroid))
-        return xr.DataArray(
+        return NeuroidAssembly(
             data,
             dims=('presentation', 'neuroid'),
             coords={
@@ -979,14 +979,14 @@ class _XArrayPreprocessor:
         self.call_args = None
 
     def __call__(self, stimuli, layers=None, **kwargs):
-        import xarray as xr
         import numpy as np
+        from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
         self.call_args = {'stimuli': stimuli, 'layers': layers}
         layers = list(layers or [f'{self.label}_layer'])
         n_neuroid = len(layers)
         n_pres = 2
         data = np.zeros((n_pres, n_neuroid))
-        return xr.DataArray(
+        return NeuroidAssembly(
             data,
             dims=('presentation', 'neuroid'),
             coords={

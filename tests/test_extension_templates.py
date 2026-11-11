@@ -94,14 +94,14 @@ def test_capability_is_opt_in_per_model(capability):
 
 @pytest.mark.parametrize('payload', ['text', {'text': 'a b'}, None])
 def test_capability_rejects_wrong_payload_types(capability, payload):
-    with pytest.raises(ValueError, match='catalog validation'):
+    with pytest.raises(ValueError, match='channel catalog'):
         Session([StreamEvent(channel=capability.REQUEST, payload=payload, t_ms=0.0)], [capability.RESULT])
 
 
 @pytest.mark.parametrize('text', [42, None, b'a b', ['a', 'b']])
 def test_capability_rejects_invalid_request_fields_before_compute(capability, text):
     request = capability.WordRequest(text=text)
-    with pytest.raises(ValueError, match='catalog validation'):
+    with pytest.raises(ValueError, match='channel catalog'):
         Session([StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0)], [capability.RESULT])
     subject = capability.build_model()
     with pytest.raises(ValueError, match='shape_validator'):
