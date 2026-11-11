@@ -41,6 +41,8 @@ agent.reset()
 actions = run_environment(agent, MyEnvironment(), seed=0)
 ```
 
+`run_environment` returns an empty list when the episode ends at its start.
+
 For long episodes, `environment_session(..., history_limit=N)` bounds memory.
 
 ## Established robotics evaluators
