@@ -2,7 +2,7 @@
 
 Data is on EC2 (~100 GB DataLad pull); these tests don't load any of
 it. They verify:
-- All 13 (subject × split) registry entries exist.
+- All 14 registry entries exist (subject x split, and two forms of sub01).
 - Constructor validates subject ∈ {1, 2, 3, 5} and mode ∈ VALID_MODES.
 - ``__call__`` raises NotImplementedError until the assembly
   preparation pipeline runs on EC2.
@@ -36,11 +36,12 @@ def test_ood_benchmarks_registered_per_subject():
 
 
 def test_total_algonauts_benchmark_count():
-    """Three splits × four subjects = 12 entries, plus the video variant of sub01."""
+    """Three splits × four subjects = 12 entries, plus the video and video-audio
+    variants of sub01."""
     entries = [k for k in brainscore.benchmark_registry
                if k.startswith('Algonauts2025-')]
-    assert len(entries) == 13, (
-        f"expected 13 Algonauts entries, got {len(entries)}: {sorted(entries)}")
+    assert len(entries) == 14, (
+        f"expected 14 Algonauts entries, got {len(entries)}: {sorted(entries)}")
 
 
 # ── Constructor validation ────────────────────────────────────────

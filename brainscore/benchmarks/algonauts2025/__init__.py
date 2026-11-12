@@ -32,3 +32,10 @@ for sub in (1, 2, 3, 5):
 # participant 1 only.
 benchmark_registry['Algonauts2025-friends-sub01-video'] = (
     lambda: Algonauts2025Friends(subject=1, form='video'))
+
+# The same benchmark with the clip of each scan on vision:video and the sound of the
+# same 1.49 s on audio, in one row (form='video+audio'). It records neural:IT and
+# neural:A1 and scores the two bands with banded ridge. Training split of participant 1
+# only.
+benchmark_registry['Algonauts2025-friends-sub01-video-audio'] = (
+    lambda: Algonauts2025Friends(subject=1, form='video+audio'))

@@ -8,19 +8,38 @@ Three subclasses share most logic:
 - Algonauts2025OOD: held-out 2 h of OOD movies — same as S7 but
   different stim_set.
 
-Default mode is video-only frame-aggregation: extract one frame per TR
-midpoint, run the candidate's vision tower, stack stimulus_window TRs of
-context per fMRI sample, HRF-shift, ridge-regress per subject, per-parcel
-Pearson median. ``mode`` (see scoring.py) selects the combination; concat /
-per_modality / banded need audio and/or language blocks from the
-candidate's other towers, and raise a clear error until that multi-tower
-extraction (EC2-verified) supplies them. The published fixed-encoder
-(Wav2Vec2 + MiniLM) baseline reproduction lives in the reproduction script,
-not in the maintained benchmark.
+``form`` selects what the benchmark sends for each scan (TR, 1.49 s):
+
+- ``'image'`` (default): the frame at the middle of the scan, on ``vision:image``.
+  The benchmark records ``neural:IT``.
+- ``'video'``: the 1.49 s clip of the scan, on ``vision:video``. The benchmark
+  records ``neural:IT``.
+- ``'video+audio'``: the clip on ``vision:video`` and the sound of the same
+  1.49 s on ``audio``, in one table row. The benchmark records ``neural:IT``
+  for the video band and ``neural:A1`` for the audio band. A model that cannot
+  give both outputs gets N/A at pre-flight. The default mode is ``'banded'``.
+
+For every form the benchmark stacks ``stimulus_window`` scans of features per
+fMRI sample, shifts them by ``hrf_delay`` scans, fits a ridge regression per
+subject and reports the median per-parcel Pearson r. ``mode`` (see scoring.py)
+selects how the bands combine. The image and video forms give one band
+(``video``), so only ``video_only`` runs for them.
+
+With ``streaming=True`` (video+audio form only) the benchmark presents the
+table one scan at a time: the subject answers one scan before it gets the
+next. With ``streaming=False`` the subject gets the whole table at once. A
+subject without trial memory gives the same features both ways.
+
+``movies`` limits the benchmark to named movies (their ``stimulus_id`` in the
+assembly). Only those movies are cut and scored. This is for short runs.
+
+The published fixed-encoder (Wav2Vec2 + MiniLM) baseline reproduction lives
+in the reproduction script, not in the maintained benchmark.
 """
 import hashlib
+import math
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -133,6 +152,70 @@ def _ffmpeg_cut_clips_one(args):
     return video_path
 
 
+# One sound chunk holds the 1.49 s of one scan: 23840 samples, 16 kHz, mono.
+_SOUND_RATE_HZ = 16000
+_SOUND_SAMPLES = round(TR_SEC * _SOUND_RATE_HZ)
+
+
+def _sound_ffmpeg_command(video_path, out_pattern, n_TRs=None):
+    """The one ffmpeg call that cuts the sound of a movie into one WAV per TR.
+
+    The filter resamples to 16 kHz mono, groups the samples into packets of
+    exactly ``_SOUND_SAMPLES`` and numbers them from 0 (``asetpts``), so the
+    segment muxer cuts at every packet. Chunk ``t`` is the sound of the movie
+    time [t x TR_SEC, (t+1) x TR_SEC), counted from the start of the sound.
+    No picture.
+    """
+    cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-i', str(video_path)]
+    if n_TRs is not None:
+        cmd += ['-t', f'{TR_SEC * n_TRs:.4f}']
+    return cmd + [
+        '-vn', '-af',
+        (f'aresample={_SOUND_RATE_HZ},aformat=sample_fmts=s16:channel_layouts=mono,'
+         f'asetnsamples=n={_SOUND_SAMPLES}:p=0,asetpts=N/SR/TB'),
+        '-c:a', 'pcm_s16le',
+        '-f', 'segment', '-segment_time', f'{TR_SEC}', '-segment_time_delta', '0.01',
+        '-segment_start_number', '0', '-reset_timestamps', '1', '-segment_format', 'wav',
+        str(out_pattern),
+    ]
+
+
+def _wav_sample_count(path) -> int:
+    """Samples in a 16 kHz mono WAV (0 when the file cannot be read or has another form)."""
+    import wave
+    try:
+        with wave.open(str(path)) as wav:
+            if wav.getframerate() != _SOUND_RATE_HZ or wav.getnchannels() != 1:
+                return 0
+            return wav.getnframes()
+    except (OSError, EOFError, wave.Error):
+        return 0
+
+
+def _ffmpeg_cut_sound_one(args):
+    """Worker for the sound-cutting Pool: one ffmpeg call per movie.
+
+    Like ``_ffmpeg_cut_clips_one``: a chunk moves to ``{out_dir}/{t:04d}.wav``
+    only when it has exactly ``_SOUND_SAMPLES`` samples and ``t < n_TRs``. A
+    short chunk at the end of the movie is dropped; the caller fills what is
+    missing.
+    """
+    import shutil
+    import subprocess
+    video_path, out_dir, n_TRs = args
+    out_dir = Path(out_dir)
+    work = out_dir / '_cut'
+    work.mkdir(parents=True, exist_ok=True)
+    subprocess.run(_sound_ffmpeg_command(video_path, work / '%04d.wav', n_TRs),
+                   check=False, capture_output=True)
+    for cut in sorted(work.glob('*.wav')):
+        t = int(cut.stem)
+        if t < n_TRs and _wav_sample_count(cut) == _SOUND_SAMPLES:
+            shutil.move(str(cut), str(out_dir / f'{t:04d}.wav'))
+    shutil.rmtree(work, ignore_errors=True)
+    return video_path
+
+
 def _as_features(assembly):
     """``(values (n_presentations, n_units) float32, neuroid ids or None)``."""
     if 'time_bin' in assembly.dims:
@@ -155,8 +238,17 @@ def _record_features(subject, stimuli, region: str, *, time_bins):
     are put in the order of ``stimuli`` by ``stimulus_id``.
     """
     from brainscore_core.streaming_helpers import neural_response
-    from brainscore.presentation import response_stimulus_ids
     response = neural_response(subject, stimuli, record=region, time_bins=time_bins)
+    return _features_in_order(response, stimuli)
+
+
+def _features_in_order(response, stimuli):
+    """``_as_features`` of ``response`` with its rows in the order of ``stimuli``.
+
+    The response must answer each row of ``stimuli`` exactly once; its rows
+    are matched by ``stimulus_id``.
+    """
+    from brainscore.presentation import response_stimulus_ids
     wanted = [str(s) for s in stimuli['stimulus_id'].values]
     answered = [str(s) for s in response_stimulus_ids(response, wanted)]
     if answered != wanted:
@@ -172,14 +264,24 @@ class _Algonauts2025Base(BenchmarkBase):
                    'video_only', 'audio_only', 'language_only')
     BANDED_ALPHA_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
 
-    # Sends one frame per TR on `vision:image` (form='image'), or one 1.49 s clip per TR
-    # on `vision:video` (form='video'), and asks for the region it records. The
-    # benchmark stacks the TRs itself, so the subject keeps no history across TRs.
-    VALID_FORMS = ('image', 'video')
-    FORM_CHANNEL = {'image': 'vision:image', 'video': 'vision:video'}
+    # Sends one frame per TR on `vision:image` (form='image'), one 1.49 s clip per TR
+    # on `vision:video` (form='video'), or the clip and its sound in one row on
+    # `vision:video` and `audio` (form='video+audio'), and asks for the regions it
+    # records. The benchmark stacks the TRs itself, so the subject keeps no history
+    # across TRs.
+    VALID_FORMS = ('image', 'video', 'video+audio')
+    FORM_CHANNELS = {
+        'image': frozenset({'vision:image'}),
+        'video': frozenset({'vision:video'}),
+        'video+audio': frozenset({'vision:video', 'audio'}),
+    }
+    # The band each recorded region gives (form='video+audio').
+    _BAND_CHANNELS = {'video': 'neural:IT', 'audio': 'neural:A1'}
     required_input_channels = frozenset({'vision:image'})
     requested_output_channels = frozenset({'neural:IT'})
     trial_memory = 'none'
+    _FORM_SUFFIX = {'image': '', 'video': '-video', 'video+audio': '-video-audio'}
+    _MIN_RUNS = 5   # run-held-out 5-fold scoring
 
     def __init__(
         self,
@@ -190,23 +292,38 @@ class _Algonauts2025Base(BenchmarkBase):
         hrf_delay: int = 3,
         excluded_samples_start: int = 5,
         excluded_samples_end: int = 5,
-        mode: str = 'video_only',
+        mode: Optional[str] = None,
         assembly_root: Optional[Path] = None,
         form: str = 'image',
+        streaming: bool = False,
+        movies: Optional[Sequence[str]] = None,
     ):
         if subject not in (1, 2, 3, 5):
             raise ValueError(
                 f"Algonauts subjects are {{1, 2, 3, 5}}; got {subject}.")
-        if mode not in self.VALID_MODES:
-            raise ValueError(
-                f"mode must be one of {self.VALID_MODES}; got {mode!r}.")
-
         if form not in self.VALID_FORMS:
             raise ValueError(
                 f"form must be one of {self.VALID_FORMS}; got {form!r}.")
+        if mode is None:
+            mode = 'banded' if form == 'video+audio' else 'video_only'
+        if mode not in self.VALID_MODES:
+            raise ValueError(
+                f"mode must be one of {self.VALID_MODES}; got {mode!r}.")
+        if streaming and form != 'video+audio':
+            raise ValueError(
+                "streaming=True is for form='video+audio'; the image and video "
+                "forms present the table in one piece.")
+        if movies is not None and (isinstance(movies, str) or not len(movies)):
+            raise ValueError(
+                "movies must be a non-empty list of stimulus ids, for example "
+                "['friends_s01e01a', 'friends_s01e01b'].")
 
         self._form = form
-        self.required_input_channels = frozenset({self.FORM_CHANNEL[form]})
+        self.required_input_channels = self.FORM_CHANNELS[form]
+        if form == 'video+audio':
+            self.requested_output_channels = frozenset(self._BAND_CHANNELS.values())
+        self._streaming = bool(streaming)
+        self._movies = None if movies is None else [str(movie) for movie in movies]
         self._subject = subject
         self._split = split
         self._stimulus_window = stimulus_window
@@ -222,7 +339,7 @@ class _Algonauts2025Base(BenchmarkBase):
         super().__init__(
             identifier=(f'Algonauts2025-{split}-sub{subject:02d}'
                         f'{identifier_suffix}'
-                        f"{'-video' if form == 'video' else ''}"),
+                        f"{self._FORM_SUFFIX[form]}"),
             version=1,
             parent='naturalistic',
             ceiling=Score(1.0),
@@ -236,7 +353,36 @@ class _Algonauts2025Base(BenchmarkBase):
                 assembly_identifier(self._split, self._subject),
                 root=self._assembly_root,
             )
+            if self._movies is not None:
+                self._assembly = self._only_movies(self._assembly)
         return self._assembly
+
+    def _only_movies(self, assembly):
+        """The TRs of ``assembly`` that belong to ``self._movies``.
+
+        Raises ``ValueError`` when a named movie is not in the assembly, or when
+        the movies give too few runs for run-held-out 5-fold scoring (banded
+        mode also needs 5 runs inside every training fold).
+        """
+        stim = np.asarray(assembly['stimulus_id'].values).astype(str)
+        unknown = sorted(set(self._movies) - set(stim))
+        if unknown:
+            raise ValueError(
+                f"movies {unknown} are not in the assembly. Use stimulus ids such as "
+                f"{sorted(set(stim))[:4]}.")
+        keep = np.isin(stim, self._movies)
+        runs = {(s, str(r)) for s, r in zip(stim[keep], np.asarray(
+            assembly['run'].values)[keep])}
+        # A banded fold trains on n - ceil(n / 5) runs and splits them 5 ways again.
+        needed = self._MIN_RUNS
+        if self._mode == 'banded':
+            while needed - math.ceil(needed / self._MIN_RUNS) < self._MIN_RUNS:
+                needed += 1
+        if len(runs) < needed:
+            raise ValueError(
+                f"movies give {len(runs)} runs; mode={self._mode!r} needs at least "
+                f"{needed} for run-held-out 5-fold scoring. Name more movies.")
+        return assembly.isel(presentation=np.flatnonzero(keep))
 
     @property
     def stimulus_set(self):
@@ -280,13 +426,20 @@ class _Algonauts2025Base(BenchmarkBase):
         return ExecutionPlan(
             n_extraction_presentations=int(n_trs),
             metric_observations=metric_obs,
-            metric_feature_width=self._stimulus_window * self.FEATURE_DIM_CAP,
+            metric_feature_width=(self._stimulus_window * self.FEATURE_DIM_CAP
+                                  * len(self._bands())),
             metric_category='ridge',
             runs_ceiling_metric=False,
             recording_target='IT',
-            probe_stimuli=(self._probe_clip_stimuli() if self._form == 'video'
-                           else self._probe_frame_stimuli()),
+            probe_stimuli=(self._probe_frame_stimuli() if self._form == 'image'
+                           else self._probe_clip_stimuli()),
         )
+
+    def _bands(self) -> Dict[str, str]:
+        """``{band: recorded channel}`` for the form of this benchmark."""
+        if self._form == 'video+audio':
+            return dict(self._BAND_CHANNELS)
+        return {'video': 'neural:IT'}
 
     def _probe_frame_stimuli(self):
         """A 1-row image StimulusSet (a blank 224x224 frame) for the memory
@@ -532,8 +685,58 @@ class _Algonauts2025Base(BenchmarkBase):
         out_set.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
         return out_set
 
+    def _sound_dir(self) -> Path:
+        """Cache dir for cut sound chunks. Idempotent across runs."""
+        return self._assembly_root / 'sound'
+
+    def _expand_to_per_TR_clips_and_sound(self, resize: int = 224, n_workers: int = 8):
+        """The clip table with the sound of each clip: one row per (stim_id, TR).
+
+        Sound chunk ``t`` is the sound of the movie time [t x TR_SEC, (t+1) x TR_SEC),
+        16 kHz mono, cut by one ffmpeg call per movie (see ``_sound_ffmpeg_command``)
+        into ``{sound_dir}/{stim_id}/{t:04d}.wav``. Every chunk has the same number
+        of samples. Chunks the movie does not reach are copies of the last chunk.
+        The columns are those of the clip table plus ``audio_path``.
+        """
+        from brainscore_core.supported_data_standards.brainio.stimuli import (
+            StimulusSet)
+
+        clips = self._expand_to_per_TR_clips(resize=resize, n_workers=n_workers)
+        sound_dir = self._sound_dir()
+        sound_dir.mkdir(parents=True, exist_ok=True)
+        stim_to_n_TRs = self._stim_id_to_n_TRs()
+        rows, planned = self._plan_per_TR_files(
+            sound_dir, '.wav', 0, 'audio_path', stim_to_n_TRs)
+        if planned:
+            print(f'  cutting sound for {len(planned)} videos via '
+                  f'ffmpeg (n_workers={n_workers})...')
+            self._run_pool(_ffmpeg_cut_sound_one, planned, n_workers)
+        n_filled = self._fill_trailing_files(sound_dir, '.wav', 0, stim_to_n_TRs)
+        if n_filled > 0:
+            print(f'  filled {n_filled} trailing sound chunks by '
+                  f'duplicating last-cut')
+
+        sound = {row['stimulus_id']: row['audio_path'] for row in rows}
+        missing = [path for path in sound.values() if not Path(path).exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"{len(missing)} of {len(sound)} sound chunks were not cut; the first is "
+                f"{missing[0]}. Check that ffmpeg can read the sound of the movie files.")
+        df = clips.copy()
+        df['audio_path'] = [sound[sid] for sid in df['stimulus_id']]
+        out_set = StimulusSet(df)
+        column_signature = hashlib.md5(
+            '|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
+        out_set.identifier = (
+            f'algonauts2025-{self._split}-sub{self._subject:02d}-clips-sound'
+            f'-{column_signature}')
+        out_set.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
+        return out_set
+
     def _expand_to_per_TR_stimuli(self):
         """The table of what one TR presents, in the form of this benchmark."""
+        if self._form == 'video+audio':
+            return self._expand_to_per_TR_clips_and_sound()
         if self._form == 'video':
             return self._expand_to_per_TR_clips()
         return self._expand_to_per_TR_frames()
@@ -597,6 +800,34 @@ class _Algonauts2025Base(BenchmarkBase):
                 f"returned {n_out}; cannot trust input order.")
         frame_ids = list(frame_stim_set['stimulus_id'])
         return feats, frame_ids
+
+    def _record_bands(self, candidate, table) -> Dict[str, np.ndarray]:
+        """``{band: X}`` for the video+audio form, each X aligned to the assembly.
+
+        One session presents ``table`` (a clip and its sound per row) and asks
+        for every band channel. With ``streaming=True`` the subject gets one row
+        at a time and answers it before the next; otherwise it gets the table
+        at once. Each band is projected to ``FEATURE_DIM_CAP`` like the video
+        band of the other forms (fitted on all input rows).
+        """
+        from brainscore_core.streaming_helpers import stimulus_session
+        bands = self._bands()
+        session = stimulus_session(table, sorted(bands.values()), None,
+                                   time_bins=[(0, int(TR_SEC * 1000))],
+                                   streaming=self._streaming)
+        candidate.participate(session)
+        frame_ids = list(table['stimulus_id'])
+        X_bands = {}
+        for band, channel in bands.items():
+            feats, feature_ids = _features_in_order(session.collect(channel), table)
+            if feats.shape[0] != len(table):
+                raise ValueError(
+                    f"the table has {len(table)} rows but {channel} answered "
+                    f"{feats.shape[0]}; cannot trust input order.")
+            feats = FeatureProjection(self.FEATURE_DIM_CAP).fit_transform(feats, feature_ids)
+            print(f'  {band} band ({channel}): {feats.shape}')
+            X_bands[band] = self._align_features_to_assembly(feats, frame_ids, table)
+        return X_bands
 
     def _align_features_to_assembly(
         self, features: np.ndarray, frame_ids: List[str],
@@ -734,14 +965,19 @@ class _Algonauts2025Base(BenchmarkBase):
                   f'(score is invalid; profiling only)')
         print(f'  {len(frame_stim_set)} frames to extract')
 
-        print(f'  extracting per-frame features (vision tower)...')
-        features, frame_ids = self._extract_per_TR_features(
-            candidate, frame_stim_set)
-        print(f'  features: {features.shape}')
+        if self._form == 'video+audio':
+            print(f'  recording {sorted(self._bands().values())} '
+                  f"({'stream' if self._streaming else 'table'})...")
+            X_bands = self._record_bands(candidate, frame_stim_set)
+        else:
+            print(f'  extracting per-frame features (vision tower)...')
+            features, frame_ids = self._extract_per_TR_features(
+                candidate, frame_stim_set)
+            print(f'  features: {features.shape}')
 
-        print(f'  aligning to assembly...')
-        X = self._align_features_to_assembly(
-            features, frame_ids, frame_stim_set)
+            print(f'  aligning to assembly...')
+            X_bands = {'video': self._align_features_to_assembly(
+                features, frame_ids, frame_stim_set)}
 
         # Build run_idx_per_obs by enumerating unique (stimulus_id, run)
         # in the order they appear on the presentation axis.
@@ -761,11 +997,11 @@ class _Algonauts2025Base(BenchmarkBase):
 
         print(f'  applying stimulus_window={self._stimulus_window} + '
               f'hrf_delay={self._hrf_delay}...')
-        X_stacked = self._apply_stimulus_window_and_hrf(
-            X, run_idx_per_obs)
+        stacked_bands = {band: self._apply_stimulus_window_and_hrf(X, run_idx_per_obs)
+                         for band, X in X_bands.items()}
 
         # Drop the first/last excluded samples per run
-        keep = np.ones(len(X_stacked), dtype=bool)
+        keep = np.ones(len(run_idx_per_obs), dtype=bool)
         for ri in range(n_runs):
             run_mask = run_idx_per_obs == ri
             run_idxs = np.where(run_mask)[0]
@@ -777,17 +1013,17 @@ class _Algonauts2025Base(BenchmarkBase):
             for ki in range(self._excluded_samples_end):
                 if ki < len(run_idxs):
                     keep[run_idxs[-1 - ki]] = False
-        X_stacked = X_stacked[keep]
         Y = self.assembly.values[keep]
         run_idx_kept = run_idx_per_obs[keep]
-        print(f'  after exclusions: X={X_stacked.shape} Y={Y.shape}')
 
-        # Honor self._mode. The candidate's vision tower supplies the
-        # 'video' block; audio / language blocks (needed by concat,
-        # per_modality, banded) come from the candidate's other towers —
-        # supplied by multi-tower extraction (EC2-verified). Modes that
-        # need an absent modality raise a clear error in the scorer.
-        per_modality_stacked = {'video': X_stacked}
+        # Honor self._mode. The image and video forms give the 'video' band
+        # only; the video+audio form gives 'video' (neural:IT) and 'audio'
+        # (neural:A1). Modes that need an absent band raise a clear error in
+        # the scorer.
+        per_modality_stacked = {band: X_stacked[keep]
+                                for band, X_stacked in stacked_bands.items()}
+        print(f'  after exclusions: '
+              f'{ {band: X.shape for band, X in per_modality_stacked.items()} } Y={Y.shape}')
         print(f'  scoring mode={self._mode!r} over bands '
               f'{list(per_modality_stacked)} (run-held-out 5-fold)...')
         per_voxel_r, info = score_encoding_modes(
@@ -812,7 +1048,20 @@ class _Algonauts2025Base(BenchmarkBase):
         score.attrs['hrf_delay'] = self._hrf_delay
         score.attrs['mode'] = self._mode
         score.attrs['bands'] = info.get('bands')
-        if self._form == 'video':
+        score.attrs['presentation'] = 'stream' if self._streaming else 'table'
+        if self._movies is not None:
+            score.attrs['movies'] = list(self._movies)
+        if self._form == 'video+audio':
+            # The clip and the sound of one TR are the stimulus, in one row.
+            score.attrs['pipeline'] = f"algonauts_{self._mode}_clip_sound"
+            score.attrs['form'] = 'video+audio'
+            score.attrs['clip_seconds'] = TR_SEC
+            score.attrs['frames_per_clip'] = CLIP_FRAMES
+            score.attrs['sound_rate_hz'] = _SOUND_RATE_HZ
+            score.attrs['band_channels'] = self._bands()
+            if 'chosen_alphas_per_fold' in info:
+                score.attrs['chosen_alphas_per_fold'] = info['chosen_alphas_per_fold']
+        elif self._form == 'video':
             # The clip of one TR is the stimulus. Nothing is aggregated over frames
             # by the benchmark, and no sound or speech is sent.
             score.attrs['pipeline'] = f"algonauts_{self._mode}_clip"
@@ -837,6 +1086,10 @@ class _Algonauts2025Base(BenchmarkBase):
         held-out prediction sets it False so every TR gets a prediction. ``Y``
         is the recorded BOLD (training) or all-NaN (held-out stub).
         """
+        if self._form == 'video+audio':
+            raise NotImplementedError(
+                "Held-out prediction takes one band; the video+audio form is "
+                "scored on the Friends training split only.")
         frame_stim_set = self._expand_to_per_TR_stimuli()
         features, frame_ids = self._extract_per_TR_features(
             candidate, frame_stim_set, projection=projection,
