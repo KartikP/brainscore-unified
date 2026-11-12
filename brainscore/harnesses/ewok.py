@@ -4,12 +4,13 @@ from typing import Any
 
 
 class EWoKProvider:
-    """Delegate tokenization, log probabilities and choice prompts to EWoK.
+    """Delegate tokenization and log probabilities to EWoK.
 
     ``native_model`` is an instance of ``ewok.evaluate.model.Model`` from the
-    pinned paper environment, or an implementation of its score/complete_choice
-    methods. Put source revision and model settings in subject provenance.
-    The model object remains available for ordinary UMI instrumentation.
+    pinned paper environment, or an implementation of its ``score`` method.
+    Choice mode does not use this provider: it runs on the common channels.
+    Put source revision and model settings in subject provenance. The model
+    object remains available for ordinary UMI instrumentation.
     """
 
     def __init__(self, native_model: Any) -> None:
@@ -17,17 +18,10 @@ class EWoKProvider:
 
     def __call__(self, request: dict) -> dict:
         """Translate a subject's request into a call to the EWoK model evaluator."""
-        if request['operation'] == 'ewok.logprobs':
-            values = self.native_model.score(request['targets'], request['contexts'])
-            values = [float(value) for value in values]
-        elif request['operation'] == 'ewok.choice':
-            values = self.native_model.complete_choice(
-                request['targets'], request['contexts1'], request['contexts2'],
-                'constrained', 'optimized',
-            )
-            values = [str(value) for value in values]
-        else:
+        if request['operation'] != 'ewok.logprobs':
             raise ValueError('Unsupported EWoK provider operation')
+        values = [float(value) for value in
+                  self.native_model.score(request['targets'], request['contexts'])]
         # build_trace_subject(parse=json.loads) turns this JSON text into the
         # response_trace answer list used by the benchmark. This is the shared
         # provider interface, even when the answers are numbers rather than prose.

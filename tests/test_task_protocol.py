@@ -252,6 +252,38 @@ def test_chat_parts_reply_and_likelihood():
     assert set(scores) == {'cat', 'dog'}
 
 
+def test_chat_parts_reply_obeys_the_task_generation_settings():
+    """The Text response's settings decide the generate call; without them it is unchanged."""
+    from brainscore_core.responses import Choice, Prompt, Text
+    from brainscore.model_helpers.replies import chat_parts
+    calls = []
+
+    class Recorder(TinyLM2):
+        def generate(self, input_ids, attention_mask, token_type_ids, **kwargs):
+            calls.append((kwargs, float(torch.rand(1))))
+            return torch.cat([input_ids, torch.tensor([[4, 15, 7]])], dim=1)
+
+    reply, _ = chat_parts(Recorder(), CharProcessor())
+    shown = (('text', 'which'),)
+    # No settings (no response, a Choice, an empty Text): greedy, 64 tokens, as before.
+    for response in (None, Choice(['cat', 'dog']), Text()):
+        assert reply(Prompt(shown, response=response)) == 'dog'
+    assert [kwargs for kwargs, _ in calls] == [{'max_new_tokens': 64, 'do_sample': False}] * 3
+    calls.clear()
+    reply(Prompt(shown, response=Text(max_tokens=512)))
+    reply(Prompt(shown, response=Text(max_tokens=8, temperature=0.0)))
+    reply(Prompt(shown, response=Text(max_tokens=8, temperature=0.7, top_p=0.9, seed=3)))
+    reply(Prompt(shown, response=Text(max_tokens=8, temperature=0.7, top_p=0.9, seed=3)))
+    assert [kwargs for kwargs, _ in calls] == [
+        {'max_new_tokens': 512, 'do_sample': False},
+        {'max_new_tokens': 8, 'do_sample': False},
+        {'max_new_tokens': 8, 'do_sample': True, 'temperature': 0.7, 'top_p': 0.9},
+        {'max_new_tokens': 8, 'do_sample': True, 'temperature': 0.7, 'top_p': 0.9},
+    ]
+    # The seed is set before generation, so the same seed draws the same numbers.
+    assert calls[2][1] == calls[3][1]
+
+
 def test_experiment_saves_every_kind_of_answer(tmp_path):
     from brainscore_core.responses import Choice, Scale, Text
 

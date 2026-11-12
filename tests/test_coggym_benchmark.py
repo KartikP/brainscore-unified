@@ -14,7 +14,7 @@ from brainscore.harnesses import coggym
 from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.contract import Subject
 
-from .test_coggym import reference, make_subject, provider
+from .test_coggym import image_part, reference, make_subject, reply_with_trial
 
 pytestmark = pytest.mark.unit
 
@@ -68,10 +68,10 @@ def test_slider_validation_preserves_native_results_and_gates_score(scored_refer
     assert benchmark.version == 1
     if invalid:
         with pytest.raises(ValueError, match='slider validation rejected 1 answers'):
-            benchmark(make_subject(provider))
+            benchmark(make_subject(reply_with_trial))
         assert json.loads((tmp_path / 'registered/experiment.json').read_text())['status'] == 'failed'
     else:
-        score = benchmark(make_subject(provider))
+        score = benchmark(make_subject(reply_with_trial))
         assert float(score) == 0.375
         assert score.attrs['response_validation'] == validation
     assert json.loads((tmp_path / 'registered/coggym/run-001.json').read_text())['trials'] == native
@@ -94,16 +94,16 @@ def test_environment_checkout_and_explicit_provider_reset(scored_reference, monk
     monkeypatch.setenv('BRAINSCORE_COGGYM_CHECKOUT', str(root))
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
     with pytest.raises(CompatibilityError, match='provider.reset'):
-        benchmark(make_subject(provider))
+        benchmark(make_subject(reply_with_trial))
     assert math.isnan(float(benchmark.ceiling))
 
 
 def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference, tmp_path, monkeypatch):
     root, _ = scored_reference
     resets, calls = [], []
-    def capture(request):
-        calls.append(request)
-        return provider(request)
+    def capture(prompt):
+        calls.append(prompt)
+        return reply_with_trial(prompt)
     benchmark = brainscore.load_benchmark(
         'CogGym.Hu2023Fine.exp1', checkout=root, reset=resets.append,
         repetitions=2, max_tokens=1234, output_dir=tmp_path / 'scored',
@@ -116,7 +116,11 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     assert score.attrs['configuration']['repetitions'] == 2
     assert resets == [1, 2]
     assert len(calls) == 6
-    assert all(call['max_tokens'] == 1234 for call in calls)
+    # The benchmark's settings reach the reply on the task's Text response.
+    assert all(call.response.max_tokens == 1234 for call in calls)
+    assert all(call.response.temperature == 1.0 for call in calls)
+    assert score.attrs['input_adaptation']['kind'] == 'subject_prompt'
+    assert 'system text' in score.attrs['input_adaptation']['reason']
     assert score.attrs['benchmark_identifier'] == benchmark.identifier
     assert '.repeats-2.tokens-1234.temperature-1.0' in benchmark.identifier
     assert (tmp_path / 'scored/coggym/analysis.json').is_file()
@@ -128,12 +132,11 @@ def test_protocol_and_plain_runner_produce_identical_reference_artifacts(scored_
     direct = coggym.CogGymRunner(root, experiment='Hu2023Fine/exp1', model='fixture', max_tokens=512, repetitions=5)
     from types import SimpleNamespace
     def complete(system, messages, model, temperature, max_tokens):
-        return provider(dict(system=system, messages=messages, model=model,
-                             temperature=temperature, max_tokens=max_tokens))
+        return {'text': messages[0]['content'], 'reasoning': None, 'token_usage': None}
     direct.run(SimpleNamespace(complete_with_metadata=complete),
                output_dir=tmp_path / 'direct', reset=lambda repetition: None)
     result = Experiment(
-        subject=make_subject(provider),
+        subject=make_subject(reply_with_trial),
         protocol=benchmark.protocol(model='fixture', reset=lambda repetition: None),
         tools=[RecordInputsOutputs()], output_dir=tmp_path / 'registered',
     ).run()
@@ -141,7 +144,8 @@ def test_protocol_and_plain_runner_produce_identical_reference_artifacts(scored_
     wrapped = json.loads((result.directory / 'coggym/run-001.json').read_text())
     assert wrapped == plain
     assert float(result.value) == 0.375
-    assert sum(event['kind'] == 'input' for event in result.record.events()) == 15
+    assert sum(event['kind'] == 'input' and event['payload'].channel == 'text'
+               for event in result.record.events()) == 15
 
 
 @pytest.mark.parametrize('value', [None, float('nan'), float('inf')])
@@ -154,7 +158,7 @@ def test_undefined_score_fails_and_preserves_results(scored_reference, tmp_path,
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
         reset=lambda repetition: None, output_dir=tmp_path / 'run')
     with pytest.raises(ValueError):
-        benchmark(make_subject(provider))
+        benchmark(make_subject(reply_with_trial))
     assert (tmp_path / 'run/coggym/run-001.json').is_file()
     assert json.loads((tmp_path / 'run/experiment.json').read_text())['status'] == 'failed'
 
@@ -179,19 +183,21 @@ def test_video_registration_preserves_still_image_instructions(reference):
     }))
     cli.build_messages = lambda trial, experiment: ('system', [{
         'role': 'user', 'content': [{'type': 'text', 'text': 'instructions'},
-                                 {'type': 'image'}, {'type': 'video'}],
+                                 image_part(), {'type': 'video', 'path': '/clip.mp4'}],
     }])
     benchmark = brainscore.load_benchmark('CogGym.Fu2025Hierarchical.exp1', checkout=root)
     protocol = benchmark.protocol(model='fixture', reset=lambda repetition: None)
     assert set(protocol.metadata['modalities']) == {'text', 'image', 'video'}
+    # The still images and the clips are both required inputs.
+    assert benchmark.required_input_channels == {'instruction', 'text', 'vision:image', 'vision:video'}
 
 
 class _ParticipateOnlySubject(Subject):
     """A contract subject: declarations, participate and reset; no process()."""
 
     identifier = "participate-only"
-    in_channels = frozenset({"generation_request"})
-    out_channels = frozenset({"response_trace"})
+    in_channels = frozenset({"instruction", "text"})
+    out_channels = frozenset({"behavior:text"})
 
     def __init__(self):
         self.requests = []
@@ -200,10 +206,7 @@ class _ParticipateOnlySubject(Subject):
         from brainscore_core.streaming import StreamEvent
         while (event := session.next_input()) is not None:
             self.requests.append(event.payload)
-            raw = provider(event.payload)
-            session.respond(StreamEvent('response_trace', {
-                'raw': raw, 'answer': raw['text'], 'valid': True,
-                'parse_error': None, 'provenance': {}}, event.t_ms, dict(event.meta)))
+            session.respond(StreamEvent('behavior:text', event.payload, event.t_ms, dict(event.meta)))
 
     def reset(self):
         pass
@@ -219,10 +222,11 @@ def test_participate_only_subject_is_scored(scored_reference, tmp_path):
     assert float(score) == 0.375
     assert len(subject.requests) == 15
     events = _record_events(tmp_path / "run")
-    inputs = [event['payload'] for event in events if event['kind'] == 'input']
+    inputs = [event['payload'] for event in events
+              if event['kind'] == 'input' and event['payload'].channel == 'text']
     outputs = [event['payload'] for event in events if event['kind'] == 'output']
     assert len(inputs) == len(outputs) == 15
-    assert all(output.channel == 'response_trace' for output in outputs)
+    assert all(output.channel == 'behavior:text' for output in outputs)
 
 
 def test_reset_is_required_before_any_request(scored_reference):
@@ -239,10 +243,10 @@ def _record_events(directory):
     return read_events(directory)
 
 
-def test_declares_its_request_in_and_a_trace_out(scored_reference):
+def test_declares_the_instruction_and_text_in_and_a_written_answer_out(scored_reference):
     from tests.benchmark_declarations import assert_declares, assert_preflight
     root, _ = scored_reference
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
                                           reset=lambda repetition: None)
-    assert_declares(benchmark, {'generation_request'}, {'response_trace'})
+    assert_declares(benchmark, {'instruction', 'text'}, {'behavior:text'})
     assert_preflight(benchmark)

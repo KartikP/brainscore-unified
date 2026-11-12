@@ -9,9 +9,8 @@ from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
-from brainscore.harnesses.coggym import CogGymRunner, GENERATION_CHANNELS
+from brainscore.harnesses.coggym import CogGymRunner, _PROMPT_NOTE, _require_every_input
 from brainscore_core.compatibility import CompatibilityError
-from brainscore.model_helpers.response_trace import register_trace_channels
 
 from . import EXPERIMENTS
 
@@ -35,15 +34,29 @@ class CogGymBenchmark(BenchmarkBase):
 
     Supply a pinned checkout or set BRAINSCORE_COGGYM_CHECKOUT. ``reset`` is the
     provider's reset(repetition) callback; it must preserve instrumentation.
-    Scoring needs it: give it here or to ``protocol``. Any subject that answers
-    response-trace sessions through ``participate`` can be scored.
+    Scoring needs it: give it here or to ``protocol``.
     One repetition is a preliminary evaluation, not a leaderboard replication.
+
+    Each CogGym trial reaches the subject on the common channels: the system
+    text as the instruction, the message parts (``text``, ``vision:image``,
+    ``vision:video``) in CogGym's order, and the temperature and length as
+    settings on a ``Text`` response. The subject answers on ``behavior:text``
+    and CogGym parses the answer. A subject must take every kind of part the
+    experiment shows; otherwise the benchmark is N/A for it before any compute.
+    A ``BrainScoreModel`` with a ``reply`` part and the matching inputs runs it.
+
+    Scores can differ a little from scores made with CogGym's own client. The
+    subject builds its own prompt from the instruction and the parts, so a chat
+    model can place the instruction in the user turn where CogGym's client
+    sends a separate system text. ``score.attrs['input_adaptation']`` names this
+    cause.
     """
 
     # Declare the messages the subject must accept and return before a run starts.
-    required_input_channels = frozenset({'generation_request'})
-    requested_output_channels = frozenset({'response_trace'})
-    # Each request carries the whole conversation so far; the subject keeps no history.
+    # An instance replaces the inputs with the parts its experiment shows.
+    required_input_channels = frozenset({'instruction', 'text'})
+    requested_output_channels = frozenset({'behavior:text'})
+    # Each call is one trial; the subject keeps no history between trials.
     trial_memory = 'none'
     leaderboard_eligible = False
 
@@ -58,7 +71,6 @@ class CogGymBenchmark(BenchmarkBase):
         reset: Callable[[int], None] | None = None,
         output_dir: str | Path | None = None,
     ) -> None:
-        register_trace_channels()
         if experiment not in EXPERIMENTS:
             raise ValueError(f'Unknown public CogGym experiment: {experiment}')
         if checkout is None:
@@ -68,7 +80,6 @@ class CogGymBenchmark(BenchmarkBase):
             raise TypeError('reset must be a provider reset(repetition) callback')
         self.experiment = experiment
         self.modality = EXPERIMENTS[experiment]
-        self.required_input_channels = frozenset({GENERATION_CHANNELS[self.modality]})
         self._reset = reset
         self._output_dir = Path(output_dir) if output_dir is not None else None
         self._configuration = {
@@ -85,7 +96,9 @@ class CogGymBenchmark(BenchmarkBase):
             'max_tokens': max_tokens,
         }
         # Validate the reference and all prompts before the caller loads a model.
-        CogGymRunner(model='preflight', **self._configuration)
+        # The trials decide which kinds of part a subject must take.
+        preflight = CogGymRunner(model='preflight', **self._configuration)
+        self.required_input_channels = preflight.required_input_channels
         ceiling = Score(float('nan'))
         ceiling.attrs['status'] = 'not_estimated'
         identifier = f'CogGym.{experiment.replace("/", ".")}'
@@ -123,6 +136,7 @@ class CogGymBenchmark(BenchmarkBase):
         # directory and artifact registration). CogGym still owns the trial loop.
         def evaluate(subject, context):
             check_channel_compatibility(subject, self)
+            _require_every_input(subject, self)
             native = runner.protocol(reset=_require_reset(reset))
             # Call evaluate(), not run(): the outer protocol already owns the run.
             # The runner records each request and answer as one session, in its
@@ -163,6 +177,7 @@ class CogGymBenchmark(BenchmarkBase):
                 evaluation_scope='public_subset',
                 reference_profile=self._reference_profile,
                 repetition_note='Five repeats match the reference README example, not a guarantee of leaderboard replication.',
+                input_adaptation=dict(_PROMPT_NOTE),
             )
             return score
 
@@ -177,6 +192,7 @@ class CogGymBenchmark(BenchmarkBase):
     def __call__(self, candidate: Subject) -> Score:
         """Run benchmark(subject) with input/output recording and return its Score."""
         check_channel_compatibility(candidate, self)
+        _require_every_input(candidate, self)
         protocol = self.protocol(model=candidate.identifier, reset=_require_reset(self._reset))
         directory = self._output_dir
         if directory is None:

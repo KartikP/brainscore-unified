@@ -77,4 +77,22 @@ the authors' distribution terms. A successful build does not establish paper
 replication; the paper archive currently yields 4,372 items, versus 4,374 stated
 in the paper.
 
-For model setup, scoring, and tools, see [the EWoK guide](../../../docs/archive/ewok.md).
+## 4. Run choice mode with your model
+
+`EWoK-core-1.0-choice` runs any model that takes `text` and answers on
+`behavior:choice`: a `BrainScoreModel` with a `reply`, `likelihood` or `answer`
+part. Each question is one stimulus row whose text is EWoK's own choice prompt;
+the task's response is `Choice(labels=('1', '2'))`.
+
+```python
+benchmark = brainscore.load_benchmark("EWoK-core-1.0-choice")
+score = benchmark(model)
+```
+
+Choice scores can differ from EWoK's own evaluator. The model builds its own
+prompt (a chat model adds its template, and the choice adds the directive
+"Answer with exactly one of: 1, 2.") and decodes by its own rule, where EWoK
+sends the raw prompt and limits greedy decoding to 1 or 2. The score says so in
+`score.attrs['input_adaptation']`.
+
+For the log-probability mode and for tools, see [the EWoK guide](../../../docs/archive/ewok.md).

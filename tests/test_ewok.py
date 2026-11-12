@@ -15,6 +15,7 @@ from brainscore.benchmarks.ewok.benchmark import logprob_accuracy
 from brainscore.harnesses.ewok import EWoKProvider
 from brainscore.model_helpers.response_trace import build_trace_subject
 from brainscore.experiments import Experiment, RecordInputsOutputs
+from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject
 
 pytestmark = pytest.mark.unit
@@ -38,9 +39,25 @@ def prepared(native, tmp_path):
 
 
 def subject(provider):
+    """A log-probability subject; choice mode uses ``chooser`` instead."""
     return build_trace_subject('fixture', provider=provider, parse=json.loads,
                                provenance={'model': 'synthetic-test'},
-                               input_channels=['conditional_logprob_request', 'context_choice_request'])
+                               input_channels=['conditional_logprob_request'])
+
+
+def scenario(prompt):
+    """The scenario of the test example in EWoK's choice prompt."""
+    return prompt.text().split('# TEST EXAMPLE')[1].split('## Scenario\n"')[1].split('"\n')[0]
+
+
+def native_choice(prompt):
+    """Answer as a perfect EWoK model: context 1 for target A, context 2 for target B."""
+    return '1' if ' A ' in scenario(prompt) else '2'
+
+
+def chooser(reply=native_choice):
+    """A normal model with a ``reply`` part: the common channels, no EWoK channel."""
+    return BrainScoreModel('fixture', supported_modalities={'text'}, reply=reply)
 
 
 def test_data_and_benchmark_registrations():
@@ -186,9 +203,6 @@ class NativeModel:
     def score(self,targets,contexts):
         self.calls.append((targets,contexts))
         return [-1.0 if (' A ' in t)==(' A ' in c) else -2.0 for t,c in zip(targets,contexts)]
-    def complete_choice(self,targets,contexts1,contexts2,gen_type,prompt_type):
-        assert (gen_type,prompt_type)==('constrained','optimized')
-        return ['1' if ' A ' in t else '2' for t in targets]
 
 
 @pytest.mark.parametrize('mode',['logprobs','choice'])
@@ -199,34 +213,77 @@ def test_registered_benchmark_through_score_and_tools(mode, prepared, tmp_path, 
         requests.append(request)
         assert not any(k in request for k in ('expected','labels','target_number'))
         return provider(request)
+    def reply(prompt):
+        requests.append(prompt)
+        assert prompt.names == ('text', 'directive')
+        return native_choice(prompt)
+    make = (lambda: subject(record)) if mode == 'logprobs' else (lambda: chooser(reply))
     benchmark=brainscore.load_benchmark(f'EWoK-core-1.0-{mode}',root=prepared,
         batch_size=2,output_dir=tmp_path/'scored')
-    value=brainscore.score(subject(record),benchmark,check_mem=False)
+    value=brainscore.score(make(),benchmark,check_mem=False)
     assert float(value)==1 and value.attrs['normalized'] is False
     assert value.attrs['items']==3 and value.attrs['questions']==6
     assert value.attrs['paper_replication'] is False
-    run=Experiment(subject=subject(provider),protocol=benchmark.protocol(),
+    sent=len(requests)
+    run=Experiment(subject=make(),protocol=benchmark.protocol(),
         tools=[RecordInputsOutputs()],output_dir=tmp_path/'tools').run()
     assert float(run.value)==float(value)
-    assert sum(e['kind']=='input' for e in run.record.events())==len(requests)
+    inputs=[e for e in run.record.events() if e['kind']=='input' and e['payload'].channel!='control']
+    # Log probabilities: one request per batch and pair. Choice: one text row per question.
+    assert len(inputs)==len(requests)-sent==sent
     assert (run.directory/'item-scores.json').exists()
+    if mode=='choice':
+        assert value.attrs['input_adaptation']['kind']=='subject_prompt'
+        assert all(e['payload'].channel=='text' for e in inputs)
+    else:
+        assert 'input_adaptation' not in value.attrs
 
 
 def test_equal_weight_versions_not_pooled_rows(prepared, tmp_path):
-    def provider(request):
-        values=['2' if ' A ' in t else '1' for t in request['targets']]
+    def reply(prompt):
+        target=scenario(prompt)
         # Only version 1 (item 2) is correct: 1/2 over versions, not 1/3 over rows.
-        for i,t in enumerate(request['targets']):
-            if t.endswith('2'):values[i]='1' if ' A ' in t else '2'
-        return {'text':json.dumps(values)}
+        if target.endswith('2'):return native_choice(prompt)
+        return '2' if ' A ' in target else '1'
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
-    assert float(b(subject(provider)))==.5
+    assert float(b(chooser(reply)))==.5
 
 
 def test_invalid_choice_counts_as_wrong_not_dropped(prepared, tmp_path):
-    def provider(request):return {'text':json.dumps(['Reasoning says 1 but answer is 2']*len(request['targets']))}
+    def reply(prompt):return 'Reasoning says 1 but answer is 2'
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
-    value=b(subject(provider));assert float(value)==0;assert value.attrs['invalid_answers']==6
+    value=b(chooser(reply));assert float(value)==0;assert value.attrs['invalid_answers']==6
+
+
+def test_choice_prompt_is_ewoks_own_text_then_the_directive(prepared, tmp_path):
+    """The subject sees EWoK's prompt as the trial's text, then the choice directive."""
+    from brainscore.benchmarks.ewok.benchmark import _choice_prompt
+    prompts=[]
+    b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,batch_size=8)
+    b(chooser(lambda prompt: prompts.append(prompt) or native_choice(prompt)))
+    rows=b._rows
+    assert [p.parts for p in prompts]==[
+        (('text',_choice_prompt(r[f'Target{t}'],r['Context1'],r['Context2'])),
+         ('text','Answer with exactly one of: 1, 2.')) for t in (1,2) for r in rows]
+    first=prompts[0].parts[0][1]
+    assert first.startswith('# INSTRUCTIONS\n\nIn this study')
+    assert first.endswith('"\n\n## Task\nWhich context makes more sense given the scenario? '
+                          'Please answer using either "1" or "2".\n\n## Response\n')
+    assert '1. "fixture context A 0"\n2. "fixture context B 0"' in first
+    assert all(p.response.labels==('1','2') for p in prompts)
+
+
+@pytest.mark.parametrize('parts', [{'likelihood'}, {'answer'}])
+def test_likelihood_or_answer_parts_also_run_choice(prepared, tmp_path, parts):
+    """Any part that gives behavior:choice runs it, not only a reply."""
+    def likelihood(prompt, candidates):
+        return {label: (0. if label==native_choice(prompt) else -1.) for label in candidates}
+    def answer(stimulus_row, instruction, label_set):
+        return '1' if ' A ' in stimulus_row['text'].split('# TEST EXAMPLE')[1].split('## Scenario')[1] else '2'
+    model=BrainScoreModel('fixture', supported_modalities={'text'},
+                          **({'likelihood':likelihood} if 'likelihood' in parts else {'answer':answer}))
+    b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
+    assert float(b(model))==1
 
 
 def test_failure_preserves_failed_run(prepared, tmp_path):
@@ -326,9 +383,9 @@ def test_real_hooks_change_score_and_restore(prepared, tmp_path):
 
 
 class _ParticipateOnlyReader(Subject):
-    """Answers EWoK requests through participate only: no process, no private state."""
+    """Answers EWoK log-probability requests through participate only: no process, no private state."""
     identifier = 'participate-only-ewok'
-    in_channels = {'conditional_logprob_request', 'context_choice_request'}
+    in_channels = {'conditional_logprob_request'}
     out_channels = {'response_trace'}
 
     def __init__(self, provider):
@@ -345,16 +402,46 @@ class _ParticipateOnlyReader(Subject):
                 'provenance': {}}, event.t_ms, dict(event.meta)))
 
 
+class _ParticipateOnlyChooser(Subject):
+    """Answers EWoK choice prompts on behavior:choice through participate only."""
+    identifier = 'participate-only-ewok-choice'
+    in_channels = {'text'}
+    out_channels = {'behavior:choice'}
+
+    def __init__(self):
+        self.sessions = 0
+
+    def participate(self, session):
+        from brainscore_core.streaming import StreamEvent
+        from brainscore_core.responses import Prompt
+        from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+        self.sessions += 1
+        assert tuple(session.outputs) == ('behavior:choice',)
+        labels = list(session.task.response.labels)
+        while (event := session.next_input()) is not None:
+            chosen = native_choice(Prompt((('text', event.payload),)))
+            values = [[1.0 if label == chosen else 0.0 for label in labels]]
+            session.respond(StreamEvent('behavior:choice', BehavioralAssembly(
+                values, coords={'stimulus_id': ('presentation', [event.meta['stimulus_id']]),
+                                'choice': labels}, dims=['presentation', 'choice']),
+                event.t_ms, dict(event.meta)))
+
+    def reset(self):
+        pass
+
+
 @pytest.mark.parametrize('mode', ['logprobs', 'choice'])
 def test_participate_only_subject_scores_like_the_trace_subject(mode, prepared, tmp_path):
+    """A plain contract subject scores like a BrainScoreModel (choice) or a trace subject (logprobs)."""
     provider = EWoKProvider(NativeModel())
-    reader = _ParticipateOnlyReader(provider)
+    reader = _ParticipateOnlyReader(provider) if mode == 'logprobs' else _ParticipateOnlyChooser()
     assert not hasattr(reader, 'process')
     benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared,
                                           batch_size=2, output_dir=tmp_path / 'stub')
     value = benchmark(reader)
     reference = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared, batch_size=2,
-                                          output_dir=tmp_path / 'trace')(subject(provider))
+                                          output_dir=tmp_path / 'trace')(
+        subject(provider) if mode == 'logprobs' else chooser())
     assert float(value) == float(reference) == 1
     # One session per request: two batches, four (logprobs) or two (choice) requests each.
     assert reader.sessions == 2 * (4 if mode == 'logprobs' else 2)
@@ -377,7 +464,7 @@ def _streaming_provider(provider):
 
 
 @pytest.mark.parametrize('streaming', [False, True])
-@pytest.mark.parametrize('mode', ['logprobs', 'choice'])
+@pytest.mark.parametrize('mode', ['logprobs'])
 def test_same_subject_old_process_path_and_participate_give_identical_item_scores(
         mode, streaming, prepared, tmp_path, monkeypatch):
     import brainscore.benchmarks.ewok.benchmark as ewok
@@ -385,7 +472,7 @@ def test_same_subject_old_process_path_and_participate_give_identical_item_score
     candidate = build_trace_subject(
         'fixture', provider=_streaming_provider(provider) if streaming else provider,
         parse=json.loads, provenance={'model': 'synthetic-test'}, streaming=streaming,
-        input_channels=['conditional_logprob_request', 'context_choice_request'])
+        input_channels=['conditional_logprob_request'])
 
     def run(name):
         benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared,
@@ -513,7 +600,7 @@ def _stateful_intervened_subject():
                                    perturbation=change.perturbation, applied_at=0), cleanup
 
     register_trace_channels()
-    capability = _capability(('conditional_logprob_request', 'context_choice_request'))
+    capability = _capability(('conditional_logprob_request',))
     register_capability(capability)
     model = BrainScoreModel('stateful-fixture', intervention=intervention, capability_config={
         capability.identifier: {'provider': provider, 'parse': json.loads,
@@ -550,10 +637,38 @@ def test_stateful_subject_inside_a_caller_intervention_scores_like_the_old_path(
     assert repr(float(new_score)) == repr(float(old_score))
 
 
-@pytest.mark.parametrize('mode, channel', [('logprobs', 'conditional_logprob_request'),
-                                           ('choice', 'context_choice_request')])
-def test_declares_its_request_in_and_a_trace_out(mode, channel, prepared):
+@pytest.mark.parametrize('mode, inputs, outputs', [
+    ('logprobs', {'conditional_logprob_request'}, {'response_trace'}),
+    ('choice', {'text'}, {'behavior:choice'}),
+])
+def test_declares_its_inputs_and_outputs(mode, inputs, outputs, prepared):
     from tests.benchmark_declarations import assert_declares, assert_preflight
     benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
-    assert_declares(benchmark, {channel}, {'response_trace'})
+    assert_declares(benchmark, inputs, outputs)
     assert_preflight(benchmark)
+
+
+def test_choice_item_scores_match_the_native_choice_answers(prepared, tmp_path):
+    """Choice mode on the common channels gives the item scores the old
+    context_choice_request path gave for the same native answers (all correct)."""
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-choice', root=prepared, batch_size=2,
+                                          output_dir=tmp_path / 'run')
+    value = benchmark(chooser())
+    items = json.loads((tmp_path / 'run' / 'item-scores.json').read_text())
+    assert [(item['accuracy'], item['invalid_answers']) for item in items] == [(1.0, 0)] * 3
+    assert value.attrs['version_scores'] == {'0': 1.0, '1': 1.0}
+    assert value.attrs['invalid_answers'] == 0
+
+
+def test_choice_replay_rebuilds_one_session_per_request(prepared, tmp_path):
+    from brainscore.experiments import compare_outputs, replay_sessions
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-choice', root=prepared, batch_size=2)
+    original = Experiment(subject=chooser(), protocol=benchmark.protocol(),
+                          tools=[RecordInputsOutputs()], output_dir=tmp_path / 'original').run()
+    calls = []
+    counting = chooser(lambda prompt: calls.append(prompt) or native_choice(prompt))
+    replay = Experiment(subject=counting, protocol=replay_sessions(original.directory),
+                        tools=[RecordInputsOutputs()], output_dir=tmp_path / 'replay').run()
+    # Two batches, two questions per item: six prompts in four sessions.
+    assert len(calls) == 6
+    assert compare_outputs(original.directory, replay.directory)['equal']

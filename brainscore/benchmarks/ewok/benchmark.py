@@ -1,4 +1,18 @@
-"""EWoK accuracy through participate(), with ordinary Experiment tools."""
+"""EWoK accuracy through participate(), with ordinary Experiment tools.
+
+Choice mode runs on the common channels. Each question is one stimulus row
+whose ``text`` is EWoK's own choice prompt (instructions, two worked examples,
+the two contexts numbered 1 and 2, the scenario and a response cue). The task's
+response is ``Choice(labels=('1', '2'))`` and the subject answers on
+``behavior:choice``. Any subject with a ``reply``, ``likelihood`` or ``answer``
+part and the ``text`` input runs it.
+
+Choice scores can differ from EWoK's own evaluator. The subject builds its own
+prompt (a chat model adds its template, and the choice adds its directive
+"Answer with exactly one of: 1, 2.") and decodes by its own rule, where EWoK
+sends the raw prompt and limits greedy decoding to 1 or 2.
+``score.attrs['input_adaptation']`` names this cause.
+"""
 from collections import defaultdict
 import hashlib
 import json
@@ -7,14 +21,57 @@ from numbers import Real
 from pathlib import Path
 import tempfile
 
+import numpy as np
+import pandas as pd
+
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.compatibility import check_channel_compatibility
+from brainscore_core.contract import TaskContext
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
+from brainscore_core.responses import Choice
 from brainscore_core.streaming import Session, StreamEvent
+from brainscore_core.streaming_helpers import stimulus_session
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
 from brainscore.instrumentation import observed
 from brainscore.model_helpers.response_trace import register_trace_channels
+from brainscore.presentation import response_stimulus_ids
+
+
+# Why a choice score can differ from EWoK's own evaluator (Contract Rule 3.9).
+_CHOICE_NOTE = {
+    'kind': 'subject_prompt',
+    'reason': ("The subject builds its own prompt from EWoK's prompt text and the choice "
+               'directive, and decodes by its own rule. EWoK sends the raw prompt and limits '
+               'greedy decoding to 1 or 2.'),
+}
+
+
+def _choice_item(heading, context1, context2, target, response):
+    return (f'\n\n# {heading}\n\n## Contexts\n1. "{context1}"\n2. "{context2}"\n\n'
+            f'## Scenario\n"{target}"\n\n## Task\nWhich context makes more sense given the '
+            'scenario? Please answer using either "1" or "2".\n\n'
+            f'## Response\n{response}')
+
+
+def _choice_prompt(target: str, context1: str, context2: str) -> str:
+    """EWoK's choice prompt with two worked examples, character for character.
+
+    Copied from ``format_choice_prompt(..., 'optimized')`` in
+    ``ewok/evaluate/util.py`` of the ewok-paper repository at revision
+    9e40d30e242925866ee50448f80a13bcdf971318.
+    """
+    prompt = ('# INSTRUCTIONS\n\nIn this study, you will see multiple examples. In each '
+              'example, you will be given two contexts and a scenario. Your task is to read '
+              'the two contexts and the subsequent scenario, and pick the context that makes '
+              'more sense considering the scenario that follows. The contexts will be numbered '
+              '"1" or "2". You must answer using "1" or "2" in your response.\n')
+    prompt += _choice_item('TRIAL EXAMPLE', 'The bag is full of blocks.',
+                           'The bag is full of balls.', 'I drew a ball from the bag.', '2\n')
+    prompt += _choice_item('TRIAL EXAMPLE', 'The boy likes cookies.',
+                           'The boy does not like cookies.', 'The boy chose to eat a cookie.', '1\n')
+    return prompt + _choice_item('TEST EXAMPLE', context1, context2, target, '')
 
 
 def logprob_accuracy(values: list[float]) -> float:
@@ -66,6 +123,39 @@ def _ask(subject: Subject, context, request: StreamEvent, repetition: int) -> St
     return responses[-1]
 
 
+def _choose(subject: Subject, context, stimuli, repetition: int) -> list:
+    """Show each prompt in ``stimuli`` and return the chosen label of each row.
+
+    One ``stimulus_session`` asks for ``behavior:choice`` with the task
+    ``Choice(labels=('1', '2'))``; each row is its own trial. The session is
+    one repetition of the record, as in ``_ask``. A row the subject could not
+    answer (no valid label) gives ``None``.
+    """
+    task = TaskContext(response=Choice(labels=('1', '2')), trial_memory='none')
+    session = stimulus_session(stimuli, ['behavior:choice'], task)
+    with context.repetition(repetition):
+        context.publish('session_context', {
+            name: getattr(session, name) for name in Session.context_fields
+            if getattr(session, name, None) is not None})
+        with observed(session, context):
+            subject.participate(session)
+    if not any(event.channel == 'behavior:choice' for event in session.emitted):
+        raise TypeError('EWoK choice requires a behavior:choice answer')
+    answers = session.collect('behavior:choice')
+    if 'choice' not in getattr(answers, 'dims', ()):
+        raise TypeError('EWoK choice requires one row of label scores per question')
+    requested = list(stimuli['stimulus_id'])
+    order = {stimulus_id: row for row, stimulus_id in
+             enumerate(response_stimulus_ids(answers, requested))}
+    labels = [str(label) for label in answers['choice'].values]
+    values = np.asarray(answers.transpose('presentation', 'choice').values, dtype=float)
+    chosen = []
+    for stimulus_id in requested:
+        row = values[order[stimulus_id]]
+        chosen.append(labels[int(row.argmax())] if np.isfinite(row).all() else None)
+    return chosen
+
+
 def _mean_by_version(rows: list[dict]) -> tuple[float, dict]:
     """Average items within each dataset version, then weight versions equally."""
     groups = defaultdict(list)
@@ -76,10 +166,15 @@ def _mean_by_version(rows: list[dict]) -> tuple[float, dict]:
 
 
 class EWoKBenchmark(BenchmarkBase):
-    """Score a prepared local EWoK dataset; no automatic model/data downloads."""
+    """Score a prepared local EWoK dataset; no automatic model/data downloads.
 
-    # Declare the messages the subject must accept and return before a run starts.
-    requested_output_channels = frozenset({'response_trace'})
+    ``mode='choice'`` shows EWoK's choice prompt as ``text`` and asks for
+    ``behavior:choice`` between the labels 1 and 2 (see the module docstring
+    for why its numbers can differ from EWoK's own evaluator).
+    ``mode='logprobs'`` still sends ``conditional_logprob_request`` and reads
+    ``response_trace``.
+    """
+
     # Each request is a self-contained batch of items; the subject keeps no history.
     trial_memory = 'none'
     leaderboard_eligible = False
@@ -113,9 +208,11 @@ class EWoKBenchmark(BenchmarkBase):
         self._output_dir = Path(output_dir) if output_dir is not None else None
         self._mode = mode
         self._subset = domains is not None
-        self.required_input_channels = frozenset({
-            'conditional_logprob_request' if mode == 'logprobs' else 'context_choice_request',
-        })
+        # Declare the messages the subject must accept and return before a run starts.
+        self.required_input_channels = frozenset(
+            {'conditional_logprob_request'} if mode == 'logprobs' else {'text'})
+        self.requested_output_channels = frozenset(
+            {'response_trace'} if mode == 'logprobs' else {'behavior:choice'})
         # Local exports and domain subsets must never share a score identity.
         identifier = f'EWoK-core-1.0-{mode}-data-{manifest["items_sha256"][:16]}'
         if domains is not None:
@@ -154,22 +251,27 @@ class EWoKBenchmark(BenchmarkBase):
                 # Choice requests show both contexts; 0 means neither is selected.
                 pairs = ((1, 1), (1, 2), (2, 1), (2, 2)) if self._mode == 'logprobs' else ((1, 0), (2, 0))
                 for target, context_number in pairs:
+                    if self._mode == 'choice':
+                        # One row per item: EWoK's prompt for this target. Expected
+                        # answers stay in the benchmark.
+                        stimuli = StimulusSet(pd.DataFrame({
+                            'stimulus_id': [f'{r["item_id"]}.target{target}' for r in batch],
+                            'text': [_choice_prompt(r[f'Target{target}'], r['Context1'], r['Context2'])
+                                     for r in batch],
+                        }))
+                        returned[target, context_number] = _choose(
+                            subject, context, stimuli, repetition=requests_sent)
+                        requests_sent += 1
+                        continue
                     request = {
-                        'operation': f'ewok.{self._mode}',
+                        'operation': 'ewok.logprobs',
                         'targets': [r[f'Target{target}'] for r in batch],
+                        'contexts': [r[f'Context{context_number}'] for r in batch],
                     }
-                    if self._mode == 'logprobs':
-                        request['contexts'] = [r[f'Context{context_number}'] for r in batch]
-                    else:
-                        request.update(
-                            contexts1=[r['Context1'] for r in batch],
-                            contexts2=[r['Context2'] for r in batch],
-                            gen_type='constrained', prompt_type='optimized',
-                        )
                     # Route through participate so tools can observe or intervene.
                     # Expected answers and target-number labels stay in the benchmark.
                     response = _ask(subject, context, StreamEvent(
-                        next(iter(self.required_input_channels)), request, None,
+                        'conditional_logprob_request', request, None,
                         {'trial_ids': [r['item_id'] for r in batch]},
                     ), repetition=requests_sent)
                     requests_sent += 1
@@ -188,10 +290,9 @@ class EWoKBenchmark(BenchmarkBase):
                         accuracy = logprob_accuracy(values)
                         invalid = 0
                     else:
-                        # Never parse a number out of reasoning or silently drop a bad answer.
-                        choices = [str(v).strip() if isinstance(v, (str, int)) and not isinstance(v, bool) else '' for v in values]
-                        accuracy = ((choices[0] == '1') + (choices[1] == '2')) / 2
-                        invalid = sum(v not in ('1', '2') for v in choices)
+                        # An unparsed answer is wrong and counted, never dropped.
+                        accuracy = ((values[0] == '1') + (values[1] == '2')) / 2
+                        invalid = sum(value is None for value in values)
                     scored.append({
                         'item_id': row['item_id'], 'domain': row['Domain'],
                         'family': row['family'], 'version': row['Version'],
@@ -224,6 +325,8 @@ class EWoKBenchmark(BenchmarkBase):
                 run_directory=str(context.directory),
                 paper_replication=False,
             )
+            if self._mode == 'choice':
+                score.attrs['input_adaptation'] = dict(_CHOICE_NOTE)
             return score
         return CallableProtocol(
             self.identifier,

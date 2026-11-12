@@ -50,10 +50,29 @@ be present; prompt preparation checks it before inference.
 
 ## 3. Run with your model
 
-Follow [the CogGym guide](../../../docs/archive/coggym.md) to connect a provider,
-supply its reset callback, and attach tools. Save run outputs outside the
-reference checkout. UMI records model calls while CogGym retains its trial
-selection and scoring.
+Any model that takes the experiment's parts and writes an answer runs it: a
+`BrainScoreModel` with a `reply` part (for example from `chat_parts`) and the
+inputs the trials show. Each CogGym call reaches the model on the common
+channels: the system text is the task's instruction, the message parts are one
+stimulus row (`text`, `vision:image`, `vision:video`) in CogGym's order, and the
+temperature and length are settings on the task's `Text` response. The model
+answers on `behavior:text`, and CogGym parses the answer. A model that lacks a
+media form the experiment needs is N/A before any compute; the pictures are
+never left out.
+
+```python
+benchmark = brainscore.load_benchmark("CogGym.Hu2023Fine.exp1", reset=lambda repetition: None)
+score = benchmark(model)
+```
+
+Scores can differ a little from scores made with CogGym's own client. The model
+builds its own prompt from the instruction and the parts, so a chat model can
+place the instruction in the user turn, where CogGym's client sends a separate
+system text. The score says so in `score.attrs['input_adaptation']`.
+
+Supply the reset callback of a model that keeps state between repetitions.
+Save run outputs outside the reference checkout. UMI records model calls while
+CogGym keeps its trial selection and scoring.
 
 There is no CogGym request-ID resolver in UMI. Access to additional datasets
 does not automatically register them or extend this pinned public subset.

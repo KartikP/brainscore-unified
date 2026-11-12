@@ -7,7 +7,10 @@ Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
 (instruction, stimulus parts, the response's directive). They are shown as one
 user message in that order; images as images, clips as video with their real
 frame rate. ``reply(prompt)`` returns the model's raw reply; the task's response
-parses it. ``likelihood(prompt, candidates)`` returns the log probability of
+parses it. A ``Text`` response carries the task's generation settings
+(``max_tokens``, ``temperature``, ``top_p``, ``seed``), and the reply obeys them.
+Without them the reply is greedy and at most ``max_new_tokens`` tokens long.
+``likelihood(prompt, candidates)`` returns the log probability of
 each candidate as the whole reply (teacher-forced, summed over its tokens). It
 runs the prompt on its own before any candidate, so a recording made during
 scoring is the prompt pass, as it is for a reply.
@@ -26,8 +29,12 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
     def reply(prompt) -> str:
         import torch
         inputs = inputs_for(prompt)
+        settings = _generation_settings(prompt, max_new_tokens)
+        seed = getattr(prompt.response, 'seed', None)
+        if seed is not None:
+            torch.manual_seed(seed)
         with torch.no_grad():
-            generated = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+            generated = model.generate(**inputs, **settings)
         return tokenizer.decode(generated[0, inputs['input_ids'].shape[1]:],
                                 skip_special_tokens=True).strip()
 
@@ -60,6 +67,24 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
         return scores
 
     return reply, likelihood
+
+
+def _generation_settings(prompt, max_new_tokens: int) -> dict:
+    """The ``generate`` arguments for one trial, from the task's ``Text`` response.
+
+    Without settings the reply is greedy and at most ``max_new_tokens`` long.
+    A temperature above 0 samples, with ``top_p`` when the task gives one.
+    """
+    response = prompt.response
+    length = getattr(response, 'max_tokens', None)
+    settings = {'max_new_tokens': length if length is not None else max_new_tokens,
+                'do_sample': False}
+    temperature = getattr(response, 'temperature', None)
+    if temperature:
+        settings.update(do_sample=True, temperature=float(temperature))
+        if response.top_p is not None:
+            settings['top_p'] = float(response.top_p)
+    return settings
 
 
 def chat_inputs(model, processor, prompt, template=None):

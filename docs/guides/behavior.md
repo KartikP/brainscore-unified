@@ -21,6 +21,7 @@ task = TaskContext(
 | `Choice(labels, confidence=Scale(1, 5, 1))` | also a reported confidence, in the same reply | `+ behavior:confidence` |
 | `Scale(1, 7, 1)` | a rating | `behavior:rating` |
 | `Text()` | a written answer, kept as written | `behavior:text` |
+| `Text(max_tokens=512, temperature=1.0)` | a written answer under the task's generation settings | `behavior:text` |
 
 Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording and parsing are the benchmark's science: subclass a response to change them.
 
@@ -64,6 +65,8 @@ A reply that cannot be parsed is recorded as invalid: NaN values, `answer_valid`
 reply, likelihood = chat_parts(hf_model, processor, chat_template_kwargs={'enable_thinking': False})
 BrainScoreModel(..., reply=reply, likelihood=likelihood)
 ```
+
+**Generation settings.** The settings of a written answer belong to the task, so the benchmark sets them on `Text`: `max_tokens`, `temperature` (0 or `None` is greedy), `top_p` (needs a temperature above 0) and `seed`. A `reply` part reads them from `prompt.response`. The reply that `chat_parts` builds obeys them. With no settings it is greedy and at most `max_new_tokens` (64) tokens long, as before.
 
 **Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged.
 

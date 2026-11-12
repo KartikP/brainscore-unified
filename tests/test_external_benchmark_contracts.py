@@ -2,53 +2,61 @@
 import json
 from pathlib import Path
 
+import base64
+
 import pandas as pd
 import pytest
 
 import brainscore
 from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
+from brainscore_core.score_status import score_or_na
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore.data.preparation import prepare_dataset
 from brainscore.experiments import Experiment, RecordInputsOutputs
 from brainscore.model_helpers.response_trace import build_trace_subject
 from brainscore.harnesses.coggym import CogGymRunner
 
-from .test_coggym import reference, make_subject, provider
+from .test_coggym import PIXEL, image_part, reference, make_subject, reply_with_trial
 from .test_coggym_benchmark import scored_reference
 from .test_ewok import native, prepared, subject, NativeModel, EWoKProvider
 
 pytestmark = pytest.mark.unit
 
 
-@pytest.mark.parametrize('experiment,content,channel', [
-    ('Aboody2025Inferring/exp1', ['image'], 'image_generation_request'),
-    ('Fu2025Hierarchical/exp1', ['image', 'video'], 'video_generation_request'),
+@pytest.mark.parametrize('experiment,content,modalities', [
+    ('Aboody2025Inferring/exp1', ['image'], ('text', 'vision')),
+    ('Fu2025Hierarchical/exp1', ['image', 'video'], ('text', 'vision', 'video')),
 ])
 def test_media_requires_explicit_support_and_preserves_payload(
-    reference, tmp_path, experiment, content, channel,
+    reference, tmp_path, experiment, content, modalities,
 ):
+    """A subject without a media form the trials need is N/A before any compute.
+
+    Pre-flight alone lets a partial match run, so the benchmark and the runner
+    check that the subject takes every kind of part; the pictures are never
+    dropped silently.
+    """
     root, cli = reference
     (root / 'evaluation/public_manifest.json').write_text(json.dumps({
         'experiments': [{'path': experiment}],
     }))
-    messages = [{'role': 'user', 'content': [
-        {'type': kind, 'data': f'fixture-{kind}'} for kind in content
-    ]}]
+    clip = tmp_path / 'clip.mp4'
+    clip.write_bytes(b'not decoded here')
+    parts = {'image': image_part(), 'video': {'type': 'video', 'path': str(clip), 'mime_type': 'video/mp4'}}
+    messages = [{'role': 'user', 'content': [parts[kind] for kind in content]}]
     cli.build_messages = lambda *args: ('instructions', messages)
-    benchmark = brainscore.load_benchmark(f'CogGym.{experiment.replace("/", ".")}', checkout=root)
-    calls = []
-    def capture(request):
-        calls.append(request)
-        return {'text': '50', 'reasoning': None, 'token_usage': None}
+    benchmark = brainscore.load_benchmark(f'CogGym.{experiment.replace("/", ".")}', checkout=root,
+                                          reset=lambda repetition: None)
+    prompts = []
+    def capture(prompt):
+        prompts.append(prompt)
+        return '50'
     text_subject = make_subject(capture)
-    for check in (check_channel_compatibility, lambda model, bench: bench(model)):
-        with pytest.raises(CompatibilityError):
-            check(text_subject, benchmark)
-    assert calls == []
-    candidate = build_trace_subject(
-        'fixture', provider=capture, parse=str, provenance={},
-        input_channels=[channel],
-    )
+    with pytest.raises(CompatibilityError, match='does not declare'):
+        benchmark(text_subject)
+    assert score_or_na(benchmark, text_subject).attrs['status'] == 'N/A'
+    assert prompts == []
+    candidate = make_subject(capture, modalities)
     check_channel_compatibility(candidate, benchmark)
     runner = CogGymRunner(
         root, experiment=experiment, model='fixture', modalities=['text', *content],
@@ -58,23 +66,52 @@ def test_media_requires_explicit_support_and_preserves_payload(
         protocol=runner.protocol(reset=lambda repetition: None),
         tools=[RecordInputsOutputs()], output_dir=tmp_path / 'media',
     ).run()
-    assert len(calls) == 3
-    assert all(call['messages'] == messages for call in calls)
+    assert len(prompts) == 3
+    # Every part reaches the reply, in CogGym's order, after the instruction.
+    assert [kind for kind, _ in prompts[0].parts] == ['text', *content]
+    shown = dict(zip(prompts[0].names, (value for _, value in prompts[0].parts)))
+    assert Path(shown['image_path']).read_bytes() == base64.b64decode(PIXEL)
+    if 'video' in content:
+        assert shown['video_path'] == str(clip)
     with pytest.raises(CompatibilityError):
         Experiment(
             subject=text_subject, protocol=runner.protocol(reset=lambda repetition: None),
             output_dir=tmp_path / 'unsupported',
         ).run()
-    assert len(calls) == 3
+    assert len(prompts) == 3
+
+
+def test_coggym_parts_keep_their_order_within_one_trial(reference, tmp_path):
+    """Several texts and pictures in one trial reach the reply in CogGym's order."""
+    root, cli = reference
+    (root / 'evaluation/public_manifest.json').write_text(json.dumps({
+        'experiments': [{'path': 'Aboody2025Inferring/exp1'}],
+    }))
+    other = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC'
+    content = [{'type': 'text', 'text': 'first'}, image_part(), {'type': 'text', 'text': 'second'},
+               image_part(other), image_part(), {'type': 'text', 'text': 'third'}]
+    cli.build_messages = lambda *args: ('instructions', [{'role': 'user', 'content': content}])
+    prompts = []
+    subject = make_subject(lambda prompt: prompts.append(prompt) or 'ok', ('text', 'vision'))
+    runner = CogGymRunner(root, experiment='Aboody2025Inferring/exp1', model='fixture',
+                          modalities=['text', 'image'], trial_ids=['trial-0'])
+    Experiment(subject=subject, protocol=runner.protocol(reset=lambda repetition: None),
+               output_dir=tmp_path / 'run').run()
+    (prompt,) = prompts
+    assert prompt.names == ('instruction', 'text', 'image_path', 'text_2', 'image_path_2',
+                            'image_path_3', 'text_3')
+    assert [kind for kind, _ in prompt.parts] == ['text', 'text', 'image', 'text', 'image',
+                                                  'image', 'text']
+    assert [value for kind, value in prompt.parts if kind == 'text'] == [
+        'instructions', 'first', 'second', 'third']
+    images = [Path(value).read_bytes() for kind, value in prompt.parts if kind == 'image']
+    assert images == [base64.b64decode(PIXEL), base64.b64decode(other), base64.b64decode(PIXEL)]
 
 
 def test_coggym_reference_profile_reset_and_leaderboard_policy(scored_reference, tmp_path):
     root, _ = scored_reference
     calls, resets = [], []
-    candidate = build_trace_subject(
-        'fixture', provider=lambda request: calls.append(request) or provider(request),
-        parse=str, provenance={},
-    )
+    candidate = make_subject(lambda prompt: calls.append(prompt) or reply_with_trial(prompt))
     # The caller gives the provider's reset to the benchmark; it is never read
     # from the subject (Contract Rule 2.2).
     benchmark = brainscore.load_benchmark(
@@ -84,7 +121,7 @@ def test_coggym_reference_profile_reset_and_leaderboard_policy(scored_reference,
     score = benchmark(candidate)
     assert benchmark.identifier == 'CogGym.Hu2023Fine.exp1'
     assert resets == [1, 2, 3, 4, 5]
-    assert len(calls) == 15 and all(call['max_tokens'] == 512 for call in calls)
+    assert len(calls) == 15 and all(call.response.max_tokens == 512 for call in calls)
     assert benchmark.leaderboard_eligible is score.attrs['leaderboard_eligible'] is False
     assert score.attrs['reference_profile'] is True
     assert score.attrs['records_retained'] is True
@@ -104,10 +141,10 @@ def test_coggym_implicit_records_always_deleted(scored_reference, tmp_path, monk
         created.append(Path(handle.name))
         return handle
 
-    def respond(request):
+    def respond(prompt):
         if outcome == 'interrupted':
             raise KeyboardInterrupt('fixture interrupt')
-        return provider(request)
+        return reply_with_trial(prompt)
 
     monkeypatch.setattr(module.tempfile, 'TemporaryDirectory', directory)
     if outcome == 'undefined_score':
@@ -226,6 +263,7 @@ def test_multichannel_trace_subject_keeps_dispatch_and_session_contract():
     candidate.participate(session)
     assert [event.payload['answer'] for event in session.emitted] == channels
     # Creating another subject must not change the first subject's declarations.
-    other = make_subject(provider)
+    other = build_trace_subject('other', provider=lambda request: {'text': ''}, parse=str,
+                                provenance={})
     assert other.in_channels == {'generation_request', 'control'}
     assert candidate.in_channels == set(channels) | {'control'}

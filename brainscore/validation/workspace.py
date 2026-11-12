@@ -61,6 +61,7 @@ SUITES = {
         'tests/test_streaming_perception.py',
         'tests/test_streaming_windowed.py',
         'tests/test_stream_rows_once.py',
+        'tests/test_text_settings.py',
     ],
     'vision': [
         'tests/test_package_contents.py',
