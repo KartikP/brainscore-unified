@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=65,<69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "brainscore-lab"
+version = "0.1.0"
+description = "Local experiment workbench for Brain-Score UMI v2"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = ["brainscore==0.3.0rc1", "packaging>=23", "tqdm>=4.64", "imageio-ffmpeg>=0.6,<1"]
+
+[project.scripts]
+brainscore-lab = "umi_lab.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["umi_lab*"]
+
+[tool.setuptools.package-data]
+umi_lab = ["static/*"]
