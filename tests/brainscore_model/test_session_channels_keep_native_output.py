@@ -414,7 +414,7 @@ def test_direct_merge_compares_time_bounds_not_only_lengths(per_presentation, of
         'audio': lambda stimuli, layers: unindexed(offset, per_presentation)},
         region_layer_map={'language': LayerSelector('layer', modality='text'),
                           'A1': LayerSelector('layer', modality='audio')})
-    model.start_recording('all')
+    model.start_recording(['language', 'A1'])
     table = StimulusSet({'stimulus_id': IDS, 'sentence': ['x', 'y'], 'audio_path': ['a', 'b']})
     if offset:
         with pytest.raises(ValueError, match='different time axes'):
@@ -619,16 +619,6 @@ def test_optional_empty_layer_may_be_absent_from_the_extractor_output():
     alone = keyed_session(model, table, ['mix']).collect('neural:mix')
     assert alone.sizes['neuroid'] == 2
     assert_same_output(keyed_session(model, table, ['mix', 'IT']).collect('neural:mix'), alone)
-
-
-def test_virtual_all_uses_the_same_selected_layer_rule():
-    from brainscore.selection import CompositeSelector
-    model = BrainScoreModel('all', extractor={'vision': keyed('v', [])},
-                            region_layer_map={'mix': CompositeSelector((('early', ()), ('late', None)),
-                                                                       modality='vision')})
-    result = keyed_session(model, StimulusSet({'stimulus_id': IDS, 'image_path': ['a', 'b']}),
-                           ['all']).collect('neural:all')
-    assert set(result['layer'].values) == {'late'}
 
 
 def test_time_guard_keeps_presentation_index_level_names():

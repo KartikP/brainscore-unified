@@ -16,6 +16,7 @@ class _FakeModel:
     in_channels = {'text'}
     out_channels = set()
     required_channels = set()
+    output_inputs = {}
 
 
 class _FakeScore:

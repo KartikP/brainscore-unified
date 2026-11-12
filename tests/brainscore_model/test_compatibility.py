@@ -57,7 +57,7 @@ class TestDeclaredChannelsRun:
 
     def test_every_part_declares_registered_channels(self):
         model = self._model()
-        assert model.out_channels == {'neural:IT', 'neural:all', 'behavior', 'behavior:choice',
+        assert model.out_channels == {'neural:IT', 'behavior', 'behavior:choice',
                                       'behavior:probabilities', 'behavior:rating', 'behavior:rt',
                                       'motor', 'perturbation'}
         assert {'vision:image', 'observation', 'lesion', 'stimulation'} <= model.in_channels

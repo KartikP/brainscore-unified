@@ -23,6 +23,7 @@ classDiagram
         in_channels
         out_channels
         required_channels
+        output_inputs
         participate(session)
         reset()
     }

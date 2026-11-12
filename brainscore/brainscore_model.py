@@ -372,6 +372,33 @@ class BrainScoreModel(UnifiedModel):
         return set().union(
             *(c.declared_output_channels(self) for c in self._declared_capabilities()))
 
+    @property
+    def output_inputs(self):
+        """The inputs each ``neural:<region>`` can be answered from.
+
+        A region lists the input channels of the extractor its selector names
+        (``'video'`` takes clips, ``'vision'`` stills). In a model with one
+        extractor, a region without a modality lists that extractor's channels.
+        Not listed, so answerable from any input the model takes: a region
+        without a modality in a model with several extractors (it is recorded
+        from whichever tower gets input), and behavior, policy and perturbation
+        outputs.
+        """
+        listed = {}
+        towers = {id(extractor) for extractor in self._extractors.values()}
+        for region, selector in self._region_layer_selectors.items():
+            keys = list(self._extractors)
+            if selector.modality is not None:
+                keys = ([key for key in keys if key == selector.modality]
+                        or [key for key in keys if canonical_modality(key)
+                            == canonical_modality(selector.modality)])
+            elif len(towers) != 1:
+                continue
+            channels = self._input_channels(keys)
+            if channels:
+                listed[f'neural:{region}'] = frozenset(channels)
+        return listed
+
     def check_session_support(self, channels):
         """The one capability that runs a session requesting ``channels``.
 
@@ -666,7 +693,7 @@ class BrainScoreModel(UnifiedModel):
                         recording_type: Optional[str] = None) -> None:
         """Configure neural recording for subsequent ``process`` calls.
 
-        ``recording_target`` is a mapped region name, ``'all'``, a list of
+        ``recording_target`` is a mapped region name, a list of
         mapped regions, or a raw layer path. Multiple regions are extracted in
         one call and returned with per-neuroid ``layer`` and ``region``
         provenance. See :class:`Recorder` for validation details.

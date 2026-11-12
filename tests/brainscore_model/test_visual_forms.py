@@ -151,7 +151,7 @@ def test_a_benchmark_declaring_both_forms_is_compatible_with_each(keys, compatib
     from types import SimpleNamespace
     from brainscore_core import check_compatibility
     from brainscore_core.compatibility import CompatibilityError
-    model = BrainScoreModel('m', region_layer_map={'IT': 'layer'},
+    model = BrainScoreModel('m', region_layer_map={'IT': LayerSelector('layer', modality=keys[0])},
                             extractor={key: _extractor(1.0) for key in keys})
     benchmark = SimpleNamespace(identifier='both-forms',
                                 required_input_channels={'vision:image', 'vision:video'},

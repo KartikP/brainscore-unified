@@ -30,6 +30,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **N/A** | Not applicable: the pair was not run because declarations do not fit. Never the same as a zero score. |
 | **Neuroid** | One recorded unit of a model or brain. |
 | **Null baseline** | A reference without the signal of interest, such as chance or random features. |
+| **`output_inputs`** | A subject declaration: for an output channel, the input channels it can be answered from. The subject answers the output when it takes in at least one of them from the benchmark. An output that is not listed can be answered from any input. |
 | **`participate(session)`** | The one evaluation method every subject implements. |
 | **`Perturbation`** | How to change selected units: `zero`, `scale` or `replace`. |
 | **`policy`** | A `BrainScoreModel` part: `row -> {output channel: payload}`. |

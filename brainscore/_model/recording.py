@@ -18,8 +18,8 @@ def required_layers(selector) -> Tuple[str, ...]:
 
     A composite layer whose selected unit subset is empty is intentionally
     unused: it may be absent from the extractor output and is never required.
-    This one rule serves the composite check before unit selection, the channel
-    check after it, and the expansion of ``'all'``.
+    This one rule serves the composite check before unit selection and the
+    channel check after it.
     """
     if isinstance(selector, CompositeSelector):
         return tuple(layer for layer, indices in selector.layers
@@ -95,23 +95,14 @@ class Recorder:
                         recording_type: Optional[str] = None) -> None:
         """Configure the layers extracted by subsequent ``process`` calls.
 
-        A string names one region, ``'all'`` expands to every mapped region,
-        and a list records several targets in one extraction. Unknown names are
-        treated as raw layer paths with a warning, whether supplied alone or in
-        a list. ``'all'`` means all mapped regions, not all network layers.
+        A string names one region, and a list records several targets in one
+        extraction. Unknown names are treated as raw layer paths with a warning,
+        whether supplied alone or in a list.
         ``recording_type`` is accepted for legacy adapter compatibility and is
         otherwise ignored by ``BrainScoreModel``.
         """
         del recording_type
         owner = self.owner
-
-        if recording_target == 'all':
-            recording_target = list(owner._region_layer_map_dict.keys())
-            if not recording_target:
-                raise ValueError(
-                    "start_recording('all') requires a non-empty "
-                    "region_layer_map."
-                )
 
         targets = ([recording_target] if isinstance(recording_target, str)
                    else list(recording_target))

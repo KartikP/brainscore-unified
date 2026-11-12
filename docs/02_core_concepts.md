@@ -103,7 +103,12 @@ Before a benchmark runs, Brain-Score compares declarations only:
 
 - every requested output channel must be in the subject's `out_channels`;
 - at least one provided input channel must be in the subject's `in_channels`;
-- every input the subject requires must be provided.
+- every input the subject requires must be provided;
+- for every requested output listed in the subject's `output_inputs`, the subject must take in at least one of its listed inputs.
+
+`output_inputs` maps an output channel to the input channels it can be answered from. A vision-language model lists `vision:image` for its vision regions and `text` for its language region, so a benchmark that sends only text and asks for a vision region is N/A. An output that is not listed can be answered from any input the subject takes; nothing is listed by default. Every listed output must be in `out_channels`, and every listed input in `in_channels`.
+
+`BrainScoreModel` fills `output_inputs` for each `neural:<region>` from the extractor its selector names (`LayerSelector(name=..., modality=...)`). In a model with two or more extractors, give every region its tower: a region without one is not listed, so pre-flight cannot check it.
 
 A pair that fails is **not applicable** (N/A). It is not run and never scored as zero. A subject that reads only some of the provided inputs still runs; the other inputs never reach it.
 
@@ -111,7 +116,7 @@ Each role names its channel fields differently; use the one for the object you a
 
 | Role | Inputs | Outputs |
 | --- | --- | --- |
-| Subject (model) | `in_channels` (plus `required_channels`) | `out_channels` |
+| Subject (model) | `in_channels` (plus `required_channels`) | `out_channels` (plus `output_inputs`) |
 | Benchmark | `required_input_channels` | `requested_output_channels` |
 | `SessionProtocol` | `input_channels` | `output_channels` |
 

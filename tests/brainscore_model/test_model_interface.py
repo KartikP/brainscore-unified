@@ -400,7 +400,7 @@ class TestBrainScoreModelDispatch:
         m = BrainScoreModel(
             identifier='vlm',
             model='torch_model',
-            region_layer_map={'IT': 'layer4'},  # regions defined
+            region_layer_map={'IT': LayerSelector('layer4', modality='vision')},  # regions defined
             preprocessors={'vision': make_stub_preprocessor(),
                            'text': make_stub_preprocessor()},
             activations_model=StubActivationsModel(),
@@ -421,7 +421,7 @@ class TestBrainScoreModelDispatch:
         m = BrainScoreModel(
             identifier='mm',
             model='torch_model',
-            region_layer_map={'A1': 'layer'},                 # regions defined, none active
+            region_layer_map={'A1': LayerSelector('layer', modality='audio')},  # none active
             preprocessors={'text': make_stub_preprocessor(),  # plain -> no extraction
                            'audio': _LayerAwareAudio()},       # layer-aware -> extraction
         )
@@ -451,7 +451,8 @@ class TestBrainScoreModelDispatch:
         m = BrainScoreModel(
             identifier='clip',
             model='clip_model',
-            region_layer_map={'language_system': 'text_model.encoder.layers.10'},
+            region_layer_map={'language_system': LayerSelector(
+                'text_model.encoder.layers.10', modality='text')},
             preprocessors={
                 'vision': make_stub_preprocessor(),
                 'text': text_proc,
@@ -925,13 +926,8 @@ class TestMultiRegionStartRecording:
         assert m._recording_regions == []
         assert m._is_multi_region is False
 
-    def test_start_recording_all_expands_to_every_region(self):
-        """'all' is sugar for list(region_layer_map.keys()).
-
-        Underlying mechanism is the existing multi-region list path —
-        same extraction, same neuroid-region tagging, no new code path.
-        This is the documented entry point for whole-brain / layer-banded
-        scoring (per Martin's 'predict the entire brain' framing)."""
+    def test_start_recording_a_list_of_every_region(self):
+        """A list of every mapped region records them all in one extraction."""
         act = _XArrayActivationsModel()
         m = BrainScoreModel(
             identifier='test', model=None,
@@ -942,7 +938,7 @@ class TestMultiRegionStartRecording:
             preprocessors={'vision': make_stub_preprocessor()},
             activations_model=act,
         )
-        m.start_recording('all')
+        m.start_recording(['V1', 'V4', 'IT', 'language_network'])
         assert m._is_multi_region is True
         assert m._recording_regions == ['V1', 'V4', 'IT', 'language_network']
         assert m._recording_layers == [
@@ -951,15 +947,6 @@ class TestMultiRegionStartRecording:
         stimuli = StubStimulusSet(columns=['image_file_name'])
         assembly = m.process(stimuli)
         assert 'region' in assembly.coords
-
-    def test_start_recording_all_on_empty_map_raises(self):
-        m = BrainScoreModel(
-            identifier='test', model=None,
-            region_layer_map={},
-            preprocessors={'vision': make_stub_preprocessor()},
-        )
-        with pytest.raises(ValueError, match='non-empty region_layer_map'):
-            m.start_recording('all')
 
 
 # -- Multi-modality dispatch tests -------------------------------------------
@@ -1101,7 +1088,7 @@ class TestMultiModalityDispatch:
         m = BrainScoreModel(
             identifier='test',
             model=None,
-            region_layer_map={'IT': 'layer.10'},
+            region_layer_map={'IT': LayerSelector('layer.10', modality='vision')},
             preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
             activations_model=act,
         )
@@ -1120,7 +1107,7 @@ class TestMultiModalityDispatch:
         m = BrainScoreModel(
             identifier='test',
             model=None,
-            region_layer_map={'IT': 'layer.10'},
+            region_layer_map={'IT': LayerSelector('layer.10', modality='vision')},
             preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
             activations_model=act,
         )
@@ -1186,7 +1173,7 @@ class TestMultiModalityDispatch:
         m = BrainScoreModel(
             identifier='test',
             model=None,
-            region_layer_map={'IT': 'layer.10'},
+            region_layer_map={'IT': LayerSelector('layer.10', modality='vision')},
             preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
             activations_model=act,
         )
@@ -1224,17 +1211,19 @@ class TestMultiModalityDispatch:
         m = BrainScoreModel(
             identifier='test',
             model=None,
-            region_layer_map={'IT': 'layer.10'},
+            region_layer_map={'IT': LayerSelector('layer.10', modality='vision')},
             preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
             activations_model=act,
         )
         m.start_recording('IT')
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
         single = m.process(stimuli)  # vision only — 1 neuroid (1 layer)
-        multi = m.process(stimuli, multi_modality=True)
-        # vision_assembly has 1 neuroid (1 layer in start_recording),
-        # text_assembly has 1 neuroid (default layer). Multi = 1 + 1 = 2.
         assert single.sizes['neuroid'] == 1
+        # A text region adds the text tower: one neuroid per tower.
+        m.region_layer_map = {'IT': LayerSelector('layer.10', modality='vision'),
+                              'language': LayerSelector('layer.20', modality='text')}
+        m.start_recording(['IT', 'language'])
+        multi = m.process(stimuli, multi_modality=True)
         assert multi.sizes['neuroid'] == 2
 
     def _make_rich_presentation_model(self, vision_mode, text_mode):

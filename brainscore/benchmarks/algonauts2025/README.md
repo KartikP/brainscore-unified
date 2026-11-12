@@ -32,38 +32,50 @@ The sound is cut the same way into `<assembly_root>/sound/<movie>/<t>.wav`: 16 k
 
 ## What the benchmark asks for
 
-The benchmark requests `neural:all`, the address of every region the model maps. A model with a region map declares it. A model with no region map gets N/A.
+The benchmark names the regions it requests for each form:
 
-The benchmark predicts all 1000 parcels from every layer the model maps. It asks for each `neural:<region>` that the model declares, each region on its own channel, because two towers can answer on different time axes. It averages each answer over its time bins. Each region is one band. No model region stands for a brain region: one regression predicts every parcel from all bands.
+| Form | Requested outputs |
+|---|---|
+| `image` | `neural:V1`, `neural:V4`, `neural:IT` |
+| `video` | `neural:V1`, `neural:V4`, `neural:IT` |
+| `video+audio` | `neural:V1`, `neural:V4`, `neural:IT`, `neural:A1` |
 
-The benchmark asks for every declared region. It cannot yet tell which regions a model can answer from the inputs of a form, because no declaration says which input a region needs. A model that declares a region it cannot answer from these inputs (for example a text region on the image form) stops the run with an error before any extraction.
+A model that does not declare every requested region gets N/A, before anything is cut, both through `score()` and when the benchmark is called directly. A model that declares a region but cannot answer it from the inputs of the form also gets N/A: its `output_inputs` declaration says which inputs each region needs. For example, a video-and-sound model whose `A1` reads sound gets N/A on the `video` form.
+
+The benchmark predicts all 1000 parcels from the model's layers for the regions the benchmark names. It asks for each region in its own session, on its own channel, because two towers can answer on different time axes. It averages each answer over its time bins. Each region is one band. No model region stands for a brain region: one regression predicts every parcel from all bands.
 
 ## How the benchmark scores
 
-The method follows multi-layer encoding with banded ridge (himalaya, Dupre la Tour et al. 2022). The benchmark holds out whole runs in 5 folds. In each fold it:
+The method follows multi-layer encoding with banded ridge (himalaya, Dupre la Tour et al. 2022). This is version 2 of the benchmark. The benchmark holds out stimuli in 5 folds. All runs of one stimulus stay on one side, because Movie10 shows some clips twice, in two runs with one `stimulus_id`. In each fold it:
 
-1. reduces each band by itself to 100 components (truncated SVD). It fits the reduction on the rows of the training runs only and applies it to all rows;
+1. prepares each band on the rows of the training stimuli only: it centres the band with their mean, reduces it to at most 100 components with a truncated SVD (a PCA, because the band is centred), and standardizes the components with their mean and spread. It applies the same preparation to all rows;
 2. stacks `stimulus_window` TRs (default 5) per sample and shifts them by `hrf_delay` TRs (default 3), inside each run;
-3. drops `excluded_samples_start` and `excluded_samples_end` TRs (default 5 each) at the edges of each run;
-4. chooses one penalty per band on held-out runs inside the training runs. The grid is 1 to 10000 in decades. When the full grid has more than 60 combinations, a random search tries 60, among them every combination with one shared penalty;
-5. fits the banded ridge on the training runs and predicts the test runs.
+3. drops `excluded_samples_start` TRs at the start and `excluded_samples_end` TRs (default 5) at the end of each run. The start default is `hrf_delay + stimulus_window - 1` (7), so no kept sample has an empty lag; a smaller value raises `ValueError`;
+4. chooses, for each parcel, one penalty per band on held-out stimuli inside the training stimuli (one inner split). The grid has one value per decade from 1e-2 to 1e8. When the full grid has more than 60 combinations (from two bands on), a random search tries 60, among them every combination with one shared penalty;
+5. fits a banded ridge with an intercept on the training stimuli, one solve for each distinct chosen combination, and predicts the test stimuli. All solves are in float64.
 
-With one band, this is a ridge with a tuned penalty. The inner choice uses the reduction fitted on all training runs of the fold, so the inner held-out runs took part in that fit. The test runs of the fold took part in no fit.
+With one band, this is a ridge with an intercept and a penalty for each parcel. The inner choice uses the preparation fitted on all training stimuli of the fold, so the inner held-out stimuli took part in that fit. The test stimuli of the fold took part in no fit.
 
-The score is the median per-parcel Pearson r. The score lists `bands`, `band_channels`, the penalty of each band in each fold (`chosen_alphas_per_fold`), `components_per_band`, `form`, `presentation` and `feature_projection_protocol = svd_fitted_on_training_runs_per_fold`. `per_parcel_r` holds the score of each parcel in Schaefer order.
+No ceiling is measured. The score is the raw median per-parcel Pearson r, with `normalized = False` and `ceiling_status = not_estimated`. The score also lists:
+
+- `raw`, `metric`, `mean_r`, `n_parcels_scored`, `n_TRs`, and `per_parcel_r` (the score of each parcel in Schaefer order);
+- `stimulus_window`, `hrf_delay`, `excluded_samples_start`, `excluded_samples_end` and `cv_groups = stimulus_id`;
+- `form`, `presentation`, `bands`, `band_channels` and `components_per_band` (the real number for each band);
+- `alpha_grid`, `alpha_candidates`, `penalty_protocol = per_parcel_on_one_inner_split_of_held_out_stimuli` and `feature_projection_protocol = centred_svd_and_scale_fitted_on_training_stimuli`;
+- `penalties_per_fold`: for each fold, the number of distinct chosen combinations, the share of parcels with a penalty at an edge of the grid, and each combination with its number of parcels.
 
 The benchmark can present the table in two ways, for every form. With `streaming=False` (default) the subject gets the whole table at once. With `streaming=True` the subject gets one row at a time and answers it before it gets the next row. A subject without trial memory gives the same features both ways. The score records the way in `presentation` (`table` or `stream`).
 
-For a short run, `movies` limits the benchmark to named movies. Use the `stimulus_id` values of the assembly, for example `['friends_s01e01a', 'friends_s01e01b']`. Only those movies are cut and scored, and the score lists them in `movies`. The movies must give at least 7 runs, because each training fold is split into 5 again. With fewer, the benchmark raises `ValueError`.
+For a short run, `movies` limits the benchmark to named movies. Use the `stimulus_id` values of the assembly, for example `['friends_s01e01a', 'friends_s01e01b']`. Only those movies are cut and scored, and the score lists them in `movies`. The movies must give at least 7 stimuli, because each training fold is split into 5 again. With fewer, the benchmark raises `ValueError`.
 
 ## Held-out prediction
 
-`generate_predictions(model, out_dir)` uses the same method without the outer folds. It records the same bands on the subject's Friends training films and on the held-out split. It fits the reduction of each band on the training films, chooses the penalties on held-out training runs, fits one banded ridge on all training films and predicts every TR of the held-out split. Training and prediction must use the same subject, form, stimulus window and HRF delay. The result lists the bands and the chosen penalties.
+`generate_predictions(model, out_dir)` uses the same method without the outer folds. It records the same bands on the subject's Friends training films and on the held-out split. It fits the preparation of each band on the training films, chooses the penalties for each parcel on held-out training stimuli, fits one banded ridge on all training films and predicts every TR of the held-out split. Training and prediction must use the same subject, form, stimulus window, HRF delay and `streaming`. The `movies` of the training benchmark limit the training films; the `movies` of the held-out benchmark limit the predicted films. The result lists the bands and the chosen penalties.
 
 ## Files
 
 - `benchmark.py`: the `Algonauts2025Friends`, `Algonauts2025FriendsS7` and `Algonauts2025OOD` classes, and the frame extractor, clip cutter and sound cutter.
-- `scoring.py`: the banded ridge with the reduction fitted per fold.
+- `scoring.py`: the banded ridge with the preparation fitted per fold.
 - `projection.py`: the reduction of one band.
 - `brainscore/data/algonauts2025/data_packaging/prepare_assembly.py`: builds the assemblies from the native files. See the data [README](../../data/algonauts2025/README.md).
 
@@ -75,5 +87,5 @@ Without prepared data, a registered benchmark raises `FileNotFoundError`. Prepar
 
 1. Each subject gets its own ridge fits, so the compute is four times that of a pooled fit.
 2. The default `stimulus_window=5` and `hrf_delay=3` follow the challenge baseline. You can use `hrf_convolve` from `brainscore.temporal` instead of the fixed shift.
-3. The memory pre-flight plans for at most 10 bands. A model that maps more regions needs more memory than the estimate.
+3. The memory pre-flight probes the width of one region and plans one band per requested region.
 4. Codabench allows one submission per cycle on the OOD set. Iterate on Friends S7 first.

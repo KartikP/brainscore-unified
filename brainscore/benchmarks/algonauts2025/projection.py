@@ -35,5 +35,5 @@ class FeatureProjection:
         if self.feature_ids_ is not None and (
                 feature_ids is None or not np.array_equal(self.feature_ids_, feature_ids)):
             raise ValueError('Prediction feature identities/order differ from the training feature basis.')
-        return (self.svd_.transform(features).astype(np.float32)
-                if self.svd_ is not None else features.astype(np.float32))
+        return (self.svd_.transform(features) if self.svd_ is not None
+                else np.asarray(features, dtype=np.float64))

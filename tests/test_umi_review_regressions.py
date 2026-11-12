@@ -68,7 +68,7 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
             (train, train_features, [f'run{i // per_run}' for i in range(n_runs * per_run)]),
             (test, test_features, ['clip'] * 4)):
         benchmark.LAYER_DIM_CAP = 1
-        benchmark.BANDED_ALPHA_GRID = (1e-6,)
+        benchmark.BANDED_ALPHA_GRID = (1e-2,)
         stimuli = StimulusSet({'stimulus_id': [f'{benchmark._split}{i}' for i in range(len(features))],
                                'sentence': ['x'] * len(features)})
         stimuli.identifier = benchmark._split
@@ -88,13 +88,13 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
 
     class Candidate(Subject):  # the benchmark reads it through participate only
         identifier = 'candidate'
-        in_channels = frozenset({'text'})
-        out_channels = frozenset({'neural:IT', 'neural:all'})
+        in_channels = frozenset({'vision:image'})
+        out_channels = frozenset({'neural:V1', 'neural:V4', 'neural:IT'})
 
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session))
             features = train_features if stimuli.identifier == 'friends' else test_features
-            session.respond(StreamEvent('neural:IT', NeuroidAssembly(
+            session.respond(StreamEvent(list(session.outputs)[0], NeuroidAssembly(
                 features, dims=['presentation', 'neuroid'], coords={
                     'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
                     'neuroid_id': ('neuroid', ['u0', 'u1'])}), t_ms=None))
@@ -102,7 +102,9 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
     result = test.generate_predictions(Candidate(), tmp_path, train_benchmark=train)
     np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-3)
     np.testing.assert_array_equal(np.load(result['path']), result['predictions'])
-    assert result['bands'] == ['IT'] and result['alphas'] == {'IT': 1e-6}
+    assert result['bands'] == ['IT', 'V1', 'V4']
+    assert result['penalties']['tuples'] == [
+        {'penalties': {'IT': 1e-2, 'V1': 1e-2, 'V4': 1e-2}, 'n_parcels': 1}]
 
 
 def test_feature_projection_validates_basis_and_preserves_no_compression():

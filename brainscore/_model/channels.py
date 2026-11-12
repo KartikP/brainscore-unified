@@ -110,16 +110,11 @@ def check_layer_provenance(model, output, region: str) -> None:
 def _region_layers(model, region: str):
     """``(allowed, required)`` layers of a requested address.
 
-    ``required_layers`` is the one rule for which layers must contribute. The
-    virtual ``'all'`` covers every mapped region with the same rule.
+    ``required_layers`` is the one rule for which layers must contribute.
     """
     from .recording import required_layers, selector_layers
     from ..selection import LayerSelector
-    selectors = model._region_layer_selectors
-    if region == 'all' and region not in selectors:
-        chosen = list(selectors.values())
-    else:
-        chosen = [selectors.get(region, LayerSelector(region))]
+    chosen = [model._region_layer_selectors.get(region, LayerSelector(region))]
     allowed = {layer for selector in chosen for layer in selector_layers(selector)}
     required = {layer for selector in chosen for layer in required_layers(selector)}
     return allowed, required

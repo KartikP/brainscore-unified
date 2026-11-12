@@ -104,6 +104,7 @@ def test_each_scoring_call_gets_a_fresh_weight_scope(module_name, monkeypatch):
     model = SimpleNamespace(
         identifier='test-model', available_modalities={'text'}, required_modalities={'text'},
         in_channels={'text'}, required_channels={'text'}, out_channels={'behavior'}, region_layer_map={},
+        output_inputs={},
     )
     monkeypatch.setattr(module, 'load_model', lambda _: model)
     monkeypatch.setattr(module, 'load_benchmark', lambda _: Benchmark())

@@ -67,9 +67,9 @@ class TestStandardMapping:
 
 
 class TestAllMapping:
-    def test_whole_brain_all_expands_every_region(self):
+    def test_a_list_of_every_region_records_each(self):
         m = _model({'V4': 'layer.8', 'IT': 'layer.10'})
-        m.start_recording('all')
+        m.start_recording(['V4', 'IT'])
         a = m.process(_stim())
         assert 'region' in a.coords
         assert set(a['region'].values.tolist()) == {'V4', 'IT'}

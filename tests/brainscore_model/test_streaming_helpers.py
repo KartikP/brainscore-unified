@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from brainscore import BrainScoreModel
+from brainscore import BrainScoreModel, LayerSelector
 from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange, TaskContext
 from brainscore_core.streaming import StreamEvent
 from brainscore_core._sessions.buffered import _state_change_session
@@ -140,35 +140,12 @@ def _native_multimodal_model(model_cls=BrainScoreModel):
     model = model_cls(
         identifier="native-multimodal",
         model=None,
-        region_layer_map={"IT": "layer.10"},
+        region_layer_map={"IT": LayerSelector("layer.10", modality="vision")},
         preprocessors={
             "vision": make_stub_preprocessor(),
             "text": text,
         },
         activations_model=activations,
-    )
-    return model, activations, text
-
-
-def _native_cross_tower_model(model_cls=BrainScoreModel):
-    activations = _XArrayActivationsModel()
-    text = _XArrayPreprocessor(label="text")
-    model = model_cls(
-        identifier="native-cross-tower",
-        model=None,
-        region_layer_map={
-            "IT": "vision_model.layer.10",
-            "language_network": "text_model.layer.20",
-        },
-        preprocessors={
-            "vision": make_stub_preprocessor(),
-            "text": text,
-        },
-        activations_model=activations,
-        region_modality_map={
-            "IT": "vision",
-            "language_network": "text",
-        },
     )
     return model, activations, text
 
@@ -266,29 +243,9 @@ def test_neural_response_native_participate_matches_multimodal_process_exactly()
 
     assert subject.participate_called is True
     assert subject.participate_outputs == ("neural:IT",)
+    # IT is on the vision tower; the text tower records nothing.
     assert activations.call_args is not None
-    assert text.call_args is not None
-    assert set(scored["modality"].values.tolist()) == {"vision", "text"}
-    xr.testing.assert_identical(scored, expected)
-
-
-def test_neural_response_native_participate_matches_cross_tower_process_exactly():
-    stimuli = _multimodal_stimulus_set()
-
-    legacy, _, _ = _native_cross_tower_model()
-    legacy.start_recording("all")
-    expected = legacy.process(stimuli, multi_modality=True)
-
-    subject, activations, text = _native_cross_tower_model(
-        model_cls=_ParticipateTrackingBrainScoreModel
-    )
-    scored = neural_response(subject, stimuli, record="all")
-
-    assert subject.participate_called is True
-    assert subject.participate_outputs == ("neural:all",)
-    assert activations.call_args["layers"] == ["vision_model.layer.10"]
-    assert text.call_args["layers"] == ["text_model.layer.20"]
-    assert set(scored["modality"].values.tolist()) == {"vision", "text"}
+    assert text.call_args is None
     xr.testing.assert_identical(scored, expected)
 
 
