@@ -60,3 +60,32 @@ def test_single_input_extractors_still_take_single_input_stimuli():
     session = stimulus_session(images, ['neural:A'])
     model.participate(session)
     assert session.collect('neural:A').dims == ('presentation', 'neuroid')
+
+
+@pytest.mark.parametrize('second, channel', [('text', 'text'), ('audio', 'audio')])
+def test_a_fused_video_extractor_declares_the_video_channel(second, channel):
+    fused = Fused()
+    model = BrainScoreModel('fused-video', extractor={('video', second): fused},
+                            region_layer_map={'A': 'layers.3'})
+    assert {channel, 'vision:video'} <= model.in_channels
+    assert 'vision:image' not in model.in_channels
+
+
+def test_a_fused_video_extractor_gets_the_clip_column():
+    fused = Fused()
+    model = BrainScoreModel('fused-clip', extractor={('video', 'text'): fused},
+                            region_layer_map={'A': 'layers.3'})
+    both = StimulusSet({'stimulus_id': ['a'], 'video_path': ['a.mp4'], 'sentence': ['one']})
+    both.identifier = 'fused-clip-both'
+    session = stimulus_session(both, ['neural:A'])
+    model.participate(session)
+    assert fused.calls == [['sentence', 'video_path']]
+
+
+def test_required_modalities_must_match_the_declared_visual_form():
+    def extractor(stimuli, layers, **kwargs):
+        raise AssertionError('not called')
+    for key, required in (('vision', 'video'), ('video', 'vision')):
+        with pytest.raises(ValueError, match='vision:'):
+            BrainScoreModel('m', extractor={key: extractor}, required_modalities={required},
+                            region_layer_map={'A': 'layers.3'})

@@ -145,3 +145,21 @@ def test_an_extractor_without_record_is_recorded_through_the_model():
     expected = network[0](torch.tensor([[float(len(_prompt_text('x'))), 1.0]])).detach().numpy()[0]
     np.testing.assert_allclose(recorded.values[0], expected, rtol=1e-6)
     assert not network[0]._forward_hooks
+
+
+def test_a_streaming_session_answers_a_trial_before_it_reads_the_next():
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
+    session = stimulus_session(STIMULI, ['behavior:choice', 'neural:A'], task_context=task, streaming=True)
+    log = []
+    read, respond = session.next_input, session.respond
+
+    def logged_read():
+        event = read()
+        if event is not None and event.channel != 'control':
+            log.append('read')
+        return event
+
+    session.next_input = logged_read
+    session.respond = lambda event: (log.append(event.channel), respond(event))[1]
+    _model(Net()).participate(session)
+    assert log == ['read', 'behavior:choice', 'neural:A'] * 3

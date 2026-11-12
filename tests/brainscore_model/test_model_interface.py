@@ -1470,7 +1470,7 @@ class TestBrainScoreModelColumnDetection:
             region_layer_map={'IT': 'layer4'},
             preprocessors={'video': make_stub_preprocessor('out')},
             region_modality_map={'IT': 'vision'},
-            required_modalities={'vision'},
+            required_modalities={'video'},
         )
         assert m.available_modalities == {'vision'}
 

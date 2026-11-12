@@ -254,18 +254,19 @@ def drive_behavior_and_neural_session(model, session, driver: str = "interact") 
                 f"{sorted(given)}; ask for those or change the response.")
     _drivers.refuse_variance(model, session)
     model.start_task(task_context)
-    stimuli = _drivers.behavior_stimuli_from_session(session, task_context)
-    if stimuli is None:
-        raise ValueError("Recording during a task needs stimuli to present.")
-    # A streaming session gets each trial's outputs as soon as that trial ends;
-    # otherwise the whole set is answered and sent at once.
-    # A model without the trait keeps no history, so it can answer the whole table at
-    # once; one that keeps history is answered trial by trial so a begin can fall
-    # between trials.
-    streaming = getattr(session, "streaming", False)
-    batches = ([(index, _drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]))
-                for index in range(len(stimuli))]
-               if streaming or _keeps_history(model) else [(0, stimuli)])
+    # A streaming session reads one trial, answers it and sends its outputs, then
+    # reads the next. Otherwise the inputs are read first. A model without the
+    # trait keeps no history, so it can answer the whole table at once; one that
+    # keeps history is answered trial by trial so a begin can fall between trials.
+    if getattr(session, "streaming", False):
+        batches = enumerate(_drivers.stream_trials(session, task_context))
+    else:
+        stimuli = _drivers.behavior_stimuli_from_session(session, task_context)
+        if stimuli is None:
+            raise ValueError("Recording during a task needs stimuli to present.")
+        batches = ([(index, _drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]))
+                    for index in range(len(stimuli))]
+                   if _keeps_history(model) else [(0, stimuli)])
     for index, batch in batches:
         if index == 0 or task_context.trial_memory == 'none':
             model._begin_episode()

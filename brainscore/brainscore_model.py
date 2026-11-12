@@ -183,7 +183,7 @@ class BrainScoreModel(UnifiedModel):
             way. A ``begin`` clears that history and the episode state of every
             part; it leaves interventions and the task setup. Under the
             ``none`` trial memory every trial is its own episode, so
-            the history is empty at each trial; under ``conversation`` it grows
+            the history is empty at each trial; under ``history`` it grows
             until ``end`` and never carries over to the next episode, session,
             repetition or condition. ``None`` (default): the model keeps no
             history, so every trial starts empty under either trial memory.
@@ -307,13 +307,14 @@ class BrainScoreModel(UnifiedModel):
 
         required = ({canonical_modality(m) for m in required_modalities}
                     if required_modalities else set())
-        available = self.supported_modalities
-        if not required.issubset(available):
+        required_channels = self._input_channels(required_modalities or ())
+        declared_channels = self._input_channels(self._preprocessors)
+        if not required_channels <= declared_channels:
             raise ValueError(
-                f"required_modalities {required} must be a subset of the "
-                f"supported modalities {available}. A model cannot require "
-                f"an input it does not declare."
-        )
+                f"required_modalities need the input channels {sorted(required_channels)}, "
+                f"but the model declares {sorted(declared_channels)}. A model cannot "
+                f"require an input it does not declare."
+            )
         self._required_modalities = required
         self._required_keys = set(required_modalities or ())   # raw: 'video' stays 'video'
         self._backbone_id = backbone_id or identifier

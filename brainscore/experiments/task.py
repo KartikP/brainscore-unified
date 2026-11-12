@@ -30,7 +30,7 @@ class TaskProtocol(SessionProtocol):
     is plain viewing. ``required_traits`` (e.g. ``{'memory:trial_history'}``) makes a
     subject without them fail validation, as a benchmark marks it N/A. The task's
     ``trial_memory`` (``'none'`` or ``'history'``) decides how the
-    session groups trials into episodes; ``conversation`` adds the
+    session groups trials into episodes; ``history`` adds the
     ``memory:trial_history`` requirement itself. The
     attached recorders say what is measured: each
     session requests exactly their channels. With a readout task, the task's
