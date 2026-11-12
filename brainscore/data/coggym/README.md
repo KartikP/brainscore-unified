@@ -51,7 +51,8 @@ be present; prompt preparation checks it before inference.
 ## 3. Run with your model
 
 Any model that takes the experiment's parts and writes an answer runs it: a
-`BrainScoreModel` with a `reply` part (for example from `chat_parts`) and the
+`BrainScoreModel` with a `reply` part (from `chat_parts`, `build_causal_lm_subject`
+or `build_api_reply`; the registered `<name>-reply` closed API models) and the
 inputs the trials show. Each CogGym call reaches the model on the common
 channels: the system text is the task's instruction, the message parts are one
 stimulus row (`text`, `vision:image`, `vision:video`) in CogGym's order, and the

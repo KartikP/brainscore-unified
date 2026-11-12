@@ -36,7 +36,7 @@ def test_witness_preserves_legacy_and_non_dataframe_calls(method, payload):
     from brainscore.witness import Witness
     from brainscore_core.streaming import StreamEvent
     if payload is None:
-        payload = StreamEvent('generation_request', {'prompt': 'hello'}, 0)
+        payload = StreamEvent('text', 'hello', 0)
     original = lambda value: {'result': 'unchanged'}
     subject = SimpleNamespace(**{method: original})
     with Witness(subject) as witness:
@@ -159,18 +159,23 @@ def test_action_validation(action):
         action_spec().validate(action)
 
 
-def test_trace_preserves_invalid_response_and_session(tmp_path):
-    from brainscore.model_helpers.response_trace import build_trace_subject
-    from brainscore_core.streaming import Session, StreamEvent
-    model = build_trace_subject('fixture', provider=lambda req: {'text': 'unparseable', 'tokens': [1]},
-                                parse=int, provenance={'provider': 'fixture'})
-    session = Session([StreamEvent('generation_request', {'prompt': 'a'}, 12)])
-    session.outputs = ('response_trace',)
+def test_unparseable_reply_is_kept_as_an_invalid_answer(tmp_path):
+    """A reply the task cannot parse is recorded as invalid, with the reply kept, never guessed."""
+    from brainscore import BrainScoreModel
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    model = BrainScoreModel('fixture', supported_modalities={'text'}, reply=lambda prompt: 'unparseable')
+    stimuli = StimulusSet({'stimulus_id': ['a'], 'text': ['a']})
+    session = stimulus_session(stimuli, ['behavior:choice'], TaskContext(response=Choice(['1', '2'])))
     model.participate(session)
-    result = session.emitted[0]
-    assert result.payload['answer'] is None and not result.payload['valid']
-    assert result.payload['raw']['tokens'] == [1] and result.t_ms == 12
-    assert 'response_trace' in model.out_channels
+    answer = session.collect('behavior:choice')
+    assert np.isnan(answer.values).all()
+    assert list(answer['answer_valid'].values) == [False]
+    assert list(answer['raw_answer'].values) == ['unparseable']
+    assert answer['parse_error'].values[0]
+    assert 'behavior:choice' in model.out_channels
 
 
 def test_api_episode_reset():

@@ -7,34 +7,33 @@ One registration declares, and answers through ``participate`` (or ``process``):
   ``brainscore_core.streaming_helpers.neural_response``,
 - interventions: ``lesion`` / ``stimulation`` (``build_pytorch_ablation_fn``; use
   ``brainscore.instrumentation.intervene`` to apply one and undo only it),
-- ``generation_request`` -> generated text, as a ``response_trace``,
-- ``conditional_logprob_request`` -> log p(target | context), as a ``response_trace``.
-
-Request keys are listed in ``response_trace.PAYLOAD_CONTRACTS`` (also in the I/O
-catalog): generation takes CogGym's ``{system, messages, temperature, max_tokens}``
-plus ``conversations``, ``top_p`` and ``seed``; log-probabilities take EWoK's
-``{targets, contexts}`` plus ``reduction`` and ``context_format``.
+- a ``reply`` part: a written answer to the trial's text through the chat
+  template, under the task's generation settings (``Text(max_tokens=...,
+  temperature=..., top_p=..., seed=...)``),
+- a ``likelihood`` part: the summed log probability of each option. Under a
+  ``raw_text`` choice it scores ``f"{text} {option}"`` as plain text, with no
+  chat template and no beginning-of-sequence token, as EWoK's ``score`` does;
+  otherwise the text is a user turn of the chat template and each option is
+  scored as the assistant's reply.
 """
-import json
 from copy import deepcopy
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Sequence
 
-from brainscore.capabilities.registry import register_capability
 from brainscore import BrainScoreModel
 
-from brainscore.model_helpers.response_trace import _capability, register_trace_channels
+from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.perturbation import build_pytorch_ablation_fn
 
 
-class CausalLMProvider:
-    """Response-trace providers for generation and conditional log-probabilities."""
+class _CausalLMParts:
+    """The ``reply`` and ``likelihood`` parts of a text-only causal LM."""
 
     def __init__(self, model: Any, tokenizer: Any, chat_template_kwargs: Optional[dict] = None,
-                 batch_size: int = 8) -> None:
+                 batch_size: int = 8, max_new_tokens: int = 256) -> None:
         self.model, self.tokenizer = model, tokenizer
         self.chat_template_kwargs = dict(chat_template_kwargs or {})
-        self.batch_size = batch_size
+        self.batch_size, self.max_new_tokens = batch_size, max_new_tokens
         if tokenizer.pad_token_id is None:
             tokenizer.pad_token = tokenizer.eos_token
 
@@ -42,110 +41,69 @@ class CausalLMProvider:
     def device(self):
         return next(self.model.parameters()).device
 
-    def format(self, messages: list, system: Optional[str] = None) -> str:
-        """Chat-template a conversation, ending with the assistant's turn."""
-        if system:
-            messages = [{'role': 'system', 'content': system}, *messages]
+    def format(self, prompt) -> str:
+        """Chat-template a trial: earlier trials as turns, then its text, ending with the assistant's turn."""
+        messages = []
+        for earlier, answered in prompt.history:
+            messages += [{'role': 'user', 'content': _text_of(earlier)},
+                         {'role': 'assistant', 'content': answered}]
+        messages.append({'role': 'user', 'content': _text_of(prompt)})
         return self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
                                                   **self.chat_template_kwargs)
 
-    def generate(self, request: Mapping) -> dict:
-        """One conversation (``messages``) or a batch (``conversations``) -> text.
-
-        Greedy unless ``temperature > 0``. A batch returns ``texts`` (one per
-        conversation) and JSON-encodes them as ``text``.
-        """
+    def reply(self, prompt) -> str:
+        """Greedy unless the task's Text response gives a temperature above 0."""
         import torch
-        batch = 'conversations' in request
-        prompts = [self.format(m, request.get('system'))
-                   for m in (request['conversations'] if batch else [request['messages']])]
-        temperature = request.get('temperature') or 0.0
-        kwargs = dict(max_new_tokens=request.get('max_tokens', 256), pad_token_id=self.tokenizer.pad_token_id,
-                      do_sample=temperature > 0)
-        if temperature > 0:
-            kwargs.update(temperature=temperature, top_p=request.get('top_p', 1.0))
-        if request.get('seed') is not None:
-            torch.manual_seed(request['seed'])
-        side = self.tokenizer.padding_side
-        self.tokenizer.padding_side = 'left'  # TextWrapper's last_token assumes right padding: restore
-        try:
-            enc = self.tokenizer(prompts, return_tensors='pt', padding=True, add_special_tokens=False).to(self.device)
-        finally:
-            self.tokenizer.padding_side = side
+        settings = _generation_settings(prompt, self.max_new_tokens)
+        seed = getattr(prompt.response, 'seed', None)
+        if seed is not None:
+            torch.manual_seed(seed)
+        enc = self.tokenizer([self.format(prompt)], return_tensors='pt',
+                             add_special_tokens=False).to(self.device)
         with torch.no_grad():
             out = self.model.generate(input_ids=enc['input_ids'], attention_mask=enc['attention_mask'],
-                                      **kwargs)[:, enc['input_ids'].shape[1]:]
-        texts = [self.tokenizer.decode(o, skip_special_tokens=True).strip() for o in out]
-        usage = {'prompt_tokens': int(enc['attention_mask'].sum()),
-                 'completion_tokens': int((out != self.tokenizer.pad_token_id).sum())}
-        if batch:
-            return {'text': json.dumps(texts), 'texts': texts, 'reasoning': None, 'token_usage': usage}
-        return {'text': texts[0], 'reasoning': None, 'token_usage': usage}
+                                      pad_token_id=self.tokenizer.pad_token_id,
+                                      **settings)[:, enc['input_ids'].shape[1]:]
+        return self.tokenizer.decode(out[0], skip_special_tokens=True).strip()
 
-    def logprobs(self, request: Mapping) -> dict:
-        """log p(target | context) per item, teacher-forced.
-
-        ``reduction``: ``'sum'`` (default, EWoK's convention) or ``'mean'`` over
-        target tokens. ``context_format``: ``'raw'`` (default) or ``'chat'``,
-        which treats each context as a user message and scores the target as
-        the assistant's reply. Context and target are tokenized separately and
-        concatenated, so the scored tokens are exactly the target's tokens.
-
-        Every target token is predicted from at least one preceding token, so
-        a context must tokenize to at least one token and a target to at least
-        one token. No beginning-of-sequence token is added: a raw empty
-        context (``''``) is rejected rather than scored, since its first
-        target token would have no prediction. To score a target
-        unconditionally, pass the tokenizer's BOS text (if the model has one)
-        as the context. The whole request is checked before any forward pass.
-        """
-        import numpy as np
+    def likelihood(self, prompt, candidates: Sequence[str]) -> dict:
+        """The summed log probability of each candidate after the trial's text."""
+        if getattr(prompt.response, 'raw_text', False):
+            return _plain_text_scores(self.model, self.tokenizer, prompt, candidates)
         import torch
-        for key in ('targets', 'contexts'):
-            # A string or mapping would otherwise be read as a batch of its
-            # characters or keys; only list-like batches are accepted.
-            value = request[key]
-            if not (isinstance(value, (list, tuple)) or (isinstance(value, np.ndarray) and value.ndim == 1)):
-                raise TypeError(f'conditional_logprob_request {key} must be a list, tuple or 1-d array '
-                                f'of strings; got {type(value).__name__}')
-        targets, contexts = list(request['targets']), list(request['contexts'])
-        if len(targets) != len(contexts):
-            raise ValueError('conditional_logprob_request needs one context per target')
-        if any(not isinstance(text, str) for text in targets + contexts):
-            raise TypeError('conditional_logprob_request contexts and targets must be strings')
-        reduction = request.get('reduction', 'sum')
-        if reduction not in ('sum', 'mean'):
-            raise ValueError("reduction must be 'sum' or 'mean'")
-        context_format = request.get('context_format', 'raw')
-        if context_format not in ('raw', 'chat'):
-            raise ValueError(f"context_format must be 'raw' or 'chat'; got {context_format!r}")
-        if context_format == 'chat':
-            contexts = [self.format([{'role': 'user', 'content': c}]) for c in contexts]
-        encoded = [(self.tokenizer(c, add_special_tokens=False)['input_ids'],
-                    self.tokenizer(t, add_special_tokens=False)['input_ids'])
-                   for c, t in zip(contexts, targets)]
-        for index, (c, t) in enumerate(encoded):
-            if not c:
-                raise ValueError(f'item {index}: the context has no tokens to condition on, so the '
-                                 'first target token cannot be scored; pass a nonempty context')
-            if not t:
-                raise ValueError(f'item {index}: the target has no tokens to score')
+        context = self.tokenizer(self.format(prompt), add_special_tokens=False)['input_ids']
+        encoded = []
+        for candidate in candidates:
+            ids = self.tokenizer(candidate, add_special_tokens=False)['input_ids']
+            if not ids:
+                raise ValueError(f'option {candidate!r} has no tokens to score')
+            encoded.append(ids)
+        with torch.no_grad():
+            # The prompt alone first: the pass a recording keeps.
+            self.model(input_ids=torch.tensor([context], device=self.device),
+                       attention_mask=torch.ones(1, len(context), dtype=torch.long, device=self.device))
         values = []
+        pad = self.tokenizer.pad_token_id
         for start in range(0, len(encoded), self.batch_size):
-            pairs = encoded[start:start + self.batch_size]
-            width = max(len(c) + len(t) for c, t in pairs)
-            pad = self.tokenizer.pad_token_id
-            ids = torch.tensor([c + t + [pad] * (width - len(c) - len(t)) for c, t in pairs], device=self.device)
-            mask = torch.tensor([[1] * (len(c) + len(t)) + [0] * (width - len(c) - len(t)) for c, t in pairs],
-                                device=self.device)
-            scored = torch.tensor([[0] * len(c) + [1] * len(t) + [0] * (width - len(c) - len(t)) for c, t in pairs],
-                                  device=self.device)[:, 1:].float()
+            batch = encoded[start:start + self.batch_size]
+            width = max(len(context) + len(t) for t in batch)
+            ids = torch.tensor([context + t + [pad] * (width - len(context) - len(t)) for t in batch],
+                               device=self.device)
+            mask = torch.tensor([[1] * (len(context) + len(t)) + [0] * (width - len(context) - len(t))
+                                 for t in batch], device=self.device)
+            scored = torch.tensor([[0] * len(context) + [1] * len(t) + [0] * (width - len(context) - len(t))
+                                   for t in batch], device=self.device)[:, 1:].float()
             with torch.no_grad():  # right padding: real tokens never attend to padding
                 logp = self.model(input_ids=ids, attention_mask=mask).logits[:, :-1].float().log_softmax(-1)
-            token_lp = logp.gather(-1, ids[:, 1:, None])[..., 0] * scored
-            total = token_lp.sum(1)
-            values += (total / scored.sum(1) if reduction == 'mean' else total).tolist()
-        return {'text': json.dumps(values, allow_nan=False), 'reasoning': None, 'token_usage': None}
+            values += (logp.gather(-1, ids[:, 1:, None])[..., 0] * scored).sum(1).tolist()
+        return dict(zip(candidates, values))
+
+
+def _text_of(prompt) -> str:
+    kinds = {kind for kind, _ in prompt.parts}
+    if kinds - {'text'}:
+        raise NotImplementedError(f'a text-only causal LM cannot be shown {sorted(kinds - {"text"})} parts')
+    return prompt.text()
 
 
 def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
@@ -154,23 +112,15 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
                             layer_aggregation: str = 'per_token',
                             chat_template_kwargs: Optional[dict] = None,
                             batch_size: int = 8) -> BrainScoreModel:
-    """A ``BrainScoreModel`` for a Hugging Face causal LM: record, intervene, generate, score.
+    """A ``BrainScoreModel`` for a Hugging Face causal LM: record, intervene, reply, score.
 
     Put model revision and settings in ``provenance``; a copy is attached to
-    every response: ``payload['provenance']`` on a ``response_trace`` and
-    ``attrs['provenance']`` on a recorded ``NeuroidAssembly``.
+    every recorded ``NeuroidAssembly`` (``attrs['provenance']``).
     ``region_layer_map`` names the regions that can be recorded.
     """
-    provider = CausalLMProvider(model, tokenizer, chat_template_kwargs, batch_size)
-    register_trace_channels()
-    # One capability serves both request channels, so a session asking for
-    # response_trace has exactly one handler; each channel keeps its own provider.
-    text = _capability(('conditional_logprob_request', 'generation_request'))
-    register_capability(text)
+    parts = _CausalLMParts(model, tokenizer, chat_template_kwargs, batch_size)
     # A deep copy: later edits to the caller's dict do not change recorded provenance.
     provenance = {'identifier': identifier, **deepcopy(dict(provenance or {}))}
-    channels = {'generation_request': dict(provider=provider.generate, parse=str),
-                'conditional_logprob_request': dict(provider=provider.logprobs, parse=json.loads)}
     return BrainScoreModel(
         identifier,
         region_layer_map=dict(region_layer_map or {}),
@@ -178,6 +128,6 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
                                        layer_aggregation=layer_aggregation, batch_size=batch_size,
                                        provenance=provenance)},
         intervention=build_pytorch_ablation_fn(model),
-        capability_config={text.identifier: dict(channels=channels, provenance=provenance,
-                                                 streaming=False, reset=None)},
+        reply=parts.reply,
+        likelihood=parts.likelihood,
     )

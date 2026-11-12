@@ -15,6 +15,10 @@ What it handles (the "graceful" parts):
   - robust label parsing (exact -> word-boundary -> defer to caller's fallback);
   - multimodal (base64 image) and text dispatch from the stimulus row.
 
+``build_api_reply`` builds a ``reply`` part from the same clients: it answers
+any task (a choice, a rating, a written answer such as CogGym's) from the
+trial's prompt and obeys the task's generation settings.
+
 What it intentionally does NOT do: neural-encoding paths. Closed APIs don't expose
 layer activations, so an API model has ``activations_model=None`` and its nominal
 preprocessors raise a clear error if a neural benchmark tries to extract from it.
@@ -270,6 +274,168 @@ def build_api_generation_fn(
         return parsed if parsed is not None else response
 
     return generate
+
+
+# ── written answers: a reply part ───────────────────────────────────────
+# A reply part answers any response a task asks for (a choice, a rating, a
+# written answer) from the trial's Prompt, and obeys the task's generation
+# settings. CogGym needs one. Each adapter:
+# (model, system, messages, settings) -> str, where messages are
+# [{'role': 'user'|'assistant', 'content': [part, ...]}] with parts
+# {'type': 'text', 'text': ...} or {'type': 'image', 'media_type': ..., 'data': <base64>},
+# and settings holds max_tokens and any of temperature, top_p, seed.
+
+# The Anthropic Messages API has no seed parameter and refuses temperature and
+# top_p on current Claude models. A temperature of 1.0 is the API's documented
+# default, so the adapter leaves it out; any other value fails before a request.
+_ANTHROPIC_DEFAULT_TEMPERATURE = 1.0
+
+
+def _anthropic_settings(settings) -> dict:
+    refused = [name for name in ('top_p', 'seed') if settings.get(name) is not None]
+    temperature = settings.get('temperature')
+    if temperature is not None and float(temperature) != _ANTHROPIC_DEFAULT_TEMPERATURE:
+        refused.append('temperature')
+    if refused:
+        raise ValueError(
+            f'The Anthropic API refuses the task settings {refused}: it has no seed, and '
+            'current Claude models reject temperature and top_p. Only a temperature of 1.0, '
+            "the API's default, can run, and it is not sent.")
+    return {'max_tokens': settings['max_tokens']}
+
+
+def _reply_anthropic(model, system, messages, settings) -> str:
+    request = _anthropic_settings(settings)   # checked before the SDK is loaded
+    try:
+        import anthropic
+    except ImportError as e:
+        raise RuntimeError(
+            "anthropic SDK not installed — `pip install anthropic` to score "
+            "Claude models behaviorally.") from e
+    client = anthropic.Anthropic()
+    content = lambda parts: [
+        {'type': 'text', 'text': p['text']} if p['type'] == 'text' else
+        {'type': 'image', 'source': {'type': 'base64', 'media_type': p['media_type'], 'data': p['data']}}
+        for p in parts]
+    kwargs = dict(model=model, messages=[{'role': m['role'], 'content': content(m['content'])}
+                                         for m in messages], **request)
+    if system:
+        kwargs['system'] = system
+    resp = client.messages.create(**kwargs)
+    return ''.join(b.text for b in resp.content if b.type == 'text').strip()
+
+
+def _make_openai_reply(base_url=None, api_key_env='OPENAI_API_KEY', label='openai') -> Callable:
+    """Reply adapter for an OpenAI-compatible endpoint: it takes every setting."""
+    def call(model, system, messages, settings) -> str:
+        try:
+            from openai import OpenAI
+        except ImportError as e:
+            raise RuntimeError(
+                f"openai SDK not installed — `pip install openai` to score "
+                f"{label} models behaviorally.") from e
+        client = OpenAI(api_key=os.getenv(api_key_env), base_url=base_url)
+        content = lambda parts: [
+            {'type': 'text', 'text': p['text']} if p['type'] == 'text' else
+            {'type': 'image_url', 'image_url': {'url': f"data:{p['media_type']};base64,{p['data']}"}}
+            for p in parts]
+        chat = [{'role': 'system', 'content': system}] if system else []
+        chat += [{'role': m['role'], 'content': content(m['content'])} for m in messages]
+        request = {name: settings[name] for name in ('max_tokens', 'temperature', 'top_p', 'seed')
+                   if settings.get(name) is not None}
+        resp = client.chat.completions.create(model=model, messages=chat, **request)
+        return (resp.choices[0].message.content or '').strip()
+    call.__name__ = f'_reply_{label}'
+    return call
+
+
+_REPLY_PROVIDERS = {
+    'anthropic': _reply_anthropic,
+    'openai': _make_openai_reply(),
+    'deepseek': _make_openai_reply(base_url='https://api.deepseek.com',
+                                   api_key_env='DEEPSEEK_API_KEY', label='deepseek'),
+    'openrouter': _make_openai_reply(base_url='https://openrouter.ai/api/v1',
+                                     api_key_env='OPENROUTER_API_KEY', label='openrouter'),
+}
+
+
+def _reply_messages(prompt) -> Tuple[Optional[str], list]:
+    """The system text and the user and assistant turns of one trial.
+
+    The task's instruction becomes the system text, as CogGym's own client
+    sends it; the other parts form the user turn in order. Earlier trials
+    (``prompt.history``) come first as user and assistant turns.
+    """
+    def parts(shown, names):
+        content, system = [], None
+        for (kind, value), name in zip(shown, names or [None] * len(shown)):
+            if kind == 'text' and name == 'instruction':
+                system = value
+            elif kind == 'text':
+                content.append({'type': 'text', 'text': value})
+            elif kind == 'image':
+                media, data = _encode_image(value)
+                content.append({'type': 'image', 'media_type': media, 'data': data})
+            else:
+                raise NotImplementedError(f'hosted models here cannot be shown a {kind!r} part')
+        return system, content
+
+    messages = []
+    for earlier, answered in prompt.history:
+        messages.append({'role': 'user', 'content': parts(earlier.parts, earlier.names)[1]})
+        messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': answered}]})
+    system, content = parts(prompt.parts, prompt.names)
+    messages.append({'role': 'user', 'content': content})
+    return system, messages
+
+
+def build_api_reply(
+    provider: Union[str, Callable],
+    model: str,
+    *,
+    max_tokens: int = 512,
+    cache_dir: Optional[Union[str, Path]] = None,
+) -> Callable:
+    """Build a ``reply(prompt) -> str`` part for a hosted model API.
+
+    The reply shows the trial's parts in order (text and images), with the
+    task's instruction as the system text, and obeys the generation settings
+    of the task's ``Text`` response: ``max_tokens`` (``max_tokens`` here when
+    the task gives none), ``temperature``, ``top_p`` and ``seed``. A provider
+    that refuses a setting the task gives fails before any request is sent:
+    the Anthropic API has no seed and refuses temperature (other than its
+    default 1.0) and top_p. Video and audio parts are refused; register the
+    model without those inputs so such a task is N/A.
+
+    :param provider: ``'anthropic'``, ``'openai'``, ``'deepseek'``,
+        ``'openrouter'``, or a callable adapter
+        ``(model, system, messages, settings) -> str``.
+    :param cache_dir: if set, replies are cached per trial, keyed on the
+        provider, the model, the system text, the turns and the settings.
+    """
+    call = provider if callable(provider) else _REPLY_PROVIDERS[provider]
+    provider_name = getattr(provider, '__name__', str(provider))
+    cache = _ResponseCache(cache_dir) if cache_dir is not None else None
+
+    def reply(prompt) -> str:
+        response = prompt.response
+        settings = {'max_tokens': getattr(response, 'max_tokens', None) or max_tokens}
+        for name in ('temperature', 'top_p', 'seed'):
+            if getattr(response, name, None) is not None:
+                settings[name] = getattr(response, name)
+        if call is _reply_anthropic:
+            _anthropic_settings(settings)   # fail before the cache or a request
+        system, messages = _reply_messages(prompt)
+        key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings],
+                                        sort_keys=True).encode('utf-8')).hexdigest()
+        answer = cache.get(key) if cache is not None else None
+        if answer is None:
+            answer = call(model, system, messages, settings)
+            if cache is not None:
+                cache.set(key, answer)
+        return answer
+
+    return reply
 
 
 # ── closed-loop game: action_fn ───────────────────────────────

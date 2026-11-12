@@ -555,3 +555,89 @@ def test_trials_gives_one_row_per_trial(tmp_path):
     assert list(baseline['stimulus_id']) == ['a', 'b', 'c']
     assert list(baseline['choice']) == ['short', 'long', 'long']
     assert list(trials[trials['condition'] == 'silenced']['choice']) == ['short'] * 3
+
+
+def _options_stimuli():
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b'], 'text': ['the cat', 'the dog'],
+                           'options': [('sat', 'ran'), ('kind', 'mean')]})
+    stimuli.identifier = 'task-protocol-options'
+    return stimuli
+
+
+def test_options_that_differ_for_each_row_reach_each_part():
+    """labels_column: each row's options reach likelihood, reply and answer; the axis is positions."""
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    seen = []
+
+    def likelihood(prompt, candidates):
+        seen.append(('likelihood', prompt.parts, tuple(candidates)))
+        return {c: (0.5 if c in ('ran', 'kind') else -0.25) for c in candidates}
+
+    def reply(prompt):
+        seen.append(('reply', prompt.parts, prompt.response.labels))
+        return prompt.response.labels[1]
+
+    def answer(stimulus_row, instruction, label_set):
+        seen.append(('answer', stimulus_row['text'], tuple(label_set)))
+        return label_set[0]
+
+    raw = TaskContext(response=Choice(labels_column='options', raw_scores=True, raw_text=True))
+    scorer = BrainScoreModel(identifier='scorer', supported_modalities={'text'}, likelihood=likelihood)
+    session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:probabilities'], raw)
+    scorer.participate(session)
+    scores = session.collect('behavior:probabilities')
+    # Raw scores, as the part gave them, in the order of each row's options.
+    np.testing.assert_array_equal(scores.values, [[-0.25, 0.5], [0.5, -0.25]])
+    assert list(scores['choice'].values) == [0, 1]
+    assert scores.attrs['measure'] == {'kind': 'implied', 'source': 'likelihood', 'scale': 'log'}
+    np.testing.assert_array_equal(session.collect('behavior:choice').values, [[0, 1], [1, 0]])
+    assert seen == [('likelihood', (('text', 'the cat'),), ('sat', 'ran')),
+                    ('likelihood', (('text', 'the dog'),), ('kind', 'mean'))]
+    seen.clear()
+    phrased = TaskContext(response=Choice(labels_column='options'))
+    for part in ({'reply': reply}, {'answer': answer}):
+        model = BrainScoreModel(identifier='other', supported_modalities={'text'}, **part)
+        session = stimulus_session(_options_stimuli(), ['behavior:choice'], phrased)
+        model.participate(session)
+        chosen = session.collect('behavior:choice')
+        assert list(chosen['raw_answer'].values) == (['ran', 'mean'] if 'reply' in part else ['sat', 'kind'])
+    assert seen[0] == ('reply', (('text', 'the cat'), ('text', 'Answer with exactly one of: sat, ran.')),
+                       ('sat', 'ran'))
+    assert seen[2] == ('answer', 'the cat', ('sat', 'ran'))
+
+
+def test_raw_scores_need_a_likelihood_part():
+    """A model that would have to guess or normalize is N/A, never scored."""
+    from brainscore_core.compatibility import CompatibilityError
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    model = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=lambda p: 'sat')
+    task = TaskContext(response=Choice(labels_column='options', raw_scores=True, raw_text=True))
+    with pytest.raises(CompatibilityError, match='likelihood'):
+        model.start_task(task)
+
+
+def test_chat_parts_scores_plain_text_under_raw_text():
+    """No template, no BOS: the option's tokens after the text's own tokens."""
+    from brainscore_core.responses import Choice, Prompt
+    from brainscore.model_helpers.replies import chat_parts
+    model, processor = TinyLM2(), CharProcessor()
+    _, likelihood = chat_parts(model, processor)
+    seen = {}
+
+    def forward(input_ids, attention_mask, token_type_ids=None):
+        seen.setdefault('ids', []).append(input_ids)
+        return TinyLM2.forward(model, input_ids, attention_mask, torch.zeros_like(input_ids))
+    model.forward = forward
+    prompt = Prompt((('text', 'ab'),), response=Choice(['c', 'dd'], raw_text=True))
+    scores = likelihood(prompt, ['c', 'dd'])
+    tok = processor.tokenizer
+    for option in ('c', 'dd'):
+        ids = tok(f'ab {option}')['input_ids']
+        logp = model.head(model.embed(torch.tensor([ids])))[0].log_softmax(-1)
+        expected = sum(float(logp[i - 1, ids[i]]) for i in range(len(tok('ab')['input_ids']), len(ids)))
+        assert scores[option] == pytest.approx(expected, abs=1e-5)
+    # The text alone first (the pass a recording keeps), then the options; never a template.
+    assert seen['ids'][0].tolist() == [tok('ab')['input_ids']]
+    assert not hasattr(processor, 'kwargs')

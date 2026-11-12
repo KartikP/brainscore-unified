@@ -24,8 +24,10 @@ to your own package to add a tool using public APIs.
 ## Record reasoning
 
 The [reasoning example](reasoning.py) records two synthetic reasoning fragments
-and a final answer. It uses `build_trace_subject`, `SessionProtocol`, and the
-same record format; no model download or paid API call is needed.
+and a final answer. The subject answers on `behavior:text` and puts its reasoning
+in the extra data of each answer event (`meta['reasoning']`), where
+`RecordReasoning` reads it. It uses `SessionProtocol` and the same record
+format; no model download or paid API call is needed.
 
 ```sh
 python examples/experiment_toolbox/reasoning.py --out ./my-reasoning-demo

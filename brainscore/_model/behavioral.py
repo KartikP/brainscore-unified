@@ -383,13 +383,22 @@ class BehavioralReadout:
                          and bool(owner._extractors or owner._layer_extractors)
                          and task_context.fitting_stimuli is not None)
         reported_confidence = isinstance(response, Choice) and response.confidence is not None
+        raw_scores = isinstance(response, Choice) and response.raw_scores
+        if raw_scores and owner._likelihood_fn is None:
+            # Raw scores come only from a likelihood part: no softmax of a readout, no guess.
+            from brainscore_core.compatibility import CompatibilityError
+            raise CompatibilityError(
+                f"Model '{owner.identifier}' cannot give raw scores of the options: "
+                'they come only from a likelihood= part.')
+        per_row = isinstance(response, Choice) and response.labels_column is not None
         can = {
-            'generation': owner._reply_fn is not None or (
+            'generation': not raw_scores and (owner._reply_fn is not None or (
                 owner._generation_fn is not None and isinstance(response, Choice)
-                and not reported_confidence),
+                and not reported_confidence)),
             'likelihood': (owner._likelihood_fn is not None and isinstance(response, Choice)
                            and not reported_confidence),
-            'readout': readout_wired and isinstance(response, (Choice, Scale)) and not reported_confidence,
+            'readout': (readout_wired and isinstance(response, (Choice, Scale))
+                        and not reported_confidence and not raw_scores and not per_row),
         }
         order = ['generation', 'likelihood', 'readout'] if prefer == 'auto' else [prefer]
         path = next((p for p in order if can[p]), None)
@@ -402,10 +411,11 @@ class BehavioralReadout:
                 + (' with reported confidence (needs reply=)' if reported_confidence else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {needs[p]}' for p in order))
         source = None
-        if isinstance(response, Choice) and (response.probabilities or response.reaction_time):
+        if isinstance(response, Choice) and (response.probabilities or response.reaction_time
+                                             or response.raw_scores):
             if path != 'readout' and owner._likelihood_fn is not None:
                 source = 'likelihood'
-            elif readout_wired:
+            elif readout_wired and not per_row:
                 source = 'readout'
             else:
                 raise ValueError(f"Model '{owner.identifier}' cannot give implied probabilities: "
@@ -434,6 +444,17 @@ class BehavioralReadout:
         # Every trial's prompt is built first, so a bad layout fails before any compute.
         prompts = [trial_prompt(task, row) for _, row in stimuli.iterrows()]
         neural, outputs = {}, {}
+        # The options of each row: the task's labels, or the row's own (labels_column).
+        # The choice axis is then the labels, or the position of each option.
+        row_labels, axis = None, labels
+        if isinstance(response, Choice):
+            row_labels = [list(prompt.response.labels) for prompt in prompts]
+            if labels is None:
+                counts = {len(options) for options in row_labels}
+                if len(counts) > 1:
+                    raise ValueError(f'Every row must give the same number of options in column '
+                                     f'{response.labels_column!r}; got {sorted(counts)}')
+                axis = list(range(counts.pop())) if counts else []
 
         if path == 'readout':
             values, neural = self._read_out_and_record(stimuli, layers, raw=True)
@@ -442,7 +463,7 @@ class BehavioralReadout:
             else:
                 outputs['behavior:choice'] = _one_hot(
                     [str(values['choice'].values[i]) for i in np.asarray(values.values).argmax(1)],
-                    [True] * len(stimuli), stimuli, labels, 'readout', raw=None)
+                    [True] * len(stimuli), stimuli, row_labels, axis, 'readout', raw=None)
                 if self.probability_source == 'readout':
                     outputs['behavior:probabilities'] = _implied(_in_order(values, labels), 'readout')
         else:
@@ -457,7 +478,7 @@ class BehavioralReadout:
 
             if path == 'likelihood':
                 def call(row, prompt):
-                    scores = owner._likelihood_fn(with_history(prompt), list(labels))
+                    scores = owner._likelihood_fn(with_history(prompt), list(prompt.response.labels))
                     if remember:
                         self.history.append((prompt, max(scores, key=scores.get)))
                     return scores
@@ -465,7 +486,8 @@ class BehavioralReadout:
                 def call(row, prompt):
                     shown = with_history(prompt)
                     # Scoring first keeps the recorded first pass the prompt alone.
-                    scores = owner._likelihood_fn(shown, list(labels)) if score_first else None
+                    scores = (owner._likelihood_fn(shown, list(prompt.response.labels))
+                              if score_first else None)
                     reply = owner._reply_fn(shown)
                     if remember:
                         self.history.append((prompt, str(reply)))
@@ -473,20 +495,24 @@ class BehavioralReadout:
             else:   # a registration's answer: it phrases and parses a Choice itself
                 def call(row, prompt):
                     return owner._generation_fn(stimulus_row=row, instruction=task.instruction,
-                                                label_set=list(labels))
+                                                label_set=list(prompt.response.labels))
             replies, neural = self._per_stimulus(stimuli, layers, call, prompts)
             scores = None
             if path == 'generation' and owner._reply_fn is not None:
                 scores = [s for _, s in replies]
                 replies = [r for r, _ in replies]
             if path == 'likelihood':
-                probabilities = _softmax_rows(replies, labels)
-                chosen = [labels[i] for i in probabilities.argmax(1)]
+                logp = _score_rows(replies, row_labels)
+                probabilities = _softmax(logp)
+                chosen = [options[i] for options, i in zip(row_labels, probabilities.argmax(1))]
                 outputs['behavior:choice'] = _one_hot(chosen, [True] * len(stimuli), stimuli,
-                                                      labels, 'likelihood', raw=None)
-                if self.probability_source == 'likelihood':
+                                                      row_labels, axis, 'likelihood', raw=None)
+                if response.raw_scores:
                     outputs['behavior:probabilities'] = _implied_array(
-                        probabilities, stimuli, labels, 'likelihood')
+                        logp, stimuli, axis, 'likelihood', scale='log')
+                elif self.probability_source == 'likelihood':
+                    outputs['behavior:probabilities'] = _implied_array(
+                        probabilities, stimuli, axis, 'likelihood')
             elif isinstance(response, Text):
                 parsed = [response.parse(reply) for reply in replies]
                 outputs['behavior:text'] = _texts(parsed, replies, stimuli)
@@ -494,11 +520,11 @@ class BehavioralReadout:
                 parsed = [response.parse(reply) for reply in replies]
                 outputs['behavior:rating'] = _numbers(parsed, stimuli, 'reply', raw=replies)
             else:
-                parsed = [response.parse(str(reply)) for reply in replies]
+                parsed = [prompt.response.parse(str(reply)) for prompt, reply in zip(prompts, replies)]
                 source = 'reply' if owner._reply_fn is not None else 'answer'
                 outputs['behavior:choice'] = _one_hot(
                     [label for label, _ in parsed], [label is not None for label, _ in parsed],
-                    stimuli, labels, source, raw=[str(r) for r in replies],
+                    stimuli, row_labels, axis, source, raw=[str(r) for r in replies],
                     errors=[error for _, error in parsed])
                 if response.confidence is not None:
                     outputs['behavior:confidence'] = _numbers(
@@ -506,7 +532,7 @@ class BehavioralReadout:
                         'reply', raw=replies)
                 if score_first:
                     outputs['behavior:probabilities'] = _implied_array(
-                        _softmax_rows(scores, labels), stimuli, labels, 'likelihood')
+                        _softmax(_score_rows(scores, row_labels)), stimuli, axis, 'likelihood')
                 elif self.probability_source == 'readout':
                     outputs['behavior:probabilities'] = _implied(_in_order(
                         self.readout_classifier.predict_proba(owner._extract_behavioral_features(stimuli)),
@@ -848,19 +874,30 @@ def _hook_recording(model, layers, identifier):
 
 
 def _presentation(stimuli):
-    return {column: ('presentation', list(stimuli[column].values)) for column in stimuli.columns}
+    """The stimulus columns as presentation coordinates.
+
+    A column whose cells are sequences (the options of a ``labels_column``
+    choice) cannot be a coordinate and is left out.
+    """
+    return {column: ('presentation', list(stimuli[column].values)) for column in stimuli.columns
+            if not any(isinstance(value, (list, tuple, set, dict, np.ndarray))
+                       for value in stimuli[column].values)}
 
 
-def _one_hot(chosen, valid, stimuli, labels, source, raw=None, errors=None):
-    """One row per stimulus, 1 for the chosen label; invalid rows are NaN (rule 6.2)."""
+def _one_hot(chosen, valid, stimuli, row_labels, axis, source, raw=None, errors=None):
+    """One row per stimulus, 1 for the chosen label; invalid rows are NaN (rule 6.2).
+
+    ``row_labels`` are each row's options; ``axis`` names the choice axis (the
+    labels, or option positions when the options differ for each row).
+    """
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-    values = np.zeros((len(stimuli), len(labels)), dtype=np.float32)
+    values = np.zeros((len(stimuli), len(axis)), dtype=np.float32)
     for i, (label, ok) in enumerate(zip(chosen, valid)):
         if ok:
-            values[i, list(labels).index(label)] = 1.0
+            values[i, list(row_labels[i]).index(label)] = 1.0
         else:
             values[i] = np.nan
-    coords = {**_presentation(stimuli), 'choice': list(labels),
+    coords = {**_presentation(stimuli), 'choice': list(axis),
               'answer_valid': ('presentation', list(valid)),
               'raw_answer': ('presentation', [str(r) for r in (raw or chosen)])}
     if errors is not None:
@@ -907,19 +944,27 @@ def _reaction_time(probabilities, link, stimuli):
                                                  'source': probabilities.attrs.get('measure', {}).get('source')}})
 
 
-def _softmax_rows(scores, labels):
-    logp = np.array([[float(row[label]) for label in labels] for row in scores], dtype=float)
-    logp -= logp.max(axis=1, keepdims=True)
+def _score_rows(scores, row_labels):
+    """Each row's likelihood scores, in the order of that row's options."""
+    return np.array([[float(row[label]) for label in options]
+                     for row, options in zip(scores, row_labels)], dtype=float)
+
+
+def _softmax(logp):
+    logp = logp - logp.max(axis=1, keepdims=True)
     p = np.exp(logp)
     return p / p.sum(axis=1, keepdims=True)
 
 
-def _implied_array(probabilities, stimuli, labels, source):
+def _implied_array(values, stimuli, axis, source, scale=None):
+    """Implied values per option. Raw scores (``scale='log'``) keep full precision."""
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-    return BehavioralAssembly(probabilities.astype(np.float32),
-                              coords={**_presentation(stimuli), 'choice': list(labels)},
-                              dims=['presentation', 'choice'],
-                              attrs={'measure': {'kind': 'implied', 'source': source}})
+    measure = {'kind': 'implied', 'source': source}
+    if scale is not None:
+        measure['scale'] = scale
+    return BehavioralAssembly(values if scale is not None else values.astype(np.float32),
+                              coords={**_presentation(stimuli), 'choice': list(axis)},
+                              dims=['presentation', 'choice'], attrs={'measure': measure})
 
 
 def _in_order(assembly, labels):

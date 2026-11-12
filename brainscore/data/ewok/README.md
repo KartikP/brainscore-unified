@@ -77,22 +77,29 @@ the authors' distribution terms. A successful build does not establish paper
 replication; the paper archive currently yields 4,372 items, versus 4,374 stated
 in the paper.
 
-## 4. Run choice mode with your model
+## 4. Run the benchmarks with your model
 
-`EWoK-core-1.0-choice` runs any model that takes `text` and answers on
-`behavior:choice`: a `BrainScoreModel` with a `reply`, `likelihood` or `answer`
-part. Each question is one stimulus row whose text is EWoK's own choice prompt;
-the task's response is `Choice(labels=('1', '2'))`.
+Both benchmarks run on the common channels; each question is one stimulus row.
+
+`EWoK-core-1.0-logprobs` shows each context as `text`, exactly as given, with
+both targets as the options of that row. A model with a `likelihood` part
+returns the raw score of each target on `behavior:probabilities`: the summed log
+probability of the target's tokens in `f"{context} {target}"`, raw text, no
+template, as EWoK's `score` does. A model without a `likelihood` part is N/A.
+`chat_parts` and `build_causal_lm_subject` give such a part; so does
+`EWoKProvider(native_model)` from `brainscore.harnesses.ewok`, which calls the
+authors' own `score`.
+
+`EWoK-core-1.0-choice` shows EWoK's own choice prompt as `text`, with no
+sentence added, and asks for `behavior:choice` between 1 and 2. A model with a
+`reply`, `likelihood` or `answer` part runs it.
 
 ```python
-benchmark = brainscore.load_benchmark("EWoK-core-1.0-choice")
+benchmark = brainscore.load_benchmark("EWoK-core-1.0-logprobs")
 score = benchmark(model)
 ```
 
-Choice scores can differ from EWoK's own evaluator. The model builds its own
-prompt (a chat model adds its template, and the choice adds the directive
-"Answer with exactly one of: 1, 2.") and decodes by its own rule, where EWoK
+Choice scores can differ from EWoK's own evaluator. A chat model answers
+through its own chat template and the model decodes by its own rule, where EWoK
 sends the raw prompt and limits greedy decoding to 1 or 2. The score says so in
 `score.attrs['input_adaptation']`.
-
-For the log-probability mode and for tools, see [the EWoK guide](../../../docs/archive/ewok.md).

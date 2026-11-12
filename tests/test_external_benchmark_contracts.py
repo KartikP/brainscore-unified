@@ -13,7 +13,6 @@ from brainscore_core.score_status import score_or_na
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore.data.preparation import prepare_dataset
 from brainscore.experiments import Experiment, RecordInputsOutputs
-from brainscore.model_helpers.response_trace import build_trace_subject
 from brainscore.harnesses.coggym import CogGymRunner
 
 from .test_coggym import PIXEL, image_part, reference, make_subject, reply_with_trial
@@ -179,11 +178,13 @@ def test_nonreference_coggym_settings_have_distinct_id(scored_reference, setting
 
 
 @pytest.mark.parametrize('mode', ['logprobs', 'choice'])
-def test_ewok_generation_only_provider_rejected_without_calls(prepared, mode):
+def test_ewok_subject_without_the_text_input_rejected_without_calls(prepared, mode):
+    """A subject that cannot take the text is N/A before any part runs."""
+    from brainscore import BrainScoreModel
     calls = []
-    candidate = build_trace_subject(
-        'text-only', provider=lambda request: calls.append(request), parse=str, provenance={},
-    )
+    candidate = BrainScoreModel('pictures-only', supported_modalities={'vision'},
+                                reply=lambda prompt: calls.append(prompt) or '1',
+                                likelihood=lambda prompt, options: calls.append(prompt) or {})
     benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
     with pytest.raises(CompatibilityError):
         benchmark(candidate)
@@ -223,7 +224,8 @@ def test_ewok_implicit_records_deleted_on_success_and_failure(prepared, tmp_path
         return handle
     monkeypatch.setattr(module.tempfile, 'TemporaryDirectory', directory)
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
-    model = subject((lambda request: {'text': '[]'}) if fail else EWoKProvider(NativeModel()))
+    model = subject((lambda prompt, candidates: {c: float('nan') for c in candidates})
+                    if fail else EWoKProvider(NativeModel()))
     if fail:
         with pytest.raises(ValueError):
             benchmark(model)
@@ -250,20 +252,11 @@ def test_ewok_explicit_records_private_and_score_uses_resolved_id(prepared, tmp_
     assert (tmp_path / 'retained/inputs_outputs').exists()
 
 
-def test_multichannel_trace_subject_keeps_dispatch_and_session_contract():
-    channels = ['generation_request', 'image_generation_request', 'conditional_logprob_request']
-    candidate = build_trace_subject(
-        'multi', provider=lambda request: {'text': request['value']},
-        parse=str, provenance={}, input_channels=channels,
-    )
-    assert candidate.in_channels == set(channels) | {'control'}
-    events = [StreamEvent(channel, {'value': channel}, None) for channel in channels]
-    session = Session(events)
-    session.outputs = {'response_trace'}
-    candidate.participate(session)
-    assert [event.payload['answer'] for event in session.emitted] == channels
-    # Creating another subject must not change the first subject's declarations.
-    other = build_trace_subject('other', provider=lambda request: {'text': ''}, parse=str,
-                                provenance={})
-    assert other.in_channels == {'generation_request', 'control'}
-    assert candidate.in_channels == set(channels) | {'control'}
+def test_the_library_channels_are_gone():
+    """External libraries run on the common channels only (Contract Rules 3.8, 3.9)."""
+    import importlib.util
+    from brainscore_core import io_catalog
+    removed = ('generation_request', 'image_generation_request', 'video_generation_request',
+               'conditional_logprob_request', 'context_choice_request', 'response_trace')
+    assert not any(io_catalog.has(name) for name in removed)
+    assert importlib.util.find_spec('brainscore.model_helpers.response_trace') is None

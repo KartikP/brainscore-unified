@@ -1,28 +1,30 @@
-"""Adapt the authors' EWoK model evaluator to a UMI response-trace provider."""
-import json
+"""Use the authors' EWoK model evaluator as a ``likelihood`` part."""
+from collections.abc import Sequence
 from typing import Any
 
 
 class EWoKProvider:
-    """Delegate tokenization and log probabilities to EWoK.
+    """Score options with EWoK's own ``score``: a ``likelihood`` part.
 
     ``native_model`` is an instance of ``ewok.evaluate.model.Model`` from the
     pinned paper environment, or an implementation of its ``score`` method.
-    Choice mode does not use this provider: it runs on the common channels.
-    Put source revision and model settings in subject provenance. The model
-    object remains available for ordinary UMI instrumentation.
+    ``BrainScoreModel(likelihood=EWoKProvider(native), supported_modalities={'text'})``
+    runs EWoK's log-probability mode with EWoK's own tokenization and scoring:
+    for a trial whose text is a context, each option's score is
+    ``native_model.score([option], [context])``, called once per trial for all
+    options. Put source revision and model settings in the model's provenance.
+    The native model object remains available for ordinary UMI instrumentation.
     """
 
     def __init__(self, native_model: Any) -> None:
         self.native_model = native_model
 
-    def __call__(self, request: dict) -> dict:
-        """Translate a subject's request into a call to the EWoK model evaluator."""
-        if request['operation'] != 'ewok.logprobs':
-            raise ValueError('Unsupported EWoK provider operation')
-        values = [float(value) for value in
-                  self.native_model.score(request['targets'], request['contexts'])]
-        # build_trace_subject(parse=json.loads) turns this JSON text into the
-        # response_trace answer list used by the benchmark. This is the shared
-        # provider interface, even when the answers are numbers rather than prose.
-        return {'text': json.dumps(values, allow_nan=False)}
+    def __call__(self, prompt, candidates: Sequence[str]) -> dict:
+        """The EWoK score of each candidate after the trial's text."""
+        texts = [content for kind, content in prompt.parts if kind == 'text']
+        if len(texts) != 1 or len(texts) != len(prompt.parts):
+            raise ValueError('EWoK scores one text part; got '
+                             f'{[kind for kind, _ in prompt.parts]}')
+        candidates = list(candidates)
+        values = self.native_model.score(candidates, [texts[0]] * len(candidates))
+        return {candidate: float(value) for candidate, value in zip(candidates, values)}

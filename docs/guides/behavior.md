@@ -23,7 +23,15 @@ task = TaskContext(
 | `Text()` | a written answer, kept as written | `behavior:text` |
 | `Text(max_tokens=512, temperature=1.0)` | a written answer under the task's generation settings | `behavior:text` |
 
-Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording and parsing are the benchmark's science: subclass a response to change them.
+Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording is the benchmark's science: the benchmark writes the instruction and the stimulus text. A task accepts only `Choice`, `Scale` and `Text` themselves, not a subclass, so a benchmark cannot change the directive by subclassing. To add no sentence at all, use `Choice(..., raw_text=True)`.
+
+Three fields of `Choice` serve a library that compares options by their likelihood (EWoK):
+
+| Field | Meaning |
+| --- | --- |
+| `labels_column='options'` | the options differ for each row; the column holds each row's options. The `choice` axis is then the position of each option in that cell. |
+| `raw_scores=True` | `behavior:probabilities` carries each option's score exactly as the `likelihood` part gave it (summed log probability), not normalized; `attrs['measure']['scale']` is `'log'`. Only a `likelihood` part gives it; any other model is N/A. |
+| `raw_text=True` | the stimulus text is shown exactly as given: no directive, and no instruction. A `likelihood` part scores `f"{text} {option}"` as plain text, with no chat template and no beginning-of-sequence token. A `reply` part gets no added sentence but still answers through its chat template. |
 
 **The order of a trial.** A model that replies receives a `Prompt`: the instruction, the stimulus, then the response's directive. When a stimulus has several parts (a sentence and a clip), say the order people saw them in with `present`; a stimulus with several parts and no order fails before any compute:
 
@@ -73,5 +81,7 @@ BrainScoreModel(..., reply=reply, likelihood=likelihood)
 ## Hosted models
 
 `build_api_generation_fn` (in `brainscore.model_helpers.api_behavioral`) builds an `answer` for a hosted model API. Such a model has no layers, so it can take part in behavioral benchmarks only.
+
+`build_api_reply` builds a `reply` part from the same clients. It shows the trial's text and images in order, sends the task's instruction as the system text, and obeys the task's generation settings. A provider that refuses a setting the task gives fails before any request: the Anthropic API has no seed and refuses `top_p` and any temperature other than its default 1.0 (which is then not sent). The registered closed models come in two forms: `<name>` (an `answer` only, for choice tasks) and `<name>-reply` (a `reply`, which also writes answers, for example for CogGym).
 
 See [Lesson 6](../../notebooks/lessons/06_behavior.ipynb) and [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb).

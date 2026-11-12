@@ -8,7 +8,7 @@ encoding. Scoring requires the provider's API key in the environment
 (``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY``); registration + load do not.
 """
 from brainscore import BrainScoreModel
-from brainscore.model_helpers.api_behavioral import build_api_generation_fn
+from brainscore.model_helpers.api_behavioral import build_api_generation_fn, build_api_reply
 
 # identifier -> (provider, model id, declared modalities). Pin dated snapshots
 # where the provider offers them (OpenAI) so behavioral scores reproduce; Claude
@@ -48,11 +48,26 @@ REGISTRY = {
 _CACHE_ROOT = '~/.brainscore/api_behavioral_cache'
 
 
+# A model that also writes answers: '<identifier>-reply'. It has a reply part
+# built from the same client, so it runs tasks that ask for written answers
+# (CogGym) and obeys the task's generation settings. The plain identifiers keep
+# only their answer part, so the prompts of existing choice benchmarks do not change.
+_REPLY_SUFFIX = '-reply'
+
+
 def get_model(identifier: str) -> BrainScoreModel:
-    if identifier not in REGISTRY:
+    base = identifier[:-len(_REPLY_SUFFIX)] if identifier.endswith(_REPLY_SUFFIX) else identifier
+    if base not in REGISTRY:
         raise ValueError(f"unknown closed-API model '{identifier}'; "
-                         f"known: {sorted(REGISTRY)}")
-    cfg = REGISTRY[identifier]
+                         f"known: {sorted(REGISTRY)} and each with '{_REPLY_SUFFIX}'")
+    cfg = REGISTRY[base]
+    if identifier != base:
+        return BrainScoreModel(
+            identifier=identifier,
+            supported_modalities=set(cfg['modalities']),
+            reply=build_api_reply(cfg['provider'], cfg['model'],
+                                  cache_dir=f"{_CACHE_ROOT}/{identifier}"),
+        )
     generation_fn = build_api_generation_fn(
         provider=cfg['provider'],
         model=cfg['model'],

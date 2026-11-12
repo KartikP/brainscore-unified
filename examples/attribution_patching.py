@@ -15,9 +15,13 @@ from brainscore.experiments import (
     CallableProtocol, Experiment, PatchActivity, RecordActivity,
     RecordInputsOutputs, TorchInstrumentation,
 )
-from brainscore.model_helpers.response_trace import build_trace_subject
+from brainscore import BrainScoreModel
+from brainscore.instrumentation import observed
+from brainscore_core.contract import TaskContext
 from brainscore_core.events import Selection
-from brainscore_core.streaming import StreamEvent
+from brainscore_core.responses import Text
+from brainscore_core.streaming_helpers import stimulus_session
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 def run(model_path: Path, output_dir: Path, *, reference: str, comparison: str,
@@ -74,19 +78,18 @@ def run(model_path: Path, output_dir: Path, *, reference: str, comparison: str,
         chosen.setdefault(layer, []).append(unit)
     selections = [Selection(layer, sorted(units)) for layer, units in chosen.items()]
 
-    def respond(request):
-        with torch.no_grad():
-            logits = forward(request['text'])
-        return {
-            'text': tokenizer.decode([int(logits.argmax())]),
-            'reasoning': None,
-            'preference': float(preference(logits)),
-        }
+    last = {}
 
-    subject = build_trace_subject(
-        'gpt2-patch-check', provider=respond, parse=str,
-        provenance={'checkpoint': str(model_path.resolve()), 'precision': 'float32', 'device': 'cpu'},
-    )
+    def reply(prompt):
+        # The model's next token after the trial's text: a written answer. The
+        # same forward pass gives the preference; a patch applies once per pass.
+        with torch.no_grad():
+            logits = forward(prompt.text())
+        last['preference'] = float(preference(logits))
+        return tokenizer.decode([int(logits.argmax())])
+
+    # Checkpoint, precision and device: str(model_path.resolve()), float32, CPU.
+    subject = BrainScoreModel('gpt2-patch-check', supported_modalities={'text'}, reply=reply)
     conditions = {'baseline': None, 'selected': selections}
     for seed in range(3):
         rng = np.random.default_rng(seed)
@@ -101,7 +104,13 @@ def run(model_path: Path, output_dir: Path, *, reference: str, comparison: str,
         def evaluate(subject, context):
             # Save estimates and source values with the same recorder as model calls.
             context.publish('attribution', analysis, source='TorchInstrumentation')
-            return subject.process(StreamEvent('generation_request', {'text': comparison}, None))
+            stimuli = StimulusSet({'stimulus_id': ['comparison'], 'text': [comparison]})
+            stimuli.identifier = 'attribution-patching-pair'
+            session = stimulus_session(stimuli, ['behavior:text'], TaskContext(response=Text()))
+            with context.repetition(0), observed(session, context):   # record the question and the answer
+                subject.participate(session)
+            return {'text': str(session.collect('behavior:text').values[0]),
+                    'preference': last['preference']}
 
         tools = [RecordInputsOutputs()]
         if selection is not None:
@@ -109,7 +118,8 @@ def run(model_path: Path, output_dir: Path, *, reference: str, comparison: str,
         tools.append(RecordActivity(selections))
         result = Experiment(
             subject=subject,
-            protocol=CallableProtocol('paired-input-tool-check', evaluate),
+            protocol=CallableProtocol('paired-input-tool-check', evaluate, methods=(),
+                                      repetitions=(0,)),
             tools=tools,
             instrumentation=instrumentation,
             output_dir=output_dir / condition,
@@ -119,7 +129,7 @@ def run(model_path: Path, output_dir: Path, *, reference: str, comparison: str,
                 'selection_pair_is_evaluation_pair': True,
             },
         ).run()
-        outputs[condition] = result.value.payload['raw']
+        outputs[condition] = result.value
     if outputs['baseline'] != outputs['restored']:
         raise AssertionError('Model response did not restore exactly')
     if any(module._forward_hooks for module in model.modules()):

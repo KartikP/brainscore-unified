@@ -7,7 +7,10 @@ Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
 (instruction, stimulus parts, the response's directive). They are shown as one
 user message in that order; images as images, clips as video with their real
 frame rate. ``reply(prompt)`` returns the model's raw reply; the task's response
-parses it. A ``Text`` response carries the task's generation settings
+parses it. Under a ``raw_text`` choice, ``likelihood`` scores
+``f"{text} {candidate}"`` as plain text, with no chat template and no
+beginning-of-sequence token, as EWoK's ``score`` does; ``reply`` still uses the
+chat template, because a chat model cannot answer without it. A ``Text`` response carries the task's generation settings
 (``max_tokens``, ``temperature``, ``top_p``, ``seed``), and the reply obeys them.
 Without them the reply is greedy and at most ``max_new_tokens`` tokens long.
 ``likelihood(prompt, candidates)`` returns the log probability of
@@ -40,6 +43,8 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
 
     def likelihood(prompt, candidates: Sequence[str]) -> dict:
         import torch
+        if getattr(prompt.response, 'raw_text', False):
+            return _plain_text_scores(model, tokenizer, prompt, candidates)
         inputs = inputs_for(prompt)
         prompt_ids = inputs['input_ids']
         length = prompt_ids.shape[1]
@@ -67,6 +72,53 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
         return scores
 
     return reply, likelihood
+
+
+def _plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> dict:
+    """Score each candidate after the trial's text as plain text, as EWoK's ``score`` does.
+
+    For a ``raw_text`` task: the text is ``f"{text} {candidate}"`` with no chat
+    template and no beginning-of-sequence token. The value is the summed log
+    probability of the tokens after the text's own tokens. The text runs alone
+    first, so a recording made during scoring is the text pass. An empty text
+    is refused: its first token would have no prediction, and EWoK's own score
+    is then undefined (NaN).
+    """
+    import torch
+    texts = [content for kind, content in prompt.parts if kind == 'text']
+    if len(texts) != len(prompt.parts) or len(texts) != 1:
+        raise ValueError('Plain-text scoring takes exactly one text part; got '
+                         f'{[kind for kind, _ in prompt.parts]}')
+    if prompt.history:
+        raise ValueError('Plain-text scoring scores the text alone; it cannot show earlier trials')
+    text = texts[0]
+    device = next(model.parameters()).device
+    context = tokenizer(text, add_special_tokens=False)['input_ids']
+    if not context:
+        raise ValueError('The text has no tokens to condition on, so the first option token '
+                         'cannot be scored; give a nonempty text')
+    encoded = []
+    for candidate in candidates:
+        ids = tokenizer(f'{text} {candidate}', add_special_tokens=False)['input_ids']
+        if len(ids) <= len(context):
+            raise ValueError(f'option {candidate!r} has no tokens to score')
+        encoded.append(ids)
+    with torch.no_grad():
+        # The text alone first: the pass a recording keeps.
+        model(input_ids=torch.tensor([context], device=device),
+              attention_mask=torch.ones(1, len(context), dtype=torch.long, device=device))
+    # Right padding with any token: a real token never attends to it, and it is never scored.
+    pad = next((value for value in (getattr(tokenizer, 'pad_token_id', None),
+                                    getattr(tokenizer, 'eos_token_id', None)) if value is not None), 0)
+    width = max(len(ids) for ids in encoded)
+    ids = torch.tensor([row + [pad] * (width - len(row)) for row in encoded], device=device)
+    mask = torch.tensor([[1] * len(row) + [0] * (width - len(row)) for row in encoded], device=device)
+    scored = torch.tensor([[0] * len(context) + [1] * (len(row) - len(context)) + [0] * (width - len(row))
+                           for row in encoded], device=device)[:, 1:].float()
+    with torch.no_grad():  # right padding: real tokens never attend to padding
+        logp = model(input_ids=ids, attention_mask=mask).logits[:, :-1].float().log_softmax(-1)
+    totals = (logp.gather(-1, ids[:, 1:, None])[..., 0] * scored).sum(1).tolist()
+    return dict(zip(candidates, totals))
 
 
 def _generation_settings(prompt, max_new_tokens: int) -> dict:
