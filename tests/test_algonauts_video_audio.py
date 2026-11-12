@@ -358,3 +358,20 @@ def test_movies_apply_to_the_image_form_too(tmp_path):
     assert benchmark.identifier == 'Algonauts2025-friends-sub01'
     with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)):
         assert sorted(set(benchmark.assembly['stimulus_id'].values)) == sorted(MOVIES[:5])
+
+
+def test_the_whole_brain_form_records_every_mapped_layer_in_one_band(tmp_path):
+    calls = []
+    benchmark = _benchmark(tmp_path, record='all')
+    assert benchmark.identifier == 'Algonauts2025-friends-sub01-wholebrain'
+    assert benchmark.requested_output_channels == frozenset({'neural:all'})
+    assert benchmark._mode == 'concat'
+    benchmark._assembly = _assembly(MOVIES)
+    bands = benchmark._record_bands(_av_model(calls), _table())
+    # One band holds the units of the video tower and of the sound tower.
+    assert list(bands) == ['all'] and bands['all'].shape[1] == 2 * N_UNITS
+    benchmark._expand_to_per_TR_stimuli = lambda: _table()
+    score = benchmark(_av_model([]))
+    assert score.attrs['bands'] == ['all'] and np.isfinite(float(score))
+    with pytest.raises(ValueError, match="record='all' is for"):
+        Algonauts2025Friends(subject=1, form='video', record='all', assembly_root=tmp_path)

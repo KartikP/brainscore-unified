@@ -39,3 +39,8 @@ benchmark_registry['Algonauts2025-friends-sub01-video'] = (
 # only.
 benchmark_registry['Algonauts2025-friends-sub01-video-audio'] = (
     lambda: Algonauts2025Friends(subject=1, form='video+audio'))
+
+# The video and sound form, but the model answers with every layer it mapped
+# (neural:all) and one regression predicts the whole brain from all of them.
+benchmark_registry['Algonauts2025-friends-sub01-wholebrain'] = (
+    lambda: Algonauts2025Friends(subject=1, form='video+audio', record='all'))

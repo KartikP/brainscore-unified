@@ -297,6 +297,7 @@ class _Algonauts2025Base(BenchmarkBase):
         form: str = 'image',
         streaming: bool = False,
         movies: Optional[Sequence[str]] = None,
+        record: str = 'regions',
     ):
         if subject not in (1, 2, 3, 5):
             raise ValueError(
@@ -304,8 +305,14 @@ class _Algonauts2025Base(BenchmarkBase):
         if form not in self.VALID_FORMS:
             raise ValueError(
                 f"form must be one of {self.VALID_FORMS}; got {form!r}.")
+        if record not in ('regions', 'all'):
+            raise ValueError(f"record must be 'regions' or 'all'; got {record!r}.")
+        if record == 'all' and form != 'video+audio':
+            raise ValueError("record='all' is for form='video+audio'.")
         if mode is None:
-            mode = 'banded' if form == 'video+audio' else 'video_only'
+            # With record='all' every mapped layer of the model is one band.
+            mode = ('concat' if record == 'all'
+                    else 'banded' if form == 'video+audio' else 'video_only')
         if mode not in self.VALID_MODES:
             raise ValueError(
                 f"mode must be one of {self.VALID_MODES}; got {mode!r}.")
@@ -319,9 +326,10 @@ class _Algonauts2025Base(BenchmarkBase):
                 "['friends_s01e01a', 'friends_s01e01b'].")
 
         self._form = form
+        self._record = record
         self.required_input_channels = self.FORM_CHANNELS[form]
         if form == 'video+audio':
-            self.requested_output_channels = frozenset(self._BAND_CHANNELS.values())
+            self.requested_output_channels = frozenset(self._bands().values())
         self._streaming = bool(streaming)
         self._movies = None if movies is None else [str(movie) for movie in movies]
         self._subject = subject
@@ -339,7 +347,7 @@ class _Algonauts2025Base(BenchmarkBase):
         super().__init__(
             identifier=(f'Algonauts2025-{split}-sub{subject:02d}'
                         f'{identifier_suffix}'
-                        f"{self._FORM_SUFFIX[form]}"),
+                        f"{'-wholebrain' if record == 'all' else self._FORM_SUFFIX[form]}"),
             version=1,
             parent='naturalistic',
             ceiling=Score(1.0),
@@ -437,6 +445,9 @@ class _Algonauts2025Base(BenchmarkBase):
 
     def _bands(self) -> Dict[str, str]:
         """``{band: recorded channel}`` for the form of this benchmark."""
+        if self._record == 'all':
+            # Every layer the model mapped, in one extraction, predicts the whole brain.
+            return {'all': 'neural:all'}
         if self._form == 'video+audio':
             return dict(self._BAND_CHANNELS)
         return {'video': 'neural:IT'}

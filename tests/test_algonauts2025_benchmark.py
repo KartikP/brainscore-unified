@@ -2,7 +2,7 @@
 
 Data is on EC2 (~100 GB DataLad pull); these tests don't load any of
 it. They verify:
-- All 14 registry entries exist (subject x split, and two forms of sub01).
+- All 15 registry entries exist (subject x split, and three more forms of sub01).
 - Constructor validates subject ∈ {1, 2, 3, 5} and mode ∈ VALID_MODES.
 - ``__call__`` raises NotImplementedError until the assembly
   preparation pipeline runs on EC2.
@@ -40,8 +40,8 @@ def test_total_algonauts_benchmark_count():
     variants of sub01."""
     entries = [k for k in brainscore.benchmark_registry
                if k.startswith('Algonauts2025-')]
-    assert len(entries) == 14, (
-        f"expected 14 Algonauts entries, got {len(entries)}: {sorted(entries)}")
+    assert len(entries) == 15, (
+        f"expected 15 Algonauts entries, got {len(entries)}: {sorted(entries)}")
 
 
 # ── Constructor validation ────────────────────────────────────────
