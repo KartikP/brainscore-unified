@@ -62,4 +62,6 @@ Without prepared data, a registered benchmark raises `FileNotFoundError`. Prepar
 
 ## Mapped layers to the whole brain
 
-`Algonauts2025-friends-sub01-wholebrain` is the video and sound form with `record='all'`. The benchmark asks for `neural:all`. The model answers with every layer in its region map, in one pass, and one regression predicts all brain parcels from all of them. No model region stands for a brain region here. `all` means every mapped layer, not every layer of the network: a model that wants to offer more layers maps more.
+`Algonauts2025-friends-sub01-wholebrain` is the video and sound form with `record='all'`. The benchmark asks for every region the model declares (`neural:all`), each on its own channel. Every mapped layer is one band: the benchmark reduces it by itself (100 components) and gives it its own penalty in a banded ridge. One regression then predicts all brain parcels from all bands. A random search tries 60 penalty combinations, because the full grid grows with the number of layers. This follows the multi-layer encoding method of the himalaya library (Dupre la Tour et al. 2022); the code uses the benchmark's own banded ridge.
+
+No model region stands for a brain region here. `all` means every mapped layer, not every layer of the network: a model that wants to offer more layers maps more. The score lists the bands and the penalty of each band in each fold.

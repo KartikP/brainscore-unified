@@ -83,8 +83,25 @@ def _cv_ridge_predict(X, Y, run_idx_kept, alpha, n_splits, random_state,
     return held
 
 
+def _alpha_tuples(grid, n_bands, n_candidates, random_state):
+    """The penalty tuples to try: the full grid, or a random sample of it.
+
+    With many bands the full grid is too large (5 values and 4 bands give 625
+    tuples). A random search, as himalaya's ``solver='random_search'`` does,
+    tries ``n_candidates`` tuples: every tuple with one shared penalty, then
+    random draws from the grid.
+    """
+    if n_candidates is None or len(grid) ** n_bands <= n_candidates:
+        return list(product(grid, repeat=n_bands))
+    rng = np.random.default_rng(random_state)
+    tuples = {(alpha,) * n_bands for alpha in grid}
+    while len(tuples) < n_candidates:
+        tuples.add(tuple(float(a) for a in rng.choice(grid, size=n_bands)))
+    return sorted(tuples)
+
+
 def _banded_nested_cv(blocks, Y, run_idx_kept, banded_alpha_grid,
-                      n_splits, random_state):
+                      n_splits, random_state, n_candidates=None):
     """Banded ridge with a nested inner-CV α-tuple sweep per outer fold.
 
     Faithful port of the validated reproduction script: outer run-KFold;
@@ -100,7 +117,7 @@ def _banded_nested_cv(blocks, Y, run_idx_kept, banded_alpha_grid,
         cur += w
     X = np.concatenate(blocks, axis=1)
     n_bands = len(blocks)
-    tuples = list(product(banded_alpha_grid, repeat=n_bands))
+    tuples = _alpha_tuples(list(banded_alpha_grid), n_bands, n_candidates, random_state)
 
     unique_runs = np.unique(run_idx_kept)
     held = np.full_like(Y, np.nan, dtype=np.float32)
@@ -160,7 +177,8 @@ def _banded_nested_cv(blocks, Y, run_idx_kept, banded_alpha_grid,
 def score_encoding_modes(per_modality_stacked, Y, run_idx_kept, mode, *,
                          ridge_alpha=1.0,
                          banded_alpha_grid=(1.0, 10.0, 100.0, 1000.0, 10000.0),
-                         n_splits=5, random_state=0, memory_bounded=False):
+                         n_splits=5, random_state=0, memory_bounded=False,
+                         banded_candidates=None):
     """Score per-parcel encoding for the requested multimodal combination.
 
     Args:
@@ -207,8 +225,9 @@ def score_encoding_modes(per_modality_stacked, Y, run_idx_kept, mode, *,
         blocks = list(per_modality_stacked.values())
         held, chosen = _banded_nested_cv(
             blocks, Y, run_idx_kept, list(banded_alpha_grid),
-            n_splits, random_state)
+            n_splits, random_state, n_candidates=banded_candidates)
         info = {'mode': mode, 'bands': present,
+                'banded_candidates': banded_candidates,
                 'banded_alpha_grid': list(banded_alpha_grid),
                 'chosen_alphas_per_fold': [
                     dict(zip(present, [float(x) for x in t])) for t in chosen]}

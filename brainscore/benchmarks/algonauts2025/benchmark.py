@@ -310,9 +310,8 @@ class _Algonauts2025Base(BenchmarkBase):
         if record == 'all' and form != 'video+audio':
             raise ValueError("record='all' is for form='video+audio'.")
         if mode is None:
-            # With record='all' every mapped layer of the model is one band.
-            mode = ('concat' if record == 'all'
-                    else 'banded' if form == 'video+audio' else 'video_only')
+            # With record='all' every mapped region of the model is its own band.
+            mode = 'banded' if form == 'video+audio' else 'video_only'
         if mode not in self.VALID_MODES:
             raise ValueError(
                 f"mode must be one of {self.VALID_MODES}; got {mode!r}.")
@@ -769,6 +768,10 @@ class _Algonauts2025Base(BenchmarkBase):
     # variance and shrinks the design matrix ~38× (matches what BLIP-2
     # / Lahner-multimodal do).
     FEATURE_DIM_CAP = 1000
+    # record='all': components kept for each mapped layer, and penalty tuples tried
+    # by the random search (the full grid grows as 5 ** number of layers).
+    LAYER_DIM_CAP = 100
+    BANDED_CANDIDATES = 60
 
     def _extract_per_TR_features(self, candidate, frame_stim_set,
                                  recording_target='IT', *, projection=None,
@@ -825,11 +828,11 @@ class _Algonauts2025Base(BenchmarkBase):
         bands = self._bands()
         if self._record == 'all':
             # neural:all is every region the subject declares. Each region is asked for
-            # on its own channel, because two towers can have different time axes; the
-            # benchmark takes the mean over time and joins the units into one band.
-            bands = {'all': tuple(sorted(
+            # on its own channel and is its own band: it is reduced by itself and gets
+            # its own penalty (banded ridge), so a large layer cannot hide a small one.
+            bands = {channel.split(':', 1)[1]: (channel,) for channel in sorted(
                 channel for channel in candidate.out_channels
-                if channel.startswith('neural:') and channel != 'neural:all'))}
+                if channel.startswith('neural:') and channel != 'neural:all')}
         else:
             bands = {band: (channel,) for band, channel in bands.items()}
         requested = sorted({channel for channels in bands.values() for channel in channels})
@@ -849,7 +852,8 @@ class _Algonauts2025Base(BenchmarkBase):
                 raise ValueError(
                     f"the table has {len(table)} rows but {channel} answered "
                     f"{feats.shape[0]}; cannot trust input order.")
-            feats = FeatureProjection(self.FEATURE_DIM_CAP).fit_transform(feats, feature_ids)
+            cap = self.LAYER_DIM_CAP if self._record == 'all' else self.FEATURE_DIM_CAP
+            feats = FeatureProjection(cap).fit_transform(feats, feature_ids)
             print(f'  {band} band ({channel}): {feats.shape}')
             X_bands[band] = self._align_features_to_assembly(feats, frame_ids, table)
         return X_bands
@@ -1053,7 +1057,8 @@ class _Algonauts2025Base(BenchmarkBase):
               f'{list(per_modality_stacked)} (run-held-out 5-fold)...')
         per_voxel_r, info = score_encoding_modes(
             per_modality_stacked, Y, run_idx_kept, self._mode,
-            banded_alpha_grid=self.BANDED_ALPHA_GRID)
+            banded_alpha_grid=self.BANDED_ALPHA_GRID,
+            banded_candidates=(self.BANDED_CANDIDATES if self._record == 'all' else None))
 
         per_voxel_r_finite = per_voxel_r[~np.isnan(per_voxel_r)]
         median_r = float(np.median(per_voxel_r_finite))

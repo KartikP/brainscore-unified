@@ -365,15 +365,26 @@ def test_the_whole_brain_form_records_every_mapped_layer_in_one_band(tmp_path):
     benchmark = _benchmark(tmp_path, record='all')
     assert benchmark.identifier == 'Algonauts2025-friends-sub01-wholebrain'
     assert benchmark.requested_output_channels == frozenset({'neural:all'})
-    assert benchmark._mode == 'concat'
+    assert benchmark._mode == 'banded'
     benchmark._assembly = _assembly(MOVIES)
     bands = benchmark._record_bands(_av_model(calls), _table())
-    # One band holds the units of the video tower and of the sound tower.
-    assert list(bands) == ['all'] and bands['all'].shape[1] == 2 * N_UNITS
+    # Every mapped region is its own band, reduced by itself.
+    assert list(bands) == ['A1', 'IT'] and all(X.shape[1] == N_UNITS for X in bands.values())
     # Each region is asked for on its own channel: two towers can have different time axes.
     assert {column for column, *_ in calls} == {'video_path', 'audio_path'}
     benchmark._expand_to_per_TR_stimuli = lambda: _table()
     score = benchmark(_av_model([]))
-    assert score.attrs['bands'] == ['all'] and np.isfinite(float(score))
+    assert score.attrs['bands'] == ['A1', 'IT'] and np.isfinite(float(score))
+    assert set(score.attrs['chosen_alphas_per_fold'][0]) == {'A1', 'IT'}
     with pytest.raises(ValueError, match="record='all' is for"):
         Algonauts2025Friends(subject=1, form='video', record='all', assembly_root=tmp_path)
+
+
+def test_many_bands_use_a_random_search_over_the_penalties():
+    from brainscore.benchmarks.algonauts2025.scoring import _alpha_tuples
+    grid = [1.0, 10.0, 100.0, 1000.0, 10000.0]
+    assert len(_alpha_tuples(grid, 2, None, 0)) == 25          # the full grid, as before
+    assert len(_alpha_tuples(grid, 2, 60, 0)) == 25            # small enough: still the full grid
+    tuples = _alpha_tuples(grid, 4, 60, 0)
+    assert len(tuples) == 60 and tuples == _alpha_tuples(grid, 4, 60, 0)   # sampled, repeatable
+    assert all((alpha,) * 4 in tuples for alpha in grid)       # every shared penalty is tried
