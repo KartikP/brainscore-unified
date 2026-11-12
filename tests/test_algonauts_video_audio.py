@@ -370,6 +370,8 @@ def test_the_whole_brain_form_records_every_mapped_layer_in_one_band(tmp_path):
     bands = benchmark._record_bands(_av_model(calls), _table())
     # One band holds the units of the video tower and of the sound tower.
     assert list(bands) == ['all'] and bands['all'].shape[1] == 2 * N_UNITS
+    # Each region is asked for on its own channel: two towers can have different time axes.
+    assert {column for column, *_ in calls} == {'video_path', 'audio_path'}
     benchmark._expand_to_per_TR_stimuli = lambda: _table()
     score = benchmark(_av_model([]))
     assert score.attrs['bands'] == ['all'] and np.isfinite(float(score))

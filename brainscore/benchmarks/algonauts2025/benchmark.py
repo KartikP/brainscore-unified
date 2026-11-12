@@ -823,14 +823,28 @@ class _Algonauts2025Base(BenchmarkBase):
         """
         from brainscore_core.streaming_helpers import stimulus_session
         bands = self._bands()
-        session = stimulus_session(table, sorted(bands.values()), None,
+        if self._record == 'all':
+            # neural:all is every region the subject declares. Each region is asked for
+            # on its own channel, because two towers can have different time axes; the
+            # benchmark takes the mean over time and joins the units into one band.
+            bands = {'all': tuple(sorted(
+                channel for channel in candidate.out_channels
+                if channel.startswith('neural:') and channel != 'neural:all'))}
+        else:
+            bands = {band: (channel,) for band, channel in bands.items()}
+        requested = sorted({channel for channels in bands.values() for channel in channels})
+        session = stimulus_session(table, requested, None,
                                    time_bins=[(0, int(TR_SEC * 1000))],
                                    streaming=self._streaming)
         candidate.participate(session)
         frame_ids = list(table['stimulus_id'])
         X_bands = {}
-        for band, channel in bands.items():
-            feats, feature_ids = _features_in_order(session.collect(channel), table)
+        for band, channels in bands.items():
+            channel = ' + '.join(channels)
+            parts = [_features_in_order(session.collect(one), table) for one in channels]
+            feats = np.concatenate([part for part, _ in parts], axis=1)
+            feature_ids = (np.concatenate([ids for _, ids in parts])
+                           if all(ids is not None for _, ids in parts) else None)
             if feats.shape[0] != len(table):
                 raise ValueError(
                     f"the table has {len(table)} rows but {channel} answered "
