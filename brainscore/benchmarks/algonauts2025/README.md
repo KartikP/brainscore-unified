@@ -60,6 +60,6 @@ Without prepared data, a registered benchmark raises `FileNotFoundError`. Prepar
 2. The default `stimulus_window=5` and `hrf_delay=3` follow the challenge baseline. You can use `hrf_convolve` from `brainscore.temporal` instead of the fixed shift.
 3. Codabench allows one submission per cycle on the OOD set. Iterate on Friends S7 first.
 
-## Whole model to whole brain
+## Mapped layers to the whole brain
 
 `Algonauts2025-friends-sub01-wholebrain` is the video and sound form with `record='all'`. The benchmark asks for `neural:all`. The model answers with every layer in its region map, in one pass, and one regression predicts all brain parcels from all of them. No model region stands for a brain region here. `all` means every mapped layer, not every layer of the network: a model that wants to offer more layers maps more.
