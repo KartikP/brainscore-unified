@@ -165,14 +165,31 @@ def chat_inputs(model, processor, prompt, template=None):
                 raise NotImplementedError(f'chat models here cannot be shown a {kind!r} part')
         return content
 
+    # The task's instruction is the system turn, as a library's own client sends it.
     # Earlier trials of the episode (memory='trial_history') become earlier turns.
+    def shown(trial):
+        names = trial.names or (None,) * len(trial.parts)
+        return [part for part, name in zip(trial.parts, names) if name != 'instruction']
+    names = prompt.names or (None,) * len(prompt.parts)
+    instruction = [value for (_, value), name in zip(prompt.parts, names) if name == 'instruction']
     messages = []
     for earlier, answered in prompt.history:
-        messages.append({'role': 'user', 'content': content_of(earlier.parts)})
+        messages.append({'role': 'user', 'content': content_of(shown(earlier))})
         messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': answered}]})
-    messages.append({'role': 'user', 'content': content_of(prompt.parts)})
-    text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
-                                         **dict(template or {}))
+    messages.append({'role': 'user', 'content': content_of(shown(prompt))})
+    system = ([{'role': 'system', 'content': [{'type': 'text', 'text': instruction[0]}]}]
+              if instruction else [])
+    from jinja2.exceptions import TemplateError
+    try:
+        text = processor.apply_chat_template(system + messages, tokenize=False, add_generation_prompt=True,
+                                             **dict(template or {}))
+    except TemplateError:
+        if not system:
+            raise
+        # A template that takes no system turn gets the instruction first in the first user turn.
+        first = dict(messages[0], content=system[0]['content'] + messages[0]['content'])
+        text = processor.apply_chat_template([first, *messages[1:]], tokenize=False,
+                                             add_generation_prompt=True, **dict(template or {}))
     call = dict(text=[text], return_tensors='pt', padding=True)
     if images:
         call['images'] = images

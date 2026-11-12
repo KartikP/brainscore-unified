@@ -267,3 +267,28 @@ def test_recording_rejects_malformed_sites(subject, layer):
     with pytest.raises(ValueError, match='site|empty module path'):
         TextWrapper(net, tok, identifier='strict', layer_aggregation='per_token')(_stimuli(), [layer])
     assert not any(m._forward_hooks or m._forward_pre_hooks for m in net.modules())
+
+
+def test_the_instruction_is_the_system_turn():
+    from jinja2.exceptions import TemplateError
+    from brainscore_core.responses import Prompt
+    from brainscore.model_helpers.causal_lm import _chat_text, _instruction_and_text
+
+    class Tokenizer:
+        def __init__(self, takes_system):
+            self.takes_system = takes_system
+
+        def apply_chat_template(self, messages, tokenize, add_generation_prompt):
+            if messages[0]['role'] == 'system' and not self.takes_system:
+                raise TemplateError('no system turn')
+            return messages
+
+    prompt = Prompt((('text', 'Follow the rules.'), ('text', 'Is it a word?')), names=('instruction', 'text'))
+    instruction, text = _instruction_and_text(prompt)
+    assert (instruction, text) == ('Follow the rules.', 'Is it a word?')
+    turns = [{'role': 'user', 'content': text}]
+    assert _chat_text(Tokenizer(True), instruction, turns, {}) == [
+        {'role': 'system', 'content': 'Follow the rules.'}, {'role': 'user', 'content': 'Is it a word?'}]
+    # A template with no system turn gets the instruction first in the user turn.
+    assert _chat_text(Tokenizer(False), instruction, turns, {}) == [
+        {'role': 'user', 'content': 'Follow the rules.\n\nIs it a word?'}]

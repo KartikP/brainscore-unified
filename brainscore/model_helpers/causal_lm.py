@@ -44,13 +44,14 @@ class _CausalLMParts:
 
     def format(self, prompt) -> str:
         """Chat-template a trial: earlier trials as turns, then its text, ending with the assistant's turn."""
+        # The task's instruction is the system turn, as a library's own client sends it.
+        instruction, text = _instruction_and_text(prompt)
         messages = []
         for earlier, answered in prompt.history:
-            messages += [{'role': 'user', 'content': _text_of(earlier)},
+            messages += [{'role': 'user', 'content': _instruction_and_text(earlier)[1]},
                          {'role': 'assistant', 'content': answered}]
-        messages.append({'role': 'user', 'content': _text_of(prompt)})
-        return self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
-                                                  **self.chat_template_kwargs)
+        messages.append({'role': 'user', 'content': text})
+        return _chat_text(self.tokenizer, instruction, messages, self.chat_template_kwargs)
 
     def reply(self, prompt) -> str:
         """Greedy unless the task's Text response gives a temperature above 0."""
@@ -99,11 +100,29 @@ class _CausalLMParts:
         return dict(zip(candidates, values))
 
 
-def _text_of(prompt) -> str:
+def _instruction_and_text(prompt):
+    """``(instruction or None, the other text parts joined)`` of a text-only trial."""
     kinds = {kind for kind, _ in prompt.parts}
     if kinds - {'text'}:
         raise NotImplementedError(f'a text-only causal LM cannot be shown {sorted(kinds - {"text"})} parts')
-    return prompt.text()
+    names = prompt.names or (None,) * len(prompt.parts)
+    instruction = [content for (_, content), name in zip(prompt.parts, names) if name == 'instruction']
+    text = [content for (_, content), name in zip(prompt.parts, names) if name != 'instruction']
+    return (instruction[0] if instruction else None), '\n\n'.join(text)
+
+
+def _chat_text(tokenizer, instruction, messages, template_kwargs) -> str:
+    """The chat-templated text. The instruction is the system turn; a template
+    that takes no system turn gets it at the start of the first user turn."""
+    from jinja2.exceptions import TemplateError
+    if instruction:
+        try:
+            return tokenizer.apply_chat_template([{'role': 'system', 'content': instruction}, *messages],
+                                                 tokenize=False, add_generation_prompt=True, **template_kwargs)
+        except TemplateError:
+            first = dict(messages[0], content=f"{instruction}\n\n{messages[0]['content']}")
+            messages = [first, *messages[1:]]
+    return tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True, **template_kwargs)
 
 
 def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
