@@ -175,8 +175,9 @@ def test_tissue_coords_of_a_participate_only_subject_reach_the_metric():
     assert _same_positions(seen[0], expected)
 
 
-def _two_tower_model(identifier):
-    """A BrainScoreModel with a vision and a text extractor that answer differently."""
+def _two_tower_model(identifier, tower_of_IT):
+    """A BrainScoreModel with a vision and a text extractor that answer differently.
+    A model with two extractors names the one each region is recorded from."""
     from brainscore import BrainScoreModel
 
     def tower(sign):
@@ -191,6 +192,7 @@ def _two_tower_model(identifier):
                 'tissue_y': ('neuroid', template['tissue_y'].values)})
         return extract
     return BrainScoreModel(identifier, region_layer_map={'IT': 'sheet'},
+                           region_modality_map={'IT': tower_of_IT},
                            extractor={'vision': tower(1.0), 'text': tower(-1.0)})
 
 
@@ -215,13 +217,13 @@ def _old_path_score(model, stimulus_set, brain):
     return predictions, raw, null
 
 
-@pytest.mark.parametrize('stimuli', [_stimuli, _two_input_stimuli],
+@pytest.mark.parametrize('stimuli, tower_of_IT', [(_stimuli, 'text'), (_two_input_stimuli, 'vision')],
                          ids=['text-only table', 'vision and text table'])
-def test_same_subject_old_process_path_and_participate_give_the_same_score(stimuli):
+def test_same_subject_old_process_path_and_participate_give_the_same_score(stimuli, tower_of_IT):
     """Rule 10.1 on one subject. With a vision and a text column, the old path
     read one modality (vision first); the session path must not combine both."""
     brain = _assembly(seed=1)
-    model = _two_tower_model('topographic-two-towers')
+    model = _two_tower_model('topographic-two-towers', tower_of_IT)
     old_predictions, old_raw, old_null = _old_path_score(model, stimuli(), brain)
     model.reset()
     benchmark = TopographicBenchmark('topographic-demo', brain_assembly=brain,

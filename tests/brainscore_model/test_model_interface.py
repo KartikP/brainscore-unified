@@ -1347,19 +1347,12 @@ class TestCrossTowerRouting:
         modalities = set(assembly['modality'].values.tolist())
         assert modalities == {'vision', 'text'}
 
-    def test_without_region_modality_map_legacy_behavior(self):
-        """No region_modality_map → every wrapper sees every layer
-        (legacy behavior, fine when both towers can resolve the path)."""
-        m, act, text_proc = self._make_cross_tower_model(
-            region_modality_map=None)
-        m.start_recording(['IT', 'language_network'])
-        stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
-        m.process(stimuli, multi_modality=True)
-        # Both layers go to both wrappers
-        assert act.call_args['layers'] == [
-            'vision_model.layer.10', 'text_model.layer.20']
-        assert text_proc.call_args['layers'] == [
-            'vision_model.layer.10', 'text_model.layer.20']
+    def test_without_region_modality_map_the_model_is_refused(self):
+        """A model with two extractors names the one each region is recorded
+        from. Without it, a region would be recorded from whichever tower gets
+        input, and pre-flight could not check it."""
+        with pytest.raises(ValueError, match='several extractors'):
+            self._make_cross_tower_model(region_modality_map=None)
 
     def test_cross_tower_skips_wrapper_with_no_layers(self):
         """If recording is single-region but multi_modality=True, the

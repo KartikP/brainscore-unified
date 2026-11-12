@@ -198,6 +198,12 @@ def _registration_path(folder):
     return Path(list(spec.submodule_search_locations)[0]) / 'models' / folder / 'model.py'
 
 
+def _TOWERS(module):
+    """The tower each region is recorded from, as the registrations name it."""
+    return {region: 'text' if region == 'language_system' else 'vision'
+            for region in module.REGION_LAYER_MAP}
+
+
 def _old_wiring(identifier, module, new):
     """The constructor call as it was before the migration, given the same parts."""
     BrainScoreModel = module.BrainScoreModel
@@ -208,6 +214,7 @@ def _old_wiring(identifier, module, new):
                 identifier=identifier,
                 model=new._model,
                 region_layer_map=module.REGION_LAYER_MAP,
+                region_modality_map=_TOWERS(module),
                 preprocessors={'vision': vision.kwargs['preprocessing'], 'text': text},
                 activations_model=vision,
                 visual_degrees=8,
@@ -217,6 +224,7 @@ def _old_wiring(identifier, module, new):
             identifier=identifier,
             model=new._model,
             region_layer_map=module.REGION_LAYER_MAP,
+            region_modality_map=_TOWERS(module),
             preprocessors={'vision': vision, 'text': text},
             visual_degrees=8,
             generation_fn=new._generation_fn,
@@ -302,10 +310,10 @@ def test_old_and_new_constructors_normalize_identically(pair):
     assert [(key, id(value)) for key, value in old._extractors.items()] == \
         [(key, id(value)) for key, value in new._extractors.items()]
     assert old._layer_extractors == new._layer_extractors == {'vision', 'text'}
-    # Raw layer strings, no modality routing added: same as before the migration.
-    assert dict(old.region_layer_map) == dict(new.region_layer_map) == module.REGION_LAYER_MAP
-    assert all(isinstance(value, str) for value in new.region_layer_map.values())
-    assert old._region_modality_map == new._region_modality_map == {}
+    # The same layer of each region, and each region names its tower (a model
+    # with two extractors must).
+    assert old._region_layer_map_dict == new._region_layer_map_dict == module.REGION_LAYER_MAP
+    assert old._region_modality_map == new._region_modality_map == _TOWERS(module)
     assert list(old.capability_config.items()) == list(new.capability_config.items())
     assert old._generation_fn is new._generation_fn
     assert (old._action_fn, old._state_change_fn) == (new._action_fn, new._state_change_fn) == (None, None)
@@ -318,13 +326,9 @@ def test_old_and_new_constructors_normalize_identically(pair):
 
 CASES = {
     'clip-vit-b-32': [('V1', 'images'), ('V2', 'images'), ('V4', 'images'), ('IT', 'images'),
-                      ('language_system', 'sentences'), (['V4', 'IT'], 'images'),
-                      # Existing limitation, preserved: without modality routing a text
-                      # stimulus recorded at 'IT' reads the text tower's encoder.layers.10.
-                      ('IT', 'sentences')],
+                      ('language_system', 'sentences'), (['V4', 'IT'], 'images')],
     'qwen2.5-vl-3b': [('V1', 'images'), ('V2', 'images'), ('V4', 'images'), ('IT', 'images'),
-                      ('language_system', 'sentences'), (['V4', 'IT'], 'images'),
-                      ('IT', 'sentences')],
+                      ('language_system', 'sentences'), (['V4', 'IT'], 'images')],
 }
 
 
@@ -473,3 +477,12 @@ def test_stand_ins_match_the_real_wrapper_signatures():
         call = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == '__call__')
         assert [argument.arg for argument in call.args.args] == expected, class_name
         assert call.args.kwarg is not None, class_name
+
+
+def test_a_vision_region_is_not_recorded_from_sentences(pair):
+    """Each region names its tower, so a text stimulus recorded at 'IT' is refused.
+    Before, it silently read the text tower's layer of the same name."""
+    _, _, _, new = pair
+    new.start_recording('IT', time_bins=[(70, 170)])
+    with pytest.raises(ValueError, match='missing input modalities'):
+        new.process(_sentences())

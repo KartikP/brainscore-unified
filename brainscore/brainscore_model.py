@@ -379,21 +379,16 @@ class BrainScoreModel(UnifiedModel):
         A region lists the input channels of the extractor its selector names
         (``'video'`` takes clips, ``'vision'`` stills). In a model with one
         extractor, a region without a modality lists that extractor's channels.
-        Not listed, so answerable from any input the model takes: a region
-        without a modality in a model with several extractors (it is recorded
-        from whichever tower gets input), and behavior, policy and perturbation
-        outputs.
+        Behavior, policy and perturbation outputs are not listed, so they can
+        be answered from any input the model takes.
         """
         listed = {}
-        towers = {id(extractor) for extractor in self._extractors.values()}
         for region, selector in self._region_layer_selectors.items():
             keys = list(self._extractors)
             if selector.modality is not None:
                 keys = ([key for key in keys if key == selector.modality]
                         or [key for key in keys if canonical_modality(key)
                             == canonical_modality(selector.modality)])
-            elif len(towers) != 1:
-                continue
             channels = self._input_channels(keys)
             if channels:
                 listed[f'neural:{region}'] = frozenset(channels)
@@ -450,6 +445,15 @@ class BrainScoreModel(UnifiedModel):
                     routed = copy(selector)
                     routed.modality = modality
                     selectors[region] = routed
+        if len({id(extractor) for extractor in self._extractors.values()}) > 1:
+            unrouted = sorted(r for r, sel in selectors.items() if sel.modality is None)
+            if unrouted:
+                # Without a named extractor the region would be recorded from
+                # whichever tower gets input, and pre-flight could not check it.
+                raise ValueError(
+                    f"Model {self._identifier_str!r} has several extractors, so each region must "
+                    f"name the one it is recorded from. Regions with no modality: {unrouted}. "
+                    f"Use LayerSelector(name=..., modality=...) or region_modality_map.")
         from ._model.recording import validate_region_layers
         validate_region_layers(self, selectors)
         self._region_layer_selectors = selectors
