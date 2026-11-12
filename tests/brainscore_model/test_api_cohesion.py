@@ -110,7 +110,7 @@ def test_explicit_source_is_independent_of_behavioral_task_configuration():
     from types import SimpleNamespace
     subject = SimpleNamespace(start_task=lambda context: None,
                               process=lambda stimuli: generate(None, stimuli, task))
-    session = stimulus_session(explicit, ['behavior'], task_context=task)
+    session = stimulus_session(explicit, ['behavior'], task=task)
     _drive_behavior_session_via_process(subject, session)
     assert seen == ['actual']
     assert session.collect().shape == (1,)

@@ -47,7 +47,7 @@ class NeuralSessions(_SessionCapability):
         return bool(channels) and all(c.startswith('neural:') for c in channels)
 
     def participate(self, model, session) -> None:
-        task = getattr(session, 'task_context', None)
+        task = getattr(session, 'task', None)
         if task is not None and task.task_type != 'passive':
             # The session's task decides what the subject does (rule 4.1):
             # record during the task; the answers are not sent.
@@ -107,8 +107,8 @@ class BehaviorSessions(_SessionCapability):
             f'neural:{region}' for region in model.region_layer_map}
 
     def participate(self, model, session) -> None:
-        requested = set(_drivers.requested_output_channels(session))
-        task = getattr(session, 'task_context', None)
+        requested = set(_drivers.session_outputs(session))
+        task = getattr(session, 'task', None)
         if requested != {'behavior'} or (task is not None and task.response is not None):
             drive_behavior_and_neural_session(model, session)
         elif getattr(session, 'streaming', False):
@@ -146,7 +146,7 @@ class MotorSessions(_SessionCapability):
         return bool(channels & outputs) and channels <= outputs | recorded
 
     def participate(self, model, session) -> None:
-        requested = _drivers.requested_output_channels(session)
+        requested = _drivers.session_outputs(session)
         regions = [parse_channel(c)[1] for c in requested if parse_channel(c)[0] == 'neural']
         if not regions:
             _drivers.drive_environment_session(model, session, on_begin=model._begin_episode)
@@ -230,14 +230,14 @@ def drive_behavior_and_neural_session(model, session, driver: str = "interact") 
     ``BehavioralReadout.respond_and_record``). Only ``BrainScoreModel`` runs
     this; it is reached through its session capability.
     """
-    task_context = getattr(session, "task_context", None)
+    task_context = getattr(session, "task", None)
     if task_context is None:
-        raise ValueError("A behavior session needs session.task_context.")
+        raise ValueError("A behavior session needs session.task.")
     time_bins = getattr(session, "time_bins", None)
     if time_bins is not None and len(time_bins) > 1:
         raise NotImplementedError(
             "Recording during a task returns one time bin; request at most one.")
-    requested = _drivers.requested_output_channels(session)
+    requested = _drivers.session_outputs(session)
     regions = [parse_channel(c)[1] for c in requested if parse_channel(c)[0] == "neural"]
     answers = [c for c in requested if parse_channel(c)[0] == "behavior"]
     # Refuse answers the task cannot give before any setup or compute.

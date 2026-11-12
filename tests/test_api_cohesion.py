@@ -283,7 +283,7 @@ def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefe
         out_channels = {'behavior'}
 
         def participate(self, session):
-            tasks.append(session.task_context)
+            tasks.append(session.task)
             while (event := session.next_input()) is not None:
                 if event.channel != 'text':
                     continue

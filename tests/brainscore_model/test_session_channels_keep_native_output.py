@@ -89,7 +89,7 @@ def subject(outputs, regions, calls):
 
 
 def run(outputs, regions, channels, calls=None):
-    session = stimulus_session(stimuli(), channels, task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(stimuli(), channels, task=TaskContext(task_type='passive'))
     subject(outputs, regions, [] if calls is None else calls).participate(session)
     return {channel: session.collect(channel) for channel in channels}
 
@@ -164,7 +164,7 @@ def test_fused_extractor_runs_per_channel():
     model = BrainScoreModel('fused', extractor={('video', 'audio'): fused},
         region_layer_map={'IT': LayerSelector('fused.0', modality='video'),
                           'A1': LayerSelector('fused.0', modality='audio')})
-    session = stimulus_session(stimuli(), ['neural:IT', 'neural:A1'], task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(stimuli(), ['neural:IT', 'neural:A1'], task=TaskContext(task_type='passive'))
     model.participate(session)
     assert len(calls) == 2
     for channel in ('neural:IT', 'neural:A1'):
@@ -209,7 +209,7 @@ def test_missing_input_is_refused_before_any_extractor_runs():
     calls = []
     outputs = {'video': video(), 'audio': audio()}
     regions = {'IT': ('blocks.16', 'video'), 'A1': ('encoder.layers.6', 'audio')}
-    session = stimulus_session(stimuli()[['stimulus_id', 'video_path']], ['neural:IT', 'neural:A1'], task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(stimuli()[['stimulus_id', 'video_path']], ['neural:IT', 'neural:A1'], task=TaskContext(task_type='passive'))
     with pytest.raises(ValueError, match='missing input modalities'):
         subject(outputs, regions, calls).participate(session)
     assert calls == []
@@ -266,7 +266,7 @@ def layered_stimuli():
 
 def layered_run(channels, calls=None, **kwargs):
     model = layered_subject([] if calls is None else calls, **kwargs)
-    session = stimulus_session(layered_stimuli(), channels, task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(layered_stimuli(), channels, task=TaskContext(task_type='passive'))
     model.participate(session)
     return {channel: session.collect(channel) for channel in channels}
 
@@ -304,7 +304,7 @@ def test_composite_regions_keep_base_calls_and_equal_each_region_alone():
 
 def test_combined_recording_stays_active_after_the_session():
     model = layered_subject([])
-    session = stimulus_session(layered_stimuli(), ['neural:IT', 'neural:A1'], task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(layered_stimuli(), ['neural:IT', 'neural:A1'], task=TaskContext(task_type='passive'))
     model.participate(session)
     assert model._recorder.recording_regions == ['IT', 'A1']
 
@@ -315,7 +315,7 @@ def test_combined_recording_is_restored_after_a_failure():
     def broken(stimuli, layers):
         raise RuntimeError('extractor failed')
     model._extractors['audio'] = broken
-    session = stimulus_session(layered_stimuli(), ['neural:IT', 'neural:A1'], task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(layered_stimuli(), ['neural:IT', 'neural:A1'], task=TaskContext(task_type='passive'))
     with pytest.raises(RuntimeError, match='extractor failed'):
         model.participate(session)
     assert model._recorder.recording_regions == ['IT', 'A1']
@@ -339,7 +339,7 @@ def test_overlapping_fused_extractors_use_the_extractor_dispatch_selects():
                                                          ('vision', 'text', 'audio'): fused('full')},
                             region_layer_map={'IT': LayerSelector('visual', modality='vision'),
                                               'A1': LayerSelector('auditory', modality='audio')})
-    session = stimulus_session(stimuli()[['stimulus_id', 'image_path', 'sentence', 'audio_path']], ['neural:IT', 'neural:A1'], task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(stimuli()[['stimulus_id', 'image_path', 'sentence', 'audio_path']], ['neural:IT', 'neural:A1'], task=TaskContext(task_type='passive'))
     model.participate(session)
     assert calls == ['full', 'full']      # per channel, the extractor that real dispatch selects
 
@@ -349,7 +349,7 @@ def test_wrong_layer_labels_are_refused_in_a_several_channel_session(channels):
     calls = []
     model = layered_subject(calls)
     model._extractors['audio'] = layered('audio', calls, label='wrong')
-    session = stimulus_session(layered_stimuli(), channels, task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(layered_stimuli(), channels, task=TaskContext(task_type='passive'))
     with pytest.raises(ValueError, match="layers \\['wrong'\\]"):
         model.participate(session)
 
@@ -375,7 +375,7 @@ def test_one_channel_session_checks_layer_provenance(fault):
             return plain.assign_coords(layer=('presentation', ['auditory'] * len(IDS)))
         return output
     model._extractors['audio'] = faulty
-    session = stimulus_session(layered_stimuli(), ['neural:A1'], task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(layered_stimuli(), ['neural:A1'], task=TaskContext(task_type='passive'))
     with pytest.raises(ValueError, match='layer|neuroids'):
         model.participate(session)
 
@@ -384,7 +384,7 @@ def test_one_channel_session_checks_layer_provenance(fault):
 def test_duplicate_channels_are_refused_before_compute(channels):
     calls = []
     model = layered_subject(calls)
-    session = stimulus_session(layered_stimuli(), channels, task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(layered_stimuli(), channels, task=TaskContext(task_type='passive'))
     with pytest.raises(ValueError, match='Duplicate output channels'):
         model.participate(session)
     assert calls == []
@@ -442,7 +442,7 @@ def keyed(name, calls, region_coord=None):
 
 
 def keyed_session(model, table, regions):
-    session = stimulus_session(table, ['neural:' + r for r in regions], task_context=TaskContext(task_type='passive'))
+    session = stimulus_session(table, ['neural:' + r for r in regions], task=TaskContext(task_type='passive'))
     model.participate(session)
     return session
 

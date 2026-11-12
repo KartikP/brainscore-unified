@@ -148,7 +148,7 @@ classDiagram
     }
     class TaskProtocol {
         stimuli
-        task_context
+        task
     }
     Experiment o-- SessionProtocol
     Experiment o-- CallableProtocol

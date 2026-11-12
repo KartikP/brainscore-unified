@@ -337,7 +337,7 @@ class _ParticipateOnlyReader(Subject):
     def participate(self, session):
         from brainscore_core.streaming import StreamEvent
         self.sessions += 1
-        assert tuple(session.requested_output_channels) == ('response_trace',)
+        assert tuple(session.outputs) == ('response_trace',)
         while (event := session.next_input()) is not None:
             answer = json.loads(self.provider(event.payload)['text'])
             session.respond(StreamEvent('response_trace', {

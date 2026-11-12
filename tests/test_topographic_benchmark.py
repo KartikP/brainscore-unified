@@ -50,7 +50,7 @@ class _StubModel(Subject):
         self.requests = []
 
     def participate(self, session):
-        self.requests.append(tuple(session.requested_output_channels))
+        self.requests.append(tuple(session.outputs))
         while session.next_input() is not None:
             pass
         session.respond(StreamEvent('neural:IT', self.assembly, None, {}))

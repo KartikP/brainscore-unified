@@ -110,7 +110,7 @@ class MirageSubject(Subject):
         return f'mirage-{self.subject}'
 
     def participate(self, session: Session) -> None:
-        requested = session.requested_output_channels
+        requested = session.outputs
         if requested is not None and set(requested) != self.out_channels:
             raise ValueError(f'Request exactly {OUTPUT_CHANNEL}')
         if session.time_bins is not None:

@@ -26,7 +26,7 @@ from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import (
     drain_session_inputs as _drain_neural_stream_events,
     reconstruct_stimulus_set_from_events as _reconstruct_neural_stimulus_set,
-    requested_output_channels,
+    session_outputs,
     session_stimuli as _neural_stimuli_from_stream_session,
 )
 
@@ -612,7 +612,7 @@ class BrainScoreModel(UnifiedModel):
         before it reaches any part (Contract Rules v3, rule 5.5).
         """
         with _one_session_at_a_time(self):
-            handler = self.check_session_support(requested_output_channels(session))
+            handler = self.check_session_support(session_outputs(session))
             from .capabilities.registry import _setup_once
             _setup_once(self, handler)
             # A task the session configures ends with the session (rule 4.5).

@@ -91,7 +91,7 @@ def test_a_clip_recorded_during_a_task_uses_the_clip_extractor_and_keeps_time():
                             region_layer_map={'IT': LayerSelector('blocks.1', modality='vision')},
                             reply=lambda prompt: 'left')
     task = TaskContext(instruction='Which way?', response=Choice(['left', 'right']))
-    session = stimulus_session(_stimuli('video_path'), ['behavior:choice', 'neural:IT'], task_context=task)
+    session = stimulus_session(_stimuli('video_path'), ['behavior:choice', 'neural:IT'], task=task)
     model.participate(session)
     recorded = session.collect('neural:IT')
     assert recorded.dims == ('presentation', 'time_bin', 'neuroid')
@@ -126,7 +126,7 @@ def test_a_multi_image_trial_is_recorded_per_image():
     trials = StimulusSet({'stimulus_id': ['t1'], 'rules': ['r.png'], 'word_1': ['a.png'], 'word_2': ['b.png']})
     trials.identifier = 'sequence'
     task = TaskContext(response=Choice(['yes', 'no']), present=('image:rules', 'image:word_1', 'image:word_2'))
-    session = stimulus_session(trials, ['behavior:choice', 'neural:IT'], task_context=task)
+    session = stimulus_session(trials, ['behavior:choice', 'neural:IT'], task=task)
     model.participate(session)
     recorded = session.collect('neural:IT')
     assert recorded.dims == ('presentation', 'part', 'neuroid')

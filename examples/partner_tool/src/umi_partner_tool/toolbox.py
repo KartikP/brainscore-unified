@@ -137,7 +137,7 @@ class DemonstrationSubject(Subject):
                     dims=['presentation'],
                 ),
             }
-            for channel in session.requested_output_channels:
+            for channel in session.outputs:
                 session.respond(StreamEvent(
                     channel=channel,
                     payload=responses[channel],

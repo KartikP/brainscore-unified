@@ -69,10 +69,10 @@ def replay_sessions(directory):
         session = Session(saved)
         for name, value in deepcopy(settings[key]).items():
             setattr(session, name, value)
-        if 'requested_output_channels' not in settings[key] and trial_outputs[key]:
+        if 'outputs' not in settings[key] and trial_outputs[key]:
             # Older records have no request metadata. Keep the observed channel
             # names scoped to this repetition rather than mixing different repetitions.
-            session.requested_output_channels = tuple(sorted(trial_outputs[key]))
+            session.outputs = tuple(sorted(trial_outputs[key]))
         # SessionProtocol collects results after the final observation.
         session.collect = lambda: [event.payload for event in session.emitted]
         yield session

@@ -40,7 +40,7 @@ class Recorder(Subject):
         ids = [str(stimulus_id) for stimulus_id in stimuli['stimulus_id']]
         if self.reverse:
             ids = ids[::-1]
-        channels = list(session.requested_output_channels)
+        channels = list(session.outputs)
         self.requests.append(channels)
         for channel in channels:
             units = UNITS[channel.split(':', 1)[1]]
@@ -137,7 +137,7 @@ class _WrongIds(Recorder):
     def participate(self, session):
         stimuli = session_stimuli(session, drain_session_inputs(session))
         ids = [str(s) for s in stimuli['stimulus_id']][:-1] + ['not_a_frame']
-        for channel in session.requested_output_channels:
+        for channel in session.outputs:
             session.respond(StreamEvent(channel, NeuroidAssembly(
                 np.zeros((len(ids), 2)),
                 coords={'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', ['a', 'b'])},
@@ -190,7 +190,7 @@ def test_a_whole_score_comes_from_a_participate_only_subject(tmp_path, monkeypat
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session))
             ids = [str(stimulus_id) for stimulus_id in stimuli['stimulus_id']]
-            self.requests.append(list(session.requested_output_channels))
+            self.requests.append(list(session.outputs))
             rng = np.random.default_rng(1)
             session.respond(StreamEvent('neural:IT', NeuroidAssembly(
                 rng.normal(size=(len(ids), 3)),

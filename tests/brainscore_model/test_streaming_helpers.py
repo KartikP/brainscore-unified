@@ -94,12 +94,12 @@ class _ParticipateTrackingBrainScoreModel(BrainScoreModel):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.participate_called = False
-        self.participate_requested_output_channels = None
+        self.participate_outputs = None
 
     def participate(self, session):
         self.participate_called = True
-        self.participate_requested_output_channels = tuple(
-            session.requested_output_channels
+        self.participate_outputs = tuple(
+            session.outputs
         )
         return super().participate(session)
 
@@ -221,12 +221,12 @@ class _TrackingTemporalBrainScoreModel(_TemporalBrainScoreModel):
     def __init__(self):
         super().__init__()
         self.participate_called = False
-        self.participate_requested_output_channels = None
+        self.participate_outputs = None
 
     def participate(self, session):
         self.participate_called = True
-        self.participate_requested_output_channels = tuple(
-            session.requested_output_channels
+        self.participate_outputs = tuple(
+            session.outputs
         )
         return super().participate(session)
 
@@ -246,7 +246,7 @@ def test_neural_response_uses_native_participate_and_preserves_metadata_exactly(
     scored = neural_response(subject, stimuli, record="IT")
 
     assert subject.participate_called is True
-    assert subject.participate_requested_output_channels == ("neural:IT",)
+    assert subject.participate_outputs == ("neural:IT",)
     assert native_extractor.last_stimuli is stimuli
     assert "modality" not in scored.coords
     xr.testing.assert_identical(scored, expected)
@@ -265,7 +265,7 @@ def test_neural_response_native_participate_matches_multimodal_process_exactly()
     scored = neural_response(subject, stimuli, record="IT")
 
     assert subject.participate_called is True
-    assert subject.participate_requested_output_channels == ("neural:IT",)
+    assert subject.participate_outputs == ("neural:IT",)
     assert activations.call_args is not None
     assert text.call_args is not None
     assert set(scored["modality"].values.tolist()) == {"vision", "text"}
@@ -285,7 +285,7 @@ def test_neural_response_native_participate_matches_cross_tower_process_exactly(
     scored = neural_response(subject, stimuli, record="all")
 
     assert subject.participate_called is True
-    assert subject.participate_requested_output_channels == ("neural:all",)
+    assert subject.participate_outputs == ("neural:all",)
     assert activations.call_args["layers"] == ["vision_model.layer.10"]
     assert text.call_args["layers"] == ["text_model.layer.20"]
     assert set(scored["modality"].values.tolist()) == {"vision", "text"}
@@ -304,7 +304,7 @@ def test_neural_response_native_participate_threads_time_bins_exactly():
     scored = neural_response(subject, stimuli, record="IT", time_bins=time_bins)
 
     assert subject.participate_called is True
-    assert subject.participate_requested_output_channels == ("neural:IT",)
+    assert subject.participate_outputs == ("neural:IT",)
     assert scored.dims == ("presentation", "time_bin", "neuroid")
     assert list(scored["time_bin_start_ms"].values) == [70, 170]
     assert list(scored["time_bin_end_ms"].values) == [170, 270]
@@ -322,7 +322,7 @@ def test_neural_response_without_time_bins_keeps_2d_output():
     scored = neural_response(subject, stimuli, record="IT")
 
     assert subject.participate_called is True
-    assert subject.participate_requested_output_channels == ("neural:IT",)
+    assert subject.participate_outputs == ("neural:IT",)
     assert scored.dims == ("presentation", "neuroid")
     assert "time_bin" not in scored.dims
     xr.testing.assert_identical(scored, expected)
@@ -403,7 +403,7 @@ def test_behavioral_response_matches_legacy_start_task_process_exactly():
     scored = behavioral_response(helper_subject, helper_context)
 
     assert helper_subject.participate_called is True
-    assert helper_subject.participate_requested_output_channels == ("behavior",)
+    assert helper_subject.participate_outputs == ("behavior",)
     assert isinstance(scored, BehavioralAssembly)
     xr.testing.assert_identical(scored, expected)
 
@@ -450,7 +450,7 @@ def test_behavioral_response_matches_legacy_generation_path_exactly():
     scored = behavioral_response(helper_subject, helper_context)
 
     assert helper_subject.participate_called is True
-    assert helper_subject.participate_requested_output_channels == ("behavior",)
+    assert helper_subject.participate_outputs == ("behavior",)
     assert isinstance(scored, BehavioralAssembly)
     xr.testing.assert_identical(scored, expected)
     assert helper_calls == legacy_calls
@@ -510,7 +510,7 @@ def test_native_environment_participate_preserves_applied_legacy_actions():
     expected_trajectory = _legacy_environment_rollout(legacy_model, _SyntheticEnvironment(4))
 
     assert native_model.participate_called is True
-    assert native_model.participate_requested_output_channels == ("motor",)
+    assert native_model.participate_outputs == ("motor",)
     assert [event.channel for event in session.emitted] == [
         "motor", "motor", "motor",
     ]
@@ -546,7 +546,7 @@ def test_run_environment_preserves_applied_legacy_actions():
     for helper_action, expected_action in zip(helper_env.actions, legacy_env.actions):
         np.testing.assert_array_equal(helper_action, expected_action)
     assert helper_model.participate_called is True
-    assert helper_model.participate_requested_output_channels == ("motor",)
+    assert helper_model.participate_outputs == ("motor",)
 
 
 def test_run_environment_terminates_cleanly_for_a_one_step_env():
@@ -558,7 +558,7 @@ def test_run_environment_terminates_cleanly_for_a_one_step_env():
 
     assert len(trajectory) == 1 and len(one_env.actions) == 1  # the terminal row asks for no action
     assert model.participate_called is True
-    assert model.participate_requested_output_channels == ("motor",)
+    assert model.participate_outputs == ("motor",)
 
 
 def _ablation_state_change():
@@ -581,7 +581,7 @@ def test_apply_state_change_matches_legacy_process_result():
     helper_result = apply_state_change(helper_model, _ablation_state_change())
 
     assert helper_model.participate_called is True
-    assert helper_model.participate_requested_output_channels == ("perturbation",)
+    assert helper_model.participate_outputs == ("perturbation",)
     assert isinstance(helper_result, PerturbationApplied)
     assert helper_result.handle_id == legacy_result.handle_id
     assert helper_result.target == legacy_result.target
@@ -611,7 +611,7 @@ def test_native_state_change_reset_restores_baseline():
     )
     applied = apply_state_change(model, _ablation_state_change())
     assert model_state["output"] == 0.0
-    assert model.participate_requested_output_channels == ("perturbation",)
+    assert model.participate_outputs == ("perturbation",)
 
     reset = StateChange(kind="reset", handle_id=applied.handle_id)
     reset_session = _state_change_session(reset)
@@ -620,7 +620,7 @@ def test_native_state_change_reset_restores_baseline():
     reset_result = apply_state_change(model, reset)
 
     assert model.participate_called is True
-    assert model.participate_requested_output_channels == ("perturbation",)
+    assert model.participate_outputs == ("perturbation",)
     assert reset_event.channel == "lesion"
     assert reset_event.meta["reset"] == applied.handle_id
     assert reset_result == applied.handle_id

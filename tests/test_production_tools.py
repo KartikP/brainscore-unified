@@ -165,7 +165,7 @@ def test_trace_preserves_invalid_response_and_session(tmp_path):
     model = build_trace_subject('fixture', provider=lambda req: {'text': 'unparseable', 'tokens': [1]},
                                 parse=int, provenance={'provider': 'fixture'})
     session = Session([StreamEvent('generation_request', {'prompt': 'a'}, 12)])
-    session.requested_output_channels = ('response_trace',)
+    session.outputs = ('response_trace',)
     model.participate(session)
     result = session.emitted[0]
     assert result.payload['answer'] is None and not result.payload['valid']

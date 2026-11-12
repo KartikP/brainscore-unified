@@ -44,7 +44,7 @@ class _Subject(Subject):
 
     def participate(self, session):
         self.sessions += 1
-        requested = set(session.requested_output_channels)
+        requested = set(session.outputs)
         if requested == {'perturbation'}:
             change = session.next_input().payload
             if change.kind == 'reset':
@@ -320,7 +320,7 @@ class _ReaderSubject(Subject):
         return units
 
     def participate(self, session):
-        requested = set(session.requested_output_channels)
+        requested = set(session.outputs)
         if requested == {'perturbation'}:
             change = session.next_input().payload
             if change.kind == 'reset':

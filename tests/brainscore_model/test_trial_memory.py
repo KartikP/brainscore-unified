@@ -27,7 +27,7 @@ def _task(protocol):
 
 
 def _history_lengths(model, protocol, stimuli=STIMULI, session=None):
-    session = session or stimulus_session(stimuli, ['behavior:text'], task_context=_task(protocol))
+    session = session or stimulus_session(stimuli, ['behavior:text'], task=_task(protocol))
     model.participate(session)
     return list(session.collect('behavior:text').values)
 
@@ -79,7 +79,7 @@ def test_the_events_carry_the_trial_memory():
         return [e.payload if e.channel == 'control' else 'row' for e in events]
     assert marks('none') == ['begin', 'row', 'end'] * 3
     assert marks('history') == ['begin'] + ['row'] * 3 + ['end']
-    session = stimulus_session(STIMULI, task_context=_task('none')).declare_inputs({'control', 'text'})
+    session = stimulus_session(STIMULI, task=_task('none')).declare_inputs({'control', 'text'})
     controls = [e.payload for e in iter(session.next_input, None) if e.channel == 'control']
     assert controls == ['begin', 'end'] * N
 

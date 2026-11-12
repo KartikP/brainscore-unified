@@ -113,7 +113,7 @@ class _SubjectProvider:
         session = Session([event], ('response_trace',))
         with self.context.repetition(record_repetition):
             self.context.publish('session_context',
-                                 {'requested_output_channels': session.requested_output_channels})
+                                 {'outputs': session.outputs})
             with observed(session, self.context):
                 self.subject.participate(session)
         responses = [response for response in session.emitted

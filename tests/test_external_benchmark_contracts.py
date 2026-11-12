@@ -222,7 +222,7 @@ def test_multichannel_trace_subject_keeps_dispatch_and_session_contract():
     assert candidate.in_channels == set(channels) | {'control'}
     events = [StreamEvent(channel, {'value': channel}, None) for channel in channels]
     session = Session(events)
-    session.requested_output_channels = {'response_trace'}
+    session.outputs = {'response_trace'}
     candidate.participate(session)
     assert [event.payload['answer'] for event in session.emitted] == channels
     # Creating another subject must not change the first subject's declarations.

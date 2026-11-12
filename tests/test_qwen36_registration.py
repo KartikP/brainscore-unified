@@ -143,7 +143,7 @@ def test_answer_sends_the_image_without_thinking(built, tmp_path):
     stimuli.identifier = 'qwen36-answer-wiring'
     task = TaskContext(task_type='label', label_set=['real', 'pseudo'],
                        instruction='Is this a real word?', prefer_path='generation')
-    session = stimulus_session(stimuli, ['behavior'], task_context=task)
+    session = stimulus_session(stimuli, ['behavior'], task=task)
     model.participate(session)
     assert list(session.collect('behavior').values.ravel()) == [0.0, 1.0]   # one-hot over (real, pseudo)
     assert processor.template_kwargs['enable_thinking'] is False

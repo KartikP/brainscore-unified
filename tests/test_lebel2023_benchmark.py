@@ -324,7 +324,7 @@ class _ParticipateOnlyListener(Subject):
         from brainscore_core.streaming import StreamEvent
         from brainscore_core.supported_data_standards.brainio.assemblies import (
             NeuroidAssembly)
-        self.sessions.append(tuple(session.requested_output_channels))
+        self.sessions.append(tuple(session.outputs))
         ids = []
         while (event := session.next_input()) is not None:
             self.seen.append(event.payload)
@@ -516,7 +516,7 @@ class TestDeclarations:
 
         class Listener(_ParticipateOnlyListener):
             def participate(self, session):
-                self.sessions.append(tuple(session.requested_output_channels))
+                self.sessions.append(tuple(session.outputs))
                 sent = []
                 while (event := session.next_input()) is not None:
                     sent.append(event.meta['stimulus_id'])

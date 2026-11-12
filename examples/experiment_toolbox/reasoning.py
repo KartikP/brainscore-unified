@@ -28,7 +28,7 @@ def make_session(trial):
     session = Session([
         StreamEvent('generation_request', {'prompt': 'What is six times seven?'}, 0),
     ])
-    session.requested_output_channels = ('response_trace',)
+    session.outputs = ('response_trace',)
     yield session
 
 

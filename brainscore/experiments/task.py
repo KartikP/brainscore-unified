@@ -87,7 +87,7 @@ class TaskProtocol(SessionProtocol):
 
     @contextmanager
     def _session(self, repetition):
-        yield stimulus_session(self.stimuli, sorted(self.output_channels), task_context=self.task)
+        yield stimulus_session(self.stimuli, sorted(self.output_channels), task=self.task)
 
 
 class _ChannelRecorder(RecordInputsOutputs):

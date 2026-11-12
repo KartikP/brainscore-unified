@@ -62,7 +62,7 @@ class Recorder(Subject):
     def participate(self, session):
         stimuli = session_stimuli(session, drain_session_inputs(session))
         ids = [str(stimulus_id) for stimulus_id in stimuli['stimulus_id']]
-        channels = list(session.requested_output_channels)
+        channels = list(session.outputs)
         self.seen.append((channels, ids))
         for channel in channels:
             values = np.stack([_unit_values(stimulus_id, channel) for stimulus_id in ids])
@@ -363,7 +363,7 @@ class _WrongIds(Recorder):
     def participate(self, session):
         stimuli = session_stimuli(session, drain_session_inputs(session))
         ids = [f'other_{index}' for index in range(len(stimuli))]
-        for channel in session.requested_output_channels:
+        for channel in session.outputs:
             session.respond(StreamEvent(channel, NeuroidAssembly(
                 np.zeros((len(ids), N_UNITS)),
                 coords={'stimulus_id': ('presentation', ids),

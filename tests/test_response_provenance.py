@@ -28,7 +28,7 @@ def test_declared_subject_records_neural_outputs_with_separate_provenance():
         assert getattr(subject, name) == getattr(raw, name)
     stimuli = StimulusSet([{'stimulus_id': 'a', 'sentence': 'test'}])
     task = TaskContext(task_type='passive')
-    session = stimulus_session(stimuli, ['neural:IT'], task_context=task)
+    session = stimulus_session(stimuli, ['neural:IT'], task=task)
     subject.participate(session)
     result = session.collect('neural:IT')
     np.testing.assert_array_equal(result, np.ones((1, 2)))
@@ -46,7 +46,7 @@ def test_text_task_and_reset_delegate_without_discovering_model_abilities():
     subject = ProvenanceSubject(raw, {'dtype': 'bfloat16'})
     stimuli = StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}])
     def run():
-        session = stimulus_session(stimuli, ['behavior:text'], task_context=TaskContext(response=Text()))
+        session = stimulus_session(stimuli, ['behavior:text'], task=TaskContext(response=Text()))
         subject.participate(session)
         return session.collect('behavior:text')
     first = run()

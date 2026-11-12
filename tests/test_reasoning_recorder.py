@@ -17,7 +17,7 @@ pytestmark = pytest.mark.unit
 @contextmanager
 def session(trial):
     active = Session([StreamEvent('generation_request', {'prompt': '6 * 7?'}, 10)])
-    active.requested_output_channels = ('response_trace',)
+    active.outputs = ('response_trace',)
     yield active
 
 

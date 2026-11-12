@@ -47,7 +47,7 @@ def _likelihood_model():
 
 
 def _ask(model, task, channels):
-    session = stimulus_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task=task)
     model.participate(session)
     return session
 
@@ -98,7 +98,7 @@ def test_driver_refuses_addressed_channels_without_a_response_before_task_setup(
     setup = []
     model = SimpleNamespace(start_task=lambda _: setup.append('start_task'),
                             _behavioral=SimpleNamespace(history=[]))
-    session = stimulus_session(STIMULI, ['behavior:probabilities'], task_context=TaskContext(task_type='probabilities'))
+    session = stimulus_session(STIMULI, ['behavior:probabilities'], task=TaskContext(task_type='probabilities'))
     with pytest.raises(ValueError, match='TaskContext'):
         drive_behavior_and_neural_session(model, session)
     assert setup == []

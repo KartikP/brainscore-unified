@@ -46,7 +46,7 @@ def _model(replies=None, scores=None, readout=False):
 
 
 def _ask(model, task, channels):
-    session = stimulus_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task=task)
     model.participate(session)
     return session
 
@@ -170,7 +170,7 @@ def test_an_unordered_multi_part_stimulus_fails_before_any_reply():
                             reply=lambda prompt: calls.append(prompt) or 'left')
     both = StimulusSet({'stimulus_id': ['a'], 'sentence': ['x'], 'video_path': ['v.mp4']})
     both.identifier = 'both-parts'
-    session = stimulus_session(both, ['behavior:choice'], task_context=TaskContext(
+    session = stimulus_session(both, ['behavior:choice'], task=TaskContext(
         instruction='Which way?', response=Choice(['left', 'right'])))
     with pytest.raises(ValueError, match='present'):
         model.participate(session)

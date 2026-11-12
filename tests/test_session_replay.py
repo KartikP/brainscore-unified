@@ -92,7 +92,7 @@ def test_neural_session_collection_and_replay_preserve_metadata(tmp_path, stream
     context = next(e['payload'] for e in read_events(replay.directory)
                    if e['kind'] == 'session_context')
     assert context['time_bins'] == [(70, 170)]
-    assert context['requested_output_channels'] == channels
+    assert context['outputs'] == channels
 
 
 def test_behavior_session_collection_and_replay_preserve_task(tmp_path):
@@ -161,7 +161,7 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
         ])
         session.stimulus_set = table
         session.time_bins = [(70, 170)]
-        session.requested_output_channels = (f'neural:{region}',)
+        session.outputs = (f'neural:{region}',)
         yield session
 
     baseline = Experiment(

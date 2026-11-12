@@ -105,7 +105,7 @@ def _model(net, extractor_type=ToyExtractor, **kwargs):
 
 
 def _run(model, task, channels):
-    session = stimulus_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task=task)
     model.participate(session)
     return session
 
@@ -189,7 +189,7 @@ def test_neural_only_session_under_a_task_records_during_the_task():
 def test_passive_task_records_plain_viewing_unchanged():
     net = ToyNet()
     passive = TaskContext(task_type='passive')
-    session = stimulus_session(STIMULI, ['neural:A'], task_context=passive)
+    session = stimulus_session(STIMULI, ['neural:A'], task=passive)
     _model(net).participate(session)
     recorded = session.collect('neural:A')
     np.testing.assert_array_equal(recorded.values, [ToyNet().forward(s)['early'] for s in 'abc'])

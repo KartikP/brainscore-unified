@@ -186,7 +186,7 @@ class _Recorder(Subject):
         while session.next_input() is not None:
             pass
         n = len(session.stimulus_set)
-        for channel in session.requested_output_channels:
+        for channel in session.outputs:
             neural = channel.startswith('neural:')
             cls = NeuroidAssembly if neural else BehavioralAssembly
             payload = cls(np.arange(n)[:, None],
@@ -205,7 +205,7 @@ def test_typed_look_at_runs_through_participate():
     model.start_recording('IT', time_bins=[(70, 170)])
     via_legacy = model.look_at(_images())
     assert len(sessions) == 1
-    assert sessions[0].requested_output_channels == ('neural:IT',)
+    assert sessions[0].outputs == ('neural:IT',)
     np.testing.assert_array_equal(via_legacy.values, model.process(_images()).values)
 
 

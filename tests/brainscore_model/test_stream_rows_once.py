@@ -329,7 +329,7 @@ def replay(events, source_session, settings=True):
     session = Session(deepcopy(events))
     session.stimulus_set = deepcopy(source_session.stimulus_set)
     session.streaming = True
-    session.requested_output_channels = ('neural:A',)
+    session.outputs = ('neural:A',)
     if settings:
         session.settings = deepcopy(getattr(source_session, 'settings', None))
     return session

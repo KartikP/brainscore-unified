@@ -32,7 +32,7 @@ def one_back(prompt):
 
 
 def _answers(model, task=TASK):
-    session = stimulus_session(STIMULI, ['behavior:choice'], task_context=task)
+    session = stimulus_session(STIMULI, ['behavior:choice'], task=task)
     model.participate(session)
     return list(session.collect('behavior:choice')['raw_answer'].values)
 

@@ -39,7 +39,7 @@ class DummyCandidate(Subject):
         self.requested = None
 
     def participate(self, session):
-        self.requested = tuple(session.requested_output_channels)
+        self.requested = tuple(session.outputs)
         rng = np.random.RandomState(self.seed)
         # One input event per stimulus; answer each with a one-stimulus response.
         while (event := session.next_input()) is not None:

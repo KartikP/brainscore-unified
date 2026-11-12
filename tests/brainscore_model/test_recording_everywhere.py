@@ -82,7 +82,7 @@ def _model(net, region_map=None):
 
 
 def _run(model, task, channels, streaming=False):
-    session = stimulus_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task=task)
     session.streaming = streaming
     model.participate(session)
     return session
@@ -149,7 +149,7 @@ def test_an_extractor_without_record_is_recorded_through_the_model():
 
 def test_a_streaming_session_answers_a_trial_before_it_reads_the_next():
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
-    session = stimulus_session(STIMULI, ['behavior:choice', 'neural:A'], task_context=task, streaming=True)
+    session = stimulus_session(STIMULI, ['behavior:choice', 'neural:A'], task=task, streaming=True)
     log = []
     read, respond = session.next_input, session.respond
 

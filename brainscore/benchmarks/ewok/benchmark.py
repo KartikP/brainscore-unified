@@ -55,7 +55,7 @@ def _ask(subject: Subject, context, request: StreamEvent, repetition: int) -> St
     session = Session([request], ('response_trace',))
     with context.repetition(repetition):
         context.publish('session_context',
-                        {'requested_output_channels': session.requested_output_channels})
+                        {'outputs': session.outputs})
         with observed(session, context):
             subject.participate(session)
     responses = [event for event in session.emitted if event.channel == 'response_trace']
