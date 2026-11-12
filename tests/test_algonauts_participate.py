@@ -203,3 +203,107 @@ def test_a_whole_score_comes_from_a_participate_only_subject(tmp_path, monkeypat
     assert np.isfinite(float(score))
     assert subject.requests == [['neural:IT']]
     assert score.attrs['mode'] == 'video_only'
+
+
+# ── The video form ───────────────────────────────────────────────
+
+from brainscore_core.compatibility import CompatibilityError, check_compatibility
+
+
+def _clip_table(clips, trs):
+    rows = [{'stimulus_id': f'{clip}_t{step:04d}', 'frame_id': f'{clip}_t{step:04d}',
+             'clip_id': clip, 't_within_run': step,
+             'video_path': f'/clips/{clip}/{step:04d}.mp4'}
+            for clip in clips for step in range(trs)]
+    table = StimulusSet(pd.DataFrame(rows))
+    table.identifier = 'synthetic-algonauts-clips'
+    table.stimulus_paths = {row['stimulus_id']: row['video_path'] for row in rows}
+    return table
+
+
+class _VideoOnly(Subject):
+    """Declares only vision:video; answers one row per clip it receives."""
+
+    identifier = 'video-only'
+    in_channels = frozenset({'vision:video'})
+    out_channels = frozenset({'neural:IT'})
+
+    def __init__(self):
+        self.paths = []
+
+    def participate(self, session):
+        events = drain_session_inputs(session)
+        assert {event.channel for event in events} == {'vision:video'}
+        stimuli = session_stimuli(session, events)
+        ids = [str(s) for s in stimuli['stimulus_id']]
+        self.paths += list(stimuli['video_path'])
+        rng = np.random.default_rng(1)
+        session.respond(StreamEvent('neural:IT', NeuroidAssembly(
+            rng.normal(size=(len(ids), 3)),
+            coords={'stimulus_id': ('presentation', ids),
+                    'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
+            dims=['presentation', 'neuroid']), t_ms=None))
+
+
+def _score_benchmark(tmp_path, monkeypatch, form, table):
+    benchmark = Algonauts2025Friends(subject=1, form=form, assembly_root=tmp_path,
+                                     stimulus_window=2, hrf_delay=1,
+                                     excluded_samples_start=0, excluded_samples_end=0)
+    stimulus = [clip for clip in CLIPS for _ in range(TRS)]
+    steps = list(range(TRS)) * len(CLIPS)
+    values = np.random.default_rng(0).normal(size=(len(stimulus), 4))
+    benchmark._assembly = xr.DataArray(
+        values, dims=('presentation', 'neuroid'),
+        coords={'stimulus_id': ('presentation', stimulus), 'run': ('presentation', stimulus),
+                't_within_run': ('presentation', steps)})
+    name = '_expand_to_per_TR_clips' if form == 'video' else '_expand_to_per_TR_frames'
+    monkeypatch.setattr(benchmark, name, lambda: table)
+    return benchmark
+
+
+def test_a_video_only_subject_gets_one_answer_per_tr_and_a_score(tmp_path, monkeypatch):
+    table = _clip_table(CLIPS, TRS)
+    benchmark = _score_benchmark(tmp_path, monkeypatch, 'video', table)
+    subject = _VideoOnly()
+    score = benchmark(subject)
+    assert np.isfinite(float(score))
+    assert subject.paths == list(table['video_path'])        # one clip per TR, once each
+    assert score.attrs['pipeline'] == 'algonauts_video_only_clip'
+    assert score.attrs['form'] == 'video'
+    assert score.attrs['frames_per_clip'] == 30
+
+
+def test_an_image_only_subject_is_not_applicable_to_video_and_scores_on_frames(tmp_path, monkeypatch):
+    video = Algonauts2025Friends(subject=1, form='video', assembly_root=tmp_path)
+    frame = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    image_only = Recorder()
+    assert image_only.in_channels == frozenset({'vision:image'})
+    with pytest.raises(CompatibilityError, match='takes in none of the inputs'):
+        check_compatibility(image_only, video)
+    assert check_compatibility(image_only, frame).kind == 'full'
+    # A video-only subject is not applicable to the frame form either.
+    with pytest.raises(CompatibilityError, match='takes in none of the inputs'):
+        check_compatibility(_VideoOnly(), frame)
+
+    rows = [{'stimulus_id': f'{clip}_t{step:04d}', 'frame_id': f'{clip}_t{step:04d}',
+             'clip_id': clip, 't_within_run': step, 'image_file_name': f'/frames/{clip}/{step}.jpg'}
+            for clip in CLIPS for step in range(TRS)]
+    frames = StimulusSet(pd.DataFrame(rows))
+    frames.identifier = 'synthetic-algonauts-frames'
+    frames.stimulus_paths = {r['stimulus_id']: r['image_file_name'] for r in rows}
+    benchmark = _score_benchmark(tmp_path, monkeypatch, 'image', frames)
+
+    class Image(Recorder):
+        def participate(self, session):
+            stimuli = session_stimuli(session, drain_session_inputs(session))
+            ids = [str(s) for s in stimuli['stimulus_id']]
+            session.respond(StreamEvent('neural:IT', NeuroidAssembly(
+                np.random.default_rng(1).normal(size=(len(ids), 3)),
+                coords={'stimulus_id': ('presentation', ids),
+                        'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
+                dims=['presentation', 'neuroid']), t_ms=None))
+
+    score = benchmark(Image())
+    assert np.isfinite(float(score))
+    assert score.attrs['pipeline'] == 'algonauts_video_only_frame_agg'
+    assert 'form' not in score.attrs

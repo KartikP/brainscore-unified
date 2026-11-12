@@ -26,3 +26,9 @@ for sub in (1, 2, 3, 5):
         lambda s=sub: Algonauts2025FriendsS7(subject=s))
     benchmark_registry[f'Algonauts2025-ood-sub{sub:02d}'] = (
         lambda s=sub: Algonauts2025OOD(subject=s))
+
+# The same benchmark with the movie shown as one 1.49 s clip per scan instead of one
+# frame (form='video', channel vision:video). No sound or speech yet. Training split of
+# participant 1 only.
+benchmark_registry['Algonauts2025-friends-sub01-video'] = (
+    lambda: Algonauts2025Friends(subject=1, form='video'))

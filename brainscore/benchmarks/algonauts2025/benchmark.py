@@ -70,6 +70,69 @@ def _ffmpeg_extract_one(args):
     return video_path
 
 
+# One clip holds the 1.49 s of one scan. 30 frames in 1.49 s is 3000/149 fps
+# (about 20.13), so every clip has the same frame count and the same duration
+# whatever the frame rate of the source movie.
+CLIP_FRAMES = 30
+CLIP_FPS = f'{CLIP_FRAMES * 100}/{round(TR_SEC * 100)}'
+
+
+def _clip_ffmpeg_command(video_path, out_pattern, resize, n_TRs=None):
+    """The one ffmpeg call that cuts a movie into one clip per TR.
+
+    Frames are resampled to ``CLIP_FPS`` and a key frame is forced every
+    ``CLIP_FRAMES`` frames (``-g`` with scene-cut detection off), so the segment
+    muxer cuts exactly at clip borders. ``-segment_time_delta`` keeps the cut
+    from missing a key frame that lands a rounding error before ``t x TR_SEC``.
+    Clip ``t`` is the movie time [t x TR_SEC, (t+1) x TR_SEC). No sound.
+    """
+    cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-i', str(video_path)]
+    if n_TRs is not None:
+        cmd += ['-t', f'{TR_SEC * n_TRs:.4f}']
+    return cmd + [
+        '-an', '-vf', f'fps={CLIP_FPS},scale={resize}:{resize}',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
+        '-g', str(CLIP_FRAMES), '-keyint_min', str(CLIP_FRAMES), '-sc_threshold', '0',
+        '-f', 'segment', '-segment_time', f'{TR_SEC}', '-segment_time_delta', '0.01',
+        '-segment_start_number', '0', '-reset_timestamps', '1', '-segment_format', 'mp4',
+        str(out_pattern),
+    ]
+
+
+def _clip_frame_count(path) -> int:
+    """Frames in a clip, from the mp4 header (0 when the file cannot be read)."""
+    import subprocess
+    out = subprocess.run(
+        ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+         '-show_entries', 'stream=nb_frames', '-of', 'csv=p=0', str(path)],
+        check=False, capture_output=True, text=True).stdout.strip()
+    return int(out) if out.isdigit() else 0
+
+
+def _ffmpeg_cut_clips_one(args):
+    """Worker for the clip-cutting Pool: one ffmpeg call per movie.
+
+    The call writes into a work folder. A clip moves to ``{out_dir}/{t:04d}.mp4``
+    only when it has exactly ``CLIP_FRAMES`` frames and ``t < n_TRs``. A short
+    clip at the end of the movie is dropped, so a clip file is always complete;
+    the caller fills what is missing.
+    """
+    import shutil
+    import subprocess
+    video_path, out_dir, resize, n_TRs = args
+    out_dir = Path(out_dir)
+    work = out_dir / '_cut'
+    work.mkdir(parents=True, exist_ok=True)
+    subprocess.run(_clip_ffmpeg_command(video_path, work / '%04d.mp4', resize, n_TRs),
+                   check=False, capture_output=True)
+    for cut in sorted(work.glob('*.mp4')):
+        t = int(cut.stem)
+        if t < n_TRs and _clip_frame_count(cut) == CLIP_FRAMES:
+            shutil.move(str(cut), str(out_dir / f'{t:04d}.mp4'))
+    shutil.rmtree(work, ignore_errors=True)
+    return video_path
+
+
 def _as_features(assembly):
     """``(values (n_presentations, n_units) float32, neuroid ids or None)``."""
     if 'time_bin' in assembly.dims:
@@ -109,8 +172,11 @@ class _Algonauts2025Base(BenchmarkBase):
                    'video_only', 'audio_only', 'language_only')
     BANDED_ALPHA_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
 
-    # Sends one frame per TR on `vision:image` and asks for the region it records. The
-    # benchmark stacks the TRs itself, so the subject keeps no history across frames.
+    # Sends one frame per TR on `vision:image` (form='image'), or one 1.49 s clip per TR
+    # on `vision:video` (form='video'), and asks for the region it records. The
+    # benchmark stacks the TRs itself, so the subject keeps no history across TRs.
+    VALID_FORMS = ('image', 'video')
+    FORM_CHANNEL = {'image': 'vision:image', 'video': 'vision:video'}
     required_input_channels = frozenset({'vision:image'})
     requested_output_channels = frozenset({'neural:IT'})
     trial_memory = 'none'
@@ -126,6 +192,7 @@ class _Algonauts2025Base(BenchmarkBase):
         excluded_samples_end: int = 5,
         mode: str = 'video_only',
         assembly_root: Optional[Path] = None,
+        form: str = 'image',
     ):
         if subject not in (1, 2, 3, 5):
             raise ValueError(
@@ -134,6 +201,12 @@ class _Algonauts2025Base(BenchmarkBase):
             raise ValueError(
                 f"mode must be one of {self.VALID_MODES}; got {mode!r}.")
 
+        if form not in self.VALID_FORMS:
+            raise ValueError(
+                f"form must be one of {self.VALID_FORMS}; got {form!r}.")
+
+        self._form = form
+        self.required_input_channels = frozenset({self.FORM_CHANNEL[form]})
         self._subject = subject
         self._split = split
         self._stimulus_window = stimulus_window
@@ -148,7 +221,8 @@ class _Algonauts2025Base(BenchmarkBase):
 
         super().__init__(
             identifier=(f'Algonauts2025-{split}-sub{subject:02d}'
-                        f'{identifier_suffix}'),
+                        f'{identifier_suffix}'
+                        f"{'-video' if form == 'video' else ''}"),
             version=1,
             parent='naturalistic',
             ceiling=Score(1.0),
@@ -210,7 +284,8 @@ class _Algonauts2025Base(BenchmarkBase):
             metric_category='ridge',
             runs_ceiling_metric=False,
             recording_target='IT',
-            probe_stimuli=self._probe_frame_stimuli(),
+            probe_stimuli=(self._probe_clip_stimuli() if self._form == 'video'
+                           else self._probe_frame_stimuli()),
         )
 
     def _probe_frame_stimuli(self):
@@ -238,6 +313,30 @@ class _Algonauts2025Base(BenchmarkBase):
         ss.stimulus_paths = {pid: str(probe_path)}
         return ss
 
+    def _probe_clip_stimuli(self):
+        """A 1-row video StimulusSet (a blank 224x224 clip of one TR) for the memory
+        pre-flight, the clip counterpart of ``_probe_frame_stimuli``. The clip has the
+        same size, frame count and frame rate as a real one."""
+        import subprocess
+        import pandas as pd
+        from brainscore_core.supported_data_standards.brainio.stimuli import (
+            StimulusSet)
+        clips_dir = self._clips_dir()
+        clips_dir.mkdir(parents=True, exist_ok=True)
+        probe_path = clips_dir / '_memcheck_probe.mp4'
+        if not probe_path.exists():
+            subprocess.run(
+                ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i',
+                 f'color=c=black:s=224x224:r={CLIP_FPS}', '-frames:v', str(CLIP_FRAMES),
+                 '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(probe_path)],
+                check=True, capture_output=True)
+        pid = '_memcheck_probe'
+        ss = StimulusSet(pd.DataFrame(
+            [{'stimulus_id': pid, 'video_path': str(probe_path)}]))
+        ss.identifier = f'{self.identifier}-memcheck-probe'
+        ss.stimulus_paths = {pid: str(probe_path)}
+        return ss
+
     # ── Per-TR frame extraction ───────────────────────────────────
 
     def _frames_dir(self) -> Path:
@@ -257,7 +356,6 @@ class _Algonauts2025Base(BenchmarkBase):
         Saves resized JPEGs (~10 KB each at 224×224) to
         {frames_dir}/{stim_id}/{t:04d}.jpg.
         """
-        import multiprocessing as mp
         import pandas as pd
         from brainscore_core.supported_data_standards.brainio.stimuli import (
             StimulusSet)
@@ -268,74 +366,23 @@ class _Algonauts2025Base(BenchmarkBase):
         stim_to_n_TRs = self._stim_id_to_n_TRs()
 
         # Plan extraction jobs. Skip stims whose JPEGs already exist.
-        rows = []
-        jobs = []
-        for _, srow in stim_df.iterrows():
-            stim_id = srow['stimulus_id']
-            video_path = Path(srow['video_path'])
-            if not video_path.exists():
-                continue
-            n_TRs = stim_to_n_TRs.get(stim_id)
-            if n_TRs is None:
-                continue
-            stim_frame_dir = frames_dir / stim_id
-            stim_frame_dir.mkdir(parents=True, exist_ok=True)
-            target_paths = [stim_frame_dir / f'{t+1:04d}.jpg'  # ffmpeg %04d starts at 1
-                            for t in range(n_TRs)]
-            for t, out in enumerate(target_paths):
-                # PytorchWrapper indexes ``stimulus_set['stimulus_id']``
-                # for path lookup, so each row's stimulus_id must be
-                # globally unique. Use frame_id as the canonical ID;
-                # keep the per-clip stim_id under ``clip_id`` for
-                # downstream TR-alignment.
-                frame_id = f'{stim_id}_t{t:04d}'
-                rows.append({
-                    'stimulus_id': frame_id,
-                    'frame_id': frame_id,
-                    'clip_id': stim_id,
-                    't_within_run': t,
-                    'image_file_name': str(out),
-                })
-            if not all(p.exists() for p in target_paths):
-                jobs.append((str(video_path), str(stim_frame_dir),
-                             fps_offset, resize, n_TRs))
+        # ffmpeg's %04d starts at 1, so frame t is file t+1.
+        rows, planned = self._plan_per_TR_files(
+            frames_dir, '.jpg', 1, 'image_file_name', stim_to_n_TRs)
+        jobs = [(video, str(out_dir), fps_offset, resize, n_TRs)
+                for video, out_dir, n_TRs in planned]
 
         if jobs:
             print(f'  extracting frames for {len(jobs)} videos via '
                   f'ffmpeg (n_workers={n_workers})...')
-            # 'fork' avoids the re-import that 'spawn' triggers (which
-            # makes the worker re-execute the driver script's top-level
-            # code). ffmpeg is just a subprocess so fork is safe here.
-            ctx = mp.get_context('fork')
-            with ctx.Pool(processes=n_workers) as pool:
-                for done, _ in enumerate(
-                        pool.imap_unordered(_ffmpeg_extract_one, jobs), 1):
-                    if done % 25 == 0 or done == len(jobs):
-                        print(f'    {done}/{len(jobs)} videos done',
-                              flush=True)
+            self._run_pool(_ffmpeg_extract_one, jobs, n_workers)
 
         # ffmpeg sometimes outputs fewer frames than the assembly's
         # n_TRs expects (video shorter than the fMRI run by 1-2 TRs).
         # Fill any missing trailing frames by symlinking the last
         # existing one so downstream extraction sees a complete set.
-        import shutil
-        n_filled = 0
-        for _, srow in stim_df.iterrows():
-            stim_id = srow['stimulus_id']
-            n_TRs = stim_to_n_TRs.get(stim_id)
-            if n_TRs is None:
-                continue
-            stim_frame_dir = frames_dir / stim_id
-            target_paths = [stim_frame_dir / f'{t+1:04d}.jpg'
-                            for t in range(n_TRs)]
-            existing = [p for p in target_paths if p.exists()]
-            if not existing:
-                continue
-            last_existing = existing[-1]
-            for p in target_paths:
-                if not p.exists():
-                    shutil.copy(last_existing, p)
-                    n_filled += 1
+        n_filled = self._fill_trailing_files(
+            frames_dir, '.jpg', 1, stim_to_n_TRs)
         if n_filled > 0:
             print(f'  filled {n_filled} trailing frames by '
                   f'duplicating last-extracted')
@@ -358,6 +405,138 @@ class _Algonauts2025Base(BenchmarkBase):
         out_set.stimulus_paths = dict(
             zip(df['stimulus_id'], df['image_file_name']))
         return out_set
+
+    def _plan_per_TR_files(self, root: Path, ext: str, first_index: int,
+                           path_column: str, stim_to_n_TRs: Dict[str, int]):
+        """One table row per (movie, TR), and the movies that still need cutting.
+
+        File ``t`` of movie ``stim_id`` is ``{root}/{stim_id}/{t + first_index:04d}{ext}``.
+        Returns ``(rows, jobs)``; a job is ``(video_path, stim_dir, n_TRs)`` and is
+        listed only when some file of the movie is missing.
+        """
+        rows, jobs = [], []
+        for _, srow in self.stimulus_set.iterrows():
+            stim_id = srow['stimulus_id']
+            video_path = Path(srow['video_path'])
+            if not video_path.exists():
+                continue
+            n_TRs = stim_to_n_TRs.get(stim_id)
+            if n_TRs is None:
+                continue
+            stim_dir = root / stim_id
+            stim_dir.mkdir(parents=True, exist_ok=True)
+            target_paths = [stim_dir / f'{t + first_index:04d}{ext}'
+                            for t in range(n_TRs)]
+            for t, out in enumerate(target_paths):
+                # PytorchWrapper indexes ``stimulus_set['stimulus_id']``
+                # for path lookup, so each row's stimulus_id must be
+                # globally unique. Use frame_id as the canonical ID;
+                # keep the per-clip stim_id under ``clip_id`` for
+                # downstream TR-alignment.
+                frame_id = f'{stim_id}_t{t:04d}'
+                rows.append({
+                    'stimulus_id': frame_id,
+                    'frame_id': frame_id,
+                    'clip_id': stim_id,
+                    't_within_run': t,
+                    path_column: str(out),
+                })
+            if not all(p.exists() for p in target_paths):
+                jobs.append((str(video_path), str(stim_dir), n_TRs))
+        return rows, jobs
+
+    @staticmethod
+    def _run_pool(worker, jobs, n_workers: int) -> None:
+        import multiprocessing as mp
+        # 'fork' avoids the re-import that 'spawn' triggers (which
+        # makes the worker re-execute the driver script's top-level
+        # code). ffmpeg is just a subprocess so fork is safe here.
+        ctx = mp.get_context('fork')
+        with ctx.Pool(processes=n_workers) as pool:
+            for done, _ in enumerate(pool.imap_unordered(worker, jobs), 1):
+                if done % 25 == 0 or done == len(jobs):
+                    print(f'    {done}/{len(jobs)} videos done', flush=True)
+
+    def _fill_trailing_files(self, root: Path, ext: str, first_index: int,
+                             stim_to_n_TRs: Dict[str, int]) -> int:
+        """Copy the last existing file over every missing one; returns the count."""
+        import shutil
+        n_filled = 0
+        for _, srow in self.stimulus_set.iterrows():
+            stim_id = srow['stimulus_id']
+            n_TRs = stim_to_n_TRs.get(stim_id)
+            if n_TRs is None:
+                continue
+            target_paths = [root / stim_id / f'{t + first_index:04d}{ext}'
+                            for t in range(n_TRs)]
+            existing = [p for p in target_paths if p.exists()]
+            if not existing:
+                continue
+            last_existing = existing[-1]
+            for p in target_paths:
+                if not p.exists():
+                    shutil.copy(last_existing, p)
+                    n_filled += 1
+        return n_filled
+
+    # ── Per-TR clip cutting (form='video') ────────────────────────
+
+    def _clips_dir(self) -> Path:
+        """Cache dir for cut clips. Idempotent across runs."""
+        return self._assembly_root / 'clips'
+
+    def _expand_to_per_TR_clips(self, resize: int = 224, n_workers: int = 8):
+        """Build a clip-level StimulusSet: one row per (stim_id, TR).
+
+        Clip ``t`` is the movie time [t x TR_SEC, (t+1) x TR_SEC), cut at
+        ``resize`` x ``resize`` with no sound by one ffmpeg call per movie (see
+        ``_clip_ffmpeg_command``) into ``{clips_dir}/{stim_id}/{t:04d}.mp4``.
+        Every clip has ``CLIP_FRAMES`` frames. Clips the movie does not reach are
+        copies of the last clip. The columns are those of the frame table, with
+        ``video_path`` in place of ``image_file_name``.
+        """
+        import pandas as pd
+        from brainscore_core.supported_data_standards.brainio.stimuli import (
+            StimulusSet)
+
+        clips_dir = self._clips_dir()
+        clips_dir.mkdir(parents=True, exist_ok=True)
+        stim_to_n_TRs = self._stim_id_to_n_TRs()
+        rows, planned = self._plan_per_TR_files(
+            clips_dir, '.mp4', 0, 'video_path', stim_to_n_TRs)
+        jobs = [(video, out_dir, resize, n_TRs) for video, out_dir, n_TRs in planned]
+        if jobs:
+            print(f'  cutting clips for {len(jobs)} videos via '
+                  f'ffmpeg (n_workers={n_workers})...')
+            self._run_pool(_ffmpeg_cut_clips_one, jobs, n_workers)
+        n_filled = self._fill_trailing_files(clips_dir, '.mp4', 0, stim_to_n_TRs)
+        if n_filled > 0:
+            print(f'  filled {n_filled} trailing clips by '
+                  f'duplicating last-cut')
+
+        df = pd.DataFrame(rows)
+        # A movie that ffmpeg could not cut leaves no clips. Stop here, before a model reads a missing file.
+        missing = [path for path in df['video_path'] if not Path(path).exists()]
+        if missing:
+            raise FileNotFoundError(
+                f"{len(missing)} of {len(df)} clips were not cut; the first is {missing[0]}. "
+                "Check that ffmpeg can read the movie files.")
+        out_set = StimulusSet(df)
+        # Same reasoning as for the frame table: the column signature is part of
+        # the identifier, and the video table has its own identifier.
+        column_signature = hashlib.md5(
+            '|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
+        out_set.identifier = (
+            f'algonauts2025-{self._split}-sub{self._subject:02d}-clips'
+            f'-{column_signature}')
+        out_set.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
+        return out_set
+
+    def _expand_to_per_TR_stimuli(self):
+        """The table of what one TR presents, in the form of this benchmark."""
+        if self._form == 'video':
+            return self._expand_to_per_TR_clips()
+        return self._expand_to_per_TR_frames()
 
     def _stim_id_to_n_TRs(self) -> Dict[str, int]:
         """Count TRs per stimulus_id from the assembly's presentation
@@ -542,7 +721,7 @@ class _Algonauts2025Base(BenchmarkBase):
 
     def _score_friends_train(self, candidate) -> Score:
         print(f'  expanding stim_set to per-TR frames...')
-        frame_stim_set = self._expand_to_per_TR_frames()
+        frame_stim_set = self._expand_to_per_TR_stimuli()
         # Diagnostic escape hatch: cap the design so a memory investigation costs
         # seconds rather than a full extraction. Truncating the OUTER stimulus set
         # does not work -- the per-TR set is rebuilt here from the movie files --
@@ -633,7 +812,15 @@ class _Algonauts2025Base(BenchmarkBase):
         score.attrs['hrf_delay'] = self._hrf_delay
         score.attrs['mode'] = self._mode
         score.attrs['bands'] = info.get('bands')
-        score.attrs['pipeline'] = f"algonauts_{self._mode}_frame_agg"
+        if self._form == 'video':
+            # The clip of one TR is the stimulus. Nothing is aggregated over frames
+            # by the benchmark, and no sound or speech is sent.
+            score.attrs['pipeline'] = f"algonauts_{self._mode}_clip"
+            score.attrs['form'] = 'video'
+            score.attrs['clip_seconds'] = TR_SEC
+            score.attrs['frames_per_clip'] = CLIP_FRAMES
+        else:
+            score.attrs['pipeline'] = f"algonauts_{self._mode}_frame_agg"
         score.attrs['feature_projection_protocol'] = 'transductive_svd_all_input_frames'
         return score
 
@@ -650,7 +837,7 @@ class _Algonauts2025Base(BenchmarkBase):
         held-out prediction sets it False so every TR gets a prediction. ``Y``
         is the recorded BOLD (training) or all-NaN (held-out stub).
         """
-        frame_stim_set = self._expand_to_per_TR_frames()
+        frame_stim_set = self._expand_to_per_TR_stimuli()
         features, frame_ids = self._extract_per_TR_features(
             candidate, frame_stim_set, projection=projection,
             fit_projection=fit_projection)
@@ -698,9 +885,12 @@ class _Algonauts2025Base(BenchmarkBase):
             raise ValueError(
                 "generate_predictions is for held-out splits; the friends "
                 "training split is scored via __call__.")
-        train = train_benchmark or Algonauts2025Friends(subject=self._subject)
+        train = train_benchmark or Algonauts2025Friends(
+            subject=self._subject, form=self._form)
         if train._subject != self._subject or train._split != 'friends':
             raise ValueError('Prediction requires Friends training data for the same subject.')
+        if train._form != self._form:
+            raise ValueError('Training and prediction must present the same form (image or video).')
         if (train._stimulus_window, train._hrf_delay) != (
                 self._stimulus_window, self._hrf_delay):
             raise ValueError('Training and prediction must use the same stimulus window and HRF delay.')

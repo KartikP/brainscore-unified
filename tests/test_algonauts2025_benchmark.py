@@ -2,7 +2,7 @@
 
 Data is on EC2 (~100 GB DataLad pull); these tests don't load any of
 it. They verify:
-- All 12 (subject × split) registry entries exist.
+- All 13 (subject × split) registry entries exist.
 - Constructor validates subject ∈ {1, 2, 3, 5} and mode ∈ VALID_MODES.
 - ``__call__`` raises NotImplementedError until the assembly
   preparation pipeline runs on EC2.
@@ -36,11 +36,11 @@ def test_ood_benchmarks_registered_per_subject():
 
 
 def test_total_algonauts_benchmark_count():
-    """Three splits × four subjects = 12 entries."""
+    """Three splits × four subjects = 12 entries, plus the video variant of sub01."""
     entries = [k for k in brainscore.benchmark_registry
                if k.startswith('Algonauts2025-')]
-    assert len(entries) == 12, (
-        f"expected 12 Algonauts entries, got {len(entries)}: {sorted(entries)}")
+    assert len(entries) == 13, (
+        f"expected 13 Algonauts entries, got {len(entries)}: {sorted(entries)}")
 
 
 # ── Constructor validation ────────────────────────────────────────
@@ -232,3 +232,66 @@ def mem_caplog(level):
         yield records
     finally:
         logger.removeHandler(h); logger.setLevel(old_level)
+
+
+# ── Video form ────────────────────────────────────────────────────
+
+import shutil
+
+needs_ffmpeg = pytest.mark.skipif(
+    shutil.which('ffmpeg') is None or shutil.which('ffprobe') is None,
+    reason='ffmpeg and ffprobe are needed')
+
+
+def test_video_variant_is_registered_for_sub01_train_only():
+    entries = sorted(k for k in brainscore.benchmark_registry
+                     if k.startswith('Algonauts2025-') and k.endswith('-video'))
+    assert entries == ['Algonauts2025-friends-sub01-video']
+
+
+def test_video_variant_identifier_and_declarations(tmp_path):
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
+    from tests.benchmark_declarations import assert_declares, assert_preflight
+    video = brainscore.benchmark_registry['Algonauts2025-friends-sub01-video']()
+    assert video.identifier == 'Algonauts2025-friends-sub01-video'
+    assert_declares(video, {'vision:video'}, {'neural:IT'})
+    assert_preflight(Algonauts2025Friends(subject=1, form='video', assembly_root=tmp_path))
+    frame = brainscore.benchmark_registry['Algonauts2025-friends-sub01']()
+    assert frame.identifier == 'Algonauts2025-friends-sub01'
+    assert_declares(frame, {'vision:image'}, {'neural:IT'})
+
+
+def test_invalid_form_raises():
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
+    with pytest.raises(ValueError, match="form must be one of"):
+        Algonauts2025Friends(subject=1, form='audio')
+
+
+@needs_ffmpeg
+def test_video_execution_plan_probes_a_blank_clip(tmp_path):
+    from brainscore.benchmarks.algonauts2025.benchmark import (
+        Algonauts2025Friends, CLIP_FRAMES)
+    import subprocess
+    b = Algonauts2025Friends(subject=1, form='video', assembly_root=tmp_path)
+    assembly, n_trs, _ = _mock_assembly_two_runs(tr_per_run=20)
+    b._assembly = assembly
+    plan = b.execution_plan
+    assert plan.n_extraction_presentations == n_trs
+    assert plan.recording_target == 'IT'
+    probe = plan.probe_stimuli
+    assert len(probe) == 1 and 'video_path' in probe.columns
+    assert 'image_file_name' not in probe.columns
+    path = probe['video_path'].iloc[0]
+    frames = subprocess.run(
+        ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-count_frames',
+         '-show_entries', 'stream=nb_read_frames,width,height', '-of', 'csv=p=0', path],
+        capture_output=True, text=True, check=True).stdout.strip()
+    assert frames == f'224,224,{CLIP_FRAMES}'
+
+
+def test_frame_form_plan_still_probes_an_image(tmp_path):
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
+    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    b._assembly = _mock_assembly_two_runs(tr_per_run=20)[0]
+    probe = b.execution_plan.probe_stimuli
+    assert 'image_file_name' in probe.columns and 'video_path' not in probe.columns

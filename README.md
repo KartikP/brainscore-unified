@@ -75,7 +75,7 @@ interface is exercised, but the result is not a brain-alignment claim.
 | Video neural encoding | Lahner2024 BOLDMoments | EC2-only | Local tests verify registration, temporal preprocessing, and V-JEPA wiring; full scoring is EC2-only. |
 | Audio wrapper | Wav2Vec2-style features | structurally-tested | Construction, stimulus columns, aggregation, truncation, and cache keys are unit-tested without weights. |
 | Audio+video fMRI | Lahner2024 multimodal | EC2-only | Registry, mode validation, null controls, and modality tagging are local; real forward/data runs are EC2-only. |
-| Movie multimodal fMRI | Algonauts2025 / CNeuroMod | EC2-only | Twelve benchmark entries and scoring kernels are guarded locally; the data assembly is about 100 GB on EC2. |
+| Movie multimodal fMRI | Algonauts2025 / CNeuroMod | EC2-only | Thirteen benchmark entries and scoring kernels are guarded locally; the data assembly is about 100 GB on EC2. Two forms exist: one frame per scan (`vision:image`) and one 1.49 s clip per scan (`vision:video`, participant 1 only). Neither sends sound or speech yet. |
 | State-change perturbation | `apply_state_change` | structurally-tested | Hook install, indexed ablation, concurrent handles, and reset are tested on a toy torch model. |
 | Closed-loop action | GridGame `policy` | demo-only | Floor, ceiling, deterministic boards, and registration are tested; the game is an interface demo. |
 | Closed-weight API behavior | OpenRouter / OpenAI-compatible | structurally-tested | Provider registration, lazy model construction, parsing, image payloads, and cache behavior are mocked locally. |
