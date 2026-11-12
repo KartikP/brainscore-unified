@@ -216,14 +216,17 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     tree = ast.parse(source)
     adapter = next(node for node in tree.body if isinstance(node, ast.ClassDef))
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    from PIL import Image
+    # The notebook prepares each photo for the network; a tiny stand-in keeps the test free of weights.
     namespace = dict(Subject=Subject, torch=torch, np=np, StreamEvent=StreamEvent,
-                     BehavioralAssembly=BehavioralAssembly)
+                     BehavioralAssembly=BehavioralAssembly, Image=Image,
+                     preprocess=lambda image: torch.from_numpy(np.asarray(image)).permute(2, 0, 1))
     exec(compile(ast.Module(body=[adapter], type_ignores=[]), '<notebook-adapter>', 'exec'), namespace)
     class ToFloat(torch.nn.Module):
         def forward(self, pixels):
             return torch.nn.functional.linear(pixels.flatten(1).float(), torch.ones(2, 3))
     subject = namespace['ImageSubject'](ToFloat().eval())
-    inputs = np.ones((1, 3, 1, 1), dtype=np.uint8)  # one 3-channel 1x1 uint8 image
+    inputs = np.ones((1, 1, 1, 3), dtype=np.uint8)  # one 1x1 uint8 photo with 3 colour channels
     def session():
         return Session([StreamEvent(channel='vision:image', payload=inputs.copy(), t_ms=0)], ['behavior'])
     class SessionBenchmark(Benchmark):

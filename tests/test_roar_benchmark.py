@@ -90,14 +90,14 @@ class TestParameterizedModality:
         )
         bm = Yeatman2021LexicalDecision()
         assert bm.modality == 'vision'
-        assert bm.required_modalities == {'vision'}
+        assert bm.required_input_channels == {'vision:image', 'instruction'}
 
     def test_vision_variant_columns(self):
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
         bm = Yeatman2021LexicalDecision(modality='vision')
-        assert bm.required_modalities == {'vision'}
+        assert bm.required_input_channels == {'vision:image', 'instruction'}
         assert 'image_file_name' in bm._train_stimuli.columns
         assert 'sentence' not in bm._train_stimuli.columns
         assert 'image_file_name' in bm._test_stimuli.columns
@@ -108,7 +108,7 @@ class TestParameterizedModality:
             Yeatman2021LexicalDecision,
         )
         bm = Yeatman2021LexicalDecision(modality='text')
-        assert bm.required_modalities == {'text'}
+        assert bm.required_input_channels == {'text', 'instruction'}
         assert 'sentence' in bm._train_stimuli.columns
         assert 'image_file_name' not in bm._train_stimuli.columns
         assert 'sentence' in bm._test_stimuli.columns
