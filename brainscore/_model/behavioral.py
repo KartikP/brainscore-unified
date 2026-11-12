@@ -5,6 +5,7 @@ from dataclasses import replace
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from brainscore_core.contract import TaskContext
+from brainscore_core.streaming import StreamEvent
 
 import numpy as np
 
@@ -390,7 +391,7 @@ class BehavioralReadout:
             raise CompatibilityError(
                 f"Model '{owner.identifier}' cannot give raw scores of the options: "
                 'they come only from a likelihood= part.')
-        per_row = isinstance(response, Choice) and response.labels_column is not None
+        per_row = isinstance(response, Choice) and isinstance(response.labels, str)
         can = {
             'generation': not raw_scores and (owner._reply_fn is not None or (
                 owner._generation_fn is not None and isinstance(response, Choice)
@@ -443,8 +444,8 @@ class BehavioralReadout:
         labels = labels_of(response)
         # Every trial's prompt is built first, so a bad layout fails before any compute.
         prompts = [trial_prompt(task, row) for _, row in stimuli.iterrows()]
-        neural, outputs = {}, {}
-        # The options of each row: the task's labels, or the row's own (labels_column).
+        neural, outputs, extras = {}, {}, []
+        # The options of each row: the task's labels, or the row's own (labels names a column).
         # The choice axis is then the labels, or the position of each option.
         row_labels, axis = None, labels
         if isinstance(response, Choice):
@@ -453,7 +454,7 @@ class BehavioralReadout:
                 counts = {len(options) for options in row_labels}
                 if len(counts) > 1:
                     raise ValueError(f'Every row must give the same number of options in column '
-                                     f'{response.labels_column!r}; got {sorted(counts)}')
+                                     f'{response.labels!r}; got {sorted(counts)}')
                 axis = list(range(counts.pop())) if counts else []
 
         if path == 'readout':
@@ -488,10 +489,10 @@ class BehavioralReadout:
                     # Scoring first keeps the recorded first pass the prompt alone.
                     scores = (owner._likelihood_fn(shown, list(prompt.response.labels))
                               if score_first else None)
-                    reply = owner._reply_fn(shown)
+                    reply, extra = _reply_and_meta(owner._reply_fn(shown))
                     if remember:
                         self.history.append((prompt, str(reply)))
-                    return reply, scores
+                    return reply, scores, extra
             else:   # a registration's answer: it phrases and parses a Choice itself
                 def call(row, prompt):
                     return owner._generation_fn(stimulus_row=row, instruction=task.instruction,
@@ -499,8 +500,7 @@ class BehavioralReadout:
             replies, neural = self._per_stimulus(stimuli, layers, call, prompts)
             scores = None
             if path == 'generation' and owner._reply_fn is not None:
-                scores = [s for _, s in replies]
-                replies = [r for r, _ in replies]
+                replies, scores, extras = (list(column) for column in zip(*replies)) if replies else ([], [], [])
             if path == 'likelihood':
                 logp = _score_rows(replies, row_labels)
                 probabilities = _softmax(logp)
@@ -541,6 +541,12 @@ class BehavioralReadout:
             outputs['behavior:rt'] = _reaction_time(outputs['behavior:probabilities'],
                                                     response.reaction_time, stimuli)
         outputs['behavior'] = outputs[response.channels[0]]
+        meta = _trials_meta(extras)
+        if meta:
+            # The reply's extra data goes into the meta of its answer event, as a
+            # policy's does (send_outputs merges the meta of a returned StreamEvent).
+            for channel in (response.channels[0], 'behavior'):
+                outputs[channel] = StreamEvent(channel, outputs[channel], None, meta)
         if prompts:
             # A multi-image trial records one step per image: name each by its part.
             image_names = [name for (kind, _), name in zip(prompts[0].parts, prompts[0].names)
@@ -876,8 +882,8 @@ def _hook_recording(model, layers, identifier):
 def _presentation(stimuli):
     """The stimulus columns as presentation coordinates.
 
-    A column whose cells are sequences (the options of a ``labels_column``
-    choice) cannot be a coordinate and is left out.
+    A column whose cells are sequences (the options of a choice whose
+    ``labels`` names a column) cannot be a coordinate and is left out.
     """
     return {column: ('presentation', list(stimuli[column].values)) for column in stimuli.columns
             if not any(isinstance(value, (list, tuple, set, dict, np.ndarray))
@@ -919,6 +925,26 @@ def _numbers(parsed, stimuli, source, raw=None):
     return BehavioralAssembly(values, coords=coords, dims=['presentation'],
                               attrs={'measure': {'kind': 'reported' if source == 'reply'
                                                  else 'implied', 'source': source}})
+
+
+def _reply_and_meta(reply):
+    """A reply's text and its extra data: a reply returns the text, or a
+    ``StreamEvent`` whose payload is the text and whose meta is the extra data."""
+    if isinstance(reply, StreamEvent):
+        return reply.payload, dict(reply.meta)
+    return reply, {}
+
+
+def _trials_meta(extras):
+    """The meta of an answer event from the extra data of its trials.
+
+    One trial: its extra data as is. Several trials: each key holds a list with
+    one value per trial, in order (``None`` for a trial without that key).
+    """
+    if len(extras) == 1:
+        return dict(extras[0])
+    keys = list(dict.fromkeys(key for extra in extras for key in extra))
+    return {key: [extra.get(key) for extra in extras] for key in keys}
 
 
 def _texts(parsed, replies, stimuli):

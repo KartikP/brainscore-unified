@@ -306,6 +306,27 @@ def test_experiment_saves_every_kind_of_answer(tmp_path):
     assert list(result.behavior(measure='text').values) == ['It reads x.', 'It reads yy.', 'It reads zzz.']
 
 
+def test_extra_data_of_a_reply_goes_into_the_meta_of_the_answer_event():
+    """One answer event for several trials: each key holds one value per trial."""
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.streaming_helpers import stimulus_session
+
+    def reply(prompt):
+        sentence = [content for kind, content in prompt.parts if kind == 'text'][0]
+        if sentence == 'yy':
+            return 'long'   # the text alone: no extra data for this trial
+        return StreamEvent('behavior:choice', 'short', None, {'reasoning': f'{sentence} is short'})
+
+    model = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=reply)
+    session = stimulus_session(STIMULI, ['behavior:choice'], TaskContext(response=Choice(['short', 'long'])))
+    model.participate(session)
+    event, = [e for e in session.emitted if e.channel == 'behavior:choice']
+    assert event.meta['reasoning'] == ['x is short', None, 'zzz is short']
+    assert event.meta['driver'] == 'interact'
+    assert list(event.payload['raw_answer'].values) == ['short', 'long', 'short']
+
+
 def test_a_model_that_cannot_write_fails_at_validation(tmp_path):
     from brainscore_core.responses import Text
     net = Net()
@@ -565,7 +586,7 @@ def _options_stimuli():
 
 
 def test_options_that_differ_for_each_row_reach_each_part():
-    """labels_column: each row's options reach likelihood, reply and answer; the axis is positions."""
+    """labels names a column: each row's options reach likelihood, reply and answer; the axis is positions."""
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
     seen = []
@@ -582,7 +603,7 @@ def test_options_that_differ_for_each_row_reach_each_part():
         seen.append(('answer', stimulus_row['text'], tuple(label_set)))
         return label_set[0]
 
-    raw = TaskContext(response=Choice(labels_column='options', raw_scores=True, raw_text=True))
+    raw = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
     scorer = BrainScoreModel(identifier='scorer', supported_modalities={'text'}, likelihood=likelihood)
     session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:probabilities'], raw)
     scorer.participate(session)
@@ -595,7 +616,7 @@ def test_options_that_differ_for_each_row_reach_each_part():
     assert seen == [('likelihood', (('text', 'the cat'),), ('sat', 'ran')),
                     ('likelihood', (('text', 'the dog'),), ('kind', 'mean'))]
     seen.clear()
-    phrased = TaskContext(response=Choice(labels_column='options'))
+    phrased = TaskContext(response=Choice(labels='options'))
     for part in ({'reply': reply}, {'answer': answer}):
         model = BrainScoreModel(identifier='other', supported_modalities={'text'}, **part)
         session = stimulus_session(_options_stimuli(), ['behavior:choice'], phrased)
@@ -613,7 +634,7 @@ def test_raw_scores_need_a_likelihood_part():
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
     model = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=lambda p: 'sat')
-    task = TaskContext(response=Choice(labels_column='options', raw_scores=True, raw_text=True))
+    task = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
     with pytest.raises(CompatibilityError, match='likelihood'):
         model.start_task(task)
 

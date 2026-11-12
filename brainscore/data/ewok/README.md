@@ -90,6 +90,13 @@ template, as EWoK's `score` does. A model without a `likelihood` part is N/A.
 `EWoKProvider(native_model)` from `brainscore.harnesses.ewok`, which calls the
 authors' own `score`.
 
+Log-probability scores can differ slightly from EWoK's own evaluator, for two
+reasons. EWoK sets the logit of the padding or end-of-sequence token to minus
+infinity before it normalizes; `chat_parts` and `build_causal_lm_subject` do
+not. EWoK tokenizes with `add_special_tokens=True`, so some tokenizers add a
+start token before the context; these parts add none. The score says so in
+`score.attrs['input_adaptation']`.
+
 `EWoK-core-1.0-choice` shows EWoK's own choice prompt as `text`, with no
 sentence added, and asks for `behavior:choice` between 1 and 2. A model with a
 `reply`, `likelihood` or `answer` part runs it.

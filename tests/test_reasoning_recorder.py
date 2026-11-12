@@ -175,3 +175,44 @@ def test_requires_input_recorder_before_execution(tmp_path):
     with pytest.raises(ValueError, match='RecordInputsOutputs'):
         experiment.run()
     assert not experiment.output_dir.exists()
+
+
+def test_reasoning_from_a_reply_part_reaches_the_reasoning_record(tmp_path):
+    """A normal reply= part returns its reasoning as extra data; the record keeps it."""
+    from brainscore import BrainScoreModel
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Text
+    from brainscore_core.streaming_helpers import stimulus_session
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+    def reply(prompt):
+        return StreamEvent('behavior:text', '42', None,
+                           {'reasoning': '6 times 7 is 42.', 'token_usage': {'output_tokens': 3}})
+
+    @contextmanager
+    def task_session(trial):
+        stimuli = StimulusSet({'stimulus_id': ['q'], 'text': ['6 * 7?']})
+        stimuli.identifier = 'reply-reasoning'
+        yield stimulus_session(stimuli, ['behavior:text'], TaskContext(response=Text()))
+
+    procedure = SessionProtocol('reasoning', task_session, conditions=['normal'], repetitions=[0],
+                                input_channels=['text'], output_channels=['behavior:text'])
+    subject = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=reply)
+    result = run(tmp_path, subject, procedure=procedure)
+    record, = RunRecord(result.directory / 'reasoning').outputs()
+    assert record['reasoning_available'] is True
+    assert record['reasoning'] == [{'text': '6 times 7 is 42.', 'kind': 'unspecified',
+                                    'format': 'complete'}]
+    assert record['payload'].meta['token_usage'] == {'output_tokens': 3}
+    assert list(record['payload'].payload.values) == ['42']
+
+
+def test_multi_trial_reasoning_skips_trials_without_reasoning(tmp_path):
+    """One answer event for three trials: the trials with reasoning are recorded, None is skipped."""
+    result = run(tmp_path, answering(reasoning=['x is short', None, 'zzz is short']))
+    record = next(RunRecord(result.directory / 'reasoning').outputs())
+    assert record['reasoning_available'] is True
+    assert [block['text'] for block in record['reasoning']] == ['x is short', 'zzz is short']
+    result = run(tmp_path / 'none', answering(reasoning=[None, None]))
+    record = next(RunRecord(result.directory / 'reasoning').outputs())
+    assert record['reasoning_available'] is False and record['reasoning'] == []

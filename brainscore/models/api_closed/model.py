@@ -48,26 +48,14 @@ REGISTRY = {
 _CACHE_ROOT = '~/.brainscore/api_behavioral_cache'
 
 
-# A model that also writes answers: '<identifier>-reply'. It has a reply part
-# built from the same client, so it runs tasks that ask for written answers
-# (CogGym) and obeys the task's generation settings. The plain identifiers keep
-# only their answer part, so the prompts of existing choice benchmarks do not change.
-_REPLY_SUFFIX = '-reply'
-
-
 def get_model(identifier: str) -> BrainScoreModel:
-    base = identifier[:-len(_REPLY_SUFFIX)] if identifier.endswith(_REPLY_SUFFIX) else identifier
-    if base not in REGISTRY:
+    """An API model with two parts from one client: ``answer`` for legacy
+    ``task_type``/``label_set`` tasks, and ``reply`` for response tasks (choices,
+    ratings, written answers such as CogGym's), which obeys the task's settings."""
+    if identifier not in REGISTRY:
         raise ValueError(f"unknown closed-API model '{identifier}'; "
-                         f"known: {sorted(REGISTRY)} and each with '{_REPLY_SUFFIX}'")
-    cfg = REGISTRY[base]
-    if identifier != base:
-        return BrainScoreModel(
-            identifier=identifier,
-            supported_modalities=set(cfg['modalities']),
-            reply=build_api_reply(cfg['provider'], cfg['model'],
-                                  cache_dir=f"{_CACHE_ROOT}/{identifier}"),
-        )
+                         f"known: {sorted(REGISTRY)}")
+    cfg = REGISTRY[identifier]
     generation_fn = build_api_generation_fn(
         provider=cfg['provider'],
         model=cfg['model'],
@@ -78,4 +66,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         identifier=identifier,
         supported_modalities=set(cfg['modalities']),
         answer=generation_fn,
+        reply=build_api_reply(cfg['provider'], cfg['model'],
+                              cache_dir=f"{_CACHE_ROOT}/{identifier}"),
     )

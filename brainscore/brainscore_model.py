@@ -170,7 +170,11 @@ class BrainScoreModel(UnifiedModel):
             ``prompt`` is a ``brainscore_core.responses.Prompt``: the trial's parts
             in order (instruction, stimulus parts, the response's directive).
             Parsing is the task's. Gives choices, ratings, reported confidence
-            and written answers.
+            and written answers. As a policy does, a reply may return a
+            ``StreamEvent`` instead, with the text as payload and extra data
+            (for example ``reasoning``, ``token_usage``) as meta; the meta goes
+            into the answer event. When the event holds several trials, each
+            key holds a list with one value per trial.
         :param likelihood: ``(prompt, candidates) -> {candidate: log
             probability}``; scores candidate replies without generating. Gives
             choices and their implied probabilities. Run the prompt on its own

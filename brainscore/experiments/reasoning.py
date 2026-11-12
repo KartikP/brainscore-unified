@@ -22,6 +22,8 @@ def _blocks(value):
     values = value if isinstance(value, list) else [value]
     result = []
     for item in values:
+        if item is None:
+            continue   # a trial of a multi-trial answer that gave no reasoning
         if isinstance(item, str):
             block = {'text': item}
         elif isinstance(item, dict):
@@ -98,7 +100,9 @@ class RecordReasoning(Tool):
                     value = self.extract(event['payload'])
                     # Serialize immediately: later model mutations cannot change the record.
                     saved = dict(event)
-                    saved['reasoning_available'] = value is not None
+                    # A multi-trial answer holds one value per trial; None where a trial gave none.
+                    saved['reasoning_available'] = value is not None and not (
+                        isinstance(value, list) and value and all(item is None for item in value))
                     saved['reasoning'] = _blocks(value)
                     recorder.record('output', saved)
 

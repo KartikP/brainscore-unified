@@ -19,9 +19,8 @@ def test_import_brainscore_does_not_load_heavy_deps():
         "loaded = [m for m in heavy if m in sys.modules]\n"
         "assert not loaded, f'import brainscore eagerly loaded {loaded}'\n"
         # registries still populate without importing the plugins' model.py
-        # 33 plus one '<name>-reply' form for each of the 7 closed API models.
-        "assert len(brainscore.model_registry) == 40, "
-        "f'model_registry={len(brainscore.model_registry)} (expected 40)'\n"
+        "assert len(brainscore.model_registry) == 33, "
+        "f'model_registry={len(brainscore.model_registry)} (expected 33)'\n"
         "assert 'qwen2.5-vl-3b-bf16' in brainscore.model_registry\n"
         "assert 'brainscore.models.qwen25_vl_3b.model' not in sys.modules\n"
         "assert 'qwen2.5-0.5b-instruct' in brainscore.model_registry\n"

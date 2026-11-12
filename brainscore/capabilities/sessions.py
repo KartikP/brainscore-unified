@@ -275,9 +275,9 @@ def drive_behavior_and_neural_session(model, session, driver: str = "interact") 
         else:
             plain, neural = model._behavioral.respond_and_record(batch, regions)
             behavior = {"behavior": plain} if answers else {}
-        for channel in answers:
-            session.respond(StreamEvent(channel=channel, payload=behavior[channel], t_ms=float(index),
-                                     meta={"driver": driver, "task_type": task_context.task_type}))
+        # A value that is a StreamEvent keeps its meta: a reply's extra data (send_outputs).
+        _drivers.send_outputs(session, {channel: behavior[channel] for channel in answers},
+                              float(index), {"driver": driver, "task_type": task_context.task_type})
         for region in regions:
             session.respond(StreamEvent(channel=f"neural:{region}", payload=neural[region], t_ms=float(index),
                                      meta={"driver": driver, "record": region, "during": "behavior"}))

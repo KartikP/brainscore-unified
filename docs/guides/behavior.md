@@ -29,7 +29,7 @@ Three fields of `Choice` serve a library that compares options by their likeliho
 
 | Field | Meaning |
 | --- | --- |
-| `labels_column='options'` | the options differ for each row; the column holds each row's options. The `choice` axis is then the position of each option in that cell. |
+| `labels='options'` | a column name in place of the options: the options differ for each row, and the column holds each row's options. The `choice` axis is then the position of each option in that cell. |
 | `raw_scores=True` | `behavior:probabilities` carries each option's score exactly as the `likelihood` part gave it (summed log probability), not normalized; `attrs['measure']['scale']` is `'log'`. Only a `likelihood` part gives it; any other model is N/A. |
 | `raw_text=True` | the stimulus text is shown exactly as given: no directive, and no instruction. A `likelihood` part scores `f"{text} {option}"` as plain text, with no chat template and no beginning-of-sequence token. A `reply` part gets no added sentence but still answers through its chat template. |
 
@@ -67,7 +67,7 @@ One benchmark can take models of both kinds, as long as it fills in both the ins
 
 A reply that cannot be parsed is recorded as invalid: NaN values, `answer_valid` is `False`, the reply is kept in `raw_answer` and the reason in `parse_error`. Nothing is credited. Written answers are stored as written; scoring them (a parser, a judge, a comparison with people) is the benchmark's job.
 
-**Parts.** `reply(prompt)` returns the model's raw reply to one trial; `likelihood(prompt, candidates)` returns the log probability of each candidate answer. `chat_parts(model, processor)` in `brainscore.model_helpers.replies` builds both for a Hugging Face chat model; it shows the prompt's parts in order, images as images and clips as video:
+**Parts.** `reply(prompt)` returns the model's raw reply to one trial. It may also return extra data the way a policy does: a `StreamEvent` with the text as payload and the extra data (for example `reasoning` or `token_usage`) as meta. The meta goes into the answer event, where `RecordReasoning` reads `meta['reasoning']`. An answer event that holds several trials keeps, under each key, a list with one value per trial. `likelihood(prompt, candidates)` returns the log probability of each candidate answer. `chat_parts(model, processor)` in `brainscore.model_helpers.replies` builds both for a Hugging Face chat model; it shows the prompt's parts in order, images as images and clips as video:
 
 ```python
 reply, likelihood = chat_parts(hf_model, processor, chat_template_kwargs={'enable_thinking': False})
@@ -76,12 +76,14 @@ BrainScoreModel(..., reply=reply, likelihood=likelihood)
 
 **Generation settings.** The settings of a written answer belong to the task, so the benchmark sets them on `Text`: `max_tokens`, `temperature` (0 or `None` is greedy), `top_p` (needs a temperature above 0) and `seed`. A `reply` part reads them from `prompt.response`. The reply that `chat_parts` builds obeys them. With no settings it is greedy and at most `max_new_tokens` (64) tokens long, as before.
 
+**A part obeys the task or stops.** A `reply` or `likelihood` part reads the task from `prompt.response`. It obeys each setting the task gives (the generation settings of `Text`, `raw_text`, `raw_scores` and the options) or stops with an error; it never ignores a setting. For example, the Claude reply part raises `ValueError` for a temperature other than 1.0, for `top_p` and for `seed`, because the Anthropic API cannot obey them.
+
 **Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged.
 
 ## Hosted models
 
 `build_api_generation_fn` (in `brainscore.model_helpers.api_behavioral`) builds an `answer` for a hosted model API. Such a model has no layers, so it can take part in behavioral benchmarks only.
 
-`build_api_reply` builds a `reply` part from the same clients. It shows the trial's text and images in order, sends the task's instruction as the system text, and obeys the task's generation settings. A provider that refuses a setting the task gives fails before any request: the Anthropic API has no seed and refuses `top_p` and any temperature other than its default 1.0 (which is then not sent). The registered closed models come in two forms: `<name>` (an `answer` only, for choice tasks) and `<name>-reply` (a `reply`, which also writes answers, for example for CogGym).
+`build_api_reply` builds a `reply` part from the same clients. It shows the trial's text and images in order, sends the task's instruction as the system text, and obeys the task's generation settings. It returns the reasoning (when the provider gives it) and the token counts (`token_usage`) as extra data. A provider that refuses a setting the task gives fails before any request: the Anthropic API has no seed and refuses `top_p` and any temperature other than its default 1.0 (which is then not sent). Each registered closed model has both parts under one identifier: a task with a response (a choice, a rating, a written answer such as CogGym's) goes to the `reply` part, as for every model that has one; an older `task_type`/`label_set` task goes to the `answer` part.
 
 See [Lesson 6](../../notebooks/lessons/06_behavior.ipynb) and [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb).

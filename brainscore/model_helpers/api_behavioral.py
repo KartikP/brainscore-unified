@@ -280,7 +280,7 @@ def build_api_generation_fn(
 # A reply part answers any response a task asks for (a choice, a rating, a
 # written answer) from the trial's Prompt, and obeys the task's generation
 # settings. CogGym needs one. Each adapter:
-# (model, system, messages, settings) -> str, where messages are
+# (model, system, messages, settings) -> text or StreamEvent(text, meta), where messages are
 # [{'role': 'user'|'assistant', 'content': [part, ...]}] with parts
 # {'type': 'text', 'text': ...} or {'type': 'image', 'media_type': ..., 'data': <base64>},
 # and settings holds max_tokens and any of temperature, top_p, seed.
@@ -322,7 +322,21 @@ def _reply_anthropic(model, system, messages, settings) -> str:
     if system:
         kwargs['system'] = system
     resp = client.messages.create(**kwargs)
-    return ''.join(b.text for b in resp.content if b.type == 'text').strip()
+    text = ''.join(b.text for b in resp.content if b.type == 'text').strip()
+    reasoning = ''.join(b.thinking for b in resp.content if b.type == 'thinking') or None
+    usage = getattr(resp, 'usage', None)
+    return _with_meta(text, reasoning, None if usage is None else {
+        'input_tokens': usage.input_tokens, 'output_tokens': usage.output_tokens})
+
+
+def _with_meta(text, reasoning, token_usage):
+    """A reply with its extra data: a ``StreamEvent`` with the text as payload and,
+    in meta, ``reasoning`` and ``token_usage`` when the provider gives them.
+    The text alone when it gives neither."""
+    from brainscore_core.streaming import StreamEvent
+    meta = {name: value for name, value in (('reasoning', reasoning), ('token_usage', token_usage))
+            if value}
+    return StreamEvent('behavior:text', text, None, meta) if meta else text
 
 
 def _make_openai_reply(base_url=None, api_key_env='OPENAI_API_KEY', label='openai') -> Callable:
@@ -344,7 +358,13 @@ def _make_openai_reply(base_url=None, api_key_env='OPENAI_API_KEY', label='opena
         request = {name: settings[name] for name in ('max_tokens', 'temperature', 'top_p', 'seed')
                    if settings.get(name) is not None}
         resp = client.chat.completions.create(model=model, messages=chat, **request)
-        return (resp.choices[0].message.content or '').strip()
+        message = resp.choices[0].message
+        # DeepSeek names the reasoning reasoning_content; OpenRouter names it reasoning.
+        reasoning = getattr(message, 'reasoning_content', None) or getattr(message, 'reasoning', None)
+        usage = getattr(resp, 'usage', None)
+        return _with_meta((message.content or '').strip(), reasoning,
+                          None if usage is None else {'input_tokens': usage.prompt_tokens,
+                                                      'output_tokens': usage.completion_tokens})
     call.__name__ = f'_reply_{label}'
     return call
 
@@ -396,7 +416,12 @@ def build_api_reply(
     max_tokens: int = 512,
     cache_dir: Optional[Union[str, Path]] = None,
 ) -> Callable:
-    """Build a ``reply(prompt) -> str`` part for a hosted model API.
+    """Build a ``reply(prompt)`` part for a hosted model API.
+
+    The reply returns the text with its extra data: a ``StreamEvent`` whose
+    payload is the text and whose meta holds ``reasoning`` and ``token_usage``
+    when the provider gives them (the text alone when it gives neither). The
+    meta reaches the answer event.
 
     The reply shows the trial's parts in order (text and images), with the
     task's instruction as the system text, and obeys the generation settings
@@ -409,7 +434,8 @@ def build_api_reply(
 
     :param provider: ``'anthropic'``, ``'openai'``, ``'deepseek'``,
         ``'openrouter'``, or a callable adapter
-        ``(model, system, messages, settings) -> str``.
+        ``(model, system, messages, settings)`` that returns the text, or a
+        ``StreamEvent`` with the text as payload and the extra data as meta.
     :param cache_dir: if set, replies are cached per trial, keyed on the
         provider, the model, the system text, the turns and the settings.
     """
@@ -417,12 +443,15 @@ def build_api_reply(
     provider_name = getattr(provider, '__name__', str(provider))
     cache = _ResponseCache(cache_dir) if cache_dir is not None else None
 
-    def reply(prompt) -> str:
+    def reply(prompt):
+        from brainscore_core.responses import Text
+        from brainscore_core.streaming import StreamEvent
         response = prompt.response
-        settings = {'max_tokens': getattr(response, 'max_tokens', None) or max_tokens}
-        for name in ('temperature', 'top_p', 'seed'):
-            if getattr(response, name, None) is not None:
-                settings[name] = getattr(response, name)
+        settings = {'max_tokens': max_tokens}
+        if isinstance(response, Text):
+            given = {'max_tokens': response.max_tokens, 'temperature': response.temperature,
+                     'top_p': response.top_p, 'seed': response.seed}
+            settings.update({name: value for name, value in given.items() if value is not None})
         if call is _reply_anthropic:
             _anthropic_settings(settings)   # fail before the cache or a request
         system, messages = _reply_messages(prompt)
@@ -432,7 +461,10 @@ def build_api_reply(
         if answer is None:
             answer = call(model, system, messages, settings)
             if cache is not None:
-                cache.set(key, answer)
+                cache.set(key, {'text': answer.payload, 'meta': answer.meta}
+                          if isinstance(answer, StreamEvent) else answer)
+        elif isinstance(answer, dict):
+            answer = StreamEvent('behavior:text', answer['text'], None, answer['meta'])
         return answer
 
     return reply

@@ -58,7 +58,7 @@ def _scores(model, contexts, targets, raw_text=True):
     stimuli = StimulusSet({'stimulus_id': [f's{i}' for i in range(len(contexts))], 'text': list(contexts),
                            'options': [(t, f) for t, f in zip(targets, fillers)]})
     stimuli.identifier = 'causal-lm-scores'
-    task = TaskContext(response=Choice(labels_column='options', raw_scores=True, raw_text=raw_text))
+    task = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=raw_text))
     session = stimulus_session(stimuli, ['behavior:probabilities'], task)
     model.participate(session)
     scores = session.collect('behavior:probabilities')
@@ -71,7 +71,7 @@ def _reply(model, text, **settings):
     from brainscore_core.responses import Text
     from brainscore_core.streaming_helpers import stimulus_session
     stimuli = StimulusSet({'stimulus_id': ['q'], 'text': [text]})
-    stimuli.identifier = 'causal-lm-reply'
+    stimuli.identifier = 'causal-lm-written'
     session = stimulus_session(stimuli, ['behavior:text'], TaskContext(response=Text(**settings)))
     model.participate(session)
     return str(session.collect('behavior:text').values[0])

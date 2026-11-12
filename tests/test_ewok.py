@@ -236,7 +236,8 @@ def test_registered_benchmark_through_score_and_tools(mode, prepared, tmp_path, 
         assert value.attrs['input_adaptation']['kind']=='subject_prompt'
         assert all(e['payload'].channel=='text' for e in inputs)
     else:
-        assert value.attrs['input_adaptation'] is None
+        assert value.attrs['input_adaptation']['kind']=='subject_scoring'
+        assert 'add_special_tokens=True' in value.attrs['input_adaptation']['reason']
 
 
 def test_equal_weight_versions_not_pooled_rows(prepared, tmp_path):

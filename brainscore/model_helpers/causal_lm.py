@@ -20,6 +20,7 @@ from copy import deepcopy
 from typing import Any, Mapping, Optional, Sequence
 
 from brainscore import BrainScoreModel
+from brainscore_core.responses import Choice, Text
 
 from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores
 from brainscore.model_helpers.text_wrapper import TextWrapper
@@ -55,9 +56,8 @@ class _CausalLMParts:
         """Greedy unless the task's Text response gives a temperature above 0."""
         import torch
         settings = _generation_settings(prompt, self.max_new_tokens)
-        seed = getattr(prompt.response, 'seed', None)
-        if seed is not None:
-            torch.manual_seed(seed)
+        if isinstance(prompt.response, Text) and prompt.response.seed is not None:
+            torch.manual_seed(prompt.response.seed)
         enc = self.tokenizer([self.format(prompt)], return_tensors='pt',
                              add_special_tokens=False).to(self.device)
         with torch.no_grad():
@@ -68,7 +68,7 @@ class _CausalLMParts:
 
     def likelihood(self, prompt, candidates: Sequence[str]) -> dict:
         """The summed log probability of each candidate after the trial's text."""
-        if getattr(prompt.response, 'raw_text', False):
+        if isinstance(prompt.response, Choice) and prompt.response.raw_text:
             return _plain_text_scores(self.model, self.tokenizer, prompt, candidates)
         import torch
         context = self.tokenizer(self.format(prompt), add_special_tokens=False)['input_ids']

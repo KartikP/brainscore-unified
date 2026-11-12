@@ -3,13 +3,19 @@
 Both modes run on the common channels; each question is one stimulus row.
 
 Log-probability mode shows each context as ``text``, exactly as given. The two
-targets are the options of that row (``Choice(labels_column='options',
+targets are the options of that row (``Choice(labels='options',
 raw_scores=True, raw_text=True)``), and the subject returns the raw score of
 each target on ``behavior:probabilities``: the summed log probability of the
 target's tokens in ``f"{context} {target}"``, raw text, no template, as EWoK's
 ``score`` does. A subject needs a ``likelihood`` part; without one the
 benchmark is N/A. The scoring compares log p(T1 | C1) with log p(T1 | C2) and
 log p(T2 | C2) with log p(T2 | C1).
+Log-probability scores can differ slightly from EWoK's own evaluator, for two
+reasons. EWoK sets the logit of the padding or end-of-sequence token to minus
+infinity before it normalizes; the subject here does not. EWoK tokenizes with
+``add_special_tokens=True``, so some tokenizers add a start token before the
+context; the subject here adds none. ``score.attrs['input_adaptation']`` names
+these two differences.
 
 Choice mode shows EWoK's own choice prompt (instructions, two worked examples,
 the two contexts numbered 1 and 2, the scenario and a response cue) as
@@ -53,9 +59,17 @@ _CHOICE_NOTE = {
                'own chat template, and the subject decodes by its own rule. EWoK sends the raw '
                'prompt and limits greedy decoding to 1 or 2.'),
 }
+# Why a log-probability score can differ slightly from EWoK's own evaluator.
+_LOGPROBS_NOTE = {
+    'kind': 'subject_scoring',
+    'reason': ("EWoK sets the logit of the padding or end-of-sequence token to minus infinity "
+               'before it normalizes, and it tokenizes with add_special_tokens=True, so some '
+               'tokenizers add a start token before the context. The subject does neither, so '
+               "the numbers can differ slightly from EWoK's own."),
+}
 # What each mode asks for. Log probabilities: the raw score of each target after a context.
 _TASKS = {
-    'logprobs': (Choice(labels_column='options', raw_scores=True, raw_text=True),
+    'logprobs': (Choice(labels='options', raw_scores=True, raw_text=True),
                  'behavior:probabilities'),
     'choice': (Choice(labels=('1', '2'), raw_text=True), 'behavior:choice'),
 }
@@ -153,7 +167,7 @@ class EWoKBenchmark(BenchmarkBase):
     and asks for the raw score of each target on ``behavior:probabilities``.
     ``mode='choice'`` shows EWoK's choice prompt as ``text`` and asks for
     ``behavior:choice`` between the labels 1 and 2. The module docstring says
-    what each needs and why choice numbers can differ from EWoK's own evaluator.
+    what each needs and why the numbers can differ from EWoK's own evaluator.
     """
 
     # Each question is its own trial; the subject keeps no history.
@@ -294,8 +308,8 @@ class EWoKBenchmark(BenchmarkBase):
                 run_directory=str(context.directory),
                 paper_replication=False,
             )
-            # Log probabilities: raw text, no template, so the input is not adapted.
-            score.attrs['input_adaptation'] = dict(_CHOICE_NOTE) if self._mode == 'choice' else None
+            score.attrs['input_adaptation'] = dict(_CHOICE_NOTE if self._mode == 'choice'
+                                                   else _LOGPROBS_NOTE)
             return score
         return CallableProtocol(
             self.identifier,

@@ -20,6 +20,8 @@ scoring is the prompt pass, as it is for a reply.
 """
 from typing import Mapping, Optional, Sequence
 
+from brainscore_core.responses import Choice, Text
+
 
 def chat_parts(model, processor, *, max_new_tokens: int = 64,
                chat_template_kwargs: Optional[Mapping] = None):
@@ -33,9 +35,8 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
         import torch
         inputs = inputs_for(prompt)
         settings = _generation_settings(prompt, max_new_tokens)
-        seed = getattr(prompt.response, 'seed', None)
-        if seed is not None:
-            torch.manual_seed(seed)
+        if isinstance(prompt.response, Text) and prompt.response.seed is not None:
+            torch.manual_seed(prompt.response.seed)
         with torch.no_grad():
             generated = model.generate(**inputs, **settings)
         return tokenizer.decode(generated[0, inputs['input_ids'].shape[1]:],
@@ -43,7 +44,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
 
     def likelihood(prompt, candidates: Sequence[str]) -> dict:
         import torch
-        if getattr(prompt.response, 'raw_text', False):
+        if isinstance(prompt.response, Choice) and prompt.response.raw_text:
             return _plain_text_scores(model, tokenizer, prompt, candidates)
         inputs = inputs_for(prompt)
         prompt_ids = inputs['input_ids']
@@ -128,12 +129,13 @@ def _generation_settings(prompt, max_new_tokens: int) -> dict:
     A temperature above 0 samples, with ``top_p`` when the task gives one.
     """
     response = prompt.response
-    length = getattr(response, 'max_tokens', None)
-    settings = {'max_new_tokens': length if length is not None else max_new_tokens,
-                'do_sample': False}
-    temperature = getattr(response, 'temperature', None)
-    if temperature:
-        settings.update(do_sample=True, temperature=float(temperature))
+    settings = {'max_new_tokens': max_new_tokens, 'do_sample': False}
+    if not isinstance(response, Text):
+        return settings
+    if response.max_tokens is not None:
+        settings['max_new_tokens'] = response.max_tokens
+    if response.temperature:
+        settings.update(do_sample=True, temperature=float(response.temperature))
         if response.top_p is not None:
             settings['top_p'] = float(response.top_p)
     return settings
