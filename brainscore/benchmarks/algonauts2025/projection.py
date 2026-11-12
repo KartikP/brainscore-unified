@@ -1,16 +1,22 @@
-"""A fitted feature basis shared by an encoder's training and prediction data."""
+"""The reduction of one band, fitted on training rows and applied to any rows."""
 
 import numpy as np
 
 
 class FeatureProjection:
+    """Truncated SVD to at most ``feature_cap`` components.
+
+    A band with ``feature_cap`` units or fewer is kept as it is. ``transform``
+    refuses features of another width or another unit order than the fit.
+    """
+
     def __init__(self, feature_cap):
         self.feature_cap = feature_cap
         self.n_features_in_ = None
         self.feature_ids_ = None
         self.svd_ = None
 
-    def fit_transform(self, features, feature_ids=None):
+    def fit(self, features, feature_ids=None):
         self.n_features_in_ = features.shape[1]
         self.feature_ids_ = None if feature_ids is None else np.array(feature_ids, copy=True)
         self.svd_ = None
@@ -18,8 +24,8 @@ class FeatureProjection:
             from sklearn.decomposition import TruncatedSVD
             self.svd_ = TruncatedSVD(
                 n_components=min(self.feature_cap, features.shape[0]), random_state=0)
-            return self.svd_.fit_transform(features).astype(np.float32)
-        return features
+            self.svd_.fit(features)
+        return self
 
     def transform(self, features, feature_ids=None):
         if self.n_features_in_ is None:
@@ -30,4 +36,4 @@ class FeatureProjection:
                 feature_ids is None or not np.array_equal(self.feature_ids_, feature_ids)):
             raise ValueError('Prediction feature identities/order differ from the training feature basis.')
         return (self.svd_.transform(features).astype(np.float32)
-                if self.svd_ is not None else features)
+                if self.svd_ is not None else features.astype(np.float32))

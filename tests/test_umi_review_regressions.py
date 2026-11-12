@@ -46,25 +46,40 @@ class _Extractor:
 
 
 def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
+    """The held-out reduction is the basis fitted on the training films.
+
+    Training features vary along the first unit only; held-out features vary
+    mostly along the second. A basis fitted on held-out rows would keep the
+    second unit and lose the signal.
+    """
     from brainscore.benchmarks.algonauts2025.benchmark import (
         Algonauts2025Friends, Algonauts2025FriendsS7,
     )
-    train_features = np.array([[4, 0], [-4, 0], [2, 0], [-2, 0]], dtype=np.float32)
+    rng = np.random.default_rng(0)
+    n_runs, per_run = 8, 4
+    signal = rng.choice([-3.0, -2.0, 2.0, 3.0], size=n_runs * per_run).astype(np.float32)
+    train_features = np.stack([signal, np.zeros_like(signal)], axis=1)
     test_features = np.array([[1, 10], [-1, 10], [1, -10], [-1, -10]], dtype=np.float32)
     train = Algonauts2025Friends(subject=1, stimulus_window=1, hrf_delay=0,
-        excluded_samples_start=0, excluded_samples_end=0)
-    test = Algonauts2025FriendsS7(subject=1, stimulus_window=1, hrf_delay=0)
-    for benchmark in (train, test):
-        benchmark.FEATURE_DIM_CAP = 1
-        stimuli = _stimuli()
+        excluded_samples_start=0, excluded_samples_end=0, assembly_root=tmp_path)
+    test = Algonauts2025FriendsS7(subject=1, stimulus_window=1, hrf_delay=0,
+                                  assembly_root=tmp_path)
+    for benchmark, features, runs in (
+            (train, train_features, [f'run{i // per_run}' for i in range(n_runs * per_run)]),
+            (test, test_features, ['clip'] * 4)):
+        benchmark.LAYER_DIM_CAP = 1
+        benchmark.BANDED_ALPHA_GRID = (1e-6,)
+        stimuli = StimulusSet({'stimulus_id': [f'{benchmark._split}{i}' for i in range(len(features))],
+                               'sentence': ['x'] * len(features)})
         stimuli.identifier = benchmark._split
-        benchmark._assembly = NeuroidAssembly(train_features[:, :1],
-            dims=['presentation', 'neuroid'], coords={
-                'stimulus_id': ('presentation', ['clip'] * 4),
-                'run': ('presentation', ['run'] * 4),
-                'neuroid_id': ('neuroid', ['target']),
-            })
-        monkeypatch.setattr(benchmark, '_expand_to_per_TR_frames', lambda s=stimuli: s)
+        coords = {'stimulus_id': ('presentation', runs),
+                  't_within_run': ('presentation', list(range(len(runs)))),
+                  'neuroid_id': ('neuroid', ['target'])}
+        if benchmark is train:
+            coords['run'] = ('presentation', runs)
+        benchmark._assembly = NeuroidAssembly(features[:, :1], dims=['presentation', 'neuroid'],
+                                              coords=coords)
+        monkeypatch.setattr(benchmark, '_expand_to_per_TR_stimuli', lambda s=stimuli: s)
         monkeypatch.setattr(benchmark, '_align_features_to_assembly', lambda features, *args: features)
 
     from brainscore_core.contract import Subject
@@ -74,17 +89,20 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
     class Candidate(Subject):  # the benchmark reads it through participate only
         identifier = 'candidate'
         in_channels = frozenset({'text'})
-        out_channels = frozenset({'neural:IT'})
+        out_channels = frozenset({'neural:IT', 'neural:all'})
 
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session))
             features = train_features if stimuli.identifier == 'friends' else test_features
-            session.respond(StreamEvent(
-                'neural:IT', _Extractor(features)(stimuli, ['L']), t_ms=None))
+            session.respond(StreamEvent('neural:IT', NeuroidAssembly(
+                features, dims=['presentation', 'neuroid'], coords={
+                    'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
+                    'neuroid_id': ('neuroid', ['u0', 'u1'])}), t_ms=None))
 
-    result = test.generate_predictions(Candidate(), tmp_path, train_benchmark=train, alpha=1e-6)
-    np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-4)
+    result = test.generate_predictions(Candidate(), tmp_path, train_benchmark=train)
+    np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-3)
     np.testing.assert_array_equal(np.load(result['path']), result['predictions'])
+    assert result['bands'] == ['IT'] and result['alphas'] == {'IT': 1e-6}
 
 
 def test_feature_projection_validates_basis_and_preserves_no_compression():
@@ -93,8 +111,8 @@ def test_feature_projection_validates_basis_and_preserves_no_compression():
     features = np.eye(2, dtype=np.float32)
     with pytest.raises(ValueError, match='training data'):
         projection.transform(features)
-    np.testing.assert_array_equal(projection.fit_transform(features, ['a', 'b']), features)
-    np.testing.assert_array_equal(projection.transform(features, ['a', 'b']), features)
+    np.testing.assert_array_equal(projection.fit(features, ['a', 'b']).transform(
+        features, ['a', 'b']), features)
     with pytest.raises(ValueError, match='identities/order'):
         projection.transform(features, ['b', 'a'])
     with pytest.raises(ValueError, match='width'):

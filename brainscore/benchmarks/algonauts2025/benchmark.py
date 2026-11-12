@@ -1,40 +1,36 @@
 """Algonauts 2025 challenge benchmark classes.
 
-Three subclasses share most logic:
-- Algonauts2025Friends: train/test on Friends S1-S6 + Movie10 (in-dist).
-  __call__ scores the candidate via per-TR frame extraction + ridge.
-- Algonauts2025FriendsS7: held-out S7 — __call__ returns predicted
-  per-parcel time series in the format Codabench expects.
-- Algonauts2025OOD: held-out 2 h of OOD movies — same as S7 but
-  different stim_set.
+- ``Algonauts2025Friends`` scores a model on Friends S1-S6 and Movie10 with
+  run-held-out cross-validation.
+- ``Algonauts2025FriendsS7`` and ``Algonauts2025OOD`` have no recorded fMRI.
+  ``generate_predictions`` writes the predicted parcel time series for
+  Codabench.
 
 ``form`` selects what the benchmark sends for each scan (TR, 1.49 s):
 
 - ``'image'`` (default): the frame at the middle of the scan, on ``vision:image``.
-  The benchmark records ``neural:IT``.
-- ``'video'``: the 1.49 s clip of the scan, on ``vision:video``. The benchmark
-  records ``neural:IT``.
+- ``'video'``: the 1.49 s clip of the scan, on ``vision:video``.
 - ``'video+audio'``: the clip on ``vision:video`` and the sound of the same
-  1.49 s on ``audio``, in one table row. The benchmark records ``neural:IT``
-  for the video band and ``neural:A1`` for the audio band. A model that cannot
-  give both outputs gets N/A at pre-flight. The default mode is ``'banded'``.
+  1.49 s on ``audio``, in one table row.
 
-For every form the benchmark stacks ``stimulus_window`` scans of features per
-fMRI sample, shifts them by ``hrf_delay`` scans, fits a ridge regression per
-subject and reports the median per-parcel Pearson r. ``mode`` (see scoring.py)
-selects how the bands combine. The image and video forms give one band
-(``video``), so only ``video_only`` runs for them.
+The forms differ only in what the benchmark sends. Every form uses one method.
+The benchmark predicts all 1000 parcels from every layer the model maps: it
+asks for every ``neural:<region>`` the subject declares, each region on its own
+channel, and averages each answer over its time bins. Each region is one band.
+In each outer fold the benchmark reduces each band to ``LAYER_DIM_CAP``
+components with a reduction fitted on the training runs only. It then stacks
+``stimulus_window`` scans per sample, shifts them by ``hrf_delay`` scans, and
+fits a banded ridge with one penalty per band. The penalties are chosen on
+held-out runs inside the training runs. The score is the median per-parcel
+Pearson r on the held-out runs.
 
-With ``streaming=True`` (video+audio form only) the benchmark presents the
-table one scan at a time: the subject answers one scan before it gets the
-next. With ``streaming=False`` the subject gets the whole table at once. A
-subject without trial memory gives the same features both ways.
+With ``streaming=True`` the benchmark presents the table one scan at a time:
+the subject answers one scan before it gets the next. With ``streaming=False``
+the subject gets the whole table at once. A subject without trial memory gives
+the same features both ways.
 
 ``movies`` limits the benchmark to named movies (their ``stimulus_id`` in the
 assembly). Only those movies are cut and scored. This is for short runs.
-
-The published fixed-encoder (Wav2Vec2 + MiniLM) baseline reproduction lives
-in the reproduction script, not in the maintained benchmark.
 """
 import hashlib
 import math
@@ -53,8 +49,7 @@ from brainscore.data.algonauts2025 import (
     stimulus_set_identifier,
 )
 
-from .scoring import score_encoding_modes
-from .projection import FeatureProjection
+from .scoring import PROJECTION_PROTOCOL, fit_predict_banded, score_banded
 
 
 BIBTEX = """@article{gifford2025algonauts,
@@ -228,20 +223,6 @@ def _as_features(assembly):
     return feats, feature_ids
 
 
-def _record_features(subject, stimuli, region: str, *, time_bins):
-    """Record ``neural:<region>`` through ``participate`` only, in the order of ``stimuli``.
-
-    ``region`` is a region the subject records, or ``'all'``. ``neural:all``
-    is the core's address for every mapped region, recorded in one extraction
-    exactly as ``start_recording('all')`` did, so the feature order and count
-    do not change. The response must answer each frame exactly once; its rows
-    are put in the order of ``stimuli`` by ``stimulus_id``.
-    """
-    from brainscore_core.streaming_helpers import neural_response
-    response = neural_response(subject, stimuli, record=region, time_bins=time_bins)
-    return _features_in_order(response, stimuli)
-
-
 def _features_in_order(response, stimuli):
     """``_as_features`` of ``response`` with its rows in the order of ``stimuli``.
 
@@ -257,28 +238,44 @@ def _features_in_order(response, stimuli):
     return _as_features(response)
 
 
+def declared_regions(subject) -> List[str]:
+    """The regions the benchmark asks ``subject`` for: every declared ``neural:<region>``.
+
+    Only the contract declaration ``out_channels`` is read. ``neural:all`` is
+    the address for every mapped region together; the benchmark asks for each
+    region on its own channel instead, so it is not a band.
+    """
+    return sorted(channel.split(':', 1)[1] for channel in subject.out_channels
+                  if channel.startswith('neural:') and channel != 'neural:all')
+
+
 class _Algonauts2025Base(BenchmarkBase):
     """Shared logic across the three splits."""
 
-    VALID_MODES = ('concat', 'per_modality', 'banded',
-                   'video_only', 'audio_only', 'language_only')
     BANDED_ALPHA_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
+    # Components kept for each band, and penalty tuples tried by the random search
+    # when the full grid (5 ** number of bands) is larger.
+    LAYER_DIM_CAP = 100
+    BANDED_CANDIDATES = 60
+    # The memory plan assumes at most this many bands; the number of bands is
+    # known only with a subject.
+    PLANNED_MAX_BANDS = 10
 
     # Sends one frame per TR on `vision:image` (form='image'), one 1.49 s clip per TR
     # on `vision:video` (form='video'), or the clip and its sound in one row on
-    # `vision:video` and `audio` (form='video+audio'), and asks for the regions it
-    # records. The benchmark stacks the TRs itself, so the subject keeps no history
-    # across TRs.
+    # `vision:video` and `audio` (form='video+audio'). It asks for every region the
+    # subject maps. The benchmark stacks the TRs itself, so the subject keeps no
+    # history across TRs.
     VALID_FORMS = ('image', 'video', 'video+audio')
     FORM_CHANNELS = {
         'image': frozenset({'vision:image'}),
         'video': frozenset({'vision:video'}),
         'video+audio': frozenset({'vision:video', 'audio'}),
     }
-    # The band each recorded region gives (form='video+audio').
-    _BAND_CHANNELS = {'video': 'neural:IT', 'audio': 'neural:A1'}
     required_input_channels = frozenset({'vision:image'})
-    requested_output_channels = frozenset({'neural:IT'})
+    # `neural:all` is the address of every mapped region. A subject that maps no
+    # region does not declare it and gets N/A at pre-flight.
+    requested_output_channels = frozenset({'neural:all'})
     trial_memory = 'none'
     _FORM_SUFFIX = {'image': '', 'video': '-video', 'video+audio': '-video-audio'}
     _MIN_RUNS = 5   # run-held-out 5-fold scoring
@@ -292,12 +289,10 @@ class _Algonauts2025Base(BenchmarkBase):
         hrf_delay: int = 3,
         excluded_samples_start: int = 5,
         excluded_samples_end: int = 5,
-        mode: Optional[str] = None,
         assembly_root: Optional[Path] = None,
         form: str = 'image',
         streaming: bool = False,
         movies: Optional[Sequence[str]] = None,
-        record: str = 'regions',
     ):
         if subject not in (1, 2, 3, 5):
             raise ValueError(
@@ -305,30 +300,13 @@ class _Algonauts2025Base(BenchmarkBase):
         if form not in self.VALID_FORMS:
             raise ValueError(
                 f"form must be one of {self.VALID_FORMS}; got {form!r}.")
-        if record not in ('regions', 'all'):
-            raise ValueError(f"record must be 'regions' or 'all'; got {record!r}.")
-        if record == 'all' and form != 'video+audio':
-            raise ValueError("record='all' is for form='video+audio'.")
-        if mode is None:
-            # With record='all' every mapped region of the model is its own band.
-            mode = 'banded' if form == 'video+audio' else 'video_only'
-        if mode not in self.VALID_MODES:
-            raise ValueError(
-                f"mode must be one of {self.VALID_MODES}; got {mode!r}.")
-        if streaming and form != 'video+audio':
-            raise ValueError(
-                "streaming=True is for form='video+audio'; the image and video "
-                "forms present the table in one piece.")
         if movies is not None and (isinstance(movies, str) or not len(movies)):
             raise ValueError(
                 "movies must be a non-empty list of stimulus ids, for example "
                 "['friends_s01e01a', 'friends_s01e01b'].")
 
         self._form = form
-        self._record = record
         self.required_input_channels = self.FORM_CHANNELS[form]
-        if form == 'video+audio':
-            self.requested_output_channels = frozenset(self._bands().values())
         self._streaming = bool(streaming)
         self._movies = None if movies is None else [str(movie) for movie in movies]
         self._subject = subject
@@ -337,7 +315,6 @@ class _Algonauts2025Base(BenchmarkBase):
         self._hrf_delay = hrf_delay
         self._excluded_samples_start = excluded_samples_start
         self._excluded_samples_end = excluded_samples_end
-        self._mode = mode
         self._assembly_root = (Path(assembly_root)
                                if assembly_root else default_data_root())
         self._assembly = None
@@ -345,8 +322,7 @@ class _Algonauts2025Base(BenchmarkBase):
 
         super().__init__(
             identifier=(f'Algonauts2025-{split}-sub{subject:02d}'
-                        f'{identifier_suffix}'
-                        f"{'-wholebrain' if record == 'all' else self._FORM_SUFFIX[form]}"),
+                        f'{identifier_suffix}{self._FORM_SUFFIX[form]}'),
             version=1,
             parent='naturalistic',
             ceiling=Score(1.0),
@@ -368,8 +344,8 @@ class _Algonauts2025Base(BenchmarkBase):
         """The TRs of ``assembly`` that belong to ``self._movies``.
 
         Raises ``ValueError`` when a named movie is not in the assembly, or when
-        the movies give too few runs for run-held-out 5-fold scoring (banded
-        mode also needs 5 runs inside every training fold).
+        the movies give too few runs for run-held-out 5-fold scoring with a
+        5-fold choice of penalties inside every training fold.
         """
         stim = np.asarray(assembly['stimulus_id'].values).astype(str)
         unknown = sorted(set(self._movies) - set(stim))
@@ -380,14 +356,13 @@ class _Algonauts2025Base(BenchmarkBase):
         keep = np.isin(stim, self._movies)
         runs = {(s, str(r)) for s, r in zip(stim[keep], np.asarray(
             assembly['run'].values)[keep])}
-        # A banded fold trains on n - ceil(n / 5) runs and splits them 5 ways again.
+        # A fold trains on n - ceil(n / 5) runs and splits them 5 ways again.
         needed = self._MIN_RUNS
-        if self._mode == 'banded':
-            while needed - math.ceil(needed / self._MIN_RUNS) < self._MIN_RUNS:
-                needed += 1
+        while needed - math.ceil(needed / self._MIN_RUNS) < self._MIN_RUNS:
+            needed += 1
         if len(runs) < needed:
             raise ValueError(
-                f"movies give {len(runs)} runs; mode={self._mode!r} needs at least "
+                f"movies give {len(runs)} runs; the benchmark needs at least "
                 f"{needed} for run-held-out 5-fold scoring. Name more movies.")
         return assembly.isel(presentation=np.flatnonzero(keep))
 
@@ -405,17 +380,18 @@ class _Algonauts2025Base(BenchmarkBase):
         """Declared memory-execution shape so the pre-flight is grounded in real
         cardinality, not guessed off ``len(stimulus_set)`` (which counts videos).
 
-        - Extraction runs one frame per TR, so the held matrix has one row per TR
-          (``len(assembly.stimulus_id)``) — an order of magnitude more than videos.
-          The raw per-frame width is model-dependent (materialised before the SVD
-          cap), so it is PROBED — with the IT recording target and a synthetic 1-row
-          image frame, so an image-only model isn't handed a raw video row.
+        - Extraction runs one table row per TR, so the held matrix has one row per
+          TR (``len(assembly.stimulus_id)``). The raw width is model-dependent, so
+          the pre-flight probes it: it records ``neural:all`` (every mapped region,
+          the requested output) for one blank frame or clip of this form.
         - The metric fits over the TR rows MINUS the per-run excluded samples.
-        - Per-TR features are SVD-capped to ``FEATURE_DIM_CAP`` then stacked over
-          ``stimulus_window`` TRs, so the metric width is at most
-          ``stimulus_window * FEATURE_DIM_CAP`` (an upper bound for raw < cap).
-        - Scoring is (banded) ridge, and the ceiling is a precomputed constant
-          (``Score(1.0)``), not a re-run metric — so ``runs_ceiling_metric=False``.
+        - Each band is reduced to ``LAYER_DIM_CAP`` components and stacked over
+          ``stimulus_window`` TRs. The number of bands is known only with a
+          subject, so the metric width is planned for at most
+          ``PLANNED_MAX_BANDS`` bands: ``PLANNED_MAX_BANDS * stimulus_window *
+          LAYER_DIM_CAP``. A model with more mapped regions needs more memory.
+        - Scoring is banded ridge, and the ceiling is a precomputed constant
+          (``Score(1.0)``), not a re-run metric, so ``runs_ceiling_metric=False``.
         """
         n_trs = len(self.assembly['stimulus_id'])
         try:
@@ -433,23 +409,13 @@ class _Algonauts2025Base(BenchmarkBase):
         return ExecutionPlan(
             n_extraction_presentations=int(n_trs),
             metric_observations=metric_obs,
-            metric_feature_width=(self._stimulus_window * self.FEATURE_DIM_CAP
-                                  * len(self._bands())),
+            metric_feature_width=(self.PLANNED_MAX_BANDS * self._stimulus_window
+                                  * self.LAYER_DIM_CAP),
             metric_category='ridge',
             runs_ceiling_metric=False,
-            recording_target='IT',
             probe_stimuli=(self._probe_frame_stimuli() if self._form == 'image'
                            else self._probe_clip_stimuli()),
         )
-
-    def _bands(self) -> Dict[str, str]:
-        """``{band: recorded channel}`` for the form of this benchmark."""
-        if self._record == 'all':
-            # Every layer the model mapped, in one extraction, predicts the whole brain.
-            return {'all': 'neural:all'}
-        if self._form == 'video+audio':
-            return dict(self._BAND_CHANNELS)
-        return {'video': 'neural:IT'}
 
     def _probe_frame_stimuli(self):
         """A 1-row image StimulusSet (a blank 224x224 frame) for the memory
@@ -759,104 +725,63 @@ class _Algonauts2025Base(BenchmarkBase):
         from collections import Counter
         return dict(Counter(ids))
 
-    # ── Feature extraction + alignment ────────────────────────────
+    # ── Recording the bands ───────────────────────────────────────
 
-    # Per-frame feature cap. CLIP's encoder.layers.10.layer_norm2 emits
-    # (50_tokens × 768_hidden) = 38400 features per frame. With 162k TRs
-    # × 5 stimulus_window stacking, the design matrix would be 125 GB.
-    # TruncatedSVD compression to 1000 components keeps almost all
-    # variance and shrinks the design matrix ~38× (matches what BLIP-2
-    # / Lahner-multimodal do).
-    FEATURE_DIM_CAP = 1000
-    # record='all': components kept for each mapped layer, and penalty tuples tried
-    # by the random search (the full grid grows as 5 ** number of layers).
-    LAYER_DIM_CAP = 100
-    BANDED_CANDIDATES = 60
+    def _record_bands(self, candidate, table, regions) -> Dict[str, Tuple[np.ndarray, object]]:
+        """``{region: (features, neuroid ids)}`` with one row per row of ``table``.
 
-    def _extract_per_TR_features(self, candidate, frame_stim_set,
-                                 recording_target='IT', *, projection=None,
-                                 fit_projection=False,
-                                 ) -> Tuple[np.ndarray, List[str]]:
-        """Run candidate's vision tower on the frame stim_set.
-
-        Compresses features via TruncatedSVD to FEATURE_DIM_CAP — the
-        full token×hidden flatten from CLIP/BLIP-2/V-JEPA blows up the
-        downstream design matrix beyond practical memory. Held-out prediction
-        passes a projection fitted on training frames. With no projection this
-        fits on all supplied frames, the historical transductive CV protocol.
-
-        Returns:
-            features: (n_TRs, FEATURE_DIM_CAP) float32
-            frame_ids: list of frame_id strings (one per row).
-        """
-        # recording_target is a region the subject declares as neural:<region>
-        # (standard, e.g. 'IT', or a region backed by a CompositeSelector), or
-        # the string 'all' (every mapped region in one extraction, as before).
-        feats, feature_ids = _record_features(
-            candidate, frame_stim_set, recording_target,
-            time_bins=[(0, int(TR_SEC * 1000))])
-        if projection is None:
-            projection = FeatureProjection(self.FEATURE_DIM_CAP)
-            fit_projection = True
-        feats = (projection.fit_transform(feats, feature_ids) if fit_projection
-                 else projection.transform(feats, feature_ids))
-        # Source of truth for frame ordering is the INPUT frame_stim_set,
-        # NOT the output assembly's coords. The brainscore_vision cache
-        # round-trip can strip custom stim_set columns, but it preserves
-        # row order 1:1 (paths feed in, activations come out in the same
-        # order). The output assembly's row count must match the input
-        # for this to hold.
-        n_in = len(frame_stim_set)
-        n_out = feats.shape[0]
-        if n_in != n_out:
-            raise ValueError(
-                f"frame_stim_set has {n_in} rows but the subject "
-                f"returned {n_out}; cannot trust input order.")
-        frame_ids = list(frame_stim_set['stimulus_id'])
-        return feats, frame_ids
-
-    def _record_bands(self, candidate, table) -> Dict[str, np.ndarray]:
-        """``{band: X}`` for the video+audio form, each X aligned to the assembly.
-
-        One session presents ``table`` (a clip and its sound per row) and asks
-        for every band channel. With ``streaming=True`` the subject gets one row
-        at a time and answers it before the next; otherwise it gets the table
-        at once. Each band is projected to ``FEATURE_DIM_CAP`` like the video
-        band of the other forms (fitted on all input rows).
+        One session presents ``table`` and asks for ``neural:<region>`` of every
+        region in ``regions``, each on its own channel, because two towers can
+        answer on different time axes. Each answer is averaged over its time bins
+        and put in the row order of ``table``. With ``streaming=True`` the subject
+        gets one row at a time and answers it before the next; otherwise it gets
+        the table at once. Nothing is reduced here: the reduction is fitted per
+        fold in ``score_banded``.
         """
         from brainscore_core.streaming_helpers import stimulus_session
-        bands = self._bands()
-        if self._record == 'all':
-            # neural:all is every region the subject declares. Each region is asked for
-            # on its own channel and is its own band: it is reduced by itself and gets
-            # its own penalty (banded ridge), so a large layer cannot hide a small one.
-            bands = {channel.split(':', 1)[1]: (channel,) for channel in sorted(
-                channel for channel in candidate.out_channels
-                if channel.startswith('neural:') and channel != 'neural:all')}
-        else:
-            bands = {band: (channel,) for band, channel in bands.items()}
-        requested = sorted({channel for channels in bands.values() for channel in channels})
-        session = stimulus_session(table, requested, None,
+        session = stimulus_session(table, [f'neural:{region}' for region in regions], None,
                                    time_bins=[(0, int(TR_SEC * 1000))],
                                    streaming=self._streaming)
         candidate.participate(session)
-        frame_ids = list(table['stimulus_id'])
-        X_bands = {}
-        for band, channels in bands.items():
-            channel = ' + '.join(channels)
-            parts = [_features_in_order(session.collect(one), table) for one in channels]
-            feats = np.concatenate([part for part, _ in parts], axis=1)
-            feature_ids = (np.concatenate([ids for _, ids in parts])
-                           if all(ids is not None for _, ids in parts) else None)
-            if feats.shape[0] != len(table):
+        bands = {}
+        for region in regions:
+            features, feature_ids = _features_in_order(session.collect(f'neural:{region}'), table)
+            if features.shape[0] != len(table):
                 raise ValueError(
-                    f"the table has {len(table)} rows but {channel} answered "
-                    f"{feats.shape[0]}; cannot trust input order.")
-            cap = self.LAYER_DIM_CAP if self._record == 'all' else self.FEATURE_DIM_CAP
-            feats = FeatureProjection(cap).fit_transform(feats, feature_ids)
-            print(f'  {band} band ({channel}): {feats.shape}')
-            X_bands[band] = self._align_features_to_assembly(feats, frame_ids, table)
-        return X_bands
+                    f"the table has {len(table)} rows but neural:{region} answered "
+                    f"{features.shape[0]}; cannot trust input order.")
+            print(f'  band {region}: {features.shape}')
+            bands[region] = (features, feature_ids)
+        return bands
+
+    def _assembly_bands(self, candidate, regions):
+        """The bands of ``_record_bands``, aligned to the TR rows of the assembly."""
+        table = self._expand_to_per_TR_stimuli()
+        # Diagnostic escape hatch: cap the design so a memory investigation costs
+        # seconds rather than a full extraction. The per-TR table is rebuilt here from
+        # the movie files, so the cap applies after expansion. The resulting score is
+        # meaningless by construction and is only for profiling.
+        cap = getattr(self, '_debug_max_trs', None)
+        if cap is not None:
+            table = table.iloc[:int(cap)]
+            print(f'  DEBUG CAP: truncated to {len(table)} rows '
+                  f'(score is invalid; profiling only)')
+        print(f"  recording {['neural:' + region for region in regions]} for {len(table)} rows "
+              f"({'stream' if self._streaming else 'table'})...")
+        frame_ids = list(table['stimulus_id'])
+        return {region: (self._align_features_to_assembly(features, frame_ids, table), ids)
+                for region, (features, ids) in self._record_bands(candidate, table, regions).items()}
+
+    def _regions(self, candidate) -> List[str]:
+        """The regions to ask ``candidate`` for; N/A when it declares none."""
+        from brainscore_core.compatibility import CompatibilityError
+        regions = declared_regions(candidate)
+        if not regions:
+            raise CompatibilityError(
+                f"{self.identifier} predicts the brain from every region the subject maps, "
+                f"but subject '{candidate.identifier}' declares no neural:<region> "
+                f"(out_channels={sorted(candidate.out_channels)}).")
+        return regions
 
     def _align_features_to_assembly(
         self, features: np.ndarray, frame_ids: List[str],
@@ -965,203 +890,106 @@ class _Algonauts2025Base(BenchmarkBase):
 
     # ── Scoring ───────────────────────────────────────────────────
 
-    def __call__(self, candidate) -> Score:
-        if self._split != 'friends':
-            raise ValueError(
-                f"Held-out split {self._split!r} has no ground truth to score "
-                f"against — it is a Codabench prediction target. Call "
-                f"`generate_predictions(candidate, out_dir)` to produce the "
-                f"per-parcel prediction .npy, then bundle with "
-                f"then bundle those .npy files into a zip in the Codabench layout "
-                f"(one entry per subject/episode) and upload it. "
-                f"(Use Algonauts2025Friends for "
-                f"in-distribution CV scoring.)"
-            )
-        return self._score_friends_train(candidate)
+    def _runs_and_keep(self, drop_excluded: bool = True):
+        """``(run index per TR, keep mask)`` over the assembly's TR rows.
 
-    def _score_friends_train(self, candidate) -> Score:
-        print(f'  expanding stim_set to per-TR frames...')
-        frame_stim_set = self._expand_to_per_TR_stimuli()
-        # Diagnostic escape hatch: cap the design so a memory investigation costs
-        # seconds rather than a full extraction. Truncating the OUTER stimulus set
-        # does not work -- the per-TR set is rebuilt here from the movie files --
-        # so the cap has to be applied after expansion. The resulting score is
-        # meaningless by construction and is only for profiling.
-        cap = getattr(self, '_debug_max_trs', None)
-        if cap is not None:
-            frame_stim_set = frame_stim_set.iloc[:int(cap)]
-            print(f'  DEBUG CAP: truncated to {len(frame_stim_set)} frames '
-                  f'(score is invalid; profiling only)')
-        print(f'  {len(frame_stim_set)} frames to extract')
-
-        if self._form == 'video+audio':
-            print(f'  recording {sorted(self._bands().values())} '
-                  f"({'stream' if self._streaming else 'table'})...")
-            X_bands = self._record_bands(candidate, frame_stim_set)
-        else:
-            print(f'  extracting per-frame features (vision tower)...')
-            features, frame_ids = self._extract_per_TR_features(
-                candidate, frame_stim_set)
-            print(f'  features: {features.shape}')
-
-            print(f'  aligning to assembly...')
-            X_bands = {'video': self._align_features_to_assembly(
-                features, frame_ids, frame_stim_set)}
-
-        # Build run_idx_per_obs by enumerating unique (stimulus_id, run)
-        # in the order they appear on the presentation axis.
-        a_stim = list(self.assembly['stimulus_id'].values)
-        a_run = list(self.assembly['run'].values)
-        run_keys = []
-        run_idx_per_obs = np.empty(len(a_stim), dtype=np.int64)
-        seen: Dict[Tuple[str, str], int] = {}
-        for i, (s, r) in enumerate(zip(a_stim, a_run)):
-            key = (str(s), str(r))
-            if key not in seen:
-                seen[key] = len(seen)
-                run_keys.append(key)
-            run_idx_per_obs[i] = seen[key]
-        n_runs = len(run_keys)
-        print(f'  {n_runs} unique (stim, run) blocks')
-
-        print(f'  applying stimulus_window={self._stimulus_window} + '
-              f'hrf_delay={self._hrf_delay}...')
-        stacked_bands = {band: self._apply_stimulus_window_and_hrf(X, run_idx_per_obs)
-                         for band, X in X_bands.items()}
-
-        # Drop the first/last excluded samples per run
-        keep = np.ones(len(run_idx_per_obs), dtype=bool)
-        for ri in range(n_runs):
-            run_mask = run_idx_per_obs == ri
-            run_idxs = np.where(run_mask)[0]
-            if len(run_idxs) == 0:
-                continue
-            for ki in range(self._excluded_samples_start):
-                if ki < len(run_idxs):
-                    keep[run_idxs[ki]] = False
-            for ki in range(self._excluded_samples_end):
-                if ki < len(run_idxs):
-                    keep[run_idxs[-1 - ki]] = False
-        Y = self.assembly.values[keep]
-        run_idx_kept = run_idx_per_obs[keep]
-
-        # Honor self._mode. The image and video forms give the 'video' band
-        # only; the video+audio form gives 'video' (neural:IT) and 'audio'
-        # (neural:A1). Modes that need an absent band raise a clear error in
-        # the scorer.
-        per_modality_stacked = {band: X_stacked[keep]
-                                for band, X_stacked in stacked_bands.items()}
-        print(f'  after exclusions: '
-              f'{ {band: X.shape for band, X in per_modality_stacked.items()} } Y={Y.shape}')
-        print(f'  scoring mode={self._mode!r} over bands '
-              f'{list(per_modality_stacked)} (run-held-out 5-fold)...')
-        per_voxel_r, info = score_encoding_modes(
-            per_modality_stacked, Y, run_idx_kept, self._mode,
-            banded_alpha_grid=self.BANDED_ALPHA_GRID,
-            banded_candidates=(self.BANDED_CANDIDATES if self._record == 'all' else None))
-
-        per_voxel_r_finite = per_voxel_r[~np.isnan(per_voxel_r)]
-        median_r = float(np.median(per_voxel_r_finite))
-        mean_r = float(np.mean(per_voxel_r_finite))
-
-        score = Score(median_r / float(self.ceiling))
-        score.attrs['raw'] = Score(median_r)
-        score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
-        score.attrs['mean_r'] = mean_r
-        score.attrs['n_parcels_scored'] = int(len(per_voxel_r_finite))
-        # The per-parcel scores themselves, in Schaefer order, so they can be rendered
-        # on a cortical surface. NaNs are kept in place: a parcel that could not be
-        # scored must stay unpainted rather than collapse to a neighbour's value.
-        score.attrs['per_parcel_r'] = per_voxel_r
-        score.attrs['n_TRs'] = int(len(Y))
-        score.attrs['stimulus_window'] = self._stimulus_window
-        score.attrs['hrf_delay'] = self._hrf_delay
-        score.attrs['mode'] = self._mode
-        score.attrs['bands'] = info.get('bands')
-        score.attrs['presentation'] = 'stream' if self._streaming else 'table'
-        if self._movies is not None:
-            score.attrs['movies'] = list(self._movies)
-        if self._form == 'video+audio':
-            # The clip and the sound of one TR are the stimulus, in one row.
-            score.attrs['pipeline'] = f"algonauts_{self._mode}_clip_sound"
-            score.attrs['form'] = 'video+audio'
-            score.attrs['clip_seconds'] = TR_SEC
-            score.attrs['frames_per_clip'] = CLIP_FRAMES
-            score.attrs['sound_rate_hz'] = _SOUND_RATE_HZ
-            score.attrs['band_channels'] = self._bands()
-            if 'chosen_alphas_per_fold' in info:
-                score.attrs['chosen_alphas_per_fold'] = info['chosen_alphas_per_fold']
-        elif self._form == 'video':
-            # The clip of one TR is the stimulus. Nothing is aggregated over frames
-            # by the benchmark, and no sound or speech is sent.
-            score.attrs['pipeline'] = f"algonauts_{self._mode}_clip"
-            score.attrs['form'] = 'video'
-            score.attrs['clip_seconds'] = TR_SEC
-            score.attrs['frames_per_clip'] = CLIP_FRAMES
-        else:
-            score.attrs['pipeline'] = f"algonauts_{self._mode}_frame_agg"
-        score.attrs['feature_projection_protocol'] = 'transductive_svd_all_input_frames'
-        return score
-
-    # ── Held-out prediction (Codabench submission) ────────────────
-
-    def _design_matrix(self, candidate, drop_excluded=True, *, projection=None,
-                       fit_projection=False):
-        """Build the (X_stacked, Y, keep, run_idx) design matrix for this
-        split's stimuli. Mirrors the front half of ``_score_friends_train``
-        (extract → align → run-block index → stimulus-window/HRF stack), kept
-        separate so the validated training-score path is untouched.
-
-        ``drop_excluded`` trims the per-run start/end samples (as in scoring);
-        held-out prediction sets it False so every TR gets a prediction. ``Y``
-        is the recorded BOLD (training) or all-NaN (held-out stub).
+        A run is one unique ``(stimulus_id, run)`` block, numbered in order of
+        first appearance. Held-out stubs (S7, OOD) carry no ``run`` coordinate, so
+        each clip is its own run there. ``keep`` is False for the first
+        ``excluded_samples_start`` and the last ``excluded_samples_end`` TRs of
+        each run when ``drop_excluded`` is True.
         """
-        if self._form == 'video+audio':
-            raise NotImplementedError(
-                "Held-out prediction takes one band; the video+audio form is "
-                "scored on the Friends training split only.")
-        frame_stim_set = self._expand_to_per_TR_stimuli()
-        features, frame_ids = self._extract_per_TR_features(
-            candidate, frame_stim_set, projection=projection,
-            fit_projection=fit_projection)
-        X = self._align_features_to_assembly(features, frame_ids, frame_stim_set)
-
         a_stim = list(self.assembly['stimulus_id'].values)
-        # Held-out stubs (S7 / OOD) carry no 'run' coord — each clip is its own
-        # block, so group on stimulus_id alone there.
         a_run = (list(self.assembly['run'].values)
                  if 'run' in self.assembly.coords else a_stim)
-        run_idx_per_obs = np.empty(len(a_stim), dtype=np.int64)
+        run_idx = np.empty(len(a_stim), dtype=np.int64)
         seen: Dict[Tuple[str, str], int] = {}
         for i, (s, r) in enumerate(zip(a_stim, a_run)):
-            key = (str(s), str(r))
-            if key not in seen:
-                seen[key] = len(seen)
-            run_idx_per_obs[i] = seen[key]
-        n_runs = len(seen)
-
-        X_stacked = self._apply_stimulus_window_and_hrf(X, run_idx_per_obs)
-        keep = np.ones(len(X_stacked), dtype=bool)
+            run_idx[i] = seen.setdefault((str(s), str(r)), len(seen))
+        keep = np.ones(len(run_idx), dtype=bool)
         if drop_excluded:
-            for ri in range(n_runs):
-                run_idxs = np.where(run_idx_per_obs == ri)[0]
+            for ri in range(len(seen)):
+                run_idxs = np.where(run_idx == ri)[0]
                 for ki in range(self._excluded_samples_start):
                     if ki < len(run_idxs):
                         keep[run_idxs[ki]] = False
                 for ki in range(self._excluded_samples_end):
                     if ki < len(run_idxs):
                         keep[run_idxs[-1 - ki]] = False
-        Y = self.assembly.values[keep]
-        return X_stacked[keep], Y, keep, run_idx_per_obs[keep]
+        return run_idx, keep
 
-    def generate_predictions(self, candidate, out_dir, train_benchmark=None,
-                             alpha=1.0):
+    def _stacker(self, run_idx):
+        """Stack the stimulus window and shift by the HRF delay within ``run_idx``'s runs."""
+        return lambda X: self._apply_stimulus_window_and_hrf(X, run_idx)
+
+    def __call__(self, candidate) -> Score:
+        if self._split != 'friends':
+            raise ValueError(
+                f"Held-out split {self._split!r} has no ground truth to score "
+                f"against; it is a Codabench prediction target. Call "
+                f"`generate_predictions(candidate, out_dir)` to produce the "
+                f"per-parcel prediction .npy, then bundle those .npy files into a "
+                f"zip in the Codabench layout (one entry per subject/episode) and "
+                f"upload it. (Use Algonauts2025Friends for in-distribution CV scoring.)"
+            )
+        return self._score_friends_train(candidate)
+
+    def _score_friends_train(self, candidate) -> Score:
+        regions = self._regions(candidate)
+        bands = self._assembly_bands(candidate, regions)
+        run_idx, keep = self._runs_and_keep()
+        Y = self.assembly.values
+        print(f'  {len(np.unique(run_idx))} unique (stim, run) blocks; '
+              f'{int(keep.sum())} of {len(keep)} TRs after exclusions')
+        print(f'  banded ridge over bands {list(bands)} (run-held-out 5-fold)...')
+        per_parcel_r, info = score_banded(
+            bands, Y, run_idx, keep, self._stacker(run_idx),
+            dim_cap=self.LAYER_DIM_CAP, alpha_grid=self.BANDED_ALPHA_GRID,
+            n_candidates=self.BANDED_CANDIDATES)
+
+        finite = per_parcel_r[~np.isnan(per_parcel_r)]
+        median_r = float(np.median(finite))
+        score = Score(median_r / float(self.ceiling))
+        score.attrs['raw'] = Score(median_r)
+        score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
+        score.attrs['mean_r'] = float(np.mean(finite))
+        score.attrs['n_parcels_scored'] = int(len(finite))
+        # The per-parcel scores themselves, in Schaefer order, so they can be rendered
+        # on a cortical surface. NaNs are kept in place: a parcel that could not be
+        # scored must stay unpainted rather than collapse to a neighbour's value.
+        score.attrs['per_parcel_r'] = per_parcel_r
+        score.attrs['n_TRs'] = int(keep.sum())
+        score.attrs['stimulus_window'] = self._stimulus_window
+        score.attrs['hrf_delay'] = self._hrf_delay
+        score.attrs['form'] = self._form
+        score.attrs['presentation'] = 'stream' if self._streaming else 'table'
+        score.attrs['bands'] = info['bands']
+        score.attrs['band_channels'] = {band: f'neural:{band}' for band in info['bands']}
+        score.attrs['components_per_band'] = self.LAYER_DIM_CAP
+        score.attrs['alpha_grid'] = info['alpha_grid']
+        score.attrs['alpha_candidates'] = info['alpha_candidates']
+        score.attrs['chosen_alphas_per_fold'] = info['chosen_alphas_per_fold']
+        score.attrs['feature_projection_protocol'] = PROJECTION_PROTOCOL
+        if self._form != 'image':
+            score.attrs['clip_seconds'] = TR_SEC
+            score.attrs['frames_per_clip'] = CLIP_FRAMES
+        if self._form == 'video+audio':
+            score.attrs['sound_rate_hz'] = _SOUND_RATE_HZ
+        if self._movies is not None:
+            score.attrs['movies'] = list(self._movies)
+        return score
+
+    # ── Held-out prediction (Codabench submission) ────────────────
+
+    def generate_predictions(self, candidate, out_dir, train_benchmark=None):
         """Produce held-out per-parcel BOLD predictions for the Codabench target.
 
-        Trains a ridge encoder on this subject's Friends-train (recorded) data
-        and predicts every TR of this held-out split. Writes
-        ``sub-<NN>_<split>.npy`` of shape ``(n_TRs, 1000)`` into ``out_dir``.
-        Real run is on EC2 (needs the downloaded stimuli + assembly).
+        The method is the scoring method without the outer folds. The benchmark
+        records the same bands on this subject's Friends training films and on
+        this held-out split. It fits the reduction of each band on the training
+        films, chooses the penalties on held-out training runs, fits one banded
+        ridge on all training films and predicts every TR of this split. It
+        writes ``sub-<NN>_<split>.npy`` of shape ``(n_TRs, 1000)`` into ``out_dir``.
         """
         import os
         if self._split == 'friends':
@@ -1169,26 +997,31 @@ class _Algonauts2025Base(BenchmarkBase):
                 "generate_predictions is for held-out splits; the friends "
                 "training split is scored via __call__.")
         train = train_benchmark or Algonauts2025Friends(
-            subject=self._subject, form=self._form)
+            subject=self._subject, form=self._form, streaming=self._streaming)
         if train._subject != self._subject or train._split != 'friends':
             raise ValueError('Prediction requires Friends training data for the same subject.')
         if train._form != self._form:
-            raise ValueError('Training and prediction must present the same form (image or video).')
+            raise ValueError('Training and prediction must present the same form.')
         if (train._stimulus_window, train._hrf_delay) != (
                 self._stimulus_window, self._hrf_delay):
             raise ValueError('Training and prediction must use the same stimulus window and HRF delay.')
-        projection = FeatureProjection(train.FEATURE_DIM_CAP)
-        X_train, Y_train, _, _ = train._design_matrix(
-            candidate, drop_excluded=True, projection=projection, fit_projection=True)
-        X_pred, _, _, _ = self._design_matrix(
-            candidate, drop_excluded=False, projection=projection)
-        from brainscore.tools.banded_ridge import ridge_fit_predict
-        preds = ridge_fit_predict(X_train, Y_train, X_pred, alpha=alpha)
+        regions = self._regions(candidate)
+        train_bands = train._assembly_bands(candidate, regions)
+        train_runs, train_keep = train._runs_and_keep()
+        predict_bands = self._assembly_bands(candidate, regions)
+        predict_runs, _ = self._runs_and_keep(drop_excluded=False)
+        preds, penalties = fit_predict_banded(
+            train_bands, train.assembly.values, train_runs, train_keep,
+            train._stacker(train_runs), predict_bands, self._stacker(predict_runs),
+            dim_cap=self.LAYER_DIM_CAP, alpha_grid=self.BANDED_ALPHA_GRID,
+            n_candidates=self.BANDED_CANDIDATES)
         os.makedirs(out_dir, exist_ok=True)
         path = os.path.join(out_dir, f'sub-{self._subject:02d}_{self._split}.npy')
         np.save(path, preds)
         return {'path': path, 'predictions': preds, 'subject': self._subject,
-                'split': self._split, 'n_TRs': int(preds.shape[0])}
+                'split': self._split, 'n_TRs': int(preds.shape[0]),
+                'bands': list(penalties), 'alphas': penalties,
+                'feature_projection_protocol': 'svd_fitted_on_training_films'}
 
 
 class Algonauts2025Friends(_Algonauts2025Base):

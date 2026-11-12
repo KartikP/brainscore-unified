@@ -41,7 +41,8 @@ class NeuralSessions(_SessionCapability):
         return bool(model.region_layer_map) and bool(model._extractors)
 
     def declared_output_channels(self, model):
-        return {f'neural:{region}' for region in model.region_layer_map}
+        # ``neural:all`` records every mapped region (``start_recording('all')``).
+        return {f'neural:{region}' for region in model.region_layer_map} | {'neural:all'}
 
     def supports_session(self, model, channels) -> bool:
         return bool(channels) and all(c.startswith('neural:') for c in channels)
@@ -140,7 +141,7 @@ class MotorSessions(_SessionCapability):
 
     def supports_session(self, model, channels) -> bool:
         channels = set(channels)
-        recorded = (_NEURAL.declared_output_channels(model)
+        recorded = ({f'neural:{region}' for region in model.region_layer_map}
                     if _NEURAL.enabled_for(model) else set())
         outputs = set(model._policy_outputs)
         return bool(channels & outputs) and channels <= outputs | recorded

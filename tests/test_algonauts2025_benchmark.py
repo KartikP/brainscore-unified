@@ -2,8 +2,8 @@
 
 Data is on EC2 (~100 GB DataLad pull); these tests don't load any of
 it. They verify:
-- All 15 registry entries exist (subject x split, and three more forms of sub01).
-- Constructor validates subject ∈ {1, 2, 3, 5} and mode ∈ VALID_MODES.
+- All 14 registry entries exist (subject x split, and two more forms of sub01).
+- Constructor validates subject ∈ {1, 2, 3, 5} and the form.
 - ``__call__`` raises NotImplementedError until the assembly
   preparation pipeline runs on EC2.
 - The data plugin raises FileNotFoundError with a clear pointer to
@@ -40,8 +40,8 @@ def test_total_algonauts_benchmark_count():
     variants of sub01."""
     entries = [k for k in brainscore.benchmark_registry
                if k.startswith('Algonauts2025-')]
-    assert len(entries) == 15, (
-        f"expected 15 Algonauts entries, got {len(entries)}: {sorted(entries)}")
+    assert len(entries) == 14, (
+        f"expected 14 Algonauts entries, got {len(entries)}: {sorted(entries)}")
 
 
 # ── Constructor validation ────────────────────────────────────────
@@ -52,21 +52,6 @@ def test_invalid_subject_raises():
         Algonauts2025Friends)
     with pytest.raises(ValueError, match="subjects are"):
         Algonauts2025Friends(subject=4)
-
-
-def test_invalid_mode_raises():
-    from brainscore.benchmarks.algonauts2025.benchmark import (
-        Algonauts2025Friends)
-    with pytest.raises(ValueError, match="mode must be one of"):
-        Algonauts2025Friends(subject=1, mode='not_a_mode')
-
-
-def test_valid_modes_construct():
-    from brainscore.benchmarks.algonauts2025.benchmark import (
-        Algonauts2025Friends, _Algonauts2025Base)
-    for mode in _Algonauts2025Base.VALID_MODES:
-        b = Algonauts2025Friends(subject=1, mode=mode)
-        assert b._mode == mode
 
 
 # ── Scaffold contract ─────────────────────────────────────────────
@@ -128,10 +113,11 @@ def _mock_assembly_two_runs(tr_per_run=20):
     return _MockAssembly(stim, run), 2 * tr_per_run, 2  # assembly, n_trs, n_runs
 
 
-def test_execution_plan_declares_TR_cardinality_metric_cap_and_target(tmp_path):
+def test_execution_plan_declares_TR_cardinality_and_a_band_bound(tmp_path):
     """The benchmark declares its memory-execution shape: one extraction row per TR
-    (not per video), a metric-width cap, post-exclusion metric rows, a ridge
-    category, no re-run ceiling, and an IT-target probe frame (raw width probed)."""
+    (not per video), a metric width for at most PLANNED_MAX_BANDS reduced bands,
+    post-exclusion metric rows, a ridge category, no re-run ceiling, and a probe
+    frame (raw width probed through the requested neural:all)."""
     from brainscore.benchmarks.algonauts2025.benchmark import (
         Algonauts2025Friends, _Algonauts2025Base)
     from brainscore_core.execution_plan import ExecutionPlan
@@ -144,13 +130,14 @@ def test_execution_plan_declares_TR_cardinality_metric_cap_and_target(tmp_path):
     assert plan.n_extraction_presentations == n_trs                 # 40 TRs, not videos
     assert plan.feature_width is None                               # probed (model-dependent)
     assert plan.metric_feature_width == (
-        b._stimulus_window * _Algonauts2025Base.FEATURE_DIM_CAP)     # 5 * 1000
+        _Algonauts2025Base.PLANNED_MAX_BANDS * b._stimulus_window
+        * _Algonauts2025Base.LAYER_DIM_CAP)                         # 10 * 5 * 100
     # metric fits over TRs MINUS per-run excluded samples: 40 - (5+5)*2 = 20
     excluded = b._excluded_samples_start + b._excluded_samples_end
     assert plan.resolved_metric_observations == n_trs - excluded * n_runs
     assert plan.metric_category == 'ridge'                          # not the mis-detected PLS
     assert plan.runs_ceiling_metric is False                       # constant Score(1.0) ceiling
-    assert plan.recording_target == 'IT'                           # the real target region
+    assert plan.recording_target is None                           # the requested neural:all
     assert plan.probe_stimuli is not None                          # image frame, not a video row
 
 
@@ -168,10 +155,11 @@ def test_metric_observations_clamps_per_short_run(tmp_path):
     assert b.execution_plan.resolved_metric_observations == 10
 
 
-def test_check_memory_probes_IT_with_a_frame_and_sizes_off_TR_count(tmp_path):
-    """check_memory takes the DECLARED path: it records IT (not the first region)
-    and probes an image frame an image-only model accepts, then sizes off the TR
-    count — not the video count — and reports DECLARED-grounded (not APPROXIMATE)."""
+def test_check_memory_probes_every_mapped_region_with_a_frame_and_sizes_off_TR_count(tmp_path):
+    """check_memory takes the DECLARED path: it records 'all' (every mapped region,
+    the requested neural:all) and probes an image frame an image-only model accepts,
+    then sizes off the TR count — not the video count — and reports
+    DECLARED-grounded (not APPROXIMATE)."""
     import logging
     from unittest.mock import patch
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
@@ -208,7 +196,7 @@ def test_check_memory_probes_IT_with_a_frame_and_sizes_off_TR_count(tmp_path):
         proc.return_value.memory_info.return_value.rss = 500_000_000
         mem.check_memory(_ImageOnlyModel(), b)
     msgs = [r.getMessage() for r in records]
-    assert recorded['target'] == 'IT'                        # declared target, not V1
+    assert recorded['target'] == 'all'                       # every mapped region
     assert any('DECLARED-grounded' in m for m in msgs)
     assert any(f'{n_trs} presentations' in m for m in msgs)  # TR count, not videos
     assert not any('APPROXIMATE' in m for m in msgs)
@@ -255,11 +243,11 @@ def test_video_variant_identifier_and_declarations(tmp_path):
     from tests.benchmark_declarations import assert_declares, assert_preflight
     video = brainscore.benchmark_registry['Algonauts2025-friends-sub01-video']()
     assert video.identifier == 'Algonauts2025-friends-sub01-video'
-    assert_declares(video, {'vision:video'}, {'neural:IT'})
+    assert_declares(video, {'vision:video'}, {'neural:all'})
     assert_preflight(Algonauts2025Friends(subject=1, form='video', assembly_root=tmp_path))
     frame = brainscore.benchmark_registry['Algonauts2025-friends-sub01']()
     assert frame.identifier == 'Algonauts2025-friends-sub01'
-    assert_declares(frame, {'vision:image'}, {'neural:IT'})
+    assert_declares(frame, {'vision:image'}, {'neural:all'})
 
 
 def test_invalid_form_raises():
@@ -278,7 +266,7 @@ def test_video_execution_plan_probes_a_blank_clip(tmp_path):
     b._assembly = assembly
     plan = b.execution_plan
     assert plan.n_extraction_presentations == n_trs
-    assert plan.recording_target == 'IT'
+    assert plan.recording_target is None
     probe = plan.probe_stimuli
     assert len(probe) == 1 and 'video_path' in probe.columns
     assert 'image_file_name' not in probe.columns

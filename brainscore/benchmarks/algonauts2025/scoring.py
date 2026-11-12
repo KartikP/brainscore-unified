@@ -1,26 +1,22 @@
-"""Per-parcel encoding scorers for the Algonauts 2025 benchmark.
+"""Banded ridge for the Algonauts 2025 benchmark.
 
-Separated from ``benchmark.py`` (SoC: scoring vs data I/O) and made pure so
-it is unit-testable without the heavy feature extraction or any fMRI data.
+This module is pure: it needs no model and no fMRI files, so it is tested on
+small synthetic arrays.
 
-A "modality block" is a feature matrix that has ALREADY been
-stimulus-window-stacked, HRF-shifted, and edge-excluded — one block per
-modality, all sharing the same ``(n_obs,)`` row alignment and
-``run_idx_kept``. ``score_encoding_modes`` combines the blocks according to
-``mode`` and returns per-parcel Pearson r on run-held-out predictions:
+A band is the features of one model region, one row per scan (TR), in the row
+order of the assembly. ``score_banded`` scores the bands with run-held-out
+5-fold cross-validation. In each outer fold it:
 
-- ``video_only`` / ``audio_only`` / ``language_only`` — single Ridge on that
-  one block at a fixed α (default 1.0; reproduces the validated video-only
-  number bit-for-bit).
-- ``concat`` — single Ridge on the column-concatenation of all blocks.
-- ``per_modality`` — one Ridge per block; predictions summed.
-- ``banded`` — one α per block, selected by a nested inner-CV α-tuple sweep
-  inside each outer fold (the Algonauts paper-baseline protocol). NOTE: this
-  is a *different* CV protocol from ``tools.banded_ridge`` (single held-out
-  split), so it is intentionally not shared with the Lahner benchmarks.
+1. fits the reduction of each band (``FeatureProjection``, truncated SVD) on
+   the rows of the training runs only, and applies it to every row;
+2. stacks the reduced band over the stimulus window and shifts it by the HRF
+   delay, inside each run (the ``stack`` argument);
+3. chooses one penalty per band on held-out runs inside the training runs
+   (``choose_penalties``);
+4. fits the banded ridge on the training runs and predicts the test runs.
 
-Banding is applied to the *stacked* columns: block ``g`` (width
-``W * n_feat_g``) gets penalty α_g across all its columns.
+The method follows multi-layer encoding with banded ridge (himalaya,
+Dupre la Tour et al. 2022). With one band it is a ridge with a tuned penalty.
 """
 from itertools import product
 
@@ -28,59 +24,14 @@ import numpy as np
 
 from brainscore.benchmarks._scoring_utils import (
     kfold_positions,
-    masked_ridge_predictions,
-    run_kfold_masks,
     valid_prediction_per_unit_pearson,
 )
 
-MODALITY_FOR_MODE = {
-    'video_only': 'video',
-    'audio_only': 'audio',
-    'language_only': 'language',
-}
+from .projection import FeatureProjection
 
-
-def per_voxel_pearson(Y_true, Y_pred):
-    """Per-column Pearson r between recorded and predicted BOLD, dropping the
-    rows the model never predicted (NaN). The centered correlation itself is
-    the canonical ``brainscore_core.metrics.per_unit_pearson``."""
-    return valid_prediction_per_unit_pearson(Y_true, Y_pred)
-
-
-def _run_kfold(run_idx_kept, n_splits, random_state):
-    """Yield (train_mask, test_mask) over whole runs — no TR ever splits
-    across train/test (avoids temporal leakage)."""
-    yield from run_kfold_masks(run_idx_kept, n_splits, random_state)
-
-
-def _cv_ridge_predict(X, Y, run_idx_kept, alpha, n_splits, random_state,
-                      memory_bounded=False):
-    """Run-held-out 5-fold Ridge; return held-out predictions (NaN where
-    a row was never in a test fold — shouldn't happen with KFold).
-
-    ``memory_bounded=True`` swaps sklearn's Ridge for a chunked normal-equations
-    solver. OFF by default because the two agree only to float32 round-off
-    (~1e-6), and the repo pins Algonauts scores bit-for-bit; turning it on is a
-    deliberate trade of exact reproducibility for the ability to run at all.
-
-    Why it exists:
-    sklearn copies and upcasts the design matrix to float64, which on the full
-    Algonauts design (162,671 x 5,000) costs several GB per fold on top of the
-    original and OOM-killed a 62 GB box. The chunked solver is numerically
-    equivalent (guarded by a test) and its peak extra memory is O(p^2).
-    """
-    if not memory_bounded:
-        return masked_ridge_predictions(
-            X, Y, _run_kfold(run_idx_kept, n_splits, random_state),
-            alpha=alpha, dtype=np.float32)
-
-    from brainscore.tools.banded_ridge import ridge_fit_predict_chunked
-    held = np.full(Y.shape, np.nan, dtype=np.float32)
-    for train_mask, test_mask in _run_kfold(run_idx_kept, n_splits, random_state):
-        held[test_mask] = ridge_fit_predict_chunked(
-            X[train_mask], Y[train_mask], X[test_mask],
-            alpha=alpha, dtype=np.float32)
-    return held
+# The score names its reduction protocol so a reader can see that no test row
+# was used to fit it.
+PROJECTION_PROTOCOL = 'svd_fitted_on_training_runs_per_fold'
 
 
 def _alpha_tuples(grid, n_bands, n_candidates, random_state):
@@ -100,139 +51,139 @@ def _alpha_tuples(grid, n_bands, n_candidates, random_state):
     return sorted(tuples)
 
 
-def _banded_nested_cv(blocks, Y, run_idx_kept, banded_alpha_grid,
-                      n_splits, random_state, n_candidates=None):
-    """Banded ridge with a nested inner-CV α-tuple sweep per outer fold.
+def _penalty_diagonal(widths, penalties):
+    return np.concatenate([np.full(width, penalty, dtype=np.float32)
+                           for width, penalty in zip(widths, penalties)])
 
-    Faithful port of the validated reproduction script: outer run-KFold;
-    within each outer fold an inner KFold(random_state=fold_i) takes the
-    first split as inner-train/inner-val; the best (α per block) tuple by
-    mean inner-val Pearson is refit on the full outer-train and scored on
-    the outer-test. XᵀX is hoisted out of the α-tuple loop.
+
+def _solve(X, Y, widths, penalties):
+    """Banded ridge weights: one penalty for all columns of each band."""
+    XtX = X.T @ X
+    XtX[np.diag_indices_from(XtX)] += _penalty_diagonal(widths, penalties)
+    return np.linalg.solve(XtX, X.T @ Y)
+
+
+def choose_penalties(X, Y, run_idx, widths, tuples, *, n_splits, random_state):
+    """The penalty tuple with the best mean Pearson r on held-out runs.
+
+    The runs of ``run_idx`` are split ``n_splits`` ways; the first split gives
+    the inner training runs and the inner held-out runs. ``X^T X`` is computed
+    once; only the penalty diagonal changes from tuple to tuple.
     """
-    widths = [b.shape[1] for b in blocks]
-    offsets, cur = [], 0
-    for w in widths:
-        offsets.append((cur, cur + w))
-        cur += w
-    X = np.concatenate(blocks, axis=1)
-    n_bands = len(blocks)
-    tuples = _alpha_tuples(list(banded_alpha_grid), n_bands, n_candidates, random_state)
+    runs = np.unique(run_idx)
+    fit_pos, check_pos = next(kfold_positions(
+        len(runs), n_splits=n_splits, random_state=random_state))
+    fit = np.isin(run_idx, runs[fit_pos])
+    check = np.isin(run_idx, runs[check_pos])
+    XtX_base = X[fit].T @ X[fit]
+    XtY = X[fit].T @ Y[fit]
+    Y_check = Y[check] - Y[check].mean(0)
+    Y_check_var = (Y_check ** 2).sum(0)
 
-    unique_runs = np.unique(run_idx_kept)
-    held = np.full_like(Y, np.nan, dtype=np.float32)
-    chosen = []
-    for fold_i, (tr_pos, te_pos) in enumerate(kfold_positions(
-            len(unique_runs), n_splits=n_splits,
-            random_state=random_state)):
-        tr_runs, te_runs = unique_runs[tr_pos], unique_runs[te_pos]
-        tr = np.isin(run_idx_kept, tr_runs)
-        te = np.isin(run_idx_kept, te_runs)
-
-        i_tr_pos, i_va_pos = next(kfold_positions(
-            len(tr_runs), n_splits=n_splits, random_state=fold_i))
-        i_tr = np.isin(run_idx_kept, tr_runs[i_tr_pos])
-        i_va = np.isin(run_idx_kept, tr_runs[i_va_pos])
-
-        X_itr, Y_itr = X[i_tr], Y[i_tr]
-        X_iva, Y_iva = X[i_va], Y[i_va]
-        XtX_base = X_itr.T @ X_itr
-        XtY = X_itr.T @ Y_itr
-        Y_iva_c = Y_iva - Y_iva.mean(0)
-        Y_iva_var = (Y_iva_c ** 2).sum(0)
-
-        best_score, best_tuple = -np.inf, None
-        for atup in tuples:
-            diag_alpha = np.zeros(X.shape[1], dtype=np.float32)
-            for (lo, hi), a_val in zip(offsets, atup):
-                diag_alpha[lo:hi] = a_val
-            XtX = XtX_base.copy()
-            XtX[np.diag_indices_from(XtX)] += diag_alpha
-            try:
-                W_sol = np.linalg.solve(XtX, XtY)
-            except np.linalg.LinAlgError:
-                continue
-            pred = X_iva @ W_sol
-            pred_c = pred - pred.mean(0)
-            num = (Y_iva_c * pred_c).sum(axis=0)
-            den = np.sqrt(Y_iva_var * (pred_c ** 2).sum(0))
-            with np.errstate(divide='ignore', invalid='ignore'):
-                val_r = np.where(den > 0, num / den, 0.0)
-            mean_r = float(np.mean(val_r))
-            if mean_r > best_score:
-                best_score, best_tuple = mean_r, atup
-        chosen.append(best_tuple)
-
-        diag_alpha = np.zeros(X.shape[1], dtype=np.float32)
-        for (lo, hi), a_val in zip(offsets, best_tuple):
-            diag_alpha[lo:hi] = a_val
-        XtX = X[tr].T @ X[tr]
-        XtY = X[tr].T @ Y[tr]
-        XtX[np.diag_indices_from(XtX)] += diag_alpha
-        W_sol = np.linalg.solve(XtX, XtY)
-        held[te] = (X[te] @ W_sol).astype(np.float32)
-    return held, chosen
+    best_score, best = -np.inf, None
+    for penalties in tuples:
+        XtX = XtX_base.copy()
+        XtX[np.diag_indices_from(XtX)] += _penalty_diagonal(widths, penalties)
+        try:
+            W = np.linalg.solve(XtX, XtY)
+        except np.linalg.LinAlgError:
+            continue
+        pred = X[check] @ W
+        pred = pred - pred.mean(0)
+        num = (Y_check * pred).sum(axis=0)
+        den = np.sqrt(Y_check_var * (pred ** 2).sum(0))
+        with np.errstate(divide='ignore', invalid='ignore'):
+            r = np.where(den > 0, num / den, 0.0)
+        score = float(np.mean(r))
+        if score > best_score:
+            best_score, best = score, penalties
+    if best is None:
+        raise np.linalg.LinAlgError('No penalty tuple gave a solvable banded ridge.')
+    return best
 
 
-def score_encoding_modes(per_modality_stacked, Y, run_idx_kept, mode, *,
-                         ridge_alpha=1.0,
-                         banded_alpha_grid=(1.0, 10.0, 100.0, 1000.0, 10000.0),
-                         n_splits=5, random_state=0, memory_bounded=False,
-                         banded_candidates=None):
-    """Score per-parcel encoding for the requested multimodal combination.
+def reduce_and_stack(bands, fit_rows, stack, dim_cap, projections=None):
+    """Reduce each band and stack it; return ``(blocks, projections)``.
+
+    Each band gets its own ``FeatureProjection``, fitted on ``bands[b][fit_rows]``
+    unless ``projections`` gives fitted ones. The reduction is applied to every
+    row, then ``stack`` stacks the stimulus window and shifts by the HRF delay.
+    """
+    blocks, fitted = [], {}
+    for name, (features, feature_ids) in bands.items():
+        projection = (projections[name] if projections is not None
+                      else FeatureProjection(dim_cap).fit(features[fit_rows], feature_ids))
+        fitted[name] = projection
+        blocks.append(stack(projection.transform(features, feature_ids)))
+    return blocks, fitted
+
+
+def score_banded(bands, Y, run_idx, keep, stack, *, dim_cap, alpha_grid,
+                 n_candidates, n_splits=5, random_state=0):
+    """Per-parcel Pearson r of the banded ridge on held-out runs.
 
     Args:
-        per_modality_stacked: ordered dict ``{modality: (n_obs, W*n_feat)}``
-            of stacked+HRF-shifted+edge-excluded feature blocks.
-        Y: ``(n_obs, n_parcels)`` recorded BOLD (already edge-excluded).
-        run_idx_kept: ``(n_obs,)`` run id per observation.
-        mode: one of video_only/audio_only/language_only/concat/per_modality/banded.
+        bands: ``{band: (features, feature_ids)}``; ``features`` is
+            ``(n_TRs, n_units)``, one row per TR of the assembly.
+        Y: ``(n_TRs, n_parcels)`` recorded BOLD, same rows.
+        run_idx: ``(n_TRs,)`` run id of each row.
+        keep: ``(n_TRs,)`` bool; False for the excluded samples at run edges.
+        stack: ``(n_TRs, k) -> (n_TRs, window * k)``; stacks within runs.
 
-    Returns ``(per_voxel_r, info)``. Raises ValueError if ``mode`` needs a
-    modality not present in ``per_modality_stacked``.
+    Returns ``(per_parcel_r, info)``. ``info`` lists the bands and the
+    penalty of each band in each fold.
     """
-    present = list(per_modality_stacked.keys())
+    names = list(bands)
+    tuples = _alpha_tuples(list(alpha_grid), len(names), n_candidates, random_state)
+    run_kept = run_idx[keep]
+    Y_kept = Y[keep]
+    runs = np.unique(run_kept)
+    held = np.full(Y_kept.shape, np.nan, dtype=np.float32)
+    chosen = []
+    for fold, (train_pos, test_pos) in enumerate(kfold_positions(
+            len(runs), n_splits=n_splits, random_state=random_state)):
+        train_runs, test_runs = runs[train_pos], runs[test_pos]
+        # The reduction sees the rows of the training runs only. The test rows
+        # are only transformed with it.
+        blocks, _ = reduce_and_stack(bands, np.isin(run_idx, train_runs), stack, dim_cap)
+        X = np.concatenate(blocks, axis=1)[keep]
+        widths = [block.shape[1] for block in blocks]
+        train = np.isin(run_kept, train_runs)
+        test = np.isin(run_kept, test_runs)
+        # The inner choice uses the reduction fitted on all outer training rows,
+        # so the inner held-out runs took part in that fit. The outer test runs
+        # took part in nothing.
+        penalties = choose_penalties(X[train], Y_kept[train], run_kept[train], widths,
+                                     tuples, n_splits=n_splits, random_state=fold)
+        chosen.append(dict(zip(names, (float(p) for p in penalties))))
+        W = _solve(X[train], Y_kept[train], widths, penalties)
+        held[test] = (X[test] @ W).astype(np.float32)
+    info = {'bands': names, 'alpha_grid': list(alpha_grid),
+            'alpha_candidates': len(tuples), 'chosen_alphas_per_fold': chosen}
+    return valid_prediction_per_unit_pearson(Y_kept, held), info
 
-    if mode in MODALITY_FOR_MODE:
-        need = MODALITY_FOR_MODE[mode]
-        if need not in per_modality_stacked:
-            raise ValueError(
-                f"mode={mode!r} needs '{need}' features but the candidate "
-                f"only produced {present}. Use a candidate with a {need} "
-                f"tower, or a mode that matches its modalities.")
-        held = _cv_ridge_predict(per_modality_stacked[need], Y, run_idx_kept,
-                                 ridge_alpha, n_splits, random_state,
-                                 memory_bounded=memory_bounded)
-        info = {'mode': mode, 'bands': [need], 'ridge_alpha': ridge_alpha}
 
-    elif mode == 'concat':
-        X = np.concatenate(list(per_modality_stacked.values()), axis=1)
-        held = _cv_ridge_predict(X, Y, run_idx_kept, ridge_alpha,
-                                 n_splits, random_state,
-                                 memory_bounded=memory_bounded)
-        info = {'mode': mode, 'bands': present, 'ridge_alpha': ridge_alpha}
+def fit_predict_banded(train_bands, Y, run_idx, keep, stack, predict_bands, predict_stack,
+                       *, dim_cap, alpha_grid, n_candidates, n_splits=5, random_state=0):
+    """Fit on all training rows and predict the rows of ``predict_bands``.
 
-    elif mode == 'per_modality':
-        held = None
-        for block in per_modality_stacked.values():
-            pred = _cv_ridge_predict(block, Y, run_idx_kept, ridge_alpha,
-                                     n_splits, random_state,
-                                     memory_bounded=memory_bounded)
-            held = pred if held is None else held + pred
-        info = {'mode': mode, 'bands': present, 'ridge_alpha': ridge_alpha}
-
-    elif mode == 'banded':
-        blocks = list(per_modality_stacked.values())
-        held, chosen = _banded_nested_cv(
-            blocks, Y, run_idx_kept, list(banded_alpha_grid),
-            n_splits, random_state, n_candidates=banded_candidates)
-        info = {'mode': mode, 'bands': present,
-                'banded_candidates': banded_candidates,
-                'banded_alpha_grid': list(banded_alpha_grid),
-                'chosen_alphas_per_fold': [
-                    dict(zip(present, [float(x) for x in t])) for t in chosen]}
-
-    else:
-        raise ValueError(f"unknown mode {mode!r}")
-
-    return per_voxel_pearson(Y, held), info
+    The reduction is fitted on the training rows, the penalties are chosen on
+    held-out training runs, and one banded ridge is fitted on every kept
+    training row. Returns ``(predictions, penalties)``.
+    """
+    names = list(train_bands)
+    if list(predict_bands) != names:
+        raise ValueError(f'Prediction bands {list(predict_bands)} differ from the '
+                         f'training bands {names}.')
+    tuples = _alpha_tuples(list(alpha_grid), len(names), n_candidates, random_state)
+    blocks, projections = reduce_and_stack(
+        train_bands, np.ones(len(run_idx), dtype=bool), stack, dim_cap)
+    X = np.concatenate(blocks, axis=1)[keep]
+    widths = [block.shape[1] for block in blocks]
+    penalties = choose_penalties(X, Y[keep], run_idx[keep], widths, tuples,
+                                 n_splits=n_splits, random_state=random_state)
+    W = _solve(X, Y[keep], widths, penalties)
+    predict_blocks, _ = reduce_and_stack(predict_bands, None, predict_stack, dim_cap,
+                                         projections=projections)
+    predictions = (np.concatenate(predict_blocks, axis=1) @ W).astype(np.float32)
+    return predictions, dict(zip(names, (float(p) for p in penalties)))

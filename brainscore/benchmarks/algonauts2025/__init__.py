@@ -28,19 +28,13 @@ for sub in (1, 2, 3, 5):
         lambda s=sub: Algonauts2025OOD(subject=s))
 
 # The same benchmark with the movie shown as one 1.49 s clip per scan instead of one
-# frame (form='video', channel vision:video). No sound or speech yet. Training split of
+# frame (form='video', channel vision:video). No sound or speech. Training split of
 # participant 1 only.
 benchmark_registry['Algonauts2025-friends-sub01-video'] = (
     lambda: Algonauts2025Friends(subject=1, form='video'))
 
 # The same benchmark with the clip of each scan on vision:video and the sound of the
-# same 1.49 s on audio, in one row (form='video+audio'). It records neural:IT and
-# neural:A1 and scores the two bands with banded ridge. Training split of participant 1
-# only.
+# same 1.49 s on audio, in one row (form='video+audio'). Training split of participant
+# 1 only.
 benchmark_registry['Algonauts2025-friends-sub01-video-audio'] = (
     lambda: Algonauts2025Friends(subject=1, form='video+audio'))
-
-# The video and sound form, but the model answers with every layer it mapped
-# (neural:all) and one regression predicts the whole brain from all of them.
-benchmark_registry['Algonauts2025-friends-sub01-wholebrain'] = (
-    lambda: Algonauts2025Friends(subject=1, form='video+audio', record='all'))

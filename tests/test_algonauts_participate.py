@@ -29,7 +29,7 @@ class Recorder(Subject):
 
     identifier = 'participate-only'
     in_channels = frozenset({'vision:image'})
-    out_channels = frozenset(f'neural:{region}' for region in UNITS)
+    out_channels = frozenset({f'neural:{region}' for region in UNITS} | {'neural:all'})
 
     def __init__(self, reverse=False):
         self.reverse = reverse
@@ -65,19 +65,20 @@ def benchmark(tmp_path):
     return Algonauts2025Friends(subject=1, assembly_root=tmp_path)
 
 
-def test_one_region_is_recorded_through_participate(benchmark):
+def test_every_region_is_recorded_through_participate_on_its_own_channel(benchmark):
     subject = Recorder()
-    features, frame_ids = benchmark._extract_per_TR_features(subject, _frames())
-    assert subject.requests == [['neural:IT']]
-    assert frame_ids == FRAMES
-    expected = [[_value(frame, unit) for unit in UNITS['IT']] for frame in FRAMES]
-    np.testing.assert_array_equal(features, np.asarray(expected, dtype=np.float32))
+    regions = ['IT', 'V4']
+    bands = benchmark._record_bands(subject, _frames(), regions)
+    assert subject.requests == [['neural:IT', 'neural:V4']]
+    for region in regions:
+        expected = [[_value(frame, unit) for unit in UNITS[region]] for frame in FRAMES]
+        np.testing.assert_array_equal(bands[region][0], np.asarray(expected, dtype=np.float32))
 
 
 def test_answers_are_put_in_frame_order_by_stimulus_id(benchmark):
-    features, _ = benchmark._extract_per_TR_features(Recorder(reverse=True), _frames())
+    bands = benchmark._record_bands(Recorder(reverse=True), _frames(), ['IT'])
     expected = [[_value(frame, unit) for unit in UNITS['IT']] for frame in FRAMES]
-    np.testing.assert_array_equal(features, np.asarray(expected, dtype=np.float32))
+    np.testing.assert_array_equal(bands['IT'][0], np.asarray(expected, dtype=np.float32))
 
 
 # ── Old path vs participate on the SAME subject (Contract Rule 10.1) ──────
@@ -102,7 +103,7 @@ class _Extractor:
             })
 
 
-def _old_record_features(subject, stimuli, region, *, time_bins):
+def _old_features(subject, stimuli, region, *, time_bins):
     """What the benchmark did before it ran through participate."""
     subject.start_recording(region, time_bins=time_bins)
     return algonauts_module._as_features(subject.process(stimuli))
@@ -118,17 +119,19 @@ REGION_MAPS = {
 
 
 @pytest.mark.parametrize('region_map', REGION_MAPS.values(), ids=REGION_MAPS.keys())
-@pytest.mark.parametrize('target', ['IT', 'all'])
-def test_old_and_new_path_give_identical_features(benchmark, monkeypatch, region_map, target):
+def test_old_path_and_participate_give_identical_bands(benchmark, region_map):
     model = BrainScoreModel('synthetic', region_layer_map=region_map,
                             preprocessors={'vision': _Extractor(), 'text': _Extractor()})
-    new, new_ids = benchmark._extract_per_TR_features(model, _frames(), recording_target=target)
-    with monkeypatch.context() as patch:
-        patch.setattr(algonauts_module, '_record_features', _old_record_features)
-        old, old_ids = benchmark._extract_per_TR_features(model, _frames(), recording_target=target)
-    assert new.dtype == old.dtype and new.shape == old.shape
-    np.testing.assert_array_equal(new, old)
-    assert new_ids == old_ids
+    regions = algonauts_module.declared_regions(model)
+    assert regions == sorted(region_map)
+    bands = benchmark._record_bands(model, _frames(), regions)
+    for region in regions:
+        old, old_ids = _old_features(model, _frames(), region,
+                                     time_bins=[(0, int(algonauts_module.TR_SEC * 1000))])
+        new, new_ids = bands[region]
+        assert new.dtype == old.dtype and new.shape == old.shape
+        np.testing.assert_array_equal(new, old)
+        np.testing.assert_array_equal(new_ids, old_ids)
 
 
 class _WrongIds(Recorder):
@@ -146,7 +149,7 @@ class _WrongIds(Recorder):
 
 def test_a_response_for_other_frames_is_refused(benchmark):
     with pytest.raises(ValueError, match='exactly once'):
-        benchmark._extract_per_TR_features(_WrongIds(), _frames())
+        benchmark._record_bands(_WrongIds(), _frames(), ['IT'])
 
 
 # ── Declarations and a whole score through participate ────────────
@@ -157,14 +160,14 @@ from tests.benchmark_declarations import assert_declares, assert_preflight
 from brainscore.benchmarks.algonauts2025.benchmark import (
     Algonauts2025Friends, Algonauts2025FriendsS7, Algonauts2025OOD)
 
-CLIPS = [f'clip{index}' for index in range(6)]
+CLIPS = [f'clip{index}' for index in range(8)]   # 8 runs: 5 outer folds, 5 inner
 TRS = 10
 
 
 @pytest.mark.parametrize('factory', [Algonauts2025Friends, Algonauts2025FriendsS7, Algonauts2025OOD])
-def test_every_split_declares_vision_in_and_it_out(factory, tmp_path):
+def test_every_split_declares_vision_in_and_every_mapped_region_out(factory, tmp_path):
     benchmark = factory(subject=1, assembly_root=tmp_path)
-    assert_declares(benchmark, {'vision:image'}, {'neural:IT'})
+    assert_declares(benchmark, {'vision:image'}, {'neural:all'})
     assert_preflight(benchmark)
 
 
@@ -199,10 +202,11 @@ def test_a_whole_score_comes_from_a_participate_only_subject(tmp_path, monkeypat
                 dims=['presentation', 'neuroid']), t_ms=None))
 
     subject = Frames()
+    subject.out_channels = frozenset({'neural:IT', 'neural:all'})
     score = benchmark(subject)
     assert np.isfinite(float(score))
     assert subject.requests == [['neural:IT']]
-    assert score.attrs['mode'] == 'video_only'
+    assert score.attrs['bands'] == ['IT'] and 'mode' not in score.attrs
 
 
 # ── The video form ───────────────────────────────────────────────
@@ -226,7 +230,7 @@ class _VideoOnly(Subject):
 
     identifier = 'video-only'
     in_channels = frozenset({'vision:video'})
-    out_channels = frozenset({'neural:IT'})
+    out_channels = frozenset({'neural:IT', 'neural:all'})
 
     def __init__(self):
         self.paths = []
@@ -268,7 +272,7 @@ def test_a_video_only_subject_gets_one_answer_per_tr_and_a_score(tmp_path, monke
     score = benchmark(subject)
     assert np.isfinite(float(score))
     assert subject.paths == list(table['video_path'])        # one clip per TR, once each
-    assert score.attrs['pipeline'] == 'algonauts_video_only_clip'
+    assert score.attrs['bands'] == ['IT']
     assert score.attrs['form'] == 'video'
     assert score.attrs['frames_per_clip'] == 30
 
@@ -294,6 +298,8 @@ def test_an_image_only_subject_is_not_applicable_to_video_and_scores_on_frames(t
     benchmark = _score_benchmark(tmp_path, monkeypatch, 'image', frames)
 
     class Image(Recorder):
+        out_channels = frozenset({'neural:IT', 'neural:all'})
+
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session))
             ids = [str(s) for s in stimuli['stimulus_id']]
@@ -305,5 +311,5 @@ def test_an_image_only_subject_is_not_applicable_to_video_and_scores_on_frames(t
 
     score = benchmark(Image())
     assert np.isfinite(float(score))
-    assert score.attrs['pipeline'] == 'algonauts_video_only_frame_agg'
-    assert 'form' not in score.attrs
+    assert score.attrs['form'] == 'image' and score.attrs['bands'] == ['IT']
+    assert 'frames_per_clip' not in score.attrs

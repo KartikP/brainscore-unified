@@ -80,7 +80,8 @@ class TestProbeThroughParticipate:
         model = BrainScoreModel('typed', region_layer_map={'V4': 'early', 'IT': 'late'},
                                 extractor={'vision': extractor})
         benchmark = SimpleNamespace(identifier='bench')
-        assert _probe_regions(model, benchmark) == ['V4', 'IT']  # region map order kept
+        # Region map order kept; the declared neural:all (every mapped region) comes last.
+        assert _probe_regions(model, benchmark) == ['V4', 'IT', 'all']
         width, region = _probe_feature_dim(model, benchmark, self._stimuli())
         assert (width, region) == (5, 'V4')
         width, region = _probe_feature_dim(model, SimpleNamespace(identifier='it', region='IT'),

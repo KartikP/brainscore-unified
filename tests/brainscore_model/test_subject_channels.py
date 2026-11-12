@@ -13,7 +13,7 @@ def test_brainscore_model_gets_channel_identity_from_preprocessors():
     )
 
     assert model.in_channels == {"vision:image", "control"}   # a vision key takes stills
-    assert model.out_channels == {"neural:IT", "behavior", "behavior:choice",
+    assert model.out_channels == {"neural:IT", "neural:all", "behavior", "behavior:choice",
                                   "behavior:probabilities", "behavior:rating", "behavior:rt"}
     assert model.required_channels == set()
 
