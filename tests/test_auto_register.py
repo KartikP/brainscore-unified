@@ -201,7 +201,7 @@ class TestInspectModel:
         assert rec.layer_aggregation == 'last_token'
         assert rec.submodule_path is None
         assert len(rec.block_layers) == 6
-        assert p.required_modalities() == {'text'}
+        assert p.required_channels() == {'text'}
 
     def test_vit_profile_provisional_map(self):
         p = inspect_model(make_vit(8), identifier='vit-tiny')
@@ -236,8 +236,8 @@ class TestInspectModel:
         vis = next(r for r in p.recommendations if r.modality == 'vision')
         assert vis.submodule_path == 'vision_model'
         assert vis.block_layers[0] == 'encoder.layers.0'
-        # multimodal → soft required_modalities
-        assert p.required_modalities() == set()
+        # multimodal → no required channel
+        assert p.required_channels() == set()
 
     def test_qwen_vl_two_towers_flat_vision_plus_causal_text(self):
         p = inspect_model(make_qwen_vl(4, 4), identifier='qwen-vl-tiny')
@@ -346,7 +346,7 @@ class TestScaffold:
         p = inspect_model(make_gpt(6), identifier='gpt2-tiny')
         code = scaffold_registration(p)
         assert 'from brainscore.model_helpers.text_wrapper import TextWrapper' in code
-        assert 'required_modalities' not in code or 'text' in code
+        assert 'required_channels' not in code or 'text' in code
 
     def test_scaffold_is_valid_python(self):
         p = inspect_model(make_vit(8), identifier='vit-tiny')
@@ -393,7 +393,7 @@ class TestAutoRegisterLive:
         # provisional vision map wired
         assert set(bs_model._region_layer_map_dict) == {'V1', 'V2', 'V4', 'IT'}
         assert bs_model._region_layer_map_dict['V1'] == 'encoder.layers.0'
-        assert 'vision' in bs_model.supported_modalities
+        assert 'vision:image' in bs_model.in_channels
 
     def test_vision_without_preprocessing_errors(self):
         with pytest.raises(ValueError, match="preprocessing"):
@@ -427,12 +427,12 @@ def test_live_registration_uses_the_documented_extractor_mapping(modality):
             make_gpt(), identifier='mapping-text', tokenizer=SimpleNamespace(),
         )
     assert set(subject.extractor) == {modality}
-    assert subject.supported_modalities == {modality}
+    assert subject.in_channels == {{'vision': 'vision:image', 'text': 'text'}[modality], 'control'}
 
 
 def test_multimodal_scaffold_keeps_optional_towers_in_extractor_mapping():
     profile = inspect_model(make_clip(), identifier='clip-example')
-    assert profile.required_modalities() == set()
+    assert profile.required_channels() == set()
     code = scaffold_registration(profile)
     assert "'vision': vision_wrapper" in code
     assert "'text': text_wrapper" in code

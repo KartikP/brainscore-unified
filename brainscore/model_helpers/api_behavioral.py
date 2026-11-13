@@ -22,7 +22,7 @@ trial's prompt and obeys the task's generation settings.
 
 What it intentionally does NOT do: neural-encoding paths. Closed APIs don't expose
 layer activations, so an API model has no ``extractor``; it declares its inputs with
-``supported_modalities``, and a neural benchmark gets a clear error.
+``in_channels``, and a neural benchmark gets a clear error.
 """
 import base64
 import hashlib

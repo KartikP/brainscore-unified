@@ -140,7 +140,7 @@ def test_unparseable_reply_is_kept_as_an_invalid_answer(tmp_path):
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-    model = BrainScoreModel('fixture', supported_modalities={'text'}, reply=lambda prompt: 'unparseable')
+    model = BrainScoreModel('fixture', in_channels={'text'}, reply=lambda prompt: 'unparseable')
     stimuli = StimulusSet({'stimulus_id': ['a'], 'text': ['a']})
     session = stimulus_session(stimuli, ['behavior:choice'], TaskContext(response=Choice(['1', '2'])))
     model.participate(session)

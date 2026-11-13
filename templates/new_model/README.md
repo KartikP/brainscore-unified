@@ -26,5 +26,5 @@ For most standard models, the `auto_register` tool infers the wrapper, layers, a
 
 - `brainscore/models/clip_vit_b_32/`: vision + text VLM, behavioral readout.
 - `brainscore/models/vjepa_v1/`: native-temporal video (VideoWrapper, vendored backbone).
-- `brainscore/models/api_closed/`: output-only API model (`answer` and `supported_modalities`; no extraction wrapper).
+- `brainscore/models/api_closed/`: output-only API model (`answer` and `in_channels`; no extraction wrapper).
 - `brainscore/models/multimodal_av_vjepa_wav2vec2/`: two extraction wrappers with modality routing in their region selectors.

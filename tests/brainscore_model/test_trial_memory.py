@@ -33,7 +33,7 @@ def _history_lengths(model, protocol, stimuli=STIMULI, session=None):
 
 
 def _model(memory):
-    return BrainScoreModel('counts', supported_modalities={'text'}, memory=memory,
+    return BrainScoreModel('counts', in_channels={'text'}, memory=memory,
                            reply=lambda prompt: str(len(prompt.history)))
 
 
@@ -190,7 +190,7 @@ def _lesionable(handles):
         handles.append(handle)
         return PerturbationApplied(handle_id=handle, target=change.target,
                                    perturbation=change.perturbation, applied_at=0), lambda: None
-    return BrainScoreModel('lesionable', supported_modalities={'text'}, intervention=intervention)
+    return BrainScoreModel('lesionable', in_channels={'text'}, intervention=intervention)
 
 
 def test_a_benchmark_that_leaves_its_lesion_fails_and_one_that_undoes_it_passes():

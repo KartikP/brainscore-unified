@@ -77,7 +77,7 @@ def test_answer_gives_one_choice_for_each_stimulus():
     stimuli = StimulusSet({'sentence': ['first', 'second'], 'stimulus_id': ['a', 'b']})
     stimuli.identifier = 'answer-choices'
     task = TaskContext(task_type='label', instruction='choose', label_set=['yes', 'no'])
-    subject = BrainScoreModel(identifier='answer', supported_modalities={'text'}, answer=answer)
+    subject = BrainScoreModel(identifier='answer', in_channels={'text'}, answer=answer)
     output = behavioral_response(subject, stimuli, task)
     assert output['stimulus_id'].values.tolist() == ['a', 'b']
     assert output['raw_answer'].values.tolist() == ['yes', 'no']
@@ -116,14 +116,14 @@ def _text_task(**fields):
 
 
 def test_forced_generation_without_answer_names_answer_parameter():
-    subject = BrainScoreModel(identifier='no-answer', supported_modalities={'text'})
+    subject = BrainScoreModel(identifier='no-answer', in_channels={'text'})
     task = _text_task(instruction='choose', label_set=['yes', 'no'], prefer_path='generation')
     with pytest.raises(ValueError, match=r'generation needs answer='):
         subject.start_task(task)
 
 
 def test_unviable_behavioral_task_names_answer_parameter():
-    subject = BrainScoreModel(identifier='no-path', supported_modalities={'text'})
+    subject = BrainScoreModel(identifier='no-path', in_channels={'text'})
     with pytest.raises(ValueError, match='Paths tried') as error:
         subject.start_task(_text_task())
     assert 'generation needs answer=' in str(error.value)

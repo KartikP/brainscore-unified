@@ -77,7 +77,7 @@ class TestBrainScoreModelConstruction:
         )
         assert m.identifier == 'resnet-50'
         assert m.region_layer_map == {'V1': 'layer1', 'IT': 'layer4'}
-        assert m.supported_modalities == {'vision'}
+        assert m.in_channels == {'vision:image', 'control'}
 
     @staticmethod
     def _model(region_layer_map=None):
@@ -142,7 +142,7 @@ class TestBrainScoreModelConstruction:
                 'text': lambda stimuli, layers=None, **kw: None,
             },
         )
-        assert m.supported_modalities == {'vision', 'text'}
+        assert m.in_channels == {'vision:image', 'text', 'control'}
 
     def test_with_extractor(self):
         act_model = StubActivationsModel()
@@ -326,7 +326,7 @@ class TestBrainScoreModelDispatch:
             identifier='mm',
             model='torch_model',
             region_layer_map={'A1': LayerSelector('layer', modality='audio')},  # none active
-            supported_modalities={'text'},          # declared input, no extractor
+            in_channels={'text'},          # declared input, no extractor
             extractor={'audio': _LayerAwareAudio()},  # layer-aware -> extraction
         )
         stimuli = StubStimulusSet(columns=['sentence', 'audio_file_name'])
@@ -1178,9 +1178,9 @@ class TestBrainScoreModelColumnDetection:
             extractor=extractors,
         )
 
-    def test_video_model_reports_the_unified_vision_modality(self):
+    def test_video_model_declares_the_video_channel(self):
         m = self._make_model('video')
-        assert m.supported_modalities == {'vision'}
+        assert m.in_channels == {'vision:video', 'control'}
 
     def test_video_extractor_resolves_under_canonical_vision(self):
         # a video-keyed extractor records a video column, detected as 'vision'
@@ -1196,12 +1196,12 @@ class TestBrainScoreModelColumnDetection:
         assert canonical_modality('audio') == 'audio'
 
     def test_video_extractor_with_vision_region_map_constructs(self):
-        # a 'video' extractor with a region selector and required modality
-        # saying 'vision' must construct (video canonicalizes to vision)
+        # a 'video' extractor with a region selector saying 'vision' and a
+        # required video channel must construct (video canonicalizes to vision)
         m = BrainScoreModel(
             identifier='v', model=None,
             region_layer_map={'IT': LayerSelector('layer4', modality='vision')},
             extractor={'video': make_stub_extractor('out')},
-            required_modalities={'video'},
+            required_channels={'vision:video'},
         )
-        assert m.supported_modalities == {'vision'}
+        assert m.required_channels == {'vision:video'}

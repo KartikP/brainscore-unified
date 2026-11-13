@@ -194,7 +194,7 @@ def test_check_memory_probes_a_requested_region_with_a_frame_and_sizes_off_TR_co
     class _ImageOnlyModel(UnifiedModel):  # a typed subject: probed through participate
         identifier = 'img-only'
         region_layer_map = {'V1': 'early', 'IT': 'late'}  # IT is NOT first
-        supported_modalities = {'vision'}
+        in_channels = {'vision:image'}
         def start_recording(self, target, time_bins=None, recording_type=None):
             recorded['target'] = target
         def process(self, stimuli):

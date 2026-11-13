@@ -26,7 +26,7 @@ def _make_model(intervention=None):
         identifier='test-state-change',
         model=None,
         region_layer_map={},
-        supported_modalities={'vision'},
+        in_channels={'vision:image'},
         intervention=intervention,
     )
 

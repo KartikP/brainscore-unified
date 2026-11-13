@@ -82,10 +82,10 @@ def test_a_fused_video_extractor_gets_the_clip_column():
     assert fused.calls == [['sentence', 'video_path']]
 
 
-def test_required_modalities_must_match_the_declared_visual_form():
+def test_required_channels_must_match_the_declared_visual_form():
     def extractor(stimuli, layers, **kwargs):
         raise AssertionError('not called')
-    for key, required in (('vision', 'video'), ('video', 'vision')):
+    for key, required in (('vision', 'vision:video'), ('video', 'vision:image')):
         with pytest.raises(ValueError, match='vision:'):
-            BrainScoreModel('m', extractor={key: extractor}, required_modalities={required},
+            BrainScoreModel('m', extractor={key: extractor}, required_channels={required},
                             region_layer_map={'A': 'layers.3'})

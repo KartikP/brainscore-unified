@@ -336,7 +336,7 @@ def test_new_model_template_supports_public_recording_workflow(tmp_path):
     stimuli = StimulusSet({'stimulus_id': ['s0'], 'image_path': [str(image)]})
     stimuli.identifier = 'template-smoke'
     stimuli.stimulus_paths = {'s0': image}
-    assert subject.supported_modalities == {'vision'}
+    assert subject.in_channels == {'vision:image', 'control'}
     subject.start_recording('IT')
     result = subject.process(stimuli)
     assert result.sizes['presentation'] == 1 and result.sizes['neuroid'] > 0

@@ -31,7 +31,7 @@ class HumanHarness(UnifiedModel):
     """A ``Subject`` backed by a biological participant via pluggable I/O.
 
     :param identifier: a label for the participant or session.
-    :param available_modalities: input modalities the rig can present.
+    :param in_channels: input channels the rig can present (default images).
     :param region_layer_map: maps a brain region to a recording channel (an
         electrode-array id, an fMRI sequence). Mirrors a model's
         ``region_layer_map`` so benchmark code is byte-identical.
@@ -43,13 +43,13 @@ class HumanHarness(UnifiedModel):
     """
 
     def __init__(self, identifier: str,
-                 available_modalities: Optional[Set[str]] = None,
+                 in_channels: Optional[Set[str]] = None,
                  region_layer_map: Optional[Dict[str, str]] = None,
                  present_fn: Optional[Callable] = None,
                  record_fn: Optional[Callable] = None,
                  respond_fn: Optional[Callable] = None):
         self._identifier = identifier
-        self._available = set(available_modalities or {"vision"})
+        self._in_channels = set(in_channels or {"vision:image"})
         self._region_layer_map = dict(region_layer_map or {})
         self._present_fn = present_fn or _no_hardware
         self._record_fn = record_fn or _no_hardware
@@ -66,8 +66,8 @@ class HumanHarness(UnifiedModel):
         return self._region_layer_map
 
     @property
-    def supported_modalities(self) -> Set[str]:
-        return self._available
+    def in_channels(self) -> Set[str]:
+        return self._in_channels
 
     def start_recording(self, recording_target, time_bins=None, recording_type=None) -> None:
         self._recording_region = recording_target

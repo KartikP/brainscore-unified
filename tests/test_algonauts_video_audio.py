@@ -281,7 +281,7 @@ def _av_model(calls):
         identifier='fake-av', model=None, region_layer_map=_av_regions(),
         extractor={'video': _extractor('video_path', 1.0, VIDEO_BINS, calls),
                    'audio': _extractor('audio_path', 2.0, AUDIO_BINS, calls)},
-        required_modalities={'video', 'audio'})
+        required_channels={'vision:video', 'audio'})
 
 
 def _av_model_without_requirement(calls):

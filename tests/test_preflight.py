@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from brainscore_core.compatibility import CompatibilityError
-from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.memory import MemoryError
 from brainscore_core.contract import Subject
 
@@ -22,8 +21,8 @@ class _Subject(Subject):
     required_channels = frozenset()
     region_layer_map = {}
 
-    def __init__(self, modalities):
-        self.in_channels = modalities_to_input_channels(modalities)
+    def __init__(self, in_channels):
+        self.in_channels = frozenset(in_channels)
 
     def participate(self, session):
         raise AssertionError('the stand-in benchmark never runs a session')
@@ -39,8 +38,8 @@ class _LegacyBenchmark:
 class TestPreflightInScore:
     """Verify that brainscore.score calls compatibility and memory checks."""
 
-    def _make_model_and_benchmark(self, model_modalities, bench_required):
-        model = _Subject(model_modalities)
+    def _make_model_and_benchmark(self, model_in_channels, bench_required):
+        model = _Subject(model_in_channels)
 
         benchmark = MagicMock(spec=['identifier', 'required_modalities', '__call__'])
         benchmark.identifier = 'test-bench'
@@ -54,7 +53,7 @@ class TestPreflightInScore:
         import brainscore
 
         model, benchmark = self._make_model_and_benchmark(
-            model_modalities={'text'},
+            model_in_channels={'text'},
             bench_required={'vision'},
         )
         mock_load_model.return_value = model
@@ -70,7 +69,7 @@ class TestPreflightInScore:
         import brainscore
 
         model, benchmark = self._make_model_and_benchmark(
-            model_modalities={'vision'},
+            model_in_channels={'vision:image'},
             bench_required={'vision'},
         )
         model.out_channels = {'neural:IT'}
@@ -105,7 +104,7 @@ class TestPreflightInScore:
         )
 
         model, benchmark = self._make_model_and_benchmark(
-            model_modalities={'vision'},
+            model_in_channels={'vision:image'},
             bench_required={'vision'},
         )
         model.out_channels = {'behavior'}
@@ -150,7 +149,7 @@ class TestPreflightInScore:
         import brainscore
 
         model, benchmark = self._make_model_and_benchmark(
-            model_modalities={'vision'},
+            model_in_channels={'vision:image'},
             bench_required={'vision'},
         )
         benchmark.required_input_channels = {'text'}
@@ -170,7 +169,7 @@ class TestPreflightInScore:
         import brainscore
 
         model, benchmark = self._make_model_and_benchmark(
-            model_modalities={'vision'},
+            model_in_channels={'vision:image'},
             bench_required={'vision'},
         )
         score = MagicMock()
@@ -190,7 +189,7 @@ class TestPreflightInScore:
         import brainscore
 
         model, benchmark = self._make_model_and_benchmark(
-            model_modalities={'vision'},
+            model_in_channels={'vision:image'},
             bench_required={'vision'},
         )
         mock_load_model.return_value = model

@@ -20,8 +20,8 @@ from brainscore_core.streaming import StreamEvent
 
 
 def _text_subject(identifier, policy, **kwargs):
-    return BrainScoreModel(identifier, policy=policy, policy_inputs=('text',),
-                           policy_outputs=('behavior:text',), **kwargs)
+    return BrainScoreModel(identifier, policy=policy, policy_in_channels=('text',),
+                           policy_out_channels=('behavior:text',), **kwargs)
 
 
 # ── routing: A's answer becomes B's input ────────────────────────────
@@ -109,8 +109,8 @@ def test_a_subject_whose_session_ends_without_an_answer_stops_the_conversation()
 
 def test_an_answer_on_text_is_refused():
     """``text`` is an input; a subject answers on ``behavior:text``."""
-    agent = BrainScoreModel('old-form', policy=lambda row: {'text': 'hi'}, policy_inputs=('text',),
-                            policy_outputs=('text', 'behavior:text'))
+    agent = BrainScoreModel('old-form', policy=lambda row: {'text': 'hi'}, policy_in_channels=('text',),
+                            policy_out_channels=('text', 'behavior:text'))
     with pytest.raises(ValueError, match='not requested'):
         multi_agent_rollout([agent], DialogueMediator(), n_turns=1)
 

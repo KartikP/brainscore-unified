@@ -138,7 +138,7 @@ def test_audiovisual_tr_scores_one_stream_from_declarations(monkeypatch, tmp_pat
 # ── Old path vs participate on the SAME subject (Contract Rule 10.1) ──────
 #
 # The old code called start_recording + process, then temporal_bin on the frame
-# response, and routed on supported_modalities. The functions below are those
+# response, and routed on the declared inputs. The functions below are those
 # removed lines. Each benchmark runs once through participate and once with them
 # patched in, on the same BrainScoreModel; results must be identical.
 
@@ -189,8 +189,8 @@ def _old_record_frames_per_clip(subject, frames, region):
 
 
 def _old_takes_audiovisual(subject):
-    supports = getattr(subject, 'supported_modalities', set())
-    return ('video' in supports or 'vision' in supports) and 'audio' in supports
+    supports = set(subject.in_channels)
+    return bool(supports & {'vision:image', 'vision:video'}) and 'audio' in supports
 
 
 def _both(monkeypatch, run):

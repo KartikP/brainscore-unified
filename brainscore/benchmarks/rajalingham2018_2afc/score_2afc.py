@@ -101,7 +101,7 @@ def _answering_subject(identifier, choose: Callable[[Any], str]):
     """A subject whose ``answer`` part is a per-trial ``choose(row) -> 'LEFT'|'RIGHT'``."""
     from brainscore import BrainScoreModel
     return BrainScoreModel(
-        identifier, supported_modalities={'vision'},
+        identifier, in_channels={'vision:image'},
         answer=lambda stimulus_row, instruction, label_set: choose(stimulus_row))
 
 

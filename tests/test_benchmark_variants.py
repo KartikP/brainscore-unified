@@ -208,7 +208,7 @@ BUILT = {
         ['text'],
         ['neural:language_system']),
     'Yeatman2021-induced_dyslexia-image': (
-        'Yeatman2021-induced_dyslexia-vision', 1, 'none',
+        'Yeatman2021-induced_dyslexia-image', 1, 'none',
         ['instruction', 'lesion', 'vision:image'],
         ['behavior', 'neural:VWFA', 'perturbation']),
     'Yeatman2021-induced_dyslexia-text': (

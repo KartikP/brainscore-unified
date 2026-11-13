@@ -100,7 +100,7 @@ The [CLIP registration](../../brainscore/models/clip_vit_b_32/model.py) is a com
 A hosted model or any system that only returns answers has no extractor. Declare its input and give it the parts that answer: a `reply` for tasks with a response (choices, ratings, written answers) and, for older `task_type`/`label_set` tasks, an `answer`:
 
 ```python
-model = BrainScoreModel(identifier='my-api-model', supported_modalities={'text'},
+model = BrainScoreModel(identifier='my-api-model', in_channels={'text'},
                         reply=my_reply, answer=my_answer)
 ```
 

@@ -60,9 +60,9 @@ def reference(tmp_path, monkeypatch):
     return tmp_path, cli
 
 
-def make_subject(reply, modalities=('text',)):
+def make_subject(reply, in_channels=('text',)):
     """A normal model with a ``reply`` part: the common channels, no CogGym channel."""
-    return BrainScoreModel('fixture', supported_modalities=set(modalities), reply=reply)
+    return BrainScoreModel('fixture', in_channels=set(in_channels), reply=reply)
 
 
 def reply_with_trial(prompt):

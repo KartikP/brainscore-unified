@@ -161,7 +161,7 @@ def test_text_settings_reach_the_reply_part_and_extra_data_reaches_the_event():
     def reply(prompt):
         seen.append(prompt.response)
         return StreamEvent('behavior:text', 'written', None, {'reasoning': 'r'})
-    model = BrainScoreModel('text', supported_modalities={'text'}, reply=reply)
+    model = BrainScoreModel('text', in_channels={'text'}, reply=reply)
     session = _run(model, ['behavior:text'], TaskContext(instruction='Say.', response=Text(max_tokens=9, seed=1)))
     assert seen == [Text(max_tokens=9, seed=1)] * 3
     (event,) = session.emitted
@@ -169,7 +169,7 @@ def test_text_settings_reach_the_reply_part_and_extra_data_reaches_the_event():
 
 
 def test_the_one_chooser_names_every_path_it_tried():
-    model = BrainScoreModel('none', supported_modalities={'text'})
+    model = BrainScoreModel('none', in_channels={'text'})
     with pytest.raises(ValueError, match='Paths tried: generation needs answer=.*readout needs'):
         model.start_task(TaskContext(**LEGACY))
     with pytest.raises(ValueError, match='cannot give a Choice answer. Paths tried'):

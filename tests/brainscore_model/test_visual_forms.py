@@ -44,7 +44,7 @@ def test_a_subject_with_both_forms_takes_each_stimulus_natively():
 
 
 def test_models_without_an_extractor_declare_the_inputs_they_accept():
-    model = BrainScoreModel('judge', supported_modalities={'vision'},
+    model = BrainScoreModel('judge', in_channels={'vision:image'},
                             answer=lambda stimulus_row, instruction, label_set: label_set[0])
     assert 'vision:image' in model.in_channels
 
@@ -139,7 +139,7 @@ def test_a_multi_image_trial_is_recorded_per_image():
     (('vision', 'video'), {'vision:image', 'vision:video'}, set())])
 def test_declared_inputs_are_exactly_the_forms_taken(keys, forms, required):
     model = BrainScoreModel('m', extractor={key: _extractor(1.0) for key in keys},
-                            required_modalities={'video'} if required else None)
+                            required_channels={'vision:video'} if required else None)
     assert {c for c in model.in_channels if c.startswith('vision')} == forms
     assert 'vision' not in model.in_channels
     assert model.required_channels == required

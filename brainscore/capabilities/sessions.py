@@ -161,17 +161,17 @@ class MotorSessions(Capability):
         return subject._policy is not None
 
     def declared_input_channels(self, subject):
-        return set(subject._policy_inputs)
+        return set(subject._policy_in_channels)
 
     def declared_output_channels(self, subject):
-        return set(subject._policy_outputs)
+        return set(subject._policy_out_channels)
 
     def supports_session(self, subject, channels) -> bool:
         channels = set(channels)
         recorded = ({f'neural:{region}' for region in subject.region_layer_map
                      if records_while_answering(subject, region)}
                     if _NEURAL.enabled_for(subject) else set())
-        outputs = set(subject._policy_outputs)
+        outputs = set(subject._policy_out_channels)
         return bool(channels & outputs) and channels <= outputs | recorded
 
     def participate(self, subject, session) -> None:

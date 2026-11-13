@@ -81,7 +81,7 @@ def test_two_afc_model_runs_through_participate():
         {'stimulus_id': 'trial_00000R', 'image_path': 'm1', 'image_id': 'img0',
          'sample_obj': 'wrench', 'dist_obj': 'rhino', 'left_obj': 'rhino', 'right_obj': 'wrench'},
     ])
-    model = BrainScoreModel('left', supported_modalities={'vision'},
+    model = BrainScoreModel('left', in_channels={'vision:image'},
                             answer=lambda stimulus_row, instruction, label_set: 'LEFT')
     assert set(model.in_channels) == {'vision:image', 'instruction', 'control'}
     choices = run_trials(model, stim, INSTRUCTION_DIRECT)

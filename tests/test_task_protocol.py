@@ -319,7 +319,7 @@ def test_experiment_saves_every_kind_of_answer(tmp_path):
             return 'long\n4' if len(sentence) > 1 else 'short\n5'
         return f"It reads {sentence}."
 
-    model = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=reply)
+    model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=reply)
     choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long'], confidence=Scale(1, 5, 1)))
     result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, choice),
                         tools=[RecordBehavior()], output_dir=tmp_path / 'choice').run()
@@ -344,7 +344,7 @@ def test_extra_data_of_a_reply_goes_into_the_meta_of_the_answer_event():
             return 'long'   # the text alone: no extra data for this trial
         return StreamEvent('behavior:choice', 'short', None, {'reasoning': f'{sentence} is short'})
 
-    model = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=reply)
+    model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=reply)
     session = stimulus_session(STIMULI, ['behavior:choice'], TaskContext(response=Choice(['short', 'long'])))
     model.participate(session)
     event, = [e for e in session.emitted if e.channel == 'behavior:choice']
@@ -410,7 +410,7 @@ def test_chat_parts_replays_earlier_trials_as_turns():
 
 def test_a_memory_task_rejects_a_subject_without_memory(tmp_path):
     from brainscore_core.responses import Choice
-    forgets = BrainScoreModel(identifier='forgets', supported_modalities={'text'}, reply=lambda p: 'no')
+    forgets = BrainScoreModel(identifier='forgets', in_channels={'text'}, reply=lambda p: 'no')
     protocol = TaskProtocol(STIMULI, TaskContext(response=Choice(['yes', 'no'])),
                             required_traits={'memory:trial_history'})
     with pytest.raises(CompatibilityError, match='memory:trial_history'):
@@ -499,9 +499,9 @@ def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
 ])
 def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, expected):
     calls = []
-    subject = BrainScoreModel(identifier='reader', supported_modalities={'text', 'vision'}
+    subject = BrainScoreModel(identifier='reader', in_channels={'text', 'vision:image'}
                              if mistake == 'required' else {'text'},
-                             required_modalities={'vision'} if mistake == 'required' else set(),
+                             required_channels={'vision:image'} if mistake == 'required' else set(),
                              reply=lambda prompt: calls.append('inference') or 'yes')
     subject.reset = lambda: calls.append('reset')
     stimuli = (StimulusSet({'stimulus_id': ['x'], 'image_path': ['unused.png']})
@@ -630,7 +630,7 @@ def test_options_that_differ_for_each_row_reach_each_part():
         return label_set[0]
 
     raw = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
-    scorer = BrainScoreModel(identifier='scorer', supported_modalities={'text'}, likelihood=likelihood)
+    scorer = BrainScoreModel(identifier='scorer', in_channels={'text'}, likelihood=likelihood)
     session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:probabilities'], raw)
     scorer.participate(session)
     scores = session.collect('behavior:probabilities')
@@ -644,7 +644,7 @@ def test_options_that_differ_for_each_row_reach_each_part():
     seen.clear()
     phrased = TaskContext(response=Choice(labels='options'))
     for part in ({'reply': reply}, {'answer': answer}):
-        model = BrainScoreModel(identifier='other', supported_modalities={'text'}, **part)
+        model = BrainScoreModel(identifier='other', in_channels={'text'}, **part)
         session = stimulus_session(_options_stimuli(), ['behavior:choice'], phrased)
         model.participate(session)
         chosen = session.collect('behavior:choice')
@@ -659,7 +659,7 @@ def test_raw_scores_need_a_likelihood_part():
     from brainscore_core.compatibility import CompatibilityError
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
-    model = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=lambda p: 'sat')
+    model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=lambda p: 'sat')
     task = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
     with pytest.raises(CompatibilityError, match='likelihood'):
         model.start_task(task)
@@ -699,7 +699,7 @@ def test_an_answer_part_cannot_serve_a_raw_text_choice():
     def answer(stimulus_row, instruction, label_set):
         calls.append(1)
         return label_set[0]
-    model = BrainScoreModel(identifier='answerer', supported_modalities={'text'}, answer=answer)
+    model = BrainScoreModel(identifier='answerer', in_channels={'text'}, answer=answer)
     task = TaskContext(response=Choice(labels='options', raw_text=True))
     session = stimulus_session(_options_stimuli(), ['behavior:choice'], task)
     with pytest.raises(ValueError, match='cannot give a Choice answer'):

@@ -68,7 +68,7 @@ def _stim():
 
 def _subject(choose):
     """A BrainScoreModel whose answer part is the chooser, as the driver builds it."""
-    return BrainScoreModel('stub', supported_modalities={'vision'},
+    return BrainScoreModel('stub', in_channels={'vision:image'},
                            answer=lambda stimulus_row, instruction, label_set: choose(stimulus_row))
 
 

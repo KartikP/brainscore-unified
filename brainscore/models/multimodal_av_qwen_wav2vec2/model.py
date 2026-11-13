@@ -80,6 +80,6 @@ def get_model(identifier: str) -> BrainScoreModel:
             'vision': vision_wrapper,
             'audio': audio_wrapper,
         },
-        required_modalities={'vision', 'audio'},
+        required_channels={'vision:image', 'audio'},
         visual_degrees=8,
     )

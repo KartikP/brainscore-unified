@@ -73,7 +73,7 @@ class InducedDyslexia(BenchmarkBase):
     # One lesion experiment is one pass; the reading trials inside it are independent.
     trial_memory = 'none'
     # Suffix of the identifier for each input channel.
-    _CHANNEL_SUFFIX = {'vision:image': 'vision', 'text': 'text'}
+    _CHANNEL_SUFFIX = {'vision:image': 'image', 'text': 'text'}
 
     def __init__(self, localizer_region: str = 'VWFA', n_units: int = 500,
                  control_seed: int = 0, channels: Sequence[str] = ('vision:image',),

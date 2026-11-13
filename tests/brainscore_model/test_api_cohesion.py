@@ -186,10 +186,10 @@ def test_external_selector_routing_does_not_require_a_dataclass():
 def test_generation_inputs_need_no_placeholder_extractors():
     from brainscore_core.contract import TaskContext
     model = BrainScoreModel(
-        identifier='output-only', supported_modalities={'text'},
+        identifier='output-only', in_channels={'text'},
         answer=lambda stimulus_row, instruction, label_set: label_set[0],
     )
-    assert model.supported_modalities == {'text'}
+    assert model.in_channels == {'text', 'instruction', 'control'}
     assert model.region_layer_map == {}
     from brainscore_core.streaming_helpers import behavioral_response
     stimuli = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']})
@@ -209,7 +209,7 @@ def test_behavioral_path_choice_is_explicit_or_warns(monkeypatch, prefer_path):
     import warnings
     from brainscore_core.contract import TaskContext
     model = BrainScoreModel(
-        identifier='dual-path', supported_modalities={'text'},
+        identifier='dual-path', in_channels={'text'},
         answer=lambda **kwargs: 'yes', behavioral_readout_layer='layer',
         extractor={'text': Extractor()},
     )
@@ -233,7 +233,7 @@ def test_named_readout_layer_without_extractor_is_not_a_second_path():
     import warnings
     from brainscore_core.contract import TaskContext
     model = BrainScoreModel(
-        identifier='answer-only', supported_modalities={'text'},
+        identifier='answer-only', in_channels={'text'},
         answer=lambda **kwargs: 'yes', behavioral_readout_layer='features',
     )
     with warnings.catch_warnings():

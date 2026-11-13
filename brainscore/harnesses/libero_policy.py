@@ -18,7 +18,7 @@ class LiberoChunkPolicy:
     and gripper command, in the checkpoint's convention. They are not seven
     joint velocities. Controller scaling remains in the reference environment.
     A row carries the prepared request on ``observation`` and the prompt on
-    ``instruction``; construct the model with ``policy_inputs=LiberoChunkPolicy.inputs``.
+    ``instruction``; construct the model with ``policy_in_channels=LiberoChunkPolicy.inputs``.
     """
 
     inputs = ('observation', 'instruction')

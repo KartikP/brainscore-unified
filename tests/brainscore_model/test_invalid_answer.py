@@ -9,7 +9,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 def _answers(*replies):
     lookup = dict(zip(['a', 'b'], replies))
-    model = BrainScoreModel(identifier='answer', supported_modalities={'text'},
+    model = BrainScoreModel(identifier='answer', in_channels={'text'},
                             answer=lambda stimulus_row, instruction, label_set:
                             lookup[stimulus_row.stimulus_id])
     task = TaskContext(task_type='probabilities', instruction='choose', label_set=['cat', 'dog'])

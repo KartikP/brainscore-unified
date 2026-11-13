@@ -166,7 +166,7 @@ def test_a_trial_is_shown_in_the_declared_order():
 
 def test_an_unordered_multi_part_stimulus_fails_before_any_reply():
     calls = []
-    model = BrainScoreModel(identifier='m', supported_modalities={'text', 'video'},
+    model = BrainScoreModel(identifier='m', in_channels={'text', 'vision:video'},
                             reply=lambda prompt: calls.append(prompt) or 'left')
     both = StimulusSet({'stimulus_id': ['a'], 'sentence': ['x'], 'video_path': ['v.mp4']})
     both.identifier = 'both-parts'

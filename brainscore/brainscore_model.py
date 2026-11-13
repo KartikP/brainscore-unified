@@ -28,6 +28,21 @@ from brainscore_core.streaming_helpers import (
 )
 
 
+# The extractor key that declares each input channel (``vision`` declares
+# ``vision:image``, ``video`` declares ``vision:video``).
+_KEY_FOR_CHANNEL = {channel: key for key, channel in MODALITY_TO_INPUT_CHANNEL.items()}
+
+
+def _channels(channels) -> Set[str]:
+    """``channels`` as a set; a modality name in place of its channel is refused."""
+    channels = set(channels or ())
+    for name in channels:
+        channel = MODALITY_TO_INPUT_CHANNEL.get(name, name)
+        if channel != name:
+            raise ValueError(f"{name!r} is a modality name, not a channel; use {channel!r}.")
+    return channels
+
+
 # Models that are taking part in a session now: id -> the token of the
 # invocation that reserved it. A model's recording, task and change state
 # belong to the one session it takes part in, so a second session on the same
@@ -86,12 +101,12 @@ class BrainScoreModel(UnifiedModel):
         reply: Optional[Callable] = None,
         likelihood: Optional[Callable] = None,
         policy: Optional[Callable] = None,
-        policy_inputs: Iterable[str] = ('observation',),
-        policy_outputs: Iterable[str] = ('motor',),
+        policy_in_channels: Iterable[str] = ('observation',),
+        policy_out_channels: Iterable[str] = ('motor',),
         intervention: Optional[Callable] = None,
         memory: Optional[str] = None,
-        supported_modalities: Optional[Set[str]] = None,
-        required_modalities: Optional[Set[str]] = None,
+        in_channels: Optional[Iterable[str]] = None,
+        required_channels: Optional[Iterable[str]] = None,
         visual_degrees: int = 8,
         capability_config: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -140,10 +155,10 @@ class BrainScoreModel(UnifiedModel):
             payload for one step; the policy needs no Brain-Score import. A value
             may be a ``StreamEvent`` to attach meta (telemetry). A policy that keeps
             episode state defines ``reset()``; it runs when an episode begins.
-        :param policy_inputs: the input channels the policy reads (default
+        :param policy_in_channels: the input channels the policy reads (default
             ``('observation',)``); a session sends it only these.
-        :param policy_outputs: the output channels the policy answers on (default
-            ``('motor',)``); a benchmark may request any of them.
+        :param policy_out_channels: the output channels the policy answers on
+            (default ``('motor',)``); a benchmark may request any of them.
         :param intervention: ``StateChange -> (PerturbationApplied, cleanup)``;
             applies an intervention and returns its undo function. It declares
             the ``lesion``, ``stimulation`` and ``pharmacological`` inputs and
@@ -161,10 +176,12 @@ class BrainScoreModel(UnifiedModel):
             repetition or condition. ``None`` (default): the model keeps no
             history, so every trial starts empty under either trial memory.
             ``reset()`` also clears the task setup and the interventions.
-        :param supported_modalities: inputs accepted without an extractor, for
-            example by a closed-weight ``answer`` function. Extractor mappings
-            already declare their inputs; do not repeat them here.
-        :param required_modalities: input modalities the model cannot run without.
+        :param in_channels: input channels taken without an extractor, for
+            example by a closed-weight ``answer`` function (``'text'``,
+            ``'vision:image'``). Extractor mappings already declare their
+            inputs; do not repeat them here.
+        :param required_channels: input channels the model cannot run without;
+            each one is declared by an extractor or by ``in_channels``.
         :param visual_degrees: the visual field legacy vision benchmarks place
             stimuli in; ignored by other benchmarks.
         :param capability_config: settings for added capabilities, keyed by the
@@ -179,8 +196,10 @@ class BrainScoreModel(UnifiedModel):
         self._fused_extractors = []     # (input types, extractor) registered under a tuple
         self._extractors = normalize_extractors(self, extractor)
         # The declared input keys, raw: a ``video`` key stays ``video`` and
-        # declares ``vision:video``.
-        self._input_keys: Set[str] = set(self._extractors) | set(supported_modalities or ())
+        # declares ``vision:video``. A channel given in ``in_channels`` is
+        # stored as the key that declares it.
+        self._input_keys: Set[str] = set(self._extractors) | {
+            _KEY_FOR_CHANNEL.get(channel, channel) for channel in _channels(in_channels)}
         self._install_region_layer_map(region_layer_map or {})
         self._visual_degrees = visual_degrees
         self._capability_config = dict(capability_config or {})
@@ -188,8 +207,8 @@ class BrainScoreModel(UnifiedModel):
         self._answer, self._reply, self._likelihood = answer, reply, likelihood
         self._memory = memory
         self._policy = policy
-        self._policy_inputs = frozenset(policy_inputs)
-        self._policy_outputs = frozenset(policy_outputs)
+        self._policy_in_channels = frozenset(policy_in_channels)
+        self._policy_out_channels = frozenset(policy_out_channels)
         self._intervention = intervention
 
         self._recorder = Recorder(self)
@@ -199,18 +218,15 @@ class BrainScoreModel(UnifiedModel):
         self._capability_state: Dict[str, Any] = {}
         self._capability_setup_done: Set[str] = set()
 
-        required = ({canonical_modality(m) for m in required_modalities}
-                    if required_modalities else set())
-        required_channels = self._input_channels(required_modalities or ())
+        required = _channels(required_channels)
         declared_channels = self._input_channels(self._input_keys)
-        if not required_channels <= declared_channels:
+        if not required <= declared_channels:
             raise ValueError(
-                f"required_modalities need the input channels {sorted(required_channels)}, "
-                f"but the subject declares {sorted(declared_channels)}. A subject cannot "
-                f"require an input it does not declare."
+                f"required_channels {sorted(required)} are not all declared: the subject "
+                f"declares {sorted(declared_channels)}. A subject cannot require an input "
+                f"it does not declare."
             )
-        self._required_modalities = required
-        self._required_keys = set(required_modalities or ())   # raw: 'video' stays 'video'
+        self._required_channels = frozenset(required)
 
     @property
     def capability_config(self):
@@ -244,7 +260,7 @@ class BrainScoreModel(UnifiedModel):
 
     @property
     def required_channels(self):
-        return self._input_channels(self._required_keys)
+        return set(self._required_channels)
 
     @staticmethod
     def _input_channels(modalities):
@@ -316,8 +332,8 @@ class BrainScoreModel(UnifiedModel):
                      for region, value in dict(region_layer_map).items()}
         for region, selector in selectors.items():
             modality = getattr(selector, 'modality', None)
-            if (modality is not None
-                    and canonical_modality(modality) not in self.supported_modalities):
+            if (modality is not None and canonical_modality(modality)
+                    not in {canonical_modality(key) for key in self._input_keys}):
                 raise ValueError(f"Region {region!r} references modalities with no extractor: {modality!r}")
         if len({id(extractor) for extractor in self._extractors.values()}) > 1:
             unrouted = sorted(r for r, sel in selectors.items() if sel.modality is None)
@@ -356,15 +372,6 @@ class BrainScoreModel(UnifiedModel):
     @property
     def region_layer_selectors(self) -> Dict[str, "UnitSelector"]:
         return dict(self._region_layer_selectors)
-
-    @property
-    def supported_modalities(self) -> Set[str]:
-        # a ``video`` key reports as ``vision`` (temporal vision)
-        return {canonical_modality(m) for m in self._input_keys}
-
-    @property
-    def required_modalities(self) -> Set[str]:
-        return set(self._required_modalities)
 
     def process(self, input_event: InputEvent,
                 multi_modality: bool = False) -> OutputEvent:

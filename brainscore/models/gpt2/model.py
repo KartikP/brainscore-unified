@@ -56,7 +56,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         extractor={
             'text': text_wrapper,
         },
-        required_modalities={'text'},
+        required_channels={'text'},
         # GPT-2 is not instruction-tuned; no answer part.
         # Behavioral tasks route through the readout path (logistic on features).
         # Left at the last block while the recording site moved to h.9: this

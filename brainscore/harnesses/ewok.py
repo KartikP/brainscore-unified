@@ -8,7 +8,7 @@ class EWoKProvider:
 
     ``native_model`` is an instance of ``ewok.evaluate.model.Model`` from the
     pinned paper environment, or an implementation of its ``score`` method.
-    ``BrainScoreModel(likelihood=EWoKProvider(native), supported_modalities={'text'})``
+    ``BrainScoreModel(likelihood=EWoKProvider(native), in_channels={'text'})``
     runs EWoK's log-probability mode with EWoK's own tokenization and scoring:
     for a trial whose text is a context, each option's score is
     ``native_model.score([option], [context])``, called once per trial for all

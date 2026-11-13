@@ -55,7 +55,7 @@ def demo(out):
             return {'motor': network(state).numpy()}
 
     model = BrainScoreModel('synthetic-robot-policy', model=network, policy=policy,
-                            policy_inputs=('vision:image', 'proprioception', 'instruction'),
+                            policy_in_channels=('vision:image', 'proprioception', 'instruction'),
                             intervention=build_pytorch_ablation_fn(network))
     spec = ActionSpec(tuple(f'component_{i}' for i in range(7)), ('normalized',)*7,
                       'synthetic_fixture', 50, (-1.,)*7, (1.,)*7)

@@ -47,9 +47,9 @@ def _make_model(policy=None):
         identifier='test-embodied-policy',
         model=None,
         region_layer_map={},
-        supported_modalities={'vision'},
+        in_channels={'vision:image'},
         policy=policy,
-        policy_inputs=('vision:image', 'proprioception', 'instruction'),
+        policy_in_channels=('vision:image', 'proprioception', 'instruction'),
     )
 
 

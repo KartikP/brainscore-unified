@@ -162,12 +162,14 @@ class ModelProfile:
                 out[key] = layer
         return out
 
-    def required_modalities(self) -> set:
-        """Single-modality models hard-require their one modality; multimodal
-        models leave it soft (empty) so they degrade to any subset."""
+    def required_channels(self) -> set:
+        """Single-tower models require the input channel of their one tower;
+        multimodal models require none, so they run on any subset."""
         if len(self.recommendations) != 1:
             return set()
-        return {_base_modality(self.recommendations[0].modality)}
+        from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL
+        key = _base_modality(self.recommendations[0].modality)
+        return {MODALITY_TO_INPUT_CHANNEL.get(key, key)}
 
     def summary(self) -> str:
         lines = [f"Model: {self.identifier}",
@@ -250,8 +252,8 @@ def _meta_signal(meta: Dict[str, Any]) -> str:
 
 
 def _base_modality(modality: str) -> str:
-    """Collapse the wrapper-level modality to the dispatch modality used by
-    ``BrainScoreModel`` extractor keys and ``required_modalities``."""
+    """Collapse the wrapper-level modality to the ``BrainScoreModel``
+    extractor key."""
     return {'vision_flat': 'vision', 'text_causal': 'text',
             'text_encoder': 'text'}.get(modality, modality)
 
@@ -580,8 +582,6 @@ def auto_register(model: Any,
         regs = tuple(regions) if regions else rec.regions
         region_layer_map = space_layers(rec.block_layers, regs)
 
-    base_modality = _base_modality(rec.modality)
-
     if rec.modality in ('vision',):
         if preprocessing is None:
             raise ValueError(
@@ -596,7 +596,7 @@ def auto_register(model: Any,
             region_layer_map=region_layer_map,
             extractor={'vision': vision_wrapper},
             visual_degrees=visual_degrees,
-            required_modalities={base_modality},
+            required_channels=profile.required_channels(),
             **brainscore_model_kwargs,
         )
 
@@ -612,7 +612,7 @@ def auto_register(model: Any,
             model=model,
             region_layer_map=region_layer_map,
             extractor={'text': text_wrapper},
-            required_modalities={base_modality},
+            required_channels=profile.required_channels(),
             **brainscore_model_kwargs,
         )
 

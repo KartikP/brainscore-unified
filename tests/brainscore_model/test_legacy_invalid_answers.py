@@ -11,7 +11,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 def _look_at(replies):
     ids = [f's{i}' for i in range(len(replies))]
     lookup = dict(zip(ids, replies))
-    model = BrainScoreModel(identifier='answers', supported_modalities={'text'},
+    model = BrainScoreModel(identifier='answers', in_channels={'text'},
                             answer=lambda stimulus_row, instruction, label_set:
                             lookup[stimulus_row.stimulus_id])
     # A legacy behavioral benchmark reaches the model through the facade.

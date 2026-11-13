@@ -46,10 +46,10 @@ class ChanceBaseline(UnifiedModel):
         return {}
 
     @property
-    def supported_modalities(self) -> Set[str]:
-        # Accept any modality — benchmarks that check modality will
-        # see that we support everything by design.
-        return {'vision', 'text', 'audio', 'video'}
+    def in_channels(self) -> Set[str]:
+        # Accept any input, so a benchmark that checks inputs sees that every
+        # one is taken by design.
+        return {'vision:image', 'vision:video', 'text', 'audio'}
 
     @property
     def out_channels(self) -> Set[str]:

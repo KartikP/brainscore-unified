@@ -23,7 +23,7 @@ def _benchmark():
 def test_invalid_answers_count_as_wrong():
     # Always answering 'real' when unsure used to earn credit on every real word.
     replies = {'w1': 'real', 'w2': 'unsure', 'p1': 'pseudo', 'p2': 'unsure'}
-    model = BrainScoreModel(identifier='answers', supported_modalities={'text'},
+    model = BrainScoreModel(identifier='answers', in_channels={'text'},
                             answer=lambda stimulus_row, instruction, label_set:
                             replies[stimulus_row.stimulus_id])
     with pytest.warns(UserWarning, match='invalid'):

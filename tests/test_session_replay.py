@@ -105,7 +105,7 @@ def test_behavior_session_collection_and_replay_preserve_task(tmp_path):
     subject = BrainScoreModel(
         identifier='answers',
         model=None,
-        supported_modalities={'text'},
+        in_channels={'text'},
         region_layer_map={},
         answer=generate,
     )

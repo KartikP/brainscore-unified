@@ -187,7 +187,7 @@ def _make_model(intervention=None, region_layer_map=None):
     return BrainScoreModel(
         identifier='test-unit-selection', model=None,
         region_layer_map=region_layer_map or {},
-        supported_modalities={'vision'},
+        in_channels={'vision:image'},
         intervention=intervention,
     )
 

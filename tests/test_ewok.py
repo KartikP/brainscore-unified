@@ -40,7 +40,7 @@ def prepared(native, tmp_path):
 
 def likelihood_subject(likelihood):
     """A normal model with a ``likelihood`` part: it runs both modes."""
-    return BrainScoreModel('fixture', supported_modalities={'text'}, likelihood=likelihood)
+    return BrainScoreModel('fixture', in_channels={'text'}, likelihood=likelihood)
 
 
 def scenario(prompt):
@@ -55,7 +55,7 @@ def native_choice(prompt):
 
 def chooser(reply=native_choice):
     """A normal model with a ``reply`` part: the common channels, no EWoK channel."""
-    return BrainScoreModel('fixture', supported_modalities={'text'}, reply=reply)
+    return BrainScoreModel('fixture', in_channels={'text'}, reply=reply)
 
 
 def test_data_and_benchmark_registrations():
@@ -280,14 +280,14 @@ def test_a_likelihood_part_also_runs_choice(prepared, tmp_path, parts={'likeliho
         return {label: (0. if label==native_choice(prompt) else -1.) for label in candidates}
     def answer(stimulus_row, instruction, label_set):
         return '1' if ' A ' in stimulus_row['text'].split('# TEST EXAMPLE')[1].split('## Scenario')[1] else '2'
-    model=BrainScoreModel('fixture', supported_modalities={'text'},
+    model=BrainScoreModel('fixture', in_channels={'text'},
                           **({'likelihood':likelihood} if 'likelihood' in parts else {'answer':answer}))
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
     assert float(b(model))==1
 
 
 def test_an_answer_part_cannot_run_the_raw_text_choice(prepared, tmp_path):
-    model=BrainScoreModel('fixture', supported_modalities={'text'}, answer=lambda row, instruction, labels: '1')
+    model=BrainScoreModel('fixture', in_channels={'text'}, answer=lambda row, instruction, labels: '1')
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
     with pytest.raises(ValueError,match='cannot give a Choice answer'):
         b(model)
@@ -602,7 +602,7 @@ def test_a_subject_without_a_likelihood_part_is_na(prepared):
     from brainscore_core.compatibility import CompatibilityError
     from brainscore_core.score_status import score_or_na
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
-    for subject in (chooser(), BrainScoreModel('answers', supported_modalities={'text'},
+    for subject in (chooser(), BrainScoreModel('answers', in_channels={'text'},
                                                  answer=lambda stimulus_row, instruction, label_set: '1')):
         # score() runs the one pre-flight; the benchmark checks nothing itself.
         with pytest.raises(CompatibilityError):
@@ -712,7 +712,7 @@ def _stateful_intervened_subject():
         return PerturbationApplied(handle_id='lesion', target=change.target,
                                    perturbation=change.perturbation, applied_at=0), cleanup
 
-    model = BrainScoreModel('stateful-fixture', supported_modalities={'text'},
+    model = BrainScoreModel('stateful-fixture', in_channels={'text'},
                             likelihood=likelihood, intervention=intervention)
     return model, state
 

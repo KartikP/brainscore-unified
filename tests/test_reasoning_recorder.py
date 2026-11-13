@@ -198,7 +198,7 @@ def test_reasoning_from_a_reply_part_reaches_the_reasoning_record(tmp_path):
 
     procedure = SessionProtocol('reasoning', task_session, conditions=['normal'], repetitions=[0],
                                 required_input_channels=['text'], requested_output_channels=['behavior:text'])
-    subject = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=reply)
+    subject = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=reply)
     result = run(tmp_path, subject, procedure=procedure)
     record, = RunRecord(result.directory / 'reasoning').outputs()
     assert record['reasoning_available'] is True

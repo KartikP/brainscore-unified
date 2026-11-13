@@ -186,7 +186,7 @@ def qualify(args, model_id: str, report: dict[str, Any]) -> None:
         )['text']
 
     # Provenance: the model path and its SHA-256 are in qualification.json.
-    subject = BrainScoreModel(model_id, supported_modalities={'text'}, reply=reply)
+    subject = BrainScoreModel(model_id, in_channels={'text'}, reply=reply)
 
     # Choose half the intermediate MLP units in one layer, not half the model.
     layer = 'model.text_model.layers.0.mlp.up_proj'

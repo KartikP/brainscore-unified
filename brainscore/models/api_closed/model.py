@@ -10,37 +10,37 @@ encoding. Scoring requires the provider's API key in the environment
 from brainscore import BrainScoreModel
 from brainscore.model_helpers.api_behavioral import build_api_generation_fn, build_api_reply
 
-# identifier -> (provider, model id, declared modalities). Pin dated snapshots
+# identifier -> (provider, model id, declared input channels). Pin dated snapshots
 # where the provider offers them (OpenAI) so behavioral scores reproduce; Claude
 # uses the canonical alias + the response cache for reproducibility.
 REGISTRY = {
     'claude-opus-behavioral': dict(
         provider='anthropic', model='claude-opus-4-8',
-        modalities=('vision', 'text')),
+        in_channels=('vision:image', 'text')),
     'claude-haiku-behavioral': dict(
         provider='anthropic', model='claude-haiku-4-5',
-        modalities=('vision', 'text')),
+        in_channels=('vision:image', 'text')),
     'gpt-4o-behavioral': dict(
         provider='openai', model='gpt-4o-2024-08-06',
-        modalities=('vision', 'text')),
-    # DeepSeek's API is text-only (no vision) — register text modality only, so
+        in_channels=('vision:image', 'text')),
+    # DeepSeek's API is text-only (no vision) — declare the text channel only, so
     # the pre-flight check routes only text behavioral benchmarks here.
     # deepseek-chat = V3, deepseek-reasoner = R1. Needs DEEPSEEK_API_KEY.
     'deepseek-chat-behavioral': dict(
         provider='deepseek', model='deepseek-chat',
-        modalities=('text',)),
+        in_channels=('text',)),
     'deepseek-r1-behavioral': dict(
         provider='deepseek', model='deepseek-reasoner',
-        modalities=('text',)),
+        in_channels=('text',)),
     # OpenRouter gateway — any model in https://openrouter.ai/models registers
-    # by adding a line here with its namespaced id. Declare modalities to match
-    # the underlying model (vision only if it's multimodal). Needs OPENROUTER_API_KEY.
+    # by adding a line here with its namespaced id. Declare input channels to match
+    # the underlying model (images only if it's multimodal). Needs OPENROUTER_API_KEY.
     'llama-3.3-70b-behavioral': dict(
         provider='openrouter', model='meta-llama/llama-3.3-70b-instruct',
-        modalities=('text',)),
+        in_channels=('text',)),
     'or-claude-sonnet-behavioral': dict(
         provider='openrouter', model='anthropic/claude-3.5-sonnet',
-        modalities=('vision', 'text')),
+        in_channels=('vision:image', 'text')),
 }
 
 # Cache lives on disk so re-scoring a benchmark doesn't re-bill the API and the
@@ -64,7 +64,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     )
     return BrainScoreModel(
         identifier=identifier,
-        supported_modalities=set(cfg['modalities']),
+        in_channels=set(cfg['in_channels']),
         answer=answer,
         reply=build_api_reply(cfg['provider'], cfg['model'],
                               cache_dir=f"{_CACHE_ROOT}/{identifier}"),

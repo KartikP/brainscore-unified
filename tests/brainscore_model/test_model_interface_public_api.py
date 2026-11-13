@@ -52,10 +52,10 @@ def test_extractor_is_read_only_normalized_mapping():
 
 def test_reading_the_extractor_mapping_keeps_declarations():
     model, _ = _model_and_extractors()
-    before = (model.in_channels, model.out_channels, model.supported_modalities)
+    before = (model.in_channels, model.out_channels, model.required_channels)
     model.extractor  # reading the mapping must not change declarations
-    assert (model.in_channels, model.out_channels, model.supported_modalities) == before
-    assert model.supported_modalities == {'vision', 'text'}
+    assert (model.in_channels, model.out_channels, model.required_channels) == before
+    assert {'vision:image', 'text'} <= model.in_channels
 
 
 @pytest.mark.parametrize('extractors, columns, expected', [

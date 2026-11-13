@@ -108,7 +108,7 @@ def test_a_policy_without_an_extractor_is_not_applicable_to_neural_outputs():
 
 def test_a_policy_may_answer_on_a_non_motor_channel_with_no_new_class(speech_channel):
     model = BrainScoreModel('talker', policy=lambda row: {'speech': f"x={row['observation']['x'][0]}"},
-                            policy_outputs=('speech',))
+                            policy_out_channels=('speech',))
     env = CountingEnvironment(2)
     session = Session(EnvironmentSource(env, action_channel='speech'), ('speech',))
     model.participate(session)
@@ -117,7 +117,7 @@ def test_a_policy_may_answer_on_a_non_motor_channel_with_no_new_class(speech_cha
 
 
 def test_run_environment_helper_takes_the_outputs(speech_channel):
-    model = BrainScoreModel('talker', policy=lambda row: {'speech': 'hi'}, policy_outputs=('speech',))
+    model = BrainScoreModel('talker', policy=lambda row: {'speech': 'hi'}, policy_out_channels=('speech',))
     assert run_environment(model, CountingEnvironment(2), action_channel='speech') == ['hi', 'hi']
 
 

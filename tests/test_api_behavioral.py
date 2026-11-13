@@ -284,7 +284,7 @@ class TestRegistration:
         # benchmark doesn't route to it at the compatibility check.
         from brainscore.models.api_closed.model import get_model
         m = get_model('deepseek-r1-behavioral')
-        assert m.supported_modalities == {'text'}
+        assert 'text' in m.in_channels and 'vision:image' not in m.in_channels
         assert callable(m._answer)
 
     def test_deepseek_provider_is_openai_compatible(self):
@@ -331,15 +331,15 @@ class TestRegistration:
         assert 'llama-3.3-70b-behavioral' in brainscore.model_registry
         # an OpenRouter model that IS multimodal can declare vision
         m = get_model('or-claude-sonnet-behavioral')
-        assert m.supported_modalities == {'vision', 'text'}
+        assert {'vision:image', 'text'} <= m.in_channels
         # a text-only OpenRouter model declares text only
-        assert get_model('llama-3.3-70b-behavioral').supported_modalities == {'text'}
+        assert 'vision:image' not in get_model('llama-3.3-70b-behavioral').in_channels
 
     def test_get_model_wiring_no_api_call(self):
         # Building the model must NOT require an API key — the closure is lazy.
         from brainscore.models.api_closed.model import get_model
         m = get_model('claude-opus-behavioral')
-        assert m.supported_modalities == {'vision', 'text'}
+        assert {'vision:image', 'text'} <= m.in_channels
         assert callable(m._answer)
         assert dict(m.extractor) == {}
 
@@ -527,7 +527,7 @@ class TestApiReply:
         model = get_model('claude-opus-behavioral')
         assert callable(model._answer) and callable(model._reply)
         assert 'behavior:text' in model.out_channels
-        assert model.supported_modalities == {'vision', 'text'}
+        assert {'vision:image', 'text'} <= model.in_channels
 
     def test_an_api_model_answers_text_and_plain_choice_tasks_through_its_reply_part(
             self, tmp_path, monkeypatch):
@@ -582,7 +582,7 @@ class TestApiReply:
             analyze=lambda *a, **k: ([], [], []))))
         monkeypatch.setattr(coggym, '_check_checkout', lambda checkout: None)
         provider, calls = _recording_provider('{"answer": 3}')
-        model = BrainScoreModel('api-fixture', supported_modalities={'text'},
+        model = BrainScoreModel('api-fixture', in_channels={'text'},
                                 reply=build_api_reply(provider, 'm-1'))
         runner = coggym.CogGymRunner(tmp_path, model='m-1')
         Experiment(subject=model, protocol=runner.protocol(reset=lambda repetition: None),

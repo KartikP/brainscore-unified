@@ -24,8 +24,8 @@ pytestmark = pytest.mark.unit
 
 
 _MEDIA = [
-    ('Aboody2025Inferring/exp1', ['image'], ('text', 'vision'), {'vision:image'}),
-    ('Fu2025Hierarchical/exp1', ['image', 'video'], ('text', 'vision', 'video'),
+    ('Aboody2025Inferring/exp1', ['image'], ('text', 'vision:image'), {'vision:image'}),
+    ('Fu2025Hierarchical/exp1', ['image', 'video'], ('text', 'vision:image', 'vision:video'),
      {'vision:image', 'vision:video'}),
 ]
 
@@ -46,14 +46,14 @@ def _media_benchmark(reference, tmp_path, experiment, content):
     return root, clip, benchmark
 
 
-@pytest.mark.parametrize('experiment,content,modalities,media', _MEDIA)
+@pytest.mark.parametrize('experiment,content,in_channels,media', _MEDIA)
 def test_subject_taking_every_input_has_a_full_match(
-    reference, tmp_path, experiment, content, modalities, media,
+    reference, tmp_path, experiment, content, in_channels, media,
 ):
     """Every part reaches the reply, in CogGym's order; the match is full."""
     root, clip, benchmark = _media_benchmark(reference, tmp_path, experiment, content)
     prompts = []
-    subject = make_subject(lambda prompt: prompts.append(prompt) or '50', modalities)
+    subject = make_subject(lambda prompt: prompts.append(prompt) or '50', in_channels)
     match = check_channel_compatibility(subject, benchmark)
     assert match.kind == 'full' and not match.dropped_inputs
     runner = CogGymRunner(
@@ -72,9 +72,9 @@ def test_subject_taking_every_input_has_a_full_match(
         assert shown['video_path'] == str(clip)
 
 
-@pytest.mark.parametrize('experiment,content,modalities,media', _MEDIA)
+@pytest.mark.parametrize('experiment,content,in_channels,media', _MEDIA)
 def test_text_only_subject_runs_with_the_media_dropped_and_is_stamped(
-    reference, scored_reference, tmp_path, experiment, content, modalities, media,
+    reference, scored_reference, tmp_path, experiment, content, in_channels, media,
 ):
     """A subject without the media form gets no event on it and a prompt without it."""
     root, clip, benchmark = _media_benchmark(reference, tmp_path, experiment, content)
@@ -132,9 +132,9 @@ class _Recorder(Subject):
         pass
 
 
-@pytest.mark.parametrize('experiment,content,modalities,media', _MEDIA)
+@pytest.mark.parametrize('experiment,content,in_channels,media', _MEDIA)
 def test_subject_with_no_shared_input_or_no_text_answer_is_still_na(
-    reference, tmp_path, experiment, content, modalities, media,
+    reference, tmp_path, experiment, content, in_channels, media,
 ):
     """Only an incompatible pair is N/A, before any model call."""
     root, clip, benchmark = _media_benchmark(reference, tmp_path, experiment, content)
@@ -165,7 +165,7 @@ def test_coggym_parts_keep_their_order_within_one_trial(reference, tmp_path):
                image_part(other), image_part(), {'type': 'text', 'text': 'third'}]
     cli.build_messages = lambda *args: ('instructions', [{'role': 'user', 'content': content}])
     prompts = []
-    subject = make_subject(lambda prompt: prompts.append(prompt) or 'ok', ('text', 'vision'))
+    subject = make_subject(lambda prompt: prompts.append(prompt) or 'ok', ('text', 'vision:image'))
     runner = CogGymRunner(root, experiment='Aboody2025Inferring/exp1', model='fixture',
                           modalities=['text', 'image'], trial_ids=['trial-0'])
     Experiment(subject=subject, protocol=runner.protocol(reset=lambda repetition: None),
@@ -256,7 +256,7 @@ def test_ewok_subject_without_the_text_input_rejected_without_calls(prepared, mo
     """A subject that cannot take the text is N/A before any part runs."""
     from brainscore import BrainScoreModel
     calls = []
-    subject = BrainScoreModel('pictures-only', supported_modalities={'vision'},
+    subject = BrainScoreModel('pictures-only', in_channels={'vision:image'},
                                 reply=lambda prompt: calls.append(prompt) or '1',
                                 likelihood=lambda prompt, options: calls.append(prompt) or {})
     benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)

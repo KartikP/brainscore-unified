@@ -29,7 +29,7 @@ class Net(torch.nn.Module):
 
 
 def _subject(net):
-    return BrainScoreModel('net', model=net, supported_modalities={'vision'},
+    return BrainScoreModel('net', model=net, in_channels={'vision:image'},
                            intervention=build_pytorch_ablation_fn(net))
 
 

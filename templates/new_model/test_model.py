@@ -49,11 +49,11 @@ def test_registered_and_loads():
     assert model.identifier == 'your-model'
 
 
-def test_supported_modalities():
+def test_in_channels():
     import brainscore
     model = brainscore.load_model('your-model')
-    # supported_modalities is derived from the extractor mapping.
-    assert 'vision' in model.supported_modalities   # TODO: match your extractor mapping
+    # in_channels is derived from the extractor mapping.
+    assert 'vision:image' in model.in_channels   # TODO: match your extractor mapping
 
 
 def test_start_recording_accepts_known_region():

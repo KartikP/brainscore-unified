@@ -41,7 +41,7 @@ def test_declared_subject_records_neural_outputs_with_separate_provenance():
 
 def test_text_task_and_reset_delegate_without_discovering_model_abilities():
     prompts = []
-    raw = BrainScoreModel('reply-fixture', supported_modalities={'text'},
+    raw = BrainScoreModel('reply-fixture', in_channels={'text'},
                          reply=lambda prompt: prompts.append(prompt) or 'Yes')
     subject = ProvenanceSubject(raw, {'dtype': 'bfloat16'})
     stimuli = StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}])

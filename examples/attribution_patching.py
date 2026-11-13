@@ -89,7 +89,7 @@ def run(model_path: Path, output_dir: Path, *, reference: str, comparison: str,
         return tokenizer.decode([int(logits.argmax())])
 
     # Checkpoint, precision and device: str(model_path.resolve()), float32, CPU.
-    subject = BrainScoreModel('gpt2-patch-check', supported_modalities={'text'}, reply=reply)
+    subject = BrainScoreModel('gpt2-patch-check', in_channels={'text'}, reply=reply)
     conditions = {'baseline': None, 'selected': selections}
     for seed in range(3):
         rng = np.random.default_rng(seed)

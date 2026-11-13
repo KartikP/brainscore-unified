@@ -14,7 +14,7 @@ the shared state (a conversation, a gridworld, a market book, ...).
 A subject answers on ``behavior:text`` (the words it generates). The mediator
 gives that text to the next subject on ``text`` (the words it reads). A subject
 is any ``Subject``; a network becomes one as ``BrainScoreModel(identifier,
-policy=..., policy_inputs=('text',), policy_outputs=('behavior:text',))``. The
+policy=..., policy_in_channels=('text',), policy_out_channels=('behavior:text',))``. The
 caller owns ``reset()`` between conversations, as for ``run_environment``.
 
 One session for each subject for the whole conversation means one ``begin``:
@@ -133,7 +133,7 @@ def multi_agent_rollout(subjects: Union[Sequence, Dict[str, Any]],
         missing = sorted(set(outputs) - set(subject.out_channels))
         if missing:
             raise ValueError(f'Subject {subject.identifier!r} does not declare {missing} in out_channels. '
-                             f"A policy answers there with policy_outputs=('{action_channel}',).")
+                             f"A policy answers there with policy_out_channels=('{action_channel}',).")
 
     seats = [_Seat(action_channel) for _ in subjects]
     sessions = [environment_session(seat, outputs, action_channel=action_channel) for seat in seats]

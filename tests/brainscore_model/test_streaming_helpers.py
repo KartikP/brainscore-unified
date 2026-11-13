@@ -118,7 +118,7 @@ def _native_state_change_model(intervention, model_cls=BrainScoreModel):
         identifier="native-state-change",
         model=None,
         region_layer_map={},
-        supported_modalities={"vision"},
+        in_channels={"vision:image"},
         intervention=intervention,
     )
 
@@ -128,9 +128,9 @@ def _native_environment_model(policy, model_cls=BrainScoreModel):
         identifier="native-environment",
         model=None,
         region_layer_map={},
-        supported_modalities={"vision"},
+        in_channels={"vision:image"},
         policy=policy,
-        policy_inputs=("vision:image", "proprioception", "instruction"),
+        policy_in_channels=("vision:image", "proprioception", "instruction"),
     )
 
 
