@@ -181,6 +181,14 @@ LANA_ATLAS = register(LocalAsset(
     used_by=['LeBel2023-UTS03-encoding-languagemask'],
 ))
 
+# Friends benchmarks: every registered identifier that reads the prepared files.
+_ALGONAUTS_IDENTIFIERS = (
+    [f'Algonauts2025-{split}-sub{participant:02d}'
+     for split in ('friends', 'friends-s7', 'ood')
+     for participant in (1, 2, 3, 5)]
+    + ['Algonauts2025-friends-sub01-video',
+       'Algonauts2025-friends-sub01-video-audio'])
+
 ALGONAUTS_ROOT = register(LocalAsset(
     name='algonauts2025-root',
     env_var='BRAINSCORE_ALGONAUTS_ROOT',
@@ -194,7 +202,23 @@ ALGONAUTS_ROOT = register(LocalAsset(
            'current DataLad; install it from conda-forge instead.',
     prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
             '--algonauts-root <root> --subjects 1',
-    used_by=['Algonauts2025-friends-sub01'],
+    used_by=_ALGONAUTS_IDENTIFIERS,
+))
+
+ALGONAUTS_PREPARED = register(LocalAsset(
+    name='algonauts2025-prepared',
+    env_var='BRAINSCORE_ALGONAUTS_PREPARED',
+    default_path='.brainio/algonauts2025',
+    kind='neural data',
+    why_local='The converter builds these files from the provider files above; '
+              'Brain-Score does not host them.',
+    source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
+    obtain='Nothing to download. Run the converter on the dataset above; it '
+           'writes the per-TR assemblies and stimulus tables that the '
+           'benchmarks read.',
+    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
+            '--algonauts-root <root> --output-root <this folder> --subjects 1',
+    used_by=_ALGONAUTS_IDENTIFIERS,
 ))
 
 

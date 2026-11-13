@@ -1,5 +1,9 @@
 # Prepare Algonauts2025 data locally
 
+Two folders are involved. `BRAINSCORE_ALGONAUTS_ROOT` names the native competition
+files (default `~/algonauts_2025`). `BRAINSCORE_ALGONAUTS_PREPARED` names the converted
+files that the benchmarks read (default `~/.brainio/algonauts2025`).
+
 Obtain the competition files through the
 [authors' DataLad instructions](https://github.com/courtois-neuromod/algonauts_2025.competitors).
 Follow their access terms for the movies, transcripts and fMRI separately.
@@ -18,7 +22,7 @@ python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly \
   --subjects 1 \
   --splits friends
 
-export ALGONAUTS_DATA_ROOT=/path/to/new-build
+export BRAINSCORE_ALGONAUTS_PREPARED=/path/to/new-build
 ```
 
 Movie paths in the CSV point to your native files; keep those files available.

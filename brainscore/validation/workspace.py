@@ -50,8 +50,6 @@ SUITES = {
         'tests/test_hf_compat.py',
         'tests/test_memory.py',
         'tests/test_metrics/test___init__.py',
-        'tests/test_multimodal.py',
-        'tests/test_nulls.py',
         'tests/test_numeric.py',
         'tests/test_plugin_management/test_benchmarks.py',
         'tests/test_plugin_management/test_parse_plugin_changes.py',

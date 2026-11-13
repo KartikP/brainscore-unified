@@ -9,10 +9,10 @@ Features are grouped by how much you need to know to use them, and by how settle
 | `Subject`, `participate`, `reset` | [Core concepts 1](../02_core_concepts.md#1-subject), [Lesson 1](../../notebooks/lessons/01_your_first_subject.ipynb) |
 | Channels, `StreamEvent`, the channel catalog | [Core concepts 2-3](../02_core_concepts.md#2-channel) |
 | `Session`, `stimulus_session`, `EnvironmentSource`, control events, trial memory | [Core concepts 4](../02_core_concepts.md#4-session) |
-| `StimulusSet`, `MultimodalStimulusSet` (stimuli with several input types) | [Write a benchmark](../guides/write_a_benchmark.md) |
+| `StimulusSet` (stimuli with a column for each input channel) | [Write a benchmark](../guides/write_a_benchmark.md) |
 | `Benchmark`, `Score`, compatibility and N/A | [Lesson 2](../../notebooks/lessons/02_your_first_benchmark.ipynb) |
 | `BrainScoreModel` with `extractor` and `region_layer_map` | [Wrap your model](../guides/wrap_your_model.md) |
-| `VisionWrapper`, `TextWrapper`, `AudioWrapper` | [Class map](../03_class_map.md#extractor-one-per-input-type) |
+| `PytorchWrapper`, `VLMVisionWrapper`, `VideoWrapper`, `TextWrapper`, `AudioWrapper` | [Class map](../03_class_map.md#extractor-one-per-input-type) |
 | Adapters for classic vision and language models; classic benchmarks on any subject | [Existing models](../guides/existing_models.md) |
 | `load_model`, `load_benchmark`, `score`, the unified registry | [Score a model](../guides/score_a_model.md) |
 | Image-processor pinning (`pin_image_processor`) so preprocessing does not drift between library versions | `brainscore_core.hf_compat` |
@@ -40,7 +40,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 
 | Feature | Notes |
 | --- | --- |
-| `VisionWrapper(kind='vlm')`, `kind='temporal'` and other large-model wrappers | Tested on specific registrations (Qwen-VL, BLIP-2, V-JEPA, VideoMAE). |
+| `VLMVisionWrapper`, `VideoWrapper` and other large-model wrappers | Tested on specific registrations (Qwen-VL, BLIP-2, V-JEPA, VideoMAE). |
 | Custom channels, tools and capabilities (`register_channel`, `register_tool`, `register_capability`) | [Extend UMI](../guides/extend.md). Long-term structure still under discussion. |
 | `register_input_handler` | Superseded by capabilities; emits a deprecation warning. |
 | Robotics harnesses: DROID, LIBERO, OpenPI instrumentation | See [archive](../archive/) for qualification records. |

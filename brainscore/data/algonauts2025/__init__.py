@@ -1,10 +1,10 @@
 """Data plugin for locally prepared Algonauts2025 / CNeuroMod assets."""
 
-import os
 from pathlib import Path
 from typing import Optional
 
 from brainscore import data_registry, stimulus_set_registry
+from brainscore.data import local
 
 
 PARTICIPANTS = (1, 2, 3, 5)
@@ -12,9 +12,8 @@ SPLITS = ('friends', 'friends_s7', 'ood')
 
 
 def default_data_root() -> Path:
-    return Path(
-        os.environ.get('ALGONAUTS_DATA_ROOT', '~/.brainio/algonauts2025')
-    ).expanduser()
+    """The folder of prepared files: the local asset ``algonauts2025-prepared``."""
+    return local.ALGONAUTS_PREPARED.resolved()
 
 
 def _split_identifier(split: str) -> str:

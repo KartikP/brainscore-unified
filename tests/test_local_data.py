@@ -92,3 +92,46 @@ class TestManifest:
     def test_names_are_stable_identifiers(self):
         for name in local.REGISTRY:
             assert name == name.lower() and ' ' not in name
+
+
+class TestFriendsLocation:
+    """The Friends benchmarks read two folders; each has one BRAINSCORE_ variable."""
+
+    def test_two_assets_with_prefixed_variables(self):
+        assert local.ALGONAUTS_ROOT.env_var == 'BRAINSCORE_ALGONAUTS_ROOT'
+        assert local.ALGONAUTS_PREPARED.env_var == 'BRAINSCORE_ALGONAUTS_PREPARED'
+
+    def test_data_code_reads_the_prepared_asset(self, tmp_path, monkeypatch):
+        from brainscore.data.algonauts2025 import default_data_root
+        monkeypatch.delenv('BRAINSCORE_ALGONAUTS_PREPARED', raising=False)
+        assert default_data_root() == pathlib.Path.home() / '.brainio/algonauts2025'
+        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', str(tmp_path))
+        assert default_data_root() == tmp_path
+
+    def test_unprefixed_variable_is_ignored(self, tmp_path, monkeypatch):
+        from brainscore.data.algonauts2025 import default_data_root
+        monkeypatch.delenv('BRAINSCORE_ALGONAUTS_PREPARED', raising=False)
+        monkeypatch.setenv('ALGONAUTS_DATA_ROOT', str(tmp_path))
+        assert default_data_root() != tmp_path
+
+    @pytest.mark.parametrize('identifier', [
+        'Algonauts2025-friends-sub01', 'Algonauts2025-friends-sub05',
+        'Algonauts2025-friends-s7-sub02', 'Algonauts2025-ood-sub03',
+        'Algonauts2025-friends-sub01-video',
+        'Algonauts2025-friends-sub01-video-audio'])
+    def test_precheck_covers_friends_identifiers(self, identifier, tmp_path, monkeypatch):
+        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_ROOT', str(tmp_path / 'native'))
+        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', str(tmp_path / 'prepared'))
+        with pytest.raises(local.LocalDataMissing):
+            local.check_benchmark_assets(identifier)
+        (tmp_path / 'native').mkdir()
+        with pytest.raises(local.LocalDataMissing, match='algonauts2025-prepared'):
+            local.check_benchmark_assets(identifier)
+        (tmp_path / 'prepared').mkdir()
+        local.check_benchmark_assets(identifier)
+
+    def test_registered_friends_identifiers_are_all_covered(self):
+        import brainscore.benchmarks.algonauts2025  # noqa: F401
+        from brainscore import benchmark_registry
+        registered = {i for i in benchmark_registry if i.startswith('Algonauts2025-')}
+        assert registered <= set(local.ALGONAUTS_PREPARED.used_by)
