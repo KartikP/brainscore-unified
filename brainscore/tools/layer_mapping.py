@@ -25,16 +25,9 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
+from brainscore_core.metrics import per_unit_pearson
+
 from brainscore import CompositeSelector
-
-
-def _per_voxel_pearson(Y_true: np.ndarray, Y_pred: np.ndarray) -> np.ndarray:
-    Yc = Y_true - Y_true.mean(0, keepdims=True)
-    Pc = Y_pred - Y_pred.mean(0, keepdims=True)
-    num = (Yc * Pc).sum(0)
-    den = np.sqrt((Yc ** 2).sum(0) * (Pc ** 2).sum(0))
-    with np.errstate(divide='ignore', invalid='ignore'):
-        return np.where(den > 0, num / den, np.nan)
 
 
 def per_voxel_train_test(X_tr, Y_tr, X_te, Y_te,
@@ -61,7 +54,7 @@ def per_voxel_train_test(X_tr, Y_tr, X_te, Y_te,
         from sklearn.linear_model import RidgeCV
         reg = RidgeCV(alphas=np.asarray(alpha, np.float64),
                       alpha_per_target=True).fit(X_tr, Y_tr)
-    return _per_voxel_pearson(Y_te, reg.predict(X_te))
+    return per_unit_pearson(Y_te, reg.predict(X_te))
 
 
 def compute_rdm(X: np.ndarray, metric: str = 'correlation') -> np.ndarray:
@@ -151,18 +144,6 @@ def normalize_by_ceiling(r: np.ndarray, ceiling: np.ndarray,
     ok = c > min_ceiling
     out[ok] = r[ok] / c[ok]
     return out
-
-
-def per_voxel_cv_ridge(X, Y, alpha: float = 1.0, n_splits: int = 5,
-                       seed: int = 0) -> np.ndarray:
-    """K-fold ridge per voxel (no scaler) — kept as a utility for whole-set CV."""
-    from sklearn.model_selection import KFold
-    from sklearn.linear_model import Ridge
-    X = np.asarray(X, np.float64); Y = np.asarray(Y, np.float64)
-    preds = np.full_like(Y, np.nan)
-    for tr, te in KFold(n_splits=n_splits, shuffle=True, random_state=seed).split(np.arange(X.shape[0])):
-        preds[te] = Ridge(alpha=alpha).fit(X[tr], Y[tr]).predict(X[te])
-    return _per_voxel_pearson(Y, preds)
 
 
 @dataclasses.dataclass

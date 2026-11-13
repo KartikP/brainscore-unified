@@ -22,15 +22,7 @@ from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.hf_compat import pin_image_processor
-
-
-REGION_LAYER_MAP = {
-    'V1': 'encoder.layers.1',
-    'V2': 'encoder.layers.3',
-    'V4': 'encoder.layers.6',
-    'IT': 'encoder.layers.10',
-    'language_system': 'encoder.layers.10',
-}
+from brainscore.models.clip_vit_b_32.model import REGION_LAYER_MAP
 
 
 def _load_preprocess_images(image_filepaths, processor, image_size=224):

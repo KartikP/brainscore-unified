@@ -18,9 +18,10 @@ on every cold load). The CLIP and V-JEPA combos already cover all
 import functools
 
 import torch
-from PIL import Image
 
 from brainscore import BrainScoreModel, LayerSelector
+from brainscore.models._multimodal_av_shared import (
+    _load_preprocess_images, build_audio_wrapper)
 from brainscore_core.hf_compat import pin_image_processor
 
 
@@ -41,17 +42,6 @@ REGION_MODALITY_MAP = {
 }
 
 
-def _load_preprocess_images(image_filepaths, processor, image_size=224):
-    images = []
-    for path in image_filepaths:
-        with Image.open(path) as img:
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            images.append(img.copy())
-    processed = processor(images=images, return_tensors='pt')
-    return processed['pixel_values'].numpy()
-
-
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'blip2-wav2vec2'
     from brainscore.models._downloads import hf_preflight
@@ -61,7 +51,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     from brainscore_vision.model_helpers.activations.pca import LayerPCA
     from brainscore_vision.model_helpers.activations.pytorch import (
         PytorchWrapper)
-    from brainscore.models._multimodal_av_shared import build_audio_wrapper
+    from brainscore.model_helpers._device import select_device
 
     # Pin the image-processor implementation (see brainscore_core.hf_compat).
     blip_processor = AutoProcessor.from_pretrained(
@@ -73,24 +63,19 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     preprocessing = functools.partial(
         _load_preprocess_images, processor=blip_processor, image_size=224)
+    # The activations carry the reduced backbone's name; the cache key is the combo's.
     vision_wrapper = PytorchWrapper(
-        identifier=f'{identifier}-vision',
+        identifier='blip2-vision-pca1000',
+        backbone_id=f'{identifier}-vision',
         model=blip_model.vision_model,
         preprocessing=preprocessing,
     )
     vision_wrapper.image_size = 224
     LayerPCA.hook(vision_wrapper, n_components=1000)
-    vision_wrapper._extractor.identifier = 'blip2-vision-pca1000'
 
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)
 
-    if torch.cuda.is_available():
-        target_device = torch.device('cuda')
-    elif torch.backends.mps.is_available():
-        target_device = torch.device('mps')
-    else:
-        target_device = torch.device('cpu')
-    blip_model = blip_model.to(target_device)
+    blip_model = blip_model.to(select_device())
 
     return BrainScoreModel(
         identifier=identifier,

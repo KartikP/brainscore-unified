@@ -19,12 +19,11 @@ Four signal/null permutations registered:
 
 import functools
 
-import numpy as np
 import torch
-from PIL import Image
 
 from brainscore import BrainScoreModel, LayerSelector
-
+from brainscore.models._multimodal_av_shared import (
+    _load_preprocess_images, build_audio_wrapper)
 
 from ._ids import SUPPORTED_IDENTIFIERS
 from brainscore_core.hf_compat import pin_image_processor
@@ -49,17 +48,6 @@ REGION_MODALITY_MAP = {
 }
 
 
-def _load_preprocess_images(image_filepaths, processor, image_size=224):
-    images = []
-    for path in image_filepaths:
-        with Image.open(path) as img:
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            images.append(img.copy())
-    processed = processor(images=images, return_tensors='pt')
-    return processed['pixel_values'].numpy()
-
-
 def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
     """CLIP vision_model wrapped via PytorchWrapper."""
     from transformers import CLIPModel, CLIPProcessor
@@ -78,15 +66,14 @@ def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
 
     preprocessing = functools.partial(
         _load_preprocess_images, processor=processor, image_size=224)
-    backbone_id = ('random-clip-vit-b-32' if random_init
-                   else 'clip-vit-b-32')
+    # The activations carry the backbone's name; the cache key is the combo's.
     vision_wrapper = PytorchWrapper(
-        identifier=f'{combo_identifier}-vision',
+        identifier='random-clip-vit-b-32' if random_init else 'clip-vit-b-32',
+        backbone_id=f'{combo_identifier}-vision',
         model=clip_model.vision_model,
         preprocessing=preprocessing,
     )
     vision_wrapper.image_size = 224
-    vision_wrapper._extractor.identifier = backbone_id
     return preprocessing, vision_wrapper
 
 
@@ -97,8 +84,6 @@ def get_model(identifier: str) -> BrainScoreModel:
             f"expected one of {SUPPORTED_IDENTIFIERS}")
     random_vision = identifier.startswith('random-clip')
     random_audio = 'random-wav2vec2' in identifier
-
-    from brainscore.models._multimodal_av_shared import build_audio_wrapper
 
     preprocessing, vision_wrapper = _build_vision_wrapper(
         identifier, random_init=random_vision)

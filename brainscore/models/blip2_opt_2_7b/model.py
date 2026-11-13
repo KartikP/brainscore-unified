@@ -162,13 +162,8 @@ def get_model(identifier: str) -> BrainScoreModel:
     # qformer/language_projection can end up on a different device than
     # vision_model and language_model. Force-align to one device for
     # end-to-end generate() to work.
-    if torch.cuda.is_available():
-        target_device = torch.device('cuda')
-    elif torch.backends.mps.is_available():
-        target_device = torch.device('mps')
-    else:
-        target_device = torch.device('cpu')
-    blip_model = blip_model.to(target_device)
+    from brainscore.model_helpers._device import select_device
+    blip_model = blip_model.to(select_device())
 
     # Generation path (BLIP-2's OPT decoder does instruction-style completion).
     answer = _make_answer(blip_model, blip_processor)

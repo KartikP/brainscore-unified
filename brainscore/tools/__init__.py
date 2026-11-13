@@ -24,7 +24,7 @@ _LAYER_MAPPING = (
     'explore_layer_mapping', 'score_approaches', 'score_budget_curve',
     'effective_dimensionality', 'compute_rdm', 'rsa_score', 'rsa_layer_sweep',
     'normalize_by_ceiling', 'sweep_model', 'extract_features_by_layer',
-    'per_voxel_cv_ridge', 'per_voxel_train_test', 'LayerMappingResult',
+    'per_voxel_train_test', 'LayerMappingResult',
 )
 # Each lazily loaded name and the module that defines it.
 _MODULE_OF = {**dict.fromkeys(_LAYER_MAPPING, '.layer_mapping'), 'attach_tools': '._scope'}
