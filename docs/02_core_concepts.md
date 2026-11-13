@@ -136,7 +136,9 @@ Writing `participate` by hand works for anything. For neural networks, `BrainSco
 | `extractor={'vision': ..., 'text': ...}` | Prepares inputs, runs the network, returns the activity of requested layers. One per input type. | input channels |
 | `region_layer_map={'IT': 'layer4'}` | Says which layer stands in for which brain region. | `neural:<region>` outputs |
 | `behavioral_readout_layer` | Fits a classifier on one layer to produce choices. | `behavior` |
-| `answer` | Your function that returns an answer for a stimulus, such as a generated reply. | `behavior` |
+| `answer` | Your function that phrases a prompt for one stimulus and returns a label. Answers an older `task_type`/`label_set` task and a plain choice. | `behavior`, `behavior:choice` |
+| `reply` | Your function that returns the model's raw reply to one trial's prompt; the task parses it. | `behavior:choice`, `behavior:rating`, `behavior:confidence`, `behavior:text` |
+| `likelihood` | Your function that scores each option as the reply, without generating. | `behavior:choice`, `behavior:probabilities` |
 | `policy` | Your function that maps an environment observation to an action. | `observation` in, `motor` out |
 | `intervention` | Your function that applies an intervention and returns how to undo it. Send changes with `apply_state_change` or the `Intervene` tool. | `lesion`, `stimulation`, `pharmacological` in; `perturbation` out |
 

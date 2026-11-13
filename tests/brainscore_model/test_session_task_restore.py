@@ -79,7 +79,7 @@ def test_the_callers_task_survives_a_behavior_session():
     behavioral_response(model, _images(), _task())
     assert model._behavioral.task is prior
     assert model._behavioral.readout_classifier is classifier
-    output = model.process(_images())
+    output = model._behavioral.predict_probabilities(_images())
     assert sorted(output['choice'].values) == ['bird', 'fish']
 
 
@@ -107,7 +107,7 @@ def test_the_same_task_in_a_later_session_keeps_its_fitted_readout():
     np.testing.assert_array_equal(first.values, second.values)
     model.start_task(task)                           # the caller sends the same task
     assert _fits(extractor) == 1
-    assert isinstance(model.process(_images()), BehavioralAssembly)
+    assert isinstance(model._behavioral.predict_probabilities(_images()), BehavioralAssembly)
 
 
 def test_a_new_task_in_a_later_session_fits_again():
@@ -149,7 +149,7 @@ def test_a_failed_task_setup_never_leaves_a_half_built_readout():
         model.start_task(one_class)                  # the same failure, outside a session
     model.start_task(_task(labels=('cat', 'dog')))   # another task, configured directly
     model.start_task(a)
-    assert sorted(model.process(_images())['choice'].values) == ['bird', 'fish']
+    assert sorted(model._behavioral.predict_probabilities(_images())['choice'].values) == ['bird', 'fish']
 
 
 def test_a_neutral_session_keeps_the_remembered_readout():
@@ -163,7 +163,7 @@ def test_a_neutral_session_keeps_the_remembered_readout():
     neural_response(model, _images(), ['neural:IT'])
     behavioral_response(model, _images(), b)
     assert _fits(extractor) == 2
-    assert sorted(model.process(_images())['choice'].values) == ['bird', 'fish']
+    assert sorted(model._behavioral.predict_probabilities(_images())['choice'].values) == ['bird', 'fish']
 
 
 def test_a_reset_inside_a_session_stands(monkeypatch):

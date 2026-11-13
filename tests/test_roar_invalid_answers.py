@@ -33,9 +33,9 @@ def test_invalid_answers_count_as_wrong():
     assert score.attrs['accuracy_real'] == pytest.approx(.5)
 
 
-def test_session_reading_matches_start_task_then_process():
+def test_session_reading_matches_the_configured_readout():
     """ROAR reads through behavioral_response; on a BrainScoreModel the answers
-    are the ones start_task + process gave before the change."""
+    are the ones the readout configured by start_task gives."""
     import numpy as np
     from brainscore_core.model_interface import TaskContext
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -70,7 +70,7 @@ def test_session_reading_matches_start_task_then_process():
                                   fitting_stimuli=benchmark._train_stimuli,
                                   instruction='Is this a real word or a pseudo word?',
                                   prefer_path='readout'))
-    expected = legacy.process(benchmark._test_stimuli)
+    expected = legacy._behavioral.predict_probabilities(benchmark._test_stimuli)
     choices = list(expected['choice'].values)
     expected_correct = [choices[int(i)] == label for i, label in
                         zip(expected.values.argmax(axis=1), benchmark._test_stimuli['image_label'])]

@@ -322,7 +322,7 @@ def test_readout_reads_the_readout_layer(registration, tmp_path):
     via_session = behavioral_response(model, scoring, task)
     _call_logs()
     model.start_task(task)
-    direct = model.process(scoring)
+    direct = model._behavioral.predict_probabilities(scoring)
     log = _call_logs()
     _assert_same(via_session, direct)
     readout = {'clip-vit-b-32': 'encoder.layers.10', 'qwen2.5-vl-3b': 'blocks.28'}[identifier]

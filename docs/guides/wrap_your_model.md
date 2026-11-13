@@ -95,11 +95,14 @@ The [CLIP registration](../../brainscore/models/clip_vit_b_32/model.py) is a com
 
 ## Models without accessible layers
 
-A hosted model or any system that only returns answers has no extractor. Declare its input and give it an `answer`:
+A hosted model or any system that only returns answers has no extractor. Declare its input and give it the parts that answer: a `reply` for tasks with a response (choices, ratings, written answers) and, for older `task_type`/`label_set` tasks, an `answer`:
 
 ```python
-model = BrainScoreModel(identifier='my-api-model', supported_modalities={'text'}, answer=my_answer)
+model = BrainScoreModel(identifier='my-api-model', supported_modalities={'text'},
+                        reply=my_reply, answer=my_answer)
 ```
+
+For a hosted API, `build_api_reply(provider, model_id)` and `build_api_generation_fn(provider, model_id)` build both from one client per provider ([Behavior](behavior.md)).
 
 It can take part in behavioral benchmarks but not neural ones; neural benchmarks will report N/A.
 

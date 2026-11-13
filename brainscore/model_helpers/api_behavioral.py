@@ -15,7 +15,8 @@ What it handles (the "graceful" parts):
   - robust label parsing (exact -> word-boundary -> defer to caller's fallback);
   - multimodal (base64 image) and text dispatch from the stimulus row.
 
-``build_api_reply`` builds a ``reply`` part from the same clients: it answers
+``build_api_reply`` builds a ``reply`` part from the same clients (one table,
+``PROVIDERS``, one client per provider): it answers
 any task (a choice, a rating, a written answer such as CogGym's) from the
 trial's prompt and obeys the task's generation settings.
 
@@ -87,13 +88,37 @@ def _parse_label(response: str, label_set: Sequence[str]) -> Optional[str]:
     return None
 
 
-# ── provider adapters ────────────────────────────────────────────────────
-# Each adapter: (model, system, user_text, image|None, max_tokens) -> str
-# image is (media_type, b64) or None. SDKs are imported lazily so `unified`
-# carries no hard dependency on anthropic / openai; a missing SDK or key
-# raises a clear, actionable error only when a call is actually made.
+# ── provider clients ───────────────────────────────────────────────────
+# One client per provider, used by every part built here (answer, reply,
+# policy): (model, system, messages, settings) -> text, or a StreamEvent with
+# the text as payload and extra data (reasoning, token counts) as meta.
+# messages are [{'role': 'user'|'assistant', 'content': [part, ...]}] with parts
+# {'type': 'text', 'text': ...} or {'type': 'image', 'media_type': ..., 'data': <base64>};
+# settings hold max_tokens and any of temperature, top_p, seed. SDKs are
+# imported lazily so `unified` has no hard dependency on anthropic / openai; a
+# missing SDK or key raises a clear error only when a call is made.
 
-def _call_anthropic(model, system, user_text, image, max_tokens) -> str:
+# The Anthropic Messages API has no seed parameter and refuses temperature and
+# top_p on current Claude models. A temperature of 1.0 is the API's documented
+# default, so the client leaves it out; any other value fails before a request.
+_ANTHROPIC_DEFAULT_TEMPERATURE = 1.0
+
+
+def _anthropic_settings(settings) -> dict:
+    refused = [name for name in ('top_p', 'seed') if settings.get(name) is not None]
+    temperature = settings.get('temperature')
+    if temperature is not None and float(temperature) != _ANTHROPIC_DEFAULT_TEMPERATURE:
+        refused.append('temperature')
+    if refused:
+        raise ValueError(
+            f'The Anthropic API refuses the task settings {refused}: it has no seed, and '
+            'current Claude models reject temperature and top_p. Only a temperature of 1.0, '
+            "the API's default, can run, and it is not sent.")
+    return {'max_tokens': settings['max_tokens']}
+
+
+def _call_anthropic(model, system, messages, settings):
+    request = _anthropic_settings(settings)   # checked before the SDK is loaded
     try:
         import anthropic
     except ImportError as e:
@@ -101,28 +126,37 @@ def _call_anthropic(model, system, user_text, image, max_tokens) -> str:
             "anthropic SDK not installed — `pip install anthropic` to score "
             "Claude models behaviorally.") from e
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
-    content = []
-    if image is not None:
-        media, b64 = image
-        content.append({'type': 'image', 'source': {
-            'type': 'base64', 'media_type': media, 'data': b64}})
-    content.append({'type': 'text', 'text': user_text})
-    kwargs = dict(model=model, max_tokens=max_tokens,
-                  messages=[{'role': 'user', 'content': content}])
+    content = lambda parts: [
+        {'type': 'text', 'text': p['text']} if p['type'] == 'text' else
+        {'type': 'image', 'source': {'type': 'base64', 'media_type': p['media_type'], 'data': p['data']}}
+        for p in parts]
+    kwargs = dict(model=model, messages=[{'role': m['role'], 'content': content(m['content'])}
+                                         for m in messages], **request)
     if system:
         kwargs['system'] = system
-    # NOTE: no temperature — the newest Claude models (Fable 5 / Opus 4.8 / 4.7)
-    # reject temperature with a 400. Reproducibility comes from the response cache.
     resp = client.messages.create(**kwargs)
-    return ''.join(b.text for b in resp.content if b.type == 'text').strip()
+    text = ''.join(b.text for b in resp.content if b.type == 'text').strip()
+    reasoning = ''.join(b.thinking for b in resp.content if b.type == 'thinking') or None
+    usage = getattr(resp, 'usage', None)
+    return _with_meta(text, reasoning, None if usage is None else {
+        'input_tokens': usage.input_tokens, 'output_tokens': usage.output_tokens})
 
 
-def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY',
-                            label='openai') -> Callable:
-    """Adapter for any OpenAI-compatible chat-completions endpoint. DeepSeek,
+def _with_meta(text, reasoning, token_usage):
+    """A reply with its extra data: a ``StreamEvent`` with the text as payload and,
+    in meta, ``reasoning`` and ``token_usage`` when the provider gives them.
+    The text alone when it gives neither."""
+    from brainscore_core.streaming import StreamEvent
+    meta = {name: value for name, value in (('reasoning', reasoning), ('token_usage', token_usage))
+            if value}
+    return StreamEvent('behavior:text', text, None, meta) if meta else text
+
+
+def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY', label='openai') -> Callable:
+    """Client for any OpenAI-compatible chat-completions endpoint. DeepSeek,
     Together, Fireworks, vLLM, etc. all speak this protocol — only the base_url
-    and key env var differ. ``base_url=None`` is OpenAI itself."""
-    def call(model, system, user_text, image, max_tokens) -> str:
+    and key env var differ. ``base_url=None`` is OpenAI itself. It takes every setting."""
+    def call(model, system, messages, settings):
         try:
             from openai import OpenAI
         except ImportError as e:
@@ -130,33 +164,37 @@ def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY',
                 f"openai SDK not installed — `pip install openai` to score "
                 f"{label} models behaviorally.") from e
         client = OpenAI(api_key=os.getenv(api_key_env), base_url=base_url)
-        content = [{'type': 'text', 'text': user_text}]
-        if image is not None:
-            media, b64 = image
-            content.append({'type': 'image_url', 'image_url': {
-                'url': f'data:{media};base64,{b64}'}})
-        messages = []
-        if system:
-            messages.append({'role': 'system', 'content': system})
-        messages.append({'role': 'user', 'content': content})
+        content = lambda parts: [
+            {'type': 'text', 'text': p['text']} if p['type'] == 'text' else
+            {'type': 'image_url', 'image_url': {'url': f"data:{p['media_type']};base64,{p['data']}"}}
+            for p in parts]
+        chat = [{'role': 'system', 'content': system}] if system else []
+        chat += [{'role': m['role'], 'content': content(m['content'])} for m in messages]
+        request = {name: settings[name] for name in ('max_tokens', 'temperature', 'top_p', 'seed')
+                   if settings.get(name) is not None}
         try:
-            resp = client.chat.completions.create(
-                model=model, max_tokens=max_tokens, temperature=0, messages=messages)
+            resp = client.chat.completions.create(model=model, messages=chat, **request)
         except Exception as e:
             # A text-only model (e.g. DeepSeek-V3, Llama-3.3) sent an image gets
             # a cryptic provider 404 ("no endpoints found that support image
             # input"). Re-raise with the actual fix instead.
-            if image is not None and 'image' in str(e).lower():
+            image = any(p['type'] == 'image' for m in messages for p in m['content'])
+            if image and 'image' in str(e).lower():
                 raise RuntimeError(
                     f"{label} model '{model}' has no image-input endpoint — it is "
-                    f"text-only, so it can't take the rendered frame. Use a text "
-                    f"observation instead: obs_mode='ascii' on GridGameEnv (which "
-                    f"has a text board), or switch to a vision-capable model "
-                    f"(e.g. anthropic/claude-3.5-sonnet, openai/gpt-4o, "
-                    f"google/gemini-2.0-flash-001). Note: MiniGrid is frame-only "
-                    f"(no ASCII board) so it requires a vision model.") from e
+                    f"text-only, so it can't take an image. Register it with text "
+                    f"inputs only, show it a text observation (obs_mode='ascii' on "
+                    f"GridGameEnv; MiniGrid is frame-only), or use a vision-capable "
+                    f"model (e.g. anthropic/claude-3.5-sonnet, openai/gpt-4o, "
+                    f"google/gemini-2.0-flash-001).") from e
             raise
-        return (resp.choices[0].message.content or '').strip()
+        message = resp.choices[0].message
+        # DeepSeek names the reasoning reasoning_content; OpenRouter names it reasoning.
+        reasoning = getattr(message, 'reasoning_content', None) or getattr(message, 'reasoning', None)
+        usage = getattr(resp, 'usage', None)
+        return _with_meta((message.content or '').strip(), reasoning,
+                          None if usage is None else {'input_tokens': usage.prompt_tokens,
+                                                      'output_tokens': usage.completion_tokens})
     call.__name__ = f'_call_{label}'
     return call
 
@@ -179,6 +217,27 @@ PROVIDERS = {
         base_url='https://openrouter.ai/api/v1',
         api_key_env='OPENROUTER_API_KEY', label='openrouter'),
 }
+
+
+def _one_turn(call, model, system, text, image, max_tokens) -> str:
+    """One user turn of text and an optional image; the reply's text.
+
+    The ``answer`` and policy parts send this request. It is the request
+    they sent before the clients were merged, so their answers do not
+    change: Anthropic gets the image before the text and no temperature;
+    an OpenAI-compatible endpoint (or a custom client) gets the text before
+    the image and a temperature of 0.
+    """
+    from brainscore_core.streaming import StreamEvent
+    text_part = [{'type': 'text', 'text': text}]
+    image_part = ([] if image is None
+                  else [{'type': 'image', 'media_type': image[0], 'data': image[1]}])
+    if call is _call_anthropic:
+        content, settings = image_part + text_part, {'max_tokens': max_tokens}
+    else:
+        content, settings = text_part + image_part, {'max_tokens': max_tokens, 'temperature': 0}
+    reply = call(model, system, [{'role': 'user', 'content': content}], settings)
+    return reply.payload if isinstance(reply, StreamEvent) else reply
 
 
 class _ResponseCache:
@@ -215,9 +274,9 @@ def build_api_generation_fn(
     """Build an ``answer(stimulus_row, instruction, label_set) -> str``
     that answers a forced-choice behavioral task via a closed-weight API model.
 
-    :param provider: ``'anthropic'`` / ``'openai'``, or a callable adapter
-        ``(model, system, user_text, image, max_tokens) -> str`` (used for
-        tests and custom providers).
+    :param provider: ``'anthropic'``, ``'openai'``, ``'deepseek'``,
+        ``'openrouter'``, or a callable client ``(model, system, messages,
+        settings)`` (used for tests and custom providers; see ``PROVIDERS``).
     :param model: provider model id (e.g. ``'claude-opus-4-8'``,
         ``'gpt-4o-2024-08-06'``). Pin a dated snapshot where the provider
         offers one so scores are reproducible.
@@ -264,7 +323,7 @@ def build_api_generation_fn(
         key = _key(prompt, label_set, stim_key, payload_hash)
         response = cache.get(key) if cache is not None else None
         if response is None:
-            response = call(model, system_prompt, user_text, image, max_tokens)
+            response = _one_turn(call, model, system_prompt, user_text, image, max_tokens)
             if cache is not None:
                 cache.set(key, response)
 
@@ -279,104 +338,7 @@ def build_api_generation_fn(
 # ── written answers: a reply part ───────────────────────────────────────
 # A reply part answers any response a task asks for (a choice, a rating, a
 # written answer) from the trial's Prompt, and obeys the task's generation
-# settings. CogGym needs one. Each adapter:
-# (model, system, messages, settings) -> text or StreamEvent(text, meta), where messages are
-# [{'role': 'user'|'assistant', 'content': [part, ...]}] with parts
-# {'type': 'text', 'text': ...} or {'type': 'image', 'media_type': ..., 'data': <base64>},
-# and settings holds max_tokens and any of temperature, top_p, seed.
-
-# The Anthropic Messages API has no seed parameter and refuses temperature and
-# top_p on current Claude models. A temperature of 1.0 is the API's documented
-# default, so the adapter leaves it out; any other value fails before a request.
-_ANTHROPIC_DEFAULT_TEMPERATURE = 1.0
-
-
-def _anthropic_settings(settings) -> dict:
-    refused = [name for name in ('top_p', 'seed') if settings.get(name) is not None]
-    temperature = settings.get('temperature')
-    if temperature is not None and float(temperature) != _ANTHROPIC_DEFAULT_TEMPERATURE:
-        refused.append('temperature')
-    if refused:
-        raise ValueError(
-            f'The Anthropic API refuses the task settings {refused}: it has no seed, and '
-            'current Claude models reject temperature and top_p. Only a temperature of 1.0, '
-            "the API's default, can run, and it is not sent.")
-    return {'max_tokens': settings['max_tokens']}
-
-
-def _reply_anthropic(model, system, messages, settings) -> str:
-    request = _anthropic_settings(settings)   # checked before the SDK is loaded
-    try:
-        import anthropic
-    except ImportError as e:
-        raise RuntimeError(
-            "anthropic SDK not installed — `pip install anthropic` to score "
-            "Claude models behaviorally.") from e
-    client = anthropic.Anthropic()
-    content = lambda parts: [
-        {'type': 'text', 'text': p['text']} if p['type'] == 'text' else
-        {'type': 'image', 'source': {'type': 'base64', 'media_type': p['media_type'], 'data': p['data']}}
-        for p in parts]
-    kwargs = dict(model=model, messages=[{'role': m['role'], 'content': content(m['content'])}
-                                         for m in messages], **request)
-    if system:
-        kwargs['system'] = system
-    resp = client.messages.create(**kwargs)
-    text = ''.join(b.text for b in resp.content if b.type == 'text').strip()
-    reasoning = ''.join(b.thinking for b in resp.content if b.type == 'thinking') or None
-    usage = getattr(resp, 'usage', None)
-    return _with_meta(text, reasoning, None if usage is None else {
-        'input_tokens': usage.input_tokens, 'output_tokens': usage.output_tokens})
-
-
-def _with_meta(text, reasoning, token_usage):
-    """A reply with its extra data: a ``StreamEvent`` with the text as payload and,
-    in meta, ``reasoning`` and ``token_usage`` when the provider gives them.
-    The text alone when it gives neither."""
-    from brainscore_core.streaming import StreamEvent
-    meta = {name: value for name, value in (('reasoning', reasoning), ('token_usage', token_usage))
-            if value}
-    return StreamEvent('behavior:text', text, None, meta) if meta else text
-
-
-def _make_openai_reply(base_url=None, api_key_env='OPENAI_API_KEY', label='openai') -> Callable:
-    """Reply adapter for an OpenAI-compatible endpoint: it takes every setting."""
-    def call(model, system, messages, settings) -> str:
-        try:
-            from openai import OpenAI
-        except ImportError as e:
-            raise RuntimeError(
-                f"openai SDK not installed — `pip install openai` to score "
-                f"{label} models behaviorally.") from e
-        client = OpenAI(api_key=os.getenv(api_key_env), base_url=base_url)
-        content = lambda parts: [
-            {'type': 'text', 'text': p['text']} if p['type'] == 'text' else
-            {'type': 'image_url', 'image_url': {'url': f"data:{p['media_type']};base64,{p['data']}"}}
-            for p in parts]
-        chat = [{'role': 'system', 'content': system}] if system else []
-        chat += [{'role': m['role'], 'content': content(m['content'])} for m in messages]
-        request = {name: settings[name] for name in ('max_tokens', 'temperature', 'top_p', 'seed')
-                   if settings.get(name) is not None}
-        resp = client.chat.completions.create(model=model, messages=chat, **request)
-        message = resp.choices[0].message
-        # DeepSeek names the reasoning reasoning_content; OpenRouter names it reasoning.
-        reasoning = getattr(message, 'reasoning_content', None) or getattr(message, 'reasoning', None)
-        usage = getattr(resp, 'usage', None)
-        return _with_meta((message.content or '').strip(), reasoning,
-                          None if usage is None else {'input_tokens': usage.prompt_tokens,
-                                                      'output_tokens': usage.completion_tokens})
-    call.__name__ = f'_reply_{label}'
-    return call
-
-
-_REPLY_PROVIDERS = {
-    'anthropic': _reply_anthropic,
-    'openai': _make_openai_reply(),
-    'deepseek': _make_openai_reply(base_url='https://api.deepseek.com',
-                                   api_key_env='DEEPSEEK_API_KEY', label='deepseek'),
-    'openrouter': _make_openai_reply(base_url='https://openrouter.ai/api/v1',
-                                     api_key_env='OPENROUTER_API_KEY', label='openrouter'),
-}
+# settings. CogGym needs one. It uses the same clients as the answer part.
 
 
 def _reply_messages(prompt) -> Tuple[Optional[str], list]:
@@ -433,14 +395,14 @@ def build_api_reply(
     model without those inputs so such a task is N/A.
 
     :param provider: ``'anthropic'``, ``'openai'``, ``'deepseek'``,
-        ``'openrouter'``, or a callable adapter
+        ``'openrouter'``, or a callable client
         ``(model, system, messages, settings)`` that returns the text, or a
         ``StreamEvent`` with the text as payload and the extra data as meta.
     :param cache_dir: if set, replies are cached per trial, keyed on the
         provider, the model, the system text, the turns and the settings. A
         sampled call (temperature above 0) with no seed is never cached.
     """
-    call = provider if callable(provider) else _REPLY_PROVIDERS[provider]
+    call = provider if callable(provider) else PROVIDERS[provider]
     provider_name = getattr(provider, '__name__', str(provider))
     cache = _ResponseCache(cache_dir) if cache_dir is not None else None
 
@@ -453,7 +415,7 @@ def build_api_reply(
             given = {'max_tokens': response.max_tokens, 'temperature': response.temperature,
                      'top_p': response.top_p, 'seed': response.seed}
             settings.update({name: value for name, value in given.items() if value is not None})
-        if call is _reply_anthropic:
+        if call is _call_anthropic:
             _anthropic_settings(settings)   # fail before the cache or a request
         system, messages = _reply_messages(prompt)
         key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings],
@@ -647,7 +609,7 @@ def build_api_action_fn(
             ).hexdigest()
             response = cache.get(key)
         if response is None:
-            response = call(model, system_prompt, prompt, image, max_tokens)
+            response = _one_turn(call, model, system_prompt, prompt, image, max_tokens)
             if cache is not None:
                 cache.set(key, response)
 

@@ -23,8 +23,8 @@ Our implementation:
 5. `attrs['dyslexic']` flag: True if raw accuracy < 0.65 (paper's threshold).
 
 This is unified-interface-native: it uses BrainScoreModel's behavioral
-readout (TaskContext(task_type='probabilities', ...) +
-process(test_stimuli) -> BehavioralAssembly).
+readout or answer part (TaskContext(task_type='probabilities', ...) +
+behavioral_response(subject, test_stimuli, task) -> BehavioralAssembly).
 
 Data are resolved through the unified data plugin:
 `brainscore.load_stimulus_set('Yeatman2021')` and

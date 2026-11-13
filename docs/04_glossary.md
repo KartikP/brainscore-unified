@@ -6,7 +6,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | --- | --- |
 | **Ablate** | An experiment tool that sets selected unit outputs of a network that is not a subject to zero during chosen conditions. A subject is changed with `Intervene`. |
 | **Adapter** | A permanent wrapper that presents a classic Brain-Score vision or language model as a subject. |
-| **`answer`** | A `BrainScoreModel` part: `(stimulus_row, instruction, label_set) -> label`. Produces behavior by generating a reply. |
+| **`answer`** | A `BrainScoreModel` part: `(stimulus_row, instruction, label_set) -> label`. It phrases and parses its own prompt. It answers an older `task_type`/`label_set` task and a plain `Choice`; a task with settings goes to `reply`. |
 | **Assembly** | A labeled array. `NeuroidAssembly` has `presentation` (stimuli), `neuroid` (units) and optionally `time_bin`. `BehavioralAssembly` holds choices. |
 | **Benchmark** | A fixed test: stimuli, requested outputs, a metric and measured data. Returns a score. It declares `required_input_channels` and `requested_output_channels`, and its `__call__(subject)` takes the subject. |
 | **`BrainScoreModel`** | A ready-made subject assembled from parts (extractor, region map, answer, policy, intervention). |
@@ -27,6 +27,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Layer path** | A module's name in the network, such as `layer3.0.conv1`; list them with `named_modules()`. |
 | **`in_channels`, `out_channels`** | What a subject declares: the inputs it can take and the outputs it can give. |
 | **`LayerSelector`** | One layer as a region; `modality=` picks the extractor in a model with more than one. |
+| **`likelihood`** | A `BrainScoreModel` part: `(prompt, candidates) -> {candidate: log probability}`. Scores each option as the reply, without generating; gives choices and implied probabilities. |
 | **Metric** | The calculation that compares model outputs with measured data. |
 | **Modality** | A kind of sensory input: `vision` (pictures), `video`, `text`, `audio`. A modality is not a channel. Pictures arrive on `vision:image` and video on `vision:video`. |
 | **N/A** | Not applicable: the pair was not run because declarations do not fit. Never the same as a zero score. |
@@ -38,7 +39,8 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`participate(session)`** | The one evaluation method every subject implements. |
 | **`Perturbation`** | How an intervention changes selected units: `zero`, `scale`, `drive` or `replace`. |
 | **`policy`** | A `BrainScoreModel` part: `row -> {output channel: payload}`. |
-| **`process(...)`** | A convenience method on `BrainScoreModel` and adapters for interactive use. Not part of the contract. |
+| **`prefer_path`** | A `TaskContext` field that names the path a `BrainScoreModel` answers by: `generation` (`reply` or `answer`), `likelihood` or `readout`. `'auto'` tries them in that order. |
+| **`process(...)`** | A convenience method on `BrainScoreModel` and adapters for interactive use. Not part of the contract. It records activity; a behavioral answer comes only from a session. |
 | **Protocol** | The procedure of an experiment: which conditions, how many repetitions, where sessions begin and end, and when the subject is reset. |
 | **`record`** | To read activity from a subject; a saved run is a `RunRecord`. What to record is a requested output (`neural:<region>`), never a separate argument. |
 | **Readout** | A classifier fitted on one layer's activity to produce choices (`behavioral_readout_layer`). |
@@ -46,6 +48,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`region_layer_map`** | Which layer (or units) stands in for each brain region. A hypothesis that benchmarks test. |
 | **`required_input_channels`, `requested_output_channels`** | What a benchmark, a protocol or a tool declares: the inputs its stimuli give and the outputs it needs. |
 | **Response** | An event a subject sends with `session.respond`. `TaskContext.response` is the form of the answer; `answer` and `reply` are part names. |
+| **`reply`** | A `BrainScoreModel` part: `prompt -> text` (or a `StreamEvent` with extra data). The model's raw reply to one trial; the task's response parses it. |
 | **`reset()`** | Clears run state between independent runs. Does not retrain the model. |
 | **`RunRecord`** | Reads a saved experiment without running the model. |
 | **Score** | A metric result with metadata. Raw or ceiled. |

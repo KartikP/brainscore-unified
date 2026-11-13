@@ -202,7 +202,7 @@ def test_typed_look_at_runs_through_participate():
     np.testing.assert_array_equal(via_legacy.values, model.process(_images()).values)
 
 
-def test_typed_behavioral_look_at_matches_process():
+def test_typed_behavioral_look_at_matches_a_behavior_session():
     extractor = _Extractor()
     model = BrainScoreModel('facade-behavior', region_layer_map={'IT': 'layer'},
                             extractor={'vision': extractor},
@@ -216,10 +216,11 @@ def test_typed_behavioral_look_at_matches_process():
     facade = _facade(model)
     facade.start_task('probabilities', fitting_stimuli=fitting)
     via_legacy = facade.look_at(_images())
-    model.start_task('probabilities', fitting_stimuli=fitting)
-    via_process = model.process(_images())
+    from brainscore_core.streaming_helpers import behavioral_response
+    via_session = behavioral_response(
+        model, _images(), TaskContext(task_type='probabilities', fitting_stimuli=fitting))
     assert isinstance(via_legacy, BehavioralAssembly)
-    np.testing.assert_array_equal(via_legacy.values, via_process.values)
+    np.testing.assert_array_equal(via_legacy.values, via_session.values)
 
 
 # --- applying the facade at the scoring boundary --------------------------

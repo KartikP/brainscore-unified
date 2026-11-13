@@ -191,13 +191,15 @@ def test_generation_inputs_need_no_placeholder_extractors():
     )
     assert model.supported_modalities == {'text'}
     assert model.region_layer_map == {}
-    model.start_task(TaskContext(
+    from brainscore_core.streaming_helpers import behavioral_response
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']})
+    stimuli.identifier = 'output-only'
+    result = behavioral_response(model, stimuli, TaskContext(
         task_type='probabilities', instruction='Choose yes.', label_set=['yes'],
         prefer_path='generation',
     ))
-    result = model.process(StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']}))
     assert result.values.tolist() == [[1.0]]
-    model.reset()
+    # Without a session, process() has no extractor to answer with.
     with pytest.raises(NotImplementedError, match='no activation extractor'):
         model.process(StimulusSet({'stimulus_id': ['s0'], 'sentence': ['hello']}))
 
@@ -212,7 +214,7 @@ def test_behavioral_path_choice_is_explicit_or_warns(monkeypatch, prefer_path):
         extractor={'text': Extractor()},
     )
     fitted = []
-    monkeypatch.setattr(model, '_fit_behavioral_readout', lambda stimuli: fitted.append(stimuli))
+    monkeypatch.setattr(model._behavioral, 'fit_behavioral_readout', lambda stimuli: fitted.append(stimuli))
     stimuli = StimulusSet({'sentence': ['hello']})
     with warnings.catch_warnings(record=True) as notices:
         warnings.simplefilter('always')
@@ -224,7 +226,7 @@ def test_behavioral_path_choice_is_explicit_or_warns(monkeypatch, prefer_path):
     if notices:
         assert 'does not fit' in str(notices[0].message)
     assert bool(fitted) == (prefer_path == 'readout')
-    assert model._behavioral.use_generation_for_task == (prefer_path != 'readout')
+    assert (model._behavioral.response_path == 'generation') == (prefer_path != 'readout')
 
 
 def test_named_readout_layer_without_extractor_is_not_a_second_path():
@@ -240,7 +242,7 @@ def test_named_readout_layer_without_extractor_is_not_a_second_path():
             task_type='probabilities', instruction='Choose yes.', label_set=['yes'],
             fitting_stimuli=StimulusSet({'sentence': ['hello']}),
         ))
-    assert model._behavioral.use_generation_for_task is True
+    assert model._behavioral.response_path == 'generation'
 
 
 def test_channel_registration_policy_differs_only_for_exploration():

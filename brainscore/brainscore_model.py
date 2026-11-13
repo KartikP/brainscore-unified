@@ -73,8 +73,6 @@ class BrainScoreModel(UnifiedModel):
 
     MODALITY_PRIORITY: Tuple[str, ...] = ('vision', 'text', 'audio')
 
-    BEHAVIORAL_TASK_TYPES = BehavioralReadout.BEHAVIORAL_TASK_TYPES
-
     def __init__(
         self,
         identifier: str,
@@ -553,22 +551,6 @@ class BrainScoreModel(UnifiedModel):
         reset = getattr(provider, 'reset', None)
         if callable(reset):
             reset()
-
-    @classmethod
-    def _requires_behavioral_readout(cls, task_type: str) -> bool:
-        return BehavioralReadout.requires_behavioral_readout(task_type)
-
-    def _fit_behavioral_readout(self, fitting_stimuli) -> None:
-        self._behavioral.fit_behavioral_readout(fitting_stimuli)
-
-    def _extract_behavioral_features(self, stimuli):
-        return self._behavioral.extract_behavioral_features(stimuli)
-
-    def _predict_probabilities(self, stimuli):
-        return self._behavioral.predict_probabilities(stimuli)
-
-    def _generate_predictions(self, stimuli):
-        return self._behavioral.generate_predictions(stimuli)
 
     def visual_degrees(self) -> int:
         """The visual field this subject declares (``visual_degrees=``).

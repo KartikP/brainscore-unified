@@ -106,11 +106,38 @@ class BehaviorSessions(Capability):
         task = getattr(session, 'task', None)
         if requested != {'behavior'} or (task is not None and task.response is not None):
             drive_behavior_and_neural_session(subject, session)
-        elif getattr(session, 'streaming', False):
-            _drivers.drive_behavior_session_streaming(subject, session,
-                                                      on_begin=subject._begin_episode)
+            return
+        # A legacy task answered on 'behavior' alone is packaged by core's typed
+        # behavior driver, as for every legacy adapter: one event for the table
+        # (one per trial when streamed), one begin. The answer comes from the
+        # same respond() as every other behavior session.
+        typed = _LegacyTaskAnswers(subject)
+        if getattr(session, 'streaming', False):
+            _drivers.drive_behavior_session_streaming(typed, session, on_begin=subject._begin_episode)
         else:
-            _drivers.drive_behavior_session(subject, session, on_begin=subject._begin_episode)
+            _drivers.drive_behavior_session(typed, session, on_begin=subject._begin_episode)
+
+
+class _LegacyTaskAnswers:
+    """What core's typed behavior driver calls: ``start_task`` and ``process``.
+
+    ``process`` answers through ``BehavioralReadout.respond``; it is not the
+    model's ``process``, which no longer answers behavior.
+    """
+
+    def __init__(self, subject) -> None:
+        self.subject = subject
+
+    @property
+    def identifier(self) -> str:
+        return self.subject.identifier
+
+    def start_task(self, task) -> None:
+        self.subject.start_task(task)
+
+    def process(self, stimuli):
+        behavior, _ = self.subject._behavioral.respond(stimuli, ['behavior'])
+        return behavior['behavior']
 
 
 class MotorSessions(Capability):
@@ -230,7 +257,7 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
 
     Each stimulus is shown once: the regions are recorded during the same
     forward pass that produced the answer (see
-    ``BehavioralReadout.respond_and_record``). Only ``BrainScoreModel`` runs
+    ``BehavioralReadout.respond``). Only ``BrainScoreModel`` runs
     this; it is reached through its session capability.
     """
     task = getattr(session, "task", None)
@@ -273,11 +300,7 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     for index, batch in batches:
         if index == 0 or task.trial_memory == 'none':
             subject._begin_episode()
-        if task.response is not None:
-            behavior, neural = subject._behavioral.respond(batch, answers, regions)
-        else:
-            plain, neural = subject._behavioral.respond_and_record(batch, regions)
-            behavior = {"behavior": plain} if answers else {}
+        behavior, neural = subject._behavioral.respond(batch, answers, regions)
         # A value that is a StreamEvent keeps its meta: a reply's extra data (send_outputs).
         _drivers.send_outputs(session, {channel: behavior[channel] for channel in answers},
                               float(index), {"driver": driver, "task_type": task.task_type})

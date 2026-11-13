@@ -155,8 +155,8 @@ def test_unparseable_reply_is_kept_as_an_invalid_answer(tmp_path):
 def test_api_episode_reset():
     from brainscore.model_helpers.api_behavioral import build_api_action_fn
     prompts = []
-    def provider(model, system, prompt, image, max_tokens):
-        prompts.append(prompt)
+    def provider(model, system, messages, settings):
+        prompts.append(messages[0]['content'][0]['text'])
         return 'Action: 0'
     act = build_api_action_fn(provider, 'fixture', obs_mode='ascii', history_window=8)
     for first in (True, False, True):

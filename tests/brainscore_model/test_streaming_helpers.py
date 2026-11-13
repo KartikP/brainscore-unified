@@ -300,7 +300,7 @@ def _behavior_context(fitting_stimuli):
     )
 
 
-def test_behavioral_response_matches_legacy_start_task_process_exactly():
+def test_behavioral_response_matches_the_configured_readout_exactly():
     fitting = _make_image_stimulus_set(["cat"] * 6 + ["dog"] * 6)
     scoring = _make_image_stimulus_set(
         ["cat"] * 3 + ["dog"] * 3, identifier="behavior_score"
@@ -312,7 +312,7 @@ def test_behavioral_response_matches_legacy_start_task_process_exactly():
     legacy = _behavior_model(features)
     legacy_context = _behavior_context(fitting)
     legacy.start_task(legacy_context)
-    expected = legacy.process(scoring)
+    expected = legacy._behavioral.respond(scoring, ['behavior'])[0]['behavior']
 
     helper_subject = _behavior_model(
         features, model_cls=_ParticipateTrackingBrainScoreModel
@@ -348,7 +348,7 @@ def _generation_context():
     )
 
 
-def test_behavioral_response_matches_legacy_generation_path_exactly():
+def test_behavioral_response_matches_the_configured_answer_exactly():
     scoring = _make_image_stimulus_set(
         ["cat"] * 3 + ["dog"] * 3, identifier="gen_test"
     )
@@ -357,7 +357,7 @@ def test_behavioral_response_matches_legacy_generation_path_exactly():
     legacy = _generation_model(legacy_calls)
     legacy_context = _generation_context()
     legacy.start_task(legacy_context)
-    expected = legacy.process(scoring)
+    expected = legacy._behavioral.respond(scoring, ['behavior'])[0]['behavior']
 
     helper_calls = []
     helper_subject = _generation_model(

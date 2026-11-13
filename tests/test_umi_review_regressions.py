@@ -271,11 +271,11 @@ def test_reset_and_readout_clear_composite_recording():
     # Readout extraction must also work while composite recording is configured.
     task = TaskContext('probabilities', fitting_stimuli=_stimuli(), prefer_path='readout')
     model.start_task(task)
-    assert isinstance(model.process(_stimuli()), BehavioralAssembly)
+    assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
     model.reset()
     assert not model._recorder.composite_recording and model._recorder.time_bins is None
     model.start_task(task)
-    assert isinstance(model.process(_stimuli()), BehavioralAssembly)
+    assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
 
 
 @pytest.mark.parametrize('bound_method', [False, True])

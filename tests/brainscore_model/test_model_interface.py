@@ -522,16 +522,16 @@ class TestPreferPathDispatch:
             # prefer_path unset (None) — should behave like 'auto'
         )
         m.start_task(ctx)
-        assert m._behavioral.use_generation_for_task is True
+        assert m._behavioral.response_path == 'generation'
         assert m._behavioral.readout_classifier is None
 
     def test_force_readout_when_generation_is_default(self):
         """prefer_path='readout' overrides the default generation preference."""
         m = self._make_dual_path_model()
         # Skip the actual fit by pre-populating fitting_stimuli with
-        # something that won't trip _fit_behavioral_readout's path.
+        # something that won't trip the readout fit.
         # We do this by monkey-patching the fit method to a no-op.
-        m._fit_behavioral_readout = lambda fitting: None
+        m._behavioral.fit_behavioral_readout = lambda fitting: None
         ctx = TaskContext(
             task_type='probabilities',
             label_set=['real', 'pseudo'],
@@ -540,7 +540,7 @@ class TestPreferPathDispatch:
             prefer_path='readout',
         )
         m.start_task(ctx)
-        assert m._behavioral.use_generation_for_task is False
+        assert m._behavioral.response_path != 'generation'
 
     def test_force_generation_when_readout_is_default(self):
         """prefer_path='generation' selects generation even when fitting_stimuli is set."""
@@ -553,7 +553,7 @@ class TestPreferPathDispatch:
             prefer_path='generation',
         )
         m.start_task(ctx)
-        assert m._behavioral.use_generation_for_task is True
+        assert m._behavioral.response_path == 'generation'
 
     def test_force_generation_without_answer_raises(self):
         """prefer_path='generation' on a model without answer errors clearly."""
@@ -612,7 +612,7 @@ class TestPreferPathDispatch:
             prefer_path='auto',
         )
         m.start_task(ctx)
-        assert m._behavioral.use_generation_for_task is True
+        assert m._behavioral.response_path == 'generation'
 
     def test_unknown_task_type_raises(self):
         """A typo such as 'choice' must not silently run as a passive task."""
@@ -625,7 +625,7 @@ class TestPreferPathDispatch:
     def test_passive_task_type_still_accepted(self):
         m = self._make_dual_path_model()
         m.start_task(TaskContext(task_type='passive'))
-        assert m._behavioral.use_generation_for_task is False
+        assert m._behavioral.response_path != 'generation'
 
     def test_no_dual_path_warning_without_readout_layer(self):
         """An answer-only model given fitting stimuli has one path, not two."""
@@ -636,7 +636,7 @@ class TestPreferPathDispatch:
         with warnings.catch_warnings():
             warnings.simplefilter('error', UserWarning)
             m.start_task(ctx)
-        assert m._behavioral.use_generation_for_task is True
+        assert m._behavioral.response_path == 'generation'
 
     def test_dual_path_warning_with_readout_layer(self):
         m = self._make_dual_path_model()

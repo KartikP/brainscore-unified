@@ -48,7 +48,9 @@ def test_neural_encoding_capability_is_registered_dispatch_path():
     assert 'neural-encoding' in model._capability_state
 
 
-def test_behavioral_readout_capability_precedes_neural_dispatch():
+def test_no_event_capability_answers_behavior():
+    """A behavioral answer comes only from a session (BehaviorSessions); process()
+    after a configured task still reaches the neural extraction."""
     act_model = StubActivationsModel(return_value='vision_assembly')
     model = BrainScoreModel(
         identifier='behavioral',
@@ -57,56 +59,13 @@ def test_behavioral_readout_capability_precedes_neural_dispatch():
         extractor={'vision': act_model},
     )
     model._behavioral.task = TaskContext(task_type='probabilities')
+    model._behavioral.response_path = 'generation'
     model._behavioral.readout_classifier = object()
+    model.start_recording('IT')
     stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
 
-    calls = []
-
-    def fake_predict_probabilities(input_stimuli):
-        calls.append(input_stimuli)
-        return 'behavioral_assembly'
-
-    model._predict_probabilities = fake_predict_probabilities
-
-    result = model.process(stimuli)
-
-    assert 'behavioral-readout' in capability_registry
-    assert result == 'behavioral_assembly'
-    assert calls == [stimuli]
-    assert act_model.call_args is None
-    assert 'behavioral-readout' in model._capability_state
-
-
-def test_behavioral_generation_capability_precedes_readout_and_neural():
-    act_model = StubActivationsModel(return_value='vision_assembly')
-    model = BrainScoreModel(
-        identifier='generation',
-        model='torch_model',
-        region_layer_map={'IT': 'layer4'},
-        extractor={'vision': act_model},
-    )
-    model._behavioral.task = TaskContext(task_type='probabilities')
-    model._behavioral.use_generation_for_task = True
-    model._behavioral.readout_classifier = object()
-    stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
-
-    calls = []
-
-    def fake_generate_predictions(input_stimuli):
-        calls.append(input_stimuli)
-        return 'generated_behavioral_assembly'
-
-    model._generate_predictions = fake_generate_predictions
-    model._predict_probabilities = lambda input_stimuli: 'readout_assembly'
-
-    result = model.process(stimuli)
-
-    assert 'behavioral-generation' in capability_registry
-    assert result == 'generated_behavioral_assembly'
-    assert calls == [stimuli]
-    assert act_model.call_args is None
-    assert 'behavioral-generation' in model._capability_state
-    assert 'behavioral-readout' not in model._capability_state
+    assert model.process(stimuli) == 'vision_assembly'
+    assert not {'behavioral-generation', 'behavioral-readout'} & set(capability_registry)
 
 
 def test_closed_loop_capability_dispatches_a_row():

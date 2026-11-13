@@ -17,6 +17,7 @@ import pytest
 from brainscore._model.behavior import ProbabilitiesClassifier
 from brainscore import BrainScoreModel
 from brainscore_core.model_interface import TaskContext
+from brainscore_core.streaming_helpers import behavioral_response
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly, NeuroidAssembly,
 )
@@ -148,7 +149,7 @@ class TestBrainScoreModelBehavioral:
         assert model._behavioral.readout_classifier is not None
         assert model._behavioral.readout_classifier.fitted
 
-    def test_process_returns_behavioral_assembly(self, labeled_stimuli, test_stimuli):
+    def test_behavior_session_returns_behavioral_assembly(self, labeled_stimuli, test_stimuli):
         features = np.random.default_rng(42).normal(size=(12, 8))
         # Make labels linearly separable for stability
         features[:6, 0] += 3.0  # cat rows shift
@@ -161,11 +162,8 @@ class TestBrainScoreModelBehavioral:
             extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
         )
-        model.start_task(TaskContext(
-            task_type='probabilities',
-            fitting_stimuli=labeled_stimuli,
-        ))
-        result = model.process(test_stimuli)
+        task = TaskContext(task_type='probabilities', fitting_stimuli=labeled_stimuli)
+        result = behavioral_response(model, test_stimuli, task)
         assert isinstance(result, BehavioralAssembly)
         assert result.dims == ('presentation', 'choice')
         assert result.shape == (6, 2)
@@ -263,15 +261,16 @@ class TestBrainScoreModelGenerationPath:
             extractor={'vision': lambda *a, **kw: None},
             answer=fake_generate,
         )
-        model.start_task(TaskContext(
+        task = TaskContext(
             task_type='probabilities',
             label_set=['cat', 'dog'],
             instruction='What animal is this?',
-        ))
-        assert model._behavioral.use_generation_for_task is True
+        )
+        model.start_task(task)
+        assert model._behavioral.response_path == 'generation'
         assert model._behavioral.readout_classifier is None
 
-        result = model.process(test_stimuli)
+        result = behavioral_response(model, test_stimuli, task)
         assert result.dims == ('presentation', 'choice')
         assert result.shape == (6, 2)
         # Each row should be a one-hot
@@ -302,7 +301,7 @@ class TestBrainScoreModelGenerationPath:
             label_set=['cat', 'dog'],
             # no instruction
         ))
-        assert model._behavioral.use_generation_for_task is False
+        assert model._behavioral.response_path == 'readout'
         assert model._behavioral.readout_classifier is not None
 
     def test_generation_path_prefers_generation_when_both_available(
@@ -326,7 +325,7 @@ class TestBrainScoreModelGenerationPath:
             label_set=['cat', 'dog'],
             instruction='What animal is this?',
         ))
-        assert model._behavioral.use_generation_for_task is True
+        assert model._behavioral.response_path == 'generation'
         assert model._behavioral.readout_classifier is None
 
     def test_error_when_no_path_viable(self, test_stimuli):
@@ -338,7 +337,7 @@ class TestBrainScoreModelGenerationPath:
             region_layer_map={},
             extractor={'vision': lambda *a, **kw: None},
         )
-        with pytest.raises(ValueError, match="neither fitting_stimuli"):
+        with pytest.raises(ValueError, match="Paths tried: generation needs answer=.*readout needs TaskContext.fitting_stimuli"):
             model.start_task(TaskContext(
                 task_type='probabilities',
                 label_set=['cat', 'dog'],

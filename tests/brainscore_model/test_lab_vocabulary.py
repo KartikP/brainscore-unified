@@ -73,11 +73,12 @@ def test_answer_gives_one_choice_for_each_stimulus():
 
     def answer(stimulus_row, instruction, label_set):
         return label_set[0] if stimulus_row.sentence == 'first' else label_set[1]
+    from brainscore_core.streaming_helpers import behavioral_response
     stimuli = StimulusSet({'sentence': ['first', 'second'], 'stimulus_id': ['a', 'b']})
+    stimuli.identifier = 'answer-choices'
     task = TaskContext(task_type='label', instruction='choose', label_set=['yes', 'no'])
     subject = BrainScoreModel(identifier='answer', supported_modalities={'text'}, answer=answer)
-    subject.start_task(task)
-    output = subject.process(stimuli)
+    output = behavioral_response(subject, stimuli, task)
     assert output['stimulus_id'].values.tolist() == ['a', 'b']
     assert output['raw_answer'].values.tolist() == ['yes', 'no']
     assert output.values.tolist() == [[1.0, 0.0], [0.0, 1.0]]
@@ -117,15 +118,16 @@ def _text_task(**fields):
 def test_forced_generation_without_answer_names_answer_parameter():
     subject = BrainScoreModel(identifier='no-answer', supported_modalities={'text'})
     task = _text_task(instruction='choose', label_set=['yes', 'no'], prefer_path='generation')
-    with pytest.raises(ValueError, match=r'BrainScoreModel\(answer=\.\.\.\)'):
+    with pytest.raises(ValueError, match=r'generation needs answer='):
         subject.start_task(task)
 
 
 def test_unviable_behavioral_task_names_answer_parameter():
     subject = BrainScoreModel(identifier='no-path', supported_modalities={'text'})
-    with pytest.raises(ValueError, match='neither fitting_stimuli') as error:
+    with pytest.raises(ValueError, match='Paths tried') as error:
         subject.start_task(_text_task())
-    assert 'BrainScoreModel(answer=...)' in str(error.value)
+    assert 'generation needs answer=' in str(error.value)
+    assert 'readout needs TaskContext.fitting_stimuli' in str(error.value)
 
 
 # -- Core guide teaching example ---------------------------------------------

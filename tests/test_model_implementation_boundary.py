@@ -85,8 +85,7 @@ def test_built_in_capabilities_keep_their_order():
     order = {identifier: capability.order for identifier, capability in capability_registry.items()}
     assert [identifier for identifier in sorted(order, key=lambda i: (order[i], i))
             if order[identifier] < 10000] == [
-        'intervention', 'behavioral-generation', 'behavioral-readout', 'closed-loop',
-        'neural-encoding']
+        'intervention', 'closed-loop', 'neural-encoding']
     assert {order[i] for i in ('neural-sessions', 'behavior-sessions', 'motor-sessions',
                                'intervention-sessions')} == {10000}
 

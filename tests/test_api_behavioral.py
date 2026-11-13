@@ -44,11 +44,20 @@ class TestPureHelpers:
         assert _find_column(row, IMAGE_COLUMNS) is None  # NaN is not a usable path
 
 
+def _turn(messages):
+    """The text and the image (or None) of the one user turn an answer or policy part sends."""
+    (turn,) = messages
+    text = next(part['text'] for part in turn['content'] if part['type'] == 'text')
+    images = [(part['media_type'], part['data']) for part in turn['content'] if part['type'] == 'image']
+    return text, images[0] if images else None
+
+
 class TestGenerationClosure:
     def _mock(self, responses=None, counter=None):
-        """A provider adapter that records calls and returns canned responses."""
+        """A provider client that records calls and returns canned responses."""
         responses = responses or {}
-        def call(model, system, user_text, image, max_tokens):
+        def call(model, system, messages, settings):
+            user_text, image = _turn(messages)
             if counter is not None:
                 counter.append((model, user_text, image))
             # default: echo a label found in the prompt, else 'real'
@@ -135,7 +144,8 @@ class TestGameActionFn:
         return {'observation': obs, 'instruction': 'reach the goal'}
 
     def _mock(self, response='Action: 2', counter=None):
-        def call(model, system, user_text, image, max_tokens):
+        def call(model, system, messages, settings):
+            user_text, image = _turn(messages)
             if counter is not None:
                 counter.append((user_text, image))
             return response
@@ -314,7 +324,9 @@ class TestRegistration:
         call = ab._make_openai_compatible(
             base_url='https://api.deepseek.com', label='deepseek')
         with pytest.raises(RuntimeError, match="has no image-input endpoint"):
-            call('deepseek-chat', None, 'hi', ('image/png', 'Zm9v'), 16)
+            call('deepseek-chat', None, [{'role': 'user', 'content': [
+                {'type': 'text', 'text': 'hi'},
+                {'type': 'image', 'media_type': 'image/png', 'data': 'Zm9v'}]}], {'max_tokens': 16})
 
     def test_openrouter_provider_and_registration(self):
         # OpenRouter is the same OpenAI-compatible gateway, pointed at hundreds
@@ -492,7 +504,7 @@ class TestApiReply:
     def test_openai_reply_returns_reasoning_and_token_usage_as_extra_data(self, monkeypatch):
         import sys
         import types
-        from brainscore.model_helpers.api_behavioral import _make_openai_reply
+        from brainscore.model_helpers.api_behavioral import _make_openai_compatible
         from brainscore_core.responses import Prompt, Text
         message = types.SimpleNamespace(content=' 4 ', reasoning_content='Add them.')
         response = types.SimpleNamespace(
@@ -501,7 +513,7 @@ class TestApiReply:
         client = types.SimpleNamespace(chat=types.SimpleNamespace(
             completions=types.SimpleNamespace(create=lambda **kwargs: response)))
         monkeypatch.setitem(sys.modules, 'openai', types.SimpleNamespace(OpenAI=lambda **kwargs: client))
-        answer = _make_openai_reply()('m', None, [{'role': 'user', 'content': []}], {'max_tokens': 8})
+        answer = _make_openai_compatible()('m', None, [{'role': 'user', 'content': []}], {'max_tokens': 8})
         assert answer.payload == '4'
         assert answer.meta == {'reasoning': 'Add them.',
                                'token_usage': {'input_tokens': 7, 'output_tokens': 2}}
@@ -535,10 +547,7 @@ class TestApiReply:
         from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
         provider, calls = _recording_provider('long')
 
-        def no_answer(*args):
-            raise AssertionError('a response task must not reach the answer part')
-        monkeypatch.setitem(api_behavioral._REPLY_PROVIDERS, 'openai', provider)
-        monkeypatch.setitem(api_behavioral.PROVIDERS, 'openai', no_answer)
+        monkeypatch.setitem(api_behavioral.PROVIDERS, 'openai', provider)
         monkeypatch.setattr(api_closed, '_CACHE_ROOT', str(tmp_path))
         model = api_closed.get_model('gpt-4o-behavioral')
         stimuli = StimulusSet({'stimulus_id': ['a'], 'sentence': ['xyz']})

@@ -95,6 +95,8 @@ Each wrapper is named after what it wraps; pick the one for your model. A model 
 | Part | Signature | Ready-made builders |
 | --- | --- | --- |
 | `answer` | `(stimulus_row, instruction, label_set) -> label` | `build_api_generation_fn` (hosted APIs) |
+| `reply` | `prompt -> text` (or a `StreamEvent` with extra data) | `build_api_reply` (hosted APIs), `chat_parts` (Hugging Face chat models) |
+| `likelihood` | `(prompt, candidates) -> {candidate: log probability}` | `chat_parts` |
 | `policy` | `row -> {output channel: payload}` | `PolicyWrapper` |
 | `intervention` | `StateChange -> (PerturbationApplied, undo_function)` | `build_pytorch_ablation_fn(net)` |
 | `behavioral_readout_layer` | a layer path | |
