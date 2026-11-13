@@ -302,14 +302,13 @@ def test_model_reset_clears_policy_history():
     assert model.process({'observation': {}}) == {'motor': 0}
 
 
-def test_a_part_declares_its_episode_state_with_its_own_reset():
-    """One declared way: the part given to the model has reset(). A bound method
-    is a part without one, so its object is not reset."""
+def test_the_owner_of_a_bound_method_part_is_reset():
+    """A part given as a bound method has its object reset, as a part with reset() is."""
     policy = _CountingPolicy()
     model = BrainScoreModel('policy', policy=policy.__call__)
     model.process({'observation': {}})
     model.reset()
-    assert model.process({'observation': {}}) == {'motor': 1}
+    assert model.process({'observation': {}}) == {'motor': 0}
 
 
 def test_vision_adapter_reset_reaches_real_commitment():

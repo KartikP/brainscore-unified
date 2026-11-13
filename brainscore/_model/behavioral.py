@@ -321,7 +321,11 @@ class BehavioralReadout:
         legacy task (``task_type`` with ``label_set``) is answered by
         ``answer=`` (with an instruction and labels) or by the readout (with
         fitting stimuli).
+
+        A task that no part of the model can answer raises ``CompatibilityError``:
+        the pair is not applicable. Sessions decide applicability with this choice.
         """
+        from brainscore_core.compatibility import CompatibilityError
         from brainscore_core.responses import Choice, Scale
         owner, response = self.owner, task.response
         readout_wired = (owner._behavioral_readout_layer is not None
@@ -330,17 +334,17 @@ class BehavioralReadout:
         if response is None:
             can = {'generation': bool(owner._answer is not None and task.instruction and task.label_set),
                    'likelihood': False,
-                   'readout': task.fitting_stimuli is not None}
+                   'readout': readout_wired and task.fitting_stimuli is not None}
             needs = {'generation': 'answer=, TaskContext.instruction and TaskContext.label_set',
                      'likelihood': 'a TaskContext(response=Choice(...)); a legacy task has no likelihood path',
                      'readout': 'TaskContext.fitting_stimuli (and behavioral_readout_layer=)'}
             path = next((p for p in order if can[p]), None)
             if path is None:
-                raise ValueError(
+                raise CompatibilityError(
                     f"Subject '{owner.identifier}' cannot run the behavioral task "
                     f"task_type={task.task_type!r}. Paths tried: "
                     + '; '.join(f'{p} needs {needs[p]}' for p in order))
-            if path == 'generation' and can['readout'] and readout_wired:
+            if path == 'generation' and can['readout']:
                 import warnings
                 warnings.warn(
                     'Both generation and fitted readout are available; '
@@ -354,7 +358,6 @@ class BehavioralReadout:
         raw_scores = isinstance(response, Choice) and response.raw_scores
         if raw_scores and owner._likelihood is None:
             # Raw scores come only from a likelihood part: no softmax of a readout, no guess.
-            from brainscore_core.compatibility import CompatibilityError
             raise CompatibilityError(
                 f"Subject '{owner.identifier}' cannot give raw scores of the options: "
                 'they come only from a likelihood= part.')
@@ -374,7 +377,7 @@ class BehavioralReadout:
             needs = {'generation': 'reply= (or answer= for a plain Choice)',
                      'likelihood': 'likelihood= and a Choice without reported confidence',
                      'readout': 'behavioral_readout_layer=, an extractor and fitting_stimuli'}
-            raise ValueError(
+            raise CompatibilityError(
                 f"Subject '{owner.identifier}' cannot give a {type(response).__name__} answer"
                 + (' with reported confidence (needs reply=)' if reported_confidence else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {needs[p]}' for p in order))
@@ -386,7 +389,7 @@ class BehavioralReadout:
             elif readout_wired and not per_row:
                 source = 'readout'
             else:
-                raise ValueError(f"Subject '{owner.identifier}' cannot give implied probabilities: "
+                raise CompatibilityError(f"Subject '{owner.identifier}' cannot give implied probabilities: "
                                  'it needs likelihood= or a readout (behavioral_readout_layer=, '
                                  'fitting_stimuli).')
         return path, source

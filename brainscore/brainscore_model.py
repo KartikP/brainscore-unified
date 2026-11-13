@@ -1,5 +1,6 @@
 """Concrete Brain-Score subject implementation."""
 
+import inspect
 import threading
 from contextlib import contextmanager
 from types import MappingProxyType
@@ -273,18 +274,18 @@ class BrainScoreModel(UnifiedModel):
 
         A region lists the input channel of every extractor the run can select
         for it (``dispatch.extractor_keys``, the keys ``extractor_for_form``
-        chooses from): a region of ``'vision'`` or ``'video'`` input, in a model
-        with an image and a video extractor, is answered from stills
+        chooses from) that has the region's layers (``region_extractor_keys``):
+        a region of ``'vision'`` or ``'video'`` input, in a model with an image
+        and a video extractor that both have its layers, is answered from stills
         (``vision:image``) and from clips (``vision:video``). In a model with one
         extractor, a region without a modality lists that extractor's channels.
         Behavior, policy and perturbation outputs are not listed, so they can
         be answered from any input the model takes.
         """
+        from ._model.recording import region_extractor_keys
         listed = {}
         for region, selector in self._region_layer_selectors.items():
-            keys = (list(self._extractors) if selector.modality is None
-                    else dispatch.extractor_keys(self, selector.modality))
-            channels = self._input_channels(keys)
+            channels = self._input_channels(region_extractor_keys(self, selector))
             if channels:
                 listed[f'neural:{region}'] = frozenset(channels)
         return listed
@@ -469,6 +470,8 @@ class BrainScoreModel(UnifiedModel):
         self._behavioral.mark_configured(self._behavioral.task)
 
     def reset(self) -> None:
+        # Inside intact() the reset refuses before any part changes.
+        self._interventions._refuse_while_intact('reset')
         failures = []
         for component in (self._recorder, self._behavioral, self._interventions):
             try:
@@ -492,7 +495,10 @@ class BrainScoreModel(UnifiedModel):
         """Clear the episode state of every part once; return the failures.
 
         A part (policy, answer, reply, likelihood, extractor) that keeps episode
-        state declares it with a ``reset()`` method; it is called once per part.
+        state declares it with a ``reset()`` method. ``reset()`` is called on a
+        part that has one and on the owner of a part that is a bound method
+        (``policy=agent.act`` resets ``agent``), once per object: two parts of
+        one owner reset it one time.
         """
         providers = [self._policy, self._answer, self._reply, self._likelihood,
                      *self._extractors.values()]
@@ -515,7 +521,9 @@ class BrainScoreModel(UnifiedModel):
             raise RuntimeError('A model provider failed to clear its episode state.') from failures[0]
 
     def _reset_provider(self, provider, seen: Set[int]) -> None:
-        """Call ``reset()`` of one part (a callable or an extractor) once, if it has one."""
+        """Call ``reset()`` of one part (a callable or an extractor), or of the owner of
+        a bound method, once, if it has one."""
+        provider = provider.__self__ if inspect.ismethod(provider) else provider
         if provider is None or provider is self or id(provider) in seen:
             return
         seen.add(id(provider))

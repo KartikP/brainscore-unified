@@ -18,7 +18,7 @@ from brainscore.perturbation import build_pytorch_ablation_fn
 from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore_core.contract import TaskContext
 from brainscore_core.events import Perturbation, Selection, StateChange
-from brainscore_core.responses import Choice, Text
+from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import apply_state_change, stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -361,7 +361,7 @@ def _counting_subject():
                                   TaskContext(response=Choice(['a', 'b']))])
 def test_a_task_the_subject_has_no_part_for_is_not_applicable_with_zero_passes(task):
     subject, stimuli, calls = _counting_subject()
-    with pytest.raises(CompatibilityError, match='no part for the task'):
+    with pytest.raises(CompatibilityError, match='cannot give a'):
         subject.participate(stimulus_session(stimuli, ['neural:IT'], task))
     assert calls == []
 
@@ -444,3 +444,237 @@ def test_a_region_of_a_model_with_image_and_video_extractors_declares_both_forms
     stills.identifier = 'stills'
     assert neural_response(model, clips, ['neural:IT']).values.max() == 2.0
     assert neural_response(model, stills, ['neural:IT']).values.max() == 1.0
+
+
+class _Layers:
+    """An extractor that lists its layers and refuses any other."""
+
+    def __init__(self, names, value):
+        self.names, self.value = list(names), value
+
+    def layer_names(self):
+        return self.names
+
+    def __call__(self, stimuli, layers, **kwargs):
+        unknown = [layer for layer in layers if layer not in self.names]
+        if unknown:
+            raise ValueError(f'unknown layers {unknown}')
+        return _forms_extractor(self.value)(stimuli, layers)
+
+
+def _clip_benchmark():
+    return SimpleNamespace(identifier='clips', required_input_channels={'vision:video'},
+                           requested_output_channels={'neural:IT'})
+
+
+@pytest.mark.parametrize('layer, modality, forms', [
+    ('x', 'vision', {'vision:image'}),       # only the image extractor has 'x'
+    ('y', 'vision', {'vision:video'}),       # only the video extractor has 'y'
+    ('x', 'video', {'vision:image'}),        # an explicit route to the video family
+    ('y', 'video', {'vision:video'}),
+])
+def test_a_region_lists_only_the_forms_whose_extractor_has_its_layer(layer, modality, forms):
+    from brainscore_core.streaming_helpers import neural_response
+    model = BrainScoreModel('m', extractor={'vision': _Layers(['x'], 1.0), 'video': _Layers(['y'], 2.0)},
+                            region_layer_map={'IT': LayerSelector(layer, modality=modality)})
+    assert model.output_inputs == {'neural:IT': frozenset(forms)}
+    clips = StimulusSet({'stimulus_id': ['s'], 'video_path': ['s.mp4']})
+    clips.identifier = 'clips'
+    stills = StimulusSet({'stimulus_id': ['s'], 'image_path': ['s.png']})
+    stills.identifier = 'stills'
+    for form, stimuli, value in (('vision:image', stills, 1.0), ('vision:video', clips, 2.0)):
+        if form in forms:              # a listed form runs
+            assert neural_response(model, stimuli, ['neural:IT']).values.max() == value
+        else:                          # an unlisted form is refused
+            with pytest.raises(ValueError, match='unknown layers'):
+                neural_response(model, stimuli, ['neural:IT'])
+    if 'vision:video' in forms:
+        assert check_compatibility(model, _clip_benchmark()).kind == 'full'
+    else:
+        with pytest.raises(CompatibilityError, match='only from the inputs'):
+            check_compatibility(model, _clip_benchmark())
+
+
+def test_a_region_lists_both_forms_when_both_extractors_have_its_layer():
+    model = BrainScoreModel('m', extractor={'vision': _Layers(['x'], 1.0), 'video': _Layers(['x'], 2.0)},
+                            region_layer_map={'IT': LayerSelector('x', modality='vision')})
+    assert model.output_inputs == {'neural:IT': frozenset({'vision:image', 'vision:video'})}
+    assert check_compatibility(model, _clip_benchmark()).kind == 'full'
+
+
+def test_a_fused_extractor_lists_each_input_it_takes():
+    fused = _Layers(['x'], 1.0)
+    model = BrainScoreModel('m', extractor={('vision', 'text'): fused}, region_layer_map={'IT': 'x'})
+    assert model.output_inputs == {'neural:IT': frozenset({'vision:image', 'text'})}
+
+
+def test_a_region_whose_layers_no_one_extractor_has_is_refused_at_registration():
+    from brainscore import CompositeSelector
+    with pytest.raises(ValueError, match='no one extractor has all of the layers'):
+        BrainScoreModel('m', extractor={'vision': _Layers(['x'], 1.0), 'video': _Layers(['y'], 2.0)},
+                        region_layer_map={'IT': CompositeSelector(((('x', None)), ('y', None)),
+                                                                  modality='vision')})
+
+
+# ── Which objects reset() reaches ──
+
+class _Owner:
+    """Owns several parts as bound methods and counts its resets."""
+
+    def __init__(self):
+        self.resets = 0
+
+    def reset(self):
+        self.resets += 1
+
+    def act(self, row):
+        return {'motor': 0.0}
+
+    def answer(self, stimulus_row, instruction, label_set):
+        return label_set[0]
+
+    def reply(self, prompt):
+        return 'a'
+
+    def likelihood(self, prompt, labels):
+        return {label: 0.0 for label in labels}
+
+
+def _parts(owner, names):
+    parts = {name: getattr(owner, 'act' if name == 'policy' else name) for name in names}
+    if 'policy' in names:
+        parts.update(policy_in_channels={'observation'}, policy_out_channels={'motor'})
+    return parts
+
+
+@pytest.mark.parametrize('names', [('policy',), ('answer',), ('reply',), ('likelihood',),
+                                   ('reply', 'likelihood'), ('policy', 'answer', 'reply', 'likelihood')])
+def test_the_owner_of_bound_method_parts_is_reset_once_per_episode_and_reset(names):
+    owner = _Owner()
+    model = BrainScoreModel('m', in_channels={'text'}, **_parts(owner, names))
+    model._begin_episode()
+    assert owner.resets == 1
+    model.reset()
+    assert owner.resets == 2
+
+
+def test_a_bound_policy_starts_each_episode_and_reset_empty():
+    class Counter:
+        def __init__(self):
+            self.n = 0
+
+        def reset(self):
+            self.n = 0
+
+        def act(self, row):
+            self.n += 1
+            return {'motor': self.n}
+    counter = Counter()
+    model = BrainScoreModel('m', policy=counter.act, policy_in_channels={'observation'},
+                            policy_out_channels={'motor'})
+    actions = []
+    for _ in range(2):
+        model._begin_episode()
+        actions.append(model.process({'observation': 0})['motor'])
+    assert actions == [1, 1]
+    model.process({'observation': 0})
+    model.reset()
+    assert counter.n == 0
+
+
+def test_a_part_object_and_the_owner_of_another_part_are_each_reset_once():
+    class Scorer(_Owner):
+        def __call__(self, prompt, labels):
+            return {label: 0.0 for label in labels}
+    owner, scorer = _Owner(), Scorer()
+    model = BrainScoreModel('m', in_channels={'text'}, reply=owner.reply, answer=owner.answer,
+                            likelihood=scorer)
+    model.reset()
+    assert (owner.resets, scorer.resets) == (1, 1)
+
+
+# ── reset() inside intact() changes nothing ──
+
+def test_a_reset_refused_inside_intact_leaves_every_state_as_it_was():
+    net, _ = _weight_subject()
+    owner = _Owner()
+    subject = BrainScoreModel('weights', model=net, intervention=build_pytorch_ablation_fn(net),
+                              extractor={'vision': _forms_extractor(1.0)}, region_layer_map={'IT': 'x'},
+                              answer=owner.answer)
+    handle = _edit(subject, scale=2)
+    subject.start_recording('IT')
+    subject.start_task(TaskContext(task_type='probabilities', instruction='i', label_set=['a', 'b']))
+    subject._behavioral.history = ['earlier trial']
+
+    def state():
+        return (net.weight.item(), list(subject._interventions.active_interventions), subject._behavioral.task,
+                subject._behavioral.response_path, list(subject._behavioral.history),
+                subject._recorder.snapshot(), dict(subject._capability_state),
+                set(subject._capability_setup_done), owner.resets)
+    with subject._interventions.intact():
+        before = state()
+        with pytest.raises(RuntimeError, match='inside intact'):
+            subject.reset()
+        assert state() == before
+    assert net.weight.item() == 2.0 and list(subject._interventions.active_interventions) == [handle]
+    subject.reset()
+    assert net.weight.item() == 1.0 and subject._behavioral.task is None and owner.resets == 1
+
+
+# ── Applicability uses the part choice of the run ──
+
+_LEGACY = dict(task_type='probabilities', instruction='Which?', label_set=['a', 'b'])
+_TASKS = {
+    'legacy': lambda: TaskContext(**_LEGACY),
+    'choice': lambda: TaskContext(instruction='Which?', response=Choice(['a', 'b'])),
+    'choice with probabilities': lambda: TaskContext(
+        instruction='Which?', response=Choice(['a', 'b'], probabilities=True)),
+    'choice with raw scores': lambda: TaskContext(
+        instruction='Which?', response=Choice(['a', 'b'], raw_scores=True)),
+    'choice with confidence': lambda: TaskContext(
+        instruction='Which?', response=Choice(['a', 'b'], confidence=Scale(0, 1))),
+    'scale': lambda: TaskContext(instruction='How?', response=Scale(1, 7)),
+    'text': lambda: TaskContext(instruction='Say.', response=Text()),
+}
+_PARTS = {
+    'none': {},
+    'readout without fitting': {'behavioral_readout_layer': 'x'},
+    'answer': {'answer': lambda row, instruction, labels: labels[0]},
+    'likelihood': {'likelihood': lambda prompt, labels: {label: 0.0 for label in labels}},
+    'reply': {'reply': lambda prompt: 'a'},
+}
+# Each task kind against each combination of parts that cannot answer it.
+_INSUFFICIENT = [
+    ('legacy', 'none'), ('legacy', 'readout without fitting'), ('legacy', 'likelihood'), ('legacy', 'reply'),
+    ('choice', 'none'), ('choice', 'readout without fitting'),
+    ('choice with probabilities', 'none'), ('choice with probabilities', 'answer'),
+    ('choice with probabilities', 'reply'),
+    ('choice with raw scores', 'none'), ('choice with raw scores', 'answer'),
+    ('choice with raw scores', 'reply'),
+    ('choice with confidence', 'none'), ('choice with confidence', 'answer'),
+    ('choice with confidence', 'likelihood'),
+    ('scale', 'none'), ('scale', 'answer'), ('scale', 'likelihood'),
+    ('scale', 'readout without fitting'),
+    ('text', 'none'), ('text', 'answer'), ('text', 'likelihood'), ('text', 'readout without fitting'),
+]
+
+
+# A subject with no part declares no behavior output, so that pair has no session at all.
+@pytest.mark.parametrize('task_kind, parts, outputs', [
+    (task_kind, parts, outputs) for task_kind, parts in _INSUFFICIENT
+    for outputs in (['neural:IT'], ['behavior']) if not (parts == 'none' and outputs == ['behavior'])])
+def test_a_task_no_part_can_answer_is_not_applicable_before_any_pass(task_kind, parts, outputs):
+    calls = []
+
+    def extract(stimuli, layers, **kwargs):
+        calls.append(list(layers))
+        return _forms_extractor(1.0)(stimuli, layers)
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b'], 'image_path': ['a.png', 'b.png'],
+                           'label': ['a', 'b']})
+    stimuli.identifier = 'applicability'
+    subject = BrainScoreModel('m', extractor={'vision': extract}, region_layer_map={'IT': 'x'},
+                              **_PARTS[parts])
+    task = _TASKS[task_kind]()
+    with pytest.raises(CompatibilityError, match='cannot'):
+        subject.participate(stimulus_session(stimuli, outputs, task))
+    assert calls == [] and subject._behavioral.task is None

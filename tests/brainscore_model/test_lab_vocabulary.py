@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.events import StateChange, PerturbationApplied, Perturbation, Selection
 from brainscore_core.streaming import FixedSource, Session, Source, StreamEvent
 from brainscore_core.streaming_helpers import stimulus_session
@@ -117,7 +118,7 @@ def _text_task(**fields):
 
 def test_unviable_behavioral_task_names_answer_parameter():
     subject = BrainScoreModel(identifier='no-path', in_channels={'text'})
-    with pytest.raises(ValueError, match='Paths tried') as error:
+    with pytest.raises(CompatibilityError, match='Paths tried') as error:
         subject.start_task(_text_task())
     assert 'generation needs answer=' in str(error.value)
     assert 'readout needs TaskContext.fitting_stimuli' in str(error.value)

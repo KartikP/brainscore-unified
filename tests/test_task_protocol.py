@@ -702,7 +702,7 @@ def test_an_answer_part_cannot_serve_a_raw_text_choice():
     model = BrainScoreModel(identifier='answerer', in_channels={'text'}, answer=answer)
     task = TaskContext(response=Choice(labels='options', raw_text=True))
     session = stimulus_session(_options_stimuli(), ['behavior:choice'], task)
-    with pytest.raises(ValueError, match='cannot give a Choice answer'):
+    with pytest.raises(CompatibilityError, match='cannot give a Choice answer'):
         model.participate(session)
     assert calls == []
 

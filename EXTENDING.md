@@ -143,8 +143,10 @@ agent = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked()
 
 The model calls `reset()` of the object given as `policy=` when an episode begins (every
 `begin` signal: at the start of each closed-loop session, and of each trial when the
-task's `trial_memory` is `'none'`) and when `model.reset()` runs. A bound method has no
-`reset()` of its own, so give the object. Declare in `policy_in_channels` every row key
+task's `trial_memory` is `'none'`) and when `model.reset()` runs. The same holds for every
+part (`policy=`, `answer=`, `reply=`, `likelihood=`, an extractor): `reset()` is called on
+a part that has it, and on the owner of a part that is a bound method (`policy=agent.act`
+resets `agent`), once per object. Declare in `policy_in_channels` every row key
 the policy reads; the session sends only those.
 
 ### Seam 2 — a new benchmark

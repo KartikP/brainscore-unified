@@ -118,6 +118,32 @@ def validate_region_layers(owner, selectors) -> None:
             message = unknown_layer_message(owner, path, selector.modality)
             if message:
                 raise ValueError(f'region_layer_map[{region!r}]: {message}')
+        if owner._extractors and not region_extractor_keys(owner, selector):
+            raise ValueError(f'region_layer_map[{region!r}]: no one extractor has all of '
+                             f'the layers {list(selector.layer_paths)}.')
+
+
+def region_extractor_keys(owner, selector) -> List[str]:
+    """The extractor keys a region is recorded from: the keys its modality selects
+    (every key when it names none) whose extractor has all of the region's layers.
+
+    ``output_inputs`` lists the input channel of each, so declarations, pre-flight
+    and the run agree on the forms of a region. An extractor without
+    ``layer_names()`` cannot list its layers, so it is taken to have them.
+    """
+    from .dispatch import extractor_keys
+    keys = (list(owner._extractors) if selector.modality is None
+            else extractor_keys(owner, selector.modality))
+    bases = {path[:-len(INPUT_SITE)] if path.endswith(INPUT_SITE) else path
+             for path in selector.layer_paths}
+
+    def has_layers(extractor):
+        try:
+            layer_names = extractor.layer_names
+        except AttributeError:
+            return True
+        return bases <= set(layer_names())
+    return [key for key in keys if has_layers(owner._extractors[key])]
 
 
 class Recorder:

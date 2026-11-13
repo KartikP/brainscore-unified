@@ -156,7 +156,7 @@ def test_a_subject_with_no_task_part_is_not_applicable_under_a_task(tmp_path):
     model = BrainScoreModel('tiny-audio', extractor={'audio': wrapper},
                             region_layer_map={REGION: regions[REGION]})
     session = stimulus_session(stimuli, [f'neural:{REGION}'], task=ANSWERS['choice'][0])
-    with pytest.raises(CompatibilityError, match='no part for the task'):
+    with pytest.raises(CompatibilityError, match='cannot give a Choice answer'):
         model.participate(session)
     assert passes == []
 

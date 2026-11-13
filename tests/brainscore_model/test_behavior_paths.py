@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Text
 from brainscore_core.streaming import StreamEvent
@@ -169,9 +170,9 @@ def test_text_settings_reach_the_reply_part_and_extra_data_reaches_the_event():
 
 def test_the_one_chooser_names_every_path_it_tried():
     model = BrainScoreModel('none', in_channels={'text'})
-    with pytest.raises(ValueError, match='Paths tried: generation needs answer=.*readout needs'):
+    with pytest.raises(CompatibilityError, match='Paths tried: generation needs answer=.*readout needs'):
         model.start_task(TaskContext(**LEGACY))
-    with pytest.raises(ValueError, match='cannot give a Choice answer. Paths tried'):
+    with pytest.raises(CompatibilityError, match='cannot give a Choice answer. Paths tried'):
         model.start_task(TaskContext(response=Choice(['cat', 'dog'])))
 
 

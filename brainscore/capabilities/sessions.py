@@ -48,14 +48,8 @@ class NeuralSessions(Capability):
         if task is not None and task.task_type != 'passive':
             # The session's task decides what the subject does (rules 4.1, 4.5):
             # record during the task; the answers are not sent. A subject with
-            # no part that does a task cannot take part, so the pair is N/A.
-            if not _BEHAVIOR.enabled_for(subject):
-                from brainscore_core.compatibility import CompatibilityError
-                raise CompatibilityError(
-                    f'Subject {subject.identifier!r} has no part for the task '
-                    f'{task.task_type!r}: it needs behavioral_readout_layer=, answer=, '
-                    f'reply= or likelihood=. It records only passive viewing; a session '
-                    f"for that sends task_type='passive' or no task.")
+            # no part for this task cannot take part: the part choice in
+            # ``start_task`` raises CompatibilityError before any compute (N/A).
             drive_behavior_and_neural_session(subject, session)
             return
         # A passive session records activity even after a task was configured.
@@ -261,8 +255,7 @@ class InterventionSessions(Capability):
 
 
 _NEURAL = NeuralSessions()
-_BEHAVIOR = BehaviorSessions()
-for _capability in (_NEURAL, _BEHAVIOR, MotorSessions(), InterventionSessions()):
+for _capability in (_NEURAL, BehaviorSessions(), MotorSessions(), InterventionSessions()):
     register_capability(_capability)
 
 

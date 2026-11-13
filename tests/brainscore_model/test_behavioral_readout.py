@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from brainscore import BrainScoreModel
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response
 from brainscore_core.supported_data_standards.brainio.assemblies import (
@@ -144,7 +145,7 @@ class TestBrainScoreModelBehavioral:
             extractor={'vision': extractor},
             # No behavioral_readout_layer
         )
-        with pytest.raises(ValueError, match="behavioral_readout_layer"):
+        with pytest.raises(CompatibilityError, match="behavioral_readout_layer"):
             model.start_task(TaskContext(
                 task_type='probabilities',
                 fitting_stimuli=labeled_stimuli,
@@ -240,7 +241,7 @@ class TestBrainScoreModelGenerationPath:
             region_layer_map={},
             extractor={'vision': lambda *a, **kw: None},
         )
-        with pytest.raises(ValueError, match="Paths tried: generation needs answer=.*readout needs TaskContext.fitting_stimuli"):
+        with pytest.raises(CompatibilityError, match="Paths tried: generation needs answer=.*readout needs TaskContext.fitting_stimuli"):
             model.start_task(TaskContext(
                 task_type='probabilities',
                 label_set=['cat', 'dog'],

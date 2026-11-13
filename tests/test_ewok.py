@@ -16,6 +16,7 @@ from brainscore.benchmarks.ewok.benchmark import logprob_accuracy
 from brainscore.harnesses.ewok import EWoKProvider
 from brainscore.experiments import Experiment, RecordInputsOutputs
 from brainscore import BrainScoreModel
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.contract import Subject
 
 pytestmark = pytest.mark.unit
@@ -289,7 +290,7 @@ def test_a_likelihood_part_also_runs_choice(prepared, tmp_path, parts={'likeliho
 def test_an_answer_part_cannot_run_the_raw_text_choice(prepared, tmp_path):
     model=BrainScoreModel('fixture', in_channels={'text'}, answer=lambda row, instruction, labels: '1')
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
-    with pytest.raises(ValueError,match='cannot give a Choice answer'):
+    with pytest.raises(CompatibilityError,match='cannot give a Choice answer'):
         b(model)
 
 
