@@ -22,6 +22,13 @@ class Extractor(Protocol):
     rejects an unknown ``region_layer_map`` path or raw recording target
     before any forward pass; a ``':input'`` site is checked by its module
     path. An extractor without ``layer_names()`` skips this early check.
+
+    An extractor may also define ``record(layers)``: a context manager that
+    records while another part (``reply``, ``likelihood``, ``policy``) runs the
+    network; its ``take()`` gives the first forward pass since the previous
+    call. A region is recorded during an answer or a step only through it, or
+    through hooks on ``BrainScoreModel(model=...)`` when every layer of the
+    region is a module of that network; pre-flight gives N/A otherwise.
     """
 
     identifier: str

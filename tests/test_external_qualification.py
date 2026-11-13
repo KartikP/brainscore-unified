@@ -140,8 +140,7 @@ def test_native_tiny_fixture_passes_and_restores(tmp_path):
 ])
 def test_answer_response_keeps_answer_and_fallback(answer, action, valid):
     """The applied action is unchanged; the answer and the parse result are kept."""
-    from brainscore.model_helpers.local_vlm_policy import parse_directional_action
-    from native_environment_toolbox import UNPARSED_ACTION, answer_response
+    from native_environment_toolbox import UNPARSED_ACTION, answer_response, parse_directional_action
 
     response = answer_response(answer)
     parsed = parse_directional_action(answer, prefer_last=True)
@@ -412,3 +411,46 @@ def test_coggym_unverified_model_fails_under_optimize(tmp_path):
     assert report['error'].startswith('RuntimeError: Qualification check failed: model file')
     assert 'model_identity' not in report['provenance']
     assert 'model_sha256' not in report['provenance'] and 'coggym_source' not in report['provenance']
+
+
+@pytest.mark.parametrize('text, prefer_last, action', [
+    ('reasoning...\nAction: up', False, 0), ('Action: DOWN', False, 1), ('action - left', False, 2),
+    ('maybe up, but actually go right', False, 0), ('maybe up, but actually go right', True, 3),
+    ('could be left or up. Action: down', False, 1), ('no direction here', False, -1), ('', False, -1),
+])
+def test_directional_parser(text, prefer_last, action):
+    from native_environment_toolbox import parse_directional_action
+    assert parse_directional_action(text, prefer_last=prefer_last) == action
+
+
+def test_visual_policy_runs_a_loaded_model_and_plays_the_fallback_for_an_unparsed_answer():
+    import numpy as np
+    import torch
+    from native_environment_toolbox import visual_policy
+
+    class Inputs(dict):
+        def to(self, device):
+            return self
+
+    class Processor:
+        answers = iter(['Action: left', 'I am not sure'])
+        def apply_chat_template(self, messages, **kwargs):
+            return 'prompt'
+        def __call__(self, text, images, return_tensors):
+            return Inputs(input_ids=torch.zeros(1, 2, dtype=torch.long))
+        def decode(self, tokens, skip_special_tokens):
+            return next(self.answers)
+
+    class Model:
+        device = 'cpu'
+        def generate(self, **kwargs):
+            return torch.zeros(1, 3, dtype=torch.long)
+
+    policy, stats = visual_policy(Model(), Processor(), fallback=lambda: 3)
+    frame = {'frame': np.zeros((8, 8, 3), np.uint8)}
+    first, second = policy(frame, ()), policy(frame, ())
+    assert first.payload == 2 and first.meta['valid']
+    assert second.payload == 3 and second.meta == {
+        'answer': 'I am not sure', 'valid': False,
+        'parse_error': 'the answer names no action', 'fallback_action': 3}
+    assert stats == {'calls': 2, 'parse_miss': 1}

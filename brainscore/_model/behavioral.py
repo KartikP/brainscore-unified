@@ -146,9 +146,15 @@ class BehavioralReadout:
         self._configured_as = None
 
     def invalidate(self) -> None:
-        """The model changed (an intervention was applied or undone): fit again next time."""
-        self._stale = True
-        self._remembered = None
+        """The model changed (an intervention was applied or undone): fit again next time.
+
+        A configuration with ``readout_fit='intact'`` stays: its readout was
+        fitted with every intervention undone, so a change leaves it as it is.
+        """
+        if not _fitted_intact(self.task):
+            self._stale = True
+        if self._remembered is not None and not _fitted_intact(self._remembered['task']):
+            self._remembered = None
         self._changes += 1
 
     def _snapshot(self) -> Dict[str, Any]:
@@ -175,7 +181,7 @@ class BehavioralReadout:
                 self._clear_task()
             else:
                 self._restore(prior)
-                if self._changes != changes:
+                if self._changes != changes and not _fitted_intact(self.task):
                     # The model changed during the session: the caller's readout
                     # was fitted on the model as it was before.
                     self._stale = True
@@ -279,30 +285,17 @@ class BehavioralReadout:
 
     def extract_behavioral_features(self, stimuli):
         """Run the model once at the behavioral readout layer."""
-        owner = self.owner
-        saved_layer = owner._recorder.recording_layer
-        saved_layers = owner._recorder.recording_layers
-        saved_regions = owner._recorder.recording_regions
-        saved_multi = owner._recorder.is_multi_region
-        saved_composite = owner._recorder.composite_recording
-        saved_classifier = self.readout_classifier
-        owner._recorder.recording_layer = owner._behavioral_readout_layer
-        owner._recorder.recording_layers = (
-            [owner._behavioral_readout_layer]
-            if owner._behavioral_readout_layer else []
-        )
-        owner._recorder.recording_regions = []
-        owner._recorder.is_multi_region = False
-        owner._recorder.composite_recording = False
+        owner, recorder = self.owner, self.owner._recorder
+        saved, saved_classifier = recorder.snapshot(), self.readout_classifier
+        layer = owner._behavioral_readout_layer
+        # Record the readout layer alone; the time bins stay as configured.
+        recorder.recording_layer, recorder.recording_layers = layer, [layer] if layer else []
+        recorder.recording_regions, recorder.is_multi_region, recorder.composite_recording = [], False, False
         self.readout_classifier = None
         try:
             features = owner.process(stimuli)
         finally:
-            owner._recorder.recording_layer = saved_layer
-            owner._recorder.recording_layers = saved_layers
-            owner._recorder.recording_regions = saved_regions
-            owner._recorder.is_multi_region = saved_multi
-            owner._recorder.composite_recording = saved_composite
+            recorder.restore(saved)
             self.readout_classifier = saved_classifier
 
         if 'presentation' in features.dims and 'neuroid' in features.dims:
@@ -540,6 +533,7 @@ class BehavioralReadout:
         """
         owner = self.owner
         from .dispatch import extractor_for
+        from .recording import record_part
         by_modality: Dict[str, list] = {}
         for region, region_layers in layers.items():
             by_modality.setdefault(self._region_modality(region), []).extend(region_layers)
@@ -549,10 +543,7 @@ class BehavioralReadout:
             extractor = extractor_for(owner, modality, stimuli)
             if extractor is None:
                 raise NotImplementedError(f'No {modality!r} extractor to record from.')
-            try:
-                record = extractor.record
-            except AttributeError:
-                record = None
+            record = record_part(extractor)
             if record is not None:
                 recordings[modality] = record(modality_layers)
             elif owner._model is not None:
@@ -686,7 +677,7 @@ class BehavioralReadout:
         from brainscore_core.responses import Scale
         owner = self.owner
         readout_layer = owner._behavioral_readout_layer
-        modality = owner._pick_modality(owner.detect_modalities(stimuli))
+        modality = owner._dispatcher.pick_modality(owner.detect_modalities(stimuli))
         for region in layers:
             if owner._region_modality_map.get(region) and self._region_modality(region) != modality:
                 raise ValueError(
@@ -695,7 +686,7 @@ class BehavioralReadout:
                     'record it.')
         all_layers = list(dict.fromkeys([readout_layer, *(l for ls in layers.values() for l in ls)]))
         extracted = owner._recorder.ensure_layer_provenance(
-            owner._extract_for_modality(stimuli, modality, all_layers), all_layers,
+            owner._dispatcher.extract_for_modality(stimuli, modality, all_layers), all_layers,
             description='Readout extraction')
         layer_of = extracted['layer'].values
         features = extracted.isel(neuroid=layer_of == readout_layer)
@@ -716,6 +707,12 @@ class BehavioralReadout:
                     recording=self._stamp('readout', 'readout extraction'))
         return behavior, neural
 
+
+def _fitted_intact(task) -> bool:
+    """Whether a configuration for ``task`` is fitted with every intervention undone."""
+    return task is not None and task.readout_fit == 'intact'
+
+
 @contextmanager
 def _hook_recording(model, layers, identifier):
     """Forward hooks on ``model`` for extractors without ``record()``.
@@ -724,17 +721,13 @@ def _hook_recording(model, layers, identifier):
     output flattened per presentation, as a still-image extractor packages it.
     """
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+    from .recording import module_at
 
-    def module_at(path):
-        module = model
-        for part in path.split('.'):
-            module = module[int(part)] if part.isdigit() else getattr(module, part, None)
-            if module is None:
-                raise NotImplementedError(f'Layer {path!r} is not a module of the model passed as model=; '
-                                          'give the extractor a record(layers) method.')
-        return module
-
-    modules = {layer: module_at(layer) for layer in layers}   # unknown paths fail before compute
+    modules = {layer: module_at(model, layer) for layer in layers}   # unknown paths fail before compute
+    missing = [layer for layer, module in modules.items() if module is None]
+    if missing:
+        raise NotImplementedError(f'Layer {missing[0]!r} is not a module of the model passed as model=; '
+                                  'give the extractor a record(layers) method.')
     captured = {}
 
     def keep(layer):

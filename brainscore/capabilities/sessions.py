@@ -15,6 +15,7 @@ import pandas as pd
 
 from .base import Capability
 from .._model.intervention import INTERVENTION_CHANNELS
+from .._model.recording import records_while_answering
 from .registry import register_capability
 from brainscore_core import streaming_helpers as _drivers
 from brainscore_core.streaming import StreamEvent, parse_channel
@@ -96,10 +97,14 @@ class BehaviorSessions(Capability):
 
     def supports_session(self, subject, channels) -> bool:
         # Behavior alone, or behavior plus regions recorded during the same answers.
+        # A readout records any region from its own extraction; an answering
+        # part records only where the wiring can record during its pass.
         behavior = {c for c in channels if c == 'behavior' or c.startswith('behavior:')}
         recorded = set(channels) - behavior
+        readout = subject._behavioral_readout_layer is not None and bool(subject._extractors)
         return bool(behavior) and behavior <= self.declared_output_channels(subject) and recorded <= {
-            f'neural:{region}' for region in subject.region_layer_map}
+            f'neural:{region}' for region in subject.region_layer_map
+            if readout or records_while_answering(subject, region)}
 
     def participate(self, subject, session) -> None:
         requested = set(_drivers.session_outputs(session))
@@ -163,7 +168,8 @@ class MotorSessions(Capability):
 
     def supports_session(self, subject, channels) -> bool:
         channels = set(channels)
-        recorded = (_NEURAL.declared_output_channels(subject)
+        recorded = ({f'neural:{region}' for region in subject.region_layer_map
+                     if records_while_answering(subject, region)}
                     if _NEURAL.enabled_for(subject) else set())
         outputs = set(subject._policy_outputs)
         return bool(channels & outputs) and channels <= outputs | recorded

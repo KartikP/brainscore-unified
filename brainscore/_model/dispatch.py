@@ -224,7 +224,7 @@ class InputDispatcher:
             # One fused extractor takes every input type: one forward pass.
             assembly = fused(stimuli, layers=layers)
             if owner._recorder.is_multi_region:
-                assembly = owner._tag_neuroids_with_regions(assembly)
+                assembly = owner._recorder.tag_neuroids_with_regions(assembly)
             return assembly
         ordered = sorted(
             detected,
@@ -239,15 +239,15 @@ class InputDispatcher:
         for modality in ordered:
             if not self._declares(modality):
                 continue
-            modality_layers = owner._filter_layers_for_modality(
+            modality_layers = owner._recorder.filter_layers_for_modality(
                 layers, modality)
             if (owner._region_modality_map
                     and not modality_layers
                     and owner._recorder.recording_regions):
                 continue
-            sub = (owner._process_composite_regions(stimuli, modality)
+            sub = (owner._recorder.process_composite_regions(stimuli, modality)
                    if owner._recorder.composite_recording else
-                   owner._extract_for_modality(stimuli, modality, modality_layers))
+                   self.extract_for_modality(stimuli, modality, modality_layers))
             if not hasattr(sub, 'dims') or 'neuroid' not in sub.dims:
                 raise TypeError(
                     f"multi_modality dispatch requires every extractor "
@@ -258,7 +258,7 @@ class InputDispatcher:
                     f"extractor={{modality: extractor}}."
                 )
             if owner._recorder.is_multi_region and not owner._recorder.composite_recording:
-                sub = owner._tag_neuroids_with_regions(sub, modality)
+                sub = owner._recorder.tag_neuroids_with_regions(sub, modality)
             n_neuroid = sub.sizes['neuroid']
             sub = sub.assign_coords(
                 modality=('neuroid', np.array([modality] * n_neuroid))

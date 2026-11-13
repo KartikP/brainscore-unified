@@ -27,15 +27,19 @@ class Interventions:
     def intact(self):
         """Undo every active change for the block, then apply each again.
 
-        Handles keep their identity, so a later reset by handle still works.
+        Inside the block no change is active, so an extraction may use the
+        activation cache of the intact model. Handles keep their identity, so a
+        later reset by handle still works.
         """
-        handles = list(self.active_interventions)
-        for handle in reversed(handles):
-            self.active_interventions[handle]()
+        undone = dict(self.active_interventions)
+        for handle in reversed(list(undone)):
+            undone[handle]()
+        self.active_interventions = {}
         try:
             yield
         finally:
-            for handle in handles:
+            self.active_interventions = undone
+            for handle in undone:
                 _, cleanup = self.owner._intervention(self._changes[handle])
                 self.active_interventions[handle] = cleanup
 

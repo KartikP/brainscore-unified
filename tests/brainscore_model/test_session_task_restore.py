@@ -196,3 +196,29 @@ def test_an_unhashable_fitting_table_fits_no_more_often_than_before():
     behavioral_response(model, _images(), task)
     behavioral_response(model, _images(), task)
     assert _fits(extractor) == 2                         # a new task object fits once
+
+
+@pytest.mark.parametrize('readout_fit, fits_after_change', [('intact', 1), ('current', 2)])
+def test_an_intervention_refits_only_a_readout_fitted_on_the_current_model(readout_fit, fits_after_change):
+    """A readout fitted with every intervention undone stays valid when one is applied."""
+    from brainscore_core.events import (PerturbationApplied, Perturbation, Selection, StateChange)
+    from brainscore_core.streaming_helpers import apply_state_change
+    extractor = _Extractor()
+    lesioned = []
+
+    def intervention(change):
+        lesioned.append(True)
+        return (PerturbationApplied(handle_id=f'h{len(lesioned)}', target=change.target,
+                                    perturbation=change.perturbation, applied_at=0),
+                lambda: lesioned.pop())
+    model = BrainScoreModel('restore', extractor={'vision': extractor},
+                            behavioral_readout_layer='layer', intervention=intervention)
+    task = _task()
+    task.readout_fit = readout_fit
+    before = behavioral_response(model, _images(), task)
+    assert _fits(extractor) == 1
+    apply_state_change(model, StateChange('ablation', target=Selection(layer='layer'),
+                                          perturbation=Perturbation('zero')))
+    after = behavioral_response(model, _images(), task)
+    assert _fits(extractor) == fits_after_change and lesioned == [True]
+    np.testing.assert_array_equal(after.values, before.values)   # the toy features ignore the lesion

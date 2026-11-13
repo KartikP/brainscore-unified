@@ -42,7 +42,7 @@ class NeuralEncodingCapability(Capability):
             )
 
         layers = subject._recorder.current_layers()
-        modality = subject._pick_modality(detected)
+        modality = subject._dispatcher.pick_modality(detected)
         requested_modalities = {
             subject._region_modality_map[r] for r in subject._recorder.recording_regions
             if r in subject._region_modality_map}
@@ -64,7 +64,7 @@ class NeuralEncodingCapability(Capability):
         will_run = detected if (multi_modality and len(detected) > 1) else {modality}
         if (not layers and subject._region_layer_map_dict
                 and not subject._recorder.composite_recording
-                and any(subject._supports_layer_extraction(m) for m in will_run)):
+                and any(subject._dispatcher.supports_layer_extraction(m) for m in will_run)):
             raise ValueError(
                 f"Subject '{subject.identifier}' records no region: request a "
                 f"neural channel in the session, for example "
@@ -75,7 +75,7 @@ class NeuralEncodingCapability(Capability):
 
         from .._model.dispatch import fused_for
         if (multi_modality or fused_for(subject, detected) is not None) and len(detected) > 1:
-            return subject._process_multi_modality(stimuli, detected, layers)
+            return subject._dispatcher.process_multi_modality(stimuli, detected, layers)
 
         if not multi_modality and len(detected) > 1:
             import warnings
@@ -90,12 +90,12 @@ class NeuralEncodingCapability(Capability):
                 stacklevel=2,
             )
         if (subject._recorder.composite_recording
-                and subject._supports_layer_extraction(modality)):
-            return subject._process_composite_regions(stimuli, modality)
-        layers = subject._filter_layers_for_modality(layers, modality)
-        assembly = subject._extract_for_modality(stimuli, modality, layers)
-        if subject._recorder.is_multi_region and subject._supports_layer_extraction(modality):
-            assembly = subject._tag_neuroids_with_regions(assembly, modality)
+                and subject._dispatcher.supports_layer_extraction(modality)):
+            return subject._recorder.process_composite_regions(stimuli, modality)
+        layers = subject._recorder.filter_layers_for_modality(layers, modality)
+        assembly = subject._dispatcher.extract_for_modality(stimuli, modality, layers)
+        if subject._recorder.is_multi_region and subject._dispatcher.supports_layer_extraction(modality):
+            assembly = subject._recorder.tag_neuroids_with_regions(assembly, modality)
         return assembly
 
 

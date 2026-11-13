@@ -30,14 +30,13 @@ EC2 (GPU); the random null runs anywhere.
 import argparse
 import json
 import os
-from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
 
 from . import benchmark as B
 from .montage import render_sample, compose_choice_array
-from .score_2afc import TrialChooser, _parse_lr, run_trials
+from .score_2afc import _answering_subject, _parse_lr, run_trials
 from brainscore_core.hf_compat import pin_image_processor
 
 SEQUENTIAL_INSTRUCTION = 'Which option is the same object as the sample you saw? LEFT or RIGHT.'
@@ -87,21 +86,6 @@ def compose_sequential_trials(trials, n_images, out_dir, seed=0, balance_sides=F
     stim = pd.DataFrame(rows)
     stim.to_csv(os.path.join(out_dir, 'manifest.csv'), index=False)
     return stim
-
-
-# --------------------------------------------------------------------------- #
-# A sequential 2-AFC subject that takes part through participate (Witness-
-# recordable, same output shape as the simultaneous TwoAFCModel so scoring is
-# identical)
-# --------------------------------------------------------------------------- #
-class SequentialTwoAFCModel(TrialChooser):
-    """Wraps a per-trial ``choose_seq(row) -> 'LEFT'|'RIGHT'`` (which internally
-    presents sample-then-choices) into a Subject."""
-
-    def __init__(self, identifier, choose_seq: Callable[[Any], str], seq_mode='describe',
-                 instruction=SEQUENTIAL_INSTRUCTION):
-        super().__init__(identifier, choose_seq, mode='generation', instruction=instruction)
-        self._seq_mode = seq_mode
 
 
 # --------------------------------------------------------------------------- #
@@ -209,7 +193,7 @@ def main():
     else:
         choose_seq, stats = build_sequential_random_chooser()
     tag = f'sequential:{args.path}:{args.model or "null"}:{args.seq_mode}:{args.prompt_mode}'
-    model = SequentialTwoAFCModel(tag, choose_seq, seq_mode=args.seq_mode)
+    model = _answering_subject(tag, choose_seq)
 
     with Witness(model, label=f'{args.model or args.path} · Rajalingham 2-AFC (sequential/{args.seq_mode})') as w:
         choices = run_trials(model, stim, SEQUENTIAL_INSTRUCTION)

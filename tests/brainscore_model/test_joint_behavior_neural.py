@@ -149,10 +149,10 @@ def test_readout_records_in_the_same_extraction():
                                   [ToyNet().forward(s)['early'] for s in 'abc'])
 
 
-def test_extractor_that_cannot_record_fails_before_any_answer():
+def test_extractor_that_cannot_record_is_not_applicable_before_any_answer():
     net = ToyNet()
     model = _model(net, extractor_type=NoRecordExtractor)
-    with pytest.raises(NotImplementedError, match='record'):
+    with pytest.raises(NotImplementedError, match='No session handler'):
         _run(model, GENERATE, ['behavior', 'neural:A'])
     assert net.passes == 0
 

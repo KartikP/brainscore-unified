@@ -126,3 +126,45 @@ def test_plain_behavior_without_a_response_is_unchanged():
     session = _ask(model, task, ['behavior'])
     assert session.collect('behavior').sizes['presentation'] == 4
     assert len(calls) == 4
+
+
+class _RecordingExtractor(_CountingExtractor):
+    """An extractor with record(layers): it can record while a reply runs."""
+
+    def record(self, layers):
+        raise AssertionError('pre-flight only; nothing runs')
+
+
+@pytest.mark.parametrize('records, network_layers, supported', [
+    (False, None, False),          # plain extractor, no network
+    (True, None, True),            # the extractor records
+    (False, ('late',), True),      # hooks on model= reach the region's layer
+    (False, ('early',), False),    # model= lacks the region's layer
+])
+def test_recording_during_a_reply_is_decided_in_pre_flight(records, network_layers, supported):
+    import torch
+    network = None
+    if network_layers is not None:
+        network = torch.nn.Module()
+        for name in network_layers:
+            network.add_module(name, torch.nn.Linear(2, 2))
+    extractor = _RecordingExtractor() if records else _CountingExtractor()
+    model = BrainScoreModel(identifier='toy-reply', extractor={'text': extractor}, model=network,
+                            region_layer_map={'IT': 'late'}, reply=lambda prompt: 'cat')
+    channels = {'behavior:choice', 'neural:IT'}
+    if supported:
+        assert model.check_session_support(channels).identifier == 'behavior-sessions'
+    else:
+        with pytest.raises(NotImplementedError, match='No session handler'):
+            model.check_session_support(channels)
+    assert extractor.calls == 0
+
+
+def test_a_policy_records_a_region_only_where_the_wiring_can():
+    import torch
+    network = torch.nn.Sequential(torch.nn.Linear(2, 2))
+    model = BrainScoreModel(identifier='toy-policy', model=network, extractor={'vision': _CountingExtractor()},
+                            region_layer_map={'V4': '0', 'IT': 'head'}, policy=lambda row: {'motor': 0})
+    assert model.check_session_support({'motor', 'neural:V4'}).identifier == 'motor-sessions'
+    with pytest.raises(NotImplementedError, match='No session handler'):
+        model.check_session_support({'motor', 'neural:IT'})

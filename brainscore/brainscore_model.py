@@ -420,29 +420,6 @@ class BrainScoreModel(UnifiedModel):
         """Declared input modalities whose columns appear in ``stimuli``."""
         return self._dispatcher.detect_modalities(stimuli)
 
-    def _pick_modality(self, detected: Set[str]) -> str:
-        return self._dispatcher.pick_modality(detected)
-
-    def _filter_layers_for_modality(self, layers: List[str],
-                                    modality: str) -> List[str]:
-        return self._recorder.filter_layers_for_modality(layers, modality)
-
-    def _supports_layer_extraction(self, modality: str) -> bool:
-        return self._dispatcher.supports_layer_extraction(modality)
-
-    def _extract_for_modality(self, stimuli, modality: str, layers: List[str]):
-        return self._dispatcher.extract_for_modality(stimuli, modality, layers)
-
-    def _process_multi_modality(self, stimuli, detected: Set[str],
-                                layers: List[str]):
-        return self._dispatcher.process_multi_modality(stimuli, detected, layers)
-
-    def _tag_neuroids_with_regions(self, assembly, modality=None):
-        return self._recorder.tag_neuroids_with_regions(assembly, modality)
-
-    def _process_composite_regions(self, stimuli, modality):
-        return self._recorder.process_composite_regions(stimuli, modality)
-
     def start_recording(self,
                         recording_target: Union[str, List[str]],
                         time_bins: Optional[List[Tuple[int, int]]] = None,
