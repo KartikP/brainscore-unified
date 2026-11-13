@@ -61,12 +61,11 @@ def register_input_handler(cls, event_type: type, handler_name: str,
     cls._INPUT_HANDLERS.append(entry)
 
 
-CLIP_COLUMNS = ('video_path', 'video_file_name')
-
-
 def _is_clip(stimuli) -> bool:
-    """Whether a stimulus table presents clips (video) rather than stills."""
-    return any(column in getattr(stimuli, 'columns', ()) for column in CLIP_COLUMNS)
+    """Whether a stimulus table has a column that feeds ``vision:video``."""
+    from brainscore_core.io_catalog import column_channel
+    return any(column_channel(column) == 'vision:video'
+               for column in getattr(stimuli, 'columns', ()))
 
 
 def fused_for(owner, detected):
@@ -254,13 +253,14 @@ class InputDispatcher:
     def detect_modalities(self, stimuli) -> Set[str]:
         owner = self.owner
         detected: Set[str] = set()
-        from brainscore_core.io_catalog import stimulus_columns
-        columns = {**owner.COLUMN_TO_MODALITY, **stimulus_columns()}
+        from brainscore_core.io_catalog import column_channel
+        from brainscore_core.streaming import parse_channel
         for col in stimuli.columns:
-            modality = columns.get(col)
-            if modality is None:
+            channel = column_channel(col)
+            if channel is None:
                 continue
-            modality = canonical_modality(modality)
+            # The channel family is the modality: vision:image and vision:video are vision.
+            modality = canonical_modality(parse_channel(channel)[0])
             if self._has_preprocessor_for(modality):
                 detected.add(modality)
         return detected

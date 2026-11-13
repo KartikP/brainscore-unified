@@ -23,7 +23,7 @@ pytestmark = pytest.mark.unit
 def speech_channel(monkeypatch):
     """An extension output family: a policy that answers in words, not on 'motor'."""
     monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
-    io_catalog.register(io_catalog.CatalogEntry(
+    io_catalog.register_channel(io_catalog.CatalogEntry(
         'speech', io_catalog.OUTPUT, 'a policy answer', 'a str the policy said',
         'the test environment', payload_type=str))
 

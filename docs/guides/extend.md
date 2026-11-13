@@ -16,7 +16,16 @@ register_channel(CatalogEntry(
 ))
 ```
 
-Experiments accept unregistered channel names with a warning; benchmark scoring requires registration. An input channel can also claim stimulus-table columns with `columns=('gaze_target',)`.
+Experiments accept unregistered channel names with a warning; benchmark scoring requires registration.
+
+An input channel can also claim stimulus-table columns. Each column then feeds the channel: a table session sends it on that channel, pre-flight accepts the channel, and a subject that does not declare the channel does not get the column.
+
+```python
+register_channel(CatalogEntry('odor', 'input', 'StimulusSet column', 'an odorant name', 'my_package'),
+                 columns=('odor_name',))
+```
+
+One table says which channel each column feeds: `brainscore_core.io_catalog.stimulus_columns()`. Core's columns are there too, for example `image_path` feeds `vision:image`, `video_path` feeds `vision:video`, `sentence` feeds `text` and `audio_path` feeds `audio`. A column that already feeds a channel needs `replace=True`.
 
 ## A new tool
 

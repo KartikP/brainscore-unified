@@ -141,8 +141,6 @@ class TrialChooser(Subject):
 class TwoAFCModel(TrialChooser):
     """Wraps a per-trial ``choose(row) -> 'LEFT'|'RIGHT'`` over a composed montage."""
 
-    COLUMN_TO_MODALITY = {'image_path': 'vision'}   # so Witness renders the montage
-
     def __init__(self, identifier, choose: Callable[[Any], str], mode='generation', instruction=INSTRUCTION_COT):
         super().__init__(identifier, choose, mode=mode, instruction=instruction)
 

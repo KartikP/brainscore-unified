@@ -28,9 +28,9 @@ class NeuralEncodingCapability(Capability):
 
         if not detected:
             from brainscore_core.io_catalog import stimulus_columns
-            mapping = {**model.COLUMN_TO_MODALITY, **stimulus_columns()}
-            accepted = {m: sorted(c for c, cm in mapping.items()
-                                  if canonical_modality(cm) == canonical_modality(m))
+            from brainscore_core.streaming import parse_channel
+            accepted = {m: sorted(c for c, channel in stimulus_columns().items()
+                                  if parse_channel(channel)[0] == canonical_modality(m))
                         for m in model.supported_modalities}
             raise ValueError(
                 f"No column in this stimulus set says what kind of input it holds "

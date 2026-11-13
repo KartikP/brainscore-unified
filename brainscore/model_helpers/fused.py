@@ -16,7 +16,7 @@ from typing import Sequence
 
 import numpy as np
 
-from brainscore_core.responses import PART_COLUMNS, Prompt
+from brainscore_core.responses import Prompt, part_columns
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
 
@@ -112,7 +112,7 @@ class FusedChatExtractor:
     def _prompt(self, row):
         parts = []
         for kind in self._order:
-            for column in PART_COLUMNS[kind]:
+            for column in part_columns(kind):
                 value = row.get(column) if hasattr(row, 'get') else None
                 if value is not None and not (isinstance(value, float) and value != value):
                     parts.append((kind, value))

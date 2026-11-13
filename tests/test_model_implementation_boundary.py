@@ -78,13 +78,6 @@ def test_selector_instance_pickle_round_trip():
     assert restored == selector
 
 
-def test_builtin_columns_match_the_constructor_map():
-    from brainscore_core.io_catalog import BUILTIN_STIMULUS_COLUMNS
-
-    assert isinstance(BrainScoreModel.COLUMN_TO_MODALITY, dict)
-    assert BrainScoreModel.COLUMN_TO_MODALITY == dict(BUILTIN_STIMULUS_COLUMNS)
-
-
 def test_concrete_subject_keeps_typed_dispatch_order():
     assert [(kind.__name__, handler) for kind, handler in BrainScoreModel._INPUT_HANDLERS] == [
         ('StateChange', '_dispatch_state_change'),

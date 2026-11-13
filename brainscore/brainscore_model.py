@@ -11,8 +11,7 @@ from ._model.behavioral import BehavioralReadout
 from ._model.capability_config import normalize_capability_config
 from brainscore_core.contract import UnifiedModel, TaskContext
 from ._model.dispatch import InputDispatcher, register_input_handler
-from brainscore_core.io_catalog import (BUILTIN_STIMULUS_COLUMNS, MODALITY_TO_INPUT_CHANNEL,
-                                        canonical_modality)
+from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
 from brainscore_core.events import (
     InputEvent,
     OutputEvent,
@@ -94,8 +93,6 @@ class BrainScoreModel(UnifiedModel):
     answer, policy, intervention, capabilities). Evaluated through ``participate``;
     ``process`` is a typed convenience and the legacy benchmark methods forward
     to :class:`~brainscore_core.legacy_facade.LegacyBenchmarkFacade`."""
-
-    COLUMN_TO_MODALITY: Dict[str, str] = dict(BUILTIN_STIMULUS_COLUMNS)
 
     MODALITY_PRIORITY: Tuple[str, ...] = ('vision', 'text', 'audio')
 

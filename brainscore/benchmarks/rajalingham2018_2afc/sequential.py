@@ -98,8 +98,6 @@ class SequentialTwoAFCModel(TrialChooser):
     """Wraps a per-trial ``choose_seq(row) -> 'LEFT'|'RIGHT'`` (which internally
     presents sample-then-choices) into a Subject."""
 
-    COLUMN_TO_MODALITY = {'choices_path': 'vision'}   # Witness shows the decision screen
-
     def __init__(self, identifier, choose_seq: Callable[[Any], str], seq_mode='describe',
                  instruction=SEQUENTIAL_INSTRUCTION):
         super().__init__(identifier, choose_seq, mode='generation', instruction=instruction)

@@ -13,6 +13,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`CallableProtocol`** | A protocol that wraps an existing evaluator and keeps its loop, resets and scoring. |
 | **Ceiling** | An estimate of how well the measured data can be predicted, from its reliability. A ceiled score divides by it. |
 | **Channel** | A named kind of input or output, written `family` or `family:address`, such as `vision:image` or `neural:IT`. Names match exactly. |
+| **Column table** | The one table that says which channel each stimulus column feeds, such as `image_path` to `vision:image` and `sentence` to `text`: `io_catalog.stimulus_columns()`. Sessions, pre-flight and `BrainScoreModel` read it; `register_channel(..., columns=...)` adds to it. |
 | **Compatibility** | The pre-flight check, from declarations only, of whether a subject can take part in a benchmark. Failing pairs are N/A. |
 | **`CompositeSelector`** | A region defined by units from several layers. |
 | **Condition** | A setting compared within an experiment, such as `baseline` or `silenced`. |

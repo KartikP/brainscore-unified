@@ -365,16 +365,15 @@ class TestCacheKey:
         assert a.backbone_id != b.backbone_id
 
 
-# ── Column-to-modality registry ─────────────────────────────────────
+# ── Stimulus columns that feed the audio channel ───────────────────
 
-class TestColumnToModality:
+class TestAudioColumns:
 
-    def test_audio_columns_registered(self):
-        from brainscore import BrainScoreModel
-        mapping = BrainScoreModel.COLUMN_TO_MODALITY
-        assert mapping.get('audio_path') == 'audio'
-        assert mapping.get('audio_file_name') == 'audio'
-        assert mapping.get('audio_file') == 'audio'
+    def test_audio_columns_feed_the_audio_channel(self):
+        from brainscore_core.io_catalog import column_channel
+        assert column_channel('audio_path') == 'audio'
+        assert column_channel('audio_file_name') == 'audio'
+        assert column_channel('audio_file') == 'audio'
 
 
 # ── Temporal coords on time_series output ──────────────────────────

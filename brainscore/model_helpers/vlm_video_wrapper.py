@@ -17,6 +17,7 @@ from typing import List
 
 import numpy as np
 
+from brainscore_core.responses import part_columns
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
 
@@ -45,9 +46,6 @@ def clip_metadata(frames, fps):
         return VideoMetadata(total_num_frames=len(frames), fps=fps, duration=len(frames) / fps)
     except ImportError:          # older transformers take a plain mapping
         return {'total_num_frames': len(frames), 'fps': fps, 'duration': len(frames) / fps}
-
-
-CLIP_COLUMNS = ('video_path', 'video_file_name')
 
 
 class VLMVideoWrapper:
@@ -172,10 +170,11 @@ class VLMVideoWrapper:
 
     @staticmethod
     def _paths(stimuli):
-        for column in CLIP_COLUMNS:
+        clip_columns = part_columns('video')
+        for column in clip_columns:
             if column in stimuli.columns:
                 return [str(p) for p in stimuli[column].values]
         paths = getattr(stimuli, 'stimulus_paths', None)
         if paths:
             return [str(paths[sid]) for sid in stimuli['stimulus_id']]
-        raise ValueError(f'No clip column {CLIP_COLUMNS} in {list(stimuli.columns)}')
+        raise ValueError(f'No clip column {clip_columns} in {list(stimuli.columns)}')

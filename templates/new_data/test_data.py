@@ -27,12 +27,12 @@ def test_stimulus_set_is_loadable_and_dispatchable():
     assert len(stimuli) > 0
     assert 'stimulus_id' in stimuli.columns
 
-    # Dispatch picks a modality by RECOGNIZED column name; without one, process()
-    # raises "No recognized modality columns".
-    FILE_BACKED = {'image_file_name', 'image_path', 'filename', 'video_path',
-                   'audio_path', 'audio_file_name', 'audio_file'}
-    INLINE = {'sentence', 'text'}          # TextWrapper reads the value itself
-    present = (FILE_BACKED | INLINE) & set(stimuli.columns)
+    # A column feeds a channel only when it is in the catalog's column table;
+    # without one, a session sends the subject nothing.
+    from brainscore_core.io_catalog import stimulus_columns
+    columns = stimulus_columns()
+    present = set(columns) & set(stimuli.columns)
+    FILE_BACKED = {column for column in present if columns[column] != 'text'}  # text is inline
     assert present, (
         f'no recognized modality column in {list(stimuli.columns)}; a model cannot '
         f'tell what kind of data this is')
