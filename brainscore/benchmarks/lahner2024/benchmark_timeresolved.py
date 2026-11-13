@@ -527,7 +527,12 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
           2. With confounds: OLS of the BOLD on [1, confounds] per voxel, keep the
              residuals (Power 2014, Ciric 2017).
           3. Per-voxel z-score. Removes participant-specific DC that would
-             otherwise leak into the ridge intercept across folds.
+             otherwise leak into the ridge intercept across folds. A voxel's
+             values in the run stay zero when its input is constant in the run
+             (before step 2) or when the standard deviation after step 2 is at
+             most 1e-12 times its largest absolute input value in the run (the
+             float64 rounding of step 2, not signal). Both tests read only that
+             voxel.
 
         Returns ``(X_flat, Y_flat, run_idx_per_obs, participant_per_obs)``;
         ``run_idx_per_obs`` indexes the assembly's presentation axis.
@@ -556,6 +561,8 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 Y_run = Y_run[:, voxels]
             # float64, one contiguous row per voxel, sums along a row only: no voxel affects another.
             Y_run = np.array(Y_run.T, dtype=np.float64, order='C')
+            varies = np.nanstd(Y_run, axis=1, keepdims=True) > 0     # an all-NaN voxel: False
+            floor = 1e-12 * np.nanmax(np.abs(Y_run), axis=1, keepdims=True)
 
             if motion_lookup is not None:
                 key = (str(participants_per_run[run_idx]),
@@ -573,7 +580,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             mu = np.nanmean(Y_run, axis=1, keepdims=True)
             sd = np.nanstd(Y_run, axis=1, keepdims=True)
             with np.errstate(invalid='ignore', divide='ignore'):
-                Y_run = np.where(sd > 0, (Y_run - mu) / sd, 0.0).T.astype(np.float32)
+                Y_run = np.where(varies & (sd > floor), (Y_run - mu) / sd, 0.0).T.astype(np.float32)
             Y_chunks.append(Y_run)
             run_chunks.append(np.full(n_TR, run_idx, dtype=np.int32))
             participant_chunks.append(np.full(n_TR, str(participants_per_run[run_idx]), dtype=object))

@@ -461,7 +461,9 @@ class TextWrapper:
 
     def _reduce(self, layer_results, mask, _row=None):
         """Reduce each ``(batch, tokens, hidden)`` output to ``(batch, hidden)`` over the
-        tokens ``mask`` (the attention mask of the pass) keeps; other outputs stay."""
+        tokens ``mask`` (the attention mask of the pass) keeps; other outputs stay.
+        With no mask every position counts and the last position is the last token,
+        as before, also for a right-padded batch given without its mask."""
         for layer_name in layer_results:
             act = layer_results[layer_name]
             if act.ndim == 3:

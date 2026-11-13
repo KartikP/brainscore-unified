@@ -102,8 +102,11 @@ class LiveRecording:
     a module that runs twice in it); later passes (generated tokens) are not kept.
 
     ``inputs(args, kwargs)`` runs in the forward pre-hook of that first pass;
-    ``kwargs`` also holds the positional arguments, named by ``forward``. It
-    returns, as values, what packaging reads from the inputs (an attention mask,
+    ``kwargs`` also holds the positional arguments, named by ``forward``. Its
+    pass may give a positional argument after the first only where ``forward``
+    names it with one of ``_INPUTS``, and no keyword naming another mask than
+    ``attention_mask``; another pass is refused before it computes, since the
+    mask of the recorded tokens would be unknown. It returns, as values, what packaging reads from the inputs (an attention mask,
     patch counts), or raises for a pass the extractor cannot package as
     ``__call__`` would, before the pass computes. With ``one_input``, a later
     pass of the presentation must show the values of the first (a repeat is
@@ -118,7 +121,7 @@ class LiveRecording:
                  inputs: Callable = None, one_input: bool = False):
         self.layers, self._model, self._convert = list(layers), model, convert
         self._package = package or (lambda activity, read, _row: (activity, read))
-        self._inputs, self._one_input = inputs or (lambda args, kwargs: None), one_input
+        self._inputs, self._one_input, self._reads = inputs or (lambda args, kwargs: None), one_input, bool(inputs)
         self._modules = {layer: get_layer(root, layer) for layer in self.layers}
         self._names = [p.name for p in inspect.signature(model.forward).parameters.values()
                        if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
@@ -146,7 +149,16 @@ class LiveRecording:
 
     def _before(self, _module, args, kwargs):
         if self._passes == 0:
-            self._read = self._inputs(args, {**dict(zip(self._names, args)), **kwargs})
+            named = {**dict(zip(self._names, args)), **kwargs}
+            unknown = [f'positional argument {i}' for i, arg in enumerate(args[1:], 1) if arg is not None
+                       and (i >= len(self._names) or self._names[i] not in _INPUTS)]
+            unknown += [key for key, arg in named.items() if 'mask' in key and key != 'attention_mask'
+                        and arg is not None]
+            if self._reads and unknown:
+                raise ValueError(f'A recording reads the inputs {_INPUTS} of a pass, and this pass also '
+                                 f'gives {unknown}, which may hold a mask of the recorded tokens; give '
+                                 f'the model its inputs by these names.')
+            self._read = self._inputs(args, named)
             self._shown = _copy((args, kwargs)) if self._one_input else None
         elif self._one_input and not _same(self._shown, (args, kwargs)):
             raise ValueError(
@@ -208,6 +220,11 @@ def _same(a, b) -> bool:
 def value(tensor):
     """A tensor as a numpy copy (None stays None): what a pre-hook keeps of an input."""
     return None if tensor is None else np.array(tensor.detach().cpu())
+
+
+# The inputs an extractor reads from a pass (``LiveRecording(inputs=...)``): the
+# token or sample input of text and sound, and the one mask read.
+_INPUTS = ('input_ids', 'inputs_embeds', 'input_values', 'input_features', 'attention_mask')
 
 
 def attention_mask(args, kwargs):

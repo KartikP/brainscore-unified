@@ -560,7 +560,12 @@ class BehavioralReadout:
         return recordings
 
     def _per_stimulus(self, stimuli, layers, call, prompts=None):
-        """Call ``call(row, prompt)`` once per stimulus, recording ``layers`` on each first pass."""
+        """Call ``call(row, prompt)`` once per stimulus, recording ``layers`` on each first pass.
+
+        Each trial's recording is compared with the first trial's as soon as it is
+        taken; a difference in coordinates, which only the extractor's result
+        shows, is refused after the pass that shows it, before the next stimulus.
+        """
         recordings = self._open_recordings(stimuli, layers)
         replies, trials = [], []
         with ExitStack() as stack:
@@ -568,6 +573,9 @@ class BehavioralReadout:
             for index, (_, row) in enumerate(stimuli.iterrows()):
                 replies.append(call(row, None if prompts is None else prompts[index]))
                 trials.append({m: recording.take(row) for m, recording in live.items()})
+                for m, taken in trials[-1].items():
+                    for layer, trial in taken.items():
+                        _same_axes(trials[0][m].get(layer), trial)
         return replies, self._trial_regions(trials, stimuli, layers)
 
     def _trial_regions(self, trials, stimuli, layers):
@@ -889,6 +897,31 @@ def _implied(assembly, source):
     return assembly.assign_attrs(measure={'kind': 'implied', 'source': source})
 
 
+def _same_axes(first, trial) -> None:
+    """Refuse a trial whose recording differs from the first trial's in sizes, in
+    coordinate names or their dimensions, or in coordinate values off the
+    presentation axis: one assembly keeps one axis, as the passive recording does."""
+    import numpy as np
+    import pandas as pd
+    if first is None or trial is None:
+        return                                              # _trials_to_assembly names the layer
+    if trial.sizes != first.sizes:
+        raise ValueError('Trials gave different numbers of steps or parts; present trials of one '
+                         'length (clips of one duration, sequences of one length) together.')
+
+    def coordinates(assembly):                              # MultiIndex levels too
+        named = {name: coord.dims for name, coord in assembly.coords.items()}
+        for dim, index in assembly.indexes.items():
+            named.update({level: (dim,) for level in index.names if isinstance(index, pd.MultiIndex)})
+        return named
+    named, other = coordinates(first), coordinates(trial)
+    for name, dims in {**other, **named}.items():
+        if other.get(name) != named.get(name) or 'presentation' not in dims and not pd.Index(
+                np.asarray(trial[name].values).ravel()).equals(pd.Index(np.asarray(first[name].values).ravel())):
+            raise ValueError(f'Trials gave different {name!r} coordinates on {dims!r}; one assembly '
+                             'keeps one axis, as the passive recording does.')
+
+
 def _trials_to_assembly(trials, stimuli, layer: str, region: str):
     """Stack the one-presentation recordings of ``layer`` into a NeuroidAssembly for ``region``.
 
@@ -911,9 +944,8 @@ def _trials_to_assembly(trials, stimuli, layer: str, region: str):
     extra = [dim for dim in first.dims if dim not in ('presentation', 'neuroid')]
     if len(extra) > 1:
         raise ValueError(f'A recording during a task may have one extra dimension; got {extra}.')
-    if any(trial.sizes != first.sizes for trial in trials):
-        raise ValueError('Trials gave different numbers of steps or parts; present trials of one '
-                         'length (clips of one duration, sequences of one length) together.')
+    for trial in trials[1:]:
+        _same_axes(first, trial)
     dims = ['presentation', *extra, 'neuroid']
 
     def names(dim):         # MultiIndex levels and ordinary coordinates, the dimension's own (time_bin) too
@@ -921,10 +953,6 @@ def _trials_to_assembly(trials, stimuli, layer: str, region: str):
         listed = list(index.names) if isinstance(index, pd.MultiIndex) else []
         return listed + [name for name, coord in first.coords.items() if coord.dims == (dim,) and name not in listed
                          and (name != dim or not listed and dim != 'presentation')]
-    for dim, name in ((dim, name) for dim in [*extra, 'neuroid'] for name in names(dim)):
-        if any(not pd.Index(trial[name].values).equals(pd.Index(first[name].values)) for trial in trials):
-            raise ValueError(f'Trials gave different {name!r} coordinates on {dim!r}; one assembly '
-                             'keeps one axis, as the passive recording does.')
     coords = {name: ('neuroid', np.asarray(first[name].values)) for name in names('neuroid')}
     coords['region'] = ('neuroid', [region] * first.sizes['neuroid'])
     for column in stimuli.columns:

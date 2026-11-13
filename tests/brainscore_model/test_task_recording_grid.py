@@ -7,6 +7,8 @@ passive recording, or the session is refused before any forward pass
 completes. The answering part shows each stimulus to the network as the
 wrapper does. Forward passes are counted after they complete.
 """
+import functools
+
 import numpy as np
 import pytest
 import torch
@@ -479,6 +481,65 @@ def test_a_positional_attention_mask_reduces_the_text_as_a_keyword_mask(aggregat
         assert recording.take()['layer'].values[0, 0] == expected
 
 
+class _Variadic(_Ids):
+    def forward(self, *args, **kwargs):
+        return super().forward(*args, **kwargs)
+
+
+class _EncoderMask(_Ids):
+    def forward(self, input_ids, encoder_attention_mask=None):
+        return super().forward(input_ids)
+
+
+class _Wrapped(torch.nn.Module):
+    """A generic wrapper: its forward passes everything on to the network it holds."""
+
+    def __init__(self):
+        super().__init__()
+        self.inner = _Ids()
+
+    def forward(self, *args, **kwargs):
+        return self.inner(*args, **kwargs)
+
+
+def _passes_on(forward):
+    @functools.wraps(forward)
+    def call(*args, **kwargs):
+        return forward(*args, **kwargs)
+    return call
+
+
+class _Decorated(_Ids):
+    forward = _passes_on(_Ids.forward)
+
+
+@pytest.mark.parametrize('aggregation, expected', [('last_token', 2.0), ('mean_tokens', 1.5)])
+@pytest.mark.parametrize('network, layer, call, refused', [
+    (_Ids, 'layer', 'positional', False),
+    (_Decorated, 'layer', 'positional', False),
+    (_Variadic, 'layer', 'positional', True),
+    (_Wrapped, 'inner.layer', 'positional', True),
+    (_EncoderMask, 'layer', 'positional', True),
+    (_EncoderMask, 'layer', 'keyword', True),
+])
+def test_a_mask_the_recording_cannot_name_is_refused_before_the_pass(
+        network, layer, call, refused, aggregation, expected):
+    """The mask is read by name: a pass whose mask the recording cannot name gives no value."""
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+    network = network()
+    passes = _counted(network)
+    wrapper = TextWrapper(network, None, identifier='ids', layer_aggregation=aggregation, device='cpu')
+    ids, mask = torch.tensor([[1, 2, 0]]), torch.tensor([[1, 1, 0]])
+    with wrapper.record([layer]) as recording:
+        if not refused:
+            network(ids, mask)
+            assert recording.take()[layer].values[0, 0] == expected
+            return
+        with pytest.raises(ValueError, match='may hold a mask'):
+            network(ids, mask) if call == 'positional' else network(ids, encoder_attention_mask=mask)
+        assert passes == []
+
+
 def test_a_positional_attention_mask_reduces_the_sound_as_a_keyword_mask():
     from brainscore.model_helpers.audio_wrapper import AudioWrapper
     network = _Sound()
@@ -568,3 +629,26 @@ def test_a_task_recording_keeps_the_axis_coordinates_of_a_custom_extractor(monke
     else:
         with pytest.raises(ValueError, match="different 'time_bin' coordinates"):
             model.participate(stimulus_session(stimuli, ['behavior:choice', 'neural:R'], TASK))
+
+
+@pytest.mark.parametrize('added', [('time_bin', [1, 2]), ('presentation', [1])])
+@pytest.mark.parametrize('later', [True, False])
+def test_a_coordinate_of_one_trial_only_is_refused(added, later):
+    from brainscore._model.behavioral import _trials_to_assembly
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b']})
+    plain = _Clocked._one(['?'], [10.0, 20.0])
+    marked = plain.assign_coords(phase=added)
+    trials = [{'L': plain}, {'L': marked}] if later else [{'L': marked}, {'L': plain}]
+    with pytest.raises(ValueError, match="different 'phase' coordinates"):
+        _trials_to_assembly(trials, stimuli, 'L', 'R')
+
+
+def test_a_trial_with_other_coordinates_stops_the_task_after_its_pass():
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b', 'c'], 'sentence': ['x', 'y', 'z']})
+    stimuli.identifier = 'clocked-three'
+    answered = []
+    model = BrainScoreModel('clocked', extractor={'text': _Clocked([[10.0, 20.0], [10.0, 30.0], [10.0, 20.0]])},
+                            region_layer_map={'R': 'L'}, reply=lambda prompt: answered.append(prompt) or 'yes')
+    with pytest.raises(ValueError, match="different 'time_bin' coordinates"):
+        model.participate(stimulus_session(stimuli, ['behavior:choice', 'neural:R'], TASK))
+    assert len(answered) == 2

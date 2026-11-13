@@ -183,16 +183,22 @@ def test_the_region_is_selected_before_the_fit(monkeypatch, tmp_path):
 @pytest.mark.parametrize('confounds', [(), ('trans_x', 'rot_y', 'csf')])
 def test_a_voxel_is_preprocessed_alike_in_any_selection(monkeypatch, tmp_path, confounds):
     """Confound regression and z-score of a kept voxel give the same bits whether the
-    region or every voxel is preprocessed: no step mixes voxels, even in rounding."""
+    region or every voxel is preprocessed: no step mixes voxels, even in rounding.
+    A constant voxel stays zero, with or without confounds (the rounding of the
+    confound regression is not scaled up); a nearly constant voxel is standardized."""
     runs = tr_runs()
     rng = np.random.default_rng(12)
     bold = 10000.0 + 50.0 * rng.standard_normal((len(runs), N_TR, N_VOXELS))
     bold[:, :, 5] = 10000.0
+    bold[:, :, 6] = 10000.0 + 0.001 * (np.arange(N_TR) % 2)
     install(monkeypatch, tmp_path, runs=runs, bold=bold)
     benchmark = Lahner2024BOLDMoments_timeresolved(confounds=confounds)
     design = np.zeros((len(runs), N_TR, 2), dtype=np.float32)
     every = benchmark._concatenate_with_mask(design, benchmark.assembly)[1]
-    for voxels in ([5], [0, 5, 9], range(0, N_VOXELS, 7)):
+    assert every.dtype == np.float32
+    assert not every[:, 5].any()
+    assert every[:, 6].all() and every[:, 6].std() == pytest.approx(1, abs=1e-5)
+    for voxels in ([5], [5, 6], [0, 5, 6, 9], range(0, N_VOXELS, 7)):
         region = mask_of(voxels)
         np.testing.assert_array_equal(
             benchmark._concatenate_with_mask(design, benchmark.assembly, region)[1], every[:, region])
