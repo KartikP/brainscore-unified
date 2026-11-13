@@ -48,20 +48,20 @@ The benchmark predicts all 1000 parcels from the model's layers for the regions 
 
 The method follows multi-layer encoding with banded ridge (himalaya, Dupre la Tour et al. 2022). This is version 2 of the benchmark. The benchmark holds out stimuli in 5 folds. All runs of one stimulus stay on one side, because Movie10 shows some clips twice, in two runs with one `stimulus_id`. In each fold it:
 
-1. prepares each band on the rows of the training stimuli only: it centres the band with their mean, reduces it to at most 100 components with a truncated SVD (a PCA, because the band is centred), and standardizes the components with their mean and spread. It applies the same preparation to all rows;
+1. prepares each band on the rows of the training stimuli only: it centres the band with their mean, reduces it to at most 100 components with a truncated SVD (a PCA, because the band is centred), and divides the band by one scale (the root mean variance of its components), so the penalties of different bands compare and the components keep their relative sizes. It applies the same preparation to all rows;
 2. stacks `stimulus_window` TRs (default 5) per sample and shifts them by `hrf_delay` TRs (default 3), inside each run;
 3. drops `excluded_samples_start` TRs at the start and `excluded_samples_end` TRs (default 5) at the end of each run. The start default is `hrf_delay + stimulus_window - 1` (7), so no kept sample has an empty lag; a smaller value raises `ValueError`;
-4. chooses, for each parcel, one penalty per band on held-out stimuli inside the training stimuli (one inner split). The grid has one value per decade from 1e-2 to 1e8. When the full grid has more than 60 combinations (from two bands on), a random search tries 60, among them every combination with one shared penalty;
-5. fits a banded ridge with an intercept on the training stimuli, one solve for each distinct chosen combination, and predicts the test stimuli. All solves are in float64.
+4. chooses one penalty per band, the same for all parcels, by the mean correlation on held-out stimuli inside the training stimuli (one inner split). The grid has one value per decade from 1e-2 to 1e8. When the full grid has more than 60 combinations (from two bands on), a random search tries 60, among them every combination with one shared penalty;
+5. fits a banded ridge with an intercept on the training stimuli, and predicts the test stimuli. All solves are in float64.
 
-With one band, this is a ridge with an intercept and a penalty for each parcel. The inner choice uses the preparation fitted on all training stimuli of the fold, so the inner held-out stimuli took part in that fit. The test stimuli of the fold took part in no fit.
+With one band, this is a ridge with an intercept and a tuned penalty. The inner choice uses the preparation fitted on all training stimuli of the fold, so the inner held-out stimuli took part in that fit. The test stimuli of the fold took part in no fit.
 
 No ceiling is measured. The score is the raw median per-parcel Pearson r, with `normalized = False` and `ceiling_status = not_estimated`. The score also lists:
 
 - `raw`, `metric`, `mean_r`, `n_parcels_scored`, `n_TRs`, and `per_parcel_r` (the score of each parcel in Schaefer order);
 - `stimulus_window`, `hrf_delay`, `excluded_samples_start`, `excluded_samples_end` and `cv_groups = stimulus_id`;
 - `form`, `presentation`, `bands`, `band_channels` and `components_per_band` (the real number for each band);
-- `alpha_grid`, `alpha_candidates`, `penalty_protocol = per_parcel_on_one_inner_split_of_held_out_stimuli` and `feature_projection_protocol = centred_svd_and_scale_fitted_on_training_stimuli`;
+- `alpha_grid`, `alpha_candidates`, `penalty_protocol = one_tuple_for_all_parcels_on_one_inner_split_of_held_out_stimuli` and `feature_projection_protocol = centred_svd_and_scale_fitted_on_training_stimuli`;
 - `penalties_per_fold`: for each fold, the number of distinct chosen combinations, the share of parcels with a penalty at an edge of the grid, and each combination with its number of parcels.
 
 The benchmark can present the table in two ways, for every form. With `streaming=False` (default) the subject gets the whole table at once. With `streaming=True` the subject gets one row at a time and answers it before it gets the next row. A subject without trial memory gives the same features both ways. The score records the way in `presentation` (`table` or `stream`).

@@ -10,20 +10,24 @@ clip has two runs) stays on one side of a split. In each outer fold it:
 
 1. prepares each band on the training rows of the fold only
    (``prepare_bands``): it centres the band with the training mean, reduces it
-   with a truncated SVD (a PCA, because the band is centred), and standardizes
-   the components with the training mean and scale. The same transform is
-   applied to every row;
+   with a truncated SVD (a PCA, because the band is centred), and divides the
+   band by one scale (the root mean variance of its components on the training
+   rows), so the penalties of different bands compare. The components keep
+   their relative sizes: giving every component the same size makes the weak
+   components, which are mostly noise, count as much as the strong ones. The
+   same transform is applied to every row;
 2. stacks the prepared band over the stimulus window and shifts it by the HRF
    delay, inside each run (the ``stack`` argument);
-3. chooses, for each parcel, the penalty tuple (one penalty per band) with the
-   best Pearson r on held-out stimuli inside the training stimuli
-   (``choose_penalties``), as himalaya does;
-4. fits a banded ridge with an intercept on the training rows, one solve per
-   distinct chosen tuple, and predicts the test rows.
+3. chooses the penalty tuple (one penalty per band) with the best mean Pearson
+   r over the parcels on held-out stimuli inside the training stimuli
+   (``choose_penalties``). All parcels share the tuple: a choice for each
+   parcel on one inner split is noisy and scored lower on real data;
+4. fits a banded ridge with an intercept on the training rows and predicts the
+   test rows.
 
 The method follows multi-layer encoding with banded ridge (himalaya,
 Dupre la Tour et al. 2022). With one band it is a ridge with an intercept and a
-penalty tuned per parcel. All solves are in float64.
+tuned penalty. All solves are in float64.
 """
 from itertools import product
 
@@ -39,7 +43,7 @@ from .projection import FeatureProjection
 # The score names its preparation protocol so a reader can see that no test row
 # was used to fit it.
 PROJECTION_PROTOCOL = 'centred_svd_and_scale_fitted_on_training_stimuli'
-PENALTY_PROTOCOL = 'per_parcel_on_one_inner_split_of_held_out_stimuli'
+PENALTY_PROTOCOL = 'one_tuple_for_all_parcels_on_one_inner_split_of_held_out_stimuli'
 
 
 def _alpha_tuples(grid, n_bands, n_candidates, random_state):
@@ -79,7 +83,8 @@ def _pearson_per_column(Y, P):
 
 
 def choose_penalties(X, Y, groups, widths, tuples, *, n_splits, random_state):
-    """For each parcel, the index in ``tuples`` with the best Pearson r on held-out stimuli.
+    """The index in ``tuples`` with the best mean Pearson r on held-out stimuli,
+    repeated for every parcel.
 
     The stimuli of ``groups`` are split ``n_splits`` ways; the first split
     gives the inner training stimuli and the inner held-out stimuli. The ridge
@@ -105,13 +110,14 @@ def choose_penalties(X, Y, groups, widths, tuples, *, n_splits, random_state):
         scores[index] = _pearson_per_column(Yc[check], Xc[check] @ W)
     if not np.isfinite(scores).any():
         raise np.linalg.LinAlgError('No penalty tuple gave a solvable banded ridge.')
-    return scores.argmax(axis=0)
+    best = int(np.nanargmax(np.where(np.isfinite(scores), scores, np.nan).mean(axis=1)))
+    return np.full(Y.shape[1], best)
 
 
 def prepare_bands(bands, fit_rows, dim_cap, prepared=None):
     """Centre, reduce and standardize each band; return ``(prepared, fitted)``.
 
-    ``fitted[band]`` is ``(mean, projection, component mean, component scale)``,
+    ``fitted[band]`` is ``(mean, projection, component mean, band scale)``,
     fitted on ``bands[band][fit_rows]`` unless ``prepared`` gives fitted ones.
     """
     out, fitted = {}, {}
@@ -121,8 +127,9 @@ def prepare_bands(bands, fit_rows, dim_cap, prepared=None):
             mean = features[fit_rows].mean(0)
             projection = FeatureProjection(dim_cap).fit(features[fit_rows] - mean, feature_ids)
             components = projection.transform(features[fit_rows] - mean, feature_ids)
-            c_mean, c_scale = components.mean(0), components.std(0)
-            c_scale = np.where(c_scale > 0, c_scale, 1.0)
+            # One scale for the band, not one for each component.
+            c_mean = components.mean(0)
+            c_scale = float(np.sqrt(components.var(0).mean())) or 1.0
         else:
             mean, projection, c_mean, c_scale = prepared[name]
         components = projection.transform(features - mean, feature_ids)
@@ -212,7 +219,7 @@ def fit_predict_banded(train_bands, Y, groups, keep, stack, predict_bands, predi
     """Fit on all training rows and predict every row of ``predict_bands``.
 
     The preparation is fitted on the training rows, the penalties are chosen
-    per parcel on held-out training stimuli, and one banded ridge with an
+    on held-out training stimuli, and one banded ridge with an
     intercept is fitted on every kept training row. Returns
     ``(predictions, summary)``.
     """

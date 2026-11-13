@@ -23,11 +23,11 @@ averages each answer over its time bins. Each region is one band.
 The folds keep every run of one stimulus on one side, because Movie10 repeats
 some clips in a second run. In each outer fold the benchmark prepares each band
 on the training stimuli only: it centres the band, reduces it to at most
-``LAYER_DIM_CAP`` components (a PCA) and standardizes the components. It then
+``LAYER_DIM_CAP`` components (a PCA) and divides the band by one scale. It then
 stacks ``stimulus_window`` scans per sample and shifts them by ``hrf_delay``
 scans, inside each run. A banded ridge with an intercept has one penalty per
-band; each parcel gets the penalty tuple that predicts it best on held-out
-stimuli inside the training stimuli. The score is the raw median per-parcel
+band; the penalty tuple is the one that predicts the parcels best, on average,
+on held-out stimuli inside the training stimuli. The score is the raw median per-parcel
 Pearson r on the held-out stimuli. No ceiling is measured.
 
 With ``streaming=True`` the benchmark presents the table one scan at a time:
@@ -1016,7 +1016,7 @@ class _Algonauts2025Base(BenchmarkBase):
         The method is the scoring method without the outer folds. The benchmark
         records the same bands on this subject's Friends training films and on
         this held-out split. It fits the preparation of each band on the
-        training films, chooses the penalties per parcel on held-out training
+        training films, chooses the penalties on held-out training
         stimuli, fits one banded ridge on all training films and predicts every
         TR of this split. It writes ``sub-<NN>_<split>.npy`` of shape
         ``(n_TRs, 1000)`` into ``out_dir``.

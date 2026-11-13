@@ -114,8 +114,9 @@ def _reference_ridge(X, Y, groups, grid):
     """scikit-learn ridge with an intercept on data prepared by the training rows.
 
     The preparation has no reduction here (the band is narrower than the cap):
-    centre with the training mean, then scale with the training spread. The
-    penalty of each parcel is the one with the best r on the first inner split.
+    centre with the training mean, then divide by one scale (the root mean
+    variance of the columns; a rotation does not change it). The penalty is the
+    one with the best mean r over the parcels on the first inner split.
     """
     from sklearn.linear_model import Ridge
     stimuli = np.unique(groups)
@@ -126,20 +127,20 @@ def _reference_ridge(X, Y, groups, grid):
         train = np.isin(groups, train_stimuli)
         test = np.isin(groups, stimuli[test_pos])
         Z = X.astype(np.float64) - X[train].mean(0)
-        Z = (Z - Z[train].mean(0)) / Z[train].std(0)
+        Z = Z / np.sqrt(Z[train].var(0).mean())
         fit_pos, check_pos = next(kfold_positions(len(train_stimuli), 5, fold))
         fit = np.isin(groups, train_stimuli[fit_pos])
         check = np.isin(groups, train_stimuli[check_pos])
         r = np.array([valid_prediction_per_unit_pearson(
             Y[check], Ridge(alpha=a).fit(Z[fit], Y[fit]).predict(Z[check])) for a in grid])
-        best = np.asarray(grid)[np.nanargmax(r, axis=0)]
+        best = np.full(Y.shape[1], np.asarray(grid)[np.nanargmax(np.nanmean(r, axis=1))])
         chosen.append(best)
         for p, alpha in enumerate(best):
             held[test, p] = Ridge(alpha=alpha).fit(Z[train], Y[train, p]).predict(Z[test])
     return valid_prediction_per_unit_pearson(Y, held), chosen
 
 
-def test_one_band_is_a_ridge_with_an_intercept_and_a_penalty_per_parcel():
+def test_one_band_is_a_ridge_with_an_intercept_and_a_tuned_penalty():
     X, Y, groups = _synth(n_feat=8)
     keep = np.ones(len(groups), dtype=bool)
     got, info = score_banded({'IT': (X, None)}, Y, groups, keep, _same, dim_cap=100,
@@ -155,23 +156,31 @@ def test_one_band_is_a_ridge_with_an_intercept_and_a_penalty_per_parcel():
     np.testing.assert_allclose(got, ref, atol=1e-6)
 
 
-def test_parcels_that_depend_on_different_bands_get_different_penalties():
+def test_all_parcels_share_one_penalty_tuple_and_bands_get_their_own_penalty():
     rng = np.random.default_rng(0)
     groups = np.repeat([f's{i}' for i in range(12)], 25)
     A = rng.standard_normal((len(groups), 60))
-    B = rng.standard_normal((len(groups), 60))
-    # Parcel 0 reads three units of band A, parcel 1 three units of band B.
-    Y = (np.stack([A[:, :3].sum(1), B[:, :3].sum(1)], axis=1)
+    B = rng.standard_normal((len(groups), 60))             # band B carries nothing
+    Y = (np.stack([A[:, :3].sum(1), A[:, 3:6].sum(1)], axis=1)
          + rng.standard_normal((len(groups), 2)))
     keep = np.ones(len(groups), dtype=bool)
     r, info = score_banded({'A': (A, None), 'B': (B, None)}, Y, groups, keep, _same,
                            dim_cap=100, alpha_grid=GRID, n_candidates=60)
-    assert np.all(r > 0.7)                         # both parcels are predicted well
+    assert np.all(r > 0.7)
     for fold in info['penalties_per_fold']:
-        assert fold['n_distinct_tuples'] == 2      # one tuple for each parcel
-        tuples = [entry['penalties'] for entry in fold['tuples']]
-        # One parcel shrinks band B harder than band A, the other the other way.
-        assert {t['A'] < t['B'] for t in tuples} == {True, False}
+        assert fold['n_distinct_tuples'] == 1 and fold['tuples'][0]['n_parcels'] == 2
+        penalties = fold['tuples'][0]['penalties']
+        assert penalties['B'] > penalties['A']             # the empty band is shrunk harder
+
+
+def test_a_band_keeps_the_relative_sizes_of_its_components():
+    from brainscore.benchmarks.algonauts2025.scoring import prepare_bands
+    rng = np.random.default_rng(0)
+    X = rng.standard_normal((200, 6)) * np.array([10.0, 5.0, 2.0, 1.0, 0.5, 0.1])
+    prepared, _ = prepare_bands({'A': (X, None)}, np.ones(200, bool), 100)
+    spread = prepared['A'].std(0)
+    assert spread[0] > 10 * spread[-1]                     # not one size for every component
+    np.testing.assert_allclose(np.sqrt((spread ** 2).mean()), 1.0, atol=1e-6)   # one scale for the band
 
 
 def test_excluded_rows_are_not_scored():
