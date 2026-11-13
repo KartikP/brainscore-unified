@@ -1,22 +1,25 @@
 """Algonauts 2025 challenge benchmark classes.
 
-- ``Algonauts2025Friends`` scores a model on Friends S1-S6 and Movie10 with
+``Algonauts2025(participant, split=...)`` is the one class of the family. A
+registry line sets the split and the channels:
+
+- ``split='friends'`` (default) scores a model on Friends S1-S6 and Movie10 with
   5-fold cross-validation over stimuli.
-- ``Algonauts2025FriendsS7`` and ``Algonauts2025OOD`` have no recorded fMRI.
+- ``split='friends_s7'`` and ``split='ood'`` have no recorded fMRI.
   ``generate_predictions`` writes the predicted parcel time series for
   Codabench.
 
-``form`` selects what the benchmark sends for each scan (TR, 1.49 s):
+``channels`` names what the benchmark sends for each scan (TR, 1.49 s):
 
-- ``'image'`` (default): the frame at the middle of the scan, on ``vision:image``.
-- ``'video'``: the 1.49 s clip of the scan, on ``vision:video``.
-- ``'video+audio'``: the clip on ``vision:video`` and the sound of the same
-  1.49 s on ``audio``, in one table row.
+- ``('vision:image',)`` (default): the frame at the middle of the scan.
+- ``('vision:video',)``: the 1.49 s clip of the scan.
+- ``('vision:video', 'audio')``: the clip and the sound of the same 1.49 s,
+  in one table row.
 
-The forms differ only in what the benchmark sends. Every form uses one method.
+The channels differ only in what the benchmark sends. Every choice uses one method.
 The benchmark predicts all 1000 parcels from the model's layers for the regions
-the benchmark names: ``V1``, ``V4`` and ``IT`` for every form, and ``A1`` too for
-the video+audio form (``FORM_REGIONS``). It requests exactly these
+the benchmark names: ``V1``, ``V4`` and ``IT`` for every choice, and ``A1`` too for
+the clip with sound (``CHANNEL_REGIONS``). It requests exactly these
 ``neural:<region>`` channels, asks for each region in its own session, and
 averages each answer over its time bins. Each region is one band.
 
@@ -251,8 +254,8 @@ def _not_estimated() -> Score:
     return ceiling
 
 
-class _Algonauts2025Base(BenchmarkBase):
-    """Shared logic across the three splits."""
+class Algonauts2025(BenchmarkBase):
+    """Algonauts 2025 encoding benchmark for one participant and one split."""
 
     # One penalty per decade from 1e-2 to 1e8; the bands are standardized.
     BANDED_ALPHA_GRID = tuple(float(10.0 ** e) for e in range(-2, 9))
@@ -261,48 +264,51 @@ class _Algonauts2025Base(BenchmarkBase):
     LAYER_DIM_CAP = 100
     BANDED_CANDIDATES = 60
 
-    # Sends one frame per TR on `vision:image` (form='image'), one 1.49 s clip per TR
-    # on `vision:video` (form='video'), or the clip and its sound in one row on
-    # `vision:video` and `audio` (form='video+audio'). The benchmark stacks the TRs
-    # itself, so the subject keeps no history across TRs.
-    VALID_FORMS = ('image', 'video', 'video+audio')
-    FORM_CHANNELS = {
-        'image': frozenset({'vision:image'}),
-        'video': frozenset({'vision:video'}),
-        'video+audio': frozenset({'vision:video', 'audio'}),
+    # Sends one frame per TR on `vision:image`, one 1.49 s clip per TR on
+    # `vision:video`, or the clip and its sound in one row on `vision:video` and
+    # `audio`. The benchmark stacks the TRs itself, so the subject keeps no history
+    # across TRs.
+    _IMAGE = frozenset({'vision:image'})
+    _VIDEO = frozenset({'vision:video'})
+    _VIDEO_AUDIO = frozenset({'vision:video', 'audio'})
+    # The regions the benchmark names for each choice of channels. Each is one band.
+    CHANNEL_REGIONS = {
+        _IMAGE: ('IT', 'V1', 'V4'),
+        _VIDEO: ('IT', 'V1', 'V4'),
+        _VIDEO_AUDIO: ('A1', 'IT', 'V1', 'V4'),
     }
-    # The regions the benchmark names for each form. Each is one band.
-    FORM_REGIONS = {
-        'image': ('IT', 'V1', 'V4'),
-        'video': ('IT', 'V1', 'V4'),
-        'video+audio': ('A1', 'IT', 'V1', 'V4'),
-    }
-    required_input_channels = frozenset({'vision:image'})
-    requested_output_channels = frozenset(f'neural:{r}' for r in FORM_REGIONS['image'])
+    _CHANNEL_SUFFIX = {_IMAGE: '', _VIDEO: '-video', _VIDEO_AUDIO: '-video-audio'}
+    # The identifier ends in a suffix for the split.
+    _SPLIT_SUFFIX = {'friends': '', 'friends_s7': '-test', 'ood': '-ood'}
+    required_input_channels = _IMAGE
+    requested_output_channels = frozenset(f'neural:{r}' for r in CHANNEL_REGIONS[_IMAGE])
     trial_memory = 'none'
-    _FORM_SUFFIX = {'image': '', 'video': '-video', 'video+audio': '-video-audio'}
     _N_FOLDS = 5   # 5-fold scoring over stimuli
 
     def __init__(
         self,
         participant: int,
-        split: str,
-        identifier_suffix: str,
+        split: str = 'friends',
         stimulus_window: int = 5,
         hrf_delay: int = 3,
         excluded_samples_start: Optional[int] = None,
         excluded_samples_end: int = 5,
         assembly_root: Optional[Path] = None,
-        form: str = 'image',
+        channels: Sequence[str] = ('vision:image',),
         streaming: bool = False,
         movies: Optional[Sequence[str]] = None,
     ):
         if participant not in (1, 2, 3, 5):
             raise ValueError(
                 f"Algonauts participants are {{1, 2, 3, 5}}; got {participant}.")
-        if form not in self.VALID_FORMS:
+        if split not in self._SPLIT_SUFFIX:
             raise ValueError(
-                f"form must be one of {self.VALID_FORMS}; got {form!r}.")
+                f"split must be one of {tuple(self._SPLIT_SUFFIX)}; got {split!r}.")
+        channels = frozenset(channels)
+        if channels not in self.CHANNEL_REGIONS:
+            raise ValueError(
+                f"channels must be one of "
+                f"{[sorted(c) for c in self.CHANNEL_REGIONS]}; got {sorted(channels)}.")
         # A kept sample needs every lag of its window inside its run.
         first_full = hrf_delay + stimulus_window - 1
         if excluded_samples_start is None:
@@ -317,10 +323,10 @@ class _Algonauts2025Base(BenchmarkBase):
                 "movies must be a non-empty list of stimulus ids, for example "
                 "['friends_s01e01a', 'friends_s01e01b'].")
 
-        self._form = form
-        self.required_input_channels = self.FORM_CHANNELS[form]
+        self._channels = channels
+        self.required_input_channels = channels
         self.requested_output_channels = frozenset(
-            f'neural:{region}' for region in self.FORM_REGIONS[form])
+            f'neural:{region}' for region in self.CHANNEL_REGIONS[channels])
         self._streaming = bool(streaming)
         self._movies = None if movies is None else [str(movie) for movie in movies]
         self._participant = participant
@@ -336,7 +342,7 @@ class _Algonauts2025Base(BenchmarkBase):
 
         super().__init__(
             identifier=(f'Algonauts2025-{split}-sub{participant:02d}'
-                        f'{identifier_suffix}{self._FORM_SUFFIX[form]}'),
+                        f'{self._SPLIT_SUFFIX[split]}{self._CHANNEL_SUFFIX[channels]}'),
             version=2,
             parent='naturalistic',
             ceiling=_not_estimated(),
@@ -397,11 +403,11 @@ class _Algonauts2025Base(BenchmarkBase):
         - Extraction runs one table row per TR, so the held matrix has one row per
           TR (``len(assembly.stimulus_id)``). The raw width is model-dependent, so
           the pre-flight probes it: it records one requested region for one blank
-          frame or clip of this form. The bands of other regions can be wider.
+          frame or clip of these channels. The bands of other regions can be wider.
         - The metric fits over the TR rows MINUS the per-run excluded samples.
         - Each band is reduced to ``LAYER_DIM_CAP`` components and stacked over
-          ``stimulus_window`` TRs, one band per region of the form, so the metric
-          width is ``len(FORM_REGIONS[form]) * stimulus_window * LAYER_DIM_CAP``.
+          ``stimulus_window`` TRs, one band per region of the channels, so the metric
+          width is ``len(CHANNEL_REGIONS[channels]) * stimulus_window * LAYER_DIM_CAP``.
         - Scoring is banded ridge, and the ceiling is a precomputed constant
           (``Score(1.0)``), not a re-run metric, so ``runs_ceiling_metric=False``.
         """
@@ -421,11 +427,11 @@ class _Algonauts2025Base(BenchmarkBase):
         return ExecutionPlan(
             n_extraction_presentations=int(n_trs),
             metric_observations=metric_obs,
-            metric_feature_width=(len(self.FORM_REGIONS[self._form])
+            metric_feature_width=(len(self.CHANNEL_REGIONS[self._channels])
                                   * self._stimulus_window * self.LAYER_DIM_CAP),
             metric_category='ridge',
             runs_ceiling_metric=False,
-            probe_stimuli=(self._probe_frame_stimuli() if self._form == 'image'
+            probe_stimuli=(self._probe_frame_stimuli() if self._channels == self._IMAGE
                            else self._probe_clip_stimuli()),
         )
 
@@ -620,7 +626,7 @@ class _Algonauts2025Base(BenchmarkBase):
                     n_filled += 1
         return n_filled
 
-    # ── Per-TR clip cutting (form='video') ────────────────────────
+    # ── Per-TR clip cutting (channels vision:video) ────────────────────────
 
     def _clips_dir(self) -> Path:
         """Cache dir for cut clips. Idempotent across runs."""
@@ -722,10 +728,10 @@ class _Algonauts2025Base(BenchmarkBase):
         return out_set
 
     def _expand_to_per_TR_stimuli(self):
-        """The table of what one TR presents, in the form of this benchmark."""
-        if self._form == 'video+audio':
+        """The table of what one TR presents, for the channels of this benchmark."""
+        if self._channels == self._VIDEO_AUDIO:
             return self._expand_to_per_TR_clips_and_sound()
-        if self._form == 'video':
+        if self._channels == self._VIDEO:
             return self._expand_to_per_TR_clips()
         return self._expand_to_per_TR_frames()
 
@@ -956,7 +962,7 @@ class _Algonauts2025Base(BenchmarkBase):
         # The same pre-flight as score(): N/A before any cutting or recording.
         from brainscore_core.compatibility import check_compatibility
         check_compatibility(subject, self)
-        regions = list(self.FORM_REGIONS[self._form])
+        regions = list(self.CHANNEL_REGIONS[self._channels])
         bands = self._assembly_bands(subject, regions)
         run_idx, keep = self._runs_and_keep()
         groups = self._stimulus_groups()
@@ -989,7 +995,7 @@ class _Algonauts2025Base(BenchmarkBase):
             excluded_samples_start=self._excluded_samples_start,
             excluded_samples_end=self._excluded_samples_end,
             cv_groups='stimulus_id',
-            form=self._form,
+            input_channels=sorted(self._channels),
             presentation='stream' if self._streaming else 'table',
             bands=info['bands'],
             band_channels={band: f'neural:{band}' for band in info['bands']},
@@ -1000,10 +1006,10 @@ class _Algonauts2025Base(BenchmarkBase):
             penalties_per_fold=info['penalties_per_fold'],
             feature_projection_protocol=PROJECTION_PROTOCOL,
         )
-        if self._form != 'image':
+        if self._channels != self._IMAGE:
             score.attrs['clip_seconds'] = TR_SEC
             score.attrs['frames_per_clip'] = CLIP_FRAMES
-        if self._form == 'video+audio':
+        if self._channels == self._VIDEO_AUDIO:
             score.attrs['sound_rate_hz'] = _SOUND_RATE_HZ
         if self._movies is not None:
             score.attrs['movies'] = list(self._movies)
@@ -1023,7 +1029,7 @@ class _Algonauts2025Base(BenchmarkBase):
         ``(n_TRs, 1000)`` into ``out_dir``.
 
         ``train_benchmark`` must be the Friends training split of the same
-        participant, with the same form, stimulus window, HRF delay and streaming.
+        participant, with the same channels, stimulus window, HRF delay and streaming.
         Its ``movies`` limit the training films; this benchmark's ``movies``
         limit the predicted films.
         """
@@ -1032,12 +1038,13 @@ class _Algonauts2025Base(BenchmarkBase):
             raise ValueError(
                 "generate_predictions is for held-out splits; the friends "
                 "training split is scored via __call__.")
-        train = train_benchmark or Algonauts2025Friends(
-            participant=self._participant, form=self._form, streaming=self._streaming)
+        train = train_benchmark or Algonauts2025(
+            participant=self._participant, channels=self._channels,
+            streaming=self._streaming)
         if train._participant != self._participant or train._split != 'friends':
             raise ValueError('Prediction requires Friends training data for the same participant.')
-        if train._form != self._form:
-            raise ValueError('Training and prediction must present the same form.')
+        if train._channels != self._channels:
+            raise ValueError('Training and prediction must send the same channels.')
         if train._streaming != self._streaming:
             raise ValueError('Training and prediction must present the table the same way '
                              '(streaming).')
@@ -1046,7 +1053,7 @@ class _Algonauts2025Base(BenchmarkBase):
             raise ValueError('Training and prediction must use the same stimulus window and HRF delay.')
         from brainscore_core.compatibility import check_compatibility
         check_compatibility(subject, self)
-        regions = list(self.FORM_REGIONS[self._form])
+        regions = list(self.CHANNEL_REGIONS[self._channels])
         train_bands = train._assembly_bands(subject, regions)
         train_runs, train_keep = train._runs_and_keep()
         predict_bands = self._assembly_bands(subject, regions)
@@ -1063,43 +1070,3 @@ class _Algonauts2025Base(BenchmarkBase):
                 'split': self._split, 'n_TRs': int(preds.shape[0]), 'bands': regions,
                 'penalties': summary, 'penalty_protocol': PENALTY_PROTOCOL,
                 'feature_projection_protocol': PROJECTION_PROTOCOL}
-
-
-class Algonauts2025Friends(_Algonauts2025Base):
-    """Train + score per-parcel encoding model on Friends S1-S6 +
-    Movie10 (in-distribution). Cross-validated within each participant.
-
-    Score is the raw median per-parcel Pearson r on held-out stimuli.
-    """
-
-    def __init__(self, participant: int, **kwargs):
-        super().__init__(
-            participant=participant, split='friends',
-            identifier_suffix='', **kwargs)
-
-
-class Algonauts2025FriendsS7(_Algonauts2025Base):
-    """Held-out Friends Season 7 — Codabench leaderboard target.
-
-    fMRI ground truth is withheld. Scoring it by name raises an error.
-    Use ``generate_predictions`` to write the predicted per-parcel time
-    series that Codabench expects.
-    """
-
-    def __init__(self, participant: int, **kwargs):
-        super().__init__(
-            participant=participant, split='friends_s7',
-            identifier_suffix='-test', **kwargs)
-
-
-class Algonauts2025OOD(_Algonauts2025Base):
-    """Held-out OOD movies — Codabench OOD leaderboard target.
-
-    Same use as FriendsS7: call ``generate_predictions``; scoring by name
-    raises an error.
-    """
-
-    def __init__(self, participant: int, **kwargs):
-        super().__init__(
-            participant=participant, split='ood',
-            identifier_suffix='-ood', **kwargs)

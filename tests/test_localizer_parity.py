@@ -173,7 +173,7 @@ def test_functional_selection_selects_the_units_of_the_process_copy(sign, n_unit
 def test_benchmark_localizer_selects_the_units_of_its_old_copy(layers):
     net, model = _model({'VWFA': CompositeSelector(layers)})
     old = _reference_localize(model, 'VWFA', _stimuli(), n_units=2)
-    bench = InducedDyslexia(n_units=2, modality='text', reading_benchmark=object(),
+    bench = InducedDyslexia(n_units=2, channels=('text',), reading_benchmark=object(),
                             localizer_stimuli=_stimuli())
     new = bench._localize(model)
     assert [s.layer for s in new] == [s.layer for s in old]

@@ -16,7 +16,11 @@ import pytest
 import brainscore
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore.benchmarks.algonauts2025 import benchmark as algo
-from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends, TR_SEC
+from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025, TR_SEC
+
+CHANNELS = {'image': ('vision:image',), 'video': ('vision:video',),
+            'video+audio': ('vision:video', 'audio')}
+
 from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -31,7 +35,7 @@ SAMPLES = round(TR_SEC * 16000)
 
 
 def _benchmark(tmp_path, **kwargs):
-    return Algonauts2025Friends(participant=1, form='video+audio', assembly_root=tmp_path, **kwargs)
+    return Algonauts2025(participant=1, channels=('vision:video', 'audio'), assembly_root=tmp_path, **kwargs)
 
 
 def _samples(path):
@@ -120,8 +124,8 @@ def test_the_table_has_a_video_and_an_audio_column_per_tr(tmp_path):
                                             'video_path': [str(tmp_path / 'm1.mkv')]})
     _place_files(tmp_path, 'clips', 'm1', '.mp4', 3)
     _place_files(tmp_path, 'sound', 'm1', '.wav', 3)
-    with patch.object(Algonauts2025Friends, '_stim_id_to_n_TRs', return_value={'m1': 3}), \
-            patch.object(Algonauts2025Friends, '_run_pool') as pool:
+    with patch.object(Algonauts2025, '_stim_id_to_n_TRs', return_value={'m1': 3}), \
+            patch.object(Algonauts2025, '_run_pool') as pool:
         table = benchmark._expand_to_per_TR_stimuli()
     pool.assert_not_called()                      # every file is there: nothing is cut
     assert set(table.columns) == {'stimulus_id', 'frame_id', 'clip_id', 't_within_run',
@@ -137,8 +141,8 @@ def test_a_movie_whose_sound_could_not_be_cut_stops_the_run(tmp_path):
     benchmark._stimulus_set = pd.DataFrame({'stimulus_id': ['m1'],
                                             'video_path': [str(tmp_path / 'm1.mkv')]})
     _place_files(tmp_path, 'clips', 'm1', '.mp4', 2)   # clips are there, sound is not
-    with patch.object(Algonauts2025Friends, '_stim_id_to_n_TRs', return_value={'m1': 2}), \
-            patch.object(Algonauts2025Friends, '_run_pool'), \
+    with patch.object(Algonauts2025, '_stim_id_to_n_TRs', return_value={'m1': 2}), \
+            patch.object(Algonauts2025, '_run_pool'), \
             pytest.raises(FileNotFoundError, match='sound chunks were not cut'):
         benchmark._expand_to_per_TR_stimuli()
 
@@ -166,7 +170,7 @@ def test_registered_identifier_loads_lazily_and_declares_its_channels(tmp_path):
     ('video+audio', {'vision:video', 'audio'}, AV_REGIONS)])
 def test_each_form_requests_named_regions_and_preflight_is_na_without_them(
         tmp_path, form, inputs, outputs):
-    benchmark = Algonauts2025Friends(participant=1, form=form, assembly_root=tmp_path)
+    benchmark = Algonauts2025(participant=1, channels=CHANNELS[form], assembly_root=tmp_path)
     assert benchmark.requested_output_channels == frozenset(outputs)
     model = {'image': _image_model, 'video': _video_model, 'video+audio': _av_model}[form]([])
     assert check_compatibility(model, benchmark).kind == 'full'
@@ -174,7 +178,7 @@ def test_each_form_requests_named_regions_and_preflight_is_na_without_them(
     for declared in (outputs - {'neural:V4'}, {'behavior'}):
         with pytest.raises(CompatibilityError, match='cannot produce output channels'):
             check_compatibility(Declared(inputs, declared), benchmark)
-    # A subject that takes none of the inputs of the form is N/A.
+    # A subject that takes none of the inputs the benchmark sends is N/A.
     other = {'vision:image'} if form != 'image' else {'vision:video'}
     with pytest.raises(CompatibilityError, match='takes in none of the inputs'):
         check_compatibility(Declared(other, outputs), benchmark)
@@ -195,7 +199,7 @@ def test_a_requested_region_whose_tower_gets_no_input_is_na_at_preflight(tmp_pat
     # The image form sends pictures only, so no requested region can be answered.
     calls = []
     model = _clips_and_pictures_model(calls)
-    image = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
+    image = Algonauts2025(participant=1, assembly_root=tmp_path)
     na = r"answers 'neural:IT' only from the inputs \{'vision:video'\}"
     with pytest.raises(CompatibilityError, match=na):
         check_compatibility(model, image)
@@ -217,7 +221,7 @@ def test_a_video_only_subject_runs_on_part_of_the_inputs_and_a_sound_subject_nee
     match = check_compatibility(Declared({'vision:video'}, AV_REGIONS), benchmark)
     assert match.kind == 'partial' and match.dropped_inputs == frozenset({'audio'})
     # A model that needs sound gets N/A on the video form, which sends none.
-    video = Algonauts2025Friends(participant=1, form='video', assembly_root=tmp_path)
+    video = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
     with pytest.raises(CompatibilityError, match='hard-requires'):
         check_compatibility(_av_model([]), video)
     assert check_compatibility(_av_model([]), benchmark).kind == 'full'
@@ -226,7 +230,7 @@ def test_a_video_only_subject_runs_on_part_of_the_inputs_and_a_sound_subject_nee
 def test_the_constructor_has_no_mode_and_no_record_argument(tmp_path):
     for name in ('mode', 'record'):
         with pytest.raises(TypeError):
-            Algonauts2025Friends(participant=1, assembly_root=tmp_path, **{name: 'banded'})
+            Algonauts2025(participant=1, assembly_root=tmp_path, **{name: 'banded'})
 
 
 # ── Fake towers with different time axes ──────────────────────────
@@ -355,7 +359,7 @@ def test_every_requested_region_is_asked_for_on_its_own_channel_and_is_one_band(
     calls = []
     benchmark = _benchmark(tmp_path)
     benchmark._assembly = _assembly(MOVIES)
-    regions = list(benchmark.FORM_REGIONS['video+audio'])
+    regions = list(benchmark.CHANNEL_REGIONS[frozenset({'vision:video', 'audio'})])
     assert regions == ['A1', 'IT', 'V1', 'V4']
     bands = benchmark._record_bands(_av_model(calls), _table(), regions)
     assert list(bands) == regions
@@ -383,22 +387,22 @@ def test_output_inputs_lists_the_inputs_of_each_region():
 def test_a_region_the_benchmark_does_not_name_is_not_asked_for(tmp_path):
     calls = []
     model = _vision_language_model(calls)
-    benchmark = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
+    benchmark = Algonauts2025(participant=1, assembly_root=tmp_path)
     assert check_compatibility(model, benchmark).kind == 'full'   # the form sends only images
-    _, score = _score(tmp_path, False, calls, form='image', columns=('image_file_name',),
+    _, score = _score(tmp_path, False, calls, channels=('vision:image',), columns=('image_file_name',),
                       model=model)
     assert score.attrs['bands'] == ['IT', 'V1', 'V4'] and np.isfinite(float(score))
     assert {column for column, *_ in calls} == {'image_file_name'}    # no text request
 
 
 def test_on_the_video_form_an_audiovisual_model_is_na_or_runs_with_the_video_regions(tmp_path):
-    video = Algonauts2025Friends(participant=1, form='video', assembly_root=tmp_path)
+    video = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
     with pytest.raises(CompatibilityError, match='hard-requires'):
         check_compatibility(_av_model([]), video)
     calls = []
     model = _av_model_without_requirement(calls)
     assert check_compatibility(model, video).kind == 'full'
-    _, score = _score(tmp_path, False, calls, form='video', columns=('video_path',), model=model)
+    _, score = _score(tmp_path, False, calls, channels=('vision:video',), columns=('video_path',), model=model)
     assert score.attrs['bands'] == ['IT', 'V1', 'V4']
     assert {column for column, *_ in calls} == {'video_path'}
 
@@ -408,7 +412,7 @@ def test_on_the_video_form_an_audiovisual_model_is_na_or_runs_with_the_video_reg
     ('video', ('video_path',), _av_model_without_requirement)])
 def test_the_memory_probe_records_a_requested_region(tmp_path, form, columns, make):
     from brainscore_core.memory import _probe_feature_dim
-    benchmark = Algonauts2025Friends(participant=1, form=form, assembly_root=tmp_path)
+    benchmark = Algonauts2025(participant=1, channels=CHANNELS[form], assembly_root=tmp_path)
     width, region = _probe_feature_dim(make([]), benchmark, None,
                                        probe_stimuli=_table(MOVIES[:1], n=1, columns=columns))
     assert f'neural:{region}' in benchmark.requested_output_channels and width == N_UNITS
@@ -417,10 +421,10 @@ def test_the_memory_probe_records_a_requested_region(tmp_path, form, columns, ma
 # ── Stream and table ──────────────────────────────────────────────
 
 
-def _score(tmp_path, streaming, calls, form='video+audio', columns=('video_path', 'audio_path'),
+def _score(tmp_path, streaming, calls, channels=('vision:video', 'audio'), columns=('video_path', 'audio_path'),
            model=None):
-    benchmark = Algonauts2025Friends(participant=1, form=form, assembly_root=tmp_path,
-                                     streaming=streaming)
+    benchmark = Algonauts2025(participant=1, channels=channels, assembly_root=tmp_path,
+                              streaming=streaming)
     benchmark._assembly = _assembly(MOVIES)
     benchmark._expand_to_per_TR_stimuli = lambda: _table(columns=columns)
     return benchmark, benchmark(model if model is not None else _av_model(calls))
@@ -429,7 +433,7 @@ def _score(tmp_path, streaming, calls, form='video+audio', columns=('video_path'
 def test_stream_and_table_give_equal_bands_and_scores(tmp_path):
     table_calls, stream_calls = [], []
     benchmark = _benchmark(tmp_path)
-    regions = list(benchmark.FORM_REGIONS['video+audio'])
+    regions = list(benchmark.CHANNEL_REGIONS[frozenset({'vision:video', 'audio'})])
     table_bands = benchmark._record_bands(_av_model(table_calls), _table(), regions)
     streamed = _benchmark(tmp_path, streaming=True)
     stream_bands = streamed._record_bands(_av_model(stream_calls), _table(), regions)
@@ -450,7 +454,7 @@ def test_stream_and_table_give_equal_bands_and_scores(tmp_path):
     assert stream_score.attrs['presentation'] == 'stream'
     assert stream_score.attrs['bands'] == regions
     assert stream_score.attrs['band_channels'] == {r: f'neural:{r}' for r in regions}
-    assert stream_score.attrs['form'] == 'video+audio'
+    assert stream_score.attrs['input_channels'] == ['audio', 'vision:video']
     assert stream_score.attrs['feature_projection_protocol'] == (
         'centred_svd_and_scale_fitted_on_training_stimuli')
     folds = stream_score.attrs['penalties_per_fold']
@@ -465,14 +469,14 @@ def test_stream_and_table_give_equal_bands_and_scores(tmp_path):
 
 
 def test_streaming_works_for_the_image_form_too(tmp_path):
-    _, table_score = _score(tmp_path, False, [], form='image', columns=('image_file_name',),
+    _, table_score = _score(tmp_path, False, [], channels=('vision:image',), columns=('image_file_name',),
                             model=_image_model())
-    _, stream_score = _score(tmp_path, True, [], form='image', columns=('image_file_name',),
+    _, stream_score = _score(tmp_path, True, [], channels=('vision:image',), columns=('image_file_name',),
                              model=_image_model())
     np.testing.assert_array_equal(table_score.attrs['per_parcel_r'],
                                   stream_score.attrs['per_parcel_r'])
     assert stream_score.attrs['bands'] == ['IT', 'V1', 'V4']
-    assert stream_score.attrs['form'] == 'image' and 'clip_seconds' not in stream_score.attrs
+    assert stream_score.attrs['input_channels'] == ['vision:image'] and 'clip_seconds' not in stream_score.attrs
 
 
 def test_in_the_stream_each_region_gets_one_row_with_both_columns_at_a_time(tmp_path):
@@ -511,7 +515,7 @@ def test_movies_limit_the_assembly_the_tables_and_the_cut_jobs(tmp_path):
             for t in range(N_TRS):
                 (Path(out_dir) / f'{t:04d}{ext}').write_bytes(b'')
 
-    with patch.object(Algonauts2025Friends, '_run_pool', side_effect=cut):
+    with patch.object(Algonauts2025, '_run_pool', side_effect=cut):
         table = benchmark._expand_to_per_TR_stimuli()
     assert jobs == [(algo._ffmpeg_cut_clips_one, named), (algo._ffmpeg_cut_sound_one, named)]
     assert sorted(set(table['clip_id'])) == sorted(named)
@@ -541,9 +545,10 @@ def test_too_few_runs_raise(tmp_path, n_movies, ok):
 
 
 def test_one_held_out_film_can_be_selected_but_the_training_split_needs_more(tmp_path):
-    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025FriendsS7, Algonauts2025OOD
-    for cls in (Algonauts2025FriendsS7, Algonauts2025OOD):
-        benchmark = cls(participant=1, form='video+audio', assembly_root=tmp_path, movies=MOVIES[:1])
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+    for split in ('friends_s7', 'ood'):
+        benchmark = Algonauts2025(participant=1, split=split, channels=('vision:video', 'audio'),
+                                  assembly_root=tmp_path, movies=MOVIES[:1])
         kept = benchmark._only_movies(_assembly(MOVIES))
         assert kept.sizes['presentation'] == N_TRS
     with pytest.raises(ValueError, match='Name more movies'):
@@ -560,7 +565,7 @@ def test_unknown_movies_raise(tmp_path):
 
 
 def test_movies_apply_to_the_image_form_too(tmp_path):
-    benchmark = Algonauts2025Friends(participant=1, movies=MOVIES[:7], assembly_root=tmp_path)
+    benchmark = Algonauts2025(participant=1, movies=MOVIES[:7], assembly_root=tmp_path)
     assert benchmark.identifier == 'Algonauts2025-friends-sub01'
     with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)):
         assert sorted(set(benchmark.assembly['stimulus_id'].values)) == sorted(MOVIES[:7])

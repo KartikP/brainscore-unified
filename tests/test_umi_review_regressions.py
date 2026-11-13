@@ -54,16 +54,16 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
     second unit and lose the signal.
     """
     from brainscore.benchmarks.algonauts2025.benchmark import (
-        Algonauts2025Friends, Algonauts2025FriendsS7,
+        Algonauts2025,
     )
     rng = np.random.default_rng(0)
     n_runs, per_run = 8, 4
     signal = rng.choice([-3.0, -2.0, 2.0, 3.0], size=n_runs * per_run).astype(np.float32)
     train_features = np.stack([signal, np.zeros_like(signal)], axis=1)
     test_features = np.array([[1, 10], [-1, 10], [1, -10], [-1, -10]], dtype=np.float32)
-    train = Algonauts2025Friends(participant=1, stimulus_window=1, hrf_delay=0,
+    train = Algonauts2025(participant=1, stimulus_window=1, hrf_delay=0,
         excluded_samples_start=0, excluded_samples_end=0, assembly_root=tmp_path)
-    test = Algonauts2025FriendsS7(participant=1, stimulus_window=1, hrf_delay=0,
+    test = Algonauts2025(split='friends_s7', participant=1, stimulus_window=1, hrf_delay=0,
                                   assembly_root=tmp_path)
     for benchmark, features, runs in (
             (train, train_features, [f'run{i // per_run}' for i in range(n_runs * per_run)]),
@@ -241,7 +241,7 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
         region_layer_map={'VWFA': CompositeSelector(tuple((layer, (4, 1)) for layer in layers))},
         preprocessors={'text': _Extractor(lambda: net.L(x).detach().numpy())},
         intervention=build_pytorch_ablation_fn(net))
-    localizer = InducedDyslexia(n_units=1, modality='text',
+    localizer = InducedDyslexia(n_units=1, channels=('text',),
         reading_benchmark=object(), localizer_stimuli=_stimuli())
     selections = localizer._localize(model)
     for selected in selections:

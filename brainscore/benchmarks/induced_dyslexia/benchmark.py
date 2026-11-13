@@ -43,11 +43,10 @@ drawings / scrambled). Our ROAR corpus has only real/pseudo *words*, so the
 contrast here is real-vs-pseudo — the discriminator-unit variant documented in
 the project's K-sweep finding. Different localizer, same API.
 """
-from typing import List
+from typing import List, Sequence
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.compatibility import CompatibilityError
-from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.metrics import Score
 from brainscore import FunctionalSelection, RandomSelection
 from brainscore_core.model_interface import StateChange, Selection, Perturbation
@@ -67,25 +66,32 @@ class InducedDyslexia(BenchmarkBase):
         (localized per layer the recording reports).
     :param n_units: how many top-selective units to ablate per layer.
     :param control_seed: seed for the matched :class:`RandomSelection` control.
-    :param modality: ``'vision'`` (word images) or ``'text'`` (word strings).
+    :param channels: ``('vision:image',)`` (word images) or ``('text',)`` (word strings).
     """
 
     # One lesion experiment is one pass; the reading trials inside it are independent.
     trial_memory = 'none'
+    # Suffix of the identifier for each input channel.
+    _CHANNEL_SUFFIX = {'vision:image': 'vision', 'text': 'text'}
 
     def __init__(self, localizer_region: str = 'VWFA', n_units: int = 500,
-                 control_seed: int = 0, modality: str = 'vision',
+                 control_seed: int = 0, channels: Sequence[str] = ('vision:image',),
                  reading_benchmark=None, localizer_stimuli=None):
         self.localizer_region = localizer_region
         self.n_units = n_units
         self.control_seed = control_seed
-        self.modality = modality
+        channels = tuple(channels)
+        if len(channels) != 1 or channels[0] not in self._CHANNEL_SUFFIX:
+            raise ValueError(
+                f"channels must be one of {[(c,) for c in self._CHANNEL_SUFFIX]}; "
+                f"got {channels!r}")
+        channel = channels[0]
         # Declarations decide compatibility (rule 5): the benchmark sends the
         # words, the reading question and the lesions, and needs the region's activity, the lesion
         # record and the reading answers back. A subject without any of these
         # outputs is N/A before any compute.
         self.required_input_channels = frozenset(
-            modalities_to_input_channels({modality}) | {'instruction', 'lesion'})
+            {channel, 'instruction', 'lesion'})
         self.requested_output_channels = frozenset(
             {'behavior', f'neural:{localizer_region}', 'perturbation'})
 
@@ -96,11 +102,11 @@ class InducedDyslexia(BenchmarkBase):
             self._reading = reading_benchmark
             self._localizer_stimuli = localizer_stimuli
         else:
-            self._reading = Yeatman2021LexicalDecision(modality=modality)
+            self._reading = Yeatman2021LexicalDecision(channels=channels)
             self._localizer_stimuli = self._reading._train_stimuli
 
         super().__init__(
-            identifier=f'Yeatman2021-induced_dyslexia-{modality}',
+            identifier=f'Yeatman2021-induced_dyslexia-{self._CHANNEL_SUFFIX[channel]}',
             version=1,
             parent='perturbation',
             ceiling=Score(1.0),   # ceiling is "no deficit"; the floor is the chance reader

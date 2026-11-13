@@ -16,6 +16,8 @@ import pytest
 
 from brainscore.benchmarks.algonauts2025 import benchmark as algo
 
+CHANNELS = {'image': ('vision:image',), 'video': ('vision:video',)}
+
 
 @pytest.mark.unit
 def test_frame_stimulus_identifier_includes_a_column_signature():
@@ -44,7 +46,7 @@ def test_frame_table_identifier_is_unchanged_and_the_video_table_has_its_own(tmp
     """Frame identifier: the md5 of the sorted frame-table columns, as before."""
     import pandas as pd
     from unittest.mock import patch
-    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
 
     frame_signature = hashlib.md5(
         '|'.join(sorted(['stimulus_id', 'frame_id', 'clip_id', 't_within_run',
@@ -59,11 +61,11 @@ def test_frame_table_identifier_is_unchanged_and_the_video_table_has_its_own(tmp
     for index in range(2):
         (tmp_path / 'clips' / 'm1' / f'{index:04d}.mp4').write_bytes(b'')
     for form, tag in (('image', 'frames'), ('video', 'clips')):
-        benchmark = Algonauts2025Friends(participant=1, form=form, assembly_root=tmp_path)
+        benchmark = Algonauts2025(participant=1, channels=CHANNELS[form], assembly_root=tmp_path)
         benchmark._stimulus_set = movies
-        with patch.object(Algonauts2025Friends, '_stim_id_to_n_TRs', return_value={'m1': 2}), \
-                patch.object(Algonauts2025Friends, '_run_pool'), \
-                patch.object(Algonauts2025Friends, '_fill_trailing_files', return_value=0):
+        with patch.object(Algonauts2025, '_stim_id_to_n_TRs', return_value={'m1': 2}), \
+                patch.object(Algonauts2025, '_run_pool'), \
+                patch.object(Algonauts2025, '_fill_trailing_files', return_value=0):
             table = (benchmark._expand_to_per_TR_stimuli())
         if form == 'image':
             expected = f'algonauts2025-friends-sub01-frames-{frame_signature}'

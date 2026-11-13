@@ -1180,7 +1180,7 @@ class TestMultiModalityDispatch:
             preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
             activations_model=act,
         )
-        # audio_path is in COLUMN_TO_MODALITY → 'audio' but unsupported here
+        # audio_path feeds the audio channel, but this model has no audio extractor
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence', 'audio_path'])
         assembly = m.process(stimuli, multi_modality=True)
         modalities = set(assembly['modality'].values.tolist())

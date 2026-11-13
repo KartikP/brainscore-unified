@@ -381,38 +381,35 @@ def test_a_response_for_other_stimuli_is_refused(monkeypatch, in_channels):
 # ── Declarations (Contract Rules 5.1, 5.2, 5.12) ──────────────────
 
 from tests.benchmark_declarations import assert_declares, assert_preflight
-from brainscore.benchmarks.lahner2024 import benchmark as _glm_module
-from brainscore.benchmarks.lahner2024 import benchmark_timeresolved as _tr_module
-from brainscore.benchmarks.lahner2024 import benchmark_multimodal as _mm_module
-from brainscore.benchmarks.lahner2024 import benchmark_timeresolved_multimodal as _trmm_module
+import brainscore
 
 SINGLE_TOWER = [
-    _glm_module.Lahner2024BOLDMoments,
-    _glm_module.Lahner2024BOLDMoments_visualROI,
-    _tr_module.Lahner2024BOLDMoments_timeresolved,
-    _tr_module.Lahner2024BOLDMoments_timeresolved_visualROI,
-    _tr_module.Lahner2024BOLDMoments_timeresolved_improved,
-    _tr_module.Lahner2024BOLDMoments_timeresolved_improved_visualROI,
+    'Lahner2024-fMRI-naturalistic',
+    'Lahner2024-fMRI-naturalistic-visualROI',
+    'Lahner2024-fMRI-naturalistic-timeresolved',
+    'Lahner2024-fMRI-naturalistic-timeresolved-visualROI',
+    'Lahner2024-fMRI-naturalistic-timeresolved-improved',
+    'Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI',
 ]
 TWO_TOWERS = [
-    _mm_module.Lahner2024BOLDMoments_multimodal,
-    _mm_module.Lahner2024BOLDMoments_multimodal_visualROI,
-    _mm_module.Lahner2024BOLDMoments_multimodal_auditoryROI,
-    _trmm_module.Lahner2024BOLDMoments_timeresolved_multimodal,
-    _trmm_module.Lahner2024BOLDMoments_timeresolved_multimodal_visualROI,
-    _trmm_module.Lahner2024BOLDMoments_timeresolved_multimodal_auditoryROI,
+    'Lahner2024-fMRI-naturalistic-multimodal',
+    'Lahner2024-fMRI-naturalistic-multimodal-visualROI',
+    'Lahner2024-fMRI-naturalistic-multimodal-auditoryROI',
+    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal',
+    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI',
+    'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI',
 ]
 
 
-@pytest.mark.parametrize('factory', SINGLE_TOWER, ids=lambda f: f.__name__)
-def test_single_tower_variants_declare_vision_in_and_it_out(factory):
-    benchmark = factory()
+@pytest.mark.parametrize('identifier', SINGLE_TOWER)
+def test_single_tower_variants_declare_vision_in_and_it_out(identifier):
+    benchmark = brainscore.benchmark_registry[identifier]()
     assert_declares(benchmark, {'vision:image', 'vision:video'}, {'neural:IT'})
     assert_preflight(benchmark)
 
 
-@pytest.mark.parametrize('factory', TWO_TOWERS, ids=lambda f: f.__name__)
-def test_audio_visual_variants_declare_both_towers(factory):
-    benchmark = factory()
+@pytest.mark.parametrize('identifier', TWO_TOWERS)
+def test_audio_visual_variants_declare_both_towers(identifier):
+    benchmark = brainscore.benchmark_registry[identifier]()
     assert_declares(benchmark, {'vision:image', 'vision:video', 'audio'}, {'neural:IT', 'neural:A1'})
     assert_preflight(benchmark)

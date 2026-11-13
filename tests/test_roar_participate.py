@@ -7,16 +7,15 @@ from tests.benchmark_declarations import assert_declares, assert_preflight
 from tests.test_induced_dyslexia import _ReaderSubject, synthetic_roar  # noqa: F401  (fixture)
 
 
-@pytest.mark.parametrize('modality', ['vision', 'text'])
-def test_declares_the_word_and_the_question_in_and_behavior_out(synthetic_roar, modality):
-    benchmark = Yeatman2021LexicalDecision(modality=modality)
-    word = {'vision': 'vision:image', 'text': 'text'}[modality]
+@pytest.mark.parametrize('word', ['vision:image', 'text'])
+def test_declares_the_word_and_the_question_in_and_behavior_out(synthetic_roar, word):
+    benchmark = Yeatman2021LexicalDecision(channels=(word,))
     assert_declares(benchmark, {word, 'instruction'}, {'behavior'})
     assert_preflight(benchmark)
 
 
 def test_a_participate_only_subject_gets_a_score(synthetic_roar):
     subject = _ReaderSubject()
-    score = Yeatman2021LexicalDecision(modality='text')(subject)
+    score = Yeatman2021LexicalDecision(channels=('text',))(subject)
     assert float(score.attrs['raw']) == 1.0
     assert score.attrs['n_test_stimuli'] == 100

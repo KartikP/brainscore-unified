@@ -87,7 +87,7 @@ class _Reader:
 def _make(accs, monkeypatch, canned):
     cand = _Subject()
     reader = _Reader(accs)
-    bench = InducedDyslexia(n_units=3, modality='text',
+    bench = InducedDyslexia(n_units=3, channels=('text',),
                             reading_benchmark=reader, localizer_stimuli=None)
     monkeypatch.setattr(bench, '_localize', lambda c: canned)
     return bench, cand, reader
@@ -199,7 +199,7 @@ class TestScoring:
 
 class TestPreflight:
     def _bench(self):
-        return InducedDyslexia(modality='text', reading_benchmark=_Reader({}),
+        return InducedDyslexia(channels=('text',), reading_benchmark=_Reader({}),
                                localizer_stimuli=None)
 
     def test_declares_what_it_sends_and_needs(self):
@@ -274,7 +274,7 @@ class TestCompositeLocalize:
 
     def test_picks_real_selective_per_layer(self):
         cand = _Subject(recording=self._assembly())
-        bench = InducedDyslexia(localizer_region='VWFA', n_units=1, modality='text',
+        bench = InducedDyslexia(localizer_region='VWFA', n_units=1, channels=('text',),
                                 reading_benchmark=_Reader({}),
                                 localizer_stimuli=self._stimuli())
         sels = bench._localize(cand)
@@ -287,7 +287,7 @@ class TestCompositeLocalize:
 
     def test_recording_without_layer_is_refused_before_any_lesion(self):
         cand = _Subject(recording=self._assembly(with_layer=False))
-        bench = InducedDyslexia(n_units=1, modality='text', reading_benchmark=_Reader({}),
+        bench = InducedDyslexia(n_units=1, channels=('text',), reading_benchmark=_Reader({}),
                                 localizer_stimuli=self._stimuli())
         with pytest.raises(ValueError, match="no 'layer' coord"):
             bench._localize(cand)
@@ -374,7 +374,7 @@ def synthetic_roar(monkeypatch):
 
 def test_participate_only_subject_runs_the_benchmark(synthetic_roar):
     subject = _ReaderSubject()
-    bench = InducedDyslexia(n_units=2, modality='text')
+    bench = InducedDyslexia(n_units=2, channels=('text',))
     check_compatibility(subject, bench)
     score = bench(subject)
     assert score.attrs['baseline_accuracy'] == 1.0

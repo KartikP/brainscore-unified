@@ -456,13 +456,13 @@ class TestIdentityAlgonauts:
     @pytest.mark.parametrize('names,n_candidates', [(['A'], 60), (['A', 'B'], None),
                                                     (['A', 'B'], 7)])
     def test_score_banded(self, names, n_candidates):
-        from brainscore.benchmarks.algonauts2025.benchmark import _Algonauts2025Base
+        from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
         from brainscore.benchmarks.algonauts2025.scoring import score_banded
         bands, Y, groups = _algonauts_synth()
         bands = {name: bands[name] for name in names}
         keep = np.ones(len(groups), dtype=bool)
         keep[::25] = False
-        kwargs = dict(dim_cap=12, alpha_grid=_Algonauts2025Base.BANDED_ALPHA_GRID,
+        kwargs = dict(dim_cap=12, alpha_grid=Algonauts2025.BANDED_ALPHA_GRID,
                       n_candidates=n_candidates)
         new_r, new_info = score_banded(bands, Y, groups, keep, _window, **kwargs)
         ref_r, ref_info = old.algonauts_score_banded(bands, Y, groups, keep, _window, **kwargs)
@@ -470,12 +470,12 @@ class TestIdentityAlgonauts:
         assert new_info == ref_info
 
     def test_fit_predict_banded(self):
-        from brainscore.benchmarks.algonauts2025.benchmark import _Algonauts2025Base
+        from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
         from brainscore.benchmarks.algonauts2025.scoring import fit_predict_banded
         bands, Y, groups = _algonauts_synth()
         new_bands, _, _ = _algonauts_synth(seed=8)
         keep = np.ones(len(groups), dtype=bool)
-        kwargs = dict(dim_cap=12, alpha_grid=_Algonauts2025Base.BANDED_ALPHA_GRID,
+        kwargs = dict(dim_cap=12, alpha_grid=Algonauts2025.BANDED_ALPHA_GRID,
                       n_candidates=60)
         new = fit_predict_banded(bands, Y, groups, keep, _window, new_bands, _window, **kwargs)
         ref = old.algonauts_fit_predict_banded(bands, Y, groups, keep, _window, new_bands,

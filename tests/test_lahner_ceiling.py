@@ -9,16 +9,16 @@ No model weights, no data download -- these assert on benchmark construction onl
 """
 import pytest
 
+import brainscore
 from brainscore.benchmarks.lahner2024.benchmark import (
     VISUAL_ROI_CEILING,
-    Lahner2024BOLDMoments_visualROI,
     Lahner2024BOLDMoments,
 )
 
 
 @pytest.mark.unit
 def test_visual_roi_ceiling_is_applied_not_one():
-    bench = Lahner2024BOLDMoments_visualROI()
+    bench = brainscore.benchmark_registry['Lahner2024-fMRI-naturalistic-visualROI']()
     assert float(bench.ceiling) == pytest.approx(VISUAL_ROI_CEILING)
     assert float(bench.ceiling) != 1.0, (
         "visual-ROI reverted to an undivided score; its numbers are then not "
@@ -56,7 +56,7 @@ def test_roi_variant_uses_the_per_voxel_branch():
     # The repo convention is median(r_i / c_i), not median(r_i) / median(c_i).
     # Guard that the ROI variant is wired to the per-voxel helper at all: it must not
     # report ceiling == 1.0, which is what sends it down the scalar fallback.
-    roi = Lahner2024BOLDMoments_visualROI()
+    roi = brainscore.benchmark_registry['Lahner2024-fMRI-naturalistic-visualROI']()
     assert float(roi.ceiling) != 1.0
 
 

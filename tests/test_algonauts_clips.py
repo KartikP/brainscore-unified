@@ -12,7 +12,7 @@ import pytest
 
 from brainscore.benchmarks.algonauts2025 import benchmark as algo
 from brainscore.benchmarks.algonauts2025.benchmark import (
-    Algonauts2025Friends, CLIP_FRAMES, TR_SEC)
+    Algonauts2025, CLIP_FRAMES, TR_SEC)
 
 pytestmark = pytest.mark.skipif(
     shutil.which('ffmpeg') is None or shutil.which('ffprobe') is None,
@@ -108,7 +108,7 @@ def test_clip_t_covers_the_movie_time_t_times_tr(movie, tmp_path):
 
 def test_the_benchmark_cuts_the_movie_and_fills_the_trailing_clips(movie, tmp_path):
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-    benchmark = Algonauts2025Friends(participant=1, form='video', assembly_root=tmp_path)
+    benchmark = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
     benchmark._stimulus_set = pd.DataFrame({'stimulus_id': ['m1'], 'video_path': [str(movie)]})
     n_TRs = N_FULL + 2                      # the assembly has 2 TRs after the movie ends
     benchmark._stim_id_to_n_TRs = lambda: {'m1': n_TRs}
@@ -133,12 +133,12 @@ def test_a_movie_that_could_not_be_cut_stops_the_run(tmp_path):
     """No clip file, no run: the table never points a model at a missing file."""
     import pandas as pd
     from unittest.mock import patch
-    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
-    benchmark = Algonauts2025Friends(participant=1, form='video', assembly_root=tmp_path)
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+    benchmark = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
     (tmp_path / 'm1.mkv').write_bytes(b'')    # the movie exists, but nothing can cut it
     benchmark._stimulus_set = pd.DataFrame({'stimulus_id': ['m1'], 'video_path': [str(tmp_path / 'm1.mkv')]})
-    with patch.object(Algonauts2025Friends, '_stim_id_to_n_TRs', return_value={'m1': 2}), \
-            patch.object(Algonauts2025Friends, '_run_pool'), \
-            patch.object(Algonauts2025Friends, '_fill_trailing_files', return_value=0), \
+    with patch.object(Algonauts2025, '_stim_id_to_n_TRs', return_value={'m1': 2}), \
+            patch.object(Algonauts2025, '_run_pool'), \
+            patch.object(Algonauts2025, '_fill_trailing_files', return_value=0), \
             pytest.raises(FileNotFoundError, match='were not cut'):
         benchmark._expand_to_per_TR_stimuli()

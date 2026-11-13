@@ -506,19 +506,3 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 # Measured 2026-07-31 as the median sqrt(split-half reliability) over the 4042
 # ROI voxels; recompute with _split_half_reliability(n_splits=20, random_state=0).
 VISUAL_ROI_CEILING = 0.7304512193654528
-
-
-def Lahner2024BOLDMoments_visualROI():
-    """ROI variant: only voxels with split-half reliability ≥ 0.3.
-
-    The threshold 0.3 is moderate — in Lahner2024, it typically retains
-    ~2000–5000 voxels concentrated in visual cortex (the only region
-    where short-video stimuli reliably drive BOLD across repetitions).
-    Produces a tighter, more interpretable score than whole-cortex
-    median, which is dragged down by thousands of noise-dominated voxels.
-    """
-    return Lahner2024BOLDMoments(
-        reliability_threshold=0.3,
-        identifier_suffix='-visualROI',
-        ceiling=VISUAL_ROI_CEILING,
-    )

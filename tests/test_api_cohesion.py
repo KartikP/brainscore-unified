@@ -289,7 +289,7 @@ def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefe
     })
     monkeypatch.setattr(module, 'load_stimulus_set', lambda identifier: stimuli)
     monkeypatch.setattr(module, 'load_dataset', lambda identifier: human)
-    benchmark = module.Yeatman2021LexicalDecision(modality='text', prefer_path=prefer_path)
+    benchmark = module.Yeatman2021LexicalDecision(channels=('text',), prefer_path=prefer_path)
     suffix = '' if prefer_path == 'auto' else f'-{prefer_path}'
     assert benchmark.identifier == f'Yeatman2021-lexical_decision-text{suffix}'
     tasks = []

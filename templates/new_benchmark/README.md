@@ -12,6 +12,10 @@ See `EXTENDING.md` (Seam 2) for the contract.
 4. Add `from . import <your_name>` to `brainscore/benchmarks/__init__.py`.
 5. Adapt `test_benchmark.py` and run it.
 
+## Variants
+
+A variant of a benchmark is one more registry line: `benchmark_registry['<id>-<suffix>'] = partial(YourBenchmark, <arguments>)` (or `lambda: YourBenchmark(<arguments>)`). Put the arguments that make the variant in that line, for example `channels=('text',)` for a variant that sends text. Do not write a subclass or a factory function that only passes arguments. Write a subclass only when it adds behavior. The identifier of a variant stays fixed once registered.
+
 ```python
 import brainscore
 score = brainscore.score('<some-model>', '<your-id>')

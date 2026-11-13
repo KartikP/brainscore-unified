@@ -97,26 +97,24 @@ def test_valid_modes_construct():
 # ── Factory wiring ────────────────────────────────────────────────
 
 
-def test_visualROI_factory_uses_reliability():
-    """visualROI factory should set the reliability threshold (0.3) and
+def test_visualROI_registry_line_uses_reliability():
+    """The visualROI registry line should set the reliability threshold (0.3) and
     NOT install a custom voxel_mask_fn."""
-    from brainscore.benchmarks.lahner2024.benchmark_timeresolved_multimodal \
-        import (
-            Lahner2024BOLDMoments_timeresolved_multimodal_visualROI)
-    b = Lahner2024BOLDMoments_timeresolved_multimodal_visualROI()
+    import brainscore
+    b = brainscore.benchmark_registry[
+        'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI']()
     assert b._reliability_threshold == 0.3
     assert b._voxel_mask_fn is None
 
 
-def test_auditoryROI_factory_installs_destrieux_mask():
-    """auditoryROI factory should install the Destrieux mask function and
+def test_auditoryROI_registry_line_installs_destrieux_mask():
+    """The auditoryROI registry line should install the Destrieux mask function and
     leave reliability_threshold unset."""
-    from brainscore.benchmarks.lahner2024.benchmark_timeresolved_multimodal \
-        import (
-            Lahner2024BOLDMoments_timeresolved_multimodal_auditoryROI)
+    import brainscore
     from brainscore.benchmarks.lahner2024.auditory_roi import (
         build_auditory_mask)
-    b = Lahner2024BOLDMoments_timeresolved_multimodal_auditoryROI()
+    b = brainscore.benchmark_registry[
+        'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI']()
     assert b._reliability_threshold is None
     assert b._voxel_mask_fn is build_auditory_mask
 

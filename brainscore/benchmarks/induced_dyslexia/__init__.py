@@ -13,6 +13,6 @@ from brainscore import benchmark_registry
 from .benchmark import InducedDyslexia
 
 benchmark_registry['Yeatman2021-induced_dyslexia-image'] = (
-    lambda: InducedDyslexia(modality='vision'))
+    lambda: InducedDyslexia(channels=('vision:image',)))
 benchmark_registry['Yeatman2021-induced_dyslexia-text'] = (
-    lambda: InducedDyslexia(modality='text'))
+    lambda: InducedDyslexia(channels=('text',)))

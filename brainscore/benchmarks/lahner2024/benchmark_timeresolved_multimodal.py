@@ -401,31 +401,3 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
             multimodal_fit(self._mode, self.BANDED_ALPHA_GRID),
             target_batch=VOXEL_BATCH)
         return per_voxel_r
-
-
-# ── Factory functions for the registered variants ─────────────────
-
-
-def Lahner2024BOLDMoments_timeresolved_multimodal_visualROI(
-        audio_dir: Optional[str] = None, mode: str = 'concat',
-        version: int = CURRENT_VERSION):
-    return Lahner2024BOLDMoments_timeresolved_multimodal(
-        audio_dir=audio_dir,
-        reliability_threshold=0.3,
-        identifier_suffix='-timeresolved-multimodal-visualROI',
-        mode=mode,
-        version=version,
-    )
-
-
-def Lahner2024BOLDMoments_timeresolved_multimodal_auditoryROI(
-        audio_dir: Optional[str] = None, mode: str = 'concat',
-        version: int = CURRENT_VERSION):
-    from .auditory_roi import build_auditory_mask
-    return Lahner2024BOLDMoments_timeresolved_multimodal(
-        audio_dir=audio_dir,
-        identifier_suffix='-timeresolved-multimodal-auditoryROI',
-        mode=mode,
-        voxel_mask_fn=build_auditory_mask,
-        version=version,
-    )

@@ -176,7 +176,7 @@ def test_algonauts_benchmark_resolves_data_via_registry(monkeypatch, tmp_path):
     monkeypatch.setattr(algonauts, 'load_dataset', fake_load_dataset)
     monkeypatch.setattr(algonauts, 'load_stimulus_set', fake_load_stimulus_set)
 
-    benchmark = algonauts.Algonauts2025Friends(
+    benchmark = algonauts.Algonauts2025(
         participant=1, assembly_root=tmp_path)
     assert benchmark.assembly == 'data:Algonauts2025-friends-sub01'
     assert benchmark.stimulus_set == 'stimulus:Algonauts2025-friends'
@@ -234,7 +234,7 @@ def test_roar_benchmark_resolves_data_via_registry(monkeypatch):
     monkeypatch.setattr(roar, 'load_stimulus_set', fake_load_stimulus_set)
     monkeypatch.setattr(roar, 'load_dataset', fake_load_dataset)
 
-    benchmark = roar.Yeatman2021LexicalDecision(modality='vision')
+    benchmark = roar.Yeatman2021LexicalDecision(channels=('vision:image',))
 
     assert benchmark._human_accuracy == 1.0
     assert calls == [

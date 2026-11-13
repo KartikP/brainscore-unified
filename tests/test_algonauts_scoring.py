@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from brainscore.benchmarks.algonauts2025 import scoring
-from brainscore.benchmarks.algonauts2025.benchmark import _Algonauts2025Base
+from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
 from brainscore.benchmarks.algonauts2025.projection import FeatureProjection
 from brainscore.benchmarks.algonauts2025.scoring import (
     fit_predict_banded,
@@ -29,7 +29,7 @@ from brainscore.metrics.encoding import (
     row_kfold,
 )
 
-GRID = _Algonauts2025Base.BANDED_ALPHA_GRID
+GRID = Algonauts2025.BANDED_ALPHA_GRID
 
 
 def _synth(n_stimuli=10, per_stimulus=20, n_feat=12, n_parcels=6, seed=0, offset=5.0):
