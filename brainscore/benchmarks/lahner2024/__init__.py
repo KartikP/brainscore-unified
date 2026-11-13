@@ -21,7 +21,8 @@ from .benchmark_timeresolved import (
 #   the planum, Destrieux atlas on fsaverage5);
 # - for TR time series, the fold rule and the confounds regressed out of the BOLD.
 # Only the GLM-beta visual ROI divides by a measured ceiling (`VISUAL_ROI_CEILING`);
-# the other variants return the raw correlation.
+# the other variants return the raw correlation. Every line is version 2 (see the
+# two module docstrings for what changed from version 1).
 _AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
 
 # GLM betas: one beta per voxel per stimulus per repetition.
@@ -39,9 +40,8 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = part
     identifier_suffix='-multimodal-auditoryROI')
 
 # TR time series: clip-mean onset-impulse HRF model, per-voxel ridge, whole runs
-# held out (blocks of 52 runs by default). Version 2 (default) selects events by
-# (subject, session, task, run); version 1 (defect F6, task omitted) stays
-# reachable for reproducing historical scores: load_benchmark(identifier, version=1).
+# held out (blocks of 52 runs by default); events selected by (subject, session,
+# task, run).
 # `-improved`: per-run motion regression (9 fmriprep confounds, residuals replace the
 # BOLD before the z-score) and blocks of 10 runs held out inside each participant,
 # per-voxel r averaged across participants. The ROI raw r moved by +0.001 to +0.016

@@ -1,4 +1,4 @@
-"""Lahner2024 TR time series: task-keyed events (F6), versions, score labels (3A)
+"""Lahner2024 TR time series: task-keyed events, the version, score labels (3A)
 and the fold rules. Every test runs the benchmark call on synthetic data behind
 the registered loaders (``tests/lahner_synthetic.py``); no model, no download.
 """
@@ -10,7 +10,7 @@ import brainscore.benchmarks.lahner2024  # noqa: F401  (registers the benchmarks
 from brainscore.benchmarks.lahner2024 import (
     Lahner2024BOLDMoments_timeresolved, ParticipantRunBlocks, RunBlocks)
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
-    CURRENT_VERSION, FEATURE_DIM_CAP, TR_SEC, TRANSDUCTIVE_SVD)
+    FEATURE_DIM_CAP, RUN_KEY, TR_SEC, TRANSDUCTIVE_SVD)
 from brainscore.data.lahner2024 import MOTION_COLUMNS
 from brainscore.temporal import double_gamma_hrf, hrf_convolve
 from tests.lahner_synthetic import (
@@ -32,7 +32,7 @@ def load(identifier, **configuration):
 
 
 def bold_of(runs, events, width=4):
-    """BOLD that is exactly the version-2 design of a video subject (one stream)."""
+    """BOLD that is exactly the design of a video subject (one stream)."""
     kernel = double_gamma_hrf(duration_sec=32.0, sampling_rate_hz=1.0 / TR_SEC)
     bold = np.zeros((len(runs), N_TR, N_VOXELS))
     for index, run in enumerate(runs):
@@ -47,27 +47,24 @@ def bold_of(runs, events, width=4):
     return bold + 1e-3 * np.random.default_rng(0).standard_normal(bold.shape)
 
 
-# ── F6: each task sees only its own events ────────────────────────
+# ── Each task sees only its own events ────────────────────────────
 
 
 def test_each_task_sees_only_its_own_events(monkeypatch, tmp_path):
-    """BOLD built from each task's own events: version 2 fits it, version 1 (both
-    tasks' events in each run) does not."""
+    """The two tasks share (subject, session, run); BOLD built from each task's own
+    events is fitted, while a design that mixed the two tasks' events is not."""
     runs = tr_runs()
-    install(monkeypatch, tmp_path, runs=runs, bold=bold_of(runs, tr_events(runs)))
-    scores = {version: float(Lahner2024BOLDMoments_timeresolved(
-        folds=RunBlocks(2), version=version)(Recorder({'vision:video'})).attrs['raw'])
-        for version in (1, 2)}
-    assert scores[2] > 0.9
-    assert scores[1] < scores[2] - 0.05
-
-
-def test_versions_agree_on_runs_without_a_shared_key(monkeypatch, tmp_path):
-    runs = [dict(run, run=f'{index:02d}') for index, run in enumerate(tr_runs())]
-    install(monkeypatch, tmp_path, runs=runs)
-    values = [float(Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), version=version)(
-        Recorder({'vision:video'}))) for version in (1, 2)]
-    assert repr(values[0]) == repr(values[1])
+    events = tr_events(runs)
+    install(monkeypatch, tmp_path, runs=runs, bold=bold_of(runs, events))
+    own = float(Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(
+        Recorder({'vision:video'})).attrs['raw'])
+    assert own > 0.9
+    mixed_events = events.assign(task='train')   # every run gets both tasks' events
+    mixed = bold_of([dict(run, task='train') for run in runs], mixed_events)
+    (tmp_path / 'mixed').mkdir()
+    install(monkeypatch, tmp_path / 'mixed', runs=runs, bold=mixed, events=events)
+    assert float(Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(
+        Recorder({'vision:video'})).attrs['raw']) < own - 0.05
 
 
 def test_run_without_events_raises(monkeypatch, tmp_path):
@@ -85,32 +82,22 @@ def test_events_without_task_column_raise(monkeypatch, tmp_path):
         Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(Recorder({'vision:video'}))
 
 
-# ── Versions ──────────────────────────────────────────────────────
+# ── Version ───────────────────────────────────────────────────────
+
+GLM_IDENTIFIERS = tuple(PREFIX + suffix for suffix in (
+    '', '-visualROI', '-multimodal', '-multimodal-visualROI', '-multimodal-auditoryROI'))
 
 
-@pytest.mark.parametrize('identifier', TR_IDENTIFIERS)
-def test_tr_registrations_default_to_version_2(identifier):
+@pytest.mark.parametrize('identifier', TR_IDENTIFIERS + GLM_IDENTIFIERS)
+def test_every_registration_is_version_2(identifier):
     benchmark = load(identifier)
     assert benchmark.identifier == identifier
-    assert benchmark.version == CURRENT_VERSION == 2
+    assert benchmark.version == 2
 
 
-@pytest.mark.parametrize('identifier', TR_IDENTIFIERS)
-def test_version_1_stays_loadable_under_the_same_identifier(identifier):
-    benchmark = load(identifier, version=1)
-    assert benchmark.identifier == identifier
-    assert benchmark.version == 1
-
-
-@pytest.mark.parametrize('identifier', TR_IDENTIFIERS)
-def test_unknown_version_is_refused(identifier):
-    with pytest.raises(ValueError, match='version must be one of'):
-        load(identifier, version=3)
-
-
-@pytest.mark.parametrize('identifier', (PREFIX, PREFIX + '-visualROI'))
-def test_glm_beta_variants_are_unchanged(identifier):
-    assert load(identifier).version == 1
+def test_no_older_version_is_offered():
+    with pytest.raises(TypeError):
+        load(TR_IDENTIFIERS[0], version=1)
 
 
 # ── Score labels (3A) and fold rules ──────────────────────────────
@@ -127,47 +114,45 @@ CONFIGURATIONS = {
 }
 
 
-@pytest.mark.parametrize('version', (1, 2))
 @pytest.mark.parametrize('name', CONFIGURATIONS)
-def test_scores_carry_method_labels(monkeypatch, tmp_path, name, version):
+def test_scores_carry_method_labels(monkeypatch, tmp_path, name):
     install(monkeypatch, tmp_path)
     configuration = CONFIGURATIONS[name]
     subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'))
-    score = Lahner2024BOLDMoments_timeresolved(version=version, **configuration)(subject)
+    score = Lahner2024BOLDMoments_timeresolved(**configuration)(subject)
     attrs = score.attrs
     assert attrs['encoding_model'] == 'clip_mean_onset_impulse_hrf'
     assert attrs['onset_rounding'] == 'floor_to_TR'
     assert attrs['event_duration_used'] is False
     assert attrs['tr_sec'] == TR_SEC
     assert attrs['stimulus_generalization'] == 'seen_stimuli'
-    assert attrs['benchmark_version'] == version
+    assert attrs['benchmark_version'] == 2
     assert attrs['inner_validation'] == 'none_fixed_alpha' and attrs['ridge_alpha'] == 1.0
     assert attrs['feature_projection_protocol'] == 'none'
     assert attrs['feature_dim_cap'] == FEATURE_DIM_CAP
-    if version == 1:
-        assert attrs['event_key'] == ('subject', 'session', 'run')
-        assert any(defect.startswith('F6') for defect in attrs['known_defects'])
-    else:
-        assert attrs['event_key'] == ('subject', 'session', 'task', 'run')
-        assert attrs['known_defects'] == ()
+    assert attrs['event_key'] == RUN_KEY == ('subject', 'session', 'task', 'run')
+    assert 'known_defects' not in attrs
     improved = 'confounds' in configuration
-    assert attrs['cv_mode'] == ('within_subject' if improved else 'subject_out')
+    assert attrs['cv_mode'] == ('within_participant' if improved else 'participant_out')
+    assert 'subject' not in attrs['cv_policy']
     assert attrs['motion_regressed'] is improved
     assert attrs['pipeline'] == ('tr_resolved_multimodal_concat' if 'channels' in configuration
                                  else 'continuous_time_encoding')
 
 
-def test_subject_out_label_reports_whether_blocks_are_whole_participants(monkeypatch, tmp_path):
+def test_participant_out_label_reports_whether_blocks_are_whole_participants(
+        monkeypatch, tmp_path):
     install(monkeypatch, tmp_path, runs=tr_runs(('a', 'a', 'b', 'b')))
     score = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(Recorder({'vision:video'}))
     assert score.attrs['cv_policy'] == 'contiguous_run_blocks_in_assembly_order'
-    assert score.attrs['cv_blocks_hold_out_whole_subjects'] is True
+    assert score.attrs['cv_blocks_hold_out_whole_participants'] is True
+    assert 'cv_blocks_hold_out_whole_subjects' not in score.attrs
 
 
 def test_interleaved_participants_are_reported(monkeypatch, tmp_path):
     install(monkeypatch, tmp_path, runs=tr_runs(('a', 'b', 'a', 'b')))
     score = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(Recorder({'vision:video'}))
-    assert score.attrs['cv_blocks_hold_out_whole_subjects'] is False
+    assert score.attrs['cv_blocks_hold_out_whole_participants'] is False
 
 
 @pytest.mark.parametrize('channels, label', [

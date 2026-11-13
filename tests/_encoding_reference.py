@@ -540,7 +540,7 @@ def tr_cross_validated_ridge_within_participant(X_flat, Y_flat,
 
     This matches standard fMRI encoding practice (Conwell, Allen, NSD)
     where train/test splits are within-participant, and avoids the cross-
-    participant mean-leakage that plagues subject_out CV.
+    participant mean-leakage of participant_out CV.
     """
     n_obs, n_voxels = Y_flat.shape
     unique_participants = np.unique(participant_per_obs)

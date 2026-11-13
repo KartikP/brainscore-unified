@@ -34,13 +34,22 @@ def stimulus_set():
     return stimuli
 
 
-def glm_assembly(reps=4, seed=1):
+GLM_REPS = 4
+
+
+def glm_values(reps=GLM_REPS, seed=1):
+    """``(presentation, voxel)`` betas; presentation ``i`` shows ``CLIPS[i % len(CLIPS)]``."""
     rng = np.random.default_rng(seed)
     signal = rng.standard_normal((len(CLIPS), N_VOXELS)) * np.linspace(0.0, 2.0, N_VOXELS)
     rows = [(clip, rep) for rep in range(reps) for clip in CLIPS]
-    values = np.stack([signal[CLIPS.index(clip)] + rng.standard_normal(N_VOXELS)
-                       for clip, _ in rows]).astype(np.float32).T[None]
-    return NeuronRecordingAssembly(values, dims=['time_bin', 'neuroid', 'presentation'], coords={
+    return np.stack([signal[CLIPS.index(clip)] + rng.standard_normal(N_VOXELS)
+                     for clip, _ in rows]).astype(np.float32)
+
+
+def glm_assembly(values=None, reps=GLM_REPS):
+    values = glm_values(reps) if values is None else np.asarray(values, dtype=np.float32)
+    rows = [(clip, rep) for rep in range(reps) for clip in CLIPS]
+    return NeuronRecordingAssembly(values.T[None], dims=['time_bin', 'neuroid', 'presentation'], coords={
         'time_bin_start': ('time_bin', [0]), 'time_bin_end': ('time_bin', [3000]),
         'neuroid_id': ('neuroid', np.arange(N_VOXELS)),
         'hemisphere': ('neuroid', ['L'] * (N_VOXELS // 2) + ['R'] * (N_VOXELS // 2)),
@@ -94,8 +103,9 @@ def tr_motion(runs, seed=4):
         ignore_index=True)
 
 
-def install(monkeypatch, tmp_path, runs=None, bold=None, events=None):
-    """Put the synthetic data behind the loaders; returns the TR runs."""
+def install(monkeypatch, tmp_path, runs=None, bold=None, events=None, glm=None):
+    """Put the synthetic data behind the loaders; returns the TR runs. ``glm`` replaces
+    the GLM betas (``glm_values`` layout), ``bold`` the TR series."""
     runs = tr_runs() if runs is None else runs
     cache = {}
 
@@ -108,7 +118,7 @@ def install(monkeypatch, tmp_path, runs=None, bold=None, events=None):
 
     monkeypatch.setitem(brainscore.stimulus_set_registry, 'BOLDMoments', once('s', stimulus_set))
     for identifier, build in (
-            ('Lahner2024-fMRI', glm_assembly),
+            ('Lahner2024-fMRI', lambda: glm_assembly(glm)),
             ('Lahner2024-fMRI-timeresolved', lambda: tr_assembly(runs, bold)),
             ('Lahner2024-fMRI-timeresolved-events',
              lambda: tr_events(runs) if events is None else events),

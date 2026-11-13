@@ -41,7 +41,7 @@ separate benchmark.
        b. HRF-convolve along the time axis (canonical SPM double-gamma).
        c. Crop to the run's valid TR length.
     4. Concatenate the runs' feature time-series into the design matrix X and
-       the runs' z-scored BOLD into Y.
+       the runs' z-scored BOLD of the scored voxels into Y.
     5. Per-voxel ridge (alpha=1.0) with whole-run held-out CV, by the fold rule:
        - ``RunBlocks(52)`` (default): contiguous blocks of 52 runs in assembly
          order; this holds out one participant per fold only if the assembly
@@ -51,17 +51,32 @@ separate benchmark.
        Every held-out stimulus is also shown in training runs, so the score
        measures generalization to new runs of seen stimuli, not to new
        stimuli.
-    6. Per-voxel Pearson on held-out predictions, median across voxels.
+    6. Per-voxel Pearson on held-out predictions, median across the voxels
+       that count (``voxel_score``, the rule of the GLM-beta benchmark).
 
 ## Versions
 
-- version 2 (current): events are selected by (subject, session, task, run).
-- version 1: events were selected by (subject, session, run) only. The two
-  BOLDMoments tasks ('train', 'test') reuse these keys, so 240 of the 520
-  runs also received the other task's events (defect F6). Kept reachable
-  with ``version=1`` (e.g. ``load_benchmark(identifier, version=1)``) so
-  historical scores can be reproduced; its scores carry
-  ``attrs['known_defects']``.
+Version 2 is the only version. Compared with version 1 it changes:
+
+- Events are selected by the full run key (subject, session, task, run).
+  Version 1 left out the task; the two BOLDMoments tasks ('train', 'test')
+  reuse the other keys, so 240 of the 520 runs also received the other
+  task's events.
+- The voxel mask is applied before the fit. Version 1 fitted all 20484
+  voxels and kept the region after. Every step of the fit treats a voxel on
+  its own (confound regression, z-score, ridge at a fixed penalty, Pearson),
+  so in exact arithmetic the r of a kept voxel does not depend on the other
+  voxels. In float32, scikit-learn's ridge rounds the fit of a voxel
+  according to the voxels that share its batch, so a region score moves in
+  the last digits only (at most 8e-8 on synthetic data). A region variant
+  now needs about the region's share of the memory and time.
+- The score keeps ``per_voxel_r`` (one value per scored voxel, NaN where a
+  voxel has no correlation) and counts the left-out voxels in
+  ``n_voxels_excluded``.
+- The fold labels name participants: ``cv_mode`` is ``'participant_out'`` or
+  ``'within_participant'``, and ``cv_blocks_hold_out_whole_participants``
+  replaces ``cv_blocks_hold_out_whole_subjects``. The data keep their own
+  coordinate name ``subject`` (the participant of a run).
 
 ## Comparison with the GLM-beta variant
 
@@ -94,9 +109,9 @@ from brainscore.benchmarks._score import benchmark_score
 from .benchmark import (
     BIBTEX,
     _VISUAL,
-    _ceiling_measured,
     _split_half_reliability,
     _select_voxels,
+    voxel_score,
 )
 from ._util import (
     DEFAULT_AUDIO_DIR,
@@ -119,7 +134,8 @@ TR_SEC = 1.75
 SOA_SEC = 4.0
 
 # Voxels fitted together. It bounds memory (held-out predictions for all 20484
-# voxels are about 10 GB).
+# voxels are about 10 GB). At a fixed penalty the batch changes a voxel's r only by
+# float32 rounding.
 VOXEL_BATCH = 2000
 
 # Cap on per-stimulus feature dim before ridge — guards a 64GB OOM on g5.4xlarge
@@ -127,20 +143,9 @@ VOXEL_BATCH = 2000
 FEATURE_DIM_CAP = 512
 CLIP_DURATION_SEC = 3.0
 
-# ── Protocol versions ─────────────────────────────────────────────────
-# Version 2 selects each run's events by the full run key, task included.
-# Version 1 omitted task; it stays reachable so historical scores can be
-# reproduced, and its scores are labelled with the defect.
-CURRENT_VERSION = 2
-EVENT_KEY_BY_VERSION = {
-    1: ('subject', 'session', 'run'),
-    2: ('subject', 'session', 'task', 'run'),
-}
-F6_TASK_KEY_DEFECT = (
-    "F6: events are selected by (subject, session, run) without task. The "
-    "BOLDMoments 'train' and 'test' tasks reuse these keys, so 240 of 520 "
-    "runs also receive the other task's events. Fixed in version 2.")
-KNOWN_DEFECTS_BY_VERSION = {1: (F6_TASK_KEY_DEFECT,), 2: ()}
+# The columns that name one run in the assembly, the events and the motion
+# sidecar. They are the data's own names: ``subject`` is the participant.
+RUN_KEY = ('subject', 'session', 'task', 'run')
 
 # Labels that describe the method the score was computed with (3A). They do
 # not change any number; they say what the number means.
@@ -154,6 +159,7 @@ METHOD_ATTRS = {
     'tr_sec': TR_SEC,
     'hrf': 'spm_double_gamma_32s_unit_sum_convolved_per_run',
     'stimulus_generalization': 'seen_stimuli',
+    'event_key': RUN_KEY,
 }
 TRANSDUCTIVE_SVD = 'transductive_truncated_svd_fit_on_all_stimuli'
 
@@ -181,14 +187,13 @@ class RunBlocks:
         return r
 
     def attrs(self, assembly) -> dict:
-        # The label values are the historical ones ('subject_out'); they name participants.
         participants = [str(p) for p in assembly['subject'].values]
         return {
-            'cv_mode': 'subject_out',
+            'cv_mode': 'participant_out',
             'cv_n_held_out_runs': self.n_runs,
             'cv_policy': 'contiguous_run_blocks_in_assembly_order',
             'cv_block_runs': int(self.n_runs),
-            'cv_blocks_hold_out_whole_subjects': _blocks_hold_out_whole_participants(
+            'cv_blocks_hold_out_whole_participants': _blocks_hold_out_whole_participants(
                 participants, self.n_runs),
         }
 
@@ -220,9 +225,9 @@ class ParticipantRunBlocks:
 
     def attrs(self, assembly) -> dict:
         return {
-            'cv_mode': 'within_subject',
+            'cv_mode': 'within_participant',
             'cv_n_held_out_runs': self.n_runs,
-            'cv_policy': 'within_subject_contiguous_run_blocks',
+            'cv_policy': 'within_participant_contiguous_run_blocks',
             'cv_block_runs': int(self.n_runs),
         }
 
@@ -266,7 +271,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             ``Lahner2024BOLDMoments``. The reliability is the GLM-beta one: both
             assemblies share the fsaverage5 voxels.
         identifier_suffix: appended to ``Lahner2024-fMRI-naturalistic``.
-        version: the event key (see the module docstring).
     """
 
     trial_memory = 'none'   # each clip is an independent trial
@@ -281,11 +285,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         voxel_mask_fn=None,
         audio_dir: Optional[str] = None,
         identifier_suffix: str = '-timeresolved',
-        version: int = CURRENT_VERSION,
     ):
-        if version not in EVENT_KEY_BY_VERSION:
-            raise ValueError(
-                f"version must be one of {sorted(EVENT_KEY_BY_VERSION)}, got {version!r}")
         if reliability_threshold is not None and voxel_mask_fn is not None:
             raise ValueError('Give reliability_threshold or voxel_mask_fn, not both.')
         channels, regions = channel_regions(channels)
@@ -305,7 +305,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         self._stimulus_set = None
         super().__init__(
             identifier=f'Lahner2024-fMRI-naturalistic{identifier_suffix}',
-            version=version,
+            version=2,
             parent='naturalistic',
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),
             bibtex=BIBTEX,
@@ -356,7 +356,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         assert 'time_bin_start_ms' in time_bin_levels, time_bin_levels
         assert 'subject' in presentation_levels, presentation_levels
         assert 'run' in presentation_levels, presentation_levels
-        assert 'task' in presentation_levels, presentation_levels   # event key (v2)
+        assert 'task' in presentation_levels, presentation_levels   # part of RUN_KEY
         assert 'n_valid_TR' in presentation_levels, presentation_levels
         assert assembly.sizes['neuroid'] == 20484
         assert assembly.sizes['time_bin'] > 1, \
@@ -370,48 +370,28 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         assembly = self.assembly
         design = self._build_design(features, stimulus_ids, assembly)
 
-        # 3. Flatten (run, TR) into rows; regress the confounds out of the BOLD and
-        #    z-score it per run and voxel.
+        # 3. Flatten (run, TR) into rows, the scored voxels only; regress the
+        #    confounds out of the BOLD and z-score it per run and voxel.
         X_flat, Y_flat, run_idx_per_obs, participant_per_obs = self._concatenate_with_mask(
-            design, assembly)
+            design, assembly, self.voxel_mask)
 
-        # 4. Per-voxel ridge under the fold rule; 5. keep the scored voxels.
+        # 4. Per-voxel ridge under the fold rule.
         per_voxel_r = self._folds.per_voxel_r(X_flat, Y_flat, run_idx_per_obs,
                                               participant_per_obs)
-        mask = self.voxel_mask
-        if mask is not None:
-            per_voxel_r = per_voxel_r[mask]
-        per_voxel_r_finite = per_voxel_r[~np.isnan(per_voxel_r)]
-        median_r = float(np.median(per_voxel_r_finite))
-        mean_r = float(np.mean(per_voxel_r_finite))
 
-        score = benchmark_score(
-            self, median_r / float(self.ceiling), raw=median_r,
-            metric='median_per_voxel_pearson_r', normalized=_ceiling_measured(self))
-        score.attrs['mean_r'] = mean_r
-        score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
+        score = voxel_score(self, per_voxel_r)
         score.attrs['n_runs'] = assembly.sizes['presentation']
         score.attrs['n_observations'] = int(len(Y_flat))
         score.attrs['motion_regressed'] = bool(self._confounds)
         score.attrs['pipeline'] = 'continuous_time_encoding'
         score.attrs.update(self._folds.attrs(assembly))
-        score.attrs.update(self._method_attrs(stream_attrs.pop('feature_projection_protocol')))
+        score.attrs.update(METHOD_ATTRS)
+        score.attrs['feature_projection_protocol'] = stream_attrs.pop('feature_projection_protocol')
+        score.attrs['feature_dim_cap'] = FEATURE_DIM_CAP
         score.attrs['ridge_alpha'] = 1.0
         score.attrs['inner_validation'] = 'none_fixed_alpha'
         score.attrs.update(stream_attrs)
         return score
-
-    # ── Score labels ───────────────────────────────────────────────
-
-    def _method_attrs(self, feature_projection: str) -> dict:
-        """Version, event key, known defects and method description (3A)."""
-        # benchmark_version is a common attribute, written by benchmark_score.
-        attrs = dict(METHOD_ATTRS)
-        attrs['event_key'] = EVENT_KEY_BY_VERSION[self.version]
-        attrs['known_defects'] = KNOWN_DEFECTS_BY_VERSION[self.version]
-        attrs['feature_projection_protocol'] = feature_projection
-        attrs['feature_dim_cap'] = FEATURE_DIM_CAP
-        return attrs
 
     # ── Features ───────────────────────────────────────────────────
 
@@ -495,33 +475,22 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         return feature_ts_convolved
 
     def _events_per_run(self, assembly):
-        """Yield each assembly run's events, selected by this version's key."""
-        n_runs = assembly.sizes['presentation']
-        participants = assembly['subject'].values
-        sessions = assembly['session'].values
-        runs = assembly['run'].values
-        if self.version == 1:
-            for run_idx in range(n_runs):
-                yield self._events_for_run_without_task(
-                    str(participants[run_idx]), str(sessions[run_idx]),
-                    str(runs[run_idx]))
-            return
-        tasks = assembly['task'].values
+        """Yield each assembly run's events, selected by ``RUN_KEY``."""
+        keys = zip(*(assembly[column].values for column in RUN_KEY))
         groups = self._events_by_run_key()
-        for run_idx in range(n_runs):
+        for participant, session, task, run in keys:
             yield self._events_for_run(
-                str(participants[run_idx]), str(sessions[run_idx]),
-                str(tasks[run_idx]), str(runs[run_idx]), groups=groups)
+                str(participant), str(session), str(task), str(run), groups=groups)
 
     def _events_by_run_key(self) -> dict:
-        """Group events by (subject, session, task, run), keeping row order."""
+        """Group events by ``RUN_KEY``, keeping row order."""
         ev = self.events
-        key = list(EVENT_KEY_BY_VERSION[2])
+        key = list(RUN_KEY)
         missing = [column for column in key if column not in ev.columns]
         if missing:
             raise ValueError(
-                f"Events table lacks {missing}; version {self.version} selects "
-                f"events by {tuple(key)}. Use the versioned events sidecar.")
+                f"Events table lacks {missing}; events are selected by "
+                f"{RUN_KEY}. Use the versioned events sidecar.")
         key_frame = ev[key].astype(str)
         return {
             group_key: ev.iloc[positions]
@@ -548,23 +517,11 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 f"only {task!r}.")
         return selected
 
-    def _events_for_run_without_task(self, participant, session, run):
-        """Version 1 selector (defect F6): (subject, session, run), no task.
-
-        Kept unchanged so version 1 reproduces historical scores. The two
-        BOLDMoments tasks reuse these keys, so it can return both tasks'
-        events. Do not use for new scores.
-        """
-        ev = self.events
-        mask = ((ev['subject'] == participant) &
-                (ev['session'] == session) &
-                (ev['run'] == run))
-        return ev[mask]
-
-    def _concatenate_with_mask(self, feature_ts_convolved, assembly):
+    def _concatenate_with_mask(self, feature_ts_convolved, assembly, voxels=None):
         """Flatten (run, TR, ...) into long (n_obs, ...) tables, masking padding.
 
-        Per run:
+        ``voxels`` (a boolean mask, ``None`` for all) keeps the scored voxels
+        before any other step. Per run:
           1. Slice to n_valid_TR (drop padding).
           2. With confounds: OLS of the BOLD on [1, confounds] per voxel, keep the
              residuals (Power 2014, Ciric 2017).
@@ -581,20 +538,22 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         runs_per_run     = assembly['run'].values
         tasks_per_run    = assembly['task'].values
 
-        # Pre-index motion sidecar by (subject, session, task, run) for O(1) lookup.
+        # Pre-index motion sidecar by RUN_KEY for O(1) lookup.
         motion_df = self.motion
         motion_lookup = None
         if motion_df is not None:
             motion_lookup = {
                 (s, ses, t, r): g[self._confounds].values.astype(np.float32)
-                for (s, ses, t, r), g in motion_df.groupby(
-                    ['subject', 'session', 'task', 'run'], sort=False)
+                for (s, ses, t, r), g in motion_df.groupby(list(RUN_KEY), sort=False)
             }
 
         X_chunks, Y_chunks, run_chunks, participant_chunks = [], [], [], []
         for run_idx, n_TR in enumerate(n_valid):
             X_chunks.append(feature_ts_convolved[run_idx, :n_TR, :])
-            Y_run = bold[run_idx, :n_TR, :].astype(np.float32)
+            Y_run = bold[run_idx, :n_TR, :]
+            if voxels is not None:
+                Y_run = Y_run[:, voxels]
+            Y_run = Y_run.astype(np.float32)
 
             if motion_lookup is not None:
                 key = (str(participants_per_run[run_idx]),

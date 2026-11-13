@@ -27,7 +27,21 @@ Scoring pipeline:
     3. Average the neural assembly across the 10 repetitions → one BOLD
        vector per video per voxel; keep the voxels of the voxel mask.
     4. 5-fold ridge (penalty 1, ``brainscore.metrics.encoding``) → Pearson
-       per voxel → median.
+       per voxel → median over the voxels that count (``voxel_score``).
+
+## Versions
+
+- version 2 (current): the score keeps one Pearson r per scored voxel, in
+  voxel order (``per_voxel_r``, NaN where a voxel has none). A voxel counts
+  when its r is finite and, with a measured ceiling, its ceiling is finite
+  and above zero; the other voxels are left out of every median and mean and
+  counted in ``n_voxels_excluded``. The time-resolved benchmark uses the same
+  rule.
+- version 1: the NaN entries were removed first and the shorter vector was
+  then divided by the ceiling of every voxel. With one NaN voxel this failed
+  (the lengths differ) or divided one value by every ceiling, and the
+  ``per_voxel_r`` attribute lost the voxel positions. Removed: when no voxel
+  is NaN, version 2 gives the same value.
 
 ## IMPORTANT: what the frame route does NOT measure
 
@@ -55,13 +69,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
 )
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.benchmarks._score import benchmark_score
-from brainscore.metrics.encoding import (
-    SklearnRidge,
-    cross_validated_r,
-    ridge,
-    row_kfold,
-    summarize,
-)
+from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge, row_kfold
 from ._util import (
     DEFAULT_AUDIO_DIR,
     DEFAULT_SAMPLE_TIMES_MS,
@@ -162,6 +170,57 @@ def _select_voxels(reliability_threshold: Optional[float], voxel_mask_fn: Option
     return None
 
 
+def voxel_score(benchmark, per_voxel_r, ceiling_per_voxel: Optional[np.ndarray] = None) -> Score:
+    """The score of a Lahner2024 benchmark from the held-out r of each scored voxel.
+
+    ``per_voxel_r`` holds one value per voxel of ``benchmark.voxel_mask`` (every
+    voxel without a mask), in voxel order. One rule for every variant: a voxel
+    counts when its r is finite and, given ``ceiling_per_voxel``, its ceiling is
+    finite and above zero. A voxel with a constant response has no correlation;
+    a voxel with a reliability at or below zero has no ceiling. Such a voxel is
+    left out of the median and the mean and counted in ``n_voxels_excluded``,
+    as the Algonauts2025 benchmark leaves out a constant parcel. The attribute
+    ``per_voxel_r`` keeps every scored voxel (NaN where r is undefined), so
+    ``voxel_mask_indices`` places it back on the surface.
+
+    With ``ceiling_per_voxel`` the score is ``median(r_i / c_i)``, not
+    ``median(r_i) / median(c_i)``: the repository convention. Without it the
+    raw median is divided by ``benchmark.ceiling``.
+    """
+    r = np.asarray(per_voxel_r)
+    counts = ~np.isnan(r)
+    if ceiling_per_voxel is not None:
+        ceiling_per_voxel = np.asarray(ceiling_per_voxel, dtype=float)
+        counts &= np.isfinite(ceiling_per_voxel) & (ceiling_per_voxel > 0)
+    kept = r[counts]
+    median_r = float(np.median(kept))
+    if ceiling_per_voxel is not None:
+        score = benchmark_score(
+            benchmark, float(np.median(np.asarray(kept, dtype=float) / ceiling_per_voxel[counts])),
+            raw=median_r, metric='median_per_voxel_pearson_r', normalized=True,
+            ceiling=Score(float(np.median(ceiling_per_voxel[counts]))),
+            ceiling_aggregation='per_voxel')
+    else:
+        score = benchmark_score(
+            benchmark, median_r / float(benchmark.ceiling), raw=median_r,
+            metric='median_per_voxel_pearson_r', normalized=_ceiling_measured(benchmark),
+            ceiling_aggregation='scalar')
+    score.attrs['mean_r'] = float(np.mean(kept))
+    score.attrs['n_voxels_scored'] = int(counts.sum())
+    score.attrs['n_voxels_excluded'] = int(r.size - counts.sum())
+    score.attrs['per_voxel_r'] = r   # exposed for bootstrap CIs and surface maps
+    mask = benchmark.voxel_mask
+    if mask is not None:
+        score.attrs['voxel_mask_n_total'] = int(mask.size)
+        score.attrs['voxel_mask_n_kept'] = int(mask.sum())
+        score.attrs['voxel_mask_indices'] = np.flatnonzero(mask)
+        if benchmark._reliability_threshold is not None:
+            score.attrs['reliability_threshold'] = float(benchmark._reliability_threshold)
+        if benchmark._voxel_mask_fn is not None:
+            score.attrs['voxel_mask_source'] = benchmark._voxel_mask_fn.__name__
+    return score
+
+
 class Lahner2024BOLDMoments(BenchmarkBase):
     """Naturalistic fMRI benchmark: predict per-video BOLD responses (GLM betas).
 
@@ -211,7 +270,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         self._voxel_mask: Optional[np.ndarray] = None
         super().__init__(
             identifier=f'Lahner2024-fMRI-naturalistic{identifier_suffix}',
-            version=1,
+            version=2,
             parent='naturalistic',
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),
             bibtex=BIBTEX,
@@ -250,16 +309,15 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         """sqrt(reliability) per scored voxel; ``None`` without a measured ceiling.
 
         Whole cortex and every variant without a measured ceiling keep
-        ``ceiling=1.0`` and take the scalar path.
+        ``ceiling=1.0`` and take the scalar path. A ceiling of zero (reliability
+        at or below zero) leaves the voxel out (``voxel_score``).
         """
         if not _ceiling_measured(self):
             return None
         rel = np.asarray(self._reliability_once(), dtype=float)
         if mask is not None:
             rel = rel[np.asarray(mask, dtype=bool)]
-        ceil = np.sqrt(np.clip(rel, 0.0, 1.0))
-        ceil[~np.isfinite(ceil) | (ceil <= 0)] = np.nan   # never divide by ~0
-        return ceil
+        return np.sqrt(np.clip(rel, 0.0, 1.0))
 
     def _features(self, subject):
         """``(features (n_videos, n_features), clip_ids, attrs)`` recorded through ``participate``."""
@@ -333,40 +391,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         per_voxel_r, _ = cross_validated_r(
             features, neural_mat, row_kfold(len(features), n_splits=5, random_state=0),
             ridge(1.0, SklearnRidge()))
-        per_voxel_r, median_r, mean_r = summarize(per_voxel_r)
-
-        # A measured ceiling normalizes per voxel, median(r_i / c_i), not
-        # median(r_i) / median(c_i): the repository convention.
-        ceiling_vec = self._per_voxel_ceiling(mask)
-        if ceiling_vec is not None:
-            normalized = np.asarray(per_voxel_r, dtype=float) / ceiling_vec
-            score = benchmark_score(
-                self, float(np.nanmedian(normalized)), raw=median_r,
-                metric='median_per_voxel_pearson_r', normalized=True,
-                ceiling=Score(float(np.nanmedian(ceiling_vec))),
-                ceiling_aggregation='per_voxel')
-        else:
-            score = benchmark_score(
-                self, median_r / float(self.ceiling), raw=median_r,
-                metric='median_per_voxel_pearson_r', normalized=False)
-            # The two-stream scores have never carried this label; kept as it was.
-            if not self._audio:
-                score.attrs['ceiling_aggregation'] = 'scalar'
-        score.attrs['mean_r'] = mean_r
-        score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
-        score.attrs['per_voxel_r'] = per_voxel_r   # exposed for bootstrap CIs
+        score = voxel_score(self, per_voxel_r, self._per_voxel_ceiling(mask))
         score.attrs['n_videos'] = int(features.shape[0])
         score.attrs.update(route_attrs)
-        if mask is not None:
-            score.attrs['voxel_mask_n_total'] = int(mask.size)
-            score.attrs['voxel_mask_n_kept'] = int(mask.sum())
-            # WHICH vertices were scored, so per-voxel scores can be placed back
-            # onto the fsaverage5 surface.
-            score.attrs['voxel_mask_indices'] = np.flatnonzero(mask)
-            if self._reliability_threshold is not None:
-                score.attrs['reliability_threshold'] = float(self._reliability_threshold)
-            if self._voxel_mask_fn is not None:
-                score.attrs['voxel_mask_source'] = self._voxel_mask_fn.__name__
         return score
 
 

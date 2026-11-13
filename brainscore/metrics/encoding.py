@@ -401,7 +401,8 @@ def cross_validated_r(features, Y, folds, fit, *, groups=None,
         target_batch: fit the targets in batches of this size, to bound memory.
             A chooser then chooses per batch, so a shared penalty depends on
             the batch (finding C2). The Lahner2024 time-resolved benchmark
-            batches at a fixed penalty, where the batch changes nothing.
+            batches at a fixed penalty, where the batch changes only float32
+            rounding (``SklearnRidge``).
 
     Returns ``(r, chosen)``: ``r`` has one value per target (NaN without a
     correlation); ``chosen`` lists what each fit returned, batch by batch and

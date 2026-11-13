@@ -104,19 +104,19 @@ BUILT = {
         ['instruction', 'observation', 'reward'],
         ['motor']),
     'Lahner2024-fMRI-naturalistic': (
-        'Lahner2024-fMRI-naturalistic', 1, 'none',
+        'Lahner2024-fMRI-naturalistic', 2, 'none',
         ['vision:image', 'vision:video'],
         ['neural:IT']),
     'Lahner2024-fMRI-naturalistic-multimodal': (
-        'Lahner2024-fMRI-naturalistic-multimodal', 1, 'none',
+        'Lahner2024-fMRI-naturalistic-multimodal', 2, 'none',
         ['audio', 'vision:image', 'vision:video'],
         ['neural:A1', 'neural:IT']),
     'Lahner2024-fMRI-naturalistic-multimodal-auditoryROI': (
-        'Lahner2024-fMRI-naturalistic-multimodal-auditoryROI', 1, 'none',
+        'Lahner2024-fMRI-naturalistic-multimodal-auditoryROI', 2, 'none',
         ['audio', 'vision:image', 'vision:video'],
         ['neural:A1', 'neural:IT']),
     'Lahner2024-fMRI-naturalistic-multimodal-visualROI': (
-        'Lahner2024-fMRI-naturalistic-multimodal-visualROI', 1, 'none',
+        'Lahner2024-fMRI-naturalistic-multimodal-visualROI', 2, 'none',
         ['audio', 'vision:image', 'vision:video'],
         ['neural:A1', 'neural:IT']),
     'Lahner2024-fMRI-naturalistic-timeresolved': (
@@ -148,7 +148,7 @@ BUILT = {
         ['vision:image', 'vision:video'],
         ['neural:IT']),
     'Lahner2024-fMRI-naturalistic-visualROI': (
-        'Lahner2024-fMRI-naturalistic-visualROI', 1, 'none',
+        'Lahner2024-fMRI-naturalistic-visualROI', 2, 'none',
         ['vision:image', 'vision:video'],
         ['neural:IT']),
     'LeBel2023-UTS03-encoding': (
