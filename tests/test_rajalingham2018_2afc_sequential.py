@@ -158,7 +158,7 @@ def test_witness_still_observes_the_participate_run():
         run_trials(model, _stim(), SEQUENTIAL_INSTRUCTION)
     assert len(witness.events) == 1
     assert witness.events[0].n_inputs == 2
-    assert witness.events[0].mode == 'generation'
+    assert witness.events[0].mode == 'behavior'
 
 
 def _old_driver_choices(model, stim):

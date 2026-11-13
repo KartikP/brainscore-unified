@@ -12,6 +12,7 @@ import pytest
 import torch
 from torch import nn
 
+from brainscore_core.streaming_helpers import apply_state_change
 from brainscore import BrainScoreModel, CompositeSelector, FunctionalSelection
 from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
 from brainscore.perturbation import build_pytorch_ablation_fn
@@ -141,7 +142,7 @@ def _model(region_layer_map):
     net = _net()
     return net, BrainScoreModel('parity', model=net, region_layer_map=region_layer_map,
                                 preprocessors={'text': _Extractor(net, _inputs())},
-                                state_change_fn=build_pytorch_ablation_fn(net))
+                                intervention=build_pytorch_ablation_fn(net))
 
 
 def _same(new, old):
@@ -184,7 +185,7 @@ def test_benchmark_localizer_selects_the_units_of_its_old_copy(layers):
     outputs = []
     for selections in (old, new):
         for selection in selections:
-            model.process(StateChange('ablation', target=selection, perturbation=Perturbation('zero')))
+            apply_state_change(model, StateChange('ablation', target=selection, perturbation=Perturbation('zero')))
         outputs.append({layer: getattr(net, layer)(x).detach().numpy() for layer in ('L', 'M')})
         model.reset()
     for layer in ('L', 'M'):

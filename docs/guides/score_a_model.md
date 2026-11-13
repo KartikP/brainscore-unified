@@ -17,7 +17,7 @@ What happens:
 
 1. **Compatibility check.** The subject's declared channels are compared with what the benchmark provides and requests. An incompatible pair raises `CompatibilityError` and is reported as N/A, not zero. See [Core concepts, section 6](../02_core_concepts.md#6-compatibility).
 2. **Memory check.** One stimulus is run to estimate the memory the full benchmark needs. Pass `check_mem=False` to skip it.
-3. **The benchmark runs** the subject through sessions and returns a `Score`. If the benchmark leaves a perturbation active on the subject, `score` fails.
+3. **The benchmark runs** the subject through sessions and returns a `Score`. If the benchmark leaves an intervention active on the subject, `score` fails.
 
 ## Find models and benchmarks
 

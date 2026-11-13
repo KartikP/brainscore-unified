@@ -1,8 +1,8 @@
 """Render a WitnessEvent into a single "what the model saw / did" panel.
 
 Modality-aware: vision/video/audio stimuli become image thumbnails, text becomes
-a text card, an embodied step shows the rendered frame, a state-change shows the
-lesion target. The caption always reports the mode, the instruction (if any), the
+a text card, an embodied step shows the rendered frame, an intervention shows
+its target. The caption always reports the mode, the instruction (if any), the
 recording target (if neural), and a summary of what the model produced.
 
 Kept separate from ``witness.py`` so the recorder stays dependency-light; this
@@ -11,8 +11,8 @@ module imports matplotlib/PIL only when a panel is actually rendered.
 
 _INK = '#1b2333'
 _MUTED = '#5b6678'
-_MODE_COLOR = {'neural': '#2f6bff', 'readout': '#1f9d57', 'generation': '#7c4dff',
-               'action': '#c6810f', 'state_change': '#d8483b'}
+_MODE_COLOR = {'neural': '#2f6bff', 'behavior': '#7c4dff',
+               'action': '#c6810f', 'intervention': '#d8483b'}
 
 
 def _did_caption(did):
@@ -61,7 +61,7 @@ def render_event(ev, out_path, label=''):
 
     n_imgs = min(len(images), 4)
     has_text = bool(texts) and n_imgs == 0
-    is_sc = ev.event_type == 'state_change'
+    is_sc = ev.event_type == 'intervention'
 
     ncols = max(1, n_imgs)
     fig_w = max(5.0, 2.6 * ncols)
@@ -90,7 +90,7 @@ def render_event(ev, out_path, label=''):
         ax.axis('off')
         if is_sc:
             s = saw[0] if saw else {}
-            body = (f"STATE CHANGE\n\nkind: {s.get('kind')}\n"
+            body = (f"INTERVENTION\n\nkind: {s.get('kind')}\n"
                     f"target: {s.get('target')}\nperturbation: {s.get('perturbation')}")
         elif has_text:
             body = "TEXT INPUT\n\n" + "\n\n".join('“' + t[:240] + ('…' if len(t) > 240 else '') + '”'
@@ -101,7 +101,7 @@ def render_event(ev, out_path, label=''):
                 family='sans-serif')
 
     # title + caption
-    title = f"{label}   ·   call #{ev.index}   ·   {ev.mode.upper()}   ·   {ev.event_type}"
+    title = f"{label}   ·   event #{ev.index}   ·   {ev.mode.upper()}   ·   {ev.event_type}"
     fig.suptitle(title, fontsize=12, color=mode_c, y=0.99)
 
     cap_lines = []

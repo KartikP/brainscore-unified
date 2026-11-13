@@ -69,8 +69,9 @@ def test_intervention_cleanup_on_reset():
                                    perturbation=change.perturbation), active.clear
 
     subject = BrainScoreModel(identifier='intervention', intervention=intervene)
-    subject.process(StateChange(kind='ablation', target=Selection(layer='layer'),
-                                perturbation=Perturbation(kind='zero')))
+    from brainscore_core.streaming_helpers import apply_state_change
+    apply_state_change(subject, StateChange(kind='ablation', target=Selection(layer='layer'),
+                                            perturbation=Perturbation(kind='zero')))
     assert active == ['installed']
     subject.reset()
     assert active == []

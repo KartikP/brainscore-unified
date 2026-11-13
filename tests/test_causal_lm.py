@@ -8,6 +8,7 @@ pytestmark = pytest.mark.unit
 
 torch = pytest.importorskip('torch')
 
+from brainscore_core.streaming_helpers import apply_state_change
 from brainscore_core.model_interface import Perturbation, Selection, StateChange
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.causal_lm import build_causal_lm_subject
@@ -125,8 +126,8 @@ def test_recording_input_site_sees_the_steered_neuron(subject):
     model.start_recording('mlp_in')
     base = model.process(_stimuli())
     assert base.sizes['neuroid'] == 24  # the MLP's intermediate units, not the hidden size
-    model.process(StateChange(kind='steer', perturbation=Perturbation(kind='drive', amount=5.0),
-                              target=Selection(layer=NEURON_IN, indices=[4])))
+    apply_state_change(model, StateChange(kind='steer', perturbation=Perturbation(kind='drive', amount=5.0),
+                                          target=Selection(layer=NEURON_IN, indices=[4])))
     steered = model.process(_stimuli())
     diff = np.nan_to_num(steered.values - base.values)
     assert np.allclose(diff[..., 4][~np.isnan(base.values[..., 4])], 5.0, atol=1e-5)
@@ -140,8 +141,8 @@ def test_intervention_changes_scores_and_reset_restores_them(subject):
     model, _, _ = subject
     contexts, targets = ['the cat', 'the dog'], ['sat', 'ran']
     before = _scores(model, contexts, targets, raw_text=False)
-    model.process(StateChange(kind='steer', perturbation=Perturbation(kind='drive', amount=10.0),
-                              target=Selection(layer=NEURON_IN, indices=[4])))
+    apply_state_change(model, StateChange(kind='steer', perturbation=Perturbation(kind='drive', amount=10.0),
+                                          target=Selection(layer=NEURON_IN, indices=[4])))
     during = _scores(model, contexts, targets, raw_text=False)
     model.reset()
     after = _scores(model, contexts, targets, raw_text=False)
@@ -157,9 +158,11 @@ def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
     localizer.identifier = 'causal-lm-localizer'
     target = FunctionalSelection(region='mlp_in', localizer_stimuli=localizer,
                                  contrast=(['x'], ['y']), n_units=3, sign='abs')
-    assert target.resolve(model).layer == NEURON_IN
+    units = target.resolve(model)
+    assert units.layer == NEURON_IN
     before = _scores(model, ['the cat'], ['sat'], raw_text=False)
-    model.process(StateChange(kind='lesion', target=target, perturbation=Perturbation(kind='drive', amount=50.0)))
+    apply_state_change(model, StateChange(kind='lesion', target=units,
+                                          perturbation=Perturbation(kind='drive', amount=50.0)))
     assert _scores(model, ['the cat'], ['sat'], raw_text=False) != before
 
 
@@ -171,14 +174,14 @@ def test_declares_what_it_can_do(subject):
 
 
 def test_record_and_push_an_input_site_through_participate(subject):
-    from brainscore.instrumentation import intervene
     from brainscore_core.streaming_helpers import neural_response
     model, _, _ = subject
     before = neural_response(model, _stimuli(), ['neural:mlp_in'])
     push = StateChange(kind='steer', target=Selection(layer=NEURON_IN, indices=[5]),
                        perturbation=Perturbation(kind='drive', amount=2.5))
-    with intervene(model, push):
-        after = neural_response(model, _stimuli(), ['neural:mlp_in'])
+    applied = apply_state_change(model, push)
+    after = neural_response(model, _stimuli(), ['neural:mlp_in'])
+    apply_state_change(model, StateChange(kind='reset', handle_id=applied.handle_id))
     change = np.nan_to_num(after.values - before.values)
     np.testing.assert_allclose(change[..., 5][~np.isnan(before.values[..., 5])], 2.5, atol=1e-5)
     assert np.abs(np.delete(change, 5, axis=-1)).max() == 0

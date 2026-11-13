@@ -344,13 +344,14 @@ def score(model_identifier, benchmark_identifier,
     _t0 = _time.time()
     with weight_fingerprint_scope(), record_measures() as measures:
         result = benchmark(received)
-    # The run must leave the subject as it found it: every perturbation a session
-    # of the benchmark applied is undone. Perturbations the caller applied stay.
+    # The run must leave the subject as it found it: every intervention a session
+    # of the benchmark applied is undone. Interventions the caller applied stay.
     if measures.unreleased:
         raise RuntimeError(
-            f"Benchmark '{benchmark_id}' left perturbation handle(s) "
+            f"Benchmark '{benchmark_id}' left intervention handle(s) "
             f"{sorted(measures.unreleased)} active on subject '{model_id}'; a benchmark "
-            "must undo every change it applies (StateChange(kind='reset', handle_id=...)).")
+            "must undo every intervention it applies: apply_state_change(subject, "
+            "StateChange(kind='reset', handle_id=...)).")
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
     # Benchmarks can supply a qualified identity for settings or data subsets.

@@ -19,6 +19,9 @@ from brainscore_core.events import StateChange
 from brainscore_core.streaming import CONTROL_CHANNEL
 from brainscore_core.streaming_helpers import apply_state_change, stimulus_session
 
+from brainscore._model.intervention import INTERVENTION_CHANNELS
+from brainscore.selection import require_resolved
+
 from .runner import SessionProtocol, Tool
 from .tools import RecordInputsOutputs
 
@@ -140,10 +143,13 @@ class RecordBehavior(_ChannelRecorder):
 
 
 class Intervene(Tool):
-    """Apply one undoable change through the subject's own ``intervention``.
+    """Apply one intervention through the subject's own ``intervention`` part.
 
-    The change is applied at the start of each matching repetition and undone at
-    its end. Targets use the subject's layer paths, as in ``region_layer_map``.
+    The change is sent with ``apply_state_change`` on its declared channel
+    (``lesion``, ``stimulation`` or ``pharmacological``) at the start of each
+    matching repetition, and undone by its handle at the end. Targets use the
+    subject's layer paths, as in ``region_layer_map``; resolve a
+    ``FunctionalSelection`` or ``RandomSelection`` before you build the change.
     """
     name = 'intervention'
     phase = 'intervene'
@@ -159,9 +165,13 @@ class Intervene(Tool):
                 'perturbation': self.change.perturbation.kind, 'conditions': self.conditions}
 
     def validate(self, experiment):
-        if 'lesion' not in experiment.subject.in_channels and \
-                'stimulation' not in experiment.subject.in_channels:
-            raise ValueError(f'{experiment.subject.identifier!r} declares no intervention')
+        require_resolved(self.change)
+        subject = experiment.subject
+        if not set(INTERVENTION_CHANNELS) & set(subject.in_channels) \
+                or 'perturbation' not in subject.out_channels:
+            raise ValueError(f'{subject.identifier!r} declares no intervention: it needs one of '
+                             f'{list(INTERVENTION_CHANNELS)} in in_channels and perturbation in '
+                             f'out_channels, as BrainScoreModel(intervention=...) declares.')
 
     @contextmanager
     def attach(self, context):

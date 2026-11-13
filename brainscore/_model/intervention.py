@@ -1,19 +1,26 @@
-"""State-change and perturbation lifecycle support for BrainScoreModel."""
+"""The active interventions of a BrainScoreModel and their undo."""
 
 from contextlib import contextmanager
-from dataclasses import replace
 from typing import Callable, Dict
 
 from brainscore_core.events import PerturbationApplied
-from ..selection import UnitSelection
+from ..selection import require_resolved
+
+# The catalog's intervention input channels; the target is in the payload (rule 3.1).
+INTERVENTION_CHANNELS = ('lesion', 'stimulation', 'pharmacological')
 
 
-class PerturbationManager:
-    """Owns active perturbation state for a BrainScoreModel instance."""
+class Interventions:
+    """Owns the active interventions of one BrainScoreModel instance.
+
+    An intervention arrives as a ``StateChange`` on a declared channel
+    (``lesion``, ``stimulation`` or ``pharmacological``), sent by a session;
+    ``apply_state_change`` and the ``Intervene`` tool build that session.
+    """
 
     def __init__(self, owner) -> None:
         self.owner = owner
-        self.active_perturbations: Dict[str, Callable[[], None]] = {}
+        self.active_interventions: Dict[str, Callable[[], None]] = {}
         self._changes: Dict[str, object] = {}   # handle -> resolved StateChange
 
     @contextmanager
@@ -22,82 +29,69 @@ class PerturbationManager:
 
         Handles keep their identity, so a later reset by handle still works.
         """
-        handles = list(self.active_perturbations)
+        handles = list(self.active_interventions)
         for handle in reversed(handles):
-            self.active_perturbations[handle]()
+            self.active_interventions[handle]()
         try:
             yield
         finally:
             for handle in handles:
                 _, cleanup = self.owner._state_change_fn(self._changes[handle])
-                self.active_perturbations[handle] = cleanup
+                self.active_interventions[handle] = cleanup
 
     def reset(self) -> None:
-        """Undo every active perturbation.
+        """Undo every active intervention.
 
         One cleanup that raises must not prevent the others from running, so
         each is attempted independently. A failed cleanup is *not* forgotten,
         though: its handle stays registered and the failure is reported. A
-        cleanup that raised leaves the model still perturbed, so dropping the
+        cleanup that raised leaves the model still changed, so dropping the
         handle silently would leave every later score computed on a damaged
         model with nothing left to show it.
         """
         failures = []
-        for handle_id, cleanup in list(self.active_perturbations.items()):
+        for handle_id, cleanup in list(self.active_interventions.items()):
             try:
                 cleanup()
             except Exception as error:                       # noqa: BLE001
                 failures.append((handle_id, error))
             else:
-                self.active_perturbations.pop(handle_id, None)
+                self.active_interventions.pop(handle_id, None)
                 self._changes.pop(handle_id, None)
         if failures:
             import warnings
             detail = '; '.join(f'{handle!r}: {type(err).__name__}: {err}'
                                for handle, err in failures)
             warnings.warn(
-                f"{len(failures)} perturbation cleanup(s) failed, so this model "
-                f"is still perturbed and any score taken from it now is invalid. "
+                f"{len(failures)} intervention cleanup(s) failed, so this model "
+                f"is still changed and any score taken from it now is invalid. "
                 f"The handles remain registered and reset() can be retried: "
                 f"{detail}",
                 RuntimeWarning,
                 stacklevel=2,
             )
 
-    def resolve_selection(self, state_change):
-        """Resolve a ``UnitSelection`` target to a concrete ``Selection``."""
-        target = state_change.target
-        if not isinstance(target, UnitSelection):
-            return state_change
-        owner = self.owner
-        saved_recording = owner._recorder.snapshot()
-        try:
-            resolved = target.resolve(owner)
-        finally:
-            owner._recorder.restore(saved_recording)
-        return replace(state_change, target=resolved)
-
     def dispatch_state_change(self, state_change):
-        """Route a StateChange event to the registered ``state_change_fn``."""
+        """Apply a StateChange with the subject's ``intervention`` part, or undo one by handle."""
         owner = self.owner
         if state_change.kind == 'reset':
             handle_id = state_change.handle_id
             if handle_id is None:
                 raise ValueError(
                     f"StateChange(kind='reset') requires handle_id to identify "
-                    f"which perturbation to undo. Use model.reset() to clear all."
+                    f"which intervention to undo. Use model.reset() to undo all."
                 )
-            cleanup = self.active_perturbations.get(handle_id)
+            cleanup = self.active_interventions.get(handle_id)
             if cleanup is None:
                 raise KeyError(
-                    f"No active perturbation with handle_id={handle_id!r}. "
-                    f"Active: {list(self.active_perturbations.keys())}."
+                    f"No active intervention with handle_id={handle_id!r}. "
+                    f"Active: {list(self.active_interventions.keys())}."
                 )
             # Deregister only once the undo has actually succeeded; popping
             # first would lose the handle to a raising cleanup and leave the
-            # model perturbed with no way to retry.
+            # model changed with no way to retry.
             cleanup()
-            self.active_perturbations.pop(handle_id, None)
+            self.active_interventions.pop(handle_id, None)
             self._changes.pop(handle_id, None)
             return None
 
@@ -110,7 +104,7 @@ class PerturbationManager:
                 f"Received: StateChange(kind={state_change.kind!r})."
             )
 
-        state_change = self.resolve_selection(state_change)
+        require_resolved(state_change)
         result = owner._state_change_fn(state_change)
         if (not isinstance(result, tuple) or len(result) != 2
                 or not isinstance(result[0], PerturbationApplied)
@@ -121,12 +115,12 @@ class PerturbationManager:
                 f"{type(result).__name__}."
             )
         applied, cleanup = result
-        if applied.handle_id in self.active_perturbations:
+        if applied.handle_id in self.active_interventions:
             raise ValueError(
-                f"Duplicate handle_id {applied.handle_id!r} from state_change_fn. "
-                f"state_change_fn must produce unique handle_ids per call."
+                f"Duplicate handle_id {applied.handle_id!r} from the intervention part. "
+                f"An intervention must return a new handle_id for every call."
             )
-        self.active_perturbations[applied.handle_id] = cleanup
+        self.active_interventions[applied.handle_id] = cleanup
         self._changes[applied.handle_id] = state_change
         return applied
 

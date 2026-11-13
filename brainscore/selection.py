@@ -1,4 +1,4 @@
-"""Unit-selection helpers for recording and perturbation."""
+"""Unit-selection helpers for recording and interventions."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -143,17 +143,37 @@ class UnitSelection(ABC):
     """Resolves to a concrete :class:`Selection` for a subject.
 
     :class:`FunctionalSelection` records the subject through a session, so it
-    works for any subject that records the region. A :class:`StateChange`
-    ``target`` may be either an already-resolved ``Selection`` or an
-    unresolved ``UnitSelection``; ``BrainScoreModel`` resolves the latter
-    (snapshotting and restoring its recording state) before handing off to its
-    intervention. A subject takes part in one session at a time, so resolve a
-    ``FunctionalSelection`` before you send the change through a session.
+    works for any subject that records the region. Resolve a selection before
+    the intervention: the ``target`` of a :class:`StateChange` is a resolved
+    ``Selection``::
+
+        units = FunctionalSelection('IT', localizer, contrast=(['face'], ['object'])).resolve(subject)
+        apply_state_change(subject, StateChange('ablation', target=units, perturbation=Perturbation('zero')))
+
+    The localizer is its own session, and a subject takes part in one session
+    at a time. A resolved target is also the exact set of units, so a run
+    record of the intervention replays without the localizer.
     """
 
     @abstractmethod
     def resolve(self, subject) -> 'Selection':
         ...
+
+
+def require_resolved(state_change) -> None:
+    """Refuse a ``StateChange`` whose ``target`` is an unresolved ``UnitSelection``.
+
+    The one check for every intervention entry (``apply_state_change``, the
+    ``Intervene`` tool and a session that carries the change).
+    """
+    target = state_change.target
+    if isinstance(target, UnitSelection):
+        raise TypeError(
+            f"The intervention target is an unresolved {type(target).__name__}. Resolve "
+            f"it first, then send the change: "
+            f"change = StateChange(..., target=selection.resolve(subject)). The "
+            f"selection runs its own session, and a subject takes part in one session "
+            f"at a time.")
 
 
 @dataclass

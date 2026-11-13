@@ -47,7 +47,8 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Game and multi-agent harnesses: Gymnasium, grid games, `multi_agent_rollout`, `Message` | [Experiment 8](../../notebooks/experiments/08_learning_in_a_closed_loop.ipynb), [Experiment 13](../../notebooks/experiments/13_passing_outputs_between_subjects.ipynb) |
 | Attribution and activation patching | `brainscore.experiments.attribution` |
 | Reasoning records (`RecordReasoning`) | Records only reasoning text a subject exposes in the extra data of its answer events (`meta['reasoning']`). A `BrainScoreModel` part cannot put reasoning there yet. |
-| `PerceptWindow`, `ActivationWindow` (low-level capture used by the tools) | Prefer `RecordActivity` in experiments. |
+| `PerceptWindow`, `ActivationWindow` (hooks on a torch network; `TorchInstrumentation` uses `ActivationWindow`) | Prefer `RecordActivity` in experiments. Pass the network, not the subject. |
+| `Witness` (a panel per response of a subject, from its sessions) | `brainscore.witness`; watches sessions with `observed`. |
 | Brain-surface visualization | `brainscore.visualization` |
 | Human participants through the same session interface | Prototype, `brainscore.harnesses.human`. |
 

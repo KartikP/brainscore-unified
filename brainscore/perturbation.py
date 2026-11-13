@@ -1,22 +1,19 @@
-"""Helpers for building ``state_change_fn`` callables.
+"""Build the ``intervention`` part of a PyTorch subject.
 
-Lives in ``unified`` (not ``core``) because the implementations depend on
-``torch``. ``brainscore_core`` itself stays dependency-light per project
-convention.
-
-The single helper today is :func:`build_pytorch_ablation_fn`, which converts
-a torch module into a state_change_fn that installs a forward-hook to zero
-out (or scale) units at a specified layer. The hook is registered when
-``process(StateChange)`` is called and removed when ``model.reset()`` is
-called or the returned cleanup callable is invoked directly.
+Lives in ``unified`` (not ``core``) because it depends on ``torch``.
+:func:`build_pytorch_ablation_fn` turns a torch module into an intervention
+part that installs a forward hook to zero, scale or replace units at a layer.
+The hook is installed when the subject receives the intervention and removed
+when the intervention is undone by its handle, or by ``reset()``.
 
 Usage::
 
-    from brainscore.perturbation import build_pytorch_ablation_fn
     from brainscore import BrainScoreModel
-    from brainscore_core.model_interface import StateChange, Selection, Perturbation
+    from brainscore.perturbation import build_pytorch_ablation_fn
+    from brainscore_core import Perturbation, Selection, StateChange
+    from brainscore_core.streaming_helpers import apply_state_change
 
-    bs_model = BrainScoreModel(
+    subject = BrainScoreModel(
         identifier='clip-with-ablation',
         model=clip_model,
         ...,
@@ -24,16 +21,17 @@ Usage::
     )
 
     # Apply: zero units 0-99 at the last text-encoder block
-    applied = bs_model.process(StateChange(
+    applied = apply_state_change(subject, StateChange(
         kind='ablation',
         target=Selection(layer='text_model.encoder.layers.11',
                          indices=list(range(100))),
         perturbation=Perturbation(kind='zero'),
     ))
 
-    # ... run process(stim) here, observe the lesioned behavior ...
+    # ... run a session here and measure the changed subject ...
 
-    bs_model.reset()  # forward hook removed; model back to baseline
+    # Undo this intervention only; subject.reset() undoes all of them.
+    apply_state_change(subject, StateChange(kind='reset', handle_id=applied.handle_id))
 """
 
 from typing import Any, Callable, Tuple
@@ -52,7 +50,7 @@ from brainscore_core.model_interface import (
 
 
 def build_pytorch_ablation_fn(model: Any) -> Callable:
-    """Build a ``state_change_fn`` that ablates units via a torch forward-hook.
+    """Build an ``intervention`` part that changes units via a torch forward hook.
 
     The returned closure understands these perturbation kinds:
 
@@ -94,8 +92,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
     transformer blocks.
 
     :param model: The torch ``nn.Module`` whose layers will be ablated.
-    :returns: A ``state_change_fn`` suitable for
-        ``BrainScoreModel(intervention=...)``.
+    :returns: An intervention part for ``BrainScoreModel(intervention=...)``.
     """
     import torch  # local import: keeps this module's import-time cheap
 
@@ -273,7 +270,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         return PerturbationApplied(handle_id=str(uuid.uuid4()), target=state_change.target,
                                    perturbation=state_change.perturbation), handle.remove
 
-    def state_change_fn(
+    def intervention(
         state_change: StateChange,
     ) -> Tuple[PerturbationApplied, Callable[[], None]]:
         if state_change.target is None or state_change.perturbation is None:
@@ -337,4 +334,4 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
 
         return applied, cleanup
 
-    return state_change_fn
+    return intervention

@@ -122,12 +122,12 @@ def test_caught_error_fails_record_and_experiment(tmp_path):
         raise RuntimeError('model failed')
     def evaluate(subject, context):
         try:
-            subject.process(1)
+            subject.infer(1)
         except RuntimeError:
             pass
     with pytest.raises(RuntimeError, match='caught subject'):
-        Experiment(subject=SimpleNamespace(process=fail),
-            protocol=CallableProtocol('caught', evaluate), tools=[RecordInputsOutputs()],
+        Experiment(subject=SimpleNamespace(infer=fail),
+            protocol=CallableProtocol('caught', evaluate, methods=['infer']), tools=[RecordInputsOutputs()],
             output_dir=tmp_path/'run').run()
     assert json.loads((tmp_path/'run/experiment.json').read_text())['status'] == 'failed'
     assert RunRecord(tmp_path/'run/inputs_outputs').manifest['status'] == 'failed'
@@ -206,15 +206,15 @@ def test_replay_and_comparison_detect_intervention(tmp_path):
 
 def test_saved_calls_explicit_allowlist_and_reset(tmp_path):
     from brainscore.experiments import replay_calls, compare_outputs
-    subject = SimpleNamespace(process=lambda x: x * 2)
+    subject = SimpleNamespace(infer=lambda x: x * 2)
     baseline = Experiment(subject=subject, protocol=CallableProtocol('original',
-        lambda s, c: [s.process(1), s.process(2)]), tools=[RecordInputsOutputs()],
+        lambda s, c: [s.infer(1), s.infer(2)], methods=['infer']), tools=[RecordInputsOutputs()],
         output_dir=tmp_path/'baseline').run()
     with pytest.raises(ValueError, match='allowed'):
         replay_calls(baseline.directory, methods=['other'], reset=lambda s: None)
     resets = []
     replay = Experiment(subject=subject, protocol=replay_calls(baseline.directory,
-        methods=['process'], reset=lambda s: resets.append(True)), tools=[RecordInputsOutputs()],
+        methods=['infer'], reset=lambda s: resets.append(True)), tools=[RecordInputsOutputs()],
         output_dir=tmp_path/'replay').run()
     assert compare_outputs(baseline.directory, replay.directory)['equal']
     assert resets == [True, True]
@@ -268,13 +268,13 @@ def test_non_tensor_output_rejected_and_hooks_removed(tmp_path):
     class UnsupportedLayer(torch.nn.Module):
         def forward(self, value):
             return {"values": value}
-    subject = SimpleNamespace(process=UnsupportedLayer())
+    subject = SimpleNamespace(infer=UnsupportedLayer())
     with pytest.raises(TypeError, match='tensor'):
         Experiment(subject=subject, protocol=CallableProtocol('tuple',
-            lambda s, c: s.process(torch.ones(2))),
-            tools=[Ablate(['x'])], instrumentation=TorchInstrumentation({'x': subject.process}),
+            lambda s, c: s.infer(torch.ones(2)), methods=['infer']),
+            tools=[Ablate(['x'])], instrumentation=TorchInstrumentation({'x': subject.infer}),
             output_dir=tmp_path/'run').run()
-    assert not subject.process._forward_hooks
+    assert not subject.infer._forward_hooks
 
 
 def test_corrupt_or_incomplete_records_cannot_replay(tmp_path):
@@ -460,27 +460,28 @@ def test_tuple_ablation_preserves_other_outputs():
     assert not layer._forward_hooks
 
 
-def test_simple_event_tool_and_existing_call_observer(tmp_path):
-    from brainscore.experiments import ObserveCalls
+def test_simple_event_tool_sees_the_named_calls_of_an_external_system(tmp_path):
     class Events(Tool):
         def __init__(self):
             self.kinds = []
         def on_event(self, event):
             self.kinds.append(event['kind'])
-    class Observer:
-        def __init__(self):
-            self.results = []
-        def on_result(self, call, result):
-            self.results.append(result)
-    subject = SimpleNamespace(process=lambda x: x + 1)
-    original = subject.process
-    events, observer = Events(), Observer()
-    result = Experiment(subject=subject,
-        protocol=CallableProtocol('existing', lambda s, c: s.process(2)),
-        tools=[events, ObserveCalls(observer)], output_dir=tmp_path/'run').run()
-    assert result.value == 3 and observer.results == [3]
+    system = SimpleNamespace(infer=lambda x: x + 1)
+    original = system.infer
+    events = Events()
+    result = Experiment(subject=system,
+        protocol=CallableProtocol('existing', lambda s, c: s.infer(2), methods=['infer']),
+        tools=[events], output_dir=tmp_path/'run').run()
+    assert result.value == 3
     assert events.kinds == ['repetition_start', 'input', 'output', 'repetition_end']
-    assert subject.process is original
+    assert system.infer is original
+
+
+def test_callable_protocol_names_no_method_by_default():
+    """A subject is watched at its sessions; no method of it is wrapped by default."""
+    assert CallableProtocol('external', lambda s, c: None).methods == ()
+    with pytest.raises(TypeError, match='list of method names'):
+        CallableProtocol('external', lambda s, c: None, methods='infer')
 
 
 def test_activity_callback_snapshot_survives_inplace_operations():
@@ -742,8 +743,8 @@ def test_record_failure_keeps_original_error_and_fails_run(tmp_path, caught):
                 raise
         context.record('output', 'after the loss')
     with pytest.raises(RuntimeError if caught else TypeError):
-        Experiment(subject=SimpleNamespace(process=lambda x: x),
-                   protocol=CallableProtocol('lossy', evaluate),
+        Experiment(subject=SimpleNamespace(infer=lambda x: x),
+                   protocol=CallableProtocol('lossy', evaluate, methods=['infer']),
                    tools=[RecordInputsOutputs()], output_dir=tmp_path/'run').run()
     experiment = json.loads((tmp_path/'run'/'experiment.json').read_text())
     record = json.loads((tmp_path/'run'/'inputs_outputs'/'manifest.json').read_text())

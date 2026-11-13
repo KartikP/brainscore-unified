@@ -200,11 +200,11 @@ def test_state_change_capability_dispatches_and_tracks_cleanup():
 
     result = model.process(apply_event)
 
-    assert 'state-change' in capability_registry
+    assert 'intervention' in capability_registry
     assert isinstance(result, PerturbationApplied)
     assert result.handle_id == 'capability-handle'
-    assert 'capability-handle' in model._active_perturbations
-    assert 'state-change' in model._capability_state
+    assert 'capability-handle' in model._active_interventions
+    assert 'intervention' in model._capability_state
 
     reset_result = model.process(
         StateChange(kind='reset', handle_id='capability-handle')
@@ -212,7 +212,7 @@ def test_state_change_capability_dispatches_and_tracks_cleanup():
 
     assert reset_result is None
     assert cleanup_calls == ['capability-handle']
-    assert model._active_perturbations == {}
+    assert model._active_interventions == {}
 
 
 def test_capability_config_supplies_builtin_capability_slots():

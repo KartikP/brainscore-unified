@@ -7,11 +7,12 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import threading
 import time
 import uuid
 from typing import Iterator
 
-from brainscore.instrumentation import observe, observed
+from brainscore.instrumentation import Call, observed
 from brainscore.run_record import PayloadCodec, RunRecord
 from brainscore.experiments._storage import check_output_directory
 from brainscore_core.compatibility import CompatibilityMatch, validate_channels
@@ -244,25 +245,101 @@ class SessionProtocol:
         return results if self.collect_outputs else None
 
 
+class _MethodCalls:
+    """Record the named method calls of an external system for a with block.
+
+    Only ``CallableProtocol(methods=[...])`` uses this, for a system that is not
+    a subject (for example a policy server's ``infer``). The caller names the
+    methods; there is no default. Nested calls on the same object count once.
+    Restores the exact prior instance attributes on exit.
+    """
+
+    def __init__(self, subject, *observers, methods):
+        self.subject = subject
+        self.observers = observers
+        self.methods = methods
+        self._saved = {}
+        self._local = threading.local()
+
+    def _notify(self, name, *args):
+        for observer in self.observers:
+            callback = getattr(observer, name, None)
+            if callback is not None:
+                callback(*args)
+
+    def _wrap(self, method, original):
+        def wrapped(*args, **kwargs):
+            if getattr(self._local, 'active', False):
+                return original(*args, **kwargs)
+            self._local.active = True
+            call = Call(method, args, kwargs)
+            start = time.perf_counter()
+            try:
+                self._notify('on_start', call)
+                try:
+                    result = original(*args, **kwargs)
+                except BaseException as error:
+                    call.duration_s = time.perf_counter() - start
+                    self._notify('on_error', call, error)
+                    raise
+                call.duration_s = time.perf_counter() - start
+                self._notify('on_result', call, result)
+                return result
+            finally:
+                self._local.active = False
+        return wrapped
+
+    def __enter__(self):
+        if self._saved:
+            raise RuntimeError('An observer context cannot be entered twice')
+        try:
+            for method in self.methods:
+                original = getattr(self.subject, method, None)
+                if not callable(original):
+                    continue
+                state = vars(self.subject)
+                self._saved[method] = (method in state, state.get(method))
+                setattr(self.subject, method, self._wrap(method, original))
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+        return self
+
+    def __exit__(self, *exc):
+        for method, (present, previous) in reversed(list(self._saved.items())):
+            if present:
+                setattr(self.subject, method, previous)
+            else:
+                delattr(self.subject, method)
+        self._saved.clear()
+        return False
+
+
+
 class CallableProtocol:
     """Preserve an external evaluator's loop and scientific scoring.
 
-    evaluate(subject, context) owns reset/seed/repetition semantics. Its selected
-    public methods are observed, including errors caught by the evaluator.
+    evaluate(subject, context) owns reset/seed/repetition semantics.
     Instrumentation is scoped to the whole evaluator call. Use separate runs
     for baseline and intervention conditions.
 
-    An evaluator that runs the subject through ``participate`` passes
-    ``methods=()``. It then owns the repetitions too: it runs each session
-    inside ``context.repetition(identifier)`` and wraps it in
-    ``observed(session, context)``, so the record holds the input and
-    output events of each session between its own boundaries. It names
-    those identifiers in ``repetitions``, so tools can select them. With
-    observed methods the one repetition is ``'external'``.
+    The evaluator runs the subject through ``participate``. It owns the
+    repetitions too: it runs each session inside
+    ``context.repetition(identifier)`` and wraps it in
+    ``observed(session, context)``, so the record holds the input and output
+    events of each session between its own boundaries. It names those
+    identifiers in ``repetitions``, so tools can select them.
+
+    For a system that is not a subject (a policy server, an external library
+    object), ``methods`` names the methods to record, for example
+    ``methods=['infer']``; the one repetition is then ``'external'``. There is
+    no default method: a subject is watched at its sessions.
     """
-    def __init__(self, identifier, evaluate, *, methods=('process',), metadata=None,
+    def __init__(self, identifier, evaluate, *, methods=(), metadata=None,
                  repetitions=None):
         self.identifier, self.evaluate = identifier, evaluate
+        if isinstance(methods, str):
+            raise TypeError('methods is a list of method names, for example methods=[\'infer\']')
         self.methods = tuple(methods)
         self.metadata = dict(metadata or {})
         if self.methods:
@@ -301,7 +378,7 @@ class CallableProtocol:
             # starts and ends: one context.repetition per session, which
             # replay_sessions turns back into one session each.
             return self.evaluate(subject, context)
-        with context.repetition('external'), observe(subject, context, methods=self.methods):
+        with context.repetition('external'), _MethodCalls(subject, context, methods=self.methods):
             return self.evaluate(subject, context)
 
 

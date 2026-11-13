@@ -8,7 +8,7 @@ import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore._model.behavior import ProbabilitiesClassifier
-from brainscore._model.perturbation import PerturbationManager
+from brainscore._model.intervention import Interventions
 
 pytestmark = pytest.mark.unit
 
@@ -65,7 +65,7 @@ def test_maintained_sources_use_the_unified_implementation():
     assert not failures, '\n'.join(failures)
 
 
-@pytest.mark.parametrize('definition', [ProbabilitiesClassifier, PerturbationManager, LayerSelector])
+@pytest.mark.parametrize('definition', [ProbabilitiesClassifier, Interventions, LayerSelector])
 def test_moved_classes_pickle_to_the_unified_definition(definition):
     assert definition.__module__.startswith('brainscore.')
     assert pickle.loads(pickle.dumps(definition)) is definition

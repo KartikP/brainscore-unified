@@ -39,6 +39,6 @@ class _TypedLesionSubject(Subject):
 
 
 def test_a_typed_response_without_metadata_still_counts_as_left_active():
-    with pytest.raises(RuntimeError, match='left perturbation handle'):
+    with pytest.raises(RuntimeError, match='left intervention handle'):
         score(_TypedLesionSubject(), _Benchmark(undo=False), check_mem=False)
     score(_TypedLesionSubject(), _Benchmark(undo=True), check_mem=False)

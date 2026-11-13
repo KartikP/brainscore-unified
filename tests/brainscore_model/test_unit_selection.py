@@ -2,10 +2,10 @@
 
 The functional localizer (word-vs-non-word, Cohen's d ranking) and its
 random-unit control. Unit tests run against a participate-only fake subject (a
-synthetic assembly, no model weights); integration tests run through
-BrainScoreModel.process(StateChange) to prove a UnitSelection target is
-resolved to a Selection before state_change_fn sees it, and that the
-localizer's recording side-effect is restored.
+synthetic assembly, no model weights); integration tests send changes with
+``apply_state_change`` to prove that an unresolved UnitSelection target is
+refused with the fix in the message, and that a resolved FunctionalSelection
+reaches the intervention part as the exact units.
 """
 import numpy as np
 import pytest
@@ -181,18 +181,18 @@ def test_index_selection_passthrough():
     assert sel.metadata['selector'] == 'index'
 
 
-# ── Integration through BrainScoreModel.process(StateChange) ──────────
+# ── Integration through apply_state_change ───────────────────────────
 
-def _make_model(state_change_fn=None, region_layer_map=None):
+def _make_model(intervention=None, region_layer_map=None):
     return BrainScoreModel(
         identifier='test-unit-selection', model=None,
         region_layer_map=region_layer_map or {},
         preprocessors={'vision': lambda x: x},
-        state_change_fn=state_change_fn,
+        intervention=intervention,
     )
 
 
-def _capturing_state_change_fn(captured):
+def _capturing_intervention(captured):
     def fn(sc):
         captured['target'] = sc.target
         applied = PerturbationApplied(handle_id='h0', target=sc.target,
@@ -201,89 +201,63 @@ def _capturing_state_change_fn(captured):
     return fn
 
 
-def test_dispatch_resolves_unit_selection_before_state_change_fn():
+def test_plain_selection_reaches_the_intervention_unchanged():
+    from brainscore_core.streaming_helpers import apply_state_change
     captured = {}
-    model = _make_model(state_change_fn=_capturing_state_change_fn(captured))
-    sc = StateChange(kind='ablation',
-                     target=IndexSelection(layer='blocks.10', indices=[1, 2, 3]),
-                     perturbation=Perturbation(kind='zero'))
-    model.process(sc)
-    # state_change_fn saw a concrete Selection, not the UnitSelection
-    assert isinstance(captured['target'], Selection)
-    assert captured['target'].indices == [1, 2, 3]
-    assert captured['target'].layer == 'blocks.10'
-    # the caller's StateChange was not mutated
-    assert isinstance(sc.target, IndexSelection)
-
-
-def test_dispatch_passes_plain_selection_through_unchanged():
-    captured = {}
-    model = _make_model(state_change_fn=_capturing_state_change_fn(captured))
+    model = _make_model(intervention=_capturing_intervention(captured))
     sc = StateChange(kind='ablation',
                      target=Selection(layer='b', indices=[0]),
                      perturbation=Perturbation(kind='zero'))
-    model.process(sc)
+    apply_state_change(model, sc)
     assert captured['target'].indices == [0]
 
 
-def test_dispatch_restores_recording_after_localizer():
-    """A UnitSelection that switches recording during resolve must not leave the
-    model's recording target changed."""
-    class _SwitchSelection(UnitSelection):
-        def resolve(self, model):
-            model.start_recording('OTHER')          # localizer-style side effect
-            return Selection(layer='enc.2', indices=[0])
+@pytest.mark.parametrize('target', [
+    IndexSelection(layer='blocks.10', indices=[1, 2, 3]),
+    RandomSelection('blocks.10', n_units=2, n_total=8),
+    FunctionalSelection('IT', None, (['word'], ['nonword'])),
+])
+def test_an_unresolved_selection_is_refused_with_the_fix(target):
+    """The localizer is its own session, so the target is resolved first."""
+    from brainscore_core.streaming_helpers import apply_state_change
+    captured = {}
+    model = _make_model(intervention=_capturing_intervention(captured))
+    sc = StateChange(kind='ablation', target=target, perturbation=Perturbation(kind='zero'))
+    with pytest.raises(TypeError, match=r'selection\.resolve\(subject\)'):
+        apply_state_change(model, sc)
+    assert captured == {} and model._active_interventions == {}
+
+
+def test_intervene_refuses_an_unresolved_selection_before_any_run():
+    from brainscore.experiments import Intervene
+    from types import SimpleNamespace
+    model = _make_model(intervention=_capturing_intervention({}))
+    tool = Intervene(StateChange('ablation', target=IndexSelection('b', [0]),
+                                 perturbation=Perturbation('zero')))
+    with pytest.raises(TypeError, match=r'selection\.resolve\(subject\)'):
+        tool.validate(SimpleNamespace(subject=model))
+
+
+def test_a_resolved_functional_selection_is_applied_through_a_session():
+    """Resolve (the localizer session), then apply (the intervention session)."""
+    from brainscore_core.streaming_helpers import apply_state_change
+
+    class _Extractor:
+        identifier = 'localizer-extractor'
+
+        def __call__(self, stimuli, layers):
+            return _localizer_assembly(layer=layers[0])
 
     captured = {}
-    model = _make_model(state_change_fn=_capturing_state_change_fn(captured),
-                        region_layer_map={'IT': 'enc.1', 'OTHER': 'enc.2'})
-    model.start_recording('IT')
-    sc = StateChange(kind='ablation', target=_SwitchSelection(),
-                     perturbation=Perturbation(kind='zero'))
-    model.process(sc)
-    assert captured['target'].indices == [0]
-    assert model._recording_regions == ['IT']        # restored to the pre-localizer target
-
-
-def test_dispatch_restores_time_bins_after_localizer():
-    """Regression: _resolve_selection must snapshot+restore the recording
-    time_bins. It used to read a never-written '_recording_time_bins' (masked
-    by getattr(...,None)), so a localizer pass silently dropped time_bins."""
-    class _SwitchSelection(UnitSelection):
-        def resolve(self, model):
-            model.start_recording('OTHER')           # mutates time_bins -> None
-            return Selection(layer='enc.2', indices=[0])
-
-    model = _make_model(state_change_fn=_capturing_state_change_fn({}),
-                        region_layer_map={'IT': 'enc.1', 'OTHER': 'enc.2'})
-    model.start_recording('IT', time_bins=[(0, 100)])
-    model.process(StateChange(kind='ablation', target=_SwitchSelection(),
-                              perturbation=Perturbation(kind='zero')))
-    assert model._time_bins == [(0, 100)]            # restored, not None
-
-
-@pytest.mark.parametrize('initial', [None, 'raw.layer'])
-@pytest.mark.parametrize('fail', [False, True])
-def test_selection_restores_idle_and_raw_recording_even_on_failure(initial, fail):
-    class SwitchSelection(UnitSelection):
-        def resolve(self, model):
-            model.start_recording('IT', time_bins=[(0, 50)])
-            if fail:
-                raise RuntimeError('localizer failed')
-            return Selection('enc.1', [0])
-    model = _make_model(state_change_fn=_capturing_state_change_fn({}),
-                        region_layer_map={'IT': 'enc.1'})
-    if initial is not None:
-        with pytest.warns(UserWarning, match='raw layer'):
-            model.start_recording(initial, time_bins=[(1, 2)])
-    expected = model._recorder.snapshot()
-    event = StateChange('ablation', target=SwitchSelection(), perturbation=Perturbation('zero'))
-    if fail:
-        with pytest.raises(RuntimeError, match='localizer failed'):
-            model.process(event)
-    else:
-        model.process(event)
-    assert model._recorder.snapshot() == expected
+    model = BrainScoreModel('functional-then-intervene', region_layer_map={'IT': 'enc.5'},
+                            extractor={'text': _Extractor()},
+                            intervention=_capturing_intervention(captured))
+    units = FunctionalSelection('IT', _localizer_stimuli(), (['word'], ['nonword']),
+                                n_units=3).resolve(model)
+    applied = apply_state_change(model, StateChange('ablation', target=units,
+                                                    perturbation=Perturbation('zero')))
+    assert captured['target'] is units and applied.handle_id in model._active_interventions
+    assert units.layer == 'enc.5' and len(units.indices) == 3
 
 
 @pytest.mark.parametrize('population', [[4, 4], [-1, 4], [1.5, 4]])

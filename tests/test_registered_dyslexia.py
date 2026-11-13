@@ -116,7 +116,7 @@ def test_registered_model_benchmark_path_and_hook_cleanup(registered_toy):
     assert baseline.any()
     assert not lesion.any() and not control.any()  # toy has fewer than 500 units
     assert not net.model.visual.blocks[28]._forward_hooks
-    assert not subject._perturbations.active_perturbations
+    assert not subject._interventions.active_interventions
     # Root agreement is checked explicitly: recording and generate() use the
     # same module, and a selective perturbation reaches both paths. Sessions
     # only: the reading task the benchmark configured must not change what a

@@ -18,8 +18,8 @@ _cache_disable_lock = threading.Lock()
 
 @contextmanager
 def _activation_cache_disabled():
-    """Bypass result_caching for the duration. Used when a perturbation makes the
-    cached (unperturbed) activations invalid but the cache key cannot see it.
+    """Bypass result_caching for the duration. Used when an intervention makes the
+    cached (unchanged) activations invalid but the cache key cannot see it.
 
     Reentrancy- and thread-safe via a lock-guarded depth counter: nested,
     interleaved, or concurrent contexts only restore the original
@@ -277,11 +277,11 @@ class InputDispatcher:
                    for key in self.owner._layer_extractors)
 
     def extract_for_modality(self, stimuli, modality: str, layers: List[str]):
-        # A perturbation (lesion/stimulation) is a mutable forward-hook that the
-        # activation cache key does not fingerprint, so a cached UNperturbed
-        # extraction would be wrongly returned for a perturbed run. Bypass the
-        # cache while any perturbation is active.
-        if self.owner._perturbations.active_perturbations:
+        # An intervention (lesion/stimulation) is a mutable forward-hook that the
+        # activation cache key does not fingerprint, so a cached unchanged
+        # extraction would be wrongly returned for a changed run. Bypass the
+        # cache while any intervention is active.
+        if self.owner._interventions.active_interventions:
             with _activation_cache_disabled():
                 return self._extract_for_modality_inner(stimuli, modality, layers)
         return self._extract_for_modality_inner(stimuli, modality, layers)

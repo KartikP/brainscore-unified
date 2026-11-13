@@ -127,17 +127,6 @@ def test_unknown_layer_raises():
         ActivationWindow(_net(), layers=['nope'])
 
 
-def test_resolves_wrapper_dot_model():
-    class Wrapper:
-        def __init__(self, m):
-            self._model = m
-            self.identifier = 'w'
-    net = _net()
-    with ActivationWindow(Wrapper(net), layers=['0']) as rec:
-        net(torch.ones(1, 4))
-    assert len(rec.captures) == 1
-
-
 def test_first_tensor_out_handles_tuple_and_hf_object():
     from brainscore.activation_window import _first_tensor_out
     t = torch.zeros(2, 3)

@@ -36,19 +36,6 @@ class KwargModule(nn.Module):
         return pixel_values + 1
 
 
-class Wrapper:
-    """Stands in for an activations wrapper (exposes ._model)."""
-    def __init__(self, m):
-        self._model = m
-        self.identifier = 'w'
-
-
-class FakeBSM:
-    def __init__(self, activations_model=None, preprocessors=None):
-        self._activations_model = activations_model
-        self._preprocessors = preprocessors or {}
-
-
 class HFProc:
     image_mean = [0.5, 0.5, 0.5]
     image_std = [0.2, 0.2, 0.2]
@@ -102,29 +89,25 @@ def test_hooks_removed_on_exit():
 
 def test_no_hookable_module_raises():
     with pytest.raises(ValueError, match='no torch module'):
+        PerceptWindow([])
+
+
+def test_a_subject_or_wrapper_is_refused_with_the_fix():
+    """The tool reads the network a subject runs, never the inside of a subject."""
+    with pytest.raises(TypeError, match='pass the network it runs'):
         PerceptWindow(object())
 
 
-# ── target resolution ─────────────────────────────────────────────────
-
-def test_resolves_wrapper_dot_model():
-    m = Doubler()
-    eye = PerceptWindow(Wrapper(m))
-    assert len(eye.targets) == 1 and eye.targets[0][1] is m
-
-
-def test_resolves_brainscoremodel():
-    m = Doubler()
-    eye = PerceptWindow(FakeBSM(activations_model=Wrapper(m)))
-    assert len(eye.targets) == 1 and eye.targets[0][1] is m
-
-
-def test_auto_denorm_from_preprocessor():
-    m = Doubler()
-    eye = PerceptWindow(FakeBSM(activations_model=Wrapper(m),
-                                preprocessors={'vision': HFProc()}), denorm='auto')
+def test_denorm_from_a_processor():
+    eye = PerceptWindow(Doubler(), denorm=HFProc())
     assert eye.mean == [0.5, 0.5, 0.5]
     assert eye.std == [0.2, 0.2, 0.2]
+
+
+def test_denorm_does_not_invent_constants():
+    eye = PerceptWindow(Doubler(), denorm=object())     # no constants on it
+    assert eye.mean is None and eye.std is None
+    assert eye.summary()['denorm_resolved'] is False
 
 
 # ── pure reconstruction functions ─────────────────────────────────────
@@ -229,7 +212,7 @@ def test_save_vision_artifacts(tmp_path):
     assert os.path.exists(man['captures'][0]['artifacts'][0])
 
 
-# ── real core BrainScoreModel with two real torch towers ───────────────
+# ── a BrainScoreModel run, watched on the two torch towers it runs ─────
 # REMOTE CPU qualification only (needs torch); never run on the Mac. Each tower
 # is a tiny real nn.Module behind a layer-aware extractor that returns a
 # NeuroidAssembly, as PytorchWrapper / TextWrapper do.
@@ -315,13 +298,13 @@ def test_brainscoremodel_extractor_mapping_captures_both_towers(form):
     reference = _run_each_tower(model)
     vision.forwards = text.forwards = 0
 
-    eye = PerceptWindow(model)
-    assert eye.targets == [('vision:v', vision), ('text:t', text)]
+    eye = PerceptWindow({'vision': vision, 'text': text})
+    assert eye.targets == [('vision:Tower', vision), ('text:Tower', text)]
     with eye:
         out_v, out_t = _run_each_tower(model)     # each tower invoked separately
 
     assert (vision.forwards, text.forwards) == (1, 1)   # no extra forward pass
-    assert [c.module for c in eye.captures] == ['vision:v', 'text:t']  # one hook each
+    assert [c.module for c in eye.captures] == ['vision:Tower', 'text:Tower']  # one hook each
     assert torch.equal(eye.captures[0].tensor, VISION_X)
     assert torch.equal(eye.captures[1].tensor, TEXT_X)
     assert [c.modality for c in eye.captures] == ['vision', 'text']
@@ -337,9 +320,9 @@ def test_brainscoremodel_extractor_mapping_captures_both_towers(form):
 
 @pytest.mark.unit
 def test_old_and_new_constructor_forms_return_identical_assemblies():
-    new, _, _ = _two_tower_model('extractor')
-    old, _, _ = _two_tower_model('activations_model')
-    with PerceptWindow(new) as eye_new, PerceptWindow(old) as eye_old:
+    new, new_v, new_t = _two_tower_model('extractor')
+    old, old_v, old_t = _two_tower_model('activations_model')
+    with PerceptWindow([new_v, new_t]) as eye_new, PerceptWindow([old_v, old_t]) as eye_old:
         outs_new, outs_old = _run_each_tower(new), _run_each_tower(old)
     for a, b in zip(outs_new, outs_old):
         _assert_same(a, b)
@@ -351,7 +334,7 @@ def test_old_and_new_constructor_forms_return_identical_assemblies():
 def test_brainscoremodel_hooks_removed_when_body_raises():
     model, vision, text = _two_tower_model('extractor')
     with pytest.raises(RuntimeError, match='mid-benchmark'):
-        with PerceptWindow(model) as eye:
+        with PerceptWindow([vision, text]) as eye:
             model.start_recording('IT')
             model.process(VISION_STIM)
             raise RuntimeError('mid-benchmark')
@@ -365,9 +348,9 @@ def test_brainscoremodel_hooks_removed_when_forward_raises():
     class Boom(nn.Module):
         def forward(self, x):
             raise ValueError('boom')
-    model, _, text = _two_tower_model('extractor', vision=Boom())
+    model, vision, text = _two_tower_model('extractor', vision=Boom())
     with pytest.raises(ValueError, match='boom'):
-        with PerceptWindow(model) as eye:
+        with PerceptWindow([vision, text]) as eye:
             model.start_recording('IT')
             model.process(VISION_STIM)
     assert len(eye.captures) == 1 and torch.equal(eye.captures[0].tensor, VISION_X)
@@ -402,34 +385,17 @@ def test_failed_attachment_removes_earlier_hooks(error):
 
 @pytest.mark.unit
 def test_failed_attachment_on_brainscoremodel_tower_cleans_up():
+    vision, text = Tower(2.), RefusesHook(RuntimeError('refused'))
     model = BrainScoreModel('refuse', region_layer_map=REGIONS, extractor={
-        'vision': TowerExtractor(Tower(2.), 'v', 'vision_tower', VISION_X),
-        'text': TowerExtractor(RefusesHook(RuntimeError('refused')), 't',
-                               'text_tower', TEXT_X)})
-    eye = PerceptWindow(model)
+        'vision': TowerExtractor(vision, 'v', 'vision_tower', VISION_X),
+        'text': TowerExtractor(text, 't', 'text_tower', TEXT_X)})
+    eye = PerceptWindow({'vision': vision, 'text': text})
     with pytest.raises(RuntimeError, match='refused'):
         with eye:
             pass
     model.start_recording('IT')
     _assert_same(model.process(VISION_STIM), EXPECTED_V)
     assert eye.captures == [] and eye._handles == []
-
-
-@pytest.mark.unit
-def test_legacy_shared_activations_model_keeps_name_and_dedups():
-    module = Tower(2.)
-    wrapper = TowerExtractor(module, 'v', 'vision_tower', VISION_X)
-    model = BrainScoreModel('legacy', region_layer_map={'IT': 'vision_tower'},
-                            preprocessors={'vision': lambda x: x},
-                            activations_model=wrapper)
-    assert model.extractor['vision'] is wrapper         # also reachable publicly
-    eye = PerceptWindow(model)
-    assert eye.targets == [('activations:v', module)]   # legacy name, no duplicate
-    with eye:
-        model.start_recording('IT')
-        _assert_same(model.process(VISION_STIM), EXPECTED_V)
-    assert [c.module for c in eye.captures] == ['activations:v']
-    assert module.forwards == 1
 
 
 @pytest.mark.unit
@@ -453,34 +419,3 @@ def test_cyclic_mapping_target_raises_clearly():
         PerceptWindow(cyclic)
     shared = Tower(2.)                                  # reuse is not a cycle
     assert len(PerceptWindow({'a': [shared], 'b': [shared]}).targets) == 1
-
-
-@pytest.mark.unit
-def test_auto_denorm_from_public_extractor_processor():
-    model = BrainScoreModel('denorm', extractor={'vision': TowerExtractor(
-        Tower(2.), 'v', 'vision_tower', VISION_X, processor=HFProc())})
-    eye = PerceptWindow(model, denorm='auto')
-    assert (eye.mean, eye.std) == ([0.5, 0.5, 0.5], [0.2, 0.2, 0.2])
-    mapped = PerceptWindow({'vision': TowerExtractor(
-        Tower(2.), 'v', 'vision_tower', VISION_X, processor=HFProc())}, denorm='auto')
-    assert mapped.mean == [0.5, 0.5, 0.5]
-
-
-@pytest.mark.unit
-def test_auto_denorm_does_not_invent_constants():
-    model, _, _ = _two_tower_model('extractor')     # no processor anywhere
-    eye = PerceptWindow(model, denorm='auto')
-    assert eye.mean is None and eye.std is None
-    assert eye.summary()['denorm_resolved'] is False
-
-
-@pytest.mark.unit
-def test_auto_denorm_prefers_legacy_candidates_first():
-    class Other:
-        image_mean, image_std = [0.1, 0.1, 0.1], [0.9, 0.9, 0.9]
-    target = FakeBSM(activations_model=Wrapper(Doubler()),
-                     preprocessors={'vision': HFProc()})
-    target.extractor = {'vision': TowerExtractor(
-        Tower(2.), 'v', 'vision_tower', VISION_X, processor=Other())}
-    eye = PerceptWindow(target, denorm='auto')
-    assert eye.mean == [0.5, 0.5, 0.5]

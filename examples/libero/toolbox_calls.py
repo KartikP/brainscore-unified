@@ -43,7 +43,8 @@ def run_calls(policy, source, output_dir, *, report):
                 'exact': all(value == 0 for value in differences),
                 'scope': 'saved inputs; no simulator or task success assessment'}
     result = Experiment(subject=subject,
-        protocol=CallableProtocol('openpi-saved-requests', evaluate,
+        # The evaluator calls the policy through process, so that method is named.
+        protocol=CallableProtocol('openpi-saved-requests', evaluate, methods=['process'],
             metadata={'reset_policy': 'caller must initialize a fresh server'}),
         tools=[RecordInputsOutputs()], output_dir=output_dir,
         metadata={'source': evidence, 'source_path': str(Path(source).resolve())}).run()

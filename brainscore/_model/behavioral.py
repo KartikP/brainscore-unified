@@ -137,7 +137,7 @@ class BehavioralReadout:
         self._configured_as = None
 
     def invalidate(self) -> None:
-        """The model changed (a state change was applied or undone): fit again next time."""
+        """The model changed (an intervention was applied or undone): fit again next time."""
         self._stale = True
         self._remembered = None
         self._changes += 1
@@ -313,7 +313,7 @@ class BehavioralReadout:
 
         labels = self.extract_labels(fitting_stimuli)
         intact = (self.task is not None and self.task.readout_fit == 'intact')
-        with (owner._perturbations.intact() if intact else nullcontext()):
+        with (owner._interventions.intact() if intact else nullcontext()):
             features = owner._extract_behavioral_features(fitting_stimuli)
 
         from brainscore_core.responses import Scale

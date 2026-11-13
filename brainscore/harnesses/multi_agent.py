@@ -15,11 +15,12 @@ dispatch the interface already provides.
 A message between agents is text: a ``StreamEvent`` on ``text`` with the sender
 in ``meta['sender']``.
 
-To study the interaction, wrap each agent in :class:`brainscore.witness.Witness`
-(what each saw/did per tick) and :class:`brainscore.activation_window.Activation
-Window` (per-tick hidden activations) for the duration of the rollout; both
-fire on the same ``process()`` calls this loop drives, giving time-aligned
-traces from both agents over a shared interaction.
+To study the interaction, hook each agent's network with
+:class:`brainscore.activation_window.ActivationWindow` for the duration of the
+rollout: it fires on every forward pass this loop drives, giving time-aligned
+per-tick activations from both agents over a shared interaction. The loop
+calls ``process``, not ``participate``, so a session tool (``observed``,
+``Witness``) sees nothing here.
 
 Any object with ``.identifier`` and ``.process(row) -> outputs`` is a valid agent
 (a BrainScoreModel with a ``policy``, or any Subject). The harness is duck-typed

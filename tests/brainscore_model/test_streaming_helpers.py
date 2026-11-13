@@ -490,26 +490,6 @@ def _ablation_state_change():
     )
 
 
-def test_apply_state_change_matches_legacy_process_result():
-    fn_legacy, _ = _counting_state_change_fn()
-    legacy = _make_state_change_model(state_change_fn=fn_legacy)
-    legacy_result = legacy.process(_ablation_state_change())
-
-    fn_helper, _ = _counting_state_change_fn()
-    helper_model = _native_state_change_model(
-        fn_helper, model_cls=_ParticipateTrackingBrainScoreModel
-    )
-    helper_result = apply_state_change(helper_model, _ablation_state_change())
-
-    assert helper_model.participate_called is True
-    assert helper_model.participate_outputs == ("perturbation",)
-    assert isinstance(helper_result, PerturbationApplied)
-    assert helper_result.handle_id == legacy_result.handle_id
-    assert helper_result.target == legacy_result.target
-    assert helper_result.perturbation == legacy_result.perturbation
-    assert helper_result.applied_at == legacy_result.applied_at
-
-
 def test_native_state_change_reset_restores_baseline():
     model_state = {"output": 1.0}
 
@@ -567,7 +547,7 @@ def test_environment_session_emits_motor_events_for_multistep_rollout():
 
 def test_apply_state_change_produces_handle_and_ack_event():
     fn, state = _counting_state_change_fn()
-    model = _make_state_change_model(state_change_fn=fn)
+    model = _make_state_change_model(intervention=fn)
     state_change = _ablation_state_change()
 
     session = _state_change_session(state_change)

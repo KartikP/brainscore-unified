@@ -105,6 +105,31 @@ def test_one_presentation_gives_behavior_and_activity_per_condition(tmp_path):
     assert not net.silenced                            # the change was undone
 
 
+def test_a_run_with_an_intervention_is_recorded_and_replayed(tmp_path):
+    """Replay sends the saved inputs again; the intervention tool is attached again."""
+    from brainscore.experiments import RecordInputsOutputs, compare_outputs, replay_sessions
+    net = Net()
+    subject = _subject(net)
+    silence = StateChange(kind='ablation', target=Selection(layer='early'),
+                          perturbation=Perturbation(kind='zero'))
+    conditions = ['baseline', 'silenced']
+    original = Experiment(
+        subject=subject, protocol=TaskProtocol(STIMULI, TASK, conditions=conditions),
+        tools=[RecordInputsOutputs(), RecordBehavior(), Intervene(silence, conditions=['silenced'])],
+        output_dir=tmp_path / 'run').run()
+    events = list(original.record.events())
+    assert [e['payload'] for e in events if e['kind'] == 'intervention'] == [{'handle_id': 'h'}]
+    replay = Experiment(
+        subject=subject, protocol=replay_sessions(original.directory),
+        tools=[RecordInputsOutputs(), Intervene(silence, conditions=['silenced'])],
+        output_dir=tmp_path / 'replay').run()
+    assert compare_outputs(original.directory, replay.directory)['equal']
+    unchanged = Experiment(subject=subject, protocol=replay_sessions(original.directory),
+                           tools=[RecordInputsOutputs()], output_dir=tmp_path / 'no-intervention').run()
+    assert not compare_outputs(original.directory, unchanged.directory)['equal']
+    assert not net.silenced and subject._active_interventions == {}
+
+
 def test_passive_task_records_viewing_and_refuses_behavior(tmp_path):
     net = Net()
     passive = TaskContext(task_type='passive')

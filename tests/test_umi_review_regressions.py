@@ -7,6 +7,7 @@ import pytest
 import torch
 from torch import nn
 
+from brainscore_core.streaming_helpers import apply_state_change
 from brainscore import BrainScoreModel, CompositeSelector, RandomSelection
 from brainscore_core.model_interface import TaskContext, StateChange, Perturbation
 from brainscore_core.supported_data_standards.brainio.assemblies import (
@@ -239,7 +240,7 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
     model = BrainScoreModel('subset', model=net,
         region_layer_map={'VWFA': CompositeSelector(tuple((layer, (4, 1)) for layer in layers))},
         preprocessors={'text': _Extractor(lambda: net.L(x).detach().numpy())},
-        state_change_fn=build_pytorch_ablation_fn(net))
+        intervention=build_pytorch_ablation_fn(net))
     localizer = InducedDyslexia(n_units=1, modality='text',
         reading_benchmark=object(), localizer_stimuli=_stimuli())
     selections = localizer._localize(model)
@@ -249,7 +250,7 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
         random = RandomSelection(selected.layer, n_units=2, n_total=2,
                                  population=selected.metadata['unit_population']).resolve(model)
         assert random.indices == [1, 4]
-        model.process(StateChange('ablation', target=selected, perturbation=Perturbation('zero')))
+        apply_state_change(model, StateChange('ablation', target=selected, perturbation=Perturbation('zero')))
         after = getattr(net, selected.layer)(x).detach().numpy()
         assert np.all(after[:, 4] == 0)
         np.testing.assert_array_equal(after[:, 0], x[:, 0].numpy())

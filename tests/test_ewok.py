@@ -719,7 +719,7 @@ def _stateful_intervened_subject():
 def test_stateful_subject_inside_a_caller_intervention_keeps_both(prepared, tmp_path):
     """The run neither resets the subject between sessions nor removes the caller's lesion."""
     from brainscore_core.events import Perturbation, Selection, StateChange
-    from brainscore.instrumentation import intervene
+    from brainscore_core.streaming_helpers import apply_state_change
     lesion = StateChange(kind='lesion', target=Selection(layer='projection'),
                          perturbation=Perturbation(kind='zero'))
 
@@ -727,10 +727,13 @@ def test_stateful_subject_inside_a_caller_intervention_keeps_both(prepared, tmp_
         model, state = _stateful_intervened_subject()
         benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared,
                                               batch_size=2, output_dir=tmp_path / name)
-        # The caller's lesion must survive the run and be undone by its own scope.
-        with intervene(model, lesion):
+        # The caller's lesion must survive the run and be undone by its own handle.
+        applied = apply_state_change(model, lesion)
+        try:
             value = benchmark(model)
             assert state['lesioned']
+        finally:
+            apply_state_change(model, StateChange(kind='reset', handle_id=applied.handle_id))
         assert not state['lesioned'] and state['requests'] == 6
         return value, (tmp_path / name / 'item-scores.json').read_bytes()
 

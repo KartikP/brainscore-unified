@@ -18,7 +18,7 @@ from brainscore_core.events import (
     OutputEvent,
     StateChange,
 )
-from ._model.perturbation import PerturbationManager
+from ._model.intervention import Interventions
 from ._model.recording import Recorder
 from .selection import UnitSelector, _promote_to_selector
 from brainscore_core.streaming import StreamEvent
@@ -143,7 +143,7 @@ class BrainScoreModel(UnifiedModel):
         enables another evaluation path.
 
         :param identifier: unique model name (also the activation-cache key).
-        :param model: the object perturbation hooks / generation run against (e.g.
+        :param model: the object intervention hooks / generation run against (e.g.
             the torch module); may be ``None`` for a feature-extraction model whose
             wrapper holds its own module.
         :param region_layer_map: brain region -> layer path (or a ``UnitSelector``).
@@ -200,7 +200,9 @@ class BrainScoreModel(UnifiedModel):
         :param policy_outputs: the output channels the policy answers on (default
             ``('motor',)``); a benchmark may request any of them.
         :param intervention: ``StateChange -> (PerturbationApplied, cleanup)``;
-            applies a lesion / stimulation and returns its cleanup function.
+            applies an intervention and returns its undo function. It declares
+            the ``lesion``, ``stimulation`` and ``pharmacological`` inputs and
+            the ``perturbation`` output; send changes with ``apply_state_change``.
         :param generation_fn: compatibility parameter (deprecated); use ``answer``.
         :param action_fn: compatibility parameter (deprecated); use ``policy``.
         :param state_change_fn: compatibility parameter (deprecated); use
@@ -303,7 +305,7 @@ class BrainScoreModel(UnifiedModel):
 
         self._recorder = Recorder(self)
         self._behavioral = BehavioralReadout(self)
-        self._perturbations = PerturbationManager(self)
+        self._interventions = Interventions(self)
         self._dispatcher = InputDispatcher(self)
         self._capability_state: Dict[str, Any] = {}
         self._capability_setup_done: Set[str] = set()
@@ -405,6 +407,11 @@ class BrainScoreModel(UnifiedModel):
         claims = [c for c in self._declared_capabilities()
                   if c.supports_session(self, channels)]
         if not claims:
+            if 'perturbation' in channels:
+                raise NotImplementedError(
+                    f"Subject {self.identifier!r} has no intervention part. An intervention "
+                    f"needs BrainScoreModel(intervention=...), a callable "
+                    f"intervention(state_change) -> (PerturbationApplied, undo_function).")
             raise NotImplementedError(f'No session handler for {sorted(channels)}')
         first = min(c.order for c in claims)
         winners = [c for c in claims if c.order == first]
@@ -498,8 +505,8 @@ class BrainScoreModel(UnifiedModel):
         return self._backbone_id
 
     # Compatibility surface for tests and notebooks that read recording,
-    # task and perturbation state off the model. Core components read the
-    # owning component (_recorder, _behavioral, _perturbations) directly.
+    # task and intervention state off the model. Core components read the
+    # owning component (_recorder, _behavioral, _interventions) directly.
     @property
     def _recording_layer(self) -> Optional[str]:
         return self._recorder.recording_layer
@@ -573,12 +580,12 @@ class BrainScoreModel(UnifiedModel):
         self._behavioral.use_generation_for_task = value
 
     @property
-    def _active_perturbations(self):
-        return self._perturbations.active_perturbations
+    def _active_interventions(self):
+        return self._interventions.active_interventions
 
-    @_active_perturbations.setter
-    def _active_perturbations(self, value) -> None:
-        self._perturbations.active_perturbations = value
+    @_active_interventions.setter
+    def _active_interventions(self, value) -> None:
+        self._interventions.active_interventions = value
 
     @classmethod
     def register_input_handler(cls, event_type: type, handler_name: str,
@@ -592,14 +599,16 @@ class BrainScoreModel(UnifiedModel):
         A typed convenience, not part of the subject contract (``participate`` is
         the evaluation method). Dispatch is by ``input_event`` type:
         a ``StimulusSet`` / ``MultimodalStimulusSet`` -> ``NeuroidAssembly`` of
-        recorded activations (call ``start_recording`` first); a ``StateChange``
-        -> ``PerturbationApplied`` (apply) or ``None`` (reset); an
-        row (a mapping of channel -> payload) -> outputs mapping (needs ``policy``).
+        recorded activations (call ``start_recording`` first); a row (a
+        mapping of channel -> payload) -> outputs mapping (needs ``policy``).
+        The intervention session driver also hands a ``StateChange`` to this
+        step; send an intervention with ``apply_state_change`` or the
+        ``Intervene`` tool, never through ``process``.
         Native benchmarks evaluate subjects through sessions or the typed
         helpers in ``brainscore_core.streaming_helpers``; ``process`` is not
         available on every subject.
 
-        :param input_event: the stimulus / state-change / environment-step to run.
+        :param input_event: the stimuli or the row to run.
         :param multi_modality: if True, extract from every detected-and-supported
             modality and concat along the neuroid axis; default routes a single
             modality by ``MODALITY_PRIORITY``.
@@ -692,7 +701,7 @@ class BrainScoreModel(UnifiedModel):
         model declares (rule 5.5); the caller's table is never changed. The
         same TaskContext object sent again, as a facade session does for every
         measurement, keeps the fitted readout; a new task, an edited one,
-        or any task after a state change or reset, fits anew. The last
+        or any task after an intervention or reset, fits anew. The last
         configuration that completed is recalled for the same unchanged
         task after a session gave the caller's task back.
         """
@@ -725,7 +734,7 @@ class BrainScoreModel(UnifiedModel):
 
     def reset(self) -> None:
         failures = []
-        for component in (self._recorder, self._behavioral, self._perturbations):
+        for component in (self._recorder, self._behavioral, self._interventions):
             try:
                 component.reset()
             except Exception as error:

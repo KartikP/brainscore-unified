@@ -1,5 +1,7 @@
 """An independent package: no Brain-Score source modifications."""
 from dataclasses import dataclass, field
+import time
+
 import numpy as np
 
 from brainscore.capabilities import Capability, register_capability
@@ -8,10 +10,15 @@ from brainscore_core.extensions import CatalogEntry, StreamEvent, register_chann
 
 @dataclass
 class LatencyObserver:
+    """A session sink for ``observed(session, sink)``: seconds from each input to its output."""
     seconds: list = field(default_factory=list)
+    _started: float = 0.0
 
-    def on_result(self, call, result):
-        self.seconds.append(call.duration_s)
+    def record(self, direction, event):
+        if direction == 'input':
+            self._started = time.perf_counter()
+        else:
+            self.seconds.append(time.perf_counter() - self._started)
 
 
 class Amplitude(Capability):
@@ -24,6 +31,14 @@ class Amplitude(Capability):
 
     def setup(self, model):
         return {'calls': 0}
+
+    def supports_session(self, model, channels):
+        return set(channels) == self.output_channels
+
+    def participate(self, model, session):
+        while (event := session.next_input()) is not None:
+            if self.handles(model, event):
+                session.respond(self.process(model, event))
 
     def handles(self, model, event, **kwargs):
         return isinstance(event, StreamEvent) and event.channel == 'partner_signal'

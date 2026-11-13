@@ -16,7 +16,7 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
-from brainscore.experiments import Experiment, SessionProtocol, TorchInstrumentation
+from brainscore.experiments import Experiment, SessionProtocol, Tool, TorchInstrumentation
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.run_record import RunRecord
 from brainscore.tools import attach_tools, load_tool
@@ -65,16 +65,18 @@ def check_close(observed: Any, expected: Any, label: str, *, exact: bool = False
     return float(np.max(np.abs(observed - expected)))
 
 
-class Calls:
+class Calls(Tool):
+    """Count the sessions the subject took part in, from the session events."""
+    name = 'session_counter'
+
     def __init__(self) -> None:
         self.started, self.completed = 0, 0
 
-    def on_start(self, call: Any) -> None:
-        require(call.method == 'participate', 'explicitly observed participate')
-        self.started += 1
-
-    def on_result(self, call: Any, result: Any) -> None:
-        self.completed += 1
+    def on_event(self, event: Any) -> None:
+        if event['kind'] == 'repetition_start':
+            self.started += 1
+        elif event['kind'] == 'repetition_end' and not event['payload']['failed']:
+            self.completed += 1
 
 
 def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provenance: dict) -> dict:
@@ -153,7 +155,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
     result = Experiment(subject=subject,
         protocol=SessionProtocol('trained-tool-mechanics', factory, conditions=CONDITIONS,
                                  required_input_channels=['text'], requested_output_channels=['neural:population']),
-        tools=[load_tool('record-io'), load_tool('observe-calls', observer=calls, methods=['participate']),
+        tools=[load_tool('record-io'), calls,
                load_tool('record-reasoning'),
                load_tool('record-activity', targets=[layer], name='before', when='before'),
                load_tool('linear-probe', artifact=directory / 'linear-probe.json', name='probe_before', when='before'),
@@ -198,7 +200,6 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
         errors[f'{condition}_response'] = check_close(output.values, pool(expected.numpy()),
             f'{condition}/response', exact=condition != 'erased')
     require(calls.started == calls.completed == len(CONDITIONS), 'observer call counts')
-    require('participate' not in vars(subject), 'observer restores instance method state')
     probes = [e for e in events if e['kind'] == 'probe']
     require(len(probes) == 2 * len(CONDITIONS), 'both probes execute in every condition')
     for event in probes:

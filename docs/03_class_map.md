@@ -52,7 +52,7 @@ classDiagram
 | Class | Choose it when | You provide |
 | --- | --- | --- |
 | `Subject` | Your system has its own loop: a remote API, a simulator agent, a hand-written rule. | `identifier`, channels, `participate` |
-| `BrainScoreModel` | You have a network and want recording, behavior, perturbation and closed-loop parts without writing a loop. | The parts below |
+| `BrainScoreModel` | You have a network and want recording, behavior, intervention and closed-loop parts without writing a loop. | The parts below |
 | `VisionModelAdapter`, `LanguageModelAdapter` | You have a classic Brain-Score model. `brainscore.load_model` applies these automatically. | Nothing |
 | `UnifiedModel` | Rarely. It is the shared base of the classes above. | |
 

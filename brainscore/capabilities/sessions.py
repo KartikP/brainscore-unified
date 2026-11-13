@@ -13,6 +13,7 @@ from contextlib import ExitStack
 import pandas as pd
 
 from .base import Capability
+from .._model.intervention import INTERVENTION_CHANNELS
 from .registry import register_capability
 from brainscore_core import streaming_helpers as _drivers
 from brainscore_core.streaming import StreamEvent, parse_channel
@@ -191,14 +192,20 @@ class _RecordedPolicy:
         return outputs
 
 
-class PerturbationSessions(_SessionCapability):
-    identifier = 'perturbation-sessions'
+class InterventionSessions(_SessionCapability):
+    """Take an intervention (a ``StateChange``) on each intervention channel; answer on ``perturbation``.
+
+    Enabled by ``BrainScoreModel(intervention=...)``. ``apply_state_change`` and
+    the ``Intervene`` tool send the change through this session.
+    """
+
+    identifier = 'intervention-sessions'
 
     def enabled_for(self, model) -> bool:
         return model._state_change_fn is not None
 
     def declared_input_channels(self, model):
-        return {'lesion', 'stimulation'}
+        return set(INTERVENTION_CHANNELS)
 
     def declared_output_channels(self, model):
         return {'perturbation'}
@@ -211,7 +218,7 @@ class PerturbationSessions(_SessionCapability):
 
 
 _NEURAL = NeuralSessions()
-for _capability in (_NEURAL, BehaviorSessions(), MotorSessions(), PerturbationSessions()):
+for _capability in (_NEURAL, BehaviorSessions(), MotorSessions(), InterventionSessions()):
     register_capability(_capability)
 
 

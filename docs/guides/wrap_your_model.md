@@ -40,14 +40,14 @@ from brainscore import BrainScoreModel
 
 model = BrainScoreModel(
     identifier='my-cnn',
-    model=net,                                   # the module perturbations act on
+    model=net,                                   # the module interventions act on
     extractor={'vision': vision},
     region_layer_map=region_layer_map,
     behavioral_readout_layer='layer4',           # optional: behavior by readout
 )
 ```
 
-Pass the same `net` object to the extractor and to `model=`, so recording and perturbation act on the same network.
+Pass the same `net` object to the extractor and to `model=`, so recording and interventions act on the same network.
 
 Layer paths are relative to the module the extractor wraps (`extractor.layer_names()` lists them). A path the extractor does not have fails when you build the model, and `start_recording` rejects a name that is neither a mapped region nor a layer; both errors list close matches.
 

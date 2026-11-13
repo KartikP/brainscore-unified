@@ -132,7 +132,7 @@ def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
     model._begin_episode()
     assert model._behavioral.history == []                             # h empty
     assert log == {'policy': 2, 'extractor': 2}
-    assert state['lesion'] and 'h' in model._active_perturbations      # w unchanged
+    assert state['lesion'] and 'h' in model._active_interventions      # w unchanged
     assert model._behavioral.task is task                      # s unchanged
 
 
@@ -164,7 +164,7 @@ def test_replay_keeps_a_lesion_and_clears_the_policy_between_episodes():
     replay_actions(model, steps, n_actions=2)
     replay_actions(model, steps, n_actions=2)
     assert inner.steps_seen == [0, 1, 2, 0, 1, 2]      # the episode state restarted at each begin
-    assert state['lesion'] and 'h' in model._active_perturbations   # the lesion survived both
+    assert state['lesion'] and 'h' in model._active_interventions   # the lesion survived both
 
 
 class _Benchmark:
@@ -196,7 +196,7 @@ def _lesionable(handles):
 def test_a_benchmark_that_leaves_its_lesion_fails_and_one_that_undoes_it_passes():
     result = score(_lesionable([]), _Benchmark(undo=True), check_mem=False)
     assert result.attrs['subject_traits'] == () and result.attrs['trial_memory'] == 'none'
-    with pytest.raises(RuntimeError, match='left perturbation handle'):
+    with pytest.raises(RuntimeError, match='left intervention handle'):
         score(_lesionable([]), _Benchmark(undo=False), check_mem=False)
 
 
@@ -205,7 +205,7 @@ def test_a_lesion_the_caller_applied_is_not_counted_against_the_benchmark():
     apply_state_change(model, StateChange(kind='ablation', target=Selection(layer='x'),
                                           perturbation=Perturbation(kind='zero')))
     score(model, _Benchmark(undo=True), check_mem=False)
-    assert 'h0' in model._active_perturbations         # the caller's lesion stays
+    assert 'h0' in model._active_interventions         # the caller's lesion stays
 
 
 def test_the_record_tracks_handles_applied_and_undone_across_sessions():

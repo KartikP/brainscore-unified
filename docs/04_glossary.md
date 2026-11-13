@@ -4,7 +4,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 
 | Term | Meaning |
 | --- | --- |
-| **Ablate** | An experiment tool that sets selected unit outputs to zero during chosen conditions. |
+| **Ablate** | An experiment tool that sets selected unit outputs of a network that is not a subject to zero during chosen conditions. A subject is changed with `Intervene`. |
 | **Adapter** | A permanent wrapper that presents a classic Brain-Score vision or language model as a subject. |
 | **`answer`** | A `BrainScoreModel` part: `(stimulus_row, instruction, label_set) -> label`. Produces behavior by generating a reply. |
 | **Assembly** | A labeled array. `NeuroidAssembly` has `presentation` (stimuli), `neuroid` (units) and optionally `time_bin`. `BehavioralAssembly` holds choices. |
@@ -22,7 +22,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Experiment** | A subject, a protocol, tools and an output folder, run together. Produces a saved record; need not produce a score. |
 | **`extractor`** | A `BrainScoreModel` part, one per input type, that prepares inputs, runs the network and returns layer activity. |
 | **Instrumentation** | The connection that lets tools reach inside a model, such as `TorchInstrumentation`. |
-| **`intervention`** | A `BrainScoreModel` part: `StateChange -> (PerturbationApplied, undo_function)`. |
+| **`intervention`** | A change to a subject while it runs (a lesion, a stimulation, a drug), and the `BrainScoreModel` part that applies it: `StateChange -> (PerturbationApplied, undo_function)`. The channel name (`lesion`, `stimulation`, `pharmacological`) says the kind. |
 | **Layer path** | A module's name in the network, such as `layer3.0.conv1`; list them with `named_modules()`. |
 | **`in_channels`, `out_channels`** | What a subject declares: the inputs it can take and the outputs it can give. |
 | **`LayerSelector`** | One layer as a region; `modality=` picks the extractor in a model with more than one. |
@@ -35,7 +35,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`output_inputs`** | A subject declaration: for an output channel, the input channels it can be answered from. The subject answers the output when it takes in at least one of them from the benchmark. An output that is not listed can be answered from any input. |
 | **Participant** | A person whose data a benchmark holds. Data coordinates keep the name the data has (for example the `subject` coordinate of an fMRI assembly). |
 | **`participate(session)`** | The one evaluation method every subject implements. |
-| **`Perturbation`** | How to change selected units: `zero`, `scale` or `replace`. |
+| **`Perturbation`** | How an intervention changes selected units: `zero`, `scale`, `drive` or `replace`. |
 | **`policy`** | A `BrainScoreModel` part: `row -> {output channel: payload}`. |
 | **`process(...)`** | A convenience method on `BrainScoreModel` and adapters for interactive use. Not part of the contract. |
 | **Protocol** | The procedure of an experiment: which conditions, how many repetitions, where sessions begin and end, and when the subject is reset. |
@@ -48,12 +48,12 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`reset()`** | Clears run state between independent runs. Does not retrain the model. |
 | **`RunRecord`** | Reads a saved experiment without running the model. |
 | **Score** | A metric result with metadata. Raw or ceiled. |
-| **`Selection`** | A concrete set of units: layer path, optional indices, axis. Shared by recording and perturbation. |
+| **`Selection`** | A concrete set of units: layer path, optional indices, axis. Shared by recording and interventions. |
 | **Session** | One continuous visit by one subject, between two resets: `next_input()`, `respond(event)`, `collect()`. You build it from a source, the outputs you request and the task. It holds many trials, or one continuous stream. |
 | **Repetition** | One independent run of a condition: one session, with the subject reset before and after it. |
 | **Source** | Where a session's inputs come from: a list or generator of events (`FixedSource`), or an environment (`EnvironmentSource`). |
 | **`SessionProtocol`** | A protocol that creates a fresh session for each repetition and resets the subject around it. |
-| **`StateChange`** | A request to apply a perturbation to a selection, or to undo one. |
+| **`StateChange`** | The payload of an intervention: apply a change to a resolved selection, or undo one by its handle. Sent with `apply_state_change` or the `Intervene` tool. |
 | **Stimuli** | A `StimulusSet` given to a session or a helper: the argument is always `stimuli`. One stimulus is a row. |
 | **`StimulusSet`** | A table with one row per stimulus; `stimulus_id` links each row to its response. |
 | **Subject** | The thing evaluated: anything that declares channels and implements `participate`. Every function that takes it names the argument `subject`. A person in the data is a participant. |
@@ -65,7 +65,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Raw text, raw scores** | `Choice(raw_text=True)` shows the stimulus text exactly as given, with no added sentence; a part that scores options scores `f"{text} {option}"` as plain text. `Choice(raw_scores=True)` returns each option's summed log probability, not normalized. `Choice(labels='options')`, with a column name in place of the options, reads options that differ for each row from that stimulus column. |
 | **Reported / implied** | A reported answer is the model's parsed reply; an implied one is read from its internals (a readout, or a language model's likelihoods). Results say which in `attrs['measure']`. |
 | **Trial memory** | How long a subject keeps its trials: `none` (default; each trial is its own episode) or `history` (one episode; the subject keeps what it took in and answered on earlier trials; needs the trait `memory:trial_history`). |
-| **Tool** | Equipment attached to an experiment to observe or change the run, without changing the subject. |
+| **Tool** | Equipment attached to an experiment. It watches the session (inputs and outputs) or the layers (`TorchInstrumentation`), or changes the subject through a declared channel (`Intervene`). No tool wraps a method of the subject. |
 | **Row** | One closed-loop step: a mapping of channel to payload. A policy answers it with a mapping of output channel to payload. |
 | **Trait `memory:trial_history`** | A subject declares it when it keeps earlier trials and its answers from `begin` until `end`. A `BrainScoreModel` declares it with `memory='trial_history'`. |
 | **Typed helpers** | Shorthands that build one session and collect it: `neural_response(subject, stimuli, outputs)`, `behavioral_response(subject, stimuli, task)`, `apply_state_change(subject, state_change)`, `run_environment(subject, environment)`. They use the words of `stimulus_session`. |

@@ -38,7 +38,7 @@ Read it left to right:
 
 **Every model is a subject, defined by what it declares.** A subject states which channels it can read and write. Whether two things fit together is decided from those declarations alone: a vision benchmark asking for `neural:IT` can run on any subject that reads `vision` and writes `neural:IT`, whether it is a CNN, a vision-language model or a video model. If a subject cannot provide what a benchmark needs, the pair is marked not applicable rather than scored zero.
 
-**Parts compose.** A subject built with `BrainScoreModel` is assembled from interchangeable parts: an extractor per input type, a map from brain regions to layers, and optional parts for answers, actions and interventions. The same recording, perturbation and experiment tools then work on any subject that exposes the needed parts. Something that works for an image model (for example, silencing units) works the same way for a language model or a robot policy.
+**Parts compose.** A subject built with `BrainScoreModel` is assembled from interchangeable parts: an extractor per input type, a map from brain regions to layers, and optional parts for answers, actions and interventions. The same recording, intervention and experiment tools then work on any subject that exposes the needed parts. Something that works for an image model (for example, silencing units) works the same way for a language model or a robot policy.
 
 **Nothing old is lost.** Existing Brain-Score vision and language models and benchmarks keep working through permanent adapters.
 

@@ -1,14 +1,18 @@
-"""State-change capability for BrainScoreModel perturbation events."""
+"""The process-level step that hands a StateChange to the intervention part."""
 
 from .base import Capability
 from .registry import register_capability
 from brainscore_core.events import StateChange
 
 
-class StateChangeCapability(Capability):
-    """Dispatch perturbation StateChange events through the capability seam."""
+class InterventionCapability(Capability):
+    """Hand a ``StateChange`` to the subject's ``intervention`` part.
 
-    identifier = 'state-change'
+    The intervention session driver reaches this step; users send a change with
+    ``apply_state_change`` or the ``Intervene`` tool.
+    """
+
+    identifier = 'intervention'
     order = 50
 
     def handles(self, model, event, **kwargs) -> bool:
@@ -17,7 +21,7 @@ class StateChangeCapability(Capability):
 
     def process(self, model, event, **kwargs):
         del kwargs
-        return model._perturbations.dispatch_state_change(event)
+        return model._interventions.dispatch_state_change(event)
 
 
-register_capability(StateChangeCapability())
+register_capability(InterventionCapability())

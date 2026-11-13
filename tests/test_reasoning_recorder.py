@@ -149,16 +149,17 @@ def test_partial_stream_remains_readable_and_failed(tmp_path):
 def test_custom_selector_works_with_callable_protocol(tmp_path):
     class Model:
         identifier = 'custom-format'
-        def process(self, request):
+        def infer(self, request):
             return {'answer': 42, 'thinking': 'Multiplication gives 42.'}
     subject = Model()
-    procedure = CallableProtocol('external', lambda model, context: model.process('6 * 7?'))
+    procedure = CallableProtocol('external', lambda model, context: model.infer('6 * 7?'),
+                                 methods=['infer'])
     result = run(tmp_path, subject, procedure=procedure,
                  tool=RecordReasoning(extract=lambda output: output['thinking']))
     record = next(RunRecord(result.directory / 'reasoning').outputs())
     assert record['payload']['answer'] == 42
     assert record['reasoning'][0]['text'] == 'Multiplication gives 42.'
-    assert 'process' not in vars(subject)  # The original method is restored.
+    assert 'infer' not in vars(subject)  # The original method is restored.
 
 
 @pytest.mark.parametrize('reasoning', [42, {'text': 42}, {'text': 'x', 'format': 'guess'}, {'text': 'x', 'kind': ''}])

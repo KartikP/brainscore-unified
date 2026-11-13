@@ -223,7 +223,7 @@ class TextWrapper:
             layers: List of layer name strings to extract from. Suffix a name
                 with ``':input'`` to record the module's first input instead of
                 its output, e.g. ``'model.layers.14.mlp.down_proj:input'`` for
-                a transformer's MLP neurons (the same name a perturbation uses).
+                a transformer's MLP neurons (the same name an intervention uses).
             stimuli_identifier: Identifier for caching. None to use stimulus_set.identifier.
 
         Returns:

@@ -1,12 +1,13 @@
 """PerceptWindow — reconstruct what the model *actually* saw.
 
 The Witness records what was *presented* (a stimulus path, a montage, a frame)
-because that is all that exists at the ``process()`` seam — preprocessing
-(resize / crop / normalize / tokenize / resample) happens one layer deeper,
-inside the activations wrapper, right before the torch ``forward()``. The
-PerceptWindow taps *that* point: a ``register_forward_pre_hook`` on the wrapped
-module captures the exact tensor the network ingested, and reconstruction
-inverts the preprocessing into a viewable artifact.
+because that is what a session carries. Preprocessing (resize / crop /
+normalize / tokenize / resample) happens one layer deeper, inside the
+extractor, right before the torch ``forward()``. The PerceptWindow taps *that*
+point: a ``register_forward_pre_hook`` on the network captures the exact tensor
+it ingested, and reconstruction inverts the preprocessing into a viewable
+artifact. It is a tool on a network (a torch module), like
+``TorchInstrumentation``; it reads nothing inside a subject.
 
 This is the model's literal percept — it shows the aspect-ratio squish, the
 borders the crop discarded, a wrong-normalization color cast, a transcript
@@ -15,8 +16,8 @@ stimulus, and it costs **zero extra forward passes**: the hook tees the tensor
 that the model's own forward already computed.
 
     from brainscore.percept_window import PerceptWindow
-    with PerceptWindow(model, denorm='auto') as eye:   # any model, any modality
-        benchmark(model)
+    with PerceptWindow(network, denorm=processor) as eye:   # the torch module a subject runs
+        benchmark(subject)
     eye.save('/tmp/percept')      # reconstructed images / decoded text / waveforms
 
 Reconstruction is modality-specific:
@@ -172,59 +173,34 @@ def _first_tensor(args, kwargs):
 
 
 def _resolve_targets(target, _containers=()) -> List[Tuple[str, torch.nn.Module]]:
-    """Resolve a PerceptWindow target into ``[(name, module), ...]``.
+    """Resolve a network target into ``[(name, module), ...]``.
 
-    Accepts a torch Module, a list of Modules, a ``{name: target}`` mapping, a
-    wrapper exposing ``._model``, or a BrainScoreModel (taps
-    ``_activations_model._model`` plus any wrapper-valued preprocessors, then
-    every root in its public ``extractor`` mapping that those missed).
-    De-duplicates by module identity; a list/mapping containing itself raises.
+    Accepts a torch Module, a list of Modules or a ``{name: module}`` mapping.
+    Pass the network itself: the tool reads nothing inside a subject or an
+    extractor. De-duplicates by module identity; a list/mapping containing
+    itself raises.
     """
     found: List[Tuple[str, torch.nn.Module]] = []
     seen: set = set()
 
     def add(name, mod):
-        if isinstance(mod, torch.nn.Module) and id(mod) not in seen:
+        if id(mod) not in seen:
             seen.add(id(mod))
             found.append((name, mod))
 
     if isinstance(target, torch.nn.Module):
-        add(getattr(target, '__class__').__name__, target)
+        add(type(target).__name__, target)
         return found
-    if isinstance(target, (list, tuple, Mapping)):
-        if id(target) in _containers:
-            raise ValueError("PerceptWindow target list/mapping contains itself")
-        _containers += (id(target),)
-    if isinstance(target, (list, tuple)):
-        for i, t in enumerate(target):
-            for nm, m in _resolve_targets(t, _containers):
-                add(f"{i}:{nm}", m)
-        return found
-    if isinstance(target, Mapping):
-        for key, t in target.items():
-            for nm, m in _resolve_targets(t, _containers):
-                add(f"{key}:{nm}", m)
-        return found
-    # a wrapper with ._model
-    inner = getattr(target, '_model', None)
-    if isinstance(inner, torch.nn.Module):
-        add(getattr(target, 'identifier', 'model'), inner)
-    # a BrainScoreModel: activations_model + preprocessors (legacy names/order)
-    am = getattr(target, '_activations_model', None)
-    if am is not None and not isinstance(am, Mapping):  # mappings: see extractor below
-        for nm, m in _resolve_targets(am):
-            add(f"activations:{nm}", m)
-    preprocs = getattr(target, '_preprocessors', None)
-    if isinstance(preprocs, dict):
-        for modality, pp in preprocs.items():
-            for nm, m in _resolve_targets(pp):
-                add(f"{modality}:{nm}", m)
-    # the public, normalized extractor mapping: adds the roots missed above
-    # (e.g. extractor={'vision': ..., 'text': ...}); found ones are skipped
-    extractors = getattr(target, 'extractor', None)
-    if isinstance(extractors, Mapping):
-        for nm, m in _resolve_targets(extractors):
-            add(nm, m)
+    if not isinstance(target, (list, tuple, Mapping)):
+        raise TypeError(f'Pass a torch.nn.Module, or a list or mapping of them; got '
+                        f'{type(target).__name__}. For a subject, pass the network it runs.')
+    if id(target) in _containers:
+        raise ValueError("PerceptWindow target list/mapping contains itself")
+    _containers += (id(target),)
+    items = enumerate(target) if isinstance(target, (list, tuple)) else target.items()
+    for key, t in items:
+        for nm, m in _resolve_targets(t, _containers):
+            add(f"{key}:{nm}", m)
     return found
 
 
@@ -233,13 +209,14 @@ def _resolve_targets(target, _containers=()) -> List[Tuple[str, torch.nn.Module]
 class PerceptWindow:
     """Capture and reconstruct the tensors a model actually ingests.
 
-    :param target: a torch Module, a list or ``{name: module}`` mapping of
-        them, an activations wrapper, or a BrainScoreModel (auto-resolves the
-        wrapped module(s) to hook, including every ``extractor`` tower).
+    :param target: a torch Module, or a list or ``{name: module}`` mapping of
+        them: the network a subject runs.
     :param modality: force a modality for every capture ('vision'|'text'|
         'audio'); default ``None`` infers per tensor.
-    :param denorm: ``(mean, std)`` for vision de-normalization, ``'auto'`` to
-        introspect from the target's preprocessing, or ``None``.
+    :param denorm: ``(mean, std)`` for vision de-normalization, the image
+        processor or torchvision transform that normalized the input (its
+        public ``image_mean``/``image_std`` or ``Normalize`` gives the values),
+        or ``None``.
     :param every: capture every Nth forward call (stride) to bound memory.
     :param max_captures: hard cap on stored captures.
     :param select_input: optional ``callable(args, kwargs) -> tensor`` to choose
@@ -253,8 +230,7 @@ class PerceptWindow:
         if not self.targets:
             raise ValueError(
                 "PerceptWindow found no torch module to hook on the target. Pass "
-                "a torch.nn.Module (or a list/mapping of them), a wrapper "
-                "exposing ._model, or a BrainScoreModel with an extractor.")
+                "a torch.nn.Module (or a list/mapping of them).")
         self.modality = modality
         self._denorm_spec = denorm
         self.every = max(1, int(every))
@@ -269,27 +245,10 @@ class PerceptWindow:
         self.std: Optional[List[float]] = None
         if isinstance(denorm, (tuple, list)) and len(denorm) == 2:
             self.mean, self.std = list(map(float, denorm[0])), list(map(float, denorm[1]))
-        elif denorm == 'auto':
-            self._auto_denorm_from(target)
-
-    def _auto_denorm_from(self, target):
-        candidates = []
-        preprocs = getattr(target, '_preprocessors', None)
-        if isinstance(preprocs, dict):
-            candidates.extend(preprocs.values())
-        for attr in ('_image_processor', 'image_processor', 'preprocess', '_preprocess'):
-            candidates.append(getattr(target, attr, None))
-        # then modern extractors' public preprocessing (rendering only)
-        extractors = target if isinstance(target, Mapping) else getattr(target, 'extractor', None)
-        if isinstance(extractors, Mapping):
-            for ex in extractors.values():
-                for attr in ('processor', 'preprocess', 'preprocessing'):
-                    candidates.append(getattr(ex, attr, None))
-        for c in candidates:
-            ms = find_normalization(c)
-            if ms is not None:
-                self.mean, self.std = ms
-                return
+        elif denorm is not None:
+            found = find_normalization(denorm)
+            if found is not None:
+                self.mean, self.std = found
 
     # -- context management ------------------------------------------------
     def __enter__(self):

@@ -31,7 +31,7 @@ Requirements files sometimes list Python's own modules (`imp`, `collections`); t
 
 ## Translating a registration
 
-Translate only if you want features the classic interface lacks (several input types, perturbations, closed-loop control). The parts map one to one:
+Translate only if you want features the classic interface lacks (several input types, interventions, closed-loop control). The parts map one to one:
 
 | Classic | `BrainScoreModel` |
 | --- | --- |

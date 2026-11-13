@@ -64,8 +64,9 @@ that need their own session construction. The factory receives
 `CallableProtocol` instead wraps an existing evaluator that owns its loop and resets.
 
 For interventions, attach `Intervene(change, conditions=[...])` after the recorders.
-It applies the subject's undoable state change per matching repetition and cleans it up
-at its end. A readout is fitted on the network as it is during the run (`readout_fit='current'`,
+It sends the intervention with `apply_state_change` at the start of each matching
+repetition and undoes it by its handle at the end. This is the one way to change a
+subject in an experiment ([Perturb and select units](perturb_and_select_units.md)). A readout is fitted on the network as it is during the run (`readout_fit='current'`,
 the default). `TaskContext(..., readout_fit='intact')` fits it with every change undone and
 tests the changed network, as an animal trained before a lesion is tested after it.
 
@@ -86,7 +87,7 @@ The bundled [asset notes](../../notebooks/assets/lessons/README.md) record data 
 
 ## Lower-level tools
 
-When the recorders do not cover what you need, build sessions yourself and attach tools that reach into the network:
+When the recorders do not cover what you need, build sessions yourself and attach tools that reach into the network. `Ablate`, `ScaleActivity` and `PatchActivity` change the network outside the subject: use them for a model that is not a subject (an OpenPI policy server, a bare network). A subject is changed with `Intervene`.
 
 ```python
 from contextlib import contextmanager
@@ -124,13 +125,17 @@ List tools in this order: recorders, activity recorded *before* an intervention,
 | --- | --- |
 | `RecordNeural(regions)` | Requests `neural:<region>` from the subject and saves it. Read with `result.neural(region, condition=...)`. |
 | `RecordBehavior()` | Requests every kind of answer the task's response asks for and saves them. Read with `result.behavior(condition=..., measure=...)`. |
-| `Intervene(change, conditions=...)` | Applies a `StateChange` through the subject's `intervention`, undone after each repetition. |
+| `Intervene(change, conditions=...)` | Sends an intervention (a `StateChange`) to the subject with `apply_state_change`, undone after each repetition. |
 | `RecordInputsOutputs` | Saves every input, output and lifecycle event with its condition and repetition. Needs no access to model internals. |
 | `RecordActivity(targets)` | Records layer outputs through instrumentation. |
-| `Ablate(targets, conditions=...)` | Zeros layer outputs or a `Selection` of units, in chosen conditions. |
-| `ScaleActivity(targets, factor=0.5)` | Multiplies outputs by a factor. |
+| `Ablate(targets, conditions=...)` | Zeros layer outputs or a `Selection` of units of a network that is not a subject, in chosen conditions. |
+| `ScaleActivity(targets, factor=0.5)` | Multiplies outputs of a network that is not a subject by a factor. |
 | `PatchActivity` | Replaces activity with activity recorded on another input. |
-| `ObserveCalls` | Attaches an existing observer to method calls. |
+
+A tool watches a run in two places only: the session (`on_event`, `RecordInputsOutputs`,
+and `observed(session, sink)` from `brainscore.instrumentation` outside an experiment) for
+inputs and outputs, and `TorchInstrumentation` (`RecordActivity`) for layers. No tool wraps
+a method of the subject.
 
 Targets are layer paths or `Selection` objects, the same ones used in [Perturb and select units](perturb_and_select_units.md).
 
@@ -178,11 +183,21 @@ The output folder holds `experiment.json` (setup, status, provenance), `result.j
 
 ```python
 from brainscore.experiments import CallableProtocol
+from brainscore.instrumentation import observed
 
-protocol = CallableProtocol(identifier='classic-benchmark',
-                            evaluate=lambda subject, context: benchmark(subject),
-                            methods=['look_at'])     # calls to observe
+def evaluate(subject, context):
+    for trial in range(3):
+        with context.repetition(trial):
+            session = stimulus_session(stimuli, ['behavior'], task)
+            with observed(session, context):      # record this session's inputs and outputs
+                subject.participate(session)
+    return my_score()
+
+protocol = CallableProtocol(identifier='classic-benchmark', evaluate=evaluate,
+                            repetitions=[0, 1, 2])
 ```
 
-The evaluator keeps its own loop, resets and scoring; the tools still attach.
-
+The evaluator keeps its own loop, resets and scoring; the tools still attach. It records
+each session with `observed`. For a system that is not a subject (a policy server, an
+external library object), name the methods to record instead, for example
+`CallableProtocol(..., methods=['infer'])`. There is no default method.

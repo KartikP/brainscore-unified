@@ -174,6 +174,8 @@ class Bridge:
                     protocol=CallableProtocol(
                         identifier='libero-evaluator',
                         evaluate=lambda model, context: self.serve(socket, codec, model, context, state),
+                        # The remote evaluator drives the policy through process.
+                        methods=['process'],
                     ),
                     tools=tools,
                     instrumentation=RemoteOpenPIInstrumentation(client),

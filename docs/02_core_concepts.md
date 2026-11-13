@@ -12,7 +12,7 @@ A **subject** is the participant in an experiment. It is any Python object that 
 | `in_channels` | The input channels it can read. |
 | `out_channels` | The output channels it can produce. |
 | `participate(session)` | The one evaluation method: read inputs, send responses, return when inputs run out. |
-| `reset()` | Optional. Clears run state (history, active perturbations) between independent runs. |
+| `reset()` | Optional. Clears run state (history, active interventions) between independent runs. |
 | `traits` | Optional. Properties a benchmark may require, such as `memory:trial_history`. |
 
 ```python
@@ -37,7 +37,7 @@ A **channel** names one kind of information flowing into or out of a subject. Na
 
 | Inputs | Outputs |
 | --- | --- |
-| `vision:image` (pictures), `vision:video` (clips), `text`, `audio`, `observation` (environment state), `instruction`, `lesion`, `stimulation` | `behavior` (choices, ratings), `neural:<region>` (activity standing in for a brain region, such as `neural:IT`), `motor` (actions), `perturbation` |
+| `vision:image` (pictures), `vision:video` (clips), `text`, `audio`, `observation` (environment state), `instruction`, `lesion`, `stimulation`, `pharmacological` | `behavior` (choices, ratings), `neural:<region>` (activity standing in for a brain region, such as `neural:IT`), `motor` (actions), `perturbation` |
 
 Channel names come from a shared catalog, and they match by exact name: `vision:image` does not stand for `vision` or for `vision:video`. You can register new families (see [Extend UMI](guides/extend.md)).
 
@@ -138,7 +138,7 @@ Writing `participate` by hand works for anything. For neural networks, `BrainSco
 | `behavioral_readout_layer` | Fits a classifier on one layer to produce choices. | `behavior` |
 | `answer` | Your function that returns an answer for a stimulus, such as a generated reply. | `behavior` |
 | `policy` | Your function that maps an environment observation to an action. | `observation` in, `motor` out |
-| `intervention` | Your function that applies a perturbation and returns how to undo it. | `lesion`, `stimulation` in |
+| `intervention` | Your function that applies an intervention and returns how to undo it. Send changes with `apply_state_change` or the `Intervene` tool. | `lesion`, `stimulation`, `pharmacological` in; `perturbation` out |
 
 ```python
 from brainscore import BrainScoreModel
