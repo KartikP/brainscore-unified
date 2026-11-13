@@ -95,10 +95,11 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session))
             features = train_features if stimuli.identifier == 'friends' else test_features
-            session.respond(StreamEvent(list(session.outputs)[0], NeuroidAssembly(
-                features, dims=['presentation', 'neuroid'], coords={
-                    'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
-                    'neuroid_id': ('neuroid', ['u0', 'u1'])}), t_ms=None))
+            for channel in session.outputs:
+                session.respond(StreamEvent(channel, NeuroidAssembly(
+                    features, dims=['presentation', 'neuroid'], coords={
+                        'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
+                        'neuroid_id': ('neuroid', ['u0', 'u1'])}), t_ms=None))
 
     result = test.generate_predictions(FixedSubject(), tmp_path, train_benchmark=train)
     np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-3)

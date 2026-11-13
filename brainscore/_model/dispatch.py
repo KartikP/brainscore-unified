@@ -110,6 +110,22 @@ class InputDispatcher:
 
     def __init__(self, owner) -> None:
         self.owner = owner
+        self._shared = None     # (stimuli, {id(extractor): _SharedCall}) during one_call_per_extractor
+
+    @contextmanager
+    def one_call_per_extractor(self, stimuli, plan):
+        """Inside, the first request to an extractor in ``plan``
+        (``[(extractor, layers), ...]``) on ``stimuli`` runs all its listed layers
+        once, and each request of those layers gets its part of that output
+        (``_SharedCall``). The caller lists only extractors that declare
+        ``independent_layers``. Every other request runs as before."""
+        previous = self._shared
+        self._shared = (stimuli, {id(extractor): _SharedCall(extractor, layers)
+                                  for extractor, layers in plan})
+        try:
+            yield
+        finally:
+            self._shared = previous
 
     def process(self, input_event, multi_modality: bool = False) -> OutputEvent:
         """Answer ``input_event`` with the first capability, in registry order,
@@ -184,6 +200,11 @@ class InputDispatcher:
         owner = self.owner
         extractor = extractor_for(owner, modality, stimuli)
         if extractor is not None:
+            shared = self._shared
+            call = (shared[1].get(id(extractor))
+                    if shared is not None and shared[0] is stimuli else None)
+            if call is not None:
+                return call(stimuli, layers)
             return extractor(stimuli, layers=layers)
         modality = canonical_modality(modality)
         raise NotImplementedError(
@@ -252,6 +273,62 @@ class InputDispatcher:
             )
 
         return _concat_modalities_along_neuroid(sub_assemblies, xr)
+
+
+class _SharedCall:
+    """One extractor call that answers several requests of the same stimuli.
+
+    For an extractor that declares ``independent_layers = True``: its output
+    for some layers, restricted to the neuroids of a subset of them, equals its
+    output for that subset alone (values, coordinates, attributes). The first
+    request runs every listed layer once; each request then gets its own copy
+    of its layers' neuroids. A request is passed to the extractor unchanged
+    when it names a layer outside the list, or when the shared output does not
+    give its layers, by a per-neuroid ``layer`` coordinate, in the order the
+    request names them (an extractor that orders layers otherwise, or that
+    omits one, is called as before).
+    """
+
+    def __init__(self, extractor, layers) -> None:
+        self.extractor = extractor
+        self.layers = list(layers)
+        self.output = None
+
+    def __call__(self, stimuli, layers):
+        if set(layers) <= set(self.layers):
+            if self.output is None:
+                self.output = self.extractor(stimuli, layers=self.layers)
+            part = _layers_of(self.output, list(layers))
+            if part is not None:
+                return part
+        return self.extractor(stimuli, layers=layers)
+
+
+def _layers_of(output, layers):
+    """The neuroids of ``layers`` in ``output``, or None when ``output`` cannot
+    show them in that order. A new assembly with its own attributes."""
+    from copy import deepcopy
+    import numpy as np
+    try:
+        labels = output['layer']
+    except (KeyError, TypeError):
+        return None
+    if labels.dims != ('neuroid',):
+        return None
+    labels = np.asarray(labels.values)
+    positions = np.flatnonzero(np.isin(labels, layers))
+    if list(dict.fromkeys(labels[positions].tolist())) != layers:
+        return None
+    part = output.isel(neuroid=positions)
+    index = part.indexes.get('neuroid')
+    if index is not None and getattr(index, 'nlevels', 1) > 1:
+        # Index the part as a call for these layers alone builds its index:
+        # from its own neuroids, not the levels of the shared call.
+        import pandas as pd
+        part = part.assign_coords(neuroid=pd.MultiIndex.from_arrays(
+            [index.get_level_values(level) for level in range(index.nlevels)], names=index.names))
+    part.attrs = deepcopy(dict(output.attrs))
+    return part
 
 
 def _concat_modalities_along_neuroid(sub_assemblies, xr):

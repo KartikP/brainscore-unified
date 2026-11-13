@@ -667,18 +667,13 @@ class BehavioralReadout:
         return list(selector.layer_paths)
 
     def _region_modality(self, region: str) -> str:
-        from brainscore_core.io_catalog import canonical_modality
-        modality = self.owner._region_modality_map.get(region)
-        if modality is not None:
-            return canonical_modality(modality)
-        modalities = {canonical_modality(key) for key in self.owner._extractors}
-        if len({id(e) for e in self.owner._extractors.values()}) == 1:
-            return sorted(modalities)[0]        # one (fused) extractor records every region
-        if len(modalities) != 1:
+        from .recording import region_modality
+        modality = region_modality(self.owner, region)
+        if modality is None:
             raise ValueError(
                 f'Region {region!r} does not say which input it reads. Map it with '
                 "LayerSelector(name=..., modality=...) to record it during a task.")
-        return next(iter(modalities))
+        return modality
 
     def _stamp(self, path, forward_pass):
         """How a recording was made, so task and passive recordings stay distinct."""

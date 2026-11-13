@@ -20,8 +20,8 @@ The channels differ only in what the benchmark sends. Every choice uses one meth
 The benchmark predicts all 1000 parcels from the model's layers for the regions
 the benchmark names: ``V1``, ``V4`` and ``IT`` for every choice, and ``A1`` too for
 the clip with sound (``CHANNEL_REGIONS``). It requests exactly these
-``neural:<region>`` channels, asks for each region in its own session, and
-averages each answer over its time bins. Each region is one band.
+``neural:<region>`` channels in one session, and averages each answer over its
+time bins. Each region is one band.
 
 The folds keep every run of one stimulus on one side, because Movie10 repeats
 some clips in a second run. In each outer fold the benchmark prepares each band
@@ -742,25 +742,25 @@ class Algonauts2025(BenchmarkBase):
     def _record_bands(self, subject, stimuli, regions) -> Dict[str, Tuple[np.ndarray, object]]:
         """``{region: (features, neuroid ids)}`` with one row per row of ``stimuli``.
 
-        Each region is asked for in its own session on its own channel,
-        ``neural:<region>``, so the sessions together request exactly what
-        pre-flight checked. One session per region is used because a legacy
-        model answers one channel per session and two towers can answer on
-        different time axes; the model runs once per region either way. Each
-        answer is averaged over its time bins and put in the row order of
-        ``stimuli``. With ``streaming=True`` the subject gets one row at a time
-        and answers it before the next; otherwise it gets the table at once.
-        Nothing is reduced here: the reduction is fitted per fold in
-        ``score_banded``.
+        One session requests every region, each on its own channel,
+        ``neural:<region>``, so the session requests exactly what pre-flight
+        checked, and the subject sees each row once. Each channel is the
+        payload a session for that region alone would give; a model runs once
+        for all the regions an extractor with ``independent_layers`` records,
+        and once per region otherwise. Each answer is averaged over its time
+        bins and put in the row order of ``stimuli``. With ``streaming=True``
+        the subject gets one row at a time and answers it before the next;
+        otherwise it gets the table at once. Nothing is reduced here: the
+        reduction is fitted per fold in ``score_banded``.
         """
         from brainscore_core.streaming_helpers import stimulus_session
+        channels = [f'neural:{region}' for region in regions]
+        session = stimulus_session(stimuli, channels, None,
+                                   time_bins=[(0, int(TR_SEC * 1000))],
+                                   streaming=self._streaming)
+        subject.participate(session)
         bands = {}
-        for region in regions:
-            channel = f'neural:{region}'
-            session = stimulus_session(stimuli, [channel], None,
-                                       time_bins=[(0, int(TR_SEC * 1000))],
-                                       streaming=self._streaming)
-            subject.participate(session)
+        for region, channel in zip(regions, channels):
             features, feature_ids = _features_in_order(session.collect(channel), stimuli)
             if features.shape[0] != len(stimuli):
                 raise ValueError(

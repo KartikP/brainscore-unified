@@ -14,6 +14,19 @@ def region_selector(owner, region: str) -> UnitSelector:
     return owner._region_layer_selectors.get(region, LayerSelector(region))
 
 
+def region_modality(owner, region: str) -> Optional[str]:
+    """The input ``region`` reads: the modality its map entry names, or the only
+    one the extractors take. None when the region does not say and several
+    inputs could serve it."""
+    modality = owner._region_modality_map.get(region)
+    if modality is not None:
+        return canonical_modality(modality)
+    modalities = {canonical_modality(key) for key in owner._extractors}
+    if len({id(e) for e in owner._extractors.values()}) == 1:
+        return sorted(modalities)[0]        # one (fused) extractor records every region
+    return next(iter(modalities)) if len(modalities) == 1 else None
+
+
 def declared_layers(owner, modality: Optional[str] = None):
     """Layer paths the extractors for ``modality`` (all, when None) declare.
 

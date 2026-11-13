@@ -51,6 +51,8 @@ Pass the same `net` object to the extractor and to `model=`, so recording and in
 
 Layer paths are relative to the module the extractor wraps (`extractor.layer_names()` lists them). A path the extractor does not have fails when you build the model, and `start_recording` rejects a name that is neither a mapped region nor a layer; both errors list close matches.
 
+A session that requests several regions gives each `neural:<region>` channel the same payload as a session for that region alone. When the regions are recorded by one extractor that declares `independent_layers = True`, the extractor runs once for all of them (once per row in a streamed session), and each channel gets its own layers. `TextWrapper`, `VLMVisionWrapper` and `VLMVideoWrapper` declare it. Any other extractor runs once per region. Declare it on your own extractor only if its output for some layers, cut to one layer, is exactly its output for that layer alone (values, coordinates, attributes). `VideoWrapper` does not declare it: it numbers `neuroid_num` over all layers of one call.
+
 ## Try it on your own images
 
 A stimulus set is a table with one row per stimulus: a `stimulus_id` and an `image_path` column holding each file's path.

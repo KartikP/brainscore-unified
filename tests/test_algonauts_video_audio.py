@@ -441,7 +441,8 @@ def test_stream_and_table_give_equal_bands_and_scores(tmp_path):
     for band in regions:
         np.testing.assert_array_equal(stream_bands[band][0], table_bands[band][0])
         np.testing.assert_array_equal(stream_bands[band][1], table_bands[band][1])
-    # The table runs each region once on every row; the stream once per row and region.
+    # These towers do not declare independent_layers: the table runs each region
+    # once on every row, the stream once per row and region.
     assert len(table_calls) == 4 and len(stream_calls) == 4 * len(_table())
 
     _, table_score = _score(tmp_path, False, [])
@@ -469,6 +470,35 @@ def test_stream_and_table_give_equal_bands_and_scores(tmp_path):
     assert 'movies' not in stream_score.attrs and 'mode' not in stream_score.attrs
 
 
+class _DeclaredTower:
+    """A tower that declares independent_layers: its regions share one call."""
+
+    independent_layers = True
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def __call__(self, stimuli, layers, **kwargs):
+        return self.inner(stimuli, layers)
+
+
+@pytest.mark.parametrize('streaming', [False, True], ids=['table', 'stream'])
+def test_a_declared_tower_runs_once_for_its_regions_and_gives_the_same_bands(tmp_path, streaming):
+    regions = ['A1', 'IT', 'V1', 'V4']
+    plain_calls, shared_calls = [], []
+    plain = _benchmark(tmp_path, streaming=streaming)._record_bands(_av_model(plain_calls), _table(), regions)
+    model = BrainScoreModel(
+        identifier='fake-av-declared', model=None, region_layer_map=_av_regions(),
+        extractor={'video': _DeclaredTower(_extractor('video_path', 1.0, VIDEO_BINS, shared_calls)),
+                   'audio': _DeclaredTower(_extractor('audio_path', 2.0, AUDIO_BINS, shared_calls))})
+    shared = _benchmark(tmp_path, streaming=streaming)._record_bands(model, _table(), regions)
+    for region in regions:
+        np.testing.assert_array_equal(shared[region][0], plain[region][0])
+        np.testing.assert_array_equal(shared[region][1], plain[region][1])
+    rows = len(_table()) if streaming else 1
+    assert len(plain_calls) == 4 * rows and len(shared_calls) == 2 * rows   # one call per tower
+
+
 def test_streaming_works_for_the_image_form_too(tmp_path):
     _, table_score = _score(tmp_path, False, [], channels=('vision:image',), columns=('image_file_name',),
                             model=_image_model())
@@ -480,15 +510,16 @@ def test_streaming_works_for_the_image_form_too(tmp_path):
     assert stream_score.attrs['input_channels'] == ['vision:image'] and 'clip_seconds' not in stream_score.attrs
 
 
-def test_in_the_stream_each_region_gets_one_row_with_both_columns_at_a_time(tmp_path):
+def test_in_the_stream_each_row_comes_once_with_both_columns(tmp_path):
     calls = []
     benchmark = _benchmark(tmp_path, streaming=True)
     table = _table(MOVIES[:1], n=4)
     benchmark._record_bands(_av_model(calls), table, ['A1', 'IT'])
     ids = list(table['stimulus_id'])
-    # One session per region; in each, row by row and in order.
+    # One session for both regions: row by row and in order, each row once; in a
+    # row, the extractors in the model's source order (video, then sound).
     assert [(column, rows) for column, rows, _ in calls] == [
-        (column, [sid]) for column in ('audio_path', 'video_path') for sid in ids]
+        (column, [sid]) for sid in ids for column in ('video_path', 'audio_path')]
     for _, _, columns in calls:
         assert {'video_path', 'audio_path'} <= set(columns)
 

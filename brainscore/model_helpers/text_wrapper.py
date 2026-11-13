@@ -783,3 +783,10 @@ class TextWrapper:
                 {column: ('presentation', list(stimulus_set[column].values))})
 
         return assembly
+
+
+# Recording several layers in one call gives, for each layer, exactly what a
+# call for that layer alone gives, so the regions of one session share one call
+# (brainscore._model.channels). Set outside the class body: the class source is
+# part of the activation cache key, and this line must not change that key.
+TextWrapper.independent_layers = True

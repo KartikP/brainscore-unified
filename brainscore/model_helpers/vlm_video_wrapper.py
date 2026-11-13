@@ -178,3 +178,10 @@ class VLMVideoWrapper:
         if paths:
             return [str(paths[sid]) for sid in stimuli['stimulus_id']]
         raise ValueError(f'No clip column {clip_columns} in {list(stimuli.columns)}')
+
+
+# Recording several layers in one call gives, for each layer, exactly what a
+# call for that layer alone gives, so the regions of one session share one call
+# (brainscore._model.channels). Set outside the class body: the class source is
+# part of the activation cache key, and this line must not change that key.
+VLMVideoWrapper.independent_layers = True

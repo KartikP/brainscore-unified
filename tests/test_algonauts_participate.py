@@ -65,11 +65,11 @@ def benchmark(tmp_path):
     return Algonauts2025(participant=1, assembly_root=tmp_path)
 
 
-def test_every_region_is_recorded_through_participate_on_its_own_channel(benchmark):
+def test_every_region_is_recorded_through_participate_on_its_own_channel_in_one_session(benchmark):
     subject = Recorder()
     regions = ['IT', 'V4']
     bands = benchmark._record_bands(subject, _frames(), regions)
-    assert subject.requests == [['neural:IT'], ['neural:V4']]     # one session per region
+    assert subject.requests == [['neural:IT', 'neural:V4']]     # one session, one channel per region
     for region in regions:
         expected = [[_value(frame, unit) for unit in UNITS[region]] for frame in FRAMES]
         np.testing.assert_array_equal(bands[region][0], np.asarray(expected, dtype=np.float32))
@@ -198,16 +198,17 @@ def test_a_whole_score_comes_from_a_participate_only_subject(tmp_path, monkeypat
             ids = [str(stimulus_id) for stimulus_id in stimuli['stimulus_id']]
             self.requests.append(list(session.outputs))
             rng = np.random.default_rng(1)
-            session.respond(StreamEvent(list(session.outputs)[0], NeuroidAssembly(
-                rng.normal(size=(len(ids), 3)),
-                coords={'stimulus_id': ('presentation', ids),
-                        'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
-                dims=['presentation', 'neuroid']), t_ms=None))
+            for channel in session.outputs:
+                session.respond(StreamEvent(channel, NeuroidAssembly(
+                    rng.normal(size=(len(ids), 3)),
+                    coords={'stimulus_id': ('presentation', ids),
+                            'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
+                    dims=['presentation', 'neuroid']), t_ms=None))
 
     subject = Frames()
     score = benchmark(subject)
     assert np.isfinite(float(score))
-    assert subject.requests == [['neural:IT'], ['neural:V1'], ['neural:V4']]
+    assert subject.requests == [['neural:IT', 'neural:V1', 'neural:V4']]
     assert score.attrs['bands'] == ['IT', 'V1', 'V4'] and 'mode' not in score.attrs
 
 
@@ -244,11 +245,12 @@ class _VideoOnly(Subject):
         ids = [str(s) for s in stimuli['stimulus_id']]
         self.paths += list(stimuli['video_path'])
         rng = np.random.default_rng(1)
-        session.respond(StreamEvent(list(session.outputs)[0], NeuroidAssembly(
-            rng.normal(size=(len(ids), 3)),
-            coords={'stimulus_id': ('presentation', ids),
-                    'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
-            dims=['presentation', 'neuroid']), t_ms=None))
+        for channel in session.outputs:
+            session.respond(StreamEvent(channel, NeuroidAssembly(
+                rng.normal(size=(len(ids), 3)),
+                coords={'stimulus_id': ('presentation', ids),
+                        'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
+                dims=['presentation', 'neuroid']), t_ms=None))
 
 
 def _score_benchmark(tmp_path, monkeypatch, form, table):
@@ -273,8 +275,8 @@ def test_a_video_only_subject_gets_one_answer_per_tr_and_a_score(tmp_path, monke
     subject = _VideoOnly()
     score = benchmark(subject)
     assert np.isfinite(float(score))
-    # One clip per TR, once in each region's session (V1, V4, IT).
-    assert subject.paths == list(table['video_path']) * 3
+    # One clip per TR, once: one session asks for V1, V4 and IT.
+    assert subject.paths == list(table['video_path'])
     assert score.attrs['bands'] == ['IT', 'V1', 'V4']
     assert score.attrs['input_channels'] == ['vision:video']
     assert score.attrs['frames_per_clip'] == 30
@@ -304,11 +306,12 @@ def test_an_image_only_subject_is_not_applicable_to_video_and_scores_on_frames(t
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session))
             ids = [str(s) for s in stimuli['stimulus_id']]
-            session.respond(StreamEvent(list(session.outputs)[0], NeuroidAssembly(
-                np.random.default_rng(1).normal(size=(len(ids), 3)),
-                coords={'stimulus_id': ('presentation', ids),
-                        'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
-                dims=['presentation', 'neuroid']), t_ms=None))
+            for channel in session.outputs:
+                session.respond(StreamEvent(channel, NeuroidAssembly(
+                    np.random.default_rng(1).normal(size=(len(ids), 3)),
+                    coords={'stimulus_id': ('presentation', ids),
+                            'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
+                    dims=['presentation', 'neuroid']), t_ms=None))
 
     score = benchmark(Image())
     assert np.isfinite(float(score))
