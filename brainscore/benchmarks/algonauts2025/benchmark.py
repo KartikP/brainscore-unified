@@ -1,49 +1,44 @@
-"""Algonauts 2025 challenge benchmark classes.
+"""The Courtois NeuroMod Friends benchmark of the Algonauts 2025 challenge.
 
-``Algonauts2025(participant, split=...)`` is the one class of the family. A
-registry line sets the participant and the channels of the ``friends`` split:
+What it uses. The registered identifiers score the ``friends`` split: all the
+fMRI the challenge released for one participant (Friends seasons 1 to 6 and the
+four Movie10 films; 1000 Schaefer parcels, TR = 1.49 s). The data set has four
+participants (1, 2, 3, 5):
 
-- ``split='friends'`` (default) scores a model on Friends S1-S6 and Movie10 with
-  5-fold cross-validation over stimuli.
-- ``split='friends_s7'`` and ``split='ood'`` have no recorded fMRI, so they are
-  not registered. Build them directly; ``generate_predictions`` writes the
-  predicted parcel time series for Codabench.
+- ``Algonauts2025-friends-sub{01,02,03,05}``: frames; the full released data of
+  that participant.
+- ``Algonauts2025-friends-sub01-video`` and ``-video-audio``: clips, and clips
+  with sound; the full released data of participant 1 only.
 
-``channels`` names what the benchmark sends for each scan (TR, 1.49 s):
+Friends season 7 (``split='friends_s7'``) and the out-of-distribution films
+(``split='ood'``) have no released fMRI: they are not registered and not scored
+(``brainscore.tools.algonauts2025_predictions`` predicts them). ``movies`` limits
+a benchmark to named films, a part of the data; the score lists them.
 
-- ``('vision:image',)`` (default): the frame at the middle of the scan.
-- ``('vision:video',)``: the 1.49 s clip of the scan.
-- ``('vision:video', 'audio')``: the clip and the sound of the same 1.49 s,
-  in one table row.
+What it shows. One table row per scan, from the files the data plugin prepared
+(``brainscore.data.algonauts2025``): the frame at the middle of the scan on
+``vision:image`` (default), the 1.49 s clip of the scan on ``vision:video``, or
+the clip and its sound on ``vision:video`` and ``audio``. With ``streaming=True``
+the subject gets one scan at a time; otherwise the whole table at once.
 
-The channels differ only in what the benchmark sends. Every choice uses one method.
-The benchmark predicts all 1000 parcels from the model's layers for the regions
-the benchmark names: ``V1``, ``V4`` and ``IT`` for every choice, and ``A1`` too for
-the clip with sound (``CHANNEL_REGIONS``). It requests exactly these
-``neural:<region>`` channels in one session, and averages each answer over its
-time bins. Each region is one band.
+What it requests. ``neural:V1``, ``neural:V4`` and ``neural:IT``, and
+``neural:A1`` with sound (``CHANNEL_REGIONS``), in one session. Each answer is
+averaged over its time bins; each region is one band.
 
-The folds keep every run of one stimulus on one side, because Movie10 repeats
-some clips in a second run. In each outer fold the benchmark prepares each band
-on the training stimuli only: it centres the band, reduces it to at most
-``LAYER_DIM_CAP`` components (a PCA) and divides the band by one scale. It then
-stacks ``stimulus_window`` scans per sample and shifts them by ``hrf_delay``
-scans, inside each run. A banded ridge with an intercept has one penalty per
-band; the penalty tuple is the one that predicts the parcels best, on average,
-on held-out stimuli inside the training stimuli. The score is the raw median per-parcel
-Pearson r on the held-out stimuli. No ceiling is measured.
+How features meet scans. Each row goes to the assembly scan of the same film
+and scan number. Per run, ``stimulus_window`` scans are stacked and shifted by
+``hrf_delay`` scans; the first ``excluded_samples_start`` and the last
+``excluded_samples_end`` scans are left out.
 
-With ``streaming=True`` the benchmark presents the table one scan at a time:
-the subject answers one scan before it gets the next. With ``streaming=False``
-the subject gets the whole table at once. A subject without trial memory gives
-the same features both ways.
-
-``movies`` limits the benchmark to named movies (their ``stimulus_id`` in the
-assembly). Only those movies are cut and scored. This is for short runs.
+The fit and the score. 5 folds over films. Per fold, each band is centred,
+reduced to at most ``LAYER_DIM_CAP`` components and scaled on the training films
+only; a banded ridge with one penalty tuple for all parcels, chosen on held-out
+training films, predicts the test films (``scoring.py``). The score is the raw
+median per-parcel Pearson r. No ceiling is measured.
 """
-import hashlib
 import logging
 import math
+from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
@@ -54,13 +49,20 @@ from brainscore_core.execution_plan import ExecutionPlan
 from brainscore_core.metrics import Score
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.data.algonauts2025 import (
+    CLIP_FRAMES,
+    SOUND_RATE_HZ,
+    TR_SEC,
     assembly_identifier,
     default_data_root,
+    per_scan_stimuli,
+    probe_stimuli,
+    scans_per_stimulus,
     stimulus_set_identifier,
 )
+from brainscore.metrics.encoding import summarize
 
 from brainscore.benchmarks._score import benchmark_score, not_estimated
-from .scoring import PENALTY_PROTOCOL, PROJECTION_PROTOCOL, fit_predict_banded, score_banded
+from .scoring import PENALTY_PROTOCOL, PROJECTION_PROTOCOL, score_banded
 
 logger = logging.getLogger(__name__)
 
@@ -71,156 +73,6 @@ BIBTEX = """@article{gifford2025algonauts,
   journal={arXiv preprint arXiv:2501.00504},
   year={2025},
 }"""
-
-# Schaefer 1000 parcellation, TR for Courtois NeuroMod
-SCHAEFER_N_PARCELS = 1000
-TR_SEC = 1.49
-
-def _ffmpeg_extract_one(args):
-    """Worker for the frame-extraction Pool. Tuple-args because Pool.imap
-    doesn't take starargs."""
-    import subprocess
-    video_path, out_dir, fps_offset, resize, n_TRs = args
-    out_pat = f'{out_dir}/%04d.jpg'
-    duration = TR_SEC * (n_TRs + 1)  # safety bound
-    cmd = [
-        'ffmpeg', '-y', '-loglevel', 'error',
-        '-ss', f'{TR_SEC * fps_offset:.4f}',
-        '-i', video_path,
-        '-t', f'{duration:.4f}',
-        '-vf', f'fps=1/{TR_SEC},scale={resize}:{resize}',
-        '-q:v', '3',
-        out_pat,
-    ]
-    subprocess.run(cmd, check=False, capture_output=True)
-    return video_path
-
-
-# One clip holds the 1.49 s of one scan. 30 frames in 1.49 s is 3000/149 fps
-# (about 20.13), so every clip has the same frame count and the same duration
-# whatever the frame rate of the source movie.
-CLIP_FRAMES = 30
-CLIP_FPS = f'{CLIP_FRAMES * 100}/{round(TR_SEC * 100)}'
-
-
-def _clip_ffmpeg_command(video_path, out_pattern, resize, n_TRs=None):
-    """The one ffmpeg call that cuts a movie into one clip per TR.
-
-    Frames are resampled to ``CLIP_FPS`` and a key frame is forced every
-    ``CLIP_FRAMES`` frames (``-g`` with scene-cut detection off), so the segment
-    muxer cuts exactly at clip borders. ``-segment_time_delta`` keeps the cut
-    from missing a key frame that lands a rounding error before ``t x TR_SEC``.
-    Clip ``t`` is the movie time [t x TR_SEC, (t+1) x TR_SEC). No sound.
-    """
-    cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-i', str(video_path)]
-    if n_TRs is not None:
-        cmd += ['-t', f'{TR_SEC * n_TRs:.4f}']
-    return cmd + [
-        '-an', '-vf', f'fps={CLIP_FPS},scale={resize}:{resize}',
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p',
-        '-g', str(CLIP_FRAMES), '-keyint_min', str(CLIP_FRAMES), '-sc_threshold', '0',
-        '-f', 'segment', '-segment_time', f'{TR_SEC}', '-segment_time_delta', '0.01',
-        '-segment_start_number', '0', '-reset_timestamps', '1', '-segment_format', 'mp4',
-        str(out_pattern),
-    ]
-
-
-def _clip_frame_count(path) -> int:
-    """Frames in a clip, from the mp4 header (0 when the file cannot be read)."""
-    import subprocess
-    out = subprocess.run(
-        ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
-         '-show_entries', 'stream=nb_frames', '-of', 'csv=p=0', str(path)],
-        check=False, capture_output=True, text=True).stdout.strip()
-    return int(out) if out.isdigit() else 0
-
-
-def _ffmpeg_cut_clips_one(args):
-    """Worker for the clip-cutting Pool: one ffmpeg call per movie.
-
-    The call writes into a work folder. A clip moves to ``{out_dir}/{t:04d}.mp4``
-    only when it has exactly ``CLIP_FRAMES`` frames and ``t < n_TRs``. A short
-    clip at the end of the movie is dropped, so a clip file is always complete;
-    the caller fills what is missing.
-    """
-    import shutil
-    import subprocess
-    video_path, out_dir, resize, n_TRs = args
-    out_dir = Path(out_dir)
-    work = out_dir / '_cut'
-    work.mkdir(parents=True, exist_ok=True)
-    subprocess.run(_clip_ffmpeg_command(video_path, work / '%04d.mp4', resize, n_TRs),
-                   check=False, capture_output=True)
-    for cut in sorted(work.glob('*.mp4')):
-        t = int(cut.stem)
-        if t < n_TRs and _clip_frame_count(cut) == CLIP_FRAMES:
-            shutil.move(str(cut), str(out_dir / f'{t:04d}.mp4'))
-    shutil.rmtree(work, ignore_errors=True)
-    return video_path
-
-
-# One sound chunk holds the 1.49 s of one scan: 23840 samples, 16 kHz, mono.
-_SOUND_RATE_HZ = 16000
-_SOUND_SAMPLES = round(TR_SEC * _SOUND_RATE_HZ)
-
-
-def _sound_ffmpeg_command(video_path, out_pattern, n_TRs=None):
-    """The one ffmpeg call that cuts the sound of a movie into one WAV per TR.
-
-    The filter resamples to 16 kHz mono, groups the samples into packets of
-    exactly ``_SOUND_SAMPLES`` and numbers them from 0 (``asetpts``), so the
-    segment muxer cuts at every packet. Chunk ``t`` is the sound of the movie
-    time [t x TR_SEC, (t+1) x TR_SEC), counted from the start of the sound.
-    No picture.
-    """
-    cmd = ['ffmpeg', '-y', '-loglevel', 'error', '-i', str(video_path)]
-    if n_TRs is not None:
-        cmd += ['-t', f'{TR_SEC * n_TRs:.4f}']
-    return cmd + [
-        '-vn', '-af',
-        (f'aresample={_SOUND_RATE_HZ},aformat=sample_fmts=s16:channel_layouts=mono,'
-         f'asetnsamples=n={_SOUND_SAMPLES}:p=0,asetpts=N/SR/TB'),
-        '-c:a', 'pcm_s16le',
-        '-f', 'segment', '-segment_time', f'{TR_SEC}', '-segment_time_delta', '0.01',
-        '-segment_start_number', '0', '-reset_timestamps', '1', '-segment_format', 'wav',
-        str(out_pattern),
-    ]
-
-
-def _wav_sample_count(path) -> int:
-    """Samples in a 16 kHz mono WAV (0 when the file cannot be read or has another form)."""
-    import wave
-    try:
-        with wave.open(str(path)) as wav:
-            if wav.getframerate() != _SOUND_RATE_HZ or wav.getnchannels() != 1:
-                return 0
-            return wav.getnframes()
-    except (OSError, EOFError, wave.Error):
-        return 0
-
-
-def _ffmpeg_cut_sound_one(args):
-    """Worker for the sound-cutting Pool: one ffmpeg call per movie.
-
-    Like ``_ffmpeg_cut_clips_one``: a chunk moves to ``{out_dir}/{t:04d}.wav``
-    only when it has exactly ``_SOUND_SAMPLES`` samples and ``t < n_TRs``. A
-    short chunk at the end of the movie is dropped; the caller fills what is
-    missing.
-    """
-    import shutil
-    import subprocess
-    video_path, out_dir, n_TRs = args
-    out_dir = Path(out_dir)
-    work = out_dir / '_cut'
-    work.mkdir(parents=True, exist_ok=True)
-    subprocess.run(_sound_ffmpeg_command(video_path, work / '%04d.wav', n_TRs),
-                   check=False, capture_output=True)
-    for cut in sorted(work.glob('*.wav')):
-        t = int(cut.stem)
-        if t < n_TRs and _wav_sample_count(cut) == _SOUND_SAMPLES:
-            shutil.move(str(cut), str(out_dir / f'{t:04d}.wav'))
-    shutil.rmtree(work, ignore_errors=True)
-    return video_path
 
 
 def _as_features(assembly):
@@ -260,10 +112,7 @@ class Algonauts2025(BenchmarkBase):
     LAYER_DIM_CAP = 100
     BANDED_CANDIDATES = 60
 
-    # Sends one frame per TR on `vision:image`, one 1.49 s clip per TR on
-    # `vision:video`, or the clip and its sound in one row on `vision:video` and
-    # `audio`. The benchmark stacks the TRs itself, so the subject keeps no history
-    # across TRs.
+    # The benchmark stacks the TRs itself, so the subject keeps no history across TRs.
     _IMAGE = frozenset({'vision:image'})
     _VIDEO = frozenset({'vision:video'})
     _VIDEO_AUDIO = frozenset({'vision:video', 'audio'})
@@ -274,6 +123,8 @@ class Algonauts2025(BenchmarkBase):
         _VIDEO_AUDIO: ('A1', 'IT', 'V1', 'V4'),
     }
     _CHANNEL_SUFFIX = {_IMAGE: '', _VIDEO: '-video', _VIDEO_AUDIO: '-video-audio'}
+    # The prepared files of one row (see brainscore.data.algonauts2025.MEDIA).
+    _CHANNEL_MEDIA = {_IMAGE: ['frames'], _VIDEO: ['clips'], _VIDEO_AUDIO: ['clips', 'sound']}
     # The identifier ends in a suffix for the split.
     _SPLIT_SUFFIX = {'friends': '', 'friends_s7': '-test', 'ood': '-ood'}
     required_input_channels = _IMAGE
@@ -391,366 +242,25 @@ class Algonauts2025(BenchmarkBase):
             )
         return self._stimulus_set
 
-    @property
-    def execution_plan(self) -> ExecutionPlan:
-        """Declared memory-execution shape so the pre-flight is grounded in real
-        cardinality, not guessed off ``len(stimulus_set)`` (which counts videos).
+    # ── What is shown ─────────────────────────────────────────────
 
-        - Extraction runs one table row per TR, so the held matrix has one row per
-          TR (``len(assembly.stimulus_id)``). The raw width is model-dependent, so
-          the pre-flight probes it: it records one requested region for one blank
-          frame or clip of these channels. The bands of other regions can be wider.
-        - The metric fits over the TR rows MINUS the per-run excluded samples.
-        - Each band is reduced to ``LAYER_DIM_CAP`` components and stacked over
-          ``stimulus_window`` TRs, one band per region of the channels, so the metric
-          width is ``len(CHANNEL_REGIONS[channels]) * stimulus_window * LAYER_DIM_CAP``.
-        - Scoring is banded ridge, and the ceiling is a precomputed constant
-          (``Score(1.0)``), not a re-run metric, so ``runs_ceiling_metric=False``.
-        """
-        n_trs = len(self.assembly['stimulus_id'])
-        try:
-            from collections import Counter
-            stim = self.assembly['stimulus_id'].values
-            run = self.assembly['run'].values
-            run_lengths = Counter((str(s), str(r)) for s, r in zip(stim, run))
-            excluded = self._excluded_samples_start + self._excluded_samples_end
-            # clamp per run: a run shorter than the excluded span retains 0, not a
-            # negative count (subtracting excluded*n_runs globally would under-count).
-            metric_obs = max(sum(max(L - excluded, 0)
-                                 for L in run_lengths.values()), 1)
-        except Exception:
-            metric_obs = int(n_trs)  # no run metadata (e.g. a stub): safe over-count
-        return ExecutionPlan(
-            n_extraction_presentations=int(n_trs),
-            metric_observations=metric_obs,
-            metric_feature_width=(len(self.CHANNEL_REGIONS[self._channels])
-                                  * self._stimulus_window * self.LAYER_DIM_CAP),
-            metric_category='ridge',
-            runs_ceiling_metric=False,
-            probe_stimuli=(self._probe_frame_stimuli() if self._channels == self._IMAGE
-                           else self._probe_clip_stimuli()),
-        )
+    def _stimuli(self):
+        """The table of what one scan presents: one row per (film, scan), from
+        the files the data plugin prepared."""
+        return per_scan_stimuli(self.stimulus_set, scans_per_stimulus(self.assembly),
+                                self._CHANNEL_MEDIA[self._channels], self._split,
+                                self._participant, self._assembly_root)
 
-    def _probe_frame_stimuli(self):
-        """A 1-row image StimulusSet (a blank 224x224 frame) for the memory
-        pre-flight to probe the vision tower's raw recording width.
-
-        The width is content-invariant, so a blank frame gives the same width as a
-        real one — without running ffmpeg over a video. Mirrors the frame-level set
-        built in ``_expand_to_per_TR_frames`` (stimulus_id + image_file_name +
-        stimulus_paths) so the subject processes it identically.
-        """
-        import pandas as pd
-        from PIL import Image
-        from brainscore_core.supported_data_standards.brainio.stimuli import (
-            StimulusSet)
-        frames_dir = self._frames_dir()
-        frames_dir.mkdir(parents=True, exist_ok=True)
-        probe_path = frames_dir / '_memcheck_probe.jpg'
-        if not probe_path.exists():
-            Image.new('RGB', (224, 224), color=(0, 0, 0)).save(probe_path)
-        pid = '_memcheck_probe'
-        ss = StimulusSet(pd.DataFrame(
-            [{'stimulus_id': pid, 'image_file_name': str(probe_path)}]))
-        ss.identifier = f'{self.identifier}-memcheck-probe'
-        ss.stimulus_paths = {pid: str(probe_path)}
-        return ss
-
-    def _probe_clip_stimuli(self):
-        """A 1-row video StimulusSet (a blank 224x224 clip of one TR) for the memory
-        pre-flight, the clip counterpart of ``_probe_frame_stimuli``. The clip has the
-        same size, frame count and frame rate as a real one."""
-        import subprocess
-        import pandas as pd
-        from brainscore_core.supported_data_standards.brainio.stimuli import (
-            StimulusSet)
-        clips_dir = self._clips_dir()
-        clips_dir.mkdir(parents=True, exist_ok=True)
-        probe_path = clips_dir / '_memcheck_probe.mp4'
-        if not probe_path.exists():
-            subprocess.run(
-                ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i',
-                 f'color=c=black:s=224x224:r={CLIP_FPS}', '-frames:v', str(CLIP_FRAMES),
-                 '-c:v', 'libx264', '-pix_fmt', 'yuv420p', str(probe_path)],
-                check=True, capture_output=True)
-        pid = '_memcheck_probe'
-        ss = StimulusSet(pd.DataFrame(
-            [{'stimulus_id': pid, 'video_path': str(probe_path)}]))
-        ss.identifier = f'{self.identifier}-memcheck-probe'
-        ss.stimulus_paths = {pid: str(probe_path)}
-        return ss
-
-    # ── Per-TR frame extraction ───────────────────────────────────
-
-    def _frames_dir(self) -> Path:
-        """Cache dir for extracted frames. Idempotent across runs."""
-        return self._assembly_root / 'frames'
-
-    def _expand_to_per_TR_frames(self, fps_offset: float = 0.5,
-                                 resize: int = 224, n_workers: int = 8):
-        """Build a frame-level StimulusSet — one row per (stim_id, TR).
-
-        Uses ffmpeg via parallel subprocesses (~10x faster than cv2's
-        Python loop). Each worker extracts all TR-midpoint frames from
-        one video in a single ffmpeg call:
-            ffmpeg -ss {offset} -i {video} \
-                -vf "fps=1/{TR_SEC},scale={R}:{R}" -q:v 3 \
-                {dir}/%04d.jpg
-        Saves resized JPEGs (~10 KB each at 224×224) to
-        {frames_dir}/{stim_id}/{t:04d}.jpg.
-        """
-        import pandas as pd
-        from brainscore_core.supported_data_standards.brainio.stimuli import (
-            StimulusSet)
-
-        frames_dir = self._frames_dir()
-        frames_dir.mkdir(parents=True, exist_ok=True)
-        stim_df = self.stimulus_set
-        stim_to_n_TRs = self._stim_id_to_n_TRs()
-
-        # Plan extraction jobs. Skip stims whose JPEGs already exist.
-        # ffmpeg's %04d starts at 1, so frame t is file t+1.
-        rows, planned = self._plan_per_TR_files(
-            frames_dir, '.jpg', 1, 'image_file_name', stim_to_n_TRs)
-        jobs = [(video, str(out_dir), fps_offset, resize, n_TRs)
-                for video, out_dir, n_TRs in planned]
-
-        if jobs:
-            logger.debug('extracting frames for %d videos via ffmpeg (n_workers=%d)',
-                         len(jobs), n_workers)
-            self._run_pool(_ffmpeg_extract_one, jobs, n_workers)
-
-        # ffmpeg sometimes outputs fewer frames than the assembly's
-        # n_TRs expects (video shorter than the fMRI run by 1-2 TRs).
-        # Fill any missing trailing frames by symlinking the last
-        # existing one so downstream extraction sees a complete set.
-        n_filled = self._fill_trailing_files(
-            frames_dir, '.jpg', 1, stim_to_n_TRs)
-        if n_filled > 0:
-            logger.debug('filled %d trailing frames by duplicating the last one', n_filled)
-
-        df = pd.DataFrame(rows)
-        out_set = StimulusSet(df)
-        # The activations cache (@store_xarray) keys on (model, stimuli_identifier,
-        # layers) -- NOT on the stimulus set's columns. A fixed identifier therefore
-        # lets a cached assembly built from one column set be merged with a fresh
-        # extraction built from another, which surfaces as an opaque
-        # `AssertionError: Length of new_levels (N) must be <= self.nlevels (M)`
-        # from deep inside pandas' MultiIndex recode. Folding the column signature
-        # into the identifier makes the cache miss instead, which is the correct
-        # behaviour: different columns are genuinely different stimuli metadata.
-        column_signature = hashlib.md5(
-            '|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
-        out_set.identifier = (
-            f'algonauts2025-{self._split}-sub{self._participant:02d}-frames'
-            f'-{column_signature}')
-        out_set.stimulus_paths = dict(
-            zip(df['stimulus_id'], df['image_file_name']))
-        return out_set
-
-    def _plan_per_TR_files(self, root: Path, ext: str, first_index: int,
-                           path_column: str, stim_to_n_TRs: Dict[str, int]):
-        """One table row per (movie, TR), and the movies that still need cutting.
-
-        File ``t`` of movie ``stim_id`` is ``{root}/{stim_id}/{t + first_index:04d}{ext}``.
-        Returns ``(rows, jobs)``; a job is ``(video_path, stim_dir, n_TRs)`` and is
-        listed only when some file of the movie is missing.
-        """
-        rows, jobs = [], []
-        for _, srow in self.stimulus_set.iterrows():
-            stim_id = srow['stimulus_id']
-            video_path = Path(srow['video_path'])
-            if not video_path.exists():
-                continue
-            n_TRs = stim_to_n_TRs.get(stim_id)
-            if n_TRs is None:
-                continue
-            stim_dir = root / stim_id
-            stim_dir.mkdir(parents=True, exist_ok=True)
-            target_paths = [stim_dir / f'{t + first_index:04d}{ext}'
-                            for t in range(n_TRs)]
-            for t, out in enumerate(target_paths):
-                # PytorchWrapper indexes ``stimulus_set['stimulus_id']``
-                # for path lookup, so each row's stimulus_id must be
-                # globally unique. Use frame_id as the canonical ID;
-                # keep the per-clip stim_id under ``clip_id`` for
-                # downstream TR-alignment.
-                frame_id = f'{stim_id}_t{t:04d}'
-                rows.append({
-                    'stimulus_id': frame_id,
-                    'frame_id': frame_id,
-                    'clip_id': stim_id,
-                    't_within_run': t,
-                    path_column: str(out),
-                })
-            if not all(p.exists() for p in target_paths):
-                jobs.append((str(video_path), str(stim_dir), n_TRs))
-        return rows, jobs
-
-    @staticmethod
-    def _run_pool(worker, jobs, n_workers: int) -> None:
-        import multiprocessing as mp
-        # 'fork' avoids the re-import that 'spawn' triggers (which
-        # makes the worker re-execute the driver script's top-level
-        # code). ffmpeg is just a subprocess so fork is safe here.
-        ctx = mp.get_context('fork')
-        with ctx.Pool(processes=n_workers) as pool:
-            for done, _ in enumerate(pool.imap_unordered(worker, jobs), 1):
-                if done % 25 == 0 or done == len(jobs):
-                    logger.debug('%d/%d videos done', done, len(jobs))
-
-    def _fill_trailing_files(self, root: Path, ext: str, first_index: int,
-                             stim_to_n_TRs: Dict[str, int]) -> int:
-        """Copy the last existing file over every missing one; returns the count."""
-        import shutil
-        n_filled = 0
-        for _, srow in self.stimulus_set.iterrows():
-            stim_id = srow['stimulus_id']
-            n_TRs = stim_to_n_TRs.get(stim_id)
-            if n_TRs is None:
-                continue
-            target_paths = [root / stim_id / f'{t + first_index:04d}{ext}'
-                            for t in range(n_TRs)]
-            existing = [p for p in target_paths if p.exists()]
-            if not existing:
-                continue
-            last_existing = existing[-1]
-            for p in target_paths:
-                if not p.exists():
-                    shutil.copy(last_existing, p)
-                    n_filled += 1
-        return n_filled
-
-    # ── Per-TR clip cutting (channels vision:video) ────────────────────────
-
-    def _clips_dir(self) -> Path:
-        """Cache dir for cut clips. Idempotent across runs."""
-        return self._assembly_root / 'clips'
-
-    def _expand_to_per_TR_clips(self, resize: int = 224, n_workers: int = 8):
-        """Build a clip-level StimulusSet: one row per (stim_id, TR).
-
-        Clip ``t`` is the movie time [t x TR_SEC, (t+1) x TR_SEC), cut at
-        ``resize`` x ``resize`` with no sound by one ffmpeg call per movie (see
-        ``_clip_ffmpeg_command``) into ``{clips_dir}/{stim_id}/{t:04d}.mp4``.
-        Every clip has ``CLIP_FRAMES`` frames. Clips the movie does not reach are
-        copies of the last clip. The columns are those of the frame table, with
-        ``video_path`` in place of ``image_file_name``.
-        """
-        import pandas as pd
-        from brainscore_core.supported_data_standards.brainio.stimuli import (
-            StimulusSet)
-
-        clips_dir = self._clips_dir()
-        clips_dir.mkdir(parents=True, exist_ok=True)
-        stim_to_n_TRs = self._stim_id_to_n_TRs()
-        rows, planned = self._plan_per_TR_files(
-            clips_dir, '.mp4', 0, 'video_path', stim_to_n_TRs)
-        jobs = [(video, out_dir, resize, n_TRs) for video, out_dir, n_TRs in planned]
-        if jobs:
-            logger.debug('cutting clips for %d videos via ffmpeg (n_workers=%d)',
-                         len(jobs), n_workers)
-            self._run_pool(_ffmpeg_cut_clips_one, jobs, n_workers)
-        n_filled = self._fill_trailing_files(clips_dir, '.mp4', 0, stim_to_n_TRs)
-        if n_filled > 0:
-            logger.debug('filled %d trailing clips by duplicating the last one', n_filled)
-
-        df = pd.DataFrame(rows)
-        # A movie that ffmpeg could not cut leaves no clips. Stop here, before a model reads a missing file.
-        missing = [path for path in df['video_path'] if not Path(path).exists()]
-        if missing:
-            raise FileNotFoundError(
-                f"{len(missing)} of {len(df)} clips were not cut; the first is {missing[0]}. "
-                "Check that ffmpeg can read the movie files.")
-        out_set = StimulusSet(df)
-        # Same reasoning as for the frame table: the column signature is part of
-        # the identifier, and the video table has its own identifier.
-        column_signature = hashlib.md5(
-            '|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
-        out_set.identifier = (
-            f'algonauts2025-{self._split}-sub{self._participant:02d}-clips'
-            f'-{column_signature}')
-        out_set.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
-        return out_set
-
-    def _sound_dir(self) -> Path:
-        """Cache dir for cut sound chunks. Idempotent across runs."""
-        return self._assembly_root / 'sound'
-
-    def _expand_to_per_TR_clips_and_sound(self, resize: int = 224, n_workers: int = 8):
-        """The clip table with the sound of each clip: one row per (stim_id, TR).
-
-        Sound chunk ``t`` is the sound of the movie time [t x TR_SEC, (t+1) x TR_SEC),
-        16 kHz mono, cut by one ffmpeg call per movie (see ``_sound_ffmpeg_command``)
-        into ``{sound_dir}/{stim_id}/{t:04d}.wav``. Every chunk has the same number
-        of samples. Chunks the movie does not reach are copies of the last chunk.
-        The columns are those of the clip table plus ``audio_path``.
-        """
-        from brainscore_core.supported_data_standards.brainio.stimuli import (
-            StimulusSet)
-
-        clips = self._expand_to_per_TR_clips(resize=resize, n_workers=n_workers)
-        sound_dir = self._sound_dir()
-        sound_dir.mkdir(parents=True, exist_ok=True)
-        stim_to_n_TRs = self._stim_id_to_n_TRs()
-        rows, planned = self._plan_per_TR_files(
-            sound_dir, '.wav', 0, 'audio_path', stim_to_n_TRs)
-        if planned:
-            logger.debug('cutting sound for %d videos via ffmpeg (n_workers=%d)',
-                         len(planned), n_workers)
-            self._run_pool(_ffmpeg_cut_sound_one, planned, n_workers)
-        n_filled = self._fill_trailing_files(sound_dir, '.wav', 0, stim_to_n_TRs)
-        if n_filled > 0:
-            logger.debug('filled %d trailing sound chunks by duplicating the last one', n_filled)
-
-        sound = {row['stimulus_id']: row['audio_path'] for row in rows}
-        missing = [path for path in sound.values() if not Path(path).exists()]
-        if missing:
-            raise FileNotFoundError(
-                f"{len(missing)} of {len(sound)} sound chunks were not cut; the first is "
-                f"{missing[0]}. Check that ffmpeg can read the sound of the movie files.")
-        df = clips.copy()
-        df['audio_path'] = [sound[sid] for sid in df['stimulus_id']]
-        out_set = StimulusSet(df)
-        column_signature = hashlib.md5(
-            '|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
-        out_set.identifier = (
-            f'algonauts2025-{self._split}-sub{self._participant:02d}-clips-sound'
-            f'-{column_signature}')
-        out_set.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
-        return out_set
-
-    def _expand_to_per_TR_stimuli(self):
-        """The table of what one TR presents, for the channels of this benchmark."""
-        if self._channels == self._VIDEO_AUDIO:
-            return self._expand_to_per_TR_clips_and_sound()
-        if self._channels == self._VIDEO:
-            return self._expand_to_per_TR_clips()
-        return self._expand_to_per_TR_frames()
-
-    def _stim_id_to_n_TRs(self) -> Dict[str, int]:
-        """Count TRs per stimulus_id from the assembly's presentation
-        coord. Both training and held-out stubs carry stimulus_id at
-        the right resolution, so this works for all splits."""
-        ids = list(self.assembly['stimulus_id'].values)
-        from collections import Counter
-        return dict(Counter(ids))
-
-    # ── Recording the bands ───────────────────────────────────────
+    # ── What is requested ─────────────────────────────────────────
 
     def _record_bands(self, subject, stimuli, regions) -> Dict[str, Tuple[np.ndarray, object]]:
         """``{region: (features, neuroid ids)}`` with one row per row of ``stimuli``.
 
-        One session requests every region, each on its own channel,
-        ``neural:<region>``, so the session requests exactly what pre-flight
-        checked, and the subject sees each row once. Each channel is the
-        payload a session for that region alone would give; a model runs once
-        for all the regions an extractor with ``independent_layers`` records,
-        and once per region otherwise. Each answer is averaged over its time
-        bins and put in the row order of ``stimuli``. With ``streaming=True``
-        the subject gets one row at a time and answers it before the next;
-        otherwise it gets the table at once. Nothing is reduced here: the
-        reduction is fitted per fold in ``score_banded``.
+        One session requests every region on its own channel ``neural:<region>``,
+        so the subject sees each row once and the request is what pre-flight
+        checked. Each answer is averaged over its time bins and put in the row
+        order of ``stimuli``. Nothing is reduced here: ``score_banded`` fits the
+        reduction per fold.
         """
         from brainscore_core.streaming_helpers import stimulus_session
         channels = [f'neural:{region}' for region in regions]
@@ -770,50 +280,33 @@ class Algonauts2025(BenchmarkBase):
 
     def _assembly_bands(self, subject, regions):
         """The bands of ``_record_bands``, aligned to the TR rows of the assembly."""
-        table = self._expand_to_per_TR_stimuli()
+        table = self._stimuli()
         logger.debug('recording %s for %d rows (%s)', ['neural:' + region for region in regions],
                      len(table), 'stream' if self._streaming else 'table')
         frame_ids = list(table['stimulus_id'])
         return {region: (self._align_features_to_assembly(features, frame_ids, table), ids)
                 for region, (features, ids) in self._record_bands(subject, table, regions).items()}
 
+    # ── How features meet scans ───────────────────────────────────
+
     def _align_features_to_assembly(
         self, features: np.ndarray, frame_ids: List[str],
         frame_stim_set,
     ) -> np.ndarray:
-        """Reorder per-frame features to match the assembly's
-        (presentation) order. Each frame_id encodes (stimulus_id,
-        t_within_run); the assembly's presentation rows are in the
-        order they appear in the .h5 datasets.
-
-        Returns X with shape (n_TRs_in_assembly, n_features).
-        """
-        # Build frame_id → row index in features
+        """The per-row features on the assembly scans: row (film, scan) goes to the
+        scan with the same ``stimulus_id`` and ``t_within_run``. Returns X with
+        shape (n_TRs_in_assembly, n_features)."""
         feat_idx = {fid: i for i, fid in enumerate(frame_ids)}
-        # If the wrapper returned 'stimulus_id' instead of 'frame_id',
-        # the lookup table is by (stim_id, t) tuple — need to fall back.
-        use_tuple_lookup = (frame_ids and frame_ids[0] not in feat_idx
-                            and not frame_ids[0].endswith('_t0000'))
-
-        # The frame_stim_set's order may differ from the assembly's.
-        # Build (clip_id, t) → frame_id mapping from the stim_set.
-        # NOTE: frame_stim_set's 'stimulus_id' column is the unique
-        # frame_id (PytorchWrapper requires this to be globally unique
-        # for path lookup); the per-clip identifier lives in 'clip_id'.
+        # The table's 'stimulus_id' is the unique row id; the film is 'clip_id'.
         sf = frame_stim_set
-        stim_t_to_frame_id = {
-            (str(sf.iloc[i]['clip_id']),
-             int(sf.iloc[i]['t_within_run'])):
-            sf.iloc[i]['frame_id']
-            for i in range(len(sf))
-        }
+        stim_t_to_frame_id = {(str(clip), int(t)): frame for clip, t, frame in
+                              zip(sf['clip_id'], sf['t_within_run'], sf['frame_id'])}
 
         n_TRs = self.assembly.sizes['presentation']
         X = np.full((n_TRs, features.shape[1]), np.nan, dtype=np.float32)
         a_stim = list(self.assembly['stimulus_id'].values)
         a_t = list(self.assembly['t_within_run'].values)
-        missing_fid = 0
-        missing_row = 0
+        missing_fid = missing_row = 0
         for i in range(n_TRs):
             fid = stim_t_to_frame_id.get((str(a_stim[i]), int(a_t[i])))
             if fid is None:
@@ -826,10 +319,8 @@ class Algonauts2025(BenchmarkBase):
             X[i] = features[row]
         missing = missing_fid + missing_row
         if missing > 0:
-            # Some TRs may lack frames (e.g., assembly TRs past the
-            # video's actual duration). Fill each with the nearest earlier
-            # valid TR of the same run (the first valid one at a run start),
-            # never across a run boundary.
+            # Fill a scan without a row from the nearest earlier scan of the same
+            # run (the first valid one at a run start), never across runs.
             logger.warning('%d of %d TRs had no frame (%d not in the stimulus table, %d not '
                            'recorded); filling each from the same run.',
                            missing, n_TRs, missing_fid, missing_row)
@@ -873,8 +364,6 @@ class Algonauts2025(BenchmarkBase):
             X_stacked[rows[inside], offset * n_feat:(offset + 1) * n_feat] = X[src[inside]]
         return X_stacked
 
-    # ── Scoring ───────────────────────────────────────────────────
-
     def _runs_and_keep(self, drop_excluded: bool = True):
         """``(run index per TR, keep mask)`` over the assembly's TR rows.
 
@@ -905,29 +394,16 @@ class Algonauts2025(BenchmarkBase):
         if drop_excluded:
             for ri in range(len(seen)):
                 run_idxs = np.where(run_idx == ri)[0]
-                for ki in range(self._excluded_samples_start):
-                    if ki < len(run_idxs):
-                        keep[run_idxs[ki]] = False
-                for ki in range(self._excluded_samples_end):
-                    if ki < len(run_idxs):
-                        keep[run_idxs[-1 - ki]] = False
+                keep[run_idxs[:self._excluded_samples_start]] = False
+                if self._excluded_samples_end > 0:
+                    keep[run_idxs[-self._excluded_samples_end:]] = False
         return run_idx, keep
 
     def _stacker(self, run_idx):
         """Stack the stimulus window and shift by the HRF delay within ``run_idx``'s runs."""
         return lambda X: self._apply_stimulus_window_and_hrf(X, run_idx)
 
-    def __call__(self, subject) -> Score:
-        if self._split != 'friends':
-            raise ValueError(
-                f"The {self._split!r} benchmark is a prediction target, not a score: "
-                f"its fMRI is withheld, so score() cannot rate a subject on it. "
-                f"Call `generate_predictions(subject, out_dir)` on this benchmark "
-                f"to write the per-parcel predictions as .npy files, bundle them in "
-                f"the Codabench zip layout and upload them. For a score, use the "
-                f"`Algonauts2025-friends-sub{self._participant:02d}` benchmark."
-            )
-        return self._score_friends_train(subject)
+    # ── The fit and the score ─────────────────────────────────────
 
     def _stimulus_groups(self) -> np.ndarray:
         """The stimulus of each TR row: the unit that the folds keep on one side.
@@ -937,30 +413,45 @@ class Algonauts2025(BenchmarkBase):
         """
         return np.asarray(self.assembly['stimulus_id'].values).astype(str)
 
-    def _score_friends_train(self, subject) -> Score:
-        # The same pre-flight as score(): N/A before any cutting or recording.
-        from brainscore_core.compatibility import check_compatibility
-        check_compatibility(subject, self)
+    def regression_inputs(self, subject, drop_excluded: bool = True):
+        """What the banded ridge needs from this benchmark and ``subject``.
+
+        Returns ``(bands, Y, groups, keep, stack)``: the recorded bands aligned to
+        the assembly scans, the parcel responses, the film of each scan (the fold
+        groups), the scans kept after the exclusions at the start and the end of
+        each run (every scan when ``drop_excluded`` is False), and the stack of
+        the stimulus window and the HRF delay inside each run. The score uses
+        it, and so does ``brainscore.tools.algonauts2025_predictions``.
+        """
         regions = list(self.CHANNEL_REGIONS[self._channels])
         bands = self._assembly_bands(subject, regions)
-        run_idx, keep = self._runs_and_keep()
-        groups = self._stimulus_groups()
-        Y = self.assembly.values
-        logger.debug('%d runs of %d stimuli; %d of %d TRs after exclusions; banded ridge over '
-                     'bands %s (5 folds over stimuli)', len(np.unique(run_idx)),
-                     len(np.unique(groups)), int(keep.sum()), len(keep), list(bands))
+        run_idx, keep = self._runs_and_keep(drop_excluded)
+        return bands, self.assembly.values, self._stimulus_groups(), keep, self._stacker(run_idx)
+
+    def __call__(self, subject) -> Score:
+        if self._split != 'friends':
+            raise ValueError(
+                f"The {self._split!r} benchmark is a prediction target, not a score: its "
+                f"fMRI is withheld. Call `brainscore.tools.algonauts2025_predictions."
+                f"generate_predictions(subject, benchmark, out_dir)` to write the predictions. "
+                f"For a score, use `Algonauts2025-friends-sub{self._participant:02d}`.")
+        # The same pre-flight as score(): N/A before any recording.
+        from brainscore_core.compatibility import check_compatibility
+        check_compatibility(subject, self)
+        bands, Y, groups, keep, stack = self.regression_inputs(subject)
+        logger.debug('%d stimuli; %d of %d TRs after exclusions; banded ridge over bands %s '
+                     '(5 folds over stimuli)', len(np.unique(groups)), int(keep.sum()),
+                     len(keep), list(bands))
         per_parcel_r, info = score_banded(
-            bands, Y, groups, keep, self._stacker(run_idx),
+            bands, Y, groups, keep, stack,
             dim_cap=self.LAYER_DIM_CAP, alpha_grid=self.BANDED_ALPHA_GRID,
             n_candidates=self.BANDED_CANDIDATES)
-
-        finite = per_parcel_r[~np.isnan(per_parcel_r)]
-        median_r = float(np.median(finite))
+        finite, median_r, mean_r = summarize(per_parcel_r)
         # No ceiling is measured: the score is the raw median correlation.
         score = benchmark_score(
             self, median_r, raw=median_r, normalized=False,
             metric='median_per_parcel_pearson_r',
-            mean_r=float(np.mean(finite)),
+            mean_r=mean_r,
             n_parcels_scored=int(len(finite)),
             # The per-parcel scores in Schaefer order, for a cortical surface. A
             # parcel that could not be scored stays NaN, unpainted.
@@ -986,63 +477,36 @@ class Algonauts2025(BenchmarkBase):
             score.attrs['clip_seconds'] = TR_SEC
             score.attrs['frames_per_clip'] = CLIP_FRAMES
         if self._channels == self._VIDEO_AUDIO:
-            score.attrs['sound_rate_hz'] = _SOUND_RATE_HZ
+            score.attrs['sound_rate_hz'] = SOUND_RATE_HZ
         if self._movies is not None:
             score.attrs['movies'] = list(self._movies)
         return score
 
-    # ── Held-out prediction (Codabench submission) ────────────────
-
-    def generate_predictions(self, subject, out_dir, train_benchmark=None):
-        """Produce held-out per-parcel BOLD predictions for the Codabench target.
-
-        The method is the scoring method without the outer folds. The benchmark
-        records the same bands on this participant's Friends training films and on
-        this held-out split. It fits the preparation of each band on the
-        training films, chooses the penalties on held-out training
-        stimuli, fits one banded ridge on all training films and predicts every
-        TR of this split. It writes ``sub-<NN>_<split>.npy`` of shape
-        ``(n_TRs, 1000)`` into ``out_dir``.
-
-        ``train_benchmark`` must be the Friends training split of the same
-        participant, with the same channels, stimulus window, HRF delay and streaming.
-        Its ``movies`` limit the training films; this benchmark's ``movies``
-        limit the predicted films.
-        """
-        import os
-        if self._split == 'friends':
-            raise ValueError(
-                "generate_predictions is for held-out splits; the friends "
-                "training split is scored via __call__.")
-        train = train_benchmark or Algonauts2025(
-            participant=self._participant, channels=self._channels,
-            streaming=self._streaming)
-        if train._participant != self._participant or train._split != 'friends':
-            raise ValueError('Prediction requires Friends training data for the same participant.')
-        if train._channels != self._channels:
-            raise ValueError('Training and prediction must send the same channels.')
-        if train._streaming != self._streaming:
-            raise ValueError('Training and prediction must present the table the same way '
-                             '(streaming).')
-        if (train._stimulus_window, train._hrf_delay) != (
-                self._stimulus_window, self._hrf_delay):
-            raise ValueError('Training and prediction must use the same stimulus window and HRF delay.')
-        from brainscore_core.compatibility import check_compatibility
-        check_compatibility(subject, self)
-        regions = list(self.CHANNEL_REGIONS[self._channels])
-        train_bands = train._assembly_bands(subject, regions)
-        train_runs, train_keep = train._runs_and_keep()
-        predict_bands = self._assembly_bands(subject, regions)
-        predict_runs, _ = self._runs_and_keep(drop_excluded=False)
-        preds, summary = fit_predict_banded(
-            train_bands, train.assembly.values, train._stimulus_groups(), train_keep,
-            train._stacker(train_runs), predict_bands, self._stacker(predict_runs),
-            dim_cap=self.LAYER_DIM_CAP, alpha_grid=self.BANDED_ALPHA_GRID,
-            n_candidates=self.BANDED_CANDIDATES)
-        os.makedirs(out_dir, exist_ok=True)
-        path = os.path.join(out_dir, f'sub-{self._participant:02d}_{self._split}.npy')
-        np.save(path, preds)
-        return {'path': path, 'predictions': preds, 'participant': self._participant,
-                'split': self._split, 'n_TRs': int(preds.shape[0]), 'bands': regions,
-                'penalties': summary, 'penalty_protocol': PENALTY_PROTOCOL,
-                'feature_projection_protocol': PROJECTION_PROTOCOL}
+    @property
+    def execution_plan(self) -> ExecutionPlan:
+        """The memory plan: one extracted row per TR; the metric rows are the TRs
+        after the exclusions of each run; the metric width is one reduced band per
+        region, stacked over ``stimulus_window``. The pre-flight probes the raw
+        width with one blank frame or clip. No ceiling metric runs."""
+        n_trs = len(self.assembly['stimulus_id'])
+        try:
+            stim = self.assembly['stimulus_id'].values
+            run = self.assembly['run'].values
+            run_lengths = Counter((str(s), str(r)) for s, r in zip(stim, run))
+            excluded = self._excluded_samples_start + self._excluded_samples_end
+            # clamp per run: a run shorter than the excluded span retains 0, not a
+            # negative count (subtracting excluded*n_runs globally would under-count).
+            metric_obs = max(sum(max(L - excluded, 0)
+                                 for L in run_lengths.values()), 1)
+        except Exception:
+            metric_obs = int(n_trs)  # no run metadata (e.g. a stub): safe over-count
+        return ExecutionPlan(
+            n_extraction_presentations=int(n_trs),
+            metric_observations=metric_obs,
+            metric_feature_width=(len(self.CHANNEL_REGIONS[self._channels])
+                                  * self._stimulus_window * self.LAYER_DIM_CAP),
+            metric_category='ridge',
+            runs_ceiling_metric=False,
+            probe_stimuli=probe_stimuli(self._CHANNEL_MEDIA[self._channels][0],
+                                        self._assembly_root, self.identifier),
+        )

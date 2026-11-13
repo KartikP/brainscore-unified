@@ -284,8 +284,8 @@ def test_invalid_form_raises():
 
 @needs_ffmpeg
 def test_video_execution_plan_probes_a_blank_clip(tmp_path):
-    from brainscore.benchmarks.algonauts2025.benchmark import (
-        Algonauts2025, CLIP_FRAMES)
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+    from brainscore.data.algonauts2025 import CLIP_FRAMES
     import subprocess
     b = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
     assembly, n_trs, _ = _mock_assembly_two_runs(tr_per_run=20)

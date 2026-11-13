@@ -159,6 +159,12 @@ from tests.benchmark_declarations import assert_declares, assert_preflight
 from brainscore.benchmarks.algonauts2025.benchmark import (
     Algonauts2025)
 
+def _show(monkeypatch, table):
+    """The benchmark shows ``table`` instead of the prepared files of the data plugin."""
+    monkeypatch.setattr(algonauts_module, 'per_scan_stimuli', lambda *args: table)
+    monkeypatch.setattr(algonauts_module, 'load_stimulus_set', lambda *args, **kwargs: None)
+
+
 CLIPS = [f'clip{index}' for index in range(8)]   # 8 runs: 5 outer folds, 5 inner
 TRS = 10
 
@@ -190,7 +196,7 @@ def test_a_whole_score_comes_from_a_participate_only_subject(tmp_path, monkeypat
     frames = StimulusSet(pd.DataFrame(rows))
     frames.identifier = 'synthetic-algonauts-frames'
     frames.stimulus_paths = {row['stimulus_id']: row['image_file_name'] for row in rows}
-    monkeypatch.setattr(benchmark, '_expand_to_per_TR_frames', lambda: frames)
+    _show(monkeypatch, frames)
 
     class Frames(Recorder):
         def participate(self, session):
@@ -264,8 +270,7 @@ def _score_benchmark(tmp_path, monkeypatch, form, table):
         values, dims=('presentation', 'neuroid'),
         coords={'stimulus_id': ('presentation', stimulus), 'run': ('presentation', stimulus),
                 't_within_run': ('presentation', steps)})
-    name = '_expand_to_per_TR_clips' if form == 'video' else '_expand_to_per_TR_frames'
-    monkeypatch.setattr(benchmark, name, lambda: table)
+    _show(monkeypatch, table)
     return benchmark
 
 

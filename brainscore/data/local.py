@@ -213,7 +213,9 @@ ALGONAUTS_PREPARED = register(LocalAsset(
     source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
     obtain='Nothing to download. Run the converter on the dataset above; it '
            'writes the per-TR assemblies and stimulus tables that the '
-           'benchmarks read.',
+           'benchmarks read. Then cut the films into one file per scan with '
+           'brainscore.data.algonauts2025.data_packaging.prepare_stimuli '
+           '(see brainscore/data/algonauts2025/README.md).',
     prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
             '--algonauts-root <root> --output-root <this folder> --subjects 1',
     used_by=_ALGONAUTS_IDENTIFIERS,

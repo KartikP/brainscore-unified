@@ -57,6 +57,13 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
     from brainscore.benchmarks.algonauts2025.benchmark import (
         Algonauts2025,
     )
+    from brainscore.benchmarks.algonauts2025 import benchmark as algonauts
+    from brainscore.tools.algonauts2025_predictions import generate_predictions
+    tables = {}
+    # Each benchmark shows its own table: one row per scan, in assembly order.
+    monkeypatch.setattr(algonauts, 'per_scan_stimuli',
+                        lambda stimulus_set, n_scans, media, split, *args: tables[split])
+    monkeypatch.setattr(algonauts, 'load_stimulus_set', lambda *args, **kwargs: None)
     rng = np.random.default_rng(0)
     n_runs, per_run = 8, 4
     signal = rng.choice([-3.0, -2.0, 2.0, 3.0], size=n_runs * per_run).astype(np.float32)
@@ -71,9 +78,12 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
             (test, test_features, ['clip'] * 4)):
         benchmark.LAYER_DIM_CAP = 1
         benchmark.BANDED_ALPHA_GRID = (1e-2,)
-        stimuli = StimulusSet({'stimulus_id': [f'{benchmark._split}{i}' for i in range(len(features))],
+        ids = [f'{benchmark._split}{i}' for i in range(len(features))]
+        stimuli = StimulusSet({'stimulus_id': ids, 'frame_id': ids, 'clip_id': runs,
+                               't_within_run': list(range(len(runs))),
                                'sentence': ['x'] * len(features)})
         stimuli.identifier = benchmark._split
+        tables[benchmark._split] = stimuli
         coords = {'stimulus_id': ('presentation', runs),
                   't_within_run': ('presentation', list(range(len(runs)))),
                   'neuroid_id': ('neuroid', ['target'])}
@@ -81,8 +91,6 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
             coords['run'] = ('presentation', runs)
         benchmark._assembly = NeuroidAssembly(features[:, :1], dims=['presentation', 'neuroid'],
                                               coords=coords)
-        monkeypatch.setattr(benchmark, '_expand_to_per_TR_stimuli', lambda s=stimuli: s)
-        monkeypatch.setattr(benchmark, '_align_features_to_assembly', lambda features, *args: features)
 
     from brainscore_core.contract import Subject
     from brainscore_core.streaming import StreamEvent
@@ -102,7 +110,7 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
                         'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
                         'neuroid_id': ('neuroid', ['u0', 'u1'])}), t_ms=None))
 
-    result = test.generate_predictions(FixedSubject(), tmp_path, train_benchmark=train)
+    result = generate_predictions(FixedSubject(), test, tmp_path, train_benchmark=train)
     np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-3)
     np.testing.assert_array_equal(np.load(result['path']), result['predictions'])
     assert result['bands'] == ['IT', 'V1', 'V4']

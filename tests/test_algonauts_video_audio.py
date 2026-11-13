@@ -1,12 +1,8 @@
 """The video+audio form of the Algonauts 2025 benchmark, on tiny synthetic data.
 
-No model weights, no downloads, no real movies. The ffmpeg tests make a short movie
-with ffmpeg's ``testsrc`` and ``sine`` and skip when ffmpeg is absent.
+No model weights, no downloads, no real movies. The cutting of clips and sound is
+tested with the data plugin (``tests/test_algonauts_data_preparation.py``).
 """
-import shutil
-import subprocess
-import wave
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -16,7 +12,8 @@ import pytest
 import brainscore
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore.benchmarks.algonauts2025 import benchmark as algo
-from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025, TR_SEC
+from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+from brainscore.data.algonauts2025 import TR_SEC, scans_per_stimulus
 
 CHANNELS = {'image': ('vision:image',), 'video': ('vision:video',),
             'video+audio': ('vision:video', 'audio')}
@@ -27,124 +24,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 from tests.benchmark_declarations import Declared, assert_declares, assert_preflight
 
-needs_ffmpeg = pytest.mark.skipif(
-    shutil.which('ffmpeg') is None or shutil.which('ffprobe') is None,
-    reason='ffmpeg and ffprobe are needed')
-
-SAMPLES = round(TR_SEC * 16000)
-
-
 def _benchmark(tmp_path, **kwargs):
     return Algonauts2025(participant=1, channels=('vision:video', 'audio'), assembly_root=tmp_path, **kwargs)
-
-
-def _samples(path):
-    with wave.open(str(path)) as wav:
-        return wav.getnframes(), wav.getframerate(), wav.getnchannels()
-
-
-# ── The sound command and the cutter ──────────────────────────────
-
-
-def test_sound_command_cuts_16khz_mono_chunks_of_one_tr():
-    cmd = algo._sound_ffmpeg_command('/m.mkv', '/out/%04d.wav', n_TRs=7)
-    assert cmd[:6] == ['ffmpeg', '-y', '-loglevel', 'error', '-i', '/m.mkv']
-    assert cmd[cmd.index('-t') + 1] == f'{TR_SEC * 7:.4f}'
-    assert '-vn' in cmd
-    audio_filter = cmd[cmd.index('-af') + 1]
-    assert 'aresample=16000' in audio_filter and 'channel_layouts=mono' in audio_filter
-    assert f'asetnsamples=n={SAMPLES}:p=0' in audio_filter
-    assert cmd[cmd.index('-f') + 1] == 'segment'
-    assert cmd[cmd.index('-segment_time') + 1] == f'{TR_SEC}'
-    assert cmd[cmd.index('-segment_format') + 1] == 'wav'
-    assert cmd[-1] == '/out/%04d.wav'
-    assert '-t' not in algo._sound_ffmpeg_command('/m.mkv', '/o/%04d.wav')
-
-
-N_FULL = 6
-MOVIE_SECONDS = N_FULL * TR_SEC + 0.7   # ends in the middle of a TR
-
-
-@pytest.fixture(scope='module')
-def movie(tmp_path_factory):
-    path = tmp_path_factory.mktemp('movie') / 'movie.mkv'
-    subprocess.run(
-        ['ffmpeg', '-y', '-loglevel', 'error',
-         '-f', 'lavfi', '-i', f'testsrc=duration={MOVIE_SECONDS}:size=320x240:rate=30000/1001',
-         '-f', 'lavfi', '-i', f'sine=frequency=440:duration={MOVIE_SECONDS}:sample_rate=44100',
-         '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '2',
-         str(path)], check=True)
-    return path
-
-
-@needs_ffmpeg
-def test_every_sound_chunk_has_one_tr_of_16khz_mono_samples(movie, tmp_path):
-    out = tmp_path / 'sound'
-    out.mkdir()
-    algo._ffmpeg_cut_sound_one((str(movie), str(out), N_FULL + 3))
-    chunks = sorted(out.glob('*.wav'))
-    # The 0.7 s rest is no chunk; nothing past the movie is cut.
-    assert [c.name for c in chunks] == [f'{t:04d}.wav' for t in range(N_FULL)]
-    for chunk in chunks:
-        assert _samples(chunk) == (SAMPLES, 16000, 1)
-    assert not (out / '_cut').exists()
-
-
-@needs_ffmpeg
-def test_the_benchmark_cuts_clips_and_sound_into_one_table(movie, tmp_path):
-    benchmark = _benchmark(tmp_path)
-    benchmark._stimulus_set = pd.DataFrame({'stimulus_id': ['m1'], 'video_path': [str(movie)]})
-    n_TRs = N_FULL + 2                   # the scan goes on for 2 TRs after the movie ends
-    benchmark._stim_id_to_n_TRs = lambda: {'m1': n_TRs}
-    table = benchmark._expand_to_per_TR_stimuli()
-    assert isinstance(table, StimulusSet)
-    assert list(table['stimulus_id']) == [f'm1_t{t:04d}' for t in range(n_TRs)]
-    assert list(table['audio_path']) == [
-        str(tmp_path / 'sound' / 'm1' / f'{t:04d}.wav') for t in range(n_TRs)]
-    assert list(table['video_path']) == [
-        str(tmp_path / 'clips' / 'm1' / f'{t:04d}.mp4') for t in range(n_TRs)]
-    for path in table['audio_path']:
-        assert _samples(path) == (SAMPLES, 16000, 1)
-    last = Path(table['audio_path'].iloc[N_FULL - 1]).read_bytes()
-    for t in (N_FULL, N_FULL + 1):
-        assert Path(table['audio_path'].iloc[t]).read_bytes() == last   # copies of the last chunk
-    assert table.identifier.startswith('algonauts2025-friends-sub01-clips-sound-')
-
-
-def _place_files(root, folder, stim_id, ext, n):
-    (root / folder / stim_id).mkdir(parents=True, exist_ok=True)
-    for t in range(n):
-        (root / folder / stim_id / f'{t:04d}{ext}').write_bytes(b'')
-
-
-def test_the_table_has_a_video_and_an_audio_column_per_tr(tmp_path):
-    benchmark = _benchmark(tmp_path)
-    (tmp_path / 'm1.mkv').write_bytes(b'')
-    benchmark._stimulus_set = pd.DataFrame({'stimulus_id': ['m1'],
-                                            'video_path': [str(tmp_path / 'm1.mkv')]})
-    _place_files(tmp_path, 'clips', 'm1', '.mp4', 3)
-    _place_files(tmp_path, 'sound', 'm1', '.wav', 3)
-    with patch.object(Algonauts2025, '_stim_id_to_n_TRs', return_value={'m1': 3}), \
-            patch.object(Algonauts2025, '_run_pool') as pool:
-        table = benchmark._expand_to_per_TR_stimuli()
-    pool.assert_not_called()                      # every file is there: nothing is cut
-    assert set(table.columns) == {'stimulus_id', 'frame_id', 'clip_id', 't_within_run',
-                                  'video_path', 'audio_path'}
-    assert len(table) == 3
-    assert list(table['audio_path']) == [str(tmp_path / 'sound' / 'm1' / f'{t:04d}.wav')
-                                         for t in range(3)]
-
-
-def test_a_movie_whose_sound_could_not_be_cut_stops_the_run(tmp_path):
-    benchmark = _benchmark(tmp_path)
-    (tmp_path / 'm1.mkv').write_bytes(b'')
-    benchmark._stimulus_set = pd.DataFrame({'stimulus_id': ['m1'],
-                                            'video_path': [str(tmp_path / 'm1.mkv')]})
-    _place_files(tmp_path, 'clips', 'm1', '.mp4', 2)   # clips are there, sound is not
-    with patch.object(Algonauts2025, '_stim_id_to_n_TRs', return_value={'m1': 2}), \
-            patch.object(Algonauts2025, '_run_pool'), \
-            pytest.raises(FileNotFoundError, match='sound chunks were not cut'):
-        benchmark._expand_to_per_TR_stimuli()
 
 
 # ── Declarations and pre-flight ───────────────────────────────────
@@ -409,13 +290,19 @@ def test_the_memory_probe_records_a_requested_region(tmp_path, form, columns, ma
 # ── Stream and table ──────────────────────────────────────────────
 
 
+def _shown(table):
+    """The benchmark shows ``table`` instead of the prepared files of the data plugin."""
+    return patch.multiple(algo, per_scan_stimuli=lambda *args: table,
+                          load_stimulus_set=lambda *args, **kwargs: None)
+
+
 def _score(tmp_path, streaming, calls, channels=('vision:video', 'audio'), columns=('video_path', 'audio_path'),
            model=None):
     benchmark = Algonauts2025(participant=1, channels=channels, assembly_root=tmp_path,
                               streaming=streaming)
     benchmark._assembly = _assembly(MOVIES)
-    benchmark._expand_to_per_TR_stimuli = lambda: _table(columns=columns)
-    return benchmark, benchmark(model if model is not None else _av_model(calls))
+    with _shown(_table(columns=columns)):
+        return benchmark, benchmark(model if model is not None else _av_model(calls))
 
 
 def test_stream_and_table_give_equal_bands_and_scores(tmp_path):
@@ -533,39 +420,32 @@ def test_in_the_stream_each_row_comes_once_with_both_columns(tmp_path):
 # ── movies ────────────────────────────────────────────────────────
 
 
-def test_movies_limit_the_assembly_the_tables_and_the_cut_jobs(tmp_path):
+def test_movies_limit_the_assembly_and_the_table(tmp_path):
     named = MOVIES[:7]
     benchmark = _benchmark(tmp_path, movies=named)
     with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)):
         assembly = benchmark.assembly
     assert sorted(set(assembly['stimulus_id'].values)) == sorted(named)
     assert assembly.sizes['presentation'] == len(named) * N_TRS
+    # The table holds only the named films: the others need no prepared files.
     for movie in MOVIES:
         (tmp_path / f'{movie}.mkv').write_bytes(b'')
     benchmark._stimulus_set = pd.DataFrame({
         'stimulus_id': MOVIES, 'video_path': [str(tmp_path / f'{m}.mkv') for m in MOVIES]})
-    jobs = []
-
-    def cut(worker, planned, n_workers):
-        jobs.append((worker, [Path(job[0]).stem for job in planned]))
-        for video, out_dir, *_ in planned:   # stand in for ffmpeg
-            ext = '.mp4' if worker is algo._ffmpeg_cut_clips_one else '.wav'
+    for movie in named:
+        for folder, suffix in (('clips', '.mp4'), ('sound', '.wav')):
+            (tmp_path / folder / movie).mkdir(parents=True)
             for t in range(N_TRS):
-                (Path(out_dir) / f'{t:04d}{ext}').write_bytes(b'')
-
-    with patch.object(Algonauts2025, '_run_pool', side_effect=cut):
-        table = benchmark._expand_to_per_TR_stimuli()
-    assert jobs == [(algo._ffmpeg_cut_clips_one, named), (algo._ffmpeg_cut_sound_one, named)]
+                (tmp_path / folder / movie / f'{t:04d}{suffix}').write_bytes(b'')
+    table = algo.per_scan_stimuli(benchmark.stimulus_set, scans_per_stimulus(assembly),
+                                  ['clips', 'sound'], 'friends', 1, tmp_path)
     assert sorted(set(table['clip_id'])) == sorted(named)
     assert len(table) == len(named) * N_TRS
-    assert not (tmp_path / 'clips' / MOVIES[-1]).exists()
-    assert not (tmp_path / 'sound' / MOVIES[-1]).exists()
 
 
 def test_the_score_names_the_movies(tmp_path):
     benchmark = _benchmark(tmp_path, movies=MOVIES[:7])
-    benchmark._expand_to_per_TR_stimuli = lambda: _table(MOVIES[:7])
-    with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)):
+    with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)), _shown(_table(MOVIES[:7])):
         score = benchmark(_av_model([]))
     assert score.attrs['movies'] == MOVIES[:7]
     assert np.isfinite(float(score))

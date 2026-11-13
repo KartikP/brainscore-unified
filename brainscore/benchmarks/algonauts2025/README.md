@@ -4,21 +4,24 @@ The benchmark predicts fMRI responses to multimodal naturalistic movies. The dat
 
 ## Registered benchmarks
 
-`__init__.py` registers 6 identifiers: the Friends training split for each of four participants, one video variant and one video-and-sound variant. Each has measured fMRI.
+`__init__.py` registers 6 identifiers: the Friends training split for each of four participants, one video variant and one video-and-sound variant. Each has measured fMRI. `benchmark(model)` scores the model with cross-validation.
 
-| Identifier | Split | How to use it |
+| Identifier | What it shows | Full or part of the data |
 |---|---|---|
-| `Algonauts2025-friends-sub{01,02,03,05}` | Friends S1-S6 and Movie10, with measured fMRI | `benchmark(model)` scores the model with cross-validation. |
-| `Algonauts2025-friends-sub01-video` | Friends S1-S6 and Movie10 for participant 1, shown as clips | `benchmark(model)` scores the model with cross-validation. |
-| `Algonauts2025-friends-sub01-video-audio` | Friends S1-S6 and Movie10 for participant 1, shown as clips with their sound | `benchmark(model)` scores the model with cross-validation. |
+| `Algonauts2025-friends-sub{01,02,03,05}` | one frame per scan | Full for that participant: all released fMRI of one of the four participants, Friends seasons 1 to 6 and the four Movie10 films. |
+| `Algonauts2025-friends-sub01-video` | one clip per scan | Full for participant 1 only. The other three participants have no registered clip form. |
+| `Algonauts2025-friends-sub01-video-audio` | one clip and its sound per scan | Full for participant 1 only. The other three participants have no registered clip-and-sound form. |
 
-The held-out splits, Friends S7 (`split='friends_s7'`) and the out-of-distribution movies (`split='ood'`), have no released fMRI, so they are not in the registry: a registered benchmark has measured data. Build one directly for prediction export (see [Held-out prediction](#held-out-prediction)):
+No identifier uses Friends season 7 or the out-of-distribution films: they have no released fMRI. A benchmark built with `movies=[...]` uses a part of the data, and its score lists the films in `movies`.
+
+The held-out splits, Friends S7 (`split='friends_s7'`) and the out-of-distribution movies (`split='ood'`), are not in the registry: a registered benchmark has measured data. Build one directly and give it to the prediction tool (see [Held-out prediction](#held-out-prediction)):
 
 ```python
 from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+from brainscore.tools.algonauts2025_predictions import generate_predictions
 
 held_out = Algonauts2025(participant=1, split='friends_s7')
-result = held_out.generate_predictions(subject, out_dir)
+result = generate_predictions(subject, held_out, out_dir)
 ```
 
 Calling a held-out benchmark raises `ValueError`, because the data has no ground truth. `generate_predictions` writes one `sub-<NN>_<split>.npy` file of shape `(n_TRs, 1000)`. Zip these files in the Codabench layout and upload them. The repository ships no zip bundler.
@@ -33,9 +36,7 @@ Each benchmark declares its input channels and uses `trial_memory = 'none'`. The
 
 A model that takes none of the inputs the benchmark sends gets N/A. A model that requires an input the benchmark does not send also gets N/A.
 
-Clips are cut once per movie with one ffmpeg call and kept in `<assembly_root>/clips/<movie>/<t>.mp4`. Each clip starts on a key frame, and all clips have the same frame count and duration. Where a movie ends before the last TR of its scan, the missing clips are copies of the last whole clip.
-
-The sound is cut the same way into `<assembly_root>/sound/<movie>/<t>.wav`: 16 kHz, mono, 23840 samples per chunk. Chunk `t` is the sound from `t x 1.49 s` to `(t+1) x 1.49 s`, counted from the start of the sound track. A missing chunk at the end of a movie is a copy of the last whole chunk. If a clip or a chunk could not be cut, the benchmark raises `FileNotFoundError` before a model reads anything.
+The benchmark shows files that the data plugin prepared: one frame, clip or sound chunk per scan, under the prepared root (`frames/`, `clips/`, `sound/`). Prepare them once with the command in the data [README](../../data/algonauts2025/README.md#prepare-the-stimuli). If a file is missing, the benchmark raises `FileNotFoundError` with that command, before a model reads anything.
 
 ## What the benchmark asks for
 
@@ -77,18 +78,19 @@ For a short run, `movies` limits the benchmark to named movies. Use the `stimulu
 
 ## Held-out prediction
 
-`generate_predictions(subject, out_dir)` uses the same method without the outer folds. It records the same bands on the participant's Friends training films and on the held-out split. It fits the preparation of each band on the training films, chooses the penalties for each parcel on held-out training stimuli, fits one banded ridge on all training films and predicts every TR of the held-out split. Training and prediction must use the same participant, channels, stimulus window, HRF delay and `streaming`. The `movies` of the training benchmark limit the training films; the `movies` of the held-out benchmark limit the predicted films. The result lists the bands and the chosen penalties.
+`brainscore.tools.algonauts2025_predictions.generate_predictions(subject, held_out, out_dir)` uses the same method without the outer folds. It records the same bands on the participant's Friends training films and on the held-out split. It fits the preparation of each band on the training films, chooses the penalties for each parcel on held-out training stimuli, fits one banded ridge on all training films and predicts every TR of the held-out split. Training and prediction must use the same participant, channels, stimulus window, HRF delay and `streaming`. The `movies` of the training benchmark limit the training films; the `movies` of the held-out benchmark limit the predicted films. The result lists the bands and the chosen penalties.
 
 ## Files
 
-- `benchmark.py`: the `Algonauts2025` class, and the frame extractor, clip cutter and sound cutter.
+- `benchmark.py`: the `Algonauts2025` class: what is shown, what is requested, how features meet scans, the fit and the score.
 - `scoring.py`: the preparation fitted per fold, and the settings of the banded ridge. The ridge itself (the penalty choice, the solve, the per-parcel Pearson r) is `brainscore/metrics/encoding.py`, shared with the Lahner2024 and LeBel2023 benchmarks.
 - `projection.py`: the reduction of one band.
-- `brainscore/data/algonauts2025/data_packaging/prepare_assembly.py`: builds the assemblies from the native files. See the data [README](../../data/algonauts2025/README.md).
+- `brainscore/data/algonauts2025/`: the data plugin. `data_packaging/prepare_assembly.py` builds the assemblies and the film tables; `data_packaging/prepare_stimuli.py` cuts the films into frames, clips and sound. See the data [README](../../data/algonauts2025/README.md).
+- `brainscore/tools/algonauts2025_predictions.py`: the held-out prediction export.
 
 ## Data
 
-Without prepared data, a registered benchmark raises `FileNotFoundError`. Prepare the data first with the command in the data README. Each assembly has the shape `(time_bin, neuroid)` with 1000 Schaefer parcels per participant. Metadata maps each TR to its movie, episode, split and run.
+Without prepared data, a registered benchmark raises `FileNotFoundError`. Prepare the data first with the commands in the data README. Each assembly has the shape `(time_bin, neuroid)` with 1000 Schaefer parcels per participant. Metadata maps each TR to its movie, episode, split and run.
 
 ## Choices to know about
 
