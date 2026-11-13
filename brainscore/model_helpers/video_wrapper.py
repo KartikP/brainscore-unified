@@ -67,7 +67,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.temporal import window_plan
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
-from brainscore.model_helpers._extractors import LiveRecording, as_float32, cache_signature, hooked
+from brainscore.model_helpers._extractors import (
+    LiveRecording, as_float32, cache_signature, hooked, refuse_other_input)
 
 
 logger = logging.getLogger(__name__)
@@ -489,20 +490,40 @@ class VideoWrapper:
     def record(self, layers):
         """Record ``layers`` while another caller runs the model (an answer or a step).
 
-        Returns a context manager; its ``take()`` gives the first forward pass
+        Returns a context manager; its ``take(row)`` gives the first forward pass
         since the previous take, packaged as ``__call__`` packages one clip: the
-        same values, time steps and neuroid coordinates. The pass must show one
-        clip. The forward pass carries the frames, not the clip's duration, so
-        the time bins of a recording during a task have no times in ms.
+        same values, time steps, clock (read from the clip of ``row``, as
+        ``__call__`` reads it) and neuroid coordinates. The pass must show one
+        clip; a later pass of the same presentation must show the same clip
+        (``refuse_other_input``). With ``context_window_ms`` the passive path
+        stitches several windows, which one pass cannot give, so recording during
+        a task is refused before any compute.
         """
-        def take(first, _call):
+        if self._context_window_ms is not None:
+            raise ValueError(
+                f'{self._identifier!r} tiles each clip into windows of {self._context_window_ms} ms '
+                'and stitches them; a recording during a task has one forward pass per clip and '
+                'cannot give that result. Record this region in a session without a task.')
+
+        def take(first, _call, row):
             per_layer = {layer: self._flatten_layer_output(activity) for layer, activity in first.items()}
             if any(activity.shape[0] != 1 for activity in per_layer.values()):
                 raise ValueError('Recording during a task expects one clip at a time.')
+            if row is None:
+                raise ValueError('A recording during a task needs the presented clip for its clock; '
+                                 'this presentation gave none.')
+            path = self._extract_video_paths(row.to_frame().T)[0]
+            duration_ms, _, _ = self._clip_duration_ms(path)
+            if self._max_clip_ms is not None and duration_ms > self._max_clip_ms:
+                raise ValueError(
+                    f"clip {path} is {duration_ms:.0f}ms > max_clip_ms={self._max_clip_ms}; "
+                    f"set context_window_ms to chunk it (no silent downsampling).")
+            steps = per_layer[next(iter(per_layer))].shape[1]
             return self._package(OrderedDict((layer, [activity[0]]) for layer, activity in per_layer.items()),
-                                 None, ['?'])
+                                 [list(self._t_to_time_ms_fn(steps, duration_ms))], [path])
 
-        return LiveRecording(self._model, self._model, layers, take, as_float32)
+        return LiveRecording(self._model, self._model, layers, take, as_float32,
+                             check=refuse_other_input)
 
     def _package(
         self,
@@ -513,10 +534,8 @@ class VideoWrapper:
         """Package per-video, per-layer activations into a NeuroidAssembly
         with dims (presentation, time_bin, neuroid)."""
         # One time_bin axis is shared by all presentations; refuse clips whose
-        # clocks differ beyond tolerance rather than mislabel them. Without a
-        # clock (a recording during a task) the bins carry only their index.
-        time_ms = (_shared_clock(per_video_time_ms, paths)
-                   if per_video_time_ms is not None else None)
+        # clocks differ beyond tolerance rather than mislabel them.
+        time_ms = _shared_clock(per_video_time_ms, paths)
 
         # Stack videos per layer, then concatenate layers on the feature axis:
         # (n_videos, T, total_F). Each layer's units are numbered from zero
@@ -533,7 +552,7 @@ class VideoWrapper:
         # Build stimulus_ids (placeholder — caller may relabel via
         # _relabel_stimulus_ids)
         stimulus_ids = [Path(p).stem for p in paths]
-        n_time = len(time_ms) if time_ms is not None else data.shape[1]
+        n_time = len(time_ms)
 
         # Canonical time-bin edges (ms), matching the coord names emitted by
         # TextWrapper / AudioWrapper so naturalistic benchmarks align any
@@ -543,13 +562,12 @@ class VideoWrapper:
             'stimulus_id': ('presentation', stimulus_ids),
             'video_path': ('presentation', paths),
         }
-        if time_ms is not None:
-            time_starts, time_ends = _edges_from_centers(time_ms)
-            coords.update({
-                'time_bin_center_ms': ('time_bin', time_ms),
-                'time_bin_start_ms': ('time_bin', time_starts),
-                'time_bin_end_ms': ('time_bin', time_ends),
-            })
+        time_starts, time_ends = _edges_from_centers(time_ms)
+        coords.update({
+            'time_bin_center_ms': ('time_bin', time_ms),
+            'time_bin_start_ms': ('time_bin', time_starts),
+            'time_bin_end_ms': ('time_bin', time_ends),
+        })
         coords['time_bin_idx'] = ('time_bin', list(range(n_time)))
         coords.update({name: ('neuroid', labels) for name, labels in neuroid.items()})
         return make_assembly(

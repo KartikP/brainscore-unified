@@ -74,11 +74,19 @@ def extractor_for_form(owner, modality: str, video: bool):
     for the form: ``vision:video`` when ``video``, else ``vision:image``. None when
     the model has no such extractor."""
     modality = canonical_modality(modality)
-    matching = [key for key in owner._extractors if canonical_modality(key) == modality]
+    matching = extractor_keys(owner, modality)
     if len(matching) > 1 and modality == 'vision':
         wanted = 'video' if video else 'vision'
         matching = [key for key in matching if key == wanted] or matching
     return owner._extractors[matching[0]] if matching else None
+
+
+def extractor_keys(owner, modality: str) -> List[str]:
+    """The extractor keys that serve ``modality``: every key of its input family
+    (``vision`` and ``video`` both serve ``vision``). ``extractor_for_form`` picks
+    one of them by the form of the stimuli, so each of their forms is accepted."""
+    modality = canonical_modality(modality)
+    return [key for key in owner._extractors if canonical_modality(key) == modality]
 
 
 def normalize_extractors(owner, extractor):
@@ -376,18 +384,26 @@ class _SharedCall:
     when it names a layer outside the list, or when the shared output does not
     give its layers, by a per-neuroid ``layer`` coordinate, in the order the
     request names them (an extractor that orders layers otherwise, or that
-    omits one, is called as before).
+    omits one, is called as before). When the listed layers have different
+    dtypes, one assembly cannot keep each layer's dtype: the extractor refuses
+    the shared call (``LayerDtypesDiffer``) and every request is called alone.
     """
 
     def __init__(self, extractor, layers) -> None:
         self.extractor = extractor
         self.layers = list(layers)
         self.output = None
+        self.shared = True
 
     def __call__(self, stimuli, layers):
-        if set(layers) <= set(self.layers):
+        from brainscore.model_helpers._extractors import LayerDtypesDiffer
+        if self.shared and set(layers) <= set(self.layers):
             if self.output is None:
-                self.output = self.extractor(stimuli, layers=self.layers)
+                try:
+                    self.output = self.extractor(stimuli, layers=self.layers)
+                except LayerDtypesDiffer:
+                    self.shared = False
+                    return self.extractor(stimuli, layers=layers)
             part = _layers_of(self.output, list(layers))
             if part is not None:
                 return part

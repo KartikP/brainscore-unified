@@ -217,7 +217,7 @@ def conditional_extractor(pattern):
             captured, count = [], [0]
             recording = type('Recording', (), {})()
 
-            def take():
+            def take(_row):
                 row = captured[0]
                 captured.clear()
                 count[0] += 1

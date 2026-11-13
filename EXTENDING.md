@@ -199,7 +199,8 @@ null floor, ceiling, modality ablations, timing assumptions, score attrs, and EC
 
 A session that requests several regions records them with as few model passes as
 possible. The environment variable `BRAINSCORE_REGIONS_PER_PASS` selects the plan. It is
-read once, when a session starts.
+read once, when a session of any kind starts, and a value other than `all` or `one` stops
+the session before any compute.
 
 - **Default, `all`.** One pass records every requested region of an extractor that
   declares `independent_layers` (every wrapper in `brainscore.model_helpers`). The
@@ -207,6 +208,14 @@ read once, when a session starts.
 - **`one`.** Each region gets its own pass. Use it when the memory check refuses a run,
   or when a run with many regions or large layers runs out of memory. Peak memory is
   lower and the model runs once per region. Scores are the same under both values.
+- **A task.** A task answered by a readout honors the value: under `one` the readout
+  layer and each region get their own call. A task answered by `answer`, `reply` or
+  `likelihood`, and a policy step, records every requested region during the one pass
+  that answers; that pass cannot be split, so the value does not change it.
+- **Layers of different dtypes.** One call cannot keep each layer's dtype, so an
+  extractor of `brainscore.model_helpers` refuses such a call; a session then records
+  each region in its own call under both values. A task that answers in one pass refuses
+  regions whose layers have different dtypes.
 - **A benchmark that sets it restores the earlier value.** Set it only for your own
   run, so that the next run in the same process gets the value it expects:
 

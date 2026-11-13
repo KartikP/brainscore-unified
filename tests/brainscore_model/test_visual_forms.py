@@ -67,7 +67,7 @@ class _Recorder:
 
             class Take:
                 @staticmethod
-                def take():
+                def take(_row):
                     coords = {'stimulus_id': ('presentation', ['?']),
                               'neuroid_id': ('neuroid', ['n0', 'n1']),
                               'layer': ('neuroid', [layers[0]] * 2)}
@@ -113,7 +113,7 @@ def test_a_multi_image_trial_is_recorded_per_image():
         def record(self, layers):
             class Take:
                 @staticmethod
-                def take():
+                def take(_row):
                     values = np.arange(6, dtype=float).reshape(1, 3, 2)   # 3 images, 2 units
                     return NeuroidAssembly(values, dims=['presentation', 'part', 'neuroid'], coords={
                         'stimulus_id': ('presentation', ['?']), 'part_index': ('part', [0, 1, 2]),

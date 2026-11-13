@@ -45,21 +45,27 @@ class NeuralSessions(Capability):
 
     def participate(self, subject, session) -> None:
         task = getattr(session, 'task', None)
-        if task is not None and task.task_type != 'passive' and _BEHAVIOR.enabled_for(subject):
-            # The session's task decides what the subject does (rule 4.1):
-            # record during the task; the answers are not sent.
+        if task is not None and task.task_type != 'passive':
+            # The session's task decides what the subject does (rules 4.1, 4.5):
+            # record during the task; the answers are not sent. A subject with
+            # no part that does a task cannot take part, so the pair is N/A.
+            if not _BEHAVIOR.enabled_for(subject):
+                from brainscore_core.compatibility import CompatibilityError
+                raise CompatibilityError(
+                    f'Subject {subject.identifier!r} has no part for the task '
+                    f'{task.task_type!r}: it needs behavioral_readout_layer=, answer=, '
+                    f'reply= or likelihood=. It records only passive viewing; a session '
+                    f"for that sends task_type='passive' or no task.")
             drive_behavior_and_neural_session(subject, session)
             return
         # A passive session records activity even after a task was configured.
-        # A subject with no part that does a task (no readout, answer, reply or
-        # likelihood) is not changed by one: it records plain viewing.
         subject._begin_episode()
         # A subject that keeps history is shown one trial at a time (same scores,
         # different arrival), so each independent trial can begin empty.
         per_trial = (_keeps_history(subject)
                      and (task is None or task.trial_memory == 'none'))
-        from .._model.channels import regions_per_pass, run_neural_channels
-        plan = regions_per_pass()       # read once, at the start of the session
+        from .._model.channels import run_neural_channels
+        plan = subject._regions_per_pass       # read once, when the session started
         with subject._behavioral.suspended():
             def runner(stimuli, channel_regions, time_bins, multi_modality):
                 return run_neural_channels(subject, stimuli, channel_regions,
@@ -216,7 +222,7 @@ class _PolicySteps:
         outputs = act(self.subject, row)
         if not self.layers:
             return outputs
-        trial = {modality: recording.take() for modality, recording in self.live.items()}
+        trial = {modality: recording.take(None) for modality, recording in self.live.items()}
         stimuli = pd.DataFrame({'stimulus_id': [f'step_{self.step}']})
         for region, assembly in self.subject._behavioral._trial_regions(
                 [trial], stimuli, self.layers).items():

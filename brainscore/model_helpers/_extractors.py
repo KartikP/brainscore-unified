@@ -119,14 +119,22 @@ class LiveRecording:
     record regions during the forward pass that produces an answer, so a
     stimulus is shown once for both measurements. Unknown layers fail here,
     before any compute; the hooks are on while the ``with`` block runs.
-    ``take()`` gives ``take(first, call)``: each layer's value from the first
-    forward pass since the previous take (passed through ``convert``), and the
-    ``(args, kwargs)`` of that pass's call to ``model``. For a generating model
-    that is the prompt pass.
+    ``take(row)`` gives ``take(first, call, row)``: each layer's value from the
+    first forward pass since the previous take (passed through ``convert``),
+    the ``(args, kwargs)`` of that pass's call to ``model``, and the stimulus
+    row presented (None when the caller has no row). For a generating model
+    the first pass is the prompt pass.
+
+    ``check(first_call, call)``, when given, runs before every pass reaches
+    ``model`` (``first_call`` is None for the first pass of a presentation). It
+    raises for a pass the extractor cannot record completely, before that pass
+    computes, so a recording is never a part of what the passive path records.
     """
 
-    def __init__(self, model, root, layers: List[str], take: Callable, convert: Callable):
+    def __init__(self, model, root, layers: List[str], take: Callable, convert: Callable,
+                 check: Callable = None):
         self.layers, self._model, self._take, self._convert = list(layers), model, take, convert
+        self._check = check
         self._modules = {layer: get_layer(root, layer) for layer in self.layers}
         self._first: Dict[str, np.ndarray] = {}
         self._call = None
@@ -154,18 +162,70 @@ class LiveRecording:
             self._first[layer] = self._convert(value)
 
     def _watch_call(self, _module, args, kwargs):
+        if self._check is not None:
+            self._check(self._call, (args, kwargs))
         if self._call is None:
             self._call = (args, kwargs)
 
-    def take(self):
+    def take(self, row=None):
         """The first forward pass since the last take, packaged by the extractor."""
         missing = [layer for layer in self.layers if layer not in self._first]
         if missing:
             raise ValueError(f'No forward pass reached {missing} since the last presentation.')
-        result = self._take({layer: self._first[layer] for layer in self.layers}, self._call)
+        result = self._take({layer: self._first[layer] for layer in self.layers}, self._call, row)
         self._first.clear()
         self._call = None
         return result
+
+
+def refuse_other_input(first_call, call) -> None:
+    """A ``LiveRecording`` check: every pass of a presentation shows the input of the first.
+
+    A later pass with other input (a later chunk or window of the stimulus)
+    would be missing from a recording that keeps the first pass, so it is
+    refused before it runs. A repeat of the same input (a second scoring of
+    the same prompt) is recorded once.
+    """
+    if first_call is not None and not _same(first_call, call):
+        raise ValueError(
+            'A recording during a task keeps one forward pass per presentation, and a later '
+            'pass showed other input than the first (for example a second chunk or window of '
+            'the stimulus). Present each stimulus in one pass, or record it in a session '
+            'without a task.')
+
+
+def _same(a, b) -> bool:
+    import torch
+    if isinstance(a, torch.Tensor) or isinstance(b, torch.Tensor):
+        return (isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor)
+                and a.shape == b.shape and a.device == b.device and bool(torch.equal(a, b)))
+    if isinstance(a, (tuple, list)) or isinstance(b, (tuple, list)):
+        return (type(a) is type(b) and len(a) == len(b)
+                and all(_same(x, y) for x, y in zip(a, b)))
+    if isinstance(a, dict) or isinstance(b, dict):
+        return (isinstance(a, dict) and isinstance(b, dict) and a.keys() == b.keys()
+                and all(_same(a[k], b[k]) for k in a))
+    try:
+        return bool(a == b)
+    except Exception:                                       # noqa: BLE001
+        return a is b
+
+
+class LayerDtypesDiffer(ValueError):
+    """Layers of one call have different dtypes, so one assembly cannot hold them."""
+
+
+def one_dtype(layer_activations) -> None:
+    """Refuse to join layers of different dtypes: numpy would promote them, and a
+    layer's values would then differ from a call for that layer alone."""
+    dtypes = {layer: np.asarray(values).dtype for layer, values in layer_activations.items()
+              if not layer.startswith('_')}
+    if len(set(dtypes.values())) > 1:
+        raise LayerDtypesDiffer(
+            f'The layers {sorted(dtypes)} have different dtypes '
+            f'({", ".join(f"{l}: {d}" for l, d in dtypes.items())}); one assembly holds one '
+            'dtype, so they need separate calls. A session records them apart under '
+            'BRAINSCORE_REGIONS_PER_PASS=one; a recording during a task cannot.')
 
 
 def grid_thw(call):

@@ -60,7 +60,7 @@ class FusedChatExtractor:
 
         ``take()`` splits the first pass since the previous take by input kind.
         """
-        def take(first, call):
+        def take(first, call, _row):
             args, kwargs = call or ((), {})
             ids = kwargs.get('input_ids', args[0] if args else None)
             if ids is None:

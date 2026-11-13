@@ -13,6 +13,7 @@ from brainscore.brainscore_model import BrainScoreModel
 from dataclasses import replace
 
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.selection import LayerSelector
@@ -65,7 +66,7 @@ class ToyExtractor:
         captured = []
         recording = type('Recording', (), {})()
 
-        def take():
+        def take(_row):
             first = captured[0]
             captured.clear()
             return _assembly([first], ['?'], layers)
@@ -166,8 +167,9 @@ def _form_stimuli(column):
 @pytest.mark.parametrize('image_records', [True, False])
 @pytest.mark.parametrize('form, column', [('vision', 'image_path'), ('video', 'video_path')])
 def test_the_extractor_for_the_form_decides_recording(image_records, form, column):
-    """Pre-flight and the run select the extractor by the exact input form
-    (vision:image or vision:video); an extractor for the other form does not decide."""
+    """The region is declared for both forms (the run serves each); during a task
+    the run records with the extractor for the form of the stimuli, and an
+    extractor that cannot record makes the pair N/A before any compute."""
     net = ToyNet()
     image, video = ((ToyExtractor, NoRecordExtractor) if image_records
                     else (NoRecordExtractor, ToyExtractor))
@@ -179,13 +181,13 @@ def test_the_extractor_for_the_form_decides_recording(image_records, form, colum
                             answer=answer)
     records = image_records == (form == 'vision')
     session = stimulus_session(_form_stimuli(column), ['behavior', 'neural:A'], task=GENERATE)
+    model.check_session_support({'behavior', 'neural:A'})
     if records:
-        model.check_session_support({'behavior', 'neural:A'})
         model.participate(session)
         assert session.collect('neural:A').sizes['presentation'] == 3
     else:
-        with pytest.raises(NotImplementedError, match='No session handler'):
-            model.check_session_support({'behavior', 'neural:A'})
+        with pytest.raises(CompatibilityError, match='cannot record'):
+            model.participate(session)
         assert net.passes == 0
 
 

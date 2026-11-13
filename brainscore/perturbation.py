@@ -93,8 +93,10 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
 
     - ``kind='weights'``: edit a parameter. ``target.layer`` is its path
       (``'layers.3.mlp.down_proj.weight'``); ``indices`` pick slices along
-      ``axis``, counted from the end (-1 columns, -2 rows). Undo restores a
-      saved copy.
+      ``axis``, counted from the end (-1 columns, -2 rows). The parameter's
+      value before its first edit is kept; the active edits are applied to it
+      in the order they came, so undoing one keeps the others and ``reset()``
+      gives back that value exactly.
     - ``kind='attention_heads'``: silence or scale heads of an attention module
       (``target.layer``; ``indices`` are head numbers) by editing each head's
       slice of the input to its output projection.
@@ -245,43 +247,70 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         else:
             raise ValueError(f"Unknown perturbation kind {perturbation.kind!r}")
 
+    # Each edited parameter: its value before its first active edit, and its
+    # active edits in the order they were applied. The parameter is always that
+    # value with the edits that are switched on applied in order, so undoing one
+    # edit keeps the others, also where their slices overlap.
+    edited = {}     # id(parameter) -> (parameter, base, [edit, ...])
+
+    def _compose(key):
+        parameter, base, edits = edited[key]
+        with torch.no_grad():
+            parameter.data.copy_(base)
+            for edit in edits:
+                if edit['on']:
+                    edit['write'](parameter)
+
     def _change_weights(state_change):
         """Edit a parameter: ``target.layer`` is its path (``'layers.3.mlp.down_proj.weight'``),
         ``indices`` pick slices along ``axis``, counted from the end (-1: columns,
-        -2: rows of a matrix). Undo restores an exact copy."""
+        -2: rows of a matrix). Undo removes this edit and keeps the others."""
         module_path, _, name = state_change.target.layer.rpartition('.')
         module = _resolve_layer(module_path) if module_path else model
         parameter = getattr(module, name, None)
         if not isinstance(parameter, torch.nn.Parameter):
             raise ValueError(f"{state_change.target.layer!r} is not a parameter of the model.")
-        saved = parameter.detach().clone()
         indices, axis = state_change.target.indices, state_change.target.axis
-        with torch.no_grad():
+        perturbation = state_change.perturbation
+
+        def write(parameter):
             if indices is None:
-                _apply(parameter.data, state_change.perturbation)
+                _apply(parameter.data, perturbation)
             else:
                 index = torch.tensor(list(indices), device=parameter.device)
-                axis = parameter.dim() - 1 if axis in (None, -1) else axis
-                part = parameter.data.index_select(axis, index)
-                _apply(part, state_change.perturbation)
-                parameter.data.index_copy_(axis, index, part)
+                dim = parameter.dim() - 1 if axis in (None, -1) else axis
+                part = parameter.data.index_select(dim, index)
+                _apply(part, perturbation)
+                parameter.data.index_copy_(dim, index, part)
+
+        key = id(parameter)
+        if key not in edited:
+            edited[key] = (parameter, parameter.detach().clone(), [])
+        edit = {'write': write, 'on': True}
+        edited[key][2].append(edit)
+        try:
+            _compose(key)
+        except BaseException:
+            edited[key][2].remove(edit)
+            _forget_or_compose(key)
+            raise
 
         def cleanup():
-            with torch.no_grad():
-                parameter.data.copy_(saved)
-
-        edited = []
+            edited[key][2].remove(edit)
+            _forget_or_compose(key)
 
         def switch(active):
-            with torch.no_grad():
-                if active:
-                    parameter.data.copy_(edited.pop())
-                else:
-                    edited.append(parameter.detach().clone())
-                    parameter.data.copy_(saved)
+            edit['on'] = active
+            _compose(key)
         _SWITCHES[cleanup] = switch
         return PerturbationApplied(handle_id=str(uuid.uuid4()), target=state_change.target,
                                    perturbation=state_change.perturbation), cleanup
+
+    def _forget_or_compose(key):
+        """After an edit leaves: the base again when none is left, else the rest composed."""
+        _compose(key)
+        if not edited[key][2]:
+            del edited[key]
 
     def _change_heads(state_change):
         """Silence or scale attention heads: ``target.layer`` is the attention module,

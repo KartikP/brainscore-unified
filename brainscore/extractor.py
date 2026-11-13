@@ -25,8 +25,12 @@ class Extractor(Protocol):
 
     ``record(layers)`` records while another part (``reply``, ``likelihood``,
     ``answer``, ``policy``) runs the network: it returns a context manager whose
-    ``take()`` gives the first forward pass since the previous take, packaged
-    as ``__call__`` packages one stimulus. Every extractor in
+    ``take(row)`` gives the first forward pass since the previous take, packaged
+    as ``__call__`` packages one stimulus. ``row`` is the stimulus row that
+    pass presented (None for a policy step), so an extractor can read what the
+    pass does not carry (a clip's duration for its clock). A recording is
+    complete or refused: an extractor that cannot give what ``__call__`` gives
+    for the stimulus raises, before the pass when it can. Every extractor in
     ``brainscore.model_helpers`` has it, so a region of such a model is
     recorded during any task. A callable without it (a plain function, or the
     legacy ``PytorchWrapper``) still records plain viewing; during a task it

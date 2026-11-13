@@ -4,10 +4,9 @@ For each of the five wrappers, a tiny seeded network answers a task (a choice, a
 text, a policy step) while the session requests one ``neural:<region>``. The
 answering part shows each stimulus to the network the way the wrapper does,
 so the recording must equal, exactly, the passive recording of the same
-stimulus: values, neuroid coordinates and the extra axis (time or part).
-The one stated difference: the time bins of a ``VideoWrapper`` task recording
-have no coordinates (same number of bins, same values), because the times in
-ms need the clip's duration, which the forward pass does not carry.
+stimulus: values, neuroid coordinates and the extra axis (time or part). A
+``VideoWrapper`` reads the clock of a task recording from the presented clip;
+a policy step presents no clip, so a video recording during it is refused.
 """
 import numpy as np
 import pytest
@@ -70,9 +69,6 @@ def assert_recorded_as_passive(recorded, passive, kind):
         if dim in ('presentation', 'neuroid'):
             continue
         assert _names(passive, dim)
-        if kind == 'video':
-            assert not _names(recorded, dim)        # no clip duration during a task
-            continue
         for name in _names(passive, dim):
             np.testing.assert_array_equal(recorded[name].values, passive[name].values, err_msg=name)
 
@@ -116,6 +112,11 @@ def test_a_region_recorded_during_an_answer_equals_passive_viewing(tmp_path, kin
 def test_a_region_recorded_during_a_policy_step_equals_passive_viewing(tmp_path, kind):
     model, stimuli = _build(kind, tmp_path, policy=True)
     session = Session(EnvironmentSource(_Rows(stimuli['stimulus_id'])), ('motor', f'neural:{REGION}'))
+    if kind == 'video':
+        with pytest.raises(ValueError, match='clip for its clock'):
+            model.participate(session)
+        assert not session.emitted
+        return
     model.participate(session)
     recorded = session.collect(f'neural:{REGION}')
     assert recorded.sizes['presentation'] == len(stimuli)
@@ -147,14 +148,17 @@ def test_a_neural_only_session_under_a_task_records_during_the_task(tmp_path):
     assert_recorded_as_passive(recorded, _passive('video', tmp_path), 'video')
 
 
-def test_a_subject_with_no_task_part_records_plain_viewing_under_a_task(tmp_path):
-    """Nothing in the subject does a task, so the task does not change it."""
-    model, stimuli = _build('audio', tmp_path)
+def test_a_subject_with_no_task_part_is_not_applicable_under_a_task(tmp_path):
+    """The task decides what the subject does; nothing in this subject does it."""
+    wrapper, stimuli, regions, network = tiny_wrappers.audio(tmp_path)
+    passes = []
+    network.register_forward_pre_hook(lambda module, args: passes.append(1))
+    model = BrainScoreModel('tiny-audio', extractor={'audio': wrapper},
+                            region_layer_map={REGION: regions[REGION]})
     session = stimulus_session(stimuli, [f'neural:{REGION}'], task=ANSWERS['choice'][0])
-    model.participate(session)
-    recorded = session.collect(f'neural:{REGION}')
-    passive = _passive('audio', tmp_path)
-    assert recorded.identical(passive)
+    with pytest.raises(CompatibilityError, match='no part for the task'):
+        model.participate(session)
+    assert passes == []
 
 
 class _Plain:

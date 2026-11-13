@@ -185,7 +185,7 @@ def test_each_form_requests_named_regions_and_preflight_is_na_without_them(
 
 
 def _clips_and_pictures_model(calls):
-    """The vision regions read clips; a second tower reads pictures."""
+    """The vision regions read clips; a second extractor of the same input family reads pictures."""
     return BrainScoreModel(
         identifier='clips-and-pictures', model=None,
         region_layer_map={region: LayerSelector(name=f'clip.{region}', modality='video')
@@ -195,25 +195,13 @@ def _clips_and_pictures_model(calls):
                    'vision': _extractor('image_file_name', 3.0, 1, calls)})
 
 
-def test_a_requested_region_whose_tower_gets_no_input_is_na_at_preflight(tmp_path, monkeypatch):
-    # The image form sends pictures only, so no requested region can be answered.
-    calls = []
-    model = _clips_and_pictures_model(calls)
+def test_a_region_is_declared_for_every_form_the_run_selects_an_extractor_for(tmp_path):
+    # The run reads pictures with the picture extractor for any region of the
+    # vision family, so the image form is applicable: the declaration says so.
+    model = _clips_and_pictures_model([])
+    assert model.output_inputs['neural:IT'] == frozenset({'vision:image', 'vision:video'})
     image = Algonauts2025(participant=1, assembly_root=tmp_path)
-    na = r"answers 'neural:IT' only from the inputs \{'vision:video'\}"
-    with pytest.raises(CompatibilityError, match=na):
-        check_compatibility(model, image)
-    # Through the benchmark: N/A before any cutting.
-    image._expand_to_per_TR_stimuli = lambda: pytest.fail('nothing may be cut')
-    with pytest.raises(CompatibilityError, match=na):
-        image(model)
-    # Through score(): N/A before the memory probe and before any cutting.
-    from brainscore_core import memory
-    monkeypatch.setattr(memory, 'check_memory',
-                        lambda *args, **kwargs: pytest.fail('no memory probe'))
-    with pytest.raises(CompatibilityError, match=na):
-        brainscore.score(model, image)
-    assert calls == []
+    assert check_compatibility(model, image).kind == 'full'
 
 
 def test_a_video_only_subject_runs_on_part_of_the_inputs_and_a_sound_subject_needs_sound(tmp_path):

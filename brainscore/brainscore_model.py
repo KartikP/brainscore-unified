@@ -205,6 +205,7 @@ class BrainScoreModel(UnifiedModel):
         self._behavioral = BehavioralReadout(self)
         self._interventions = Interventions(self)
         self._shared_calls = None       # set by dispatch.one_call_per_extractor
+        self._regions_per_pass = 'all'  # the session's BRAINSCORE_REGIONS_PER_PASS, read in participate
         self._capability_state: Dict[str, Any] = {}
         self._capability_setup_done: Set[str] = set()
 
@@ -270,19 +271,19 @@ class BrainScoreModel(UnifiedModel):
     def output_inputs(self):
         """The inputs each ``neural:<region>`` can be answered from.
 
-        A region lists the input channels of the extractor its selector names
-        (``'video'`` takes clips, ``'vision'`` stills). In a model with one
+        A region lists the input channel of every extractor the run can select
+        for it (``dispatch.extractor_keys``, the keys ``extractor_for_form``
+        chooses from): a region of ``'vision'`` or ``'video'`` input, in a model
+        with an image and a video extractor, is answered from stills
+        (``vision:image``) and from clips (``vision:video``). In a model with one
         extractor, a region without a modality lists that extractor's channels.
         Behavior, policy and perturbation outputs are not listed, so they can
         be answered from any input the model takes.
         """
         listed = {}
         for region, selector in self._region_layer_selectors.items():
-            keys = list(self._extractors)
-            if selector.modality is not None:
-                keys = ([key for key in keys if key == selector.modality]
-                        or [key for key in keys if canonical_modality(key)
-                            == canonical_modality(selector.modality)])
+            keys = (list(self._extractors) if selector.modality is None
+                    else dispatch.extractor_keys(self, selector.modality))
             channels = self._input_channels(keys)
             if channels:
                 listed[f'neural:{region}'] = frozenset(channels)
@@ -393,8 +394,14 @@ class BrainScoreModel(UnifiedModel):
         The handler sees only the streams this model declares in
         ``in_channels``; every other stream the experiment sends is skipped
         before it reaches any part (Contract Rules v3, rule 5.5).
+
+        ``BRAINSCORE_REGIONS_PER_PASS`` is read and checked here, once, for every
+        kind of session (see ``brainscore._model.channels``).
         """
+        from ._model.channels import regions_per_pass
+        plan = regions_per_pass()
         with _one_session_at_a_time(self):
+            self._regions_per_pass = plan
             handler = self.check_session_support(session_outputs(session))
             from .capabilities.registry import _setup_once
             _setup_once(self, handler)

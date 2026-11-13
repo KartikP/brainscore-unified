@@ -563,7 +563,7 @@ class BehavioralReadout:
             live = {m: stack.enter_context(r) for m, r in recordings.items()}
             for index, (_, row) in enumerate(stimuli.iterrows()):
                 replies.append(call(row, None if prompts is None else prompts[index]))
-                trials.append({m: recording.take() for m, recording in live.items()})
+                trials.append({m: recording.take(row) for m, recording in live.items()})
         return replies, self._trial_regions(trials, stimuli, layers)
 
     def _trial_regions(self, trials, stimuli, layers):
@@ -663,12 +663,31 @@ class BehavioralReadout:
                     f'Region {region!r} reads {region_modality(owner, region)!r} input, but '
                     f'the readout presents {modality!r} input; one presentation cannot '
                     'record it.')
-        all_layers = list(dict.fromkeys([readout_layer, *(l for ls in layers.values() for l in ls)]))
-        extracted = owner._recorder.ensure_layer_provenance(
-            extract_for_modality(owner, stimuli, modality, all_layers), all_layers,
-            description='Readout extraction')
-        layer_of = extracted['layer'].values
-        features = extracted.isel(neuroid=layer_of == readout_layer)
+
+        def extract(call_layers):
+            extracted = owner._recorder.ensure_layer_provenance(
+                extract_for_modality(owner, stimuli, modality, call_layers), call_layers,
+                description='Readout extraction')
+            layer_of = extracted['layer'].values
+            return lambda layer: extracted.isel(neuroid=layer_of == layer)
+
+        # BRAINSCORE_REGIONS_PER_PASS: 'all' extracts the readout layer and every
+        # region in one call; 'one' gives the readout and each region its own call,
+        # as does 'all' when the layers have different dtypes (one call cannot keep them).
+        from brainscore.model_helpers._extractors import LayerDtypesDiffer
+        joint = None
+        if owner._regions_per_pass == 'all':
+            all_layers = list(dict.fromkeys([readout_layer, *(l for ls in layers.values() for l in ls)]))
+            try:
+                joint = extract(all_layers)
+            except LayerDtypesDiffer:
+                pass
+        if joint is not None:
+            part_of = {region: joint for region in layers}
+            features = joint(readout_layer)
+        else:
+            features = extract([readout_layer])(readout_layer)
+            part_of = {region: extract(list(region_layers)) for region, region_layers in layers.items()}
         if 'presentation' in features.dims and 'neuroid' in features.dims:
             features = features.transpose('presentation', 'neuroid')
         if raw and isinstance(self.task.response, Scale):
@@ -677,7 +696,7 @@ class BehavioralReadout:
             behavior = _implied(self.readout_classifier.predict_proba(features), 'readout')
         neural = {}
         for region, region_layers in layers.items():
-            per_layer = [extracted.isel(neuroid=layer_of == layer) for layer in region_layers]
+            per_layer = [part_of[region](layer) for layer in region_layers]
             selected = self._gather(region, per_layer)
             neural[region] = selected.assign_coords(
                 region=('neuroid', [region] * selected.sizes['neuroid']))
@@ -701,7 +720,7 @@ def _hook_recording(model, layers, identifier):
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
     from brainscore.model_helpers._extractors import LiveRecording, as_float32
 
-    def take(first, _call):
+    def take(first, _call, _row):
         rows = {layer: first[layer].reshape(1, -1) for layer in layers}
         values = np.concatenate([rows[layer] for layer in layers], axis=1)
         neuroid_layers = [layer for layer in layers for _ in range(rows[layer].shape[1])]

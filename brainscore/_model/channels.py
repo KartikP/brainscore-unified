@@ -17,8 +17,13 @@ extractor without the declaration run one call each, as before.
 The environment variable ``BRAINSCORE_REGIONS_PER_PASS`` selects the plan:
 ``all`` (the default) shares the call as above; ``one`` gives every region its
 own call (lower peak memory, more model passes). Each channel's payload is
-the same under both values. It is read once, when a session starts
-(``regions_per_pass``), so a benchmark can set it for its own run.
+the same under both values. ``BrainScoreModel.participate`` reads and checks
+it once, when any session starts (``regions_per_pass``), so a benchmark can set
+it for its own run and an invalid value fails before any compute. A task
+answered by a readout honors it too (the readout layer and each region get
+their own call under ``one``). The pass that answers through ``answer``,
+``reply`` or ``likelihood``, and a policy step, is one pass by nature: every
+region requested with it is recorded during that pass under both values.
 """
 
 import os
@@ -37,7 +42,9 @@ def regions_per_pass() -> str:
 
     ``all``: one model pass records every requested region of an extractor
     that declares ``independent_layers``. ``one``: one pass per region, for
-    lower peak memory at the cost of more passes.
+    lower peak memory at the cost of more passes. Read at the start of every
+    session; a recording during an answering pass or a policy step is that one
+    pass under both values.
     """
     value = os.environ.get(REGIONS_PER_PASS, 'all')
     if value not in ('all', 'one'):

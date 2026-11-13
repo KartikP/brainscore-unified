@@ -31,7 +31,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_float32, cache_signature, grid_thw, hooked, layer_assembly, run_batches,
+    LiveRecording, as_float32, cache_signature, grid_thw, hooked, layer_assembly, refuse_other_input,
+    run_batches,
 )
 
 
@@ -303,9 +304,10 @@ class VLMVisionWrapper:
         since the previous take, averaged over each image's patches as
         ``__call__`` averages one image. A pass over several images (a trial
         showing a sequence) gives one step per image: ``(presentation, part,
-        neuroid)``, in the order the images were shown.
+        neuroid)``, in the order the images were shown. A later pass of the same
+        presentation must show the same images (``refuse_other_input``).
         """
-        def take(first, call):
+        def take(first, call, _row):
             grid = grid_thw(call)
             counts = ([int(t * h * w) for t, h, w in np.asarray(grid.cpu() if hasattr(grid, 'cpu') else grid)]
                       if grid is not None else None)
@@ -321,7 +323,8 @@ class VLMVisionWrapper:
                 return self._package(per_image, [None])
             return self._package_parts(per_image)
 
-        return LiveRecording(self._model, self._model, layers, take, as_float32)
+        return LiveRecording(self._model, self._model, layers, take, as_float32,
+                             check=refuse_other_input)
 
     def _package_parts(self, per_image):
         """One trial's images as ``(presentation=1, part, neuroid)``, in the order shown."""

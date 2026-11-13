@@ -50,7 +50,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_numpy, attach_stimulus_set, cache_signature, hooked, run_batches,
+    LiveRecording, as_numpy, attach_stimulus_set, cache_signature, hooked, one_dtype,
+    refuse_other_input, run_batches,
 )
 
 
@@ -487,8 +488,13 @@ class AudioWrapper:
         that call, as ``__call__`` reads it from the processor output. The step
         duration of ``time_series`` outputs is measured from ``input_values``
         (a waveform) when no pass measured it before.
+
+        ``__call__`` splits a clip longer than ``max_duration_sec`` into chunks
+        and combines them; one pass cannot give that result. A pass longer than
+        ``max_duration_sec``, or a later pass of the same presentation with other
+        input (a later chunk), is refused before it runs.
         """
-        def take(first, call):
+        def take(first, call, _row):
             kwargs = call[1] if call is not None else {}
             if any(activity.shape[0] != 1 for activity in first.values()):
                 raise ValueError('Recording during a task expects one clip at a time.')
@@ -497,7 +503,19 @@ class AudioWrapper:
                 self._measure_step(first, waveform.shape[-1])
             return self._package(self._aggregate(first, kwargs.get('attention_mask')), ['?'])
 
-        return LiveRecording(self._model, self._model, layers, take, as_numpy)
+        def check(first_call, call):
+            refuse_other_input(first_call, call)
+            waveform = call[1].get('input_values', call[0][0] if call[0] else None)
+            if self._max_duration_sec is None or waveform is None:
+                return
+            if waveform.shape[-1] > int(self._max_duration_sec * self._target_sample_rate):
+                raise ValueError(
+                    f'A pass of {waveform.shape[-1]} samples is longer than max_duration_sec='
+                    f'{self._max_duration_sec} s; {self._identifier!r} records such a clip in '
+                    'chunks, which a recording during a task cannot. Record it in a session '
+                    'without a task, or present at most max_duration_sec per stimulus.')
+
+        return LiveRecording(self._model, self._model, layers, take, as_numpy, check=check)
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
@@ -530,6 +548,7 @@ class AudioWrapper:
 
         if len(layer_assemblies) == 1:
             return layer_assemblies[0]
+        one_dtype(layer_activations)
         # Multi-layer: concatenate along the neuroid axis (matches
         # TextWrapper / VideoWrapper convention when callers pass multiple
         # layers at once).

@@ -50,7 +50,7 @@ class Recordable:
 
         class Take:
             @staticmethod
-            def take():
+            def take(_row):
                 first = seen[0]
                 seen.clear()
                 values = np.concatenate([first[layer] for layer in layers])[None]

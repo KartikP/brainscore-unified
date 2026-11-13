@@ -23,6 +23,14 @@ class Interventions:
     def __init__(self, owner) -> None:
         self.owner = owner
         self.active_interventions: Dict[str, Callable[[], None]] = {}
+        self._intact_depth = 0      # open ``intact()`` blocks
+
+    def _refuse_while_intact(self, action: str) -> None:
+        if self._intact_depth:
+            raise RuntimeError(
+                f"Subject '{self.owner.identifier}' cannot {action} while its interventions "
+                f"are switched off (inside intact()). Change the interventions before or "
+                f"after the block.")
 
     @contextmanager
     def intact(self):
@@ -34,7 +42,20 @@ class Interventions:
         activation cache of the intact model. Only a change made by
         ``build_pytorch_ablation_fn`` has a switch; with any other change
         active, the block refuses before it changes anything.
+
+        The set of interventions is fixed while the block runs: applying,
+        undoing or resetting an intervention raises ``RuntimeError``, so the
+        exit switches on exactly the changes that were active at entry. Blocks
+        nest; only the outermost one switches. The exit also runs when the
+        block raises.
         """
+        if self._intact_depth:
+            self._intact_depth += 1
+            try:
+                yield
+            finally:
+                self._intact_depth -= 1
+            return
         from brainscore.perturbation import _SWITCHES
         switches = [(handle, _SWITCHES.get(cleanup))
                     for handle, cleanup in self.active_interventions.items()]
@@ -46,12 +67,14 @@ class Interventions:
                 f"build_pytorch_ablation_fn makes changes that can. Use "
                 f"readout_fit='current', or fit the readout before the change.")
         off = []
+        self._intact_depth = 1
         try:
             for handle, switch in reversed(switches):
                 switch(False)
                 off.append((handle, switch))
             yield
         finally:
+            self._intact_depth = 0
             failures = []
             for handle, switch in reversed(off):
                 try:
@@ -72,8 +95,9 @@ class Interventions:
         though: its handle stays registered and the failure is reported. A
         cleanup that raised leaves the model still changed, so dropping the
         handle silently would leave every later score computed on a damaged
-        model with nothing left to show it.
+        model with nothing left to show it. Refused inside ``intact()``.
         """
+        self._refuse_while_intact('reset its interventions')
         failures = []
         for handle_id, cleanup in list(self.active_interventions.items()):
             try:
@@ -99,9 +123,10 @@ class Interventions:
         """Apply a StateChange with the subject's ``intervention`` part, or undo one by handle.
 
         The subject changes under the readout, so the next ``start_task`` fits
-        again, even for the task already configured.
+        again, even for the task already configured. Refused inside ``intact()``.
         """
         owner = self.owner
+        self._refuse_while_intact('apply or undo an intervention')
         owner._behavioral.invalidate()
         if state_change.kind == 'reset':
             handle_id = state_change.handle_id

@@ -55,7 +55,7 @@ class Extractor:
 
         class Recording:
             @staticmethod
-            def take():
+            def take(_row):
                 values = seen[0]
                 seen.clear()
                 return NeuroidAssembly(values[None], dims=['presentation', 'neuroid'], coords={

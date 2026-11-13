@@ -18,7 +18,7 @@ import numpy as np
 
 from brainscore_core.responses import part_columns
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-from brainscore.model_helpers._extractors import LiveRecording, as_float32, grid_thw
+from brainscore.model_helpers._extractors import LiveRecording, as_float32, grid_thw, refuse_other_input
 
 
 def read_clip(path):
@@ -72,7 +72,7 @@ class VLMVideoWrapper:
             inputs = self._processor.video_processor(
                 videos=[frames], video_metadata=[clip_metadata(frames, fps)], return_tensors='pt')
             grid = inputs['video_grid_thw']
-            with LiveRecording(self._model, self._model, layers, lambda first, _call: {
+            with LiveRecording(self._model, self._model, layers, lambda first, _call, _row: {
                     layer: self._per_time(activity, grid) for layer, activity in first.items()},
                                as_float32) as recording:
                 parameter = next(self._model.parameters())
@@ -92,15 +92,17 @@ class VLMVideoWrapper:
 
         ``take()`` returns the first pass since the previous take, time-resolved
         like ``__call__``. Stills passing through the same vision network are taken as one step.
+        A later pass of the same presentation must show the same clip (``refuse_other_input``).
         """
-        def take(first, call):
+        def take(first, call, _row):
             grid = grid_thw(call)
             if grid is None:
                 raise ValueError(f'No forward pass reached {list(layers)} since the last presentation.')
             return self._package({layer: self._per_time(activity, grid)[None] for layer, activity in first.items()},
                                  {'stimulus_id': ['?']})
 
-        return LiveRecording(self._model, self._model, layers, take, as_float32)
+        return LiveRecording(self._model, self._model, layers, take, as_float32,
+                             check=refuse_other_input)
 
     def _per_time(self, activity, grid):
         """(patches, features) -> (time steps, features), averaging each step's positions."""

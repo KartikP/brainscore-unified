@@ -27,7 +27,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_array, attach_stimulus_set, cache_signature, hooked, layer_assembly, run_batches,
+    LiveRecording, as_array, attach_stimulus_set, cache_signature, hooked, layer_assembly, one_dtype,
+    run_batches,
 )
 
 
@@ -497,7 +498,7 @@ class TextWrapper:
                             else activity.mean(axis=1))
             return activity.reshape(1, -1)
 
-        return LiveRecording(self._model, self._model, layers, lambda first, _call: self._package(
+        return LiveRecording(self._model, self._model, layers, lambda first, _call, _row: self._package(
             {layer: aggregate(activity) for layer, activity in first.items()}, [None]), as_array)
 
     def layer_names(self):
@@ -527,6 +528,7 @@ class TextWrapper:
 
         if len(layer_assemblies) == 1:
             return layer_assemblies[0]
+        one_dtype(layer_activations)
 
         # Multi-layer: concat along the neuroid axis. The per_token 3D
         # path uses xarray.concat (handles the time_bin axis correctly);
