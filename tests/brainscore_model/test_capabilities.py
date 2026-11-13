@@ -1,8 +1,5 @@
-"""Capability registry tests for BrainScoreModel."""
-
-import importlib
-import sys
-import textwrap
+"""Capability registry tests for BrainScoreModel: one selection per session,
+and ``process`` as a convenience that is not on the path of ``participate``."""
 
 import pytest
 
@@ -31,7 +28,7 @@ class StubStimulusSet:
         self.columns = columns
 
 
-def test_neural_encoding_capability_is_registered_dispatch_path():
+def test_process_records_the_region_start_recording_set():
     act_model = StubActivationsModel(return_value='vision_assembly')
     model = BrainScoreModel(
         identifier='resnet',
@@ -44,16 +41,14 @@ def test_neural_encoding_capability_is_registered_dispatch_path():
 
     result = model.process(stimuli)
 
-    assert 'neural-encoding' in capability_registry
     assert result == 'vision_assembly'
     assert act_model.call_args['stimuli'] is stimuli
     assert act_model.call_args['layers'] == ['layer4']
-    model.capability_state('neural-encoding')   # set up by the registry, else KeyError
 
 
-def test_no_event_capability_answers_behavior():
+def test_process_after_a_task_still_records():
     """A behavioral answer comes only from a session (BehaviorSessions); process()
-    after a configured task still reaches the neural extraction."""
+    after a configured task still records."""
     act_model = StubActivationsModel(return_value='vision_assembly')
     model = BrainScoreModel(
         identifier='behavioral',
@@ -71,7 +66,7 @@ def test_no_event_capability_answers_behavior():
     assert not {'behavioral-generation', 'behavioral-readout'} & set(capability_registry)
 
 
-def test_closed_loop_capability_dispatches_a_row():
+def test_process_gives_a_row_to_the_policy():
     calls = []
 
     def policy(row):
@@ -86,13 +81,11 @@ def test_closed_loop_capability_dispatches_a_row():
 
     result = model.process(row)
 
-    assert 'closed-loop' in capability_registry
     assert result == {'motor': [0.0, 1.0]}
     assert calls == [row]
-    model.capability_state('closed-loop')
 
 
-def test_closed_loop_capability_dispatches_a_text_message():
+def test_process_gives_a_text_message_to_the_policy():
     calls = []
 
     def policy(row):
@@ -110,7 +103,7 @@ def test_closed_loop_capability_dispatches_a_text_message():
     assert calls == [{'text': 'ping'}]
 
 
-def test_state_change_capability_dispatches_and_tracks_cleanup():
+def test_process_applies_and_undoes_a_state_change():
     cleanup_calls = []
 
     def intervention(state_change):
@@ -137,10 +130,8 @@ def test_state_change_capability_dispatches_and_tracks_cleanup():
 
     result = model.process(apply_event)
 
-    assert 'intervention' in capability_registry
     assert isinstance(result, PerturbationApplied)
     assert result.handle_id == 'capability-handle'
-    model.capability_state('intervention')
 
     reset_result = model.process(
         StateChange(kind='reset', handle_id='capability-handle')
@@ -152,48 +143,7 @@ def test_state_change_capability_dispatches_and_tracks_cleanup():
         model.process(StateChange(kind='reset', handle_id='capability-handle'))
 
 
-def test_self_registering_capability_file_dispatches_without_host_edits(tmp_path):
-    module_path = tmp_path / 'demo_capability_plugin.py'
-    module_path.write_text(textwrap.dedent("""
-        from brainscore.capabilities import Capability, register_capability
-
-
-        class DemoCapability(Capability):
-            identifier = 'test-demo-capability'
-            order = 10
-
-            def setup(self, model):
-                return {'model_identifier': model.identifier}
-
-            def handles(self, model, event, **kwargs):
-                return type(event).__name__ == 'DemoCapabilityEvent'
-
-            def process(self, model, event, **kwargs):
-                return model.capability_state(self.identifier)['model_identifier']
-
-
-        register_capability(DemoCapability())
-    """), encoding='utf-8')
-
-    sys.path.insert(0, str(tmp_path))
-    try:
-        importlib.import_module('demo_capability_plugin')
-
-        class DemoCapabilityEvent:
-            pass
-
-        model = BrainScoreModel(
-            identifier='demo-model',
-        )
-
-        assert model.process(DemoCapabilityEvent()) == 'demo-model'
-    finally:
-        capability_registry.pop('test-demo-capability', None)
-        sys.path.remove(str(tmp_path))
-        sys.modules.pop('demo_capability_plugin', None)
-
-
-# --- one registry, one order: an added capability is tried before a built-in one ---
+# --- one registry, one selection: an added capability is tried before a built-in one ---
 
 def _added(capability):
     from brainscore.capabilities import register_capability
@@ -232,47 +182,46 @@ def test_an_added_session_capability_runs_a_session_a_built_in_one_also_claims()
         capability_registry.pop('test-added-neural-session', None)
 
 
-def test_an_added_event_capability_before_a_built_in_one_answers_first():
-    """An added event capability with a lower order answers an event a built-in one handles."""
-    from brainscore.capabilities import Capability
-    calls = []
+def test_participate_selects_the_part_once_and_never_calls_process():
+    """Each session kind runs on the part its session capability selected; the
+    model's process() convenience is not on the path."""
+    import numpy as np
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming import Session, StreamEvent
+    from brainscore_core.streaming_helpers import EnvironmentSource, apply_state_change, stimulus_session
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
-    class Early(Capability):
-        identifier = 'test-added-early-state-change'
-        order = 10
+    def extractor(stimuli, layers=None, **kwargs):
+        ids = list(stimuli['stimulus_id'])
+        return NeuroidAssembly(np.ones((len(ids), 1)), dims=['presentation', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', ['n']),
+            'layer': ('neuroid', [layers[0]])})
 
-        def handles(self, subject, event, **kwargs):
-            return isinstance(event, StateChange)
+    class Steps:
+        def reset(self):
+            return {'observation': 0}
 
-        def process(self, subject, event, **kwargs):
-            calls.append(event)
-            return 'added'
+        def step(self, outputs):
+            return {'observation': 1}, 'terminal'
 
-    _added(Early())
-    try:
-        model = BrainScoreModel(identifier='early',
-                                intervention=lambda change: (_ for _ in ()).throw(AssertionError))
-        change = StateChange(kind='ablation', target=Selection(layer='layer4'),
-                             perturbation=Perturbation(kind='zero'))
-        assert model.process(change) == 'added'
-        assert calls == [change]
-    finally:
-        capability_registry.pop('test-added-early-state-change', None)
+    class NoProcess(BrainScoreModel):
+        def process(self, input_event, multi_modality=False):
+            raise AssertionError('participate called process()')
 
-
-def test_built_in_capabilities_each_take_one_role():
-    """An event capability claims no session; a session capability handles no event."""
-    model = BrainScoreModel(identifier='roles', region_layer_map={'IT': 'layer4'},
-                            extractor={'vision': StubActivationsModel()},
-                            policy=lambda row: {'motor': 0},
-                            intervention=lambda change: (None, lambda: None))
-    events = [StubStimulusSet(['image_path']), {'observation': 1},
-              StateChange(kind='reset', handle_id='h')]
-    for capability in capability_registry.values():
-        if not capability.enabled_for(model):
-            continue
-        claims_session = any(capability.supports_session(model, frozenset(channels))
-                             for channels in ({'neural:IT'}, {'motor'}, {'perturbation'}))
-        handles_event = any(capability.handles(model, event) for event in events)
-        assert not (claims_session and handles_event), capability.identifier
-        assert claims_session or handles_event, capability.identifier
+    model = NoProcess('once', extractor={'vision': extractor}, region_layer_map={'IT': 'layer4'},
+                      behavioral_readout_layer='layer4', policy=lambda row: {'motor': 0},
+                      intervention=lambda change: (PerturbationApplied(
+                          handle_id='h', target=change.target, perturbation=change.perturbation),
+                          lambda: None))
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b'], 'image_path': ['a.png', 'b.png'],
+                           'image_label': ['x', 'y']})
+    stimuli.identifier = 'once'
+    model.participate(stimulus_session(stimuli, ['neural:IT']))
+    task = TaskContext(response=Choice(['x', 'y']), fitting_stimuli=stimuli)
+    model.participate(stimulus_session(stimuli, ['behavior:choice', 'neural:IT'], task=task))
+    model.participate(Session(EnvironmentSource(Steps()), ('motor',)))
+    change = StateChange(kind='ablation', target=Selection(layer='layer4'),
+                         perturbation=Perturbation(kind='zero'))
+    assert apply_state_change(model, change).handle_id == 'h'
+    assert model.check_session_support({'neural:IT'}).identifier == 'neural-sessions'

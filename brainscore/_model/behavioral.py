@@ -11,12 +11,15 @@ which legacy behavioral benchmarks score.
 
 from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from brainscore_core.contract import TaskContext
 from brainscore_core.streaming import StreamEvent
 
 import numpy as np
+
+from .dispatch import detect_modalities, extract_for_modality, extractor_for, pick_modality, record
+from .recording import region_modality, region_selector
 
 
 class BehavioralReadout:
@@ -293,7 +296,7 @@ class BehavioralReadout:
         recorder.recording_regions, recorder.is_multi_region, recorder.composite_recording = [], False, False
         self.readout_classifier = None
         try:
-            features = owner.process(stimuli)
+            features = record(owner, stimuli)
         finally:
             recorder.restore(saved)
             self.readout_classifier = saved_classifier
@@ -402,7 +405,7 @@ class BehavioralReadout:
         from brainscore_core.responses import Choice, Scale, Text, labels_of, trial_prompt
         owner, task = self.owner, self.task
         response, path = task.response, self.response_path
-        layers = {region: self._region_layers(region) for region in regions}
+        layers = {region: list(region_selector(owner, region).layer_paths) for region in regions}
         if response is None:
             behavior, neural = self._answer_legacy_task(stimuli, layers)
             return ({channel: behavior for channel in channels}, neural)
@@ -534,7 +537,7 @@ class BehavioralReadout:
         """
         owner = self.owner
         from brainscore_core.compatibility import CompatibilityError
-        from .dispatch import _is_clip, extractor_for
+        from .dispatch import _is_clip
         from .recording import record_part, records_while_answering
         form = (_is_clip(stimuli),)
         cannot = [region for region in layers if not records_while_answering(owner, region, form)]
@@ -545,7 +548,7 @@ class BehavioralReadout:
                 'must be a module of the network passed as BrainScoreModel(model=...).')
         by_modality: Dict[str, list] = {}
         for region, region_layers in layers.items():
-            by_modality.setdefault(self._region_modality(region), []).extend(region_layers)
+            by_modality.setdefault(region_modality(owner, region), []).extend(region_layers)
         recordings = {}
         for modality, modality_layers in by_modality.items():
             modality_layers = list(dict.fromkeys(modality_layers))
@@ -570,20 +573,14 @@ class BehavioralReadout:
         import xarray as xr
         neural = {}
         for region, region_layers in layers.items():
-            modality = self._region_modality(region)
-            recorded = [trial[modality] for trial in trials]
-            needed = self._required_layers(region)
+            recorded = [trial[region_modality(self.owner, region)] for trial in trials]
+            needed = region_selector(self.owner, region).required_layers
             # Only required layers: a layer whose unit subset is empty contributes no
             # units, so it may be absent from any trial (UnitSelector.required_layers).
             per_layer = [_trials_to_assembly(recorded, stimuli, layer, region)
                          for layer in region_layers if layer in needed]
             neural[region] = self._gather(region, per_layer)
         return neural
-
-    def _required_layers(self, region: str):
-        """The layers that must contribute neuroids to ``region`` (the selector's rule)."""
-        from .recording import region_selector
-        return region_selector(self.owner, region).required_layers
 
     def _gather(self, region, per_layer):
         """A region's units: one layer as is; a composite region's units gathered from its layers.
@@ -593,7 +590,6 @@ class BehavioralReadout:
         """
         import numpy as np
         import xarray as xr
-        from .recording import region_selector
         selector = region_selector(self.owner, region)
         needed = selector.required_layers
         present = {str(layer) for block in per_layer if block.sizes['neuroid']
@@ -651,21 +647,6 @@ class BehavioralReadout:
             return self._read_out_and_record(stimuli, layers)
         return self.predict_probabilities(stimuli), {}
 
-    def _region_layers(self, region: str) -> List[str]:
-        selector = self.owner._region_layer_selectors.get(region)
-        if selector is None:
-            raise ValueError(f'Region {region!r} is not in region_layer_map.')
-        return list(selector.layer_paths)
-
-    def _region_modality(self, region: str) -> str:
-        from .recording import region_modality
-        modality = region_modality(self.owner, region)
-        if modality is None:
-            raise ValueError(
-                f'Region {region!r} does not say which input it reads. Map it with '
-                "LayerSelector(name=..., modality=...) to record it during a task.")
-        return modality
-
     def _stamp(self, path, forward_pass):
         """How a recording was made, so task and passive recordings stay distinct."""
         return {'task_type': self.task.task_type, 'path': path,
@@ -677,16 +658,16 @@ class BehavioralReadout:
         from brainscore_core.responses import Scale
         owner = self.owner
         readout_layer = owner._behavioral_readout_layer
-        modality = owner._dispatcher.pick_modality(owner.detect_modalities(stimuli))
+        modality = pick_modality(owner, detect_modalities(owner, stimuli))
         for region in layers:
-            if owner._region_modality_map.get(region) and self._region_modality(region) != modality:
+            if owner._region_modality_map.get(region) and region_modality(owner, region) != modality:
                 raise ValueError(
-                    f'Region {region!r} reads {self._region_modality(region)!r} input, but '
+                    f'Region {region!r} reads {region_modality(owner, region)!r} input, but '
                     f'the readout presents {modality!r} input; one presentation cannot '
                     'record it.')
         all_layers = list(dict.fromkeys([readout_layer, *(l for ls in layers.values() for l in ls)]))
         extracted = owner._recorder.ensure_layer_provenance(
-            owner._dispatcher.extract_for_modality(stimuli, modality, all_layers), all_layers,
+            extract_for_modality(owner, stimuli, modality, all_layers), all_layers,
             description='Readout extraction')
         layer_of = extracted['layer'].values
         features = extracted.isel(neuroid=layer_of == readout_layer)

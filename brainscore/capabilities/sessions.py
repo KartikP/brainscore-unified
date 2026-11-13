@@ -1,12 +1,13 @@
-"""Built-in session handlers for BrainScoreModel's parts.
+"""The session parts of BrainScoreModel, one per part that answers.
 
 Each part of a BrainScoreModel (region map, answer or readout, policy,
-intervention) handles some channels. These capabilities declare those
-channels and run the matching sessions, registered the same way as any added
-capability, so ``participate``, ``check_session_support`` and the declared
-channels all read one registry. They sort after added capabilities
+intervention) answers some channels. These capabilities declare those
+channels and run the matching sessions; they are registered the same way as
+any added capability, so ``participate``, ``check_session_support`` and the
+declared channels all read one registry. They sort after added capabilities
 (``order`` 10000), so an added capability that claims the same outputs wins.
-Each takes the session role only (see ``Capability``).
+Each one calls its part directly: ``record`` for activity, ``respond`` for a
+task, ``act`` for a policy step, ``Interventions.process`` for a change.
 """
 
 from contextlib import ExitStack
@@ -14,8 +15,9 @@ from contextlib import ExitStack
 import pandas as pd
 
 from .base import Capability
+from .._model.dispatch import act
 from .._model.intervention import INTERVENTION_CHANNELS
-from .._model.recording import records_while_answering
+from .._model.recording import records_while_answering, region_selector
 from .registry import register_capability
 from brainscore_core import streaming_helpers as _drivers
 from brainscore_core.streaming import StreamEvent, parse_channel
@@ -179,24 +181,25 @@ class MotorSessions(Capability):
     def participate(self, subject, session) -> None:
         requested = _drivers.session_outputs(session)
         regions = [parse_channel(c)[1] for c in requested if parse_channel(c)[0] == 'neural']
-        if not regions:
-            _drivers.drive_environment_session(subject, session, on_begin=subject._begin_episode)
-            return
-        recorded = _RecordedPolicy(subject, session, regions)
-        with recorded:
-            _drivers.drive_environment_session(recorded, session, on_begin=recorded.begin)
+        with _PolicySteps(subject, session, regions) as steps:
+            _drivers.drive_environment_session(steps, session, on_begin=steps.begin)
 
 
-class _RecordedPolicy:
-    """``process(row)`` that also records regions from the forward pass the policy ran."""
+class _PolicySteps:
+    """What the closed-loop driver calls: ``process(row)`` asks the policy (``act``).
+
+    With regions requested, each step also records them from the forward pass
+    the policy ran.
+    """
 
     def __init__(self, subject, session, regions) -> None:
-        self.subject, self.session, self.regions = subject, session, regions
-        self.layers = {region: subject._behavioral._region_layers(region) for region in regions}
+        self.subject, self.session = subject, session
+        self.layers = {region: list(region_selector(subject, region).layer_paths)
+                       for region in regions}
         self.step = 0
         self._stack = ExitStack()
 
-    def __enter__(self) -> '_RecordedPolicy':
+    def __enter__(self) -> '_PolicySteps':
         recordings = self.subject._behavioral._open_recordings(None, self.layers)
         self.live = {modality: self._stack.enter_context(recording)
                      for modality, recording in recordings.items()}
@@ -210,7 +213,9 @@ class _RecordedPolicy:
         self.subject._begin_episode()
 
     def process(self, row):
-        outputs = self.subject.process(row)
+        outputs = act(self.subject, row)
+        if not self.layers:
+            return outputs
         trial = {modality: recording.take() for modality, recording in self.live.items()}
         stimuli = pd.DataFrame({'stimulus_id': [f'step_{self.step}']})
         for region, assembly in self.subject._behavioral._trial_regions(
@@ -226,7 +231,8 @@ class InterventionSessions(Capability):
     """Take an intervention (a ``StateChange``) on each intervention channel; answer on ``perturbation``.
 
     Enabled by ``BrainScoreModel(intervention=...)``. ``apply_state_change`` and
-    the ``Intervene`` tool send the change through this session.
+    the ``Intervene`` tool send the change through this session; the driver
+    calls the subject's ``Interventions`` directly.
     """
 
     identifier = 'intervention-sessions'
@@ -245,7 +251,7 @@ class InterventionSessions(Capability):
         return set(channels) == {'perturbation'}
 
     def participate(self, subject, session) -> None:
-        _drivers.drive_state_change_session(subject, session)
+        _drivers.drive_state_change_session(subject._interventions, session)
 
 
 _NEURAL = NeuralSessions()

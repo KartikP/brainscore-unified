@@ -59,12 +59,6 @@ def test_added_capability_takes_precedence_over_the_built_in_part(registry):
         identifier = 'participate-precedence-test'
         output_channels = {'neural:IT'}
 
-        def handles(self, model, event, **kwargs):
-            return False
-
-        def process(self, model, event, **kwargs):
-            raise NotImplementedError
-
         def supports_session(self, model, channels):
             return set(channels) == {'neural:IT'}
 

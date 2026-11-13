@@ -10,7 +10,7 @@ model's usual source order.
 Regions that one extractor records share its call when the extractor declares
 ``independent_layers = True``: the extractor runs once on the session's
 stimuli for the layers of all those regions, and each channel's own request
-gets its layers' part of that output (``InputDispatcher.one_call_per_extractor``).
+gets its layers' part of that output (``dispatch.one_call_per_extractor``).
 Every other step of the standalone path still runs per channel. Regions of an
 extractor without the declaration run one call each, as before.
 
@@ -25,6 +25,8 @@ import os
 from typing import Dict, List, Sequence, Tuple
 
 from brainscore_core.io_catalog import canonical_modality
+from .dispatch import extractor_for, one_call_per_extractor, record
+from .recording import region_modality, region_selector
 
 
 REGIONS_PER_PASS = 'BRAINSCORE_REGIONS_PER_PASS'
@@ -59,10 +61,10 @@ def run_neural_channels(model, stimuli, channel_regions: Sequence[Tuple[str, str
         payloads = {}
         order = _plan(model, stimuli, regions)
         shared = _shared_layers(model, stimuli, order) if plan == 'all' else []
-        with model._dispatcher.one_call_per_extractor(stimuli, shared):
+        with one_call_per_extractor(model, stimuli, shared):
             for region in order:
                 _start(model, region, time_bins)
-                output = _process(model, stimuli, multi_modality)
+                output = record(model, stimuli, multi_modality)
                 check_layer_provenance(model, output, region)
                 payloads[region] = output
         return {channel: payloads[region] for channel, region in channel_regions}
@@ -115,8 +117,6 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
     registration keys that hold different extractors never share. A region
     whose input is not named, when several inputs could serve it, shares nothing.
     """
-    from .dispatch import extractor_for
-    from .recording import region_modality, region_selector
     groups: Dict[int, Tuple[object, List[str], int]] = {}
     for region in regions:
         modality = region_modality(model, region)
@@ -141,7 +141,8 @@ def check_layer_provenance(model, output, region: str) -> None:
     """Every neuroid names a layer the region records, and every required layer has one."""
     import numpy as np
 
-    allowed, required = _region_layers(model, region)
+    selector = region_selector(model, region)
+    allowed, required = set(selector.layer_paths), set(selector.required_layers)
     if not hasattr(output, 'dims') or 'neuroid' not in output.dims:
         raise ValueError(f"Neural output for region {region!r} has no 'neuroid' dimension.")
     for dim, index in output.indexes.items():
@@ -176,24 +177,8 @@ def check_layer_provenance(model, output, region: str) -> None:
             f'requested layers {sorted(uncovered)}.')
 
 
-def _region_layers(model, region: str):
-    """``(allowed, required)`` layers of a requested address.
-
-    The selector's ``required_layers`` is the one rule for which layers must contribute.
-    """
-    from .recording import region_selector
-    selector = region_selector(model, region)
-    return set(selector.layer_paths), set(selector.required_layers)
-
-
 def _start(model, target, time_bins) -> None:
     if time_bins is None:
         model.start_recording(target)
     else:
         model.start_recording(target, time_bins=time_bins)
-
-
-def _process(model, stimuli, multi_modality: bool):
-    if multi_modality:
-        return model.process(stimuli, multi_modality=True)
-    return model.process(stimuli)

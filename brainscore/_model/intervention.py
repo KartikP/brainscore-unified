@@ -16,6 +16,8 @@ class Interventions:
     An intervention arrives as a ``StateChange`` on a declared channel
     (``lesion``, ``stimulation`` or ``pharmacological``), sent by a session;
     ``apply_state_change`` and the ``Intervene`` tool build that session.
+    The intervention session part gives this object to the session driver,
+    which calls ``process`` with each change.
     """
 
     def __init__(self, owner) -> None:
@@ -93,9 +95,14 @@ class Interventions:
                 stacklevel=2,
             )
 
-    def dispatch_state_change(self, state_change):
-        """Apply a StateChange with the subject's ``intervention`` part, or undo one by handle."""
+    def process(self, state_change):
+        """Apply a StateChange with the subject's ``intervention`` part, or undo one by handle.
+
+        The subject changes under the readout, so the next ``start_task`` fits
+        again, even for the task already configured.
+        """
         owner = self.owner
+        owner._behavioral.invalidate()
         if state_change.kind == 'reset':
             handle_id = state_change.handle_id
             if handle_id is None:

@@ -103,10 +103,6 @@ def test_capability_rejects_invalid_request_fields_before_compute(capability, te
     request = capability.WordRequest(text=text)
     with pytest.raises(ValueError, match='channel catalog'):
         Session([StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0)], [capability.RESULT])
-    subject = capability.build_model()
-    with pytest.raises(ValueError, match='shape_validator'):
-        subject.process(StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0))
-    assert capability.IDENTIFIER not in subject._capability_state   # nothing was set up or counted
 
 
 @pytest.mark.parametrize('words,words_so_far', [(-1, 0), (2, 1), (True, 1), (1.0, 1), (1, None)])

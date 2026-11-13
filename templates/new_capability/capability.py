@@ -9,9 +9,8 @@ three pieces, none of which edit Brain-Score's core:
 1. Typed payloads: small dataclasses for what goes in and what comes out.
 2. Catalog entries: register each channel name with its payload type, so a
    wrong payload is rejected before any model sees it.
-3. A ``Capability`` subclass: which models use it, which sessions it runs, and
-   how it answers each request. A capability takes one role; this one runs
-   sessions (``supports_session`` and ``participate``).
+3. A ``Capability`` subclass: which models use it, which sessions it runs
+   (``supports_session``), and how it answers each request (``participate``).
 
 Call ``register()`` once from your package's setup code. A second call raises
 ``ValueError`` instead of silently replacing a registered name. Only a model

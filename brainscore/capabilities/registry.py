@@ -1,11 +1,10 @@
 """The one capability registry of BrainScoreModel.
 
 ``BrainScoreModel.check_session_support`` reads it to find the capability that
-runs a session; ``BrainScoreModel.process`` reads it to find the capability
-that answers an event. Both read it in the same order.
+runs a session.
 """
 
-from typing import Dict, Iterable
+from typing import Dict
 
 from .base import Capability
 
@@ -22,17 +21,6 @@ def register_capability(capability: Capability, *, replace: bool = False) -> Cap
         raise ValueError(f"Capability {capability.identifier!r} already registered; use replace=True explicitly.")
     capability_registry[capability.identifier] = capability
     return capability
-
-
-def enabled_capabilities(subject) -> Iterable[Capability]:
-    """Yield the capabilities enabled for ``subject``, in order (``order``, then
-    ``identifier``), each set up before it is yielded."""
-    for capability in sorted(capability_registry.values(),
-                             key=lambda c: (c.order, c.identifier)):
-        if not capability.enabled_for(subject):
-            continue
-        _setup_once(subject, capability)
-        yield capability
 
 
 def _setup_once(subject, capability: Capability) -> None:

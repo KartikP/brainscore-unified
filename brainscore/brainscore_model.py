@@ -2,30 +2,20 @@
 
 import threading
 from contextlib import contextmanager
-from copy import copy
 from types import MappingProxyType
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from ._model.behavioral import BehavioralReadout
 from brainscore_core.contract import UnifiedModel, TaskContext
-from ._model.dispatch import InputDispatcher
+from ._model import dispatch
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
-from brainscore_core.events import (
-    InputEvent,
-    OutputEvent,
-    StateChange,
-)
+from brainscore_core.events import InputEvent, OutputEvent, StateChange
 from ._model.intervention import Interventions
 from ._model.recording import Recorder
 from .selection import UnitSelector, _promote_to_selector
 from brainscore_core.extraction_cache import weight_fingerprint_scope
-from brainscore_core.streaming import StreamEvent
-from brainscore_core.streaming_helpers import (
-    drain_session_inputs as _drain_neural_stream_events,
-    session_outputs,
-    session_stimuli as _neural_stimuli_from_stream_session,
-)
+from brainscore_core.streaming_helpers import session_outputs
 
 
 # The extractor key that declares each input channel (``vision`` declares
@@ -82,8 +72,9 @@ def _one_session_at_a_time(model):
 class BrainScoreModel(UnifiedModel):
     """The one concrete subject, assembled from parts (extractors, region map,
     answer, reply, likelihood, policy, intervention, capabilities). Evaluated
-    through ``participate``; ``process`` is the internal step the session drivers
-    call. A legacy vision or language benchmark reaches it through
+    through ``participate``, which selects the one session part that runs the
+    session; ``process`` is a convenience outside the contract. A legacy vision
+    or language benchmark reaches it through
     :class:`~brainscore_core.legacy_facade.LegacyBenchmarkFacade`, which
     ``score()`` applies."""
 
@@ -192,9 +183,8 @@ class BrainScoreModel(UnifiedModel):
             raise ValueError("memory must be None or 'trial_history'")
         self._identifier_str = identifier
         self._model = model
-        from ._model.dispatch import normalize_extractors
         self._fused_extractors = []     # (input types, extractor) registered under a tuple
-        self._extractors = normalize_extractors(self, extractor)
+        self._extractors = dispatch.normalize_extractors(self, extractor)
         # The declared input keys, raw: a ``video`` key stays ``video`` and
         # declares ``vision:video``. A channel given in ``in_channels`` is
         # stored as the key that declares it.
@@ -214,7 +204,7 @@ class BrainScoreModel(UnifiedModel):
         self._recorder = Recorder(self)
         self._behavioral = BehavioralReadout(self)
         self._interventions = Interventions(self)
-        self._dispatcher = InputDispatcher(self)
+        self._shared_calls = None       # set by dispatch.one_call_per_extractor
         self._capability_state: Dict[str, Any] = {}
         self._capability_setup_done: Set[str] = set()
 
@@ -243,7 +233,7 @@ class BrainScoreModel(UnifiedModel):
         return MappingProxyType(self._extractors)
 
     def capability_state(self, identifier):
-        """Per-model capability state, initialized by the registry before dispatch."""
+        """Per-model state of a capability, from its ``setup`` before it first ran."""
         return self._capability_state[identifier]
 
     def _declared_capabilities(self):
@@ -375,39 +365,27 @@ class BrainScoreModel(UnifiedModel):
 
     def process(self, input_event: InputEvent,
                 multi_modality: bool = False) -> OutputEvent:
-        """Evaluate one input event and return the corresponding output event.
+        """Run one input on the part that takes it; a convenience outside the contract.
 
-        The step the session drivers call; not part of the subject contract
-        (``participate`` is the evaluation method). The capability registry
-        routes the event to the first capability that handles it, the same
-        registry ``participate`` reads: a ``StimulusSet`` / ``MultimodalStimulusSet`` -> ``NeuroidAssembly`` of
-        recorded activations (call ``start_recording`` first); a row (a
-        mapping of channel -> payload) -> outputs mapping (needs ``policy``).
-        The intervention session driver also hands a ``StateChange`` to this
-        step; send an intervention with ``apply_state_change`` or the
-        ``Intervene`` tool, never through ``process``.
-        Native benchmarks evaluate subjects through sessions or the typed
-        helpers in ``brainscore_core.streaming_helpers``; ``process`` is not
-        available on every subject.
+        ``participate`` does not call it. A ``StimulusSet`` gives the activity
+        of the regions ``start_recording`` set (a ``NeuroidAssembly``); a row
+        (a mapping of channel -> payload) gives the policy's outputs; a
+        ``StateChange`` is applied or undone by the intervention part (in an
+        experiment, send it with ``apply_state_change`` or the ``Intervene`` tool).
 
-        :param input_event: the stimuli or the row to run.
+        :param input_event: the stimuli, the row or the change.
         :param multi_modality: if True, extract from every detected-and-supported
             modality and concat along the neuroid axis; default routes a single
             modality by ``MODALITY_PRIORITY``.
         """
-        output = self._dispatcher.process(input_event, multi_modality)
-        time_bins = self._recorder.time_bins
-        if time_bins is not None and len(time_bins) > 1 and not isinstance(
-                input_event, (StateChange, Mapping)):
-            # Honor every requested time bin: a static response is repeated
-            # across several bins, as legacy vision models do.
-            from brainscore_core.legacy_facade import repeat_over_time_bins
-            output = repeat_over_time_bins(output, time_bins)
-        from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-        if isinstance(output, BehavioralAssembly):
-            from brainscore_core.score_metadata import note_measure
-            note_measure(output)
-        return output
+        if isinstance(input_event, StateChange):
+            return self._interventions.process(input_event)
+        if isinstance(input_event, Mapping):
+            return dispatch.act(self, input_event)
+        if hasattr(input_event, 'columns'):
+            return dispatch.record(self, input_event, multi_modality)
+        raise TypeError(f"Subject '{self.identifier}' takes a stimulus table, a row or a "
+                        f"StateChange; got {type(input_event).__name__}.")
 
     def participate(self, session) -> None:
         """Run a session through the one registered capability that claims it.
@@ -428,7 +406,7 @@ class BrainScoreModel(UnifiedModel):
 
     def detect_modalities(self, stimuli) -> Set[str]:
         """Declared input modalities whose columns appear in ``stimuli``."""
-        return self._dispatcher.detect_modalities(stimuli)
+        return dispatch.detect_modalities(self, stimuli)
 
     def start_recording(self,
                         recording_target: Union[str, List[str]],

@@ -219,10 +219,10 @@ There are two related extension levels:
 2. **Add a new capability.** In your own package, define typed payloads,
    register their channels with `register_channel`, subclass
    `brainscore.capabilities.Capability` and register it once with
-   `register_capability`. A capability has one role: it runs sessions
-   (`supports_session`, `participate`) or answers events (`handles`,
-   `process`). Every method takes the model first, named `subject`. Models
-   opt in through `capability_config`. No core edit is needed.
+   `register_capability`. A capability runs sessions: `supports_session`
+   claims the outputs a session requests and `participate` runs it. Every
+   method takes the model first, named `subject`. Models opt in through
+   `capability_config`. No core edit is needed.
 
 The constructor slots available to model authors are:
 

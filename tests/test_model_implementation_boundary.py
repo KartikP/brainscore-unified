@@ -78,16 +78,14 @@ def test_selector_instance_pickle_round_trip():
     assert restored == selector
 
 
-def test_built_in_capabilities_keep_their_order():
-    """One registry routes events and sessions. Event capabilities come first, in
-    this order; the session capabilities come after any added capability."""
-    from brainscore.capabilities import capability_registry
-    order = {identifier: capability.order for identifier, capability in capability_registry.items()}
-    assert [identifier for identifier in sorted(order, key=lambda i: (order[i], i))
-            if order[identifier] < 10000] == [
-        'intervention', 'closed-loop', 'neural-encoding']
-    assert {order[i] for i in ('neural-sessions', 'behavior-sessions', 'motor-sessions',
-                               'intervention-sessions')} == {10000}
+def test_built_in_capabilities_are_the_session_parts():
+    """The registry holds one session part per answering part; they come after
+    any added capability (default order 1000)."""
+    from brainscore.capabilities import Capability, capability_registry
+    built_in = {'neural-sessions', 'behavior-sessions', 'motor-sessions', 'intervention-sessions'}
+    assert built_in <= set(capability_registry)
+    assert {capability_registry[i].order for i in built_in} == {10000}
+    assert Capability.order == 1000
 
 
 @pytest.mark.parametrize('source', [

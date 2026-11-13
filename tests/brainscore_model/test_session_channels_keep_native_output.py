@@ -450,31 +450,6 @@ def keyed_session(model, table, regions):
 VISUAL = {'V1': LayerSelector('early', modality='vision'), 'IT': LayerSelector('late', modality='vision')}
 
 
-def test_request_dependent_capability_gives_exact_standalone_values():
-    from brainscore.capabilities import Capability, register_capability
-    from brainscore.capabilities.registry import capability_registry
-    from brainscore.capabilities.neural import NeuralEncodingCapability
-
-    class Center(Capability):
-        identifier = 'test-v8-center'
-        order = 1
-        def enabled_for(self, model): return model.identifier == 'center'
-        def handles(self, model, event, **kwargs): return isinstance(event, StimulusSet)
-        def process(self, model, event, **kwargs):
-            result = NeuralEncodingCapability().process(model, event, **kwargs)
-            return result - result.mean('neuroid')
-    model = BrainScoreModel('center', extractor={'vision': keyed('v', [])}, region_layer_map=VISUAL)
-    register_capability(Center())
-    try:
-        table = StimulusSet({'stimulus_id': IDS, 'image_path': ['a', 'b']})
-        joint = keyed_session(model, table, ['V1', 'IT'])
-        for region in ('V1', 'IT'):
-            assert_same_output(joint.collect('neural:' + region),
-                               keyed_session(model, table, [region]).collect('neural:' + region))
-    finally:
-        capability_registry.pop(Center.identifier)
-
-
 def test_source_owned_region_coordinate_stays_exact():
     model = BrainScoreModel('owned', extractor={'vision': keyed('v', [], region_coord='source-owned')},
                             region_layer_map=VISUAL)
@@ -532,41 +507,6 @@ def test_time_guard_compares_bounds_by_stimulus_identity(strategy):
 
 
 # --- repeated ids, empty subsets --------------------------------------------
-
-@pytest.mark.parametrize('kind', ['replacement', 'state_dependent'])
-def test_replaced_or_state_dependent_handler_gives_exact_standalone_values(kind):
-    from brainscore.capabilities import Capability, register_capability
-    from brainscore.capabilities.registry import capability_registry
-    from brainscore.capabilities.neural import NeuralEncodingCapability
-
-    identifier = NeuralEncodingCapability.identifier if kind == 'replacement' else 'test-v8-state'
-
-    class Center(Capability):
-        order = 1
-        def enabled_for(self, model): return model.identifier == 'center'
-        def handles(self, model, event, **kwargs):
-            return isinstance(event, StimulusSet) and (
-                kind == 'replacement' or not model._recorder.is_multi_region)
-        def process(self, model, event, **kwargs):
-            result = NeuralEncodingCapability().process(model, event, **kwargs)
-            return result - result.mean('neuroid')
-    Center.identifier = identifier
-    previous = capability_registry.get(identifier)
-    register_capability(Center(), replace=previous is not None)
-    calls = []
-    model = BrainScoreModel('center', extractor={'vision': keyed('v', calls)}, region_layer_map=VISUAL)
-    try:
-        table = StimulusSet({'stimulus_id': IDS, 'image_path': ['a', 'b']})
-        joint = keyed_session(model, table, ['V1', 'IT'])
-        assert len(calls) == 2
-        for region in ('V1', 'IT'):
-            assert_same_output(joint.collect('neural:' + region),
-                               keyed_session(model, table, [region]).collect('neural:' + region))
-    finally:
-        capability_registry.pop(identifier)
-        if previous is not None:
-            capability_registry[identifier] = previous
-
 
 @pytest.mark.parametrize('strategy', ['manual', 'xarray'])
 def test_repeated_stimulus_ids_with_identical_presentation_index_merge(strategy):

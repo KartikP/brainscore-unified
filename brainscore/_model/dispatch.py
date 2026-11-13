@@ -1,13 +1,17 @@
-"""Input-event dispatch and modality extraction for BrainScoreModel."""
+"""The steps the session parts of BrainScoreModel call: ``record`` and ``act``.
+
+``record`` records the regions that ``start_recording`` set from a stimulus
+table; ``act`` asks the policy for one closed-loop step. A session part calls
+them directly, and so does ``BrainScoreModel.process``; nothing here selects a
+part. The extractor for an input is chosen by ``extractor_for_form``.
+"""
 
 import os
 import threading
+from collections.abc import Mapping
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Set, Tuple
+from typing import List, Set
 
-from ..capabilities import enabled_capabilities
-from brainscore_core.events import OutputEvent
-from brainscore_core.streaming import StreamEvent
 from brainscore_core.io_catalog import canonical_modality
 
 
@@ -111,174 +115,254 @@ def normalize_extractors(owner, extractor):
     return extractors
 
 
-class InputDispatcher:
-    """Routes BrainScoreModel input events to the matching implementation."""
+@contextmanager
+def one_call_per_extractor(model, stimuli, plan):
+    """Inside, the first request to an extractor in ``plan``
+    (``[(extractor, layers), ...]``) on ``stimuli`` runs all its listed layers
+    once, and each request of those layers gets its part of that output
+    (``_SharedCall``). The caller lists only extractors that declare
+    ``independent_layers``. Every other request runs as before."""
+    previous = model._shared_calls
+    model._shared_calls = (stimuli, {id(extractor): _SharedCall(extractor, layers)
+                                     for extractor, layers in plan})
+    try:
+        yield
+    finally:
+        model._shared_calls = previous
 
-    def __init__(self, owner) -> None:
-        self.owner = owner
-        self._shared = None     # (stimuli, {id(extractor): _SharedCall}) during one_call_per_extractor
 
-    @contextmanager
-    def one_call_per_extractor(self, stimuli, plan):
-        """Inside, the first request to an extractor in ``plan``
-        (``[(extractor, layers), ...]``) on ``stimuli`` runs all its listed layers
-        once, and each request of those layers gets its part of that output
-        (``_SharedCall``). The caller lists only extractors that declare
-        ``independent_layers``. Every other request runs as before."""
-        previous = self._shared
-        self._shared = (stimuli, {id(extractor): _SharedCall(extractor, layers)
-                                  for extractor, layers in plan})
-        try:
-            yield
-        finally:
-            self._shared = previous
+def record(model, stimuli, multi_modality: bool = False):
+    """The activity of the regions ``start_recording`` set, for a stimulus table.
 
-    def process(self, input_event, multi_modality: bool = False) -> OutputEvent:
-        """Answer ``input_event`` with the first capability, in registry order,
-        that handles it. A ``StreamEvent`` and its answer are checked against
-        the channel catalog."""
-        owner = self.owner
-        stream = isinstance(input_event, StreamEvent)
-        if stream:
-            from brainscore_core.io_catalog import validate, INPUT
-            issues = validate(input_event.channel, input_event.payload, INPUT)
-            if issues:
-                raise ValueError('; '.join(issues))
-        for capability in enabled_capabilities(owner):
-            if capability.handles(owner, input_event, multi_modality=multi_modality):
-                output = capability.process(owner, input_event, multi_modality=multi_modality)
-                break
-        else:
-            raise TypeError(
-                f"Subject '{owner.identifier}' has no registered capability for "
-                f"input event type {type(input_event).__name__}."
-            )
-        if stream and isinstance(output, StreamEvent):
-            from brainscore_core.io_catalog import validate, OUTPUT
-            issues = validate(output.channel, output.payload, OUTPUT)
-            if issues:
-                raise ValueError('; '.join(issues))
-        return output
+    The one step that records from the extractors: the neural session part,
+    the readout and ``process`` call it. Without ``multi_modality`` one input
+    modality is read (the one the recorded regions name, else the first in
+    ``MODALITY_PRIORITY``); with it, every detected one, concatenated along
+    ``neuroid`` with a ``modality`` coordinate. Several recording time bins
+    repeat a static response across the bins, as legacy vision models do.
+    """
+    if not model._input_keys:
+        raise TypeError(f"Subject '{model.identifier}' declares no input, so it cannot take "
+                        f"{type(stimuli).__name__}.")
+    output = _record(model, stimuli, multi_modality)
+    time_bins = model._recorder.time_bins
+    if time_bins is not None and len(time_bins) > 1:
+        from brainscore_core.legacy_facade import repeat_over_time_bins
+        output = repeat_over_time_bins(output, time_bins)
+    return output
 
-    def _declares(self, modality: str) -> bool:
-        """Whether a declared input key is ``modality`` or canonicalizes to it
-        (a ``video`` key is temporal vision)."""
-        keys = self.owner._input_keys
-        return modality in keys or any(canonical_modality(key) == modality for key in keys)
 
-    def detect_modalities(self, stimuli) -> Set[str]:
-        owner = self.owner
-        detected: Set[str] = set()
-        from brainscore_core.io_catalog import column_channel
+def _record(model, stimuli, multi_modality):
+    recorder = model._recorder
+    detected = detect_modalities(model, stimuli)
+    if not detected:
+        from brainscore_core.io_catalog import stimulus_columns
         from brainscore_core.streaming import parse_channel
-        for col in stimuli.columns:
-            channel = column_channel(col)
-            if channel is None:
-                continue
-            # The channel family is the modality: vision:image and vision:video are vision.
-            modality = canonical_modality(parse_channel(channel)[0])
-            if self._declares(modality):
-                detected.add(modality)
-        return detected
-
-    def pick_modality(self, detected: Set[str]) -> str:
-        owner = self.owner
-        for m in owner.MODALITY_PRIORITY:
-            if m in detected:
-                return m
-        return sorted(detected)[0]
-
-    def supports_layer_extraction(self, modality: str) -> bool:
-        return any(canonical_modality(key) == canonical_modality(modality)
-                   for key in self.owner._extractors)
-
-    def extract_for_modality(self, stimuli, modality: str, layers: List[str]):
-        # An intervention (lesion/stimulation) is a mutable forward-hook that the
-        # activation cache key does not fingerprint, so a cached unchanged
-        # extraction would be wrongly returned for a changed run. Bypass the
-        # cache while any intervention is active.
-        if self.owner._interventions.active_interventions:
-            with _activation_cache_disabled():
-                return self._extract_for_modality_inner(stimuli, modality, layers)
-        return self._extract_for_modality_inner(stimuli, modality, layers)
-
-    def _extract_for_modality_inner(self, stimuli, modality: str, layers: List[str]):
-        owner = self.owner
-        extractor = extractor_for(owner, modality, stimuli)
-        if extractor is not None:
-            shared = self._shared
-            call = (shared[1].get(id(extractor))
-                    if shared is not None and shared[0] is stimuli else None)
-            if call is not None:
-                return call(stimuli, layers)
-            return extractor(stimuli, layers=layers)
-        modality = canonical_modality(modality)
-        raise NotImplementedError(
-            f"Subject '{owner.identifier}' declares {modality!r} input but has no "
-            'activation extractor for it. Pass extractor={modality: extractor} to '
-            'record internal activity, or use a behavioral task for an output-only model.')
-
-    def process_multi_modality(self, stimuli, detected: Set[str],
-                               layers: List[str]):
-        """Invoke every detected-and-supported wrapper and concat assemblies."""
-        import numpy as np
-        import xarray as xr
-
-        owner = self.owner
-        fused = fused_for(owner, detected)
-        if fused is not None:
-            # One fused extractor takes every input type: one forward pass.
-            assembly = fused(stimuli, layers=layers)
-            if owner._recorder.is_multi_region:
-                assembly = owner._recorder.tag_neuroids_with_regions(assembly)
-            return assembly
-        ordered = sorted(
-            detected,
-            key=lambda m: (
-                owner.MODALITY_PRIORITY.index(m)
-                if m in owner.MODALITY_PRIORITY
-                else len(owner.MODALITY_PRIORITY)
-            ),
+        families = {canonical_modality(key) for key in model._input_keys}
+        accepted = {m: sorted(c for c, channel in stimulus_columns().items()
+                              if parse_channel(channel)[0] == m)
+                    for m in families}
+        raise ValueError(
+            f"No column in this stimulus set says what kind of input it holds "
+            f"(columns present: {list(stimuli.columns)}). Add one column per input "
+            f"this subject takes; each row holds the input itself or its file path, "
+            f"for example stimuli['image_path'] = [...] for images. Columns this "
+            f"subject reads: {accepted}. A stimulus_paths dict alone is not enough: "
+            f"the column names the input type."
         )
 
-        sub_assemblies = []
-        for modality in ordered:
-            if not self._declares(modality):
-                continue
-            modality_layers = owner._recorder.filter_layers_for_modality(
-                layers, modality)
-            if (owner._region_modality_map
-                    and not modality_layers
-                    and owner._recorder.recording_regions):
-                continue
-            sub = (owner._recorder.process_composite_regions(stimuli, modality)
-                   if owner._recorder.composite_recording else
-                   self.extract_for_modality(stimuli, modality, modality_layers))
-            if not hasattr(sub, 'dims') or 'neuroid' not in sub.dims:
-                raise TypeError(
-                    f"multi_modality dispatch requires every extractor "
-                    f"to return an xarray-shaped assembly with a 'neuroid' "
-                    f"dim; modality '{modality}' returned "
-                    f"{type(sub).__name__}. Pass a layer-aware extractor "
-                    f"(TextWrapper / VLMVisionWrapper) via "
-                    f"extractor={{modality: extractor}}."
-                )
-            if owner._recorder.is_multi_region and not owner._recorder.composite_recording:
-                sub = owner._recorder.tag_neuroids_with_regions(sub, modality)
-            n_neuroid = sub.sizes['neuroid']
-            sub = sub.assign_coords(
-                modality=('neuroid', np.array([modality] * n_neuroid))
-            )
-            sub_assemblies.append(sub)
+    layers = recorder.current_layers()
+    modality = pick_modality(model, detected)
+    requested_modalities = {canonical_modality(model._region_modality_map[r])
+                            for r in recorder.recording_regions if r in model._region_modality_map}
+    missing = requested_modalities - detected
+    if missing:
+        raise ValueError(f'Recording targets require missing input modalities: {sorted(missing)}.')
+    if len(requested_modalities) == 1:
+        modality = next(iter(requested_modalities))
+    elif len(requested_modalities) > 1 and not multi_modality:
+        raise ValueError('Recording targets span modalities; pass multi_modality=True.')
 
-        if not sub_assemblies:
-            raise ValueError(
-                f"multi_modality=True but no detected modality had a "
-                f"matching extractor. detected={detected}, "
-                f"available={set(owner._input_keys)}."
-            )
+    # With regions mapped but none recorded, the caller forgot start_recording.
+    # Only the modalities that run are checked, so a plain callable on the
+    # selected input is not refused because another tower is layer-aware.
+    will_run = detected if (multi_modality and len(detected) > 1) else {modality}
+    if (not layers and model._region_layer_map_dict
+            and not recorder.composite_recording
+            and any(supports_layer_extraction(model, m) for m in will_run)):
+        raise ValueError(
+            f"Subject '{model.identifier}' records no region: request a "
+            f"neural channel in the session, for example "
+            f"stimulus_session(stimuli, ['neural:IT']). Without one the "
+            f"recording has 0 neuroids. Known regions: "
+            f"{sorted(model._region_layer_map_dict.keys())}."
+        )
 
-        return _concat_modalities_along_neuroid(sub_assemblies, xr)
+    if (multi_modality or fused_for(model, detected) is not None) and len(detected) > 1:
+        return extract_modalities(model, stimuli, detected, layers)
+    if not multi_modality and len(detected) > 1:
+        import warnings
+        warnings.warn(
+            f"Stimulus set contains multiple supported modalities "
+            f"{sorted(detected)} for subject '{model.identifier}'. "
+            f"Default process(..., multi_modality=False) will use "
+            f"'{modality}' via recording-target routing or MODALITY_PRIORITY. Pass "
+            f"multi_modality=True to extract all supported modalities, "
+            f"or provide stimulus columns for only the modality you want.",
+            UserWarning,
+            stacklevel=3,
+        )
+    if recorder.composite_recording and supports_layer_extraction(model, modality):
+        return recorder.process_composite_regions(stimuli, modality)
+    layers = recorder.filter_layers_for_modality(layers, modality)
+    assembly = extract_for_modality(model, stimuli, modality, layers)
+    if recorder.is_multi_region and supports_layer_extraction(model, modality):
+        assembly = recorder.tag_neuroids_with_regions(assembly, modality)
+    return assembly
+
+
+def act(model, row):
+    """The policy's outputs for one closed-loop step.
+
+    A step is a row: a mapping of channel -> payload (a message from another
+    agent is a ``text`` entry, with the sender in the event meta). The policy
+    returns a mapping of output channel -> payload, for example
+    ``{'motor': action}``; it needs no Brain-Score import. Device payloads are
+    checked by their harness (``brainscore.harnesses.robotics``), not here.
+    """
+    if model._policy is None:
+        raise NotImplementedError(
+            f"Subject '{model.identifier}' has no policy. Closed-loop evaluation "
+            f"requires BrainScoreModel(policy=...), a callable "
+            f"policy(row) -> {{output channel: payload}}."
+        )
+    outputs = model._policy(row)
+    if not isinstance(outputs, Mapping):
+        raise TypeError(
+            f"Subject '{model.identifier}' policy returned {type(outputs).__name__}; "
+            f"expected a mapping of output channel -> payload, for example "
+            f"{{'motor': action}}."
+        )
+    return outputs
+
+
+def _declares(model, modality: str) -> bool:
+    """Whether a declared input key is ``modality`` or canonicalizes to it
+    (a ``video`` key is temporal vision)."""
+    keys = model._input_keys
+    return modality in keys or any(canonical_modality(key) == modality for key in keys)
+
+
+def detect_modalities(model, stimuli) -> Set[str]:
+    """Declared input modalities whose columns appear in ``stimuli``."""
+    from brainscore_core.io_catalog import column_channel
+    from brainscore_core.streaming import parse_channel
+    detected: Set[str] = set()
+    for col in stimuli.columns:
+        channel = column_channel(col)
+        if channel is None:
+            continue
+        # The channel family is the modality: vision:image and vision:video are vision.
+        modality = canonical_modality(parse_channel(channel)[0])
+        if _declares(model, modality):
+            detected.add(modality)
+    return detected
+
+
+def pick_modality(model, detected: Set[str]) -> str:
+    for m in model.MODALITY_PRIORITY:
+        if m in detected:
+            return m
+    return sorted(detected)[0]
+
+
+def supports_layer_extraction(model, modality: str) -> bool:
+    return any(canonical_modality(key) == canonical_modality(modality)
+               for key in model._extractors)
+
+
+def extract_for_modality(model, stimuli, modality: str, layers: List[str]):
+    """Call the extractor for ``modality`` and the form of ``stimuli``.
+
+    An intervention is a forward hook the activation cache key does not see,
+    so the cache is bypassed while any intervention is active.
+    """
+    if model._interventions.active_interventions:
+        with _activation_cache_disabled():
+            return _extract(model, stimuli, modality, layers)
+    return _extract(model, stimuli, modality, layers)
+
+
+def _extract(model, stimuli, modality: str, layers: List[str]):
+    extractor = extractor_for(model, modality, stimuli)
+    if extractor is not None:
+        shared = model._shared_calls
+        call = (shared[1].get(id(extractor))
+                if shared is not None and shared[0] is stimuli else None)
+        if call is not None:
+            return call(stimuli, layers)
+        return extractor(stimuli, layers=layers)
+    modality = canonical_modality(modality)
+    raise NotImplementedError(
+        f"Subject '{model.identifier}' declares {modality!r} input but has no "
+        'activation extractor for it. Pass extractor={modality: extractor} to '
+        'record internal activity, or use a behavioral task for an output-only model.')
+
+
+def extract_modalities(model, stimuli, detected: Set[str], layers: List[str]):
+    """Invoke every detected-and-supported wrapper and concat assemblies."""
+    import numpy as np
+    import xarray as xr
+
+    recorder = model._recorder
+    fused = fused_for(model, detected)
+    if fused is not None:
+        # One fused extractor takes every input type: one forward pass.
+        assembly = fused(stimuli, layers=layers)
+        if recorder.is_multi_region:
+            assembly = recorder.tag_neuroids_with_regions(assembly)
+        return assembly
+    priority = model.MODALITY_PRIORITY
+    ordered = sorted(detected, key=lambda m: (
+        priority.index(m) if m in priority else len(priority)))
+
+    sub_assemblies = []
+    for modality in ordered:
+        if not _declares(model, modality):
+            continue
+        modality_layers = recorder.filter_layers_for_modality(layers, modality)
+        if (model._region_modality_map
+                and not modality_layers
+                and recorder.recording_regions):
+            continue
+        sub = (recorder.process_composite_regions(stimuli, modality)
+               if recorder.composite_recording else
+               extract_for_modality(model, stimuli, modality, modality_layers))
+        if not hasattr(sub, 'dims') or 'neuroid' not in sub.dims:
+            raise TypeError(
+                f"multi_modality dispatch requires every extractor "
+                f"to return an xarray-shaped assembly with a 'neuroid' "
+                f"dim; modality '{modality}' returned "
+                f"{type(sub).__name__}. Pass a layer-aware extractor "
+                f"(TextWrapper / VLMVisionWrapper) via "
+                f"extractor={{modality: extractor}}."
+            )
+        if recorder.is_multi_region and not recorder.composite_recording:
+            sub = recorder.tag_neuroids_with_regions(sub, modality)
+        n_neuroid = sub.sizes['neuroid']
+        sub = sub.assign_coords(
+            modality=('neuroid', np.array([modality] * n_neuroid))
+        )
+        sub_assemblies.append(sub)
+
+    if not sub_assemblies:
+        raise ValueError(
+            f"multi_modality=True but no detected modality had a "
+            f"matching extractor. detected={detected}, "
+            f"available={set(model._input_keys)}."
+        )
+
+    return _concat_modalities_along_neuroid(sub_assemblies, xr)
 
 
 class _SharedCall:

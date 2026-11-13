@@ -42,8 +42,8 @@ policies in a closed loop.
 For a new kind of request, with its own input and output channels, copy
 `capability.py`. It is a small runnable, clearly synthetic example: typed
 dataclass payloads, two catalog entries whose validators reject bad payloads
-before any model sees them, and a `Capability` subclass. A capability takes one
-role; this one runs sessions. Its `supports_session` claims the output channel;
+before any model sees them, and a `Capability` subclass. A capability runs
+sessions. Its `supports_session` claims the output channel;
 its `participate` answers each request and sends the answer back with
 `session.respond`; its `setup` checks the model's settings before the first
 request. Every method takes the model as its first argument, named `subject`.

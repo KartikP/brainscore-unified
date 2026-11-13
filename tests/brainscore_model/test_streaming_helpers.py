@@ -146,48 +146,26 @@ def _native_multimodal_model(model_cls=BrainScoreModel):
     return model, activations, text
 
 
+def _temporal_extractor(stimuli, layers=None):
+    """A static response; the recording's time bins repeat it across the bins."""
+    return NeuroidAssembly(
+        np.array([[1.0, 2.0], [3.0, 4.0]]),
+        coords={
+            "stimulus_id": ("presentation", list(stimuli["stimulus_id"].values)),
+            "neuroid_id": ("neuroid", ["temporal_layer.0", "temporal_layer.1"]),
+            "layer": ("neuroid", ["temporal_layer"] * 2),
+        },
+        dims=["presentation", "neuroid"],
+    )
+
+
 class _TemporalBrainScoreModel(BrainScoreModel):
     def __init__(self):
         super().__init__(
             identifier="native-temporal",
             model=None,
             region_layer_map={"IT": "temporal_layer"},
-            # process() is replaced below; the extractor only declares the input.
-            extractor={"vision": lambda stimuli, layers=None: None},
-        )
-
-    def process(self, input_event, multi_modality=False):
-        del multi_modality
-        stimulus_ids = list(input_event["stimulus_id"].values)
-        neuroid_ids = ["temporal_layer.0", "temporal_layer.1"]
-        if self._recorder.time_bins is None:
-            return NeuroidAssembly(
-                np.array([[1.0, 2.0], [3.0, 4.0]]),
-                coords={
-                    "stimulus_id": ("presentation", stimulus_ids),
-                    "neuroid_id": ("neuroid", neuroid_ids),
-                    "layer": ("neuroid", ["temporal_layer"] * 2),
-                },
-                dims=["presentation", "neuroid"],
-            )
-
-        data = np.arange(
-            len(stimulus_ids) * len(self._recorder.time_bins) * 2, dtype=float
-        ).reshape(len(stimulus_ids), len(self._recorder.time_bins), 2)
-        return NeuroidAssembly(
-            data,
-            coords={
-                "stimulus_id": ("presentation", stimulus_ids),
-                "time_bin_start_ms": (
-                    "time_bin", [start for start, _ in self._recorder.time_bins]
-                ),
-                "time_bin_end_ms": (
-                    "time_bin", [end for _, end in self._recorder.time_bins]
-                ),
-                "neuroid_id": ("neuroid", neuroid_ids),
-                "layer": ("neuroid", ["temporal_layer"] * 2),
-            },
-            dims=["presentation", "time_bin", "neuroid"],
+            extractor={"vision": _temporal_extractor},
         )
 
 
@@ -259,9 +237,9 @@ def test_neural_response_native_participate_threads_time_bins_exactly():
 
     assert subject.participate_called is True
     assert subject.participate_outputs == ("neural:IT",)
-    assert scored.dims == ("presentation", "time_bin", "neuroid")
-    assert list(scored["time_bin_start_ms"].values) == [70, 170]
-    assert list(scored["time_bin_end_ms"].values) == [170, 270]
+    assert set(scored.dims) == {"presentation", "time_bin", "neuroid"}
+    assert list(scored["time_bin_start"].values) == [70, 170]
+    assert list(scored["time_bin_end"].values) == [170, 270]
     xr.testing.assert_identical(scored, expected)
 
 

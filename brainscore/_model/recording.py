@@ -201,9 +201,6 @@ class Recorder:
                 if region not in routing
                 or canonical_modality(routing[region]) == canonical_modality(modality)]
 
-    def layers_for_region(self, region):
-        return list(region_selector(self.owner, region).layer_paths)
-
     def current_layers(self) -> List[str]:
         if self.recording_layers:
             return list(self.recording_layers)
@@ -218,7 +215,7 @@ class Recorder:
         if not owner._region_modality_map or not self.recording_regions:
             return list(layers)
         allowed = {layer for region in self.regions_for_modality(modality)
-                   for layer in self.layers_for_region(region)}
+                   for layer in region_selector(owner, region).layer_paths}
         return [layer for layer in layers if layer in allowed]
 
     def tag_neuroids_with_regions(self, assembly, modality=None):
@@ -233,7 +230,7 @@ class Recorder:
         )
         layer_to_regions: Dict[str, List[str]] = {}
         for region in self.regions_for_modality(modality):
-            for layer in self.layers_for_region(region):
+            for layer in region_selector(self.owner, region).layer_paths:
                 layer_to_regions.setdefault(layer, []).append(region)
 
         neuroid_layers = assembly['layer'].values
@@ -285,12 +282,13 @@ class Recorder:
         import numpy as np
         import xarray as xr
 
+        from .dispatch import extract_for_modality
         owner = self.owner
         blocks = []
         for region in self.regions_for_modality(modality):
             selector = region_selector(owner, region)
             layer_paths = list(selector.layer_paths)
-            assembly = owner._dispatcher.extract_for_modality(stimuli, modality, layer_paths)
+            assembly = extract_for_modality(owner, stimuli, modality, layer_paths)
             assembly = self.ensure_layer_provenance(
                 assembly,
                 layer_paths,

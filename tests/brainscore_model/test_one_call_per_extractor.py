@@ -268,34 +268,6 @@ def test_an_extractor_owned_region_coordinate_stays_as_alone():
     assert calls == [['early', 'late']]
 
 
-def test_a_capability_that_changes_each_answer_still_runs_per_channel():
-    from brainscore.capabilities import Capability, register_capability
-    from brainscore.capabilities.registry import capability_registry
-    from brainscore.capabilities.neural import NeuralEncodingCapability
-    answered = []
-
-    class Center(Capability):
-        identifier = 'test-one-call-center'
-        order = 1
-        def enabled_for(self, model): return model.identifier == 'center-declared'
-        def handles(self, model, event, **kwargs): return isinstance(event, StimulusSet)
-        def process(self, model, event, **kwargs):
-            answered.append(list(model._recorder.recording_regions))
-            result = NeuralEncodingCapability().process(model, event, **kwargs)
-            return result - result.mean('neuroid')
-    register_capability(Center())
-    try:
-        def make():
-            calls = []
-            return BrainScoreModel('center-declared', extractor={'vision': Declared(calls)},
-                                   region_layer_map=VISUAL), calls
-        calls = assert_each_channel_alone(make, images_table(), ['V1', 'IT'], False)
-    finally:
-        capability_registry.pop(Center.identifier)
-    assert calls == [['early', 'late']]
-    assert answered[:2] == [['V1'], ['IT']]           # the capability ran once per channel
-
-
 def test_two_extractors_take_one_call_each():
     """Sharing follows the extractor that dispatch selects, never the modality alone."""
     vision_calls, audio_calls = [], []
