@@ -50,7 +50,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    as_array, attach_stimulus_set, cache_signature, hooked, run_batches,
+    LiveRecording, as_array, attach_stimulus_set, cache_signature, hooked, run_batches,
 )
 
 
@@ -419,24 +419,25 @@ class AudioWrapper:
         with hooked(self._model, layers, as_array) as layer_results, torch.no_grad():
             self._model(**processed)
 
-        attention_mask = processed.get('attention_mask')
+        self._measure_step(layer_results, max(len(w) for w in batch_waveforms))
+        return self._aggregate(layer_results, processed.get('attention_mask'))
 
-        # Capture per-step duration for downstream temporal coord
-        # attachment. Compute from the longest input in the batch (the
-        # padded length the model actually saw) and the hook output's
-        # time axis. Stable across batches when the model has uniform
-        # conv stride (Wav2Vec2, Wav2Vec-Bert, HuBERT, etc.); we cache
-        # the first non-None measurement.
-        if self._step_ms is None:
-            input_samples = max(len(w) for w in batch_waveforms)
-            for layer_name, act in layer_results.items():
-                if act.ndim == 3 and act.shape[1] > 0:
-                    duration_ms = (input_samples
-                                   / self._target_sample_rate * 1000.0)
-                    self._step_ms = duration_ms / act.shape[1]
-                    break
+    def _measure_step(self, layer_results, input_samples):
+        """Keep the duration of one output step, measured on the first pass.
 
-        return self._aggregate(layer_results, attention_mask)
+        The step is the length of the input the model saw (``input_samples``,
+        after padding) over the length of the first time-resolved layer output.
+        It is stable across passes when the model has a uniform convolution
+        stride (Wav2Vec2, Wav2Vec-Bert, HuBERT), so the first measurement is
+        kept. It gives ``time_bin_start_ms`` and ``time_bin_end_ms`` of
+        ``time_series`` outputs.
+        """
+        if self._step_ms is not None:
+            return
+        for act in layer_results.values():
+            if act.ndim == 3 and act.shape[1] > 0:
+                self._step_ms = input_samples / self._target_sample_rate * 1000.0 / act.shape[1]
+                return
 
     def _aggregate(self, layer_results, attention_mask):
         """Apply ``layer_aggregation`` to raw hook outputs.
@@ -475,6 +476,28 @@ class AudioWrapper:
                 act = act.mean(axis=1)
             out[layer_name] = act
         return out
+
+    def record(self, layers):
+        """Record ``layers`` while another caller runs the model (an answer or a step).
+
+        Returns a context manager; its ``take()`` gives the first forward pass
+        since the previous take, packaged as ``__call__`` packages one clip: the
+        same aggregation, time axis and neuroid coordinates. The pass must show
+        one clip. The attention mask, when the caller gives one, is read from
+        that call, as ``__call__`` reads it from the processor output. The step
+        duration of ``time_series`` outputs is measured from ``input_values``
+        (a waveform) when no pass measured it before.
+        """
+        def take(first, call):
+            kwargs = call[1] if call is not None else {}
+            if any(activity.shape[0] != 1 for activity in first.values()):
+                raise ValueError('Recording during a task expects one clip at a time.')
+            waveform = kwargs.get('input_values')
+            if waveform is not None:
+                self._measure_step(first, waveform.shape[-1])
+            return self._package(self._aggregate(first, kwargs.get('attention_mask')), ['?'])
+
+        return LiveRecording(self._model, self._model, layers, take, as_array)
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
@@ -549,3 +572,10 @@ class AudioWrapper:
             coords=coords,
             dims=['presentation', 'time_bin', 'neuroid'],
         )
+
+
+# Recording several layers in one call gives, for each layer, exactly what a
+# call for that layer alone gives, so the regions of one session share one call
+# (brainscore._model.channels). Set outside the class body: the class source is
+# part of the activation cache key, and this line must not change that key.
+AudioWrapper.independent_layers = True

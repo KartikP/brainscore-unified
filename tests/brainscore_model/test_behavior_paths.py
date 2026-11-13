@@ -118,9 +118,11 @@ def test_a_legacy_task_with_a_region_records_the_answer_pass():
     calls = []
     model = _model(calls, answer=True)
     model.region_layer_map = {'IT': 'late'}
-    with pytest.raises(NotImplementedError, match='record'):
-        # The plain extractor has no record(layers) and no model= to hook.
+    from brainscore_core.compatibility import CompatibilityError
+    with pytest.raises(CompatibilityError, match='record'):
+        # The plain extractor has no record(layers) and no model= to hook: N/A.
         _run(model, ['behavior', 'neural:IT'], TaskContext(**LEGACY))
+    assert calls == []                               # before any answer
 
 
 def test_a_choice_goes_to_the_reply_part_with_the_full_prompt():

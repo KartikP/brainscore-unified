@@ -22,7 +22,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Event (`StreamEvent`)** | One item on a channel: `channel`, `payload`, `t_ms`, `meta`. |
 | **Experiment** | A subject, a protocol, tools and an output folder, run together. Produces a saved record; need not produce a score. |
 | **`extractor`** | A `BrainScoreModel` part, one per input type, that prepares inputs, runs the network and returns layer activity. |
-| **`independent_layers`** | What an extractor declares when its output for some layers, cut to one layer, equals its output for that layer alone. The regions of one session that it records then share one call. `TextWrapper`, `VLMVisionWrapper` and `VLMVideoWrapper` declare it; any other extractor runs once per region. |
+| **`independent_layers`** | What an extractor declares when its output for some layers, cut to one layer, equals its output for that layer alone. The regions of one session that it records then share one call. Every wrapper in `brainscore.model_helpers` declares it; any other extractor runs once per region. `BRAINSCORE_REGIONS_PER_PASS=one` gives every region its own pass. |
 | **Instrumentation** | The connection that lets tools reach inside a model, such as `TorchInstrumentation`. |
 | **`intervention`** | A change to a subject while it runs (a lesion, a stimulation, a drug), and the `BrainScoreModel` part that applies it: `StateChange -> (PerturbationApplied, undo_function)`. The channel name (`lesion`, `stimulation`, `pharmacological`) says the kind. |
 | **Layer path** | A module's name in the network, such as `layer3.0.conv1`; list them with `named_modules()`. |

@@ -13,16 +13,44 @@ stimuli for the layers of all those regions, and each channel's own request
 gets its layers' part of that output (``InputDispatcher.one_call_per_extractor``).
 Every other step of the standalone path still runs per channel. Regions of an
 extractor without the declaration run one call each, as before.
+
+The environment variable ``BRAINSCORE_REGIONS_PER_PASS`` selects the plan:
+``all`` (the default) shares the call as above; ``one`` gives every region its
+own call (lower peak memory, more model passes). Each channel's payload is
+the same under both values. It is read once, when a session starts
+(``regions_per_pass``), so a benchmark can set it for its own run.
 """
 
+import os
 from typing import Dict, List, Sequence, Tuple
 
 from brainscore_core.io_catalog import canonical_modality
 
 
+REGIONS_PER_PASS = 'BRAINSCORE_REGIONS_PER_PASS'
+
+
+def regions_per_pass() -> str:
+    """The extraction plan in ``BRAINSCORE_REGIONS_PER_PASS``: ``'all'`` (default) or ``'one'``.
+
+    ``all``: one model pass records every requested region of an extractor
+    that declares ``independent_layers``. ``one``: one pass per region, for
+    lower peak memory at the cost of more passes.
+    """
+    value = os.environ.get(REGIONS_PER_PASS, 'all')
+    if value not in ('all', 'one'):
+        raise ValueError(f"{REGIONS_PER_PASS} must be 'all' (one pass for all regions, the "
+                         f"default) or 'one' (one pass per region); got {value!r}.")
+    return value
+
+
 def run_neural_channels(model, stimuli, channel_regions: Sequence[Tuple[str, str]],
-                        time_bins=None, multi_modality: bool = False) -> Dict[str, object]:
-    """Return ``{channel: payload}`` for the requested ``neural:<region>`` channels."""
+                        time_bins=None, multi_modality: bool = False,
+                        plan: str = 'all') -> Dict[str, object]:
+    """Return ``{channel: payload}`` for the requested ``neural:<region>`` channels.
+
+    ``plan`` is the session's ``regions_per_pass()``: with ``'one'`` no call is shared.
+    """
     regions = [region for _, region in channel_regions]
     _refuse_duplicates([channel for channel, _ in channel_regions])
     _start(model, regions[0] if len(regions) == 1 else regions, time_bins)
@@ -30,7 +58,8 @@ def run_neural_channels(model, stimuli, channel_regions: Sequence[Tuple[str, str
     try:
         payloads = {}
         order = _plan(model, stimuli, regions)
-        with model._dispatcher.one_call_per_extractor(stimuli, _shared_layers(model, stimuli, order)):
+        shared = _shared_layers(model, stimuli, order) if plan == 'all' else []
+        with model._dispatcher.one_call_per_extractor(stimuli, shared):
             for region in order:
                 _start(model, region, time_bins)
                 output = _process(model, stimuli, multi_modality)

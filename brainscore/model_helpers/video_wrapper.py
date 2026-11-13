@@ -57,7 +57,7 @@ from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import (
     make_assembly,
-    make_neuroid_ids,
+    make_layer_neuroid_coords,
     replace_presentation_coord,
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import (
@@ -67,7 +67,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.temporal import window_plan
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
-from brainscore.model_helpers._extractors import as_float32, cache_signature, hooked
+from brainscore.model_helpers._extractors import LiveRecording, as_float32, cache_signature, hooked
 
 
 logger = logging.getLogger(__name__)
@@ -486,6 +486,24 @@ class VideoWrapper:
         """Layer paths this extractor can record, relative to the module it wraps."""
         return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
 
+    def record(self, layers):
+        """Record ``layers`` while another caller runs the model (an answer or a step).
+
+        Returns a context manager; its ``take()`` gives the first forward pass
+        since the previous take, packaged as ``__call__`` packages one clip: the
+        same values, time steps and neuroid coordinates. The pass must show one
+        clip. The forward pass carries the frames, not the clip's duration, so
+        the time bins of a recording during a task have no times in ms.
+        """
+        def take(first, _call):
+            per_layer = {layer: self._flatten_layer_output(activity) for layer, activity in first.items()}
+            if any(activity.shape[0] != 1 for activity in per_layer.values()):
+                raise ValueError('Recording during a task expects one clip at a time.')
+            return self._package(OrderedDict((layer, [activity[0]]) for layer, activity in per_layer.items()),
+                                 None, ['?'])
+
+        return LiveRecording(self._model, self._model, layers, take, as_float32)
+
     def _package(
         self,
         per_video_activations: OrderedDict,
@@ -494,60 +512,46 @@ class VideoWrapper:
     ) -> NeuroidAssembly:
         """Package per-video, per-layer activations into a NeuroidAssembly
         with dims (presentation, time_bin, neuroid)."""
-        n_videos = len(paths)
-        first_layer = next(iter(per_video_activations))
-        # Each per_video_activations[layer] is a list of length n_videos,
-        # each entry shape (T_out, features_flat_per_layer).
-        T_out = per_video_activations[first_layer][0].shape[0]
-
         # One time_bin axis is shared by all presentations; refuse clips whose
-        # clocks differ beyond tolerance rather than mislabel them.
-        time_ms = _shared_clock(per_video_time_ms, paths)
+        # clocks differ beyond tolerance rather than mislabel them. Without a
+        # clock (a recording during a task) the bins carry only their index.
+        time_ms = (_shared_clock(per_video_time_ms, paths)
+                   if per_video_time_ms is not None else None)
 
-        # Concatenate layers along the feature axis, and stack videos
-        layer_tensors = []
-        for layer_name, entries in per_video_activations.items():
-            # entries: list of (T, F_layer) arrays
-            stacked = np.stack(entries, axis=0)  # (n_videos, T, F_layer)
-            layer_tensors.append((layer_name, stacked))
-
-        # Concatenate across layers on the feature axis
-        feature_arrays = [t for (_, t) in layer_tensors]
-        data = np.concatenate(feature_arrays, axis=2)  # (n_videos, T, total_F)
-
-        # Neuroid coords
-        neuroid_ids: List[str] = []
-        layer_labels: List[str] = []
-        for layer_name, stacked in layer_tensors:
-            F = stacked.shape[2]
-            neuroid_ids.extend(
-                make_neuroid_ids(self._identifier, layer_name, F))
-            layer_labels.extend([layer_name] * F)
+        # Stack videos per layer, then concatenate layers on the feature axis:
+        # (n_videos, T, total_F). Each layer's units are numbered from zero
+        # (``neuroid_num``), as in every other extractor.
+        stacked = {layer_name: np.stack(entries, axis=0)
+                   for layer_name, entries in per_video_activations.items()}
+        data = np.concatenate(list(stacked.values()), axis=2)
+        neuroid = {}
+        for layer_name, values in stacked.items():
+            for name, (_, labels) in make_layer_neuroid_coords(
+                    self._identifier, layer_name, values.shape[2]).items():
+                neuroid.setdefault(name, []).extend(labels)
 
         # Build stimulus_ids (placeholder — caller may relabel via
         # _relabel_stimulus_ids)
         stimulus_ids = [Path(p).stem for p in paths]
+        n_time = len(time_ms) if time_ms is not None else data.shape[1]
 
-        # Secondary time_bin coord so gather_indexes produces a MultiIndex
-        # (single coord → plain Index named after the dim, and the coord
-        # name gets lost).
         # Canonical time-bin edges (ms), matching the coord names emitted by
         # TextWrapper / AudioWrapper so naturalistic benchmarks align any
         # wrapper's output uniformly (no per-wrapper special cases). Keep
         # time_bin_center_ms too — existing video benchmarks read it.
-        time_starts, time_ends = _edges_from_centers(time_ms)
         coords = {
             'stimulus_id': ('presentation', stimulus_ids),
             'video_path': ('presentation', paths),
-            'time_bin_center_ms': ('time_bin', time_ms),
-            'time_bin_start_ms': ('time_bin', time_starts),
-            'time_bin_end_ms': ('time_bin', time_ends),
-            'time_bin_idx': ('time_bin', list(range(len(time_ms)))),
-            'neuroid_id': ('neuroid', neuroid_ids),
-            'neuroid_num': ('neuroid', list(range(len(neuroid_ids)))),
-            'model': ('neuroid', [self._identifier] * len(neuroid_ids)),
-            'layer': ('neuroid', layer_labels),
         }
+        if time_ms is not None:
+            time_starts, time_ends = _edges_from_centers(time_ms)
+            coords.update({
+                'time_bin_center_ms': ('time_bin', time_ms),
+                'time_bin_start_ms': ('time_bin', time_starts),
+                'time_bin_end_ms': ('time_bin', time_ends),
+            })
+        coords['time_bin_idx'] = ('time_bin', list(range(n_time)))
+        coords.update({name: ('neuroid', labels) for name, labels in neuroid.items()})
         return make_assembly(
             data,
             coords=coords,
@@ -666,3 +670,10 @@ def _default_time_mapping(n_time_steps_out: int, video_duration_ms: float) -> Li
         return [video_duration_ms / 2.0]
     step_ms = video_duration_ms / n_time_steps_out
     return [step_ms * (i + 0.5) for i in range(n_time_steps_out)]
+
+
+# Recording several layers in one call gives, for each layer, exactly what a
+# call for that layer alone gives, so the regions of one session share one call
+# (brainscore._model.channels). Set outside the class body: the class source is
+# part of the activation cache key, and this line must not change that key.
+VideoWrapper.independent_layers = True

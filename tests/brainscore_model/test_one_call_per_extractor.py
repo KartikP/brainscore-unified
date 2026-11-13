@@ -211,20 +211,15 @@ def test_vlm_video_regions_share_one_call(tmp_path, streaming):
     assert len(calls) == (2 if streaming else 1)
 
 
-def test_the_video_wrapper_does_not_declare_independent_layers():
-    """VideoWrapper numbers ``neuroid_num`` over all layers of one call, so it keeps one call per region."""
-    from brainscore.model_helpers.video_wrapper import VideoWrapper
-    from brainscore.model_helpers.audio_wrapper import AudioWrapper
-    assert getattr(VideoWrapper, 'independent_layers', False) is False
-    assert getattr(AudioWrapper, 'independent_layers', False) is False
-
-
 def test_the_declaration_keeps_the_activation_cache_key():
     """The class source is part of the cache key; the declaration sits outside it."""
     import inspect
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
     from brainscore.model_helpers.text_wrapper import TextWrapper
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    from brainscore.model_helpers.vlm_video_wrapper import VLMVideoWrapper
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
-    for wrapper in (TextWrapper, VLMVisionWrapper):
+    for wrapper in (TextWrapper, VLMVisionWrapper, VLMVideoWrapper, VideoWrapper, AudioWrapper):
         assert wrapper.independent_layers is True
         assert 'independent_layers' not in inspect.getsource(wrapper)
 

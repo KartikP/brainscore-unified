@@ -499,6 +499,24 @@ def test_a_declared_tower_runs_once_for_its_regions_and_gives_the_same_bands(tmp
     assert len(plain_calls) == 4 * rows and len(shared_calls) == 2 * rows   # one call per tower
 
 
+def test_the_score_is_the_same_with_one_region_per_pass(tmp_path, monkeypatch):
+    """BRAINSCORE_REGIONS_PER_PASS changes how many calls run, never the score."""
+    def declared(calls):
+        return BrainScoreModel(
+            identifier='fake-av-declared', model=None, region_layer_map=_av_regions(),
+            extractor={'video': _DeclaredTower(_extractor('video_path', 1.0, VIDEO_BINS, calls)),
+                       'audio': _DeclaredTower(_extractor('audio_path', 2.0, AUDIO_BINS, calls))})
+    monkeypatch.delenv('BRAINSCORE_REGIONS_PER_PASS', raising=False)
+    shared_calls, single_calls = [], []
+    _, shared = _score(tmp_path, False, [], model=declared(shared_calls))
+    monkeypatch.setenv('BRAINSCORE_REGIONS_PER_PASS', 'one')
+    _, single = _score(tmp_path, False, [], model=declared(single_calls))
+    assert len(shared_calls) == 2 and len(single_calls) == 4      # one call per tower, or per region
+    assert float(shared) == float(single)
+    np.testing.assert_array_equal(shared.attrs['per_parcel_r'], single.attrs['per_parcel_r'])
+    assert shared.attrs['penalties_per_fold'] == single.attrs['penalties_per_fold']
+
+
 def test_streaming_works_for_the_image_form_too(tmp_path):
     _, table_score = _score(tmp_path, False, [], channels=('vision:image',), columns=('image_file_name',),
                             model=_image_model())

@@ -28,7 +28,12 @@ def region_modality(owner, region: str) -> Optional[str]:
 
 
 def record_part(extractor):
-    """The extractor's ``record(layers)``, an optional member of the extractor protocol, or None."""
+    """The extractor's ``record(layers)``, or None for a callable without it.
+
+    Every wrapper in ``brainscore.model_helpers`` has it (the ``Extractor``
+    protocol names it); a plain function or the legacy ``PytorchWrapper`` does
+    not, and records during a task only through hooks on ``model=``.
+    """
     try:
         return extractor.record
     except AttributeError:

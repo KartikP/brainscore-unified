@@ -43,23 +43,25 @@ class NeuralSessions(Capability):
 
     def participate(self, subject, session) -> None:
         task = getattr(session, 'task', None)
-        if task is not None and task.task_type != 'passive':
+        if task is not None and task.task_type != 'passive' and _BEHAVIOR.enabled_for(subject):
             # The session's task decides what the subject does (rule 4.1):
             # record during the task; the answers are not sent.
             drive_behavior_and_neural_session(subject, session)
             return
         # A passive session records activity even after a task was configured.
+        # A subject with no part that does a task (no readout, answer, reply or
+        # likelihood) is not changed by one: it records plain viewing.
         subject._begin_episode()
         # A subject that keeps history is shown one trial at a time (same scores,
         # different arrival), so each independent trial can begin empty.
         per_trial = (_keeps_history(subject)
                      and (task is None or task.trial_memory == 'none'))
+        from .._model.channels import regions_per_pass, run_neural_channels
+        plan = regions_per_pass()       # read once, at the start of the session
         with subject._behavioral.suspended():
-            from .._model.channels import run_neural_channels
-
             def runner(stimuli, channel_regions, time_bins, multi_modality):
                 return run_neural_channels(subject, stimuli, channel_regions,
-                                           time_bins, multi_modality)
+                                           time_bins, multi_modality, plan)
             if getattr(session, 'streaming', False) or per_trial:
                 _drivers.drive_neural_session_streaming(
                     subject, session, channel_runner=runner, on_begin=subject._begin_episode)
@@ -247,7 +249,8 @@ class InterventionSessions(Capability):
 
 
 _NEURAL = NeuralSessions()
-for _capability in (_NEURAL, BehaviorSessions(), MotorSessions(), InterventionSessions()):
+_BEHAVIOR = BehaviorSessions()
+for _capability in (_NEURAL, _BEHAVIOR, MotorSessions(), InterventionSessions()):
     register_capability(_capability)
 
 

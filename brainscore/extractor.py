@@ -23,15 +23,22 @@ class Extractor(Protocol):
     before any forward pass; a ``':input'`` site is checked by its module
     path. An extractor without ``layer_names()`` skips this early check.
 
-    An extractor may also define ``record(layers)``: a context manager that
-    records while another part (``reply``, ``likelihood``, ``policy``) runs the
-    network; its ``take()`` gives the first forward pass since the previous
-    call. A region is recorded during an answer or a step only through it, or
-    through hooks on ``BrainScoreModel(model=...)`` when every layer of the
-    region is a module of that network; pre-flight gives N/A otherwise.
+    ``record(layers)`` records while another part (``reply``, ``likelihood``,
+    ``answer``, ``policy``) runs the network: it returns a context manager whose
+    ``take()`` gives the first forward pass since the previous take, packaged
+    as ``__call__`` packages one stimulus. Every extractor in
+    ``brainscore.model_helpers`` has it, so a region of such a model is
+    recorded during any task. A callable without it (a plain function, or the
+    legacy ``PytorchWrapper``) still records plain viewing; during a task it
+    records through hooks on ``BrainScoreModel(model=...)`` when every layer of
+    the region is a module of that network, and otherwise the pair is N/A
+    before any compute (``brainscore._model.recording.records_while_answering``).
     """
 
     identifier: str
 
     def __call__(self, stimuli: Any, layers: Sequence[str]) -> Any:
+        ...
+
+    def record(self, layers: Sequence[str]) -> Any:
         ...

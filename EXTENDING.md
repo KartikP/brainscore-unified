@@ -103,6 +103,11 @@ Disable result caching if that state cannot be represented. Make `.data` alias o
 NumPy weight edits between scoring runs, because they bypass within-run change
 tracking. See [activation caching](docs/archive/caching.md) for supported paths and limits.
 
+Give a custom extractor `record(layers)` as well (see `brainscore/extractor.py`): a
+region is then recorded during any task, from the forward pass that produces the
+answer or the action. Without it, the region is recorded during a task only through
+hooks on the network passed as `model=`, and otherwise the pair is N/A.
+
 ### Seam 2 — a new benchmark
 
 A benchmark drives the subject model and scores it. Subclass `BenchmarkBase`, implement
@@ -150,6 +155,35 @@ time-resolved features into one clip-time sequence. Set `max_clip_ms` for a fail
 Before sharing a new benchmark, complete the
 [benchmark addition checklist](docs/archive/benchmark_addition_checklist.md). Record the data boundary,
 null floor, ceiling, modality ablations, timing assumptions, score attrs, and EC2 evidence.
+
+### Regions per pass: `BRAINSCORE_REGIONS_PER_PASS`
+
+A session that requests several regions records them with as few model passes as
+possible. The environment variable `BRAINSCORE_REGIONS_PER_PASS` selects the plan. It is
+read once, when a session starts.
+
+- **Default, `all`.** One pass records every requested region of an extractor that
+  declares `independent_layers` (every wrapper in `brainscore.model_helpers`). The
+  outputs of all those regions are in memory at the same time.
+- **`one`.** Each region gets its own pass. Use it when the memory check refuses a run,
+  or when a run with many regions or large layers runs out of memory. Peak memory is
+  lower and the model runs once per region. Scores are the same under both values.
+- **A benchmark that sets it restores the earlier value.** Set it only for your own
+  run, so that the next run in the same process gets the value it expects:
+
+```python
+import os
+
+previous = os.environ.get('BRAINSCORE_REGIONS_PER_PASS')
+os.environ['BRAINSCORE_REGIONS_PER_PASS'] = 'one'
+try:
+    score = benchmark(subject)
+finally:
+    if previous is None:
+        del os.environ['BRAINSCORE_REGIONS_PER_PASS']
+    else:
+        os.environ['BRAINSCORE_REGIONS_PER_PASS'] = previous
+```
 
 ### Seam 3 — a new metric
 

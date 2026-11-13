@@ -529,29 +529,28 @@ class BehavioralReadout:
 
         An extractor's own ``record(layers)`` when it has one; otherwise forward
         hooks on the model passed as ``BrainScoreModel(model=...)``, with layer
-        paths read from that model.
+        paths read from that model. A region that neither can record is N/A
+        (``CompatibilityError``): the task, which chose this path, is known only here.
         """
         owner = self.owner
+        from brainscore_core.compatibility import CompatibilityError
         from .dispatch import extractor_for
-        from .recording import record_part
+        from .recording import record_part, records_while_answering
+        cannot = [region for region in layers if not records_while_answering(owner, region)]
+        if cannot:
+            raise CompatibilityError(
+                f'Subject {owner.identifier!r} cannot record {cannot} while it answers or acts: '
+                'the extractor of each region needs record(layers), or every layer of the region '
+                'must be a module of the network passed as BrainScoreModel(model=...).')
         by_modality: Dict[str, list] = {}
         for region, region_layers in layers.items():
             by_modality.setdefault(self._region_modality(region), []).extend(region_layers)
         recordings = {}
         for modality, modality_layers in by_modality.items():
             modality_layers = list(dict.fromkeys(modality_layers))
-            extractor = extractor_for(owner, modality, stimuli)
-            if extractor is None:
-                raise NotImplementedError(f'No {modality!r} extractor to record from.')
-            record = record_part(extractor)
-            if record is not None:
-                recordings[modality] = record(modality_layers)
-            elif owner._model is not None:
-                recordings[modality] = _hook_recording(owner._model, modality_layers, owner.identifier)
-            else:
-                raise NotImplementedError(
-                    f'The {modality!r} extractor cannot record while the model answers: give it '
-                    'a record(layers) method, or pass the network as BrainScoreModel(model=...).')
+            record = record_part(extractor_for(owner, modality, stimuli))
+            recordings[modality] = (record(modality_layers) if record is not None else
+                                    _hook_recording(owner._model, modality_layers, owner.identifier))
         return recordings
 
     def _per_stimulus(self, stimuli, layers, call, prompts=None):
