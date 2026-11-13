@@ -207,7 +207,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
     # ── Override per-stim feature extraction for dual modality ──────
 
-    def _extract_per_stimulus_features(self, candidate):
+    def _extract_per_stimulus_features(self, subject):
         """Extract per-modality features per unique stimulus, concat
         along feature axis, and tag each column with its modality so
         downstream modes (banded / per_modality / single-tower) can
@@ -222,25 +222,25 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         # (Contract Rule 2.2): a visual input (clips natively, or stills shown
         # as frames), audio, and the neural:IT and neural:A1 outputs. Any
         # other subject falls back to the parent's single-tower extraction.
-        if not takes_audiovisual(candidate):
+        if not takes_audiovisual(subject):
             self._modality_per_feature = None
-            return super()._extract_per_stimulus_features(candidate)
+            return super()._extract_per_stimulus_features(subject)
 
         # ── Visual tower ───────────────────────────────────────────
         from .benchmark import VIDEO_DURATION_MS
         time_bins = [(0, VIDEO_DURATION_MS)]
         # Clips natively when the subject declares vision:video, frames otherwise.
         from .benchmark import Lahner2024BOLDMoments
-        if Lahner2024BOLDMoments._is_native_video(candidate):
+        if Lahner2024BOLDMoments._is_native_video(subject):
             video_stim = self._video_stim_set_for(unique_ids)
-            video_assembly = record_clips(candidate, video_stim, 'IT', time_bins)
+            video_assembly = record_clips(subject, video_stim, 'IT', time_bins)
         else:
             # Frame-aggregation: expand into N frames, show them as stills,
             # then mean-pool over time bins.
             frame_stim = self._stim_helper._expand_videos()
             frame_stim = frame_stim[frame_stim['clip_id'].isin(unique_ids)]
             video_assembly = record_frames_per_clip(
-                candidate, frame_stim, 'IT', time_bins)
+                subject, frame_stim, 'IT', time_bins)
         v_data = video_assembly.values
         if v_data.ndim == 3:    # (presentation, time_bin, neuroid)
             v_features = v_data.mean(axis=1)
@@ -250,7 +250,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
         # ── Audio tower ────────────────────────────────────────────
         audio_stim = self._audio_stim_set_for(unique_ids)
-        audio_assembly = record_clips(candidate, audio_stim, 'A1', time_bins)
+        audio_assembly = record_clips(subject, audio_stim, 'A1', time_bins)
         a_data = audio_assembly.values
         if a_data.ndim == 3:
             a_features = a_data.mean(axis=1)
@@ -293,22 +293,22 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
 
     # ── Override scoring to support per-modality / banded modes ─────
 
-    def __call__(self, candidate) -> Score:
+    def __call__(self, subject) -> Score:
         # Defer to the parent for the single-tower path; only the
         # multimodal path with mode != 'concat' needs custom handling.
         # For 'concat' (parent default), the parent's ridge fits the
         # full concat matrix with α=1.0 — which is what we want.
         if self._mode == 'concat':
-            score = super().__call__(candidate)
-            self._tag_score(score, candidate)
+            score = super().__call__(subject)
+            self._tag_score(score, subject)
             return score
 
         # For other modes we replicate the parent's pipeline but slice
         # / fit ridge differently. To avoid duplicating ~200 lines, we
         # reuse the parent's feature placement + HRF + flatten path.
-        return self._call_with_mode(candidate)
+        return self._call_with_mode(subject)
 
-    def _tag_score(self, score, candidate):
+    def _tag_score(self, score, subject):
         """Attach modality breakdown attrs once the score is computed."""
         if self._modality_per_feature is not None:
             score.attrs['n_features_video'] = int(
@@ -324,10 +324,10 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
             score.attrs['banded_alpha_grid'] = tuple(self.BANDED_ALPHA_GRID)
         return score
 
-    def _call_with_mode(self, candidate) -> Score:
+    def _call_with_mode(self, subject) -> Score:
         # Same as parent.__call__ up to the X_flat / Y_flat point
         per_stim_features, stimulus_ids = (
-            self._extract_per_stimulus_features(candidate))
+            self._extract_per_stimulus_features(subject))
 
         assembly = self.assembly
         n_runs = assembly.sizes['presentation']
@@ -383,7 +383,7 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         score.attrs['ridge_alpha'] = (
             'per_group_from_grid' if self._mode == 'banded' else 1.0)
         score.attrs['inner_validation'] = 'none_fixed_alpha'
-        self._tag_score(score, candidate)
+        self._tag_score(score, subject)
         return score
 
     def _n_pooled_splits(self, run_idx_per_obs) -> int:

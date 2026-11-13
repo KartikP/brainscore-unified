@@ -32,7 +32,7 @@ classDiagram
         region_layer_map
         process(event)
         start_recording(region)
-        start_task(task_context)
+        start_task(task)
     }
     class BrainScoreModel {
         extractor

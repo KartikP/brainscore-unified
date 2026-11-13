@@ -7,7 +7,7 @@ with the existing ``random-vit-b-32`` for vision so multimodal
 scoring has a complete null floor across both towers.
 
 Use case: any multimodal benchmark should score this against the same
-candidate model as a sanity check. If banded ridge can extract
+subject as a sanity check. If banded ridge can extract
 positive signal from random-init Wav2Vec2 features, that's evidence
 the framework is overfitting via α-tuning rather than detecting real
 audio contribution.

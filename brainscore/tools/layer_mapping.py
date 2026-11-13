@@ -325,16 +325,16 @@ def score_approaches(features_by_layer: Dict[str, np.ndarray], target: np.ndarra
     ]
 
 
-def extract_features_by_layer(wrapper, stimulus_set, layers: List[str],
+def extract_features_by_layer(wrapper, stimuli, layers: List[str],
                               time_reduce: str = 'mean') -> Dict[str, np.ndarray]:
     """Extract ``(n_stimuli, n_units)`` per layer from an activations wrapper.
 
-    One ``wrapper(stimulus_set, layers=layers)`` pass (layers share the forward);
+    One ``wrapper(stimuli, layers=layers)`` pass (layers share the forward);
     any ``time_bin`` axis is reduced by ``time_reduce`` and the neuroid axis is
     split per layer. Returns ``{layer: (n_stimuli, n_units)}`` plus
     ``'_stimulus_id'`` (the presentation order).
     """
-    asm = wrapper(stimulus_set, layers=layers)
+    asm = wrapper(stimuli, layers=layers)
     if 'time_bin' in asm.dims and time_reduce == 'mean':
         asm = asm.mean('time_bin')
     asm = asm.transpose('presentation', 'neuroid')
@@ -426,7 +426,7 @@ def score_budget_curve(features_by_layer: Dict[str, np.ndarray], target: np.ndar
     }
 
 
-def sweep_model(wrapper, stimulus_set, target, target_stimulus_ids, layers,
+def sweep_model(wrapper, stimuli, target, target_stimulus_ids, layers,
                 localizer_frac: float = 0.5, alpha: float = 1.0,
                 top_n_layers: int = 3, top_k: int = 100):
     """End-to-end: extract per-layer features, align to the target, then run
@@ -434,7 +434,7 @@ def sweep_model(wrapper, stimulus_set, target, target_stimulus_ids, layers,
 
     Returns ``(result, approaches, composite_selector)``.
     """
-    feats = extract_features_by_layer(wrapper, stimulus_set, layers)
+    feats = extract_features_by_layer(wrapper, stimuli, layers)
     f_ids = list(feats.pop('_stimulus_id'))
     f_index = {s: i for i, s in enumerate(f_ids)}
     tgt_ids = [str(s) for s in target_stimulus_ids]

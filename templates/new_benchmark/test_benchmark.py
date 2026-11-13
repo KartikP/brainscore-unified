@@ -1,7 +1,7 @@
 """Tests are the spec. A benchmark should: register + load by identifier, expose
-identifier/ceiling/version, and produce a Score from a candidate.
+identifier/ceiling/version, and produce a Score from a subject.
 
-These run offline against a tiny dummy candidate, so the wiring is exercised without
+These run offline against a tiny dummy subject, so the wiring is exercised without
 weights or data. Once your benchmark loads real measurements, enable the slow test at
 the bottom. Adapt freely.
 """
@@ -21,7 +21,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidA
 from brainscore_core.streaming import StreamEvent
 
 
-class DummyCandidate(Subject):
+class DummySubject(Subject):
     """The smallest subject this benchmark can score: it implements only participate.
 
     A benchmark reaches a subject through a session (`neural_response` builds one and
@@ -30,7 +30,7 @@ class DummyCandidate(Subject):
     this, that is worth knowing early, because every subject will have to provide it.
     """
 
-    identifier = 'dummy-candidate'
+    identifier = 'dummy-subject'
     in_channels = {'vision:image'}
     out_channels = {'neural:IT'}
 
@@ -76,7 +76,7 @@ def test_registered_and_loads():
 def test_scores_a_candidate():
     import brainscore
     bench = brainscore.load_benchmark('your-benchmark')
-    score = bench(DummyCandidate())
+    score = bench(DummySubject())
     assert np.isfinite(float(score)), 'benchmark returned a non-finite score'
     assert 'raw' in score.attrs and 'ceiling' in score.attrs, \
         'report the unceiled value and the ceiling used, so the number stays interpretable'
@@ -95,12 +95,12 @@ def test_preflight_accepts_a_match_and_refuses_a_missing_input_or_output():
     import brainscore
     from brainscore_core.compatibility import CompatibilityError, check_compatibility
     bench = brainscore.load_benchmark('your-benchmark')
-    assert check_compatibility(DummyCandidate(), bench).kind == 'full'
+    assert check_compatibility(DummySubject(), bench).kind == 'full'
 
-    class NoVision(DummyCandidate):
+    class NoVision(DummySubject):
         in_channels = {'text'}
 
-    class NoIT(DummyCandidate):
+    class NoIT(DummySubject):
         out_channels = {'neural:V4'}
 
     with pytest.raises(CompatibilityError, match='takes in none of the inputs'):
@@ -112,14 +112,14 @@ def test_preflight_accepts_a_match_and_refuses_a_missing_input_or_output():
 def test_asks_the_candidate_for_its_region():
     """The session must tell the subject which response to produce."""
     import brainscore
-    candidate = DummyCandidate()
-    brainscore.load_benchmark('your-benchmark')(candidate)
-    assert candidate.requested == ('neural:IT',), \
+    subject = DummySubject()
+    brainscore.load_benchmark('your-benchmark')(subject)
+    assert subject.requested == ('neural:IT',), \
         'the session did not request the region this benchmark scores'
 
 
-def _model_template_candidate():
-    """Return the model template's candidate, or None if it is genuinely not installed.
+def _model_template_subject():
+    """Return the model template's subject, or None if it is genuinely not installed.
 
     Resolution order matters. Once you follow the install instructions this file lives
     under `brainscore/benchmarks/<name>/`, where the sibling `new_model` package no
@@ -151,16 +151,16 @@ def test_composes_with_the_model_template():
     Regression test. This combination used to fail three separate ways — stimulus paths
     pointing at files that did not exist, a metric requiring matching unit counts, and a
     prediction missing the coord the CV splitter stratifies on. Every one of them failed
-    only for a REAL candidate, so the other template tests stayed green throughout.
+    only for a REAL subject, so the other template tests stayed green throughout.
     """
-    candidate = _model_template_candidate()
-    if candidate is None:
+    subject = _model_template_subject()
+    if subject is None:
         pytest.skip('model template is not installed; install templates/new_model per '
                     'its __init__.py to enable this composition check')
 
     import brainscore
     bench = brainscore.load_benchmark('your-benchmark')
-    score = bench(candidate)
+    score = bench(subject)
     assert np.isfinite(float(score))
     # Random weights against random targets: near zero, either sign. The point is that
     # it RUNS end to end, not that the number means anything.

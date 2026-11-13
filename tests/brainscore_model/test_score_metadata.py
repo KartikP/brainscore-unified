@@ -86,10 +86,9 @@ def test_direct_session_with_a_generation_model_is_recorded():
     """participate + collect, without behavioral_response or the facade."""
 
     model = _generation_model()
-    task = TaskContext(fitting_stimuli=_stimuli(), metadata={'stimulus_set': _stimuli()},
-                       **_GENERATION_TASK)
+    task = TaskContext(fitting_stimuli=_stimuli(), **_GENERATION_TASK)
     with record_measures() as measures:
-        session = stimulus_session(task.metadata['stimulus_set'], ['behavior'], task)
+        session = stimulus_session(_stimuli(), ['behavior'], task)
         model.participate(session)
         session.collect('behavior')
 

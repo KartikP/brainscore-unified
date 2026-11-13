@@ -54,8 +54,8 @@ def run(subject, factory, directory, outputs):
         protocol=SessionProtocol(
             identifier='native-session',
             session_factory=factory,
-            input_channels=['text'],
-            output_channels=outputs,
+            required_input_channels=['text'],
+            requested_output_channels=outputs,
         ),
         tools=[RecordInputsOutputs()],
         output_dir=directory,
@@ -159,7 +159,7 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
             StreamEvent(channel='text', payload=row['sentence'], t_ms=index)
             for index, row in table.iterrows()
         ])
-        session.stimulus_set = table
+        session.stimuli = table
         session.time_bins = [(70, 170)]
         session.outputs = (f'neural:{region}',)
         yield session
@@ -170,8 +170,8 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
             identifier='different-region-per-trial',
             session_factory=factory,
             repetitions=['V4', 'IT'],
-            input_channels=['text'],
-            output_channels=['neural:V4', 'neural:IT'],
+            required_input_channels=['text'],
+            requested_output_channels=['neural:V4', 'neural:IT'],
         ),
         tools=[RecordInputsOutputs()],
         output_dir=tmp_path / 'baseline',

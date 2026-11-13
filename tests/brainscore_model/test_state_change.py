@@ -120,7 +120,7 @@ class TestProcessStateChangeDispatch:
             target=Selection(layer='blocks.10'),
             perturbation=Perturbation(kind='zero'),
         )
-        with pytest.raises(NotImplementedError, match='no state_change_fn'):
+        with pytest.raises(NotImplementedError, match='no intervention part'):
             model.process(sc)
 
     def test_apply_returns_perturbation_applied(self):

@@ -386,7 +386,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return r_full
 
     @staticmethod
-    def _is_native_video(candidate) -> bool:
+    def _is_native_video(subject) -> bool:
         """True when the subject declares that it takes clips (``vision:video``).
 
         Subjects that take only stills (and legacy adapters, which declare no
@@ -394,9 +394,9 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         that adaptation in ``attrs['input_adaptation']``.
         """
         from brainscore.presentation import takes_clips
-        return takes_clips(candidate)
+        return takes_clips(subject)
 
-    def _clip_features(self, candidate):
+    def _clip_features(self, subject):
         """Record ``neural:IT`` for every clip through ``participate``.
 
         Returns ``(features (n_videos, n_features), clip_ids, pipeline_mode)``.
@@ -405,21 +405,21 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         clip, pooled per clip (Contract Rule 5.9).
         """
         time_bins = [(0, VIDEO_DURATION_MS)]
-        if self._is_native_video(candidate):
-            result = record_clips(candidate, self._videos_stimulus_set(), 'IT', time_bins)
+        if self._is_native_video(subject):
+            result = record_clips(subject, self._videos_stimulus_set(), 'IT', time_bins)
             # Lahner2024 has one BOLD estimate per video, so a time-resolved
             # response (presentation, time_bin, neuroid) is averaged over time.
             data = result.values
             model_mat = data.mean(axis=1) if data.ndim == 3 else data
             return model_mat, read_stimulus_ids(result), 'video_native'
         per_video = record_frames_per_clip(
-            candidate, self._expand_videos(), 'IT', time_bins)
+            subject, self._expand_videos(), 'IT', time_bins)
         model_mat = per_video.values[:, 0, :]  # (n_videos, n_features)
         clip_ids = list(per_video.indexes['presentation'].get_level_values('clip_id'))
         return model_mat, clip_ids, 'frame_aggregation'
 
-    def __call__(self, candidate) -> Score:
-        model_mat, clip_ids, pipeline_mode = self._clip_features(candidate)
+    def __call__(self, subject) -> Score:
+        model_mat, clip_ids, pipeline_mode = self._clip_features(subject)
 
         # 5. Average neural across repetitions; align to model order
         neural = self._average_repetitions()

@@ -103,10 +103,10 @@ class PerturbationManager:
 
         if owner._state_change_fn is None:
             raise NotImplementedError(
-                f"Model '{owner.identifier}' has no state_change_fn registered. "
-                f"Perturbation evaluation requires the model to declare a "
-                f"state_change_fn(state_change) -> (PerturbationApplied, "
-                f"cleanup) callable at BrainScoreModel construction time. "
+                f"Subject '{owner.identifier}' has no intervention part. "
+                f"An intervention needs BrainScoreModel(intervention=...), a "
+                f"callable intervention(state_change) -> (PerturbationApplied, "
+                f"undo_function). "
                 f"Received: StateChange(kind={state_change.kind!r})."
             )
 
@@ -116,7 +116,7 @@ class PerturbationManager:
                 or not isinstance(result[0], PerturbationApplied)
                 or not callable(result[1])):
             raise TypeError(
-                f"Model '{owner.identifier}' state_change_fn must return a "
+                f"Subject '{owner.identifier}' intervention must return a "
                 f"(PerturbationApplied, cleanup_callable) tuple. Got "
                 f"{type(result).__name__}."
             )

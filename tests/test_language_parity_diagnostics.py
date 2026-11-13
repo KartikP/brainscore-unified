@@ -119,11 +119,11 @@ def test_observe_actual_tiny_routes_and_replay_ablations(monkeypatch, language_p
 
     native, adapter = language_pair
     native._preprocessors['text']._batch_size = 1
-    def candidate_factory(case, route):
+    def subject_factory(case, route):
         native.reset()
         adapter.reset()
         return {'native': native, 'adapter': adapter, 'legacy': adapter._legacy}[route]
-    monkeypatch.setattr(benchmark_parity, 'local_candidate', candidate_factory)
+    monkeypatch.setattr(benchmark_parity, 'local_subject', subject_factory)
 
     class SyntheticMetric:
         def __init__(self):

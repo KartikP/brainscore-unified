@@ -207,13 +207,13 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
             return assembly.mean(dim='time_bin')
         return assembly
 
-    def _multimodal_features(self, candidate):
-        """Extract visual + audio features from the candidate.
+    def _multimodal_features(self, subject):
+        """Extract visual + audio features from the subject.
 
         Visual tower routing:
-        - candidate declares 'vision:video' → use video stim set, native
+        - subject declares 'vision:video' → use video stim set, native
           temporal extraction (V-JEPA / VideoMAE / etc.)
-        - any other visual candidate (stills only) → use
+        - any other visual subject (stills only) → use
           frame-aggregation: extract N frames per clip, run CLIP/BLIP-2/
           Qwen-VL on each as a still image, mean-pool over frames
 
@@ -231,20 +231,20 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
         """
         time_bins = [(0, VIDEO_DURATION_MS)]
         # Clips natively when the subject declares vision:video, frames otherwise.
-        if Lahner2024BOLDMoments._is_native_video(candidate):
+        if Lahner2024BOLDMoments._is_native_video(subject):
             video_assembly = record_clips(
-                candidate, self._video_stim_set(), 'IT', time_bins)
+                subject, self._video_stim_set(), 'IT', time_bins)
         else:
             # Frame-aggregation path: expand each clip into N frames, show
             # them as stills, then mean-pool per clip.
             video_assembly = record_frames_per_clip(
-                candidate, self._expand_videos(), 'IT', time_bins)
+                subject, self._expand_videos(), 'IT', time_bins)
         video_2d = self._to_2d(video_assembly)
         video_clip_ids = self._read_stimulus_ids(video_2d)
         v_feats = video_2d.values
 
         audio_assembly = record_clips(
-            candidate, self._audio_stim_set(), 'A1', time_bins)
+            subject, self._audio_stim_set(), 'A1', time_bins)
         audio_2d = self._to_2d(audio_assembly)
         audio_clip_ids = self._read_stimulus_ids(audio_2d)
         a_feats = audio_2d.values
@@ -264,20 +264,20 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
 
     # ── Scoring ────────────────────────────────────────────────────
 
-    def __call__(self, candidate) -> Score:
+    def __call__(self, subject) -> Score:
         # Route on declarations only (Contract Rule 2.2), before any compute.
-        if not takes_audiovisual(candidate):
+        if not takes_audiovisual(subject):
             raise ValueError(
-                f"{self.identifier} requires the candidate to take both "
+                f"{self.identifier} requires the subject to take both "
                 f"a visual input ('vision:image' or 'vision:video') AND "
                 f"'audio', and to record neural:IT and neural:A1. Got "
-                f"in_channels={sorted(candidate.in_channels)}, "
-                f"out_channels={sorted(candidate.out_channels)}. "
+                f"in_channels={sorted(subject.in_channels)}, "
+                f"out_channels={sorted(subject.out_channels)}. "
                 f"Use Lahner2024-fMRI-naturalistic for video-only models."
             )
 
         features, clip_ids, modality_per_neuroid = (
-            self._multimodal_features(candidate))
+            self._multimodal_features(subject))
 
         # Slice features per scoring mode. modality_per_neuroid is a
         # parallel array tagging each column 'video' or 'audio'.

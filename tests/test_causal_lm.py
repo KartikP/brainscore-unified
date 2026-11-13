@@ -174,15 +174,15 @@ def test_record_and_push_an_input_site_through_participate(subject):
     from brainscore.instrumentation import intervene
     from brainscore_core.streaming_helpers import neural_response
     model, _, _ = subject
-    before = neural_response(model, _stimuli(), record='mlp_in')
+    before = neural_response(model, _stimuli(), ['neural:mlp_in'])
     push = StateChange(kind='steer', target=Selection(layer=NEURON_IN, indices=[5]),
                        perturbation=Perturbation(kind='drive', amount=2.5))
     with intervene(model, push):
-        after = neural_response(model, _stimuli(), record='mlp_in')
+        after = neural_response(model, _stimuli(), ['neural:mlp_in'])
     change = np.nan_to_num(after.values - before.values)
     np.testing.assert_allclose(change[..., 5][~np.isnan(before.values[..., 5])], 2.5, atol=1e-5)
     assert np.abs(np.delete(change, 5, axis=-1)).max() == 0
-    restored = neural_response(model, _stimuli(), record='mlp_in')
+    restored = neural_response(model, _stimuli(), ['neural:mlp_in'])
     np.testing.assert_array_equal(np.nan_to_num(restored.values), np.nan_to_num(before.values))
 
 
@@ -235,7 +235,7 @@ def test_neural_responses_carry_a_copy_of_the_provenance(subject):
     assert event.meta == {'driver': 'interact', 'record': 'mlp_in'}  # record format unchanged
     assert event.payload.attrs['provenance'] == expected
     event.payload.attrs['provenance']['revision'] = 'edited'  # a copy per response
-    assert neural_response(model, _stimuli(), record='mlp_in').attrs['provenance'] == expected
+    assert neural_response(model, _stimuli(), ['neural:mlp_in']).attrs['provenance'] == expected
     model.start_recording('mlp_in')
     assert model.process(_stimuli()).attrs['provenance'] == expected
 
@@ -249,7 +249,7 @@ def test_caller_provenance_is_copied_at_registration(subject):
     supplied['revision'] = 'changed'
     supplied['settings']['dtype'] = 'changed'
     expected = {'identifier': 'tiny-qwen-copy', 'revision': 'abc', 'settings': {'dtype': 'float32'}}
-    assert neural_response(model, _stimuli(), record='mlp_in').attrs['provenance'] == expected
+    assert neural_response(model, _stimuli(), ['neural:mlp_in']).attrs['provenance'] == expected
 
 
 def test_text_wrapper_adds_no_provenance_by_default(subject):

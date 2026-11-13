@@ -1,6 +1,6 @@
 """TODO: one-line description — what measurements, which model capability, which metric.
 
-A benchmark drives the candidate subject and returns a ceiled Score. It runs the subject
+A benchmark drives the subject and returns a ceiled Score. It runs the subject
 through typed helpers such as `neural_response`, which hand it a session via
 `subject.participate(session)`. Any Subject can be scored, including one that implements
 only `participate` (no `start_recording` / `process`).
@@ -56,7 +56,7 @@ def _load_assembly():
       - at least TWO coords per axis (a single coord is not promoted to a MultiIndex,
         and metrics then fail with "no stimulus_id on the presentation axis")
       - a `stimulus_set` whose `stimulus_paths` point at files that REALLY EXIST; a real
-        candidate opens them, unlike the dummy in the tests
+        subject opens them, unlike the dummy in the tests
     """
     rng = np.random.RandomState(0)
     stimulus_ids = [f'stim{i:03d}' for i in range(N_STIMULI)]
@@ -126,12 +126,12 @@ class YourBenchmark(BenchmarkBase):
         # generally do use `pls` — switch once your models are wide enough.
         self._metric = brainscore_vision.load_metric('linear_predictivity')
 
-    def __call__(self, candidate) -> Score:
+    def __call__(self, subject) -> Score:
         # 1) show the stimuli and record the subject's IT response, 70-170 ms after onset
         predictions = neural_response(
-            subject=candidate,
-            stimulus_set=self._stimulus_set,
-            record='IT',            # TODO: your region
+            subject=subject,
+            stimuli=self._stimulus_set,
+            outputs=['neural:IT'],    # TODO: your region
             time_bins=[(70, 170)],    # TODO: your time window, in ms
         )
         # 2) label each response with its stimulus category, matched by stimulus_id;

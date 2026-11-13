@@ -5,7 +5,7 @@ Obtain the competition files through the
 Follow their access terms for the movies, transcripts and fMRI separately.
 Keep the native `fmri/` and `stimuli/` directories together.
 
-The existing converter reads per-subject HDF5 responses and movie/transcript
+The existing converter reads per-participant HDF5 responses and movie/transcript
 metadata. It writes per-TR NetCDF assemblies and stimulus CSVs. It needs the
 unified installation plus `h5py`; the source dataset is approximately 130 GB,
 and preparing all subject/split outputs was estimated at another 25 GB. Runtime
@@ -32,7 +32,7 @@ responses = brainscore.load_dataset("Algonauts2025-friends-sub01")
 print(len(stimuli), responses.sizes)
 ```
 
-Other subjects are 2, 3 and 5. Splits `friends_s7` and `ood` contain held-out
+Other participants are 2, 3 and 5. Splits `friends_s7` and `ood` contain held-out
 response placeholders, not measured responses available for local scoring.
 Do not treat those NaNs as an acquired human dataset.
 

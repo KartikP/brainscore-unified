@@ -35,7 +35,7 @@ class NativeBenchmark(Benchmark):
     def __call__(self, subject):
         responses = neural_response(subject, pd.DataFrame({
             "stimulus_id": ["a", "b"], "text": ["cat", "horse"],
-        }), record="language_network")
+        }), ['neural:language_network'])
         np.testing.assert_array_equal(responses.values, [[3], [5]])
         return Score(float(responses.sum()))
 

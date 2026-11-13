@@ -1,6 +1,6 @@
 """Unit tests for the induced-dyslexia perturbation benchmark.
 
-No ROAR data or real models needed. Every candidate here is a contract subject:
+No ROAR data or real models needed. Every subject here is a contract subject:
 it implements only ``participate(session)``, ``reset()`` and its declarations,
 with no ``process`` and no private attributes. Tests the benchmark's own logic
 (localize, ablate, measure, reset), the specific-deficit computation, the
@@ -72,15 +72,15 @@ class _Subject(Subject):
 
 
 class _Reader:
-    """Returns scripted reading accuracy by lesion kind on the candidate."""
+    """Returns scripted reading accuracy by lesion kind on the subject."""
     def __init__(self, accs):
         self.accs = accs
         self.seen = []
 
-    def __call__(self, candidate):
-        self.seen.append(candidate.active)
+    def __call__(self, subject):
+        self.seen.append(subject.active)
         s = Score(0.0)
-        s.attrs['raw'] = self.accs[candidate.active]
+        s.attrs['raw'] = self.accs[subject.active]
         return s
 
 
@@ -110,10 +110,10 @@ class TestScoring:
             {'none': 0.95, 'functional': 0.55, 'random': 0.90},
             monkeypatch, self.CANNED)
         read = bench._reading_accuracy
-        def failing_read(candidate):
+        def failing_read(subject):
             if len(reader.seen) + 1 == failed_call:
                 raise RuntimeError('synthetic reading failure')
-            return read(candidate)
+            return read(subject)
         monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
         with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)
@@ -149,10 +149,10 @@ class TestScoring:
         assert reader.seen == ['caller', 'functional', 'random']
         assert score.attrs['baseline_accuracy'] == 0.80
 
-        def failing_read(candidate):
-            if candidate.active == 'functional':
+        def failing_read(subject):
+            if subject.active == 'functional':
                 raise RuntimeError('synthetic reading failure')
-            return accs[candidate.active]
+            return accs[subject.active]
         monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
         with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)

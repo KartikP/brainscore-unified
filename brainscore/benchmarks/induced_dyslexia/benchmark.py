@@ -9,7 +9,7 @@ built on the core ``UnitSelection`` family:
 
   * the real-vs-pseudo Cohen's d localizer (the :class:`FunctionalSelection`
                                    statistic, computed per reported layer)
-  * :class:`CompositeSelector`   — a multi-layer word-form region (the candidate
+  * :class:`CompositeSelector`   — a multi-layer word-form region (the subject  
                                    declares it in ``region_layer_map``); localized
                                    per reported layer here
   * :class:`RandomSelection`     — the same-size random lesion at the same layer(s):
@@ -64,7 +64,7 @@ from ..roar_yeatman2021.benchmark import (
 class InducedDyslexia(BenchmarkBase):
     """Ablate word-form units → measure the reading deficit vs a random control.
 
-    :param localizer_region: the region (key in the candidate's
+    :param localizer_region: the region (key in the subject's
         ``region_layer_map``) whose units are word-form-selective. May map to a
         single layer or be a :class:`CompositeSelector` over several layers
         (localized per layer the recording reports).
@@ -111,15 +111,15 @@ class InducedDyslexia(BenchmarkBase):
         )
 
     # -- localization -------------------------------------------------------
-    def _localize(self, candidate) -> List[Selection]:
+    def _localize(self, subject) -> List[Selection]:
         """Return the lesion targets: one top-``n_units`` real-vs-pseudo set per layer.
 
         Records the region once through ``participate``, localizes each layer
         the recording reports in its ``layer`` coord (Cohen's d, highest
         first), and addresses each lesion by that reported layer.
         """
-        asm = neural_response(candidate, self._localizer_stimuli,
-                              record=self.localizer_region)
+        asm = neural_response(subject, self._localizer_stimuli,
+                              [f'neural:{self.localizer_region}'])
         extra = [d for d in asm.dims if d not in ('presentation', 'neuroid')]
         if extra:
             asm = asm.mean(extra)
@@ -150,7 +150,7 @@ class InducedDyslexia(BenchmarkBase):
                           where=pooled > 0)
             order = np.argsort(d)[::-1][:self.n_units]
             population = selection_unit_indices(
-                asm.isel(neuroid=cols), candidate, self.localizer_region)
+                asm.isel(neuroid=cols), subject, self.localizer_region)
             axis, expected_shape = selection_coordinates(asm.isel(neuroid=cols))
             out.append(Selection(layer=L, indices=sorted(int(i) for i in population[order]),
                                  axis=axis, expected_shape=expected_shape,
@@ -160,22 +160,22 @@ class InducedDyslexia(BenchmarkBase):
         return out
 
     # -- scoring ------------------------------------------------------------
-    def _reading_accuracy(self, candidate) -> float:
-        return float(self._reading(candidate).attrs['raw'])
+    def _reading_accuracy(self, subject) -> float:
+        return float(self._reading(subject).attrs['raw'])
 
-    def _ablate(self, candidate, selections: List[Selection], handles: List[str]) -> None:
+    def _ablate(self, subject, selections: List[Selection], handles: List[str]) -> None:
         """Apply one zeroing lesion per selection, appending each handle as it lands.
 
         A failure part-way leaves the handles of the lesions already applied in
         ``handles``, so the caller can undo exactly those.
         """
         for sel in selections:
-            record = apply_state_change(candidate, StateChange(
+            record = apply_state_change(subject, StateChange(
                 kind='ablation', target=sel, perturbation=Perturbation(kind='zero')))
             handles.append(record.handle_id)
 
     @staticmethod
-    def _undo(candidate, handles: List[str]) -> None:
+    def _undo(subject, handles: List[str]) -> None:
         """Undo the benchmark's own lesions, newest first, by handle (rule 8.2).
 
         Changes the caller applied before scoring are not touched (rule 8.3).
@@ -187,47 +187,47 @@ class InducedDyslexia(BenchmarkBase):
         errors = []
         for handle in reversed(handles):
             try:
-                apply_state_change(candidate, StateChange(kind='reset', handle_id=handle))
+                apply_state_change(subject, StateChange(kind='reset', handle_id=handle))
             except Exception as error:                       # noqa: BLE001
                 errors.append(error)
         handles.clear()
         if errors:
             raise errors[0]
 
-    def __call__(self, candidate) -> Score:
+    def __call__(self, subject) -> Score:
         # The subject must declare `lesion` to receive the lesions.
         # If it does not, the result is N/A before any compute.
-        if 'lesion' not in set(candidate.in_channels):
+        if 'lesion' not in set(subject.in_channels):
             raise CompatibilityError(
-                f"Subject '{candidate.identifier}' does not declare the 'lesion' family, "
+                f"Subject '{subject.identifier}' does not declare the 'lesion' family, "
                 f"which benchmark '{self.identifier}' needs to apply and undo lesions; in_channels: "
-                f"{sorted(candidate.in_channels)}.")
-        return self._score(candidate)
+                f"{sorted(subject.in_channels)}.")
+        return self._score(subject)
 
-    def _score(self, candidate) -> Score:
-        baseline_acc = self._reading_accuracy(candidate)
+    def _score(self, subject) -> Score:
+        baseline_acc = self._reading_accuracy(subject)
 
         # word-form lesion
-        selections = self._localize(candidate)
+        selections = self._localize(subject)
         handles: List[str] = []
         try:
-            self._ablate(candidate, selections, handles)
-            lesioned_acc = self._reading_accuracy(candidate)
+            self._ablate(subject, selections, handles)
+            lesioned_acc = self._reading_accuracy(subject)
         finally:
-            self._undo(candidate, handles)
+            self._undo(subject, handles)
 
         # matched random-ablation control
         controls = [RandomSelection(layer=s.layer, n_units=len(s.indices),
                                     axis=s.axis, expected_shape=s.expected_shape,
                                     n_total=int(s.metadata['n_recorded']),
                                     seed=self.control_seed,
-                                    population=s.metadata.get('unit_population')).resolve(candidate)
+                                    population=s.metadata.get('unit_population')).resolve(subject)
                     for s in selections]
         try:
-            self._ablate(candidate, controls, handles)
-            random_acc = self._reading_accuracy(candidate)
+            self._ablate(subject, controls, handles)
+            random_acc = self._reading_accuracy(subject)
         finally:
-            self._undo(candidate, handles)
+            self._undo(subject, handles)
 
         specific_deficit = random_acc - lesioned_acc      # >0 ⇒ word-form-specific
         dyslexic = bool(lesioned_acc < DYSLEXIA_THRESHOLD and specific_deficit > 0)

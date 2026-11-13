@@ -7,7 +7,7 @@ from typing import Optional
 from brainscore import data_registry, stimulus_set_registry
 
 
-SUBJECTS = (1, 2, 3, 5)
+PARTICIPANTS = (1, 2, 3, 5)
 SPLITS = ('friends', 'friends_s7', 'ood')
 
 
@@ -21,8 +21,8 @@ def _split_identifier(split: str) -> str:
     return split.replace('_', '-')
 
 
-def assembly_identifier(split: str, subject: int) -> str:
-    return f'Algonauts2025-{_split_identifier(split)}-sub{subject:02d}'
+def assembly_identifier(split: str, participant: int) -> str:
+    return f'Algonauts2025-{_split_identifier(split)}-sub{participant:02d}'
 
 
 def stimulus_set_identifier(split: str) -> str:
@@ -30,10 +30,10 @@ def stimulus_set_identifier(split: str) -> str:
 
 
 def load_algonauts2025_assembly(
-        split: str, subject: int, root: Optional[Path] = None):
-    """Load one subject/split per-TR Schaefer parcel assembly."""
+        split: str, participant: int, root: Optional[Path] = None):
+    """Load one participant/split per-TR Schaefer parcel assembly."""
     root = Path(root).expanduser() if root is not None else default_data_root()
-    path = root / f'algonauts2025_{split}_sub{subject:02d}.nc'
+    path = root / f'algonauts2025_{split}_sub{participant:02d}.nc'
     if not path.exists():
         raise FileNotFoundError(
             f"Algonauts assembly missing at {path}. Run "
@@ -73,9 +73,9 @@ def load_algonauts2025_stimulus_set(split: str, root: Optional[Path] = None):
     return out
 
 
-def _assembly_loader(split: str, subject: int):
+def _assembly_loader(split: str, participant: int):
     return lambda root=None: load_algonauts2025_assembly(
-        split, subject, root=root)
+        split, participant, root=root)
 
 
 def _stimulus_set_loader(split: str):
@@ -86,6 +86,6 @@ def _stimulus_set_loader(split: str):
 for _split in SPLITS:
     stimulus_set_registry[stimulus_set_identifier(_split)] = (
         _stimulus_set_loader(_split))
-    for _subject in SUBJECTS:
-        data_registry[assembly_identifier(_split, _subject)] = (
-            _assembly_loader(_split, _subject))
+    for _participant in PARTICIPANTS:
+        data_registry[assembly_identifier(_split, _participant)] = (
+            _assembly_loader(_split, _participant))

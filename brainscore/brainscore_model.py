@@ -77,8 +77,8 @@ def _one_session_at_a_time(model):
         with _active_sessions_lock:
             if key in _active_sessions:
                 raise RuntimeError(
-                    f'Model {model.identifier!r} is already taking part in a session. '
-                    'A model takes part in one session at a time, because its '
+                    f'Subject {model.identifier!r} is already taking part in a session. '
+                    'A subject takes part in one session at a time, because its '
                     'recording and task state belong to that session. Wait for the '
                     'running session to finish, or build a separate model for each '
                     'session that runs at the same time.')
@@ -316,7 +316,7 @@ class BrainScoreModel(UnifiedModel):
         if not required_channels <= declared_channels:
             raise ValueError(
                 f"required_modalities need the input channels {sorted(required_channels)}, "
-                f"but the model declares {sorted(declared_channels)}. A model cannot "
+                f"but the subject declares {sorted(declared_channels)}. A subject cannot "
                 f"require an input it does not declare."
             )
         self._required_modalities = required
@@ -436,7 +436,7 @@ class BrainScoreModel(UnifiedModel):
             modality = modality or old_modality
             if modality is not None:
                 if canonical_modality(modality) not in self.supported_modalities:
-                    raise ValueError(f"Region {region!r} references modalities with no preprocessor or extractor: {modality!r}")
+                    raise ValueError(f"Region {region!r} references modalities with no extractor: {modality!r}")
                 if isinstance(selector, (LayerSelector, CompositeSelector)):
                     selectors[region] = replace(selector, modality=modality)
                 elif selector.modality != modality:
@@ -451,7 +451,7 @@ class BrainScoreModel(UnifiedModel):
                 # Without a named extractor the region would be recorded from
                 # whichever tower gets input, and pre-flight could not check it.
                 raise ValueError(
-                    f"Model {self._identifier_str!r} has several extractors, so each region must "
+                    f"Subject {self._identifier_str!r} has several extractors, so each region must "
                     f"name the one it is recorded from. Regions with no modality: {unrouted}. "
                     f"Use LayerSelector(name=..., modality=...) or region_modality_map.")
         from ._model.recording import validate_region_layers
@@ -551,12 +551,12 @@ class BrainScoreModel(UnifiedModel):
         self._recorder.composite_recording = value
 
     @property
-    def _task_context(self) -> Optional[TaskContext]:
-        return self._behavioral.task_context
+    def _task(self) -> Optional[TaskContext]:
+        return self._behavioral.task
 
-    @_task_context.setter
-    def _task_context(self, value: Optional[TaskContext]) -> None:
-        self._behavioral.task_context = value
+    @_task.setter
+    def _task(self, value: Optional[TaskContext]) -> None:
+        self._behavioral.task = value
 
     @property
     def _readout_classifier(self):
@@ -686,44 +686,44 @@ class BrainScoreModel(UnifiedModel):
         self._recorder.start_recording(recording_target, time_bins,
                                        recording_type)
 
-    def start_task(self, task_context, fitting_stimuli=None,
+    def start_task(self, task, fitting_stimuli=None,
                    **kwargs) -> None:
         """Configure the behavioral task.
 
         Fitting stimuli reach the readout with only the input modalities this
         model declares (rule 5.5); the caller's table is never changed. The
         same TaskContext object sent again, as a facade session does for every
-        measurement, keeps the fitted readout; a new context, an edited one,
-        or any context after a state change or reset, fits anew. The last
+        measurement, keeps the fitted readout; a new task, an edited one,
+        or any task after a state change or reset, fits anew. The last
         configuration that completed is recalled for the same unchanged
         task after a session gave the caller's task back.
         """
         from dataclasses import replace
         from brainscore_core.session_view import declared_only
-        if isinstance(task_context, TaskContext):
-            if (self._behavioral.is_configured_for(task_context)
-                    or self._behavioral.recall(task_context)):
+        if isinstance(task, TaskContext):
+            if (self._behavioral.is_configured_for(task)
+                    or self._behavioral.recall(task)):
                 return
-            fitting = task_context.fitting_stimuli
+            fitting = task.fitting_stimuli
             projected = declared_only(fitting, self.in_channels)
-            context = (task_context if projected is fitting
-                       else replace(task_context, fitting_stimuli=projected))
+            declared = (task if projected is fitting
+                        else replace(task, fitting_stimuli=projected))
             try:
-                self._behavioral.start_task(context, **kwargs)
+                self._behavioral.start_task(declared, **kwargs)
             except BaseException:
                 self._behavioral.abandon()   # a half-built task is never reused
                 raise
-            self._behavioral.mark_configured(task_context)
+            self._behavioral.mark_configured(task)
             return
         try:
-            self._behavioral.start_task(task_context,
+            self._behavioral.start_task(task,
                                         declared_only(fitting_stimuli, self.in_channels),
                                         **kwargs)
         except BaseException:
             self._behavioral.abandon()
             raise
-        # The context built from (task, fitting) is what a facade sends back.
-        self._behavioral.mark_configured(self._behavioral.task_context)
+        # The task built from (task type, fitting) is what a facade sends back.
+        self._behavioral.mark_configured(self._behavioral.task)
 
     def reset(self) -> None:
         failures = []
@@ -820,8 +820,8 @@ class BrainScoreModel(UnifiedModel):
         if regions:
             facade.start_recording(regions[0] if len(regions) == 1 else list(regions),
                                    time_bins=self._recorder.time_bins)
-        if self._behavioral.task_context is not None:
-            facade.start_task(self._behavioral.task_context)
+        if self._behavioral.task is not None:
+            facade.start_task(self._behavioral.task)
         return facade
 
     def look_at(self, stimuli, number_of_trials=1, require_variance=False, **kwargs):

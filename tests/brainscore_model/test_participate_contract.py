@@ -72,7 +72,7 @@ def test_added_capability_takes_precedence_over_the_built_in_part(registry):
             while session.next_input() is not None:
                 pass
             calls.append(model.identifier)
-            session.respond(StreamEvent('neural:IT', _neural(len(session.stimulus_set)), None))
+            session.respond(StreamEvent('neural:IT', _neural(len(session.stimuli)), None))
 
     def extractor(stimuli, layers=None, **kwargs):
         pytest.fail('built-in neural part ran instead of the added capability')
@@ -81,7 +81,7 @@ def test_added_capability_takes_precedence_over_the_built_in_part(registry):
     model = BrainScoreModel('precedence', region_layer_map={'IT': 'layer'},
                             extractor={'vision': extractor})
     assert model.check_session_support({'neural:IT'}).identifier == Custom.identifier
-    out = neural_response(model, _images(2), record='IT')
+    out = neural_response(model, _images(2), ['neural:IT'])
     assert calls == ['precedence'] and out.sizes['presentation'] == 2
 
 

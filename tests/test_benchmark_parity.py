@@ -106,7 +106,7 @@ def synthetic_benchmarks(monkeypatch, tmp_path):
     return seen
 
 
-def _vision_candidate(case, route):
+def _vision_subject(case, route):
     from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper, load_preprocess_images
     from brainscore_vision.model_helpers.brain_transformation import ModelCommitment
     from brainscore_vision.compat.unified_adapter import VisionModelAdapter
@@ -128,7 +128,7 @@ def test_all_registered_factories_on_both_routes(case, synthetic_benchmarks, lan
     native, adapter = language_pair
     def factory(case, route):
         if case.domain == 'vision':
-            return _vision_candidate(case, route)
+            return _vision_subject(case, route)
         native.reset()
         adapter.reset()
         return {'native': native, 'adapter': adapter, 'legacy': adapter._legacy}[route]
@@ -193,7 +193,7 @@ def run_parity_observations(language_pair):
             _similarity_metric = metric
             ceiling = Score(changes.get('legacy', {}).get('ceiling', 0.5))
 
-            def __call__(self, candidate):
+            def __call__(self, subject):
                 observation = changes.get(active_route, {})
                 source = NeuroidAssembly(
                     np.array([[1., 2.]]) + observation.get('activation_delta', 0),

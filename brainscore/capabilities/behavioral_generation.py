@@ -13,8 +13,8 @@ class BehavioralGenerationCapability(Capability):
     def enabled_for(self, model) -> bool:
         return (
             model._behavioral.use_generation_for_task
-            and model._behavioral.task_context is not None
-            and model._requires_behavioral_readout(model._behavioral.task_context.task_type)
+            and model._behavioral.task is not None
+            and model._requires_behavioral_readout(model._behavioral.task.task_type)
         )
 
     def handles(self, model, event, **kwargs) -> bool:

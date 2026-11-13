@@ -113,8 +113,8 @@ class TrialChooser(Subject):
         self._identifier = identifier
         self._choose = choose
         self._witness_mode = mode      # how the Witness should label this run
-        self._task_context = TaskContext(task_type='probabilities', label_set=['LEFT', 'RIGHT'],
-                                          instruction=instruction)
+        self._task = TaskContext(task_type='probabilities', label_set=['LEFT', 'RIGHT'],
+                                 instruction=instruction)
 
     @property
     def identifier(self): return self._identifier
@@ -155,8 +155,8 @@ def run_trials(subject, stimuli, instruction):
     subject's response.
     """
     task = TaskContext(task_type='probabilities', label_set=['LEFT', 'RIGHT'],
-                       instruction=instruction, metadata={'stimulus_set': stimuli})
-    assembly = behavioral_response(subject, task)
+                       instruction=instruction)
+    assembly = behavioral_response(subject, stimuli, task)
     answered = response_stimulus_ids(assembly, stimuli['stimulus_id'])
     table = stimuli.set_index('stimulus_id').loc[[str(s) for s in answered]]
     return pd.DataFrame({

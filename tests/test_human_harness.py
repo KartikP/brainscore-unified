@@ -52,7 +52,7 @@ def test_no_hardware_raises():
 
 def test_unconfigured_process_raises():
     h = HumanHarness("p1", present_fn=lambda s: None)
-    with pytest.raises(RuntimeError, match="start_recording or start_task"):
+    with pytest.raises(RuntimeError, match="answers in a session"):
         h.process("stim")
 
 
@@ -63,5 +63,5 @@ def test_reset_clears_config():
     )
     h.start_recording("IT")
     h.reset()
-    with pytest.raises(RuntimeError, match="start_recording or start_task"):
+    with pytest.raises(RuntimeError, match="answers in a session"):
         h.process("stim")

@@ -1,6 +1,6 @@
 """Unit tests for the embodied grid-game benchmark.
 
-Pure CPU, no model weights: the candidates are the oracle / random / a fixed
+Pure CPU, no model weights: the subjects are the oracle / random / a fixed
 greedy policy wrapped as action_fn models — the same shape a real VLM policy
 takes. Verifies ceiling, floor, the success-rate metric, and registration.
 """

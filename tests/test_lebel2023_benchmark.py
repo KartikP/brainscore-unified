@@ -177,7 +177,7 @@ class TestScoringEndToEnd:
     The benchmark's __call__ is where the delays, per-story standardisation,
     story-held-out folds and ridge fit are wired together; unit-testing the
     pieces separately leaves that wiring unchecked. A small synthetic assembly
-    and a stub candidate exercise it without the source pickle or model weights.
+    and a stub subject exercise it without the source pickle or model weights.
     """
 
     @staticmethod
@@ -212,32 +212,32 @@ class TestScoringEndToEnd:
             def _data(self):
                 return stim, assembly
 
-            def _model_features(self, candidate, stimulus_set, assembly_):
+            def _model_features(self, subject, stimuli, assembly_):
                 return features
 
         return _Synthetic(identifier='synthetic', n_splits=3, **kwargs)
 
     def test_scores_above_zero_when_bold_is_driven_by_the_features(self):
-        score = self._benchmark(signal=True)(candidate=None)
+        score = self._benchmark(signal=True)(subject=None)
         assert float(score) > 0.1
 
     def test_scores_near_zero_when_bold_is_unrelated(self):
-        score = self._benchmark(signal=False, seed=3)(candidate=None)
+        score = self._benchmark(signal=False, seed=3)(subject=None)
         assert abs(float(score)) < 0.15
 
     def test_score_carries_the_documented_attrs(self):
-        score = self._benchmark()(candidate=None)
+        score = self._benchmark()(subject=None)
         for key in ('raw', 'mean_r', 'n_targets', 'alphas', 'ceiling', 'error'):
             assert key in score.attrs, key
         assert len(score.attrs['alphas']) == 3          # one per fold
         assert score.attrs['n_targets'] == 8
 
     def test_reported_value_is_the_median_of_the_per_vertex_correlations(self):
-        score = self._benchmark()(candidate=None)
+        score = self._benchmark()(subject=None)
         assert np.isclose(float(score), np.median(np.asarray(score.attrs['raw'])))
 
     def test_max_targets_subsamples_and_records_the_index(self):
-        score = self._benchmark(n_vertices=8, max_targets=4)(candidate=None)
+        score = self._benchmark(n_vertices=8, max_targets=4)(subject=None)
         assert score.attrs['n_targets'] == 4
         assert len(score.attrs['target_index']) == 4
 
@@ -352,14 +352,14 @@ class TestModelFeaturesSeam:
                 assert key == 'stimulus_id'
                 return type('C', (), {'values': np.array(ids)})()
 
-        candidate = _ParticipateOnlyListener()
-        assert not hasattr(candidate, 'process')
-        assert not hasattr(candidate, 'start_recording')
+        subject = _ParticipateOnlyListener()
+        assert not hasattr(subject, 'process')
+        assert not hasattr(subject, 'start_recording')
         benchmark = LeBel2023Encoding(identifier='seam')
-        out = benchmark._model_features(candidate, _text_stimuli(ids), _Assembly())
+        out = benchmark._model_features(subject, _text_stimuli(ids), _Assembly())
 
-        assert candidate.sessions == [('neural:language_system',)]
-        assert candidate.seen == [f'words {i}' for i in ids]
+        assert subject.sessions == [('neural:language_system',)]
+        assert subject.seen == [f'words {i}' for i in ids]
         expected = np.repeat(np.arange(4, dtype=np.float32)[:, None], 3, axis=1)
         assert np.array_equal(out, expected)
 
@@ -473,10 +473,10 @@ class TestPoolPredictionsSeam:
         words = _text_stimuli(list(words['stimulus_id']))
         benchmark._word_cached = (words,) + benchmark._word_cached[1:]
 
-        candidate = _ParticipateOnlyListener()
-        assert benchmark._model_features(candidate, 'STIM', assembly) == 'pooled'
+        subject = _ParticipateOnlyListener()
+        assert benchmark._model_features(subject, 'STIM', assembly) == 'pooled'
         # The word rows, not the per-TR set passed in, reach the subject.
-        assert candidate.seen == [f'words {i}' for i in words['stimulus_id']]
+        assert subject.seen == [f'words {i}' for i in words['stimulus_id']]
 
 
 class TestDeclarations:

@@ -327,25 +327,25 @@ class EWoKBenchmark(BenchmarkBase):
             },
         )
 
-    def __call__(self, candidate: Subject) -> Score:
+    def __call__(self, subject: Subject) -> Score:
         """Run benchmark(subject) with input/output recording and return its Score."""
-        check_channel_compatibility(candidate, self)
+        check_channel_compatibility(subject, self)
         directory = self._output_dir
         if directory is None:
             # Default scoring returns only scores; delete private call records
             # on both success and failure. Explicit output_dir opts into retention.
             with tempfile.TemporaryDirectory(prefix='brainscore-ewok-') as temporary:
-                score = self._run(candidate, Path(temporary) / 'run')
+                score = self._run(subject, Path(temporary) / 'run')
                 score.attrs['run_directory'] = None
                 score.attrs['records_retained'] = False
                 return score
-        score = self._run(candidate, directory)
+        score = self._run(subject, directory)
         score.attrs['records_retained'] = True
         return score
 
-    def _run(self, candidate: Subject, directory: Path) -> Score:
+    def _run(self, subject: Subject, directory: Path) -> Score:
         result = Experiment(
-            subject=candidate, protocol=self.protocol(),
+            subject=subject, protocol=self.protocol(),
             tools=[RecordInputsOutputs()], output_dir=directory,
         ).run()
         # Experiment also returns the run directory; the benchmark returns the score.

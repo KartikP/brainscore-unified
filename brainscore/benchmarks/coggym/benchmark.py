@@ -192,25 +192,25 @@ class CogGymBenchmark(BenchmarkBase):
             metadata=runner.describe(),
         )
 
-    def __call__(self, candidate: Subject) -> Score:
+    def __call__(self, subject: Subject) -> Score:
         """Run benchmark(subject) with input/output recording and return its Score."""
-        check_channel_compatibility(candidate, self)
-        protocol = self.protocol(model=candidate.identifier, reset=_require_reset(self._reset))
+        check_channel_compatibility(subject, self)
+        protocol = self.protocol(model=subject.identifier, reset=_require_reset(self._reset))
         directory = self._output_dir
         if directory is None:
             # Keep implicit recordings only for this call, even if scoring fails.
             with tempfile.TemporaryDirectory(prefix='brainscore-coggym-') as temporary:
-                score = self._run(candidate, protocol, Path(temporary) / 'run')
+                score = self._run(subject, protocol, Path(temporary) / 'run')
                 score.attrs['run_directory'] = None
                 score.attrs['records_retained'] = False
                 return score
-        score = self._run(candidate, protocol, directory)
+        score = self._run(subject, protocol, directory)
         score.attrs['records_retained'] = True
         return score
 
-    def _run(self, candidate: Subject, protocol: CallableProtocol, directory: Path) -> Score:
+    def _run(self, subject: Subject, protocol: CallableProtocol, directory: Path) -> Score:
         result = Experiment(
-            subject=candidate,
+            subject=subject,
             protocol=protocol,
             tools=[RecordInputsOutputs()],
             output_dir=directory,

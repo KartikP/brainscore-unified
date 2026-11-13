@@ -220,7 +220,7 @@ def test_neural_response_uses_native_participate_and_preserves_metadata_exactly(
     subject = _native_neural_model(
         native_extractor, model_cls=_ParticipateTrackingBrainScoreModel
     )
-    scored = neural_response(subject, stimuli, record="IT")
+    scored = neural_response(subject, stimuli, ['neural:IT'])
 
     assert subject.participate_called is True
     assert subject.participate_outputs == ("neural:IT",)
@@ -239,7 +239,7 @@ def test_neural_response_native_participate_matches_multimodal_process_exactly()
     subject, activations, text = _native_multimodal_model(
         model_cls=_ParticipateTrackingBrainScoreModel
     )
-    scored = neural_response(subject, stimuli, record="IT")
+    scored = neural_response(subject, stimuli, ['neural:IT'])
 
     assert subject.participate_called is True
     assert subject.participate_outputs == ("neural:IT",)
@@ -258,7 +258,7 @@ def test_neural_response_native_participate_threads_time_bins_exactly():
     expected = legacy.process(stimuli)
 
     subject = _TrackingTemporalBrainScoreModel()
-    scored = neural_response(subject, stimuli, record="IT", time_bins=time_bins)
+    scored = neural_response(subject, stimuli, ['neural:IT'], time_bins=time_bins)
 
     assert subject.participate_called is True
     assert subject.participate_outputs == ("neural:IT",)
@@ -276,7 +276,7 @@ def test_neural_response_without_time_bins_keeps_2d_output():
     expected = legacy.process(stimuli)
 
     subject = _TrackingTemporalBrainScoreModel()
-    scored = neural_response(subject, stimuli, record="IT")
+    scored = neural_response(subject, stimuli, ['neural:IT'])
 
     assert subject.participate_called is True
     assert subject.participate_outputs == ("neural:IT",)
@@ -295,13 +295,12 @@ def _behavior_model(features, model_cls=BrainScoreModel):
     )
 
 
-def _behavior_context(fitting_stimuli, scoring_stimuli):
+def _behavior_context(fitting_stimuli):
     return TaskContext(
         task_type="probabilities",
         fitting_stimuli=fitting_stimuli,
         label_set=["cat", "dog"],
         instruction="Choose the animal",
-        metadata={"stimulus_set": scoring_stimuli},
     )
 
 
@@ -315,15 +314,15 @@ def test_behavioral_response_matches_legacy_start_task_process_exactly():
     features[6:, 0] -= 3.0
 
     legacy = _behavior_model(features)
-    legacy_context = _behavior_context(fitting, scoring)
+    legacy_context = _behavior_context(fitting)
     legacy.start_task(legacy_context)
     expected = legacy.process(scoring)
 
     helper_subject = _behavior_model(
         features, model_cls=_ParticipateTrackingBrainScoreModel
     )
-    helper_context = _behavior_context(fitting, scoring)
-    scored = behavioral_response(helper_subject, helper_context)
+    helper_context = _behavior_context(fitting)
+    scored = behavioral_response(helper_subject, scoring, helper_context)
 
     assert helper_subject.participate_called is True
     assert helper_subject.participate_outputs == ("behavior",)
@@ -345,12 +344,11 @@ def _generation_model(calls, model_cls=BrainScoreModel):
     )
 
 
-def _generation_context(scoring_stimuli):
+def _generation_context():
     return TaskContext(
         task_type="probabilities",
         label_set=["cat", "dog"],
         instruction="What animal is this?",
-        metadata={"stimulus_set": scoring_stimuli},
     )
 
 
@@ -361,7 +359,7 @@ def test_behavioral_response_matches_legacy_generation_path_exactly():
 
     legacy_calls = []
     legacy = _generation_model(legacy_calls)
-    legacy_context = _generation_context(scoring)
+    legacy_context = _generation_context()
     legacy.start_task(legacy_context)
     expected = legacy.process(scoring)
 
@@ -369,8 +367,8 @@ def test_behavioral_response_matches_legacy_generation_path_exactly():
     helper_subject = _generation_model(
         helper_calls, model_cls=_ParticipateTrackingBrainScoreModel
     )
-    helper_context = _generation_context(scoring)
-    scored = behavioral_response(helper_subject, helper_context)
+    helper_context = _generation_context()
+    scored = behavioral_response(helper_subject, scoring, helper_context)
 
     assert helper_subject.participate_called is True
     assert helper_subject.participate_outputs == ("behavior",)

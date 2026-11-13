@@ -39,8 +39,8 @@ def test_forms_follow_the_extractor_keys(keys, forms):
 def test_a_subject_with_both_forms_takes_each_stimulus_natively():
     model = BrainScoreModel('m', extractor={'vision': _extractor(1.0), 'video': _extractor(2.0)},
                             region_layer_map={'IT': LayerSelector('blocks.1', modality='vision')})
-    assert neural_response(model, _stimuli('image_path'), record='IT').values.max() == 1.0
-    assert neural_response(model, _stimuli('video_path'), record='IT').values.max() == 2.0
+    assert neural_response(model, _stimuli('image_path'), ['neural:IT']).values.max() == 1.0
+    assert neural_response(model, _stimuli('video_path'), ['neural:IT']).values.max() == 2.0
 
 
 def test_models_without_an_extractor_declare_the_inputs_they_accept():

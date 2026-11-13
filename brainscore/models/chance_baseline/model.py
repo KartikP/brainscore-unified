@@ -34,7 +34,7 @@ class ChanceBaseline(UnifiedModel):
 
     def __init__(self, identifier: str = 'chance-baseline'):
         self._identifier = identifier
-        self._task_context = None
+        self._task = None
 
     @property
     def identifier(self) -> str:
@@ -55,31 +55,30 @@ class ChanceBaseline(UnifiedModel):
         # It answers behavioral tasks; declared, not inferred (Contract v3 rule 2).
         return {'behavior'}
 
-    def start_task(self, task_context_or_task, fitting_stimuli=None, **kwargs) -> None:
-        if isinstance(task_context_or_task, TaskContext):
-            self._task_context = task_context_or_task
+    def start_task(self, task_or_type, fitting_stimuli=None, **kwargs) -> None:
+        if isinstance(task_or_type, TaskContext):
+            self._task = task_or_type
         else:
-            self._task_context = TaskContext(
-                task_type=task_context_or_task, fitting_stimuli=fitting_stimuli,
+            self._task = TaskContext(
+                task_type=task_or_type, fitting_stimuli=fitting_stimuli,
             )
 
     def start_recording(self, *args, **kwargs) -> None:
         pass
 
     def reset(self) -> None:
-        self._task_context = None
+        self._task = None
 
     def process(self, input_event) -> Any:
         if isinstance(input_event, (StateChange, Mapping)):
             raise NotImplementedError
         stimuli = input_event
-        if self._task_context is None or not self._task_context.label_set:
+        if self._task is None or not self._task.label_set:
             raise ValueError(
-                "ChanceBaseline requires a TaskContext with label_set. "
-                "Call start_task(TaskContext(task_type='probabilities', "
-                "label_set=[...])) first.")
+                "ChanceBaseline needs a task with label_set. Give the session "
+                "TaskContext(task_type='probabilities', label_set=[...]).")
 
-        label_set = list(self._task_context.label_set)
+        label_set = list(self._task.label_set)
         n_stimuli = len(stimuli)
         n_labels = len(label_set)
         # Uniform distribution over labels

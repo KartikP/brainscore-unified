@@ -7,7 +7,7 @@ See `EXTENDING.md` (Seam 2) for the contract.
 
 1. Copy this folder to `brainscore/benchmarks/<your_name>/`.
 2. Edit `benchmark.py`. Implement `_load_assembly()` (your measurements + stimulus_set),
-   `_ceiling()`, and `__call__(candidate)`. Pick your metric via `load_metric(...)`.
+   `_ceiling()`, and `__call__(subject)`. Pick your metric via `load_metric(...)`.
 3. Pick your identifier in `benchmark_registry['<your-id>']`.
 4. Add `from . import <your_name>` to `brainscore/benchmarks/__init__.py`.
 5. Adapt `test_benchmark.py` and run it.
@@ -19,7 +19,7 @@ score = brainscore.score('<some-model>', '<your-id>')
 
 ## The interface contract
 
-This template records responses with `neural_response(subject=..., stimulus_set=..., record='IT', time_bins=...)`, which runs a session through `subject.participate(session)`. Any `Subject` can be scored: a `BrainScoreModel`, a legacy adapter, or a subject that implements only `participate`. For behavioral tasks use `behavioral_response(subject, task)`. Do not call `start_recording`, `start_task` or `process` directly; a session-native `Subject` does not promise them.
+This template records responses with `neural_response(subject, stimuli, ['neural:IT'], time_bins=...)`, which runs a session through `subject.participate(session)`. Any `Subject` can be scored: a `BrainScoreModel`, a legacy adapter, or a subject that implements only `participate`. For behavioral tasks use `behavioral_response(subject, stimuli, task)`. Do not call `start_recording`, `start_task` or `process` directly; a session-native `Subject` does not promise them.
 
 The benchmark declares its input channels (`required_input_channels`), its requested output channels (`requested_output_channels`) and its `trial_memory` (`'none'` or `'history'`). `score()` refuses a benchmark that declares no inputs.
 

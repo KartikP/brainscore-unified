@@ -120,7 +120,7 @@ def test_recorders_on_a_protocol_that_will_not_request_them_fail(tmp_path):
     @contextmanager
     def sessions(trial):
         raise AssertionError('not reached')
-    protocol = SessionProtocol('own', sessions, output_channels=['behavior'])
+    protocol = SessionProtocol('own', sessions, requested_output_channels=['behavior'])
     with pytest.raises(ValueError, match="Recorders need \\['neural:A'\\]"):
         Experiment(subject=_subject(Net()), protocol=protocol, tools=[RecordNeural(['A'])],
                    output_dir=tmp_path / 'x').validate()
@@ -448,8 +448,8 @@ def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
                             output_dir=tmp_path / 'partial')
     plan = experiment.validate()
     benchmark = SimpleNamespace(identifier='same-task',
-                                required_input_channels=protocol.input_channels,
-                                requested_output_channels=protocol.output_channels)
+                                required_input_channels=protocol.required_input_channels,
+                                requested_output_channels=protocol.requested_output_channels)
     expected = check_compatibility(subject, benchmark).as_attrs()
     assert expected['match'] == 'partial'
     assert expected['consumed_inputs'] == ['text']

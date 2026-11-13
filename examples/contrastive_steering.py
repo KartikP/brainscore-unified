@@ -31,7 +31,7 @@ def run(directory: Path) -> None:
     result = Experiment(subject=subject,
         protocol=SessionProtocol('steering-demo', factory,
             conditions=['baseline', 'toward_red', 'toward_blue', 'restored'],
-            input_channels=['text'], output_channels=['neural:population']),
+            required_input_channels=['text'], requested_output_channels=['neural:population']),
         tools=[load_tool('record-io'),
                load_tool('linear-probe', artifact=directory / 'probe.json', name='before', when='before'),
                load_tool('contrastive-steering', artifact=directory / 'direction.json', strength=0.5,

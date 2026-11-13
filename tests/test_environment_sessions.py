@@ -112,7 +112,7 @@ def test_session_tools_record_applied_actions_and_replay_saved_observations(tmp_
         subject=model,
         protocol=SessionProtocol(
             'grid', factory, repetitions=(5,),
-            input_channels={'observation'}, output_channels={'motor'},
+            required_input_channels={'observation'}, requested_output_channels={'motor'},
         ),
         tools=[RecordInputsOutputs()], output_dir=tmp_path/'run',
     ).run()
@@ -196,8 +196,8 @@ def test_record_episode_without_collecting_retained_history(tmp_path, history_li
         subject=subject(),
         protocol=SessionProtocol(
             'record-episode', factory,
-            input_channels=('observation',),
-            output_channels=('motor',),
+            required_input_channels=('observation',),
+            requested_output_channels=('motor',),
             collect_outputs=False,
         ),
         tools=[RecordInputsOutputs(max_bytes=2_000_000)],
@@ -409,8 +409,8 @@ def test_recorded_instrumented_episode_keeps_no_per_step_objects(tmp_path, porta
     tracemalloc.start()
     try:
         Experiment(subject=BrainScoreModel(identifier='fixture', policy=policy),
-                   protocol=SessionProtocol('episode', factory, input_channels=('observation',),
-                                            output_channels=('motor',), collect_outputs=False),
+                   protocol=SessionProtocol('episode', factory, required_input_channels=('observation',),
+                                            requested_output_channels=('motor',), collect_outputs=False),
                    tools=[RecordInputsOutputs(), ScaleActivity(['policy'], factor=0.5),
                           RecordActivity(['policy'])],
                    instrumentation=TorchInstrumentation({'policy': layer}),

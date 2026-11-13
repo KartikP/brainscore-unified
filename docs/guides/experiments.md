@@ -100,7 +100,7 @@ def make_session(repetition):                # repetition.condition, repetition.
 
 protocol = SessionProtocol(identifier='silence-layer3', session_factory=make_session,
                            conditions=['baseline', 'silenced'], repetitions=[0, 1, 2],
-                           input_channels=['vision:image'], output_channels=['behavior'])
+                           required_input_channels=['vision:image'], requested_output_channels=['behavior'])
 
 experiment = Experiment(
     subject=subject,

@@ -217,7 +217,7 @@ def random_action_policy(seed: int = 0) -> Callable:
     return policy
 
 
-def play_game(model, env: GridGameEnv, max_steps: Optional[int] = None,
+def play_game(subject, env: GridGameEnv, max_steps: Optional[int] = None,
               *, seed=None) -> Dict[str, Any]:
     """Run one grid episode through an EnvironmentSource; return the usual score.
 
@@ -225,7 +225,7 @@ def play_game(model, env: GridGameEnv, max_steps: Optional[int] = None,
     using tools or comparing conditions.
     """
     wrapper = GridGameEnvironment(env, max_steps=max_steps)
-    responses = run_environment(model, wrapper, seed=seed, require_specs=True)
+    responses = run_environment(subject, wrapper, seed=seed, require_specs=True)
     actions = [int(np.asarray(action).item()) for action in responses]
     taken = len(actions)
     return {

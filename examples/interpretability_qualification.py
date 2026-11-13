@@ -152,7 +152,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
 
     result = Experiment(subject=subject,
         protocol=SessionProtocol('trained-tool-mechanics', factory, conditions=CONDITIONS,
-                                 input_channels=['text'], output_channels=['neural:population']),
+                                 required_input_channels=['text'], requested_output_channels=['neural:population']),
         tools=[load_tool('record-io'), load_tool('observe-calls', observer=calls, methods=['participate']),
                load_tool('record-reasoning'),
                load_tool('record-activity', targets=[layer], name='before', when='before'),

@@ -98,7 +98,7 @@ class GymnasiumEnvironment:
         self.env.close()
 
 
-def play_gym_episode(model, env_id: str, max_steps: int = 60, seed: int = 0,
+def play_gym_episode(subject, env_id: str, max_steps: int = 60, seed: int = 0,
                      action_descriptions: Optional[Dict[int, str]] = None,
                      n_actions: Optional[int] = None) -> Dict[str, Any]:
     """Run a rendered, discrete Gymnasium episode through an EnvironmentSource.
@@ -123,7 +123,7 @@ def play_gym_episode(model, env_id: str, max_steps: int = 60, seed: int = 0,
     except BaseException:
         env.close()
         raise
-    responses = run_environment(model, wrapper, seed=seed, require_specs=True)
+    responses = run_environment(subject, wrapper, seed=seed, require_specs=True)
     solved = (bool(wrapper.terminated and wrapper.last_reward > 0) if 'MiniGrid' in env_id
               else wrapper.last_info.get('is_success'))
     return {

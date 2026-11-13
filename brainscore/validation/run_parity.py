@@ -41,7 +41,7 @@ import time
 
 def main(argv=None):
     from brainscore.validation.benchmark_parity import (
-        RELEASE_CASES, PEREIRA_CASES, RIDGE_CASES, local_candidate, validate_case,
+        RELEASE_CASES, PEREIRA_CASES, RIDGE_CASES, local_subject, validate_case,
         assert_pereira_score_drift, ParityFailure, POLICIES, HISTORICAL_POLICY, CPU_FP32_POLICY,
         L4_FP32_POLICY, FP32_POLICIES)
     from brainscore.validation.parity_runtime import checkpoint_manifest, execution, require_cpu_reference
@@ -111,7 +111,7 @@ def main(argv=None):
             dtype = 'torch.float64' if case.domain == 'language' and args.language_precision == 'float64-eager' else 'torch.float32'
             if values['parameter_dtypes'] != [dtype]:
                 raise RuntimeError(f'Expected {dtype} parameters, observed {values["parameter_dtypes"]}')
-        return local_candidate(case, route, language_precision=args.language_precision,
+        return local_subject(case, route, language_precision=args.language_precision,
                                execution_observer=observe)
     try:
         result['checkpoints'] = checkpoint_manifest(os.environ['UMI_PARITY_RESNET18'], os.environ['UMI_PARITY_GPT2'])

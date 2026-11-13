@@ -92,7 +92,7 @@ class ConcreteModel(UnifiedModel):
     """Minimal concrete subclass for testing the ABC."""
 
     def __init__(self):
-        self._task_context = None
+        self._task = None
 
     @property
     def identifier(self) -> str:
@@ -130,7 +130,7 @@ class TestUnifiedModel:
         m = ConcreteModel()
         ctx = TaskContext(task_type='classification')
         m.start_task(ctx)
-        assert m._task_context is ctx
+        assert m._task is ctx
 
     def test_start_recording_is_noop(self):
         m = ConcreteModel()
@@ -353,7 +353,7 @@ class TestBrainScoreModelDispatch:
         assert act_model.call_args['layers'] == ['layer4']
 
     def test_process_without_start_recording_raises(self):
-        """Forgetting start_recording must fail loudly, not return 0 neuroids."""
+        """A run that records no region must fail loudly, not return 0 neuroids."""
         m = BrainScoreModel(
             identifier='resnet',
             model='torch_model',
@@ -362,7 +362,7 @@ class TestBrainScoreModelDispatch:
             activations_model=StubActivationsModel(),
         )
         stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
-        with pytest.raises(ValueError, match="start_recording"):
+        with pytest.raises(ValueError, match="records no region"):
             m.process(stimuli)  # no start_recording called
 
     def test_start_recording_unknown_region_warns(self):
@@ -388,7 +388,7 @@ class TestBrainScoreModelDispatch:
             activations_model=StubActivationsModel(),
         )
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
-        with pytest.raises(ValueError, match="start_recording"):
+        with pytest.raises(ValueError, match="records no region"):
             m.process(stimuli, multi_modality=True)
 
     def test_selected_plain_modality_not_false_positived(self):
@@ -705,7 +705,7 @@ class TestBrainScoreModelState:
         m.start_task(TaskContext(task_type='passive'))
         m.reset()
         assert m._recording_layer is None
-        assert m._task_context is None
+        assert m._task is None
 
 
 # -- Multi-region start_recording tests (#36) --------------------------------
@@ -1296,7 +1296,7 @@ class TestCrossTowerRouting:
             )
 
     def test_unknown_modality_in_modality_map_raises(self):
-        with pytest.raises(ValueError, match="no preprocessor"):
+        with pytest.raises(ValueError, match="no extractor"):
             BrainScoreModel(
                 identifier='test',
                 model=None,

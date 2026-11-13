@@ -18,7 +18,7 @@ from brainscore.harnesses.coggym import CogGymRunner
 
 from .test_coggym import PIXEL, image_part, reference, make_subject, reply_with_trial
 from .test_coggym_benchmark import scored_reference
-from .test_ewok import native, prepared, subject, NativeModel, EWoKProvider
+from .test_ewok import native, prepared, likelihood_subject, NativeModel, EWoKProvider
 
 pytestmark = pytest.mark.unit
 
@@ -53,14 +53,14 @@ def test_subject_taking_every_input_has_a_full_match(
     """Every part reaches the reply, in CogGym's order; the match is full."""
     root, clip, benchmark = _media_benchmark(reference, tmp_path, experiment, content)
     prompts = []
-    candidate = make_subject(lambda prompt: prompts.append(prompt) or '50', modalities)
-    match = check_channel_compatibility(candidate, benchmark)
+    subject = make_subject(lambda prompt: prompts.append(prompt) or '50', modalities)
+    match = check_channel_compatibility(subject, benchmark)
     assert match.kind == 'full' and not match.dropped_inputs
     runner = CogGymRunner(
         root, experiment=experiment, model='fixture', modalities=['text', *content],
     )
     Experiment(
-        subject=candidate,
+        subject=subject,
         protocol=runner.protocol(reset=lambda repetition: None),
         tools=[RecordInputsOutputs()], output_dir=tmp_path / 'media',
     ).run()
@@ -185,14 +185,14 @@ def test_coggym_parts_keep_their_order_within_one_trial(reference, tmp_path):
 def test_coggym_reference_profile_reset_and_leaderboard_policy(scored_reference, tmp_path):
     root, _ = scored_reference
     calls, resets = [], []
-    candidate = make_subject(lambda prompt: calls.append(prompt) or reply_with_trial(prompt))
+    subject = make_subject(lambda prompt: calls.append(prompt) or reply_with_trial(prompt))
     # The caller gives the provider's reset to the benchmark; it is never read
     # from the subject (Contract Rule 2.2).
     benchmark = brainscore.load_benchmark(
         'CogGym.Hu2023Fine.exp1', checkout=root, output_dir=tmp_path / 'default',
         reset=resets.append,
     )
-    score = benchmark(candidate)
+    score = benchmark(subject)
     assert benchmark.identifier == 'CogGym.Hu2023Fine.exp1'
     assert resets == [1, 2, 3, 4, 5]
     assert len(calls) == 15 and all(call.response.max_tokens == 512 for call in calls)
@@ -228,15 +228,15 @@ def test_coggym_implicit_records_always_deleted(scored_reference, tmp_path, monk
     benchmark = brainscore.load_benchmark(
         'CogGym.Hu2023Fine.exp1', checkout=root, reset=lambda repetition: None,
     )
-    candidate = make_subject(respond)
+    subject = make_subject(respond)
     if outcome == 'success':
-        score = benchmark(candidate)
+        score = benchmark(subject)
         assert float(score) == 0.375
         assert score.attrs['run_directory'] is None
         assert score.attrs['records_retained'] is False
     else:
         with pytest.raises(KeyboardInterrupt if outcome == 'interrupted' else ValueError):
-            benchmark(candidate)
+            benchmark(subject)
     assert len(created) == 1 and not created[0].exists()
     assert not list(tmp_path.glob('brainscore-coggym-*'))
 
@@ -257,12 +257,12 @@ def test_ewok_subject_without_the_text_input_rejected_without_calls(prepared, mo
     """A subject that cannot take the text is N/A before any part runs."""
     from brainscore import BrainScoreModel
     calls = []
-    candidate = BrainScoreModel('pictures-only', supported_modalities={'vision'},
+    subject = BrainScoreModel('pictures-only', supported_modalities={'vision'},
                                 reply=lambda prompt: calls.append(prompt) or '1',
                                 likelihood=lambda prompt, options: calls.append(prompt) or {})
     benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
     with pytest.raises(CompatibilityError):
-        benchmark(candidate)
+        benchmark(subject)
     assert calls == []
 
 
@@ -299,13 +299,13 @@ def test_ewok_implicit_records_deleted_on_success_and_failure(prepared, tmp_path
         return handle
     monkeypatch.setattr(module.tempfile, 'TemporaryDirectory', directory)
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
-    model = subject((lambda prompt, candidates: {c: float('nan') for c in candidates})
-                    if fail else EWoKProvider(NativeModel()))
+    subject = likelihood_subject((lambda prompt, candidates: {c: float('nan') for c in candidates})
+                                 if fail else EWoKProvider(NativeModel()))
     if fail:
         with pytest.raises(ValueError):
-            benchmark(model)
+            benchmark(subject)
     else:
-        result = benchmark(model)
+        result = benchmark(subject)
         assert result.attrs['run_directory'] is None
         assert result.attrs['records_retained'] is False
         assert result.attrs['leaderboard_eligible'] is benchmark.leaderboard_eligible is False
@@ -315,7 +315,7 @@ def test_ewok_implicit_records_deleted_on_success_and_failure(prepared, tmp_path
 def test_ewok_explicit_records_private_and_score_uses_resolved_id(prepared, tmp_path, monkeypatch):
     monkeypatch.setenv('BRAINSCORE_EWOK_ROOT', str(prepared))
     monkeypatch.setenv('RESULTCACHING_HOME', str(tmp_path / 'cache'))
-    model = subject(EWoKProvider(NativeModel()))
+    model = likelihood_subject(EWoKProvider(NativeModel()))
     score = brainscore.score(model, 'EWoK-core-1.0-logprobs', check_mem=False)
     assert '-data-' in score.attrs['benchmark_identifier']
     benchmark = brainscore.load_benchmark(

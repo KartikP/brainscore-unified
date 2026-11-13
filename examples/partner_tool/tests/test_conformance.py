@@ -104,7 +104,7 @@ class Partner:
 
     def native(self, **kwargs):
         return SessionProtocol(identifier='partner-episode', session_factory=self.session, repetitions=(7,),
-                               input_channels={'observation'}, output_channels={'motor'},
+                               required_input_channels={'observation'}, requested_output_channels={'motor'},
                                **kwargs)
 
     def external(self, methods=('process',)):

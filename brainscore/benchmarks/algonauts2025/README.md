@@ -1,16 +1,16 @@
 # Algonauts 2025 benchmark
 
-The benchmark predicts fMRI responses to multimodal naturalistic movies. The data come from four CNeuroMod subjects (1, 2, 3 and 5) with a 1000-parcel Schaefer target and TR = 1.49 s. The challenge ships audio, video and transcripts. The post-challenge leaderboard on Codabench stays open.
+The benchmark predicts fMRI responses to multimodal naturalistic movies. The data come from four CNeuroMod participants (1, 2, 3 and 5) with a 1000-parcel Schaefer target and TR = 1.49 s. The challenge ships audio, video and transcripts. The post-challenge leaderboard on Codabench stays open.
 
 ## Registered benchmarks
 
-`__init__.py` registers 14 identifiers: three splits for each of four subjects, one video variant and one video-and-sound variant.
+`__init__.py` registers 14 identifiers: three splits for each of four participants, one video variant and one video-and-sound variant.
 
 | Identifier | Split | How to use it |
 |---|---|---|
 | `Algonauts2025-friends-sub{01,02,03,05}` | Friends S1-S6 and Movie10, with measured fMRI | `benchmark(model)` scores the model with cross-validation. |
-| `Algonauts2025-friends-s7-sub{...}` | Friends S7, held out | Call `generate_predictions(model, out_dir)`. |
-| `Algonauts2025-ood-sub{...}` | Out-of-distribution movies, held out | Call `generate_predictions(model, out_dir)`. |
+| `Algonauts2025-friends-s7-sub{...}` | Friends S7, held out | Call `generate_predictions(subject, out_dir)`. |
+| `Algonauts2025-ood-sub{...}` | Out-of-distribution movies, held out | Call `generate_predictions(subject, out_dir)`. |
 | `Algonauts2025-friends-sub01-video` | Friends S1-S6 and Movie10 for participant 1, shown as clips | `benchmark(model)` scores the model with cross-validation. |
 | `Algonauts2025-friends-sub01-video-audio` | Friends S1-S6 and Movie10 for participant 1, shown as clips with their sound | `benchmark(model)` scores the model with cross-validation. |
 
@@ -70,7 +70,7 @@ For a short run, `movies` limits the benchmark to named movies. Use the `stimulu
 
 ## Held-out prediction
 
-`generate_predictions(model, out_dir)` uses the same method without the outer folds. It records the same bands on the subject's Friends training films and on the held-out split. It fits the preparation of each band on the training films, chooses the penalties for each parcel on held-out training stimuli, fits one banded ridge on all training films and predicts every TR of the held-out split. Training and prediction must use the same subject, form, stimulus window, HRF delay and `streaming`. The `movies` of the training benchmark limit the training films; the `movies` of the held-out benchmark limit the predicted films. The result lists the bands and the chosen penalties.
+`generate_predictions(subject, out_dir)` uses the same method without the outer folds. It records the same bands on the participant's Friends training films and on the held-out split. It fits the preparation of each band on the training films, chooses the penalties for each parcel on held-out training stimuli, fits one banded ridge on all training films and predicts every TR of the held-out split. Training and prediction must use the same participant, form, stimulus window, HRF delay and `streaming`. The `movies` of the training benchmark limit the training films; the `movies` of the held-out benchmark limit the predicted films. The result lists the bands and the chosen penalties.
 
 ## Files
 
@@ -81,11 +81,11 @@ For a short run, `movies` limits the benchmark to named movies. Use the `stimulu
 
 ## Data
 
-Without prepared data, a registered benchmark raises `FileNotFoundError`. Prepare the data first with the command in the data README. Each assembly has the shape `(time_bin, neuroid)` with 1000 Schaefer parcels per subject. Metadata maps each TR to its movie, episode, split and run.
+Without prepared data, a registered benchmark raises `FileNotFoundError`. Prepare the data first with the command in the data README. Each assembly has the shape `(time_bin, neuroid)` with 1000 Schaefer parcels per participant. Metadata maps each TR to its movie, episode, split and run.
 
 ## Choices to know about
 
-1. Each subject gets its own ridge fits, so the compute is four times that of a pooled fit.
+1. Each participant gets its own ridge fits, so the compute is four times that of a pooled fit.
 2. The default `stimulus_window=5` and `hrf_delay=3` follow the challenge baseline. You can use `hrf_convolve` from `brainscore.temporal` instead of the fixed shift.
 3. The memory pre-flight probes the width of one region and plans one band per requested region.
 4. Codabench allows one submission per cycle on the OOD set. Iterate on Friends S7 first.

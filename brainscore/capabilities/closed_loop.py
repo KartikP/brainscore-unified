@@ -35,14 +35,14 @@ class ClosedLoopCapability(Capability):
         del kwargs
         if model._action_fn is None:
             raise NotImplementedError(
-                f"Model '{model.identifier}' has no policy. Closed-loop evaluation "
+                f"Subject '{model.identifier}' has no policy. Closed-loop evaluation "
                 f"requires BrainScoreModel(policy=...), a callable "
                 f"policy(row) -> {{output channel: payload}}."
             )
         outputs = model._action_fn(event)
         if not isinstance(outputs, Mapping):
             raise TypeError(
-                f"Model '{model.identifier}' policy returned {type(outputs).__name__}; "
+                f"Subject '{model.identifier}' policy returned {type(outputs).__name__}; "
                 f"expected a mapping of output channel -> payload, for example "
                 f"{{'motor': action}}."
             )

@@ -31,7 +31,7 @@ SAMPLES = round(TR_SEC * 16000)
 
 
 def _benchmark(tmp_path, **kwargs):
-    return Algonauts2025Friends(subject=1, form='video+audio', assembly_root=tmp_path, **kwargs)
+    return Algonauts2025Friends(participant=1, form='video+audio', assembly_root=tmp_path, **kwargs)
 
 
 def _samples(path):
@@ -166,7 +166,7 @@ def test_registered_identifier_loads_lazily_and_declares_its_channels(tmp_path):
     ('video+audio', {'vision:video', 'audio'}, AV_REGIONS)])
 def test_each_form_requests_named_regions_and_preflight_is_na_without_them(
         tmp_path, form, inputs, outputs):
-    benchmark = Algonauts2025Friends(subject=1, form=form, assembly_root=tmp_path)
+    benchmark = Algonauts2025Friends(participant=1, form=form, assembly_root=tmp_path)
     assert benchmark.requested_output_channels == frozenset(outputs)
     model = {'image': _image_model, 'video': _video_model, 'video+audio': _av_model}[form]([])
     assert check_compatibility(model, benchmark).kind == 'full'
@@ -195,7 +195,7 @@ def test_a_requested_region_whose_tower_gets_no_input_is_na_at_preflight(tmp_pat
     # The image form sends pictures only, so no requested region can be answered.
     calls = []
     model = _clips_and_pictures_model(calls)
-    image = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    image = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     na = r"answers 'neural:IT' only from the inputs \{'vision:video'\}"
     with pytest.raises(CompatibilityError, match=na):
         check_compatibility(model, image)
@@ -217,7 +217,7 @@ def test_a_video_only_subject_runs_on_part_of_the_inputs_and_a_sound_subject_nee
     match = check_compatibility(Declared({'vision:video'}, AV_REGIONS), benchmark)
     assert match.kind == 'partial' and match.dropped_inputs == frozenset({'audio'})
     # A model that needs sound gets N/A on the video form, which sends none.
-    video = Algonauts2025Friends(subject=1, form='video', assembly_root=tmp_path)
+    video = Algonauts2025Friends(participant=1, form='video', assembly_root=tmp_path)
     with pytest.raises(CompatibilityError, match='hard-requires'):
         check_compatibility(_av_model([]), video)
     assert check_compatibility(_av_model([]), benchmark).kind == 'full'
@@ -226,7 +226,7 @@ def test_a_video_only_subject_runs_on_part_of_the_inputs_and_a_sound_subject_nee
 def test_the_constructor_has_no_mode_and_no_record_argument(tmp_path):
     for name in ('mode', 'record'):
         with pytest.raises(TypeError):
-            Algonauts2025Friends(subject=1, assembly_root=tmp_path, **{name: 'banded'})
+            Algonauts2025Friends(participant=1, assembly_root=tmp_path, **{name: 'banded'})
 
 
 # ── Fake towers with different time axes ──────────────────────────
@@ -383,7 +383,7 @@ def test_output_inputs_lists_the_inputs_of_each_region():
 def test_a_region_the_benchmark_does_not_name_is_not_asked_for(tmp_path):
     calls = []
     model = _vision_language_model(calls)
-    benchmark = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    benchmark = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     assert check_compatibility(model, benchmark).kind == 'full'   # the form sends only images
     _, score = _score(tmp_path, False, calls, form='image', columns=('image_file_name',),
                       model=model)
@@ -392,7 +392,7 @@ def test_a_region_the_benchmark_does_not_name_is_not_asked_for(tmp_path):
 
 
 def test_on_the_video_form_an_audiovisual_model_is_na_or_runs_with_the_video_regions(tmp_path):
-    video = Algonauts2025Friends(subject=1, form='video', assembly_root=tmp_path)
+    video = Algonauts2025Friends(participant=1, form='video', assembly_root=tmp_path)
     with pytest.raises(CompatibilityError, match='hard-requires'):
         check_compatibility(_av_model([]), video)
     calls = []
@@ -408,7 +408,7 @@ def test_on_the_video_form_an_audiovisual_model_is_na_or_runs_with_the_video_reg
     ('video', ('video_path',), _av_model_without_requirement)])
 def test_the_memory_probe_records_a_requested_region(tmp_path, form, columns, make):
     from brainscore_core.memory import _probe_feature_dim
-    benchmark = Algonauts2025Friends(subject=1, form=form, assembly_root=tmp_path)
+    benchmark = Algonauts2025Friends(participant=1, form=form, assembly_root=tmp_path)
     width, region = _probe_feature_dim(make([]), benchmark, None,
                                        probe_stimuli=_table(MOVIES[:1], n=1, columns=columns))
     assert f'neural:{region}' in benchmark.requested_output_channels and width == N_UNITS
@@ -419,7 +419,7 @@ def test_the_memory_probe_records_a_requested_region(tmp_path, form, columns, ma
 
 def _score(tmp_path, streaming, calls, form='video+audio', columns=('video_path', 'audio_path'),
            model=None):
-    benchmark = Algonauts2025Friends(subject=1, form=form, assembly_root=tmp_path,
+    benchmark = Algonauts2025Friends(participant=1, form=form, assembly_root=tmp_path,
                                      streaming=streaming)
     benchmark._assembly = _assembly(MOVIES)
     benchmark._expand_to_per_TR_stimuli = lambda: _table(columns=columns)
@@ -543,7 +543,7 @@ def test_too_few_runs_raise(tmp_path, n_movies, ok):
 def test_one_held_out_film_can_be_selected_but_the_training_split_needs_more(tmp_path):
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025FriendsS7, Algonauts2025OOD
     for cls in (Algonauts2025FriendsS7, Algonauts2025OOD):
-        benchmark = cls(subject=1, form='video+audio', assembly_root=tmp_path, movies=MOVIES[:1])
+        benchmark = cls(participant=1, form='video+audio', assembly_root=tmp_path, movies=MOVIES[:1])
         kept = benchmark._only_movies(_assembly(MOVIES))
         assert kept.sizes['presentation'] == N_TRS
     with pytest.raises(ValueError, match='Name more movies'):
@@ -560,7 +560,7 @@ def test_unknown_movies_raise(tmp_path):
 
 
 def test_movies_apply_to_the_image_form_too(tmp_path):
-    benchmark = Algonauts2025Friends(subject=1, movies=MOVIES[:7], assembly_root=tmp_path)
+    benchmark = Algonauts2025Friends(participant=1, movies=MOVIES[:7], assembly_root=tmp_path)
     assert benchmark.identifier == 'Algonauts2025-friends-sub01'
     with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)):
         assert sorted(set(benchmark.assembly['stimulus_id'].values)) == sorted(MOVIES[:7])

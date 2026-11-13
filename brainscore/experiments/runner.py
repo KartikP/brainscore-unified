@@ -96,7 +96,7 @@ class Tool:
     phase = 'observe'
     # Outputs this tool asks the subject for; a protocol that builds its own
     # sessions (TaskProtocol) requests them.
-    output_channels = frozenset()
+    requested_output_channels = frozenset()
 
     def describe(self):
         return {}
@@ -142,7 +142,7 @@ class SessionProtocol:
 
     """
     def __init__(self, identifier, session_factory, *, conditions=None, repetitions=(0,),
-                 input_channels=(), output_channels=(), metadata=None,
+                 required_input_channels=(), requested_output_channels=(), metadata=None,
                  factory_argument='repetition', collect_outputs: bool = True):
         if not isinstance(collect_outputs, bool):
             raise TypeError('collect_outputs must be a bool')
@@ -154,21 +154,23 @@ class SessionProtocol:
         if factory_argument not in ('repetition', 'identifier'):
             raise ValueError("factory_argument must be 'repetition' or 'identifier'.")
         self.factory_argument = factory_argument
-        self.input_channels = frozenset(input_channels)
-        self.output_channels = frozenset(output_channels)
+        self.required_input_channels = frozenset(required_input_channels)
+        self.requested_output_channels = frozenset(requested_output_channels)
         self.metadata = dict(metadata or {})
         self._compatibility = None
 
     def accept_requests(self, channels):
         """Fail when attached recorders need outputs these sessions do not request."""
-        missing = set(channels) - set(self.output_channels)
+        missing = set(channels) - set(self.requested_output_channels)
         if missing:
             raise ValueError(f'Recorders need {sorted(missing)}, but this protocol requests only '
-                             f'{sorted(self.output_channels)}. Use TaskProtocol, or request them.')
+                             f'{sorted(self.requested_output_channels)}. Use TaskProtocol, or request them.')
 
     def describe(self):
-        return {'conditions': self.conditions, 'repetitions': self.repetitions, 'input_channels': sorted(self.input_channels),
-                'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
+        return {'conditions': self.conditions, 'repetitions': self.repetitions,
+                'required_input_channels': sorted(self.required_input_channels),
+                'requested_output_channels': sorted(self.requested_output_channels),
+                'metadata': self.metadata,
                 'factory_argument': self.factory_argument,
                 'reset_policy': 'before and after each repetition; tools attach after initial reset',
                 **({'compatibility': self._compatibility.as_attrs()}
@@ -184,8 +186,8 @@ class SessionProtocol:
             (subject.in_channels, 'input', 'subject inputs'),
             (subject.out_channels, 'output', 'subject outputs'),
             (subject.required_channels, 'input', 'subject required inputs'),
-            (self.input_channels, 'input', 'protocol inputs'),
-            (self.output_channels, 'output', 'protocol outputs'),
+            (self.required_input_channels, 'input', 'protocol inputs'),
+            (self.requested_output_channels, 'output', 'protocol outputs'),
         ):
             validate_channels(set(channels), direction, owner, allow_unregistered=True)
         if (not self.conditions or any(not isinstance(c, str) or not c for c in self.conditions)
@@ -193,12 +195,12 @@ class SessionProtocol:
             raise ValueError('Use nonempty, distinct condition names')
         if not self.repetitions or len(set(self.repetitions)) != len(self.repetitions):
             raise ValueError('Use nonempty, distinct, hashable repetition IDs')
-        consumed = self.input_channels & set(subject.in_channels)
-        missing_required = set(subject.required_channels) - self.input_channels
-        missing_outputs = self.output_channels - set(subject.out_channels)
+        consumed = self.required_input_channels & set(subject.in_channels)
+        missing_required = set(subject.required_channels) - self.required_input_channels
+        missing_outputs = self.requested_output_channels - set(subject.out_channels)
         problems = []
-        if self.input_channels and not consumed:
-            problems.append(f'takes in none of the protocol inputs {sorted(self.input_channels)}')
+        if self.required_input_channels and not consumed:
+            problems.append(f'takes in none of the protocol inputs {sorted(self.required_input_channels)}')
         if missing_required:
             problems.append(f'requires inputs absent from the protocol {sorted(missing_required)}')
         if missing_outputs:
@@ -211,8 +213,8 @@ class SessionProtocol:
         self._compatibility = CompatibilityMatch(
             subject=subject.identifier, benchmark=self.identifier,
             consumed_inputs=frozenset(consumed),
-            dropped_inputs=frozenset(self.input_channels - set(subject.in_channels)),
-            requested_outputs=frozenset(self.output_channels))
+            dropped_inputs=frozenset(self.required_input_channels - set(subject.in_channels)),
+            requested_output_channels=frozenset(self.requested_output_channels))
 
     def run(self, subject, context):
         results = []
@@ -572,7 +574,7 @@ class Experiment:
     def validate(self):
         if self.output_dir is not None:
             check_output_directory(self.output_dir)
-        requested = set().union(*(tool.output_channels for tool in self.tools))
+        requested = set().union(*(tool.requested_output_channels for tool in self.tools))
         if requested or isinstance(self.protocol, SessionProtocol):
             # Protocols from other packages need accept_requests only to take recorders.
             self.protocol.accept_requests(requested)
@@ -628,7 +630,7 @@ class Experiment:
                         stack.enter_context(tool.attach(context))
                 yield context
                 if context.failed:
-                    raise RuntimeError('Experiment encountered a caught model or tool error')
+                    raise RuntimeError('Experiment encountered a caught subject or tool error')
             manifest['status'] = 'complete'
         except BaseException as error:
             context.failed = True
@@ -651,7 +653,7 @@ class Experiment:
         with self.open() as context:
             value = self.protocol.run(self.subject, context)
             if context.failed:
-                raise RuntimeError('Experiment encountered a caught model or tool error')
+                raise RuntimeError('Experiment encountered a caught subject or tool error')
             encoded = context.codec.encode(value)
             _write(self.run_directory / 'result.json', encoded)
             context.artifact(self.run_directory / 'result.json', producer='protocol',

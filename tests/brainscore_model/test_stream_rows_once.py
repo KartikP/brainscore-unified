@@ -57,10 +57,10 @@ def text_model(calls):
                            region_layer_map={'A': LayerSelector('late', modality='text')})
 
 
-def streaming_session(kind, stimuli, record='A'):
+def streaming_session(kind, stimuli, region='A'):
     if kind == 'streaming':
-        return stimulus_session(stimuli, [f'neural:{record}'], streaming=True)
-    session = stimulus_session(stimuli, [f'neural:{record}'])
+        return stimulus_session(stimuli, [f'neural:{region}'], streaming=True)
+    session = stimulus_session(stimuli, [f'neural:{region}'])
     session.streaming = True
     return session
 
@@ -187,7 +187,7 @@ def test_row_cut_short_is_presented_and_never_dropped():
                                                           and e.meta['column'] == 'text')]
     calls = []
     session = Session(events, ['neural:A'], streaming=True)
-    session.stimulus_set = table()
+    session.stimuli = table()
     text_model(calls).participate(session)
     assert calls == [['a'], ['b']]
 
@@ -213,7 +213,7 @@ def run_external(events, stimuli=None):
     calls = []
     session = Session(events, ['neural:A'], streaming=True)
     if stimuli is not None:
-        session.stimulus_set = stimuli
+        session.stimuli = stimuli
     text_model(calls).participate(session)
     return calls
 
@@ -258,7 +258,7 @@ def test_external_marker_that_does_not_match_the_table_is_never_merged(change):
     if change == 'wrong_channel':
         events = [StreamEvent('vision:image', e.payload, e.t_ms, meta=e.meta) for e in events]
         session = Session(events, ['neural:A'], streaming=True)
-        session.stimulus_set = table()
+        session.stimuli = table()
         assert all(_table_row_position(session, e) is None for e in events)
         return
     assert len(run_external(events, stimuli)) == 2
@@ -327,7 +327,7 @@ def test_nested_session_groups_its_own_rows_only():
 def replay(events, source_session, settings=True):
     """What brainscore.experiments.replay_sessions builds from a record."""
     session = Session(deepcopy(events))
-    session.stimulus_set = deepcopy(source_session.stimulus_set)
+    session.stimuli = deepcopy(source_session.stimuli)
     session.streaming = True
     session.outputs = ('neural:A',)
     if settings:

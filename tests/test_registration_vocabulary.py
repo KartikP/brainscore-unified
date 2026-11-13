@@ -344,8 +344,9 @@ def test_neural_assemblies_are_identical(pair, tmp_path):
             subject.start_recording(record, time_bins=[(70, 170)])
             outputs.append((subject.process(stimuli), _call_logs()))
             if isinstance(record, str):
-                outputs.append((neural_response(subject=subject, stimulus_set=stimuli,
-                                                record=record, time_bins=[(70, 170)]), _call_logs()))
+                outputs.append((neural_response(subject=subject, stimuli=stimuli,
+                                                outputs=[f'neural:{record}'], time_bins=[(70, 170)]),
+                             _call_logs()))
         half = len(outputs) // 2
         for (old_assembly, old_log), (new_assembly, new_log) in zip(outputs[:half], outputs[half:]):
             _assert_same(old_assembly, new_assembly)
@@ -362,8 +363,8 @@ def test_readout_behavior_is_identical(pair, tmp_path):
     results = []
     for subject in (old, new):
         task = TaskContext(task_type='probabilities', fitting_stimuli=fitting,
-                           prefer_path='readout', metadata={'stimuli': scoring})
-        results.append((behavioral_response(subject, task), _call_logs()))
+                           prefer_path='readout')
+        results.append((behavioral_response(subject, scoring, task), _call_logs()))
         subject.start_task(task)
         results.append((subject.process(scoring), _call_logs()))
     for (old_output, old_log), (new_output, new_log) in zip(results[:2], results[2:]):
@@ -380,12 +381,12 @@ def test_qwen_answer_path_is_identical(build, tmp_path):
     processor = next(made for kind, _, _, made in module.loads if kind == 'AutoProcessor')
     stimuli = _images(tmp_path, 'word', [4, 5, 6])
     task = TaskContext(task_type='label', instruction='Is this a real word?',
-                       label_set=['real', 'pseudo'], metadata={'stimuli': stimuli})
+                       label_set=['real', 'pseudo'])
     results = []
     for subject in (old, new):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter('always')
-            output = behavioral_response(subject, task)
+            output = behavioral_response(subject, stimuli, task)
         results.append((output, [str(w.message) for w in caught], list(qwen.generate_calls),
                         list(processor.prompts)))
         qwen.generate_calls.clear()

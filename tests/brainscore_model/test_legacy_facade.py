@@ -185,7 +185,7 @@ class _Recorder(Subject):
         self.sessions.append(session)
         while session.next_input() is not None:
             pass
-        n = len(session.stimulus_set)
+        n = len(session.stimuli)
         for channel in session.outputs:
             neural = channel.startswith('neural:')
             cls = NeuroidAssembly if neural else BehavioralAssembly
@@ -297,14 +297,13 @@ def test_repeated_task_refits_after_a_state_change():
             PerturbationApplied(handle_id='h', target=change.target,
                                 perturbation=change.perturbation),
             lambda: None))
-    task = TaskContext(task_type='probabilities', fitting_stimuli=_labelled_images(),
-                       metadata={'stimulus_set': _images()})
-    behavioral_response(model, task)
-    behavioral_response(model, task)
+    task = TaskContext(task_type='probabilities', fitting_stimuli=_labelled_images())
+    behavioral_response(model, _images(), task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 1
     apply_state_change(model, StateChange(kind='lesion', target=Selection(layer='layer'),
                                           perturbation=Perturbation(kind='zero')))
-    behavioral_response(model, task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 2  # the model changed under the readout
 
 

@@ -133,7 +133,7 @@ def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
     assert model._behavioral.history == []                             # h empty
     assert log == {'policy': 2, 'extractor': 2}
     assert state['lesion'] and 'h' in model._active_perturbations      # w unchanged
-    assert model._behavioral.task_context is task                      # s unchanged
+    assert model._behavioral.task is task                      # s unchanged
 
 
 def test_replay_keeps_a_lesion_and_clears_the_policy_between_episodes():
@@ -176,11 +176,11 @@ class _Benchmark:
     def __init__(self, undo):
         self.undo = undo
 
-    def __call__(self, candidate):
-        applied = apply_state_change(candidate, StateChange(
+    def __call__(self, subject):
+        applied = apply_state_change(subject, StateChange(
             kind='ablation', target=Selection(layer='x'), perturbation=Perturbation(kind='zero')))
         if self.undo:
-            apply_state_change(candidate, StateChange(kind='reset', handle_id=applied.handle_id))
+            apply_state_change(subject, StateChange(kind='reset', handle_id=applied.handle_id))
         return Score(1.0)
 
 

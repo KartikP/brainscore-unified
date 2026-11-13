@@ -285,7 +285,7 @@ class _Algonauts2025Base(BenchmarkBase):
 
     def __init__(
         self,
-        subject: int,
+        participant: int,
         split: str,
         identifier_suffix: str,
         stimulus_window: int = 5,
@@ -297,9 +297,9 @@ class _Algonauts2025Base(BenchmarkBase):
         streaming: bool = False,
         movies: Optional[Sequence[str]] = None,
     ):
-        if subject not in (1, 2, 3, 5):
+        if participant not in (1, 2, 3, 5):
             raise ValueError(
-                f"Algonauts subjects are {{1, 2, 3, 5}}; got {subject}.")
+                f"Algonauts participants are {{1, 2, 3, 5}}; got {participant}.")
         if form not in self.VALID_FORMS:
             raise ValueError(
                 f"form must be one of {self.VALID_FORMS}; got {form!r}.")
@@ -323,7 +323,7 @@ class _Algonauts2025Base(BenchmarkBase):
             f'neural:{region}' for region in self.FORM_REGIONS[form])
         self._streaming = bool(streaming)
         self._movies = None if movies is None else [str(movie) for movie in movies]
-        self._subject = subject
+        self._participant = participant
         self._split = split
         self._stimulus_window = stimulus_window
         self._hrf_delay = hrf_delay
@@ -335,7 +335,7 @@ class _Algonauts2025Base(BenchmarkBase):
         self._stimulus_set = None
 
         super().__init__(
-            identifier=(f'Algonauts2025-{split}-sub{subject:02d}'
+            identifier=(f'Algonauts2025-{split}-sub{participant:02d}'
                         f'{identifier_suffix}{self._FORM_SUFFIX[form]}'),
             version=2,
             parent='naturalistic',
@@ -347,7 +347,7 @@ class _Algonauts2025Base(BenchmarkBase):
     def assembly(self):
         if self._assembly is None:
             self._assembly = load_dataset(
-                assembly_identifier(self._split, self._subject),
+                assembly_identifier(self._split, self._participant),
                 root=self._assembly_root,
             )
             if self._movies is not None:
@@ -436,7 +436,7 @@ class _Algonauts2025Base(BenchmarkBase):
         The width is content-invariant, so a blank frame gives the same width as a
         real one — without running ffmpeg over a video. Mirrors the frame-level set
         built in ``_expand_to_per_TR_frames`` (stimulus_id + image_file_name +
-        stimulus_paths) so the candidate processes it identically.
+        stimulus_paths) so the subject processes it identically.
         """
         import pandas as pd
         from PIL import Image
@@ -541,7 +541,7 @@ class _Algonauts2025Base(BenchmarkBase):
         column_signature = hashlib.md5(
             '|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
         out_set.identifier = (
-            f'algonauts2025-{self._split}-sub{self._subject:02d}-frames'
+            f'algonauts2025-{self._split}-sub{self._participant:02d}-frames'
             f'-{column_signature}')
         out_set.stimulus_paths = dict(
             zip(df['stimulus_id'], df['image_file_name']))
@@ -668,7 +668,7 @@ class _Algonauts2025Base(BenchmarkBase):
         column_signature = hashlib.md5(
             '|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
         out_set.identifier = (
-            f'algonauts2025-{self._split}-sub{self._subject:02d}-clips'
+            f'algonauts2025-{self._split}-sub{self._participant:02d}-clips'
             f'-{column_signature}')
         out_set.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
         return out_set
@@ -716,7 +716,7 @@ class _Algonauts2025Base(BenchmarkBase):
         column_signature = hashlib.md5(
             '|'.join(sorted(map(str, df.columns))).encode()).hexdigest()[:8]
         out_set.identifier = (
-            f'algonauts2025-{self._split}-sub{self._subject:02d}-clips-sound'
+            f'algonauts2025-{self._split}-sub{self._participant:02d}-clips-sound'
             f'-{column_signature}')
         out_set.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
         return out_set
@@ -739,8 +739,8 @@ class _Algonauts2025Base(BenchmarkBase):
 
     # ── Recording the bands ───────────────────────────────────────
 
-    def _record_bands(self, candidate, table, regions) -> Dict[str, Tuple[np.ndarray, object]]:
-        """``{region: (features, neuroid ids)}`` with one row per row of ``table``.
+    def _record_bands(self, subject, stimuli, regions) -> Dict[str, Tuple[np.ndarray, object]]:
+        """``{region: (features, neuroid ids)}`` with one row per row of ``stimuli``.
 
         Each region is asked for in its own session on its own channel,
         ``neural:<region>``, so the sessions together request exactly what
@@ -748,7 +748,7 @@ class _Algonauts2025Base(BenchmarkBase):
         model answers one channel per session and two towers can answer on
         different time axes; the model runs once per region either way. Each
         answer is averaged over its time bins and put in the row order of
-        ``table``. With ``streaming=True`` the subject gets one row at a time
+        ``stimuli``. With ``streaming=True`` the subject gets one row at a time
         and answers it before the next; otherwise it gets the table at once.
         Nothing is reduced here: the reduction is fitted per fold in
         ``score_banded``.
@@ -757,27 +757,27 @@ class _Algonauts2025Base(BenchmarkBase):
         bands = {}
         for region in regions:
             channel = f'neural:{region}'
-            session = stimulus_session(table, [channel], None,
+            session = stimulus_session(stimuli, [channel], None,
                                        time_bins=[(0, int(TR_SEC * 1000))],
                                        streaming=self._streaming)
-            candidate.participate(session)
-            features, feature_ids = _features_in_order(session.collect(channel), table)
-            if features.shape[0] != len(table):
+            subject.participate(session)
+            features, feature_ids = _features_in_order(session.collect(channel), stimuli)
+            if features.shape[0] != len(stimuli):
                 raise ValueError(
-                    f"the table has {len(table)} rows but {channel} answered "
+                    f"the stimuli have {len(stimuli)} rows but {channel} answered "
                     f"{features.shape[0]}; cannot trust input order.")
             print(f'  band {region}: {features.shape}')
             bands[region] = (features, feature_ids)
         return bands
 
-    def _assembly_bands(self, candidate, regions):
+    def _assembly_bands(self, subject, regions):
         """The bands of ``_record_bands``, aligned to the TR rows of the assembly."""
         table = self._expand_to_per_TR_stimuli()
         print(f"  recording {['neural:' + region for region in regions]} for {len(table)} rows "
               f"({'stream' if self._streaming else 'table'})...")
         frame_ids = list(table['stimulus_id'])
         return {region: (self._align_features_to_assembly(features, frame_ids, table), ids)
-                for region, (features, ids) in self._record_bands(candidate, table, regions).items()}
+                for region, (features, ids) in self._record_bands(subject, table, regions).items()}
 
     def _align_features_to_assembly(
         self, features: np.ndarray, frame_ids: List[str],
@@ -932,17 +932,17 @@ class _Algonauts2025Base(BenchmarkBase):
         """Stack the stimulus window and shift by the HRF delay within ``run_idx``'s runs."""
         return lambda X: self._apply_stimulus_window_and_hrf(X, run_idx)
 
-    def __call__(self, candidate) -> Score:
+    def __call__(self, subject) -> Score:
         if self._split != 'friends':
             raise ValueError(
                 f"The {self._split!r} benchmark is a prediction target, not a score: "
-                f"its fMRI is withheld, so score() cannot rate a model on it. "
-                f"Call `generate_predictions(candidate, out_dir)` on this benchmark "
+                f"its fMRI is withheld, so score() cannot rate a subject on it. "
+                f"Call `generate_predictions(subject, out_dir)` on this benchmark "
                 f"to write the per-parcel predictions as .npy files, bundle them in "
                 f"the Codabench zip layout and upload them. For a score, use the "
-                f"`Algonauts2025-friends-sub{self._subject:02d}` benchmark."
+                f"`Algonauts2025-friends-sub{self._participant:02d}` benchmark."
             )
-        return self._score_friends_train(candidate)
+        return self._score_friends_train(subject)
 
     def _stimulus_groups(self) -> np.ndarray:
         """The stimulus of each TR row: the unit that the folds keep on one side.
@@ -952,12 +952,12 @@ class _Algonauts2025Base(BenchmarkBase):
         """
         return np.asarray(self.assembly['stimulus_id'].values).astype(str)
 
-    def _score_friends_train(self, candidate) -> Score:
+    def _score_friends_train(self, subject) -> Score:
         # The same pre-flight as score(): N/A before any cutting or recording.
         from brainscore_core.compatibility import check_compatibility
-        check_compatibility(candidate, self)
+        check_compatibility(subject, self)
         regions = list(self.FORM_REGIONS[self._form])
-        bands = self._assembly_bands(candidate, regions)
+        bands = self._assembly_bands(subject, regions)
         run_idx, keep = self._runs_and_keep()
         groups = self._stimulus_groups()
         Y = self.assembly.values
@@ -1011,11 +1011,11 @@ class _Algonauts2025Base(BenchmarkBase):
 
     # ── Held-out prediction (Codabench submission) ────────────────
 
-    def generate_predictions(self, candidate, out_dir, train_benchmark=None):
+    def generate_predictions(self, subject, out_dir, train_benchmark=None):
         """Produce held-out per-parcel BOLD predictions for the Codabench target.
 
         The method is the scoring method without the outer folds. The benchmark
-        records the same bands on this subject's Friends training films and on
+        records the same bands on this participant's Friends training films and on
         this held-out split. It fits the preparation of each band on the
         training films, chooses the penalties on held-out training
         stimuli, fits one banded ridge on all training films and predicts every
@@ -1023,7 +1023,7 @@ class _Algonauts2025Base(BenchmarkBase):
         ``(n_TRs, 1000)`` into ``out_dir``.
 
         ``train_benchmark`` must be the Friends training split of the same
-        subject, with the same form, stimulus window, HRF delay and streaming.
+        participant, with the same form, stimulus window, HRF delay and streaming.
         Its ``movies`` limit the training films; this benchmark's ``movies``
         limit the predicted films.
         """
@@ -1033,9 +1033,9 @@ class _Algonauts2025Base(BenchmarkBase):
                 "generate_predictions is for held-out splits; the friends "
                 "training split is scored via __call__.")
         train = train_benchmark or Algonauts2025Friends(
-            subject=self._subject, form=self._form, streaming=self._streaming)
-        if train._subject != self._subject or train._split != 'friends':
-            raise ValueError('Prediction requires Friends training data for the same subject.')
+            participant=self._participant, form=self._form, streaming=self._streaming)
+        if train._participant != self._participant or train._split != 'friends':
+            raise ValueError('Prediction requires Friends training data for the same participant.')
         if train._form != self._form:
             raise ValueError('Training and prediction must present the same form.')
         if train._streaming != self._streaming:
@@ -1045,11 +1045,11 @@ class _Algonauts2025Base(BenchmarkBase):
                 self._stimulus_window, self._hrf_delay):
             raise ValueError('Training and prediction must use the same stimulus window and HRF delay.')
         from brainscore_core.compatibility import check_compatibility
-        check_compatibility(candidate, self)
+        check_compatibility(subject, self)
         regions = list(self.FORM_REGIONS[self._form])
-        train_bands = train._assembly_bands(candidate, regions)
+        train_bands = train._assembly_bands(subject, regions)
         train_runs, train_keep = train._runs_and_keep()
-        predict_bands = self._assembly_bands(candidate, regions)
+        predict_bands = self._assembly_bands(subject, regions)
         predict_runs, _ = self._runs_and_keep(drop_excluded=False)
         preds, summary = fit_predict_banded(
             train_bands, train.assembly.values, train._stimulus_groups(), train_keep,
@@ -1057,9 +1057,9 @@ class _Algonauts2025Base(BenchmarkBase):
             dim_cap=self.LAYER_DIM_CAP, alpha_grid=self.BANDED_ALPHA_GRID,
             n_candidates=self.BANDED_CANDIDATES)
         os.makedirs(out_dir, exist_ok=True)
-        path = os.path.join(out_dir, f'sub-{self._subject:02d}_{self._split}.npy')
+        path = os.path.join(out_dir, f'sub-{self._participant:02d}_{self._split}.npy')
         np.save(path, preds)
-        return {'path': path, 'predictions': preds, 'subject': self._subject,
+        return {'path': path, 'predictions': preds, 'participant': self._participant,
                 'split': self._split, 'n_TRs': int(preds.shape[0]), 'bands': regions,
                 'penalties': summary, 'penalty_protocol': PENALTY_PROTOCOL,
                 'feature_projection_protocol': PROJECTION_PROTOCOL}
@@ -1067,14 +1067,14 @@ class _Algonauts2025Base(BenchmarkBase):
 
 class Algonauts2025Friends(_Algonauts2025Base):
     """Train + score per-parcel encoding model on Friends S1-S6 +
-    Movie10 (in-distribution). Cross-validated within each subject.
+    Movie10 (in-distribution). Cross-validated within each participant.
 
     Score is the raw median per-parcel Pearson r on held-out stimuli.
     """
 
-    def __init__(self, subject: int, **kwargs):
+    def __init__(self, participant: int, **kwargs):
         super().__init__(
-            subject=subject, split='friends',
+            participant=participant, split='friends',
             identifier_suffix='', **kwargs)
 
 
@@ -1086,9 +1086,9 @@ class Algonauts2025FriendsS7(_Algonauts2025Base):
     series that Codabench expects.
     """
 
-    def __init__(self, subject: int, **kwargs):
+    def __init__(self, participant: int, **kwargs):
         super().__init__(
-            subject=subject, split='friends_s7',
+            participant=participant, split='friends_s7',
             identifier_suffix='-test', **kwargs)
 
 
@@ -1099,7 +1099,7 @@ class Algonauts2025OOD(_Algonauts2025Base):
     raises an error.
     """
 
-    def __init__(self, subject: int, **kwargs):
+    def __init__(self, participant: int, **kwargs):
         super().__init__(
-            subject=subject, split='ood',
+            participant=participant, split='ood',
             identifier_suffix='-ood', **kwargs)

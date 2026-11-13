@@ -2,7 +2,7 @@
 
 Skips anything that needs a real forward pass (model weights, audio files
 on disk) — those run out-of-band via score_multimodal.py. This file just
-checks that the benchmark registers, validates candidates, and assembles
+checks that the benchmark registers, validates subjects, and assembles
 the per-modality stim sets correctly.
 """
 import pytest
@@ -22,7 +22,7 @@ def test_multimodal_model_registered():
 
 
 def test_benchmark_rejects_unimodal_candidate():
-    """An audio-less candidate must raise immediately, not silently
+    """An audio-less subject must raise immediately, not silently
     produce video-only output under a multimodal label."""
     from brainscore import BrainScoreModel
 

@@ -21,7 +21,7 @@ def session(trial):
 def protocol():
     return SessionProtocol(
         'reasoning', session, conditions=['normal', 'repeat'], repetitions=[0, 1],
-        input_channels=['text'], output_channels=['behavior:text'],
+        required_input_channels=['text'], requested_output_channels=['behavior:text'],
     )
 
 
@@ -196,7 +196,7 @@ def test_reasoning_from_a_reply_part_reaches_the_reasoning_record(tmp_path):
         yield stimulus_session(stimuli, ['behavior:text'], TaskContext(response=Text()))
 
     procedure = SessionProtocol('reasoning', task_session, conditions=['normal'], repetitions=[0],
-                                input_channels=['text'], output_channels=['behavior:text'])
+                                required_input_channels=['text'], requested_output_channels=['behavior:text'])
     subject = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=reply)
     result = run(tmp_path, subject, procedure=procedure)
     record, = RunRecord(result.directory / 'reasoning').outputs()

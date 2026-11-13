@@ -38,7 +38,7 @@ def prepared(native, tmp_path):
     return prepare_dataset('EWoK-core-1.0', source=native, output=tmp_path / 'build')
 
 
-def subject(likelihood):
+def likelihood_subject(likelihood):
     """A normal model with a ``likelihood`` part: it runs both modes."""
     return BrainScoreModel('fixture', supported_modalities={'text'}, likelihood=likelihood)
 
@@ -217,7 +217,7 @@ def test_registered_benchmark_through_score_and_tools(mode, prepared, tmp_path, 
         # Raw text: EWoK's prompt with no sentence added.
         assert prompt.names == ('text',)
         return native_choice(prompt)
-    make = (lambda: subject(record)) if mode == 'logprobs' else (lambda: chooser(reply))
+    make = (lambda: likelihood_subject(record)) if mode == 'logprobs' else (lambda: chooser(reply))
     benchmark=brainscore.load_benchmark(f'EWoK-core-1.0-{mode}',root=prepared,
         batch_size=2,output_dir=tmp_path/'scored')
     value=brainscore.score(make(),benchmark,check_mem=False)
@@ -296,7 +296,7 @@ def test_an_answer_part_cannot_run_the_raw_text_choice(prepared, tmp_path):
 def test_failure_preserves_failed_run(prepared, tmp_path):
     b=brainscore.load_benchmark('EWoK-core-1.0-logprobs',root=prepared,output_dir=tmp_path/'run')
     with pytest.raises(ValueError,match='finite'):
-        b(subject(lambda prompt, candidates:{c: float('nan') for c in candidates}))
+        b(likelihood_subject(lambda prompt, candidates:{c: float('nan') for c in candidates}))
     assert json.loads((tmp_path/'run/experiment.json').read_text())['status']=='failed'
 
 
@@ -375,11 +375,11 @@ def test_real_hooks_change_score_and_restore(prepared, tmp_path):
                                  for t,c in zip(targets,contexts)])
             with torch.no_grad():
                 return torch.nn.functional.logsigmoid(self.model(inputs)).flatten().tolist()
-    native=Native();candidate=subject(EWoKProvider(native))
+    native=Native();subject=likelihood_subject(EWoKProvider(native))
     b=brainscore.load_benchmark('EWoK-core-1.0-logprobs',root=prepared)
     outcomes=[]
     for name,interventions in [('baseline',[]),('ablated',[Ablate(['projection'])]),('restored',[])]:
-        result=Experiment(subject=candidate,protocol=b.protocol(),
+        result=Experiment(subject=subject,protocol=b.protocol(),
             tools=[RecordInputsOutputs(),*interventions,RecordActivity(['projection'])],
             instrumentation=TorchInstrumentation(native.model),output_dir=tmp_path/name).run()
         outcomes.append(float(result.value))
@@ -406,7 +406,7 @@ class _ParticipateOnlyReader(Subject):
         self.sessions += 1
         assert tuple(session.outputs) == ('behavior:probabilities',)
         while (event := session.next_input()) is not None:
-            options = list(session.stimulus_set.loc[event.meta['stimulus_index'], 'options'])
+            options = list(session.stimuli.loc[event.meta['stimulus_index'], 'options'])
             scores = self.provider(Prompt((('text', event.payload),)), options)
             session.respond(StreamEvent('behavior:probabilities', BehavioralAssembly(
                 [[scores[option] for option in options]],
@@ -458,7 +458,7 @@ def test_participate_only_subject_scores_like_a_brainscore_model(mode, prepared,
     value = benchmark(reader)
     reference = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared, batch_size=2,
                                           output_dir=tmp_path / 'trace')(
-        subject(provider) if mode == 'logprobs' else chooser())
+        likelihood_subject(provider) if mode == 'logprobs' else chooser())
     assert float(value) == float(reference) == 1
     # One session per context (logprobs) or target (choice): two batches, two each.
     assert reader.sessions == 2 * 2
@@ -543,7 +543,7 @@ def test_logprobs_match_the_removed_request_path_on_the_same_model(tiny_lm, word
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
     net, tok = tiny_lm
     if parts == 'chat_parts':
-        model = subject(chat_parts(net, tok)[1])
+        model = likelihood_subject(chat_parts(net, tok)[1])
     else:
         from brainscore.model_helpers.causal_lm import build_causal_lm_subject
         model = build_causal_lm_subject('tiny-lm', net, tok)
@@ -602,20 +602,20 @@ def test_a_subject_without_a_likelihood_part_is_na(prepared):
     from brainscore_core.compatibility import CompatibilityError
     from brainscore_core.score_status import score_or_na
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
-    for candidate in (chooser(), BrainScoreModel('answers', supported_modalities={'text'},
+    for subject in (chooser(), BrainScoreModel('answers', supported_modalities={'text'},
                                                  answer=lambda stimulus_row, instruction, label_set: '1')):
         with pytest.raises(CompatibilityError):
-            benchmark(candidate)
-        assert score_or_na(benchmark, candidate).attrs['status'] == 'N/A'
+            benchmark(subject)
+        assert score_or_na(benchmark, subject).attrs['status'] == 'N/A'
 
 
 def test_replay_rebuilds_one_session_per_request(prepared, tmp_path):
     from brainscore.experiments import compare_outputs, replay_sessions
     from brainscore.run_record import RunRecord
     provider = EWoKProvider(NativeModel())
-    candidate = subject(provider)
+    subject = likelihood_subject(provider)
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, batch_size=2)
-    original = Experiment(subject=candidate, protocol=benchmark.protocol(),
+    original = Experiment(subject=subject, protocol=benchmark.protocol(),
                           tools=[RecordInputsOutputs()], output_dir=tmp_path / 'original').run()
     events = list(RunRecord(original.directory).events())
     starts = [e for e in events if e['kind'] == 'repetition_start']
@@ -629,7 +629,7 @@ def test_replay_rebuilds_one_session_per_request(prepared, tmp_path):
     assert list(outputs.values()) == [['behavior:probabilities']] * 4
 
     calls = []
-    counting = subject(lambda prompt, candidates: calls.append(prompt) or provider(prompt, candidates))
+    counting = likelihood_subject(lambda prompt, candidates: calls.append(prompt) or provider(prompt, candidates))
     replay = Experiment(subject=counting, protocol=replay_sessions(original.directory),
                         tools=[RecordInputsOutputs()], output_dir=tmp_path / 'replay').run()
     assert len(calls) == 6
@@ -673,7 +673,7 @@ def test_tools_select_the_repetition_ids_each_request_runs_in(prepared, tmp_path
     native = _TorchNative()
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, batch_size=2)
     assert benchmark.protocol().repetitions == tuple(range(4))
-    result = Experiment(subject=subject(EWoKProvider(native)), protocol=benchmark.protocol(),
+    result = Experiment(subject=likelihood_subject(EWoKProvider(native)), protocol=benchmark.protocol(),
                         tools=[RecordInputsOutputs(), Ablate(['projection'], repetitions=[0])],
                         instrumentation=TorchInstrumentation(native.model),
                         output_dir=tmp_path / 'selected').run()
@@ -681,7 +681,7 @@ def test_tools_select_the_repetition_ids_each_request_runs_in(prepared, tmp_path
               if e['kind'] == 'intervention_start']
     assert starts == [0]
     with pytest.raises(ValueError, match='repetitions must belong'):
-        Experiment(subject=subject(EWoKProvider(native)), protocol=benchmark.protocol(),
+        Experiment(subject=likelihood_subject(EWoKProvider(native)), protocol=benchmark.protocol(),
                    tools=[RecordInputsOutputs(), Ablate(['projection'], repetitions=['external'])],
                    instrumentation=TorchInstrumentation(native.model),
                    output_dir=tmp_path / 'external').run()

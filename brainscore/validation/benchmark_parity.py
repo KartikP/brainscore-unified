@@ -211,12 +211,12 @@ def adapter_score_tolerance(reference):
     return ADAPTER_SCORE_ULPS * spacing
 
 
-def validate_case(case, candidate_factory, benchmark_loader=None, *,
+def validate_case(case, subject_factory, benchmark_loader=None, *,
                   native_atol=1e-6, score_atol=None, policy=HISTORICAL_POLICY,
                   scratch_dir=None):
     """Run three independent conditions, retaining inputs as well as scores.
 
-    ``candidate_factory(case, route)`` must return fresh, matched-weight models
+    ``subject_factory(case, route)`` must return fresh, matched-weight models
     for ``legacy``, ``adapter``, and ``native``. Native must be a BrainScoreModel;
     an adapter passed as native is rejected. Fixed recording layers avoid layer
     search confounds. Real score execution belongs exclusively in the slow tier.
@@ -228,7 +228,7 @@ def validate_case(case, candidate_factory, benchmark_loader=None, *,
     """
     with TemporaryDirectory(prefix='umi-parity-', dir=scratch_dir) as directory:
         return _validate_case(
-            case, candidate_factory, benchmark_loader,
+            case, subject_factory, benchmark_loader,
             native_atol=native_atol, score_atol=score_atol, policy=policy,
             directory=Path(directory),
         )
@@ -261,7 +261,7 @@ def _compare_snapshots(actual, reference, *, route, case, native_atol, pereira, 
     return max_delta, max_ulps, error
 
 
-def _validate_case(case, candidate_factory, benchmark_loader, *,
+def _validate_case(case, subject_factory, benchmark_loader, *,
                    native_atol, score_atol, policy, directory):
     from brainscore import load_benchmark
     from brainscore import BrainScoreModel
@@ -290,12 +290,12 @@ def _validate_case(case, candidate_factory, benchmark_loader, *,
                 'native_ulp_magnitude_floor': PEREIRA_ULP_MAGNITUDE_FLOOR if pereira else None,
                 'score_atol': score_atol, 'routes': runs}
     for route in ('legacy', 'adapter', 'native'):
-        candidate = candidate_factory(case, route)
-        if route == 'native' and not isinstance(candidate, BrainScoreModel):
+        subject = subject_factory(case, route)
+        if route == 'native' and not isinstance(subject, BrainScoreModel):
             raise TypeError('native route requires BrainScoreModel, not an adapter')
-        if route == 'adapter' and not isinstance(candidate, adapters):
+        if route == 'adapter' and not isinstance(subject, adapters):
             raise TypeError('adapter route requires a domain adapter')
-        if route == 'legacy' and isinstance(candidate, (*adapters, BrainScoreModel)):
+        if route == 'legacy' and isinstance(subject, (*adapters, BrainScoreModel)):
             raise TypeError('legacy route requires the original domain subject')
         benchmark = benchmark_loader(case.legacy if route == 'legacy' else case.unified)
         attr = '_similarity_metric' if case.domain == 'vision' else 'metric'
@@ -310,7 +310,7 @@ def _validate_case(case, candidate_factory, benchmark_loader, *,
             return metric(source, target, *args, **kwargs)
         setattr(benchmark, attr, capture)
         try:
-            score = benchmark(candidate)
+            score = benchmark(subject)
             observed = {'score': _scalar(score), 'raw': _scalar(score.attrs['raw'])}
             runs[route] = observed
             observed['metric_inputs'] = [
@@ -390,14 +390,14 @@ def _validate_case(case, candidate_factory, benchmark_loader, *,
                 for _, values, _ in captured:
                     values.path.unlink(missing_ok=True)
             setattr(benchmark, attr, metric)
-            if hasattr(candidate, 'reset'):
-                candidate.reset()
-            del candidate, benchmark
+            if hasattr(subject, 'reset'):
+                subject.reset()
+            del subject, benchmark
             gc.collect()
     return report()
 
 
-def local_candidate(case, route, *, language_precision='float32', execution_observer=None):
+def local_subject(case, route, *, language_precision='float32', execution_observer=None):
     """Reference pairs: local ResNet18 with fixed V4/IT layers, or local GPT-2.
 
     UMI_PARITY_RESNET18 is a torchvision ResNet18 state_dict file.

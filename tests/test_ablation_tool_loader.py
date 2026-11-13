@@ -36,7 +36,7 @@ def protocol() -> SessionProtocol:
     def factory(trial):
         yield Session([StreamEvent('observation', [[1., 2., 3.]], None)])
     return SessionProtocol('loaded-ablation', factory, conditions=['baseline', 'lesioned'],
-                           repetitions=[0, 1], input_channels=['observation'], output_channels=['behavior'])
+                           repetitions=[0, 1], required_input_channels=['observation'], requested_output_channels=['behavior'])
 
 
 def test_loader_returns_existing_implementation_and_fresh_instances():

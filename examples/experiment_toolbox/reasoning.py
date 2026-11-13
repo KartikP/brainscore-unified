@@ -43,7 +43,7 @@ def make_session(trial):
 def run(output_dir):
     protocol = SessionProtocol(
         'one-question', make_session,
-        input_channels=['text'], output_channels=['behavior:text'],
+        required_input_channels=['text'], requested_output_channels=['behavior:text'],
     )
     # Preserve the complete exchange and a focused reasoning record.
     result = Experiment(

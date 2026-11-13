@@ -68,7 +68,7 @@ def run(directory: Path) -> None:
     result = Experiment(
         subject=subject,
         protocol=SessionProtocol('color-probe-demo', factory, conditions=['baseline', 'lesioned'],
-                                 input_channels=['text'], output_channels=['neural:population']),
+                                 required_input_channels=['text'], requested_output_channels=['neural:population']),
         tools=[load_tool('record-io'),
                load_tool('record-activity', targets=['population'], name='activity_before', when='before'),
                before,

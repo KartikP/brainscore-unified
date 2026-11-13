@@ -74,7 +74,7 @@ def record_clips(subject, clips, region: str, time_bins):
     """
     from brainscore_core.streaming_helpers import neural_response
     from brainscore.presentation import response_stimulus_ids
-    result = neural_response(subject, clips, record=region, time_bins=time_bins)
+    result = neural_response(subject, clips, [f'neural:{region}'], time_bins=time_bins)
     ids = response_stimulus_ids(result, clips['stimulus_id'])
     try:
         result['stimulus_id']
@@ -93,7 +93,7 @@ def record_frames_per_clip(subject, frames, region: str, time_bins):
     """
     from brainscore_core.streaming_helpers import neural_response
     from brainscore.temporal import temporal_bin
-    per_frame = neural_response(subject, frames, record=region, time_bins=time_bins)
+    per_frame = neural_response(subject, frames, [f'neural:{region}'], time_bins=time_bins)
     return temporal_bin(with_frame_columns(per_frame, frames), time_bins=time_bins)
 
 

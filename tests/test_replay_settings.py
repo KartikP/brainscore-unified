@@ -30,8 +30,8 @@ def _factory(trial):
 
 
 def test_replay_keeps_measurement_settings(tmp_path):
-    protocol = SessionProtocol('settings', _factory, input_channels=['text'],
-                               output_channels=['behavior'])
+    protocol = SessionProtocol('settings', _factory, required_input_channels=['text'],
+                               requested_output_channels=['behavior'])
     first = Experiment(subject=_TrialCounter(), protocol=protocol,
                        tools=[RecordInputsOutputs()], output_dir=tmp_path / 'first').run()
     second = Experiment(subject=_TrialCounter(), protocol=replay_sessions(first.directory),

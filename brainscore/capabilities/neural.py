@@ -66,9 +66,10 @@ class NeuralEncodingCapability(Capability):
                 and not model._recorder.composite_recording
                 and any(model._supports_layer_extraction(m) for m in will_run)):
             raise ValueError(
-                f"No active recording layer for model '{model.identifier}': "
-                f"call start_recording(<region>) before process(), otherwise "
-                f"extraction returns 0 neuroids. Known regions: "
+                f"Subject '{model.identifier}' records no region: request a "
+                f"neural channel in the session, for example "
+                f"stimulus_session(stimuli, ['neural:IT']). Without one the "
+                f"recording has 0 neuroids. Known regions: "
                 f"{sorted(model._region_layer_map_dict.keys())}."
             )
 

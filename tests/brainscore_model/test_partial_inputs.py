@@ -49,6 +49,6 @@ def test_vision_only_subject_runs_audiovisual_benchmark_on_vision_alone():
     assert match.kind == 'partial'
     assert match.dropped_inputs == {'text', 'audio'}
 
-    response = neural_response(model, _movie(), record='IT')
+    response = neural_response(model, _movie(), ['neural:IT'])
     assert response.sizes['presentation'] == 2
     assert len(extractor.seen_columns) == 1  # one extraction, vision only

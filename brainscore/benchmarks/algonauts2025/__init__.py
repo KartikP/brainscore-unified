@@ -16,25 +16,25 @@ from .benchmark import (
 )
 
 
-# Per-subject benchmark factories — Algonauts trains/scores per subject.
-# Keep one entry per (split, subject) so the scoring harness can run a
-# subject's data through whatever model is being evaluated.
+# Per-participant benchmark factories — Algonauts trains and scores per participant.
+# Keep one entry per (split, participant) so the scoring harness can run a
+# participant's data through whatever subject is being evaluated.
 for sub in (1, 2, 3, 5):
     benchmark_registry[f'Algonauts2025-friends-sub{sub:02d}'] = (
-        lambda s=sub: Algonauts2025Friends(subject=s))
+        lambda s=sub: Algonauts2025Friends(participant=s))
     benchmark_registry[f'Algonauts2025-friends-s7-sub{sub:02d}'] = (
-        lambda s=sub: Algonauts2025FriendsS7(subject=s))
+        lambda s=sub: Algonauts2025FriendsS7(participant=s))
     benchmark_registry[f'Algonauts2025-ood-sub{sub:02d}'] = (
-        lambda s=sub: Algonauts2025OOD(subject=s))
+        lambda s=sub: Algonauts2025OOD(participant=s))
 
 # The same benchmark with the movie shown as one 1.49 s clip per scan instead of one
 # frame (form='video', channel vision:video). No sound or speech. Training split of
 # participant 1 only.
 benchmark_registry['Algonauts2025-friends-sub01-video'] = (
-    lambda: Algonauts2025Friends(subject=1, form='video'))
+    lambda: Algonauts2025Friends(participant=1, form='video'))
 
 # The same benchmark with the clip of each scan on vision:video and the sound of the
 # same 1.49 s on audio, in one row (form='video+audio'). Training split of participant
 # 1 only.
 benchmark_registry['Algonauts2025-friends-sub01-video-audio'] = (
-    lambda: Algonauts2025Friends(subject=1, form='video+audio'))
+    lambda: Algonauts2025Friends(participant=1, form='video+audio'))

@@ -34,8 +34,8 @@ def protocol() -> SessionProtocol:
     @contextmanager
     def factory(trial):
         yield Session([StreamEvent('observation', [[1., 2.]], None)])
-    return SessionProtocol('record-io-check', factory, input_channels=['observation'],
-                           output_channels=['behavior'], repetitions=[0, 1])
+    return SessionProtocol('record-io-check', factory, required_input_channels=['observation'],
+                           requested_output_channels=['behavior'], repetitions=[0, 1])
 
 
 def test_loader_returns_existing_recorder_and_preserves_default_configuration():

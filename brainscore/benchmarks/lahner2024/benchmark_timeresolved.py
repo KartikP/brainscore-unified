@@ -43,11 +43,11 @@ separate benchmark.
     5. Per-voxel ridge (alpha=1.0) with whole-run held-out CV:
        - cv_mode='subject_out' (default): contiguous blocks of
          ``cv_n_held_out_runs`` (default 52) runs in assembly order; this
-         holds out one subject per fold only if the assembly lists each
-         subject's runs together (checked and recorded on the score).
-       - cv_mode='within_subject': per subject, contiguous blocks of
+         holds out one participant per fold only if the assembly lists each
+         participant's runs together (checked and recorded on the score).
+       - cv_mode='within_subject': per participant, contiguous blocks of
          ``within_subject_n_held_out`` runs; per-voxel r averaged over
-         subjects.
+         participants.
        Every held-out stimulus is also shown in training runs, so the score
        measures generalization to new runs of seen stimuli, not to new
        stimuli.
@@ -257,9 +257,9 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         assert assembly.sizes['time_bin'] > 1, \
             "TR-resolved assembly must have time_bin > 1; got the GLM-beta variant by mistake?"
 
-    def __call__(self, candidate) -> Score:
+    def __call__(self, subject) -> Score:
         # 1. Get per-stimulus model features (one feature vector per unique stimulus).
-        per_stim_features, stimulus_ids = self._extract_per_stimulus_features(candidate)
+        per_stim_features, stimulus_ids = self._extract_per_stimulus_features(subject)
         # per_stim_features shape: (n_stimuli, n_features)
         # stimulus_ids: list of length n_stimuli
 
@@ -271,21 +271,21 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
 
         # 3. Concatenate (run, TR) → flat (n_obs, n_features); same for BOLD.
         #    Optionally regress motion confounds out of BOLD per-run before
-        #    z-score. Track subject per-obs so within_subject CV can split
-        #    runs within each subject independently.
-        X_flat, Y_flat, run_idx_per_obs, subject_per_obs = self._concatenate_with_mask(
+        #    z-score. Track the participant per observation so within_subject CV can split
+        #    runs within each participant independently.
+        X_flat, Y_flat, run_idx_per_obs, participant_per_obs = self._concatenate_with_mask(
             feature_ts_convolved, assembly)
 
         # 4. Per-voxel ridge regression. Two CV modes:
         #    - 'subject_out' (default): contiguous blocks of cv_n_held_out_runs
-        #      (52) runs in assembly order; one subject per block only if the
-        #      assembly groups each subject's runs (recorded on the score).
-        #    - 'within_subject': per-subject contiguous blocks of K runs,
-        #      per-voxel r averaged across subjects.
+        #      (52) runs in assembly order; one participant per block only if the
+        #      assembly groups each participant's runs (recorded on the score).
+        #    - 'within_subject': per-participant contiguous blocks of K runs,
+        #      per-voxel r averaged across participants.
         if self._cv_mode == 'within_subject':
-            per_voxel_r = self._cross_validated_ridge_within_subject(
-                X_flat, Y_flat, run_idx_per_obs, subject_per_obs,
-                n_held_out_per_subject=self._within_subject_n_held_out,
+            per_voxel_r = self._cross_validated_ridge_within_participant(
+                X_flat, Y_flat, run_idx_per_obs, participant_per_obs,
+                n_held_out_per_participant=self._within_subject_n_held_out,
             )
         else:
             per_voxel_r = self._cross_validated_ridge(
@@ -343,12 +343,12 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 'cv_policy': 'within_subject_contiguous_run_blocks',
                 'cv_block_runs': int(self._within_subject_n_held_out),
             }
-        subjects = [str(s) for s in assembly['subject'].values]
+        participants = [str(s) for s in assembly['subject'].values]
         return {
             'cv_policy': 'contiguous_run_blocks_in_assembly_order',
             'cv_block_runs': int(self._cv_n_held_out_runs),
-            'cv_blocks_hold_out_whole_subjects': _blocks_hold_out_whole_subjects(
-                subjects, self._cv_n_held_out_runs),
+            'cv_blocks_hold_out_whole_subjects': _blocks_hold_out_whole_participants(
+                participants, self._cv_n_held_out_runs),
         }
 
     # ── Design matrix ──────────────────────────────────────────────
@@ -385,29 +385,29 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     def _events_per_run(self, assembly):
         """Yield each assembly run's events, selected by this version's key."""
         n_runs = assembly.sizes['presentation']
-        subjects = assembly['subject'].values
+        participants = assembly['subject'].values
         sessions = assembly['session'].values
         runs = assembly['run'].values
         if self.version == 1:
             for run_idx in range(n_runs):
                 yield self._events_for_run_without_task(
-                    str(subjects[run_idx]), str(sessions[run_idx]),
+                    str(participants[run_idx]), str(sessions[run_idx]),
                     str(runs[run_idx]))
             return
         tasks = assembly['task'].values
         groups = self._events_by_run_key()
         for run_idx in range(n_runs):
             yield self._events_for_run(
-                str(subjects[run_idx]), str(sessions[run_idx]),
+                str(participants[run_idx]), str(sessions[run_idx]),
                 str(tasks[run_idx]), str(runs[run_idx]), groups=groups)
 
     # ── Helpers ────────────────────────────────────────────────────
 
-    def _extract_per_stimulus_features(self, candidate):
+    def _extract_per_stimulus_features(self, subject):
         """One forward pass per unique stimulus → (n_stimuli, n_features).
 
         Builds a unique-stimulus set from events (≤1102 unique videos), then
-        dispatches based on candidate's modality support:
+        dispatches based on subject's modality support:
         - video-native: use _videos_stimulus_set, mean-pool over time_bin axis
         - frame-aggregation: use _expand_videos + temporal_bin to one bin
         Returns (features array (n_stimuli, n_features), stimulus_ids list).
@@ -426,11 +426,11 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
 
         # Clips natively when the subject declares vision:video, frames otherwise.
         from .benchmark import Lahner2024BOLDMoments
-        if Lahner2024BOLDMoments._is_native_video(candidate):
+        if Lahner2024BOLDMoments._is_native_video(subject):
             video_stim = self._stim_helper._videos_stimulus_set()
             # Restrict to the unique_ids we need
             video_stim = video_stim[video_stim['stimulus_id'].isin(unique_ids)]
-            result = record_clips(candidate, video_stim, 'IT', time_bins)
+            result = record_clips(subject, video_stim, 'IT', time_bins)
             data = result.values
             if data.ndim == 3:    # (presentation, time_bin, neuroid) → mean over time
                 features = data.mean(axis=1)
@@ -440,7 +440,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         else:
             frame_stim = self._stim_helper._expand_videos()
             frame_stim = frame_stim[frame_stim['clip_id'].isin(unique_ids)]
-            per_video = record_frames_per_clip(candidate, frame_stim, 'IT', time_bins)
+            per_video = record_frames_per_clip(subject, frame_stim, 'IT', time_bins)
             features = per_video.values[:, 0, :]
             stimulus_ids = list(
                 per_video.indexes['presentation'].get_level_values('clip_id'))
@@ -475,7 +475,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             for group_key, positions in key_frame.groupby(key, sort=False).indices.items()
         }
 
-    def _events_for_run(self, subject, session, task, run, groups: Optional[dict] = None):
+    def _events_for_run(self, participant, session, task, run, groups: Optional[dict] = None):
         """Events of one (subject, session, task, run).
 
         Raises if the run has no events, or if the selection holds more than
@@ -483,7 +483,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         """
         if groups is None:
             groups = self._events_by_run_key()
-        key = (str(subject), str(session), str(task), str(run))
+        key = (str(participant), str(session), str(task), str(run))
         if key not in groups:
             raise ValueError(
                 f"No events for run (subject, session, task, run)={key}. "
@@ -497,7 +497,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 f"only {task!r}.")
         return selected
 
-    def _events_for_run_without_task(self, subject, session, run):
+    def _events_for_run_without_task(self, participant, session, run):
         """Version 1 selector (defect F6): (subject, session, run), no task.
 
         Kept unchanged so version 1 reproduces historical scores. The two
@@ -505,7 +505,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         events. Do not use for new scores.
         """
         ev = self.events
-        mask = ((ev['subject'] == subject) &
+        mask = ((ev['subject'] == participant) &
                 (ev['session'] == session) &
                 (ev['run'] == run))
         return ev[mask]
@@ -519,22 +519,22 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
              of BOLD on [trans_x..rot_z, FD, csf, white_matter] + intercept,
              keep residuals. Standard fMRI denoising step (Power 2014, Ciric
              2017). Adds noise-cleaning before z-score.
-          3. Per-voxel z-score the residual BOLD. Removes subject-specific DC
+          3. Per-voxel z-score the residual BOLD. Removes participant-specific DC
              that would otherwise leak into the ridge intercept across folds.
 
         Returns:
             X_flat: (n_obs, n_features)
             Y_flat: (n_obs, n_voxels)
             run_idx_per_obs: (n_obs,) int — index into assembly's presentation
-                axis. Two presentations may differ in subject; same run_idx ⇒
+                axis. Two presentations may differ in participant; same run_idx ⇒
                 same run.
-            subject_per_obs: (n_obs,) object — subject string per observation.
-                Threaded through so within-subject CV can split runs WITHIN
-                each subject independently.
+            participant_per_obs: (n_obs,) object — participant string per observation.
+                Threaded through so within-participant CV can split runs WITHIN
+                each participant independently.
         """
         n_valid = assembly['n_valid_TR'].values.astype(int)
         bold = assembly.transpose('presentation', 'time_bin', 'neuroid').values
-        subjects_per_run = assembly['subject'].values
+        participants_per_run = assembly['subject'].values
         sessions_per_run = assembly['session'].values
         runs_per_run     = assembly['run'].values
         tasks_per_run    = assembly['task'].values
@@ -549,13 +549,13 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                     ['subject', 'session', 'task', 'run'], sort=False)
             }
 
-        X_chunks, Y_chunks, run_chunks, subj_chunks = [], [], [], []
+        X_chunks, Y_chunks, run_chunks, participant_chunks = [], [], [], []
         for run_idx, n_TR in enumerate(n_valid):
             X_chunks.append(feature_ts_convolved[run_idx, :n_TR, :])
             Y_run = bold[run_idx, :n_TR, :].astype(np.float32)
 
             if motion_lookup is not None:
-                key = (str(subjects_per_run[run_idx]),
+                key = (str(participants_per_run[run_idx]),
                        str(sessions_per_run[run_idx]),
                        str(tasks_per_run[run_idx]),
                        str(runs_per_run[run_idx]))
@@ -575,13 +575,13 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 Y_run = np.where(sd > 0, (Y_run - mu) / sd, 0.0)
             Y_chunks.append(Y_run)
             run_chunks.append(np.full(n_TR, run_idx, dtype=np.int32))
-            subj_chunks.append(np.full(n_TR, str(subjects_per_run[run_idx]), dtype=object))
+            participant_chunks.append(np.full(n_TR, str(participants_per_run[run_idx]), dtype=object))
 
         X_flat = np.concatenate(X_chunks, axis=0).astype(np.float32)
         Y_flat = np.concatenate(Y_chunks, axis=0).astype(np.float32)
         run_idx_per_obs = np.concatenate(run_chunks, axis=0)
-        subject_per_obs = np.concatenate(subj_chunks, axis=0)
-        return X_flat, Y_flat, run_idx_per_obs, subject_per_obs
+        participant_per_obs = np.concatenate(participant_chunks, axis=0)
+        return X_flat, Y_flat, run_idx_per_obs, participant_per_obs
 
     def _cross_validated_ridge(self, X_flat, Y_flat, run_idx_per_obs, n_held_out: int):
         """Hold out contiguous blocks of ``n_held_out`` runs (assembly order);
@@ -612,30 +612,30 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 Y_sub, held_out_preds)
         return per_voxel_r
 
-    def _cross_validated_ridge_within_subject(self, X_flat, Y_flat,
-                                              run_idx_per_obs, subject_per_obs,
-                                              n_held_out_per_subject: int):
-        """Per-subject run-block ridge; average per-voxel r across subjects.
+    def _cross_validated_ridge_within_participant(self, X_flat, Y_flat,
+                                              run_idx_per_obs, participant_per_obs,
+                                              n_held_out_per_participant: int):
+        """Per-participant run-block ridge; average per-voxel r across participants.
 
-        For each subject independently: hold out contiguous blocks of K runs across that
-        subject's runs only (block_size_samples=n_held_out_per_subject), fit
-        ridge on subject-internal train, predict subject-internal held-out.
+        For each participant independently: hold out contiguous blocks of K runs across that
+        participant's runs only (block_size_samples=n_held_out_per_participant), fit
+        ridge on participant-internal train, predict participant-internal held-out.
         Compute per-voxel pearson r on held-out predictions stitched across
-        the subject's CV folds. Final per-voxel r = mean across subjects
+        the participant's CV folds. Final per-voxel r = mean across participants
         (NaN-aware).
 
         This matches standard fMRI encoding practice (Conwell, Allen, NSD)
-        where train/test splits are within-subject, and avoids the cross-
-        subject mean-leakage that plagues subject_out CV.
+        where train/test splits are within-participant, and avoids the cross-
+        participant mean-leakage that plagues subject_out CV.
         """
         n_obs, n_voxels = Y_flat.shape
-        unique_subjects = np.unique(subject_per_obs)
-        per_subject_r = np.full((len(unique_subjects), n_voxels), np.nan,
-                                dtype=np.float32)
+        unique_participants = np.unique(participant_per_obs)
+        per_participant_r = np.full((len(unique_participants), n_voxels), np.nan,
+                                    dtype=np.float32)
 
         VOXEL_BATCH = 2000
-        for s_idx, subj in enumerate(unique_subjects):
-            sub_obs = (subject_per_obs == subj)
+        for s_idx, participant in enumerate(unique_participants):
+            sub_obs = (participant_per_obs == participant)
             X_sub = X_flat[sub_obs]
             Y_sub_full = Y_flat[sub_obs]
             run_sub = run_idx_per_obs[sub_obs]
@@ -644,7 +644,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
 
             fold_masks = []
             for train_local, test_local in contiguous_block_cv(
-                    n_samples=n_sub_runs, block_size_samples=n_held_out_per_subject):
+                    n_samples=n_sub_runs, block_size_samples=n_held_out_per_participant):
                 train_runs = sub_unique_runs[train_local]
                 test_runs  = sub_unique_runs[test_local]
                 fold_masks.append((np.isin(run_sub, train_runs),
@@ -655,23 +655,23 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 Y_sub_batch = Y_sub_full[:, v_start:v_end]
                 held_out_preds = masked_ridge_predictions(
                     X_sub, Y_sub_batch, fold_masks, alpha=1.0, dtype=None)
-                per_subject_r[s_idx, v_start:v_end] = (
+                per_participant_r[s_idx, v_start:v_end] = (
                     valid_prediction_per_unit_pearson(
                         Y_sub_batch, held_out_preds))
 
-        # Mean per-voxel r across subjects, ignoring NaNs.
-        return np.nanmean(per_subject_r, axis=0).astype(np.float32)
+        # Mean per-voxel r across participants, ignoring NaNs.
+        return np.nanmean(per_participant_r, axis=0).astype(np.float32)
 
 
 
-def _blocks_hold_out_whole_subjects(subjects_per_run: List[str], block_runs: int) -> bool:
-    """True if every contiguous block of ``block_runs`` runs is one subject
-    whose runs are all inside that block (a true leave-one-subject-out)."""
+def _blocks_hold_out_whole_participants(participants_per_run: List[str], block_runs: int) -> bool:
+    """True if every contiguous block of ``block_runs`` runs is one participant
+    whose runs are all inside that block (a true leave-one-participant-out)."""
     for train_runs, test_runs in contiguous_block_cv(
-            n_samples=len(subjects_per_run), block_size_samples=block_runs):
-        test_subjects = {subjects_per_run[i] for i in test_runs}
-        train_subjects = {subjects_per_run[i] for i in train_runs}
-        if len(test_subjects) != 1 or test_subjects & train_subjects:
+            n_samples=len(participants_per_run), block_size_samples=block_runs):
+        test_participants = {participants_per_run[i] for i in test_runs}
+        train_participants = {participants_per_run[i] for i in train_runs}
+        if len(test_participants) != 1 or test_participants & train_participants:
             return False
     return True
 
@@ -702,7 +702,7 @@ def Lahner2024BOLDMoments_timeresolved_improved(version: int = CURRENT_VERSION):
        (Power 2014, Ciric 2017.) Each complete run is regressed, test runs
        included; this is target preprocessing, not a fitted encoder.
     2. **Within-subject CV.** Contiguous blocks of 10 runs held out inside
-       each subject; per-voxel r averaged across subjects. Matches the
+       each participant; per-voxel r averaged across participants. Matches the
        within-subject splits of NSD / Conwell / Allen encoding pipelines.
 
     Measured effect (M12-lite follow-up): ROI raw r moved by +0.001 to

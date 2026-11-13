@@ -284,17 +284,17 @@ def _resolve_identifier(obj, default: str) -> str:
 
 def score(model_identifier, benchmark_identifier,
           check_mem: bool = True) -> Score:
-    """Score a model on a benchmark.
+    """Score a subject on a benchmark.
 
     Each argument is either an identifier ``str`` — loaded from the unified
     registry (with domain fallbacks) — or an already-constructed object (a
-    ``Subject`` / benchmark). Passing objects lets you score a model you just
+    ``Subject`` / benchmark). Passing objects lets you score a subject you just
     built without registering it first::
 
-        model = BrainScoreModel('my-vlm', ...)
-        score(model, 'MajajHong2015public.IT-pls-unified')
+        subject = BrainScoreModel('my-vlm', ...)
+        score(subject, 'MajajHong2015public.IT-pls-unified')
 
-    then runs the benchmark on the model.
+    then runs the benchmark on the subject.
     """
     from brainscore_core.compatibility import (
         check_compatibility,
@@ -323,27 +323,27 @@ def score(model_identifier, benchmark_identifier,
         check_benchmark_assets(benchmark_identifier)
     benchmark = (load_benchmark(benchmark_identifier)
                  if isinstance(benchmark_identifier, str) else benchmark_identifier)
-    model = (load_model(model_identifier)
-             if isinstance(model_identifier, str) else model_identifier)
+    subject = (load_model(model_identifier)
+               if isinstance(model_identifier, str) else model_identifier)
     model_id = (model_identifier if isinstance(model_identifier, str)
-                else _resolve_identifier(model, 'custom-model'))
+                else _resolve_identifier(subject, 'custom-model'))
     benchmark_id = (benchmark_identifier if isinstance(benchmark_identifier, str)
                     else _resolve_identifier(benchmark, 'custom-benchmark'))
     requested_channels = requested_output_channels_for_score(benchmark)
 
-    compatibility = check_compatibility(model, benchmark)
+    compatibility = check_compatibility(subject, benchmark)
     if check_mem:
-        check_memory(model, benchmark)
+        check_memory(subject, benchmark)
 
     # A legacy domain benchmark (marked by its domain loader) receives the
     # permanent facade, which runs its calls as sessions through participate.
     from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
-    candidate = subject_for_benchmark(model, benchmark,
-                                      visual_degrees=declared_visual_degrees(model))
+    received = subject_for_benchmark(subject, benchmark,
+                                     visual_degrees=declared_visual_degrees(subject))
 
     _t0 = _time.time()
     with weight_fingerprint_scope(), record_measures() as measures:
-        result = benchmark(candidate)
+        result = benchmark(received)
     # The run must leave the subject as it found it: every perturbation a session
     # of the benchmark applied is undone. Perturbations the caller applied stay.
     if measures.unreleased:
@@ -363,9 +363,9 @@ def score(model_identifier, benchmark_identifier,
     result.attrs.setdefault('benchmark_identifier', benchmark_id)
     stamp_score_metadata(
         result,
-        model,
+        subject,
         requested_channels=requested_channels,
-        protocol=infer_score_protocol(model, benchmark, requested_channels,
+        protocol=infer_score_protocol(subject, benchmark, requested_channels,
                                       measures=measures),
         harness_id='brainscore',
         measures=measures,

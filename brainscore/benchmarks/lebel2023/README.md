@@ -5,7 +5,7 @@ spoken stories. No anatomical mask is applied: every vertex is a target, includi
 majority that are not language-responsive.
 
 Source: [LeBel et al. 2023, *Scientific Data*](https://doi.org/10.1038/s41597-023-02437-z),
-supplied as a per-subject pickle from the Huth-lab `encoding` package (as redistributed by
+supplied as a per-participant pickle from the Huth-lab `encoding` package (as redistributed by
 LITCoder).
 
 ## Registered identifiers
@@ -236,7 +236,7 @@ mostly measuring story onsets. Those TRs are now excluded rather than padded
   normalisable.
 - No anatomy attached. The pickle carries no vertex-to-region mapping, so vertices are
   identified by index only. The space itself is settled: the LITcoder paper states its
-  whole-surface LeBel analyses are fsaverage5, ~22k vertices, subject UTS03, which is this data.
+  whole-surface LeBel analyses are fsaverage5, ~22k vertices, participant UTS03, which is this data.
   Adding a region coord needs an atlas projected to that surface, not a resolution of any
   ambiguity.
 - Per-target ridge penalties do not help here. Fitting one penalty per vertex, as

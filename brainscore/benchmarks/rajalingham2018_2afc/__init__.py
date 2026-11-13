@@ -13,7 +13,7 @@ Public surface:
 
 NOTE: this is intentionally a scoring *library*, not a ``load_benchmark`` target.
 The model makes its own per-trial choices (it isn't driven by a single
-``benchmark(candidate)`` call), so this subpackage deliberately registers
+``benchmark(subject)`` call), so this subpackage deliberately registers
 nothing in ``benchmark_registry`` and is not imported by ``benchmarks/__init__``.
 Score via the functions above.
 """

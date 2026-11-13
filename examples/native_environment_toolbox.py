@@ -190,7 +190,7 @@ def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | No
                                         policy=PolicyWrapper(policy, max_history=0)),
                 protocol=SessionProtocol(
                     identifier='grid-game', session_factory=factory, repetitions=seeds,
-                    input_channels={'observation'}, output_channels={'motor'},
+                    required_input_channels={'observation'}, requested_output_channels={'motor'},
                     collect_outputs=False,
                 ),
                 tools=tools,

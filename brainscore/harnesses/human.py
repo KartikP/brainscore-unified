@@ -38,7 +38,7 @@ class HumanHarness(UnifiedModel):
     :param present_fn: ``callable(stimulus)`` presenting one input to the subject.
     :param record_fn: ``callable(region, stimulus) -> measurement`` reading neural
         activity from the configured region.
-    :param respond_fn: ``callable(task_context, stimulus) -> response`` collecting
+    :param respond_fn: ``callable(task, stimulus) -> response`` collecting
         a behavioral response.
     """
 
@@ -55,7 +55,7 @@ class HumanHarness(UnifiedModel):
         self._record_fn = record_fn or _no_hardware
         self._respond_fn = respond_fn or _no_hardware
         self._recording_region: Optional[Union[str, List[str]]] = None
-        self._task_context: Optional[TaskContext] = None
+        self._task: Optional[TaskContext] = None
 
     @property
     def identifier(self) -> str:
@@ -72,12 +72,12 @@ class HumanHarness(UnifiedModel):
     def start_recording(self, recording_target, time_bins=None, recording_type=None) -> None:
         self._recording_region = recording_target
 
-    def start_task(self, task_context: TaskContext) -> None:
-        self._task_context = task_context
+    def start_task(self, task: TaskContext) -> None:
+        self._task = task
 
     def reset(self) -> None:
         self._recording_region = None
-        self._task_context = None
+        self._task = None
 
     def process(self, input_event) -> Any:
         """Present the input to the subject, then read the configured output.
@@ -91,9 +91,9 @@ class HumanHarness(UnifiedModel):
         self._present_fn(input_event)
         if self._recording_region is not None:
             return self._record_fn(self._recording_region, input_event)
-        if self._task_context is not None:
-            return self._respond_fn(self._task_context, input_event)
+        if self._task is not None:
+            return self._respond_fn(self._task, input_event)
         raise RuntimeError(
-            "Call start_recording or start_task before process (a subject must "
-            "be configured to either record neural activity or respond)."
+            "A HumanSubject answers in a session: request 'neural:<region>' to "
+            "record activity, or give the session a TaskContext to respond."
         )

@@ -37,7 +37,7 @@ def protocol() -> SessionProtocol:
     def factory(trial):
         yield Session([StreamEvent('observation', [[1., 2., 3.]], None)])
     return SessionProtocol('record-activity-check', factory, conditions=['baseline', 'lesioned'],
-                           input_channels=['observation'], output_channels=['behavior'])
+                           required_input_channels=['observation'], requested_output_channels=['behavior'])
 
 
 def test_loader_returns_existing_recorder_with_names_and_positions():

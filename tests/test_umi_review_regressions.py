@@ -60,9 +60,9 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
     signal = rng.choice([-3.0, -2.0, 2.0, 3.0], size=n_runs * per_run).astype(np.float32)
     train_features = np.stack([signal, np.zeros_like(signal)], axis=1)
     test_features = np.array([[1, 10], [-1, 10], [1, -10], [-1, -10]], dtype=np.float32)
-    train = Algonauts2025Friends(subject=1, stimulus_window=1, hrf_delay=0,
+    train = Algonauts2025Friends(participant=1, stimulus_window=1, hrf_delay=0,
         excluded_samples_start=0, excluded_samples_end=0, assembly_root=tmp_path)
-    test = Algonauts2025FriendsS7(subject=1, stimulus_window=1, hrf_delay=0,
+    test = Algonauts2025FriendsS7(participant=1, stimulus_window=1, hrf_delay=0,
                                   assembly_root=tmp_path)
     for benchmark, features, runs in (
             (train, train_features, [f'run{i // per_run}' for i in range(n_runs * per_run)]),
@@ -86,8 +86,8 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
     from brainscore_core.streaming import StreamEvent
     from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
 
-    class Candidate(Subject):  # the benchmark reads it through participate only
-        identifier = 'candidate'
+    class FixedSubject(Subject):  # the benchmark reads it through participate only
+        identifier = 'fixed-subject'
         in_channels = frozenset({'vision:image'})
         out_channels = frozenset({'neural:V1', 'neural:V4', 'neural:IT'})
 
@@ -99,7 +99,7 @@ def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
                     'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
                     'neuroid_id': ('neuroid', ['u0', 'u1'])}), t_ms=None))
 
-    result = test.generate_predictions(Candidate(), tmp_path, train_benchmark=train)
+    result = test.generate_predictions(FixedSubject(), tmp_path, train_benchmark=train)
     np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-3)
     np.testing.assert_array_equal(np.load(result['path']), result['predictions'])
     assert result['bands'] == ['IT', 'V1', 'V4']

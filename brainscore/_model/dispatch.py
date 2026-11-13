@@ -225,7 +225,7 @@ class InputDispatcher:
                 return capability.process(owner, input_event,
                                           multi_modality=multi_modality)
         raise TypeError(
-            f"Model '{owner.identifier}' has no registered capability for "
+            f"Subject '{owner.identifier}' has no registered capability for "
             f"input event type {type(input_event).__name__}."
         )
 
@@ -293,7 +293,7 @@ class InputDispatcher:
             return extractor(stimuli, layers=layers)
         modality = canonical_modality(modality)
         raise NotImplementedError(
-            f"Model '{owner.identifier}' declares {modality!r} input but has no "
+            f"Subject '{owner.identifier}' declares {modality!r} input but has no "
             'activation extractor for it. Pass extractor={modality: extractor} to '
             'record internal activity, or use a behavioral task for an output-only model.')
 
@@ -352,8 +352,8 @@ class InputDispatcher:
 
         if not sub_assemblies:
             raise ValueError(
-                f"multi_modality=True but no detected modalities had a "
-                f"matching preprocessor. detected={detected}, "
+                f"multi_modality=True but no detected modality had a "
+                f"matching extractor. detected={detected}, "
                 f"available={set(owner._preprocessors.keys())}."
             )
 

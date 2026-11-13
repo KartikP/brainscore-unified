@@ -135,7 +135,7 @@ class Witness:
         hinted = getattr(m, '_witness_mode', None)
         if hinted:
             return hinted
-        tc = getattr(m, '_task_context', None)
+        tc = getattr(m, '_task', None)
         if getattr(m, '_use_generation_for_task', False) and tc is not None:
             return 'generation'
         if getattr(m, '_readout_classifier', None) is not None and tc is not None:
@@ -145,7 +145,7 @@ class Witness:
     def _record_input(self, ev, input_event):
         et = ev.event_type
         m = self.model
-        tc = getattr(m, '_task_context', None)
+        tc = getattr(m, '_task', None)
         if tc is not None:
             ev.instruction = getattr(tc, 'instruction', None)
         regions = getattr(m, '_recording_regions', None)

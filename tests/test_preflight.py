@@ -120,7 +120,7 @@ class TestPreflightInScore:
         score = MagicMock()
         score.attrs = {}
 
-        def run(candidate):
+        def run(subject):
             # A subject's behavioral response, accepted by a session.
             Session((), ['behavior']).respond(
                 StreamEvent('behavior', BehavioralAssembly(

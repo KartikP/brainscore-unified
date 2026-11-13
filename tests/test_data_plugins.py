@@ -177,7 +177,7 @@ def test_algonauts_benchmark_resolves_data_via_registry(monkeypatch, tmp_path):
     monkeypatch.setattr(algonauts, 'load_stimulus_set', fake_load_stimulus_set)
 
     benchmark = algonauts.Algonauts2025Friends(
-        subject=1, assembly_root=tmp_path)
+        participant=1, assembly_root=tmp_path)
     assert benchmark.assembly == 'data:Algonauts2025-friends-sub01'
     assert benchmark.stimulus_set == 'stimulus:Algonauts2025-friends'
     assert calls == [

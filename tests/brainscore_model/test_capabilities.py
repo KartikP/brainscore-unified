@@ -71,7 +71,7 @@ def test_behavioral_readout_capability_precedes_neural_dispatch():
         preprocessors={'vision': make_stub_preprocessor()},
         activations_model=act_model,
     )
-    model._task_context = TaskContext(task_type='probabilities')
+    model._task = TaskContext(task_type='probabilities')
     model._readout_classifier = object()
     stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
 
@@ -101,7 +101,7 @@ def test_behavioral_generation_capability_precedes_readout_and_neural():
         preprocessors={'vision': make_stub_preprocessor()},
         activations_model=act_model,
     )
-    model._task_context = TaskContext(task_type='probabilities')
+    model._task = TaskContext(task_type='probabilities')
     model._use_generation_for_task = True
     model._readout_classifier = object()
     stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])

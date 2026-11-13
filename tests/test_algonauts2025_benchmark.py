@@ -47,11 +47,11 @@ def test_total_algonauts_benchmark_count():
 # ── Constructor validation ────────────────────────────────────────
 
 
-def test_invalid_subject_raises():
+def test_invalid_participant_raises():
     from brainscore.benchmarks.algonauts2025.benchmark import (
         Algonauts2025Friends)
-    with pytest.raises(ValueError, match="subjects are"):
-        Algonauts2025Friends(subject=4)
+    with pytest.raises(ValueError, match="participants are"):
+        Algonauts2025Friends(participant=4)
 
 
 # ── Scaffold contract ─────────────────────────────────────────────
@@ -64,9 +64,9 @@ def test_held_out_splits_raise_when_scored_directly():
     from brainscore.benchmarks.algonauts2025.benchmark import (
         Algonauts2025FriendsS7, Algonauts2025OOD)
     for cls in (Algonauts2025FriendsS7, Algonauts2025OOD):
-        b = cls(subject=1)
+        b = cls(participant=1)
         with pytest.raises(ValueError, match="prediction target.*generate_predictions"):
-            b(candidate=None)
+            b(subject=None)
 
 
 def test_assembly_load_raises_clear_error_when_data_missing(tmp_path):
@@ -74,7 +74,7 @@ def test_assembly_load_raises_clear_error_when_data_missing(tmp_path):
     raise FileNotFoundError pointing the user at prepare_assembly.py."""
     from brainscore.benchmarks.algonauts2025.benchmark import (
         Algonauts2025Friends)
-    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    b = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     with pytest.raises(FileNotFoundError, match="prepare_assembly"):
         _ = b.assembly
 
@@ -94,7 +94,7 @@ def test_default_alpha_grid_logarithmic():
 def test_the_window_stays_inside_a_run_and_the_lags_are_right(tmp_path):
     import numpy as np
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
-    b = Algonauts2025Friends(subject=1, stimulus_window=3, hrf_delay=2,
+    b = Algonauts2025Friends(participant=1, stimulus_window=3, hrf_delay=2,
                              assembly_root=tmp_path)
     run = np.array([0] * 8 + [1] * 8)
     X = np.arange(16, dtype=float)[:, None] + 1   # the value of row t is t + 1
@@ -108,18 +108,18 @@ def test_the_window_stays_inside_a_run_and_the_lags_are_right(tmp_path):
 
 def test_exclusions_at_a_run_start_cover_the_window(tmp_path):
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
-    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    b = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     assert b._excluded_samples_start == 3 + 5 - 1          # hrf_delay + window - 1
     assert b.version == 2
     with pytest.raises(ValueError, match='at least hrf_delay'):
-        Algonauts2025Friends(subject=1, excluded_samples_start=5, assembly_root=tmp_path)
+        Algonauts2025Friends(participant=1, excluded_samples_start=5, assembly_root=tmp_path)
 
 
 def test_a_run_out_of_scan_order_is_refused(tmp_path):
     import numpy as np
     import xarray as xr
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
-    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    b = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     b._assembly = xr.DataArray(np.zeros((3, 1)), dims=('presentation', 'neuroid'), coords={
         'stimulus_id': ('presentation', ['m'] * 3), 'run': ('presentation', ['1'] * 3),
         't_within_run': ('presentation', [0, 2, 1])})
@@ -132,7 +132,7 @@ def test_a_missing_tr_is_filled_from_its_own_run_only(tmp_path):
     import pandas as pd
     import xarray as xr
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
-    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    b = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     b._assembly = xr.DataArray(np.zeros((4, 1)), dims=('presentation', 'neuroid'), coords={
         'stimulus_id': ('presentation', ['a', 'a', 'b', 'b']),
         'run': ('presentation', ['1'] * 4), 't_within_run': ('presentation', [0, 1, 0, 1])})
@@ -175,7 +175,7 @@ def test_execution_plan_declares_TR_cardinality_and_a_band_bound(tmp_path):
         Algonauts2025Friends, _Algonauts2025Base)
     from brainscore_core.execution_plan import ExecutionPlan
 
-    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    b = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     assembly, n_trs, n_runs = _mock_assembly_two_runs(tr_per_run=20)
     b._assembly = assembly
     plan = b.execution_plan
@@ -199,7 +199,7 @@ def test_metric_observations_clamps_per_short_run(tmp_path):
     at the end retain max(6-12,0) + max(20-12,0) = 0 + 8 = 8 (not 26 - 24 = 2)."""
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
 
-    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    b = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     stim = ['short'] * 6 + ['long'] * 20
     run = ['r1'] * 6 + ['r2'] * 20
     b._assembly = _MockAssembly(stim, run)
@@ -238,7 +238,7 @@ def test_check_memory_probes_a_requested_region_with_a_frame_and_sizes_off_TR_co
                                    coords={'stimulus_id': ('presentation', [0]),
                                            'neuroid_id': ('neuroid', list(range(768)))})
 
-    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    b = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     assembly, n_trs, _ = _mock_assembly_two_runs(tr_per_run=20)
     b._assembly = assembly
 
@@ -296,7 +296,7 @@ def test_video_variant_identifier_and_declarations(tmp_path):
     video = brainscore.benchmark_registry['Algonauts2025-friends-sub01-video']()
     assert video.identifier == 'Algonauts2025-friends-sub01-video'
     assert_declares(video, {'vision:video'}, {'neural:V1', 'neural:V4', 'neural:IT'})
-    assert_preflight(Algonauts2025Friends(subject=1, form='video', assembly_root=tmp_path))
+    assert_preflight(Algonauts2025Friends(participant=1, form='video', assembly_root=tmp_path))
     frame = brainscore.benchmark_registry['Algonauts2025-friends-sub01']()
     assert frame.identifier == 'Algonauts2025-friends-sub01'
     assert_declares(frame, {'vision:image'}, {'neural:V1', 'neural:V4', 'neural:IT'})
@@ -305,7 +305,7 @@ def test_video_variant_identifier_and_declarations(tmp_path):
 def test_invalid_form_raises():
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
     with pytest.raises(ValueError, match="form must be one of"):
-        Algonauts2025Friends(subject=1, form='audio')
+        Algonauts2025Friends(participant=1, form='audio')
 
 
 @needs_ffmpeg
@@ -313,7 +313,7 @@ def test_video_execution_plan_probes_a_blank_clip(tmp_path):
     from brainscore.benchmarks.algonauts2025.benchmark import (
         Algonauts2025Friends, CLIP_FRAMES)
     import subprocess
-    b = Algonauts2025Friends(subject=1, form='video', assembly_root=tmp_path)
+    b = Algonauts2025Friends(participant=1, form='video', assembly_root=tmp_path)
     assembly, n_trs, _ = _mock_assembly_two_runs(tr_per_run=20)
     b._assembly = assembly
     plan = b.execution_plan
@@ -332,7 +332,7 @@ def test_video_execution_plan_probes_a_blank_clip(tmp_path):
 
 def test_frame_form_plan_still_probes_an_image(tmp_path):
     from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
-    b = Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    b = Algonauts2025Friends(participant=1, assembly_root=tmp_path)
     b._assembly = _mock_assembly_two_runs(tr_per_run=20)[0]
     probe = b.execution_plan.probe_stimuli
     assert 'image_file_name' in probe.columns and 'video_path' not in probe.columns

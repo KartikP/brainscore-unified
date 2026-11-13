@@ -234,19 +234,18 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
             bibtex=BIBTEX,
         )
 
-    def __call__(self, candidate) -> Score:
+    def __call__(self, subject) -> Score:
         # The task declares how to answer; auto preserves the registered variants.
-        task_context = TaskContext(
+        task = TaskContext(
             task_type='probabilities',
             fitting_stimuli=self._train_stimuli,
             label_set=['real', 'pseudo'],
             instruction='Is this a real word or a pseudo word?',
             prefer_path=self.prefer_path,
-            # The 100-item test set is what gets answered; fitting stimuli only
-            # train a readout.
-            metadata={'stimulus_set': self._test_stimuli},
         )
-        predictions = behavioral_response(candidate, task_context)
+        # The 100-item test set is what gets answered; the fitting stimuli only
+        # train a readout.
+        predictions = behavioral_response(subject, self._test_stimuli, task)
         choice_values = list(predictions['choice'].values)
 
         # argmax over choices to get predicted label per stimulus

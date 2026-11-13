@@ -77,9 +77,9 @@ def replay_sessions(directory):
         session.collect = lambda: [event.payload for event in session.emitted]
         yield session
     return SessionProtocol('saved-session-inputs', factory, conditions=conditions, repetitions=repetitions,
-        input_channels={e.channel for group in inputs.values() for e in group
+        required_input_channels={e.channel for group in inputs.values() for e in group
                         if e.channel != CONTROL_CHANNEL},
-        output_channels=outputs,
+        requested_output_channels=outputs,
         metadata={**_source(directory), 'mode': 'open_loop_saved_inputs'})
 
 

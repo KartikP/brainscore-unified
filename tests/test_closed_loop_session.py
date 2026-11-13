@@ -116,7 +116,7 @@ def test_a_policy_may_answer_on_a_non_motor_channel_with_no_new_class(speech_cha
     assert [event.payload for event in session.collect('speech')] == env.actions
 
 
-def test_run_environment_helper_takes_the_requested_outputs(speech_channel):
+def test_run_environment_helper_takes_the_outputs(speech_channel):
     model = BrainScoreModel('talker', policy=lambda row: {'speech': 'hi'}, policy_outputs=('speech',))
     assert run_environment(model, CountingEnvironment(2), action_channel='speech') == ['hi', 'hi']
 

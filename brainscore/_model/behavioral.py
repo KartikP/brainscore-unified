@@ -19,7 +19,7 @@ class BehavioralReadout:
 
     def __init__(self, owner) -> None:
         self.owner = owner
-        self.task_context: Optional[TaskContext] = None
+        self.task: Optional[TaskContext] = None
         self.readout_classifier: Any = None
         self.use_generation_for_task = False
         # The TaskContext object the current configuration came from, so a
@@ -40,7 +40,7 @@ class BehavioralReadout:
         self._changes = 0   # counts invalidations, so a session can see one happen
         self._resets = 0    # counts resets, so a session does not undo one
 
-    _STATE = ('task_context', 'readout_classifier', 'use_generation_for_task',
+    _STATE = ('task', 'readout_classifier', 'use_generation_for_task',
               'configured_from', '_configured_as', '_stale', 'history',
               'response_path', 'probability_source')
 
@@ -87,24 +87,24 @@ class BehavioralReadout:
         return rows, labels
 
     @classmethod
-    def _fingerprint(cls, task_context: TaskContext) -> tuple:
+    def _fingerprint(cls, task: TaskContext) -> tuple:
         """Every TaskContext field the configuration depends on, and the fitting table's content.
 
         ``metadata`` is left out: it carries the scored stimuli and the
         benchmark's settings, which the configuration does not read.
         """
-        fitting = task_context.fitting_stimuli
-        label_set = task_context.label_set
-        present = task_context.present
-        return (task_context.task_type, id(fitting), cls._fitting_content(fitting),
-                task_context.instruction,
+        fitting = task.fitting_stimuli
+        label_set = task.label_set
+        present = task.present
+        return (task.task_type, id(fitting), cls._fitting_content(fitting),
+                task.instruction,
                 tuple(label_set) if label_set is not None else None,
-                task_context.prefer_path or 'auto', task_context.readout_fit,
-                repr(task_context.response),
+                task.prefer_path or 'auto', task.readout_fit,
+                repr(task.response),
                 tuple(present) if present is not None else None)
 
-    def is_configured_for(self, task_context: TaskContext) -> bool:
-        """Whether ``task_context`` is the task already configured, unchanged since.
+    def is_configured_for(self, task: TaskContext) -> bool:
+        """Whether ``task`` is the task already configured, unchanged since.
 
         True for the object the configuration came from and for the context
         this component holds (the same task after input projection), as long
@@ -112,24 +112,24 @@ class BehavioralReadout:
         mutable: a caller that swaps or edits the fitting table, relabels it
         or changes a setting and calls start_task again gets a new fit.
         """
-        if self._stale or self.task_context is None or not self._configured_as:
+        if self._stale or self.task is None or not self._configured_as:
             return False
-        if task_context is not self.configured_from and task_context is not self.task_context:
+        if task is not self.configured_from and task is not self.task:
             return False
-        return self._fingerprint(task_context) in self._configured_as
+        return self._fingerprint(task) in self._configured_as
 
-    def mark_configured(self, task_context: Optional[TaskContext]) -> None:
+    def mark_configured(self, task: Optional[TaskContext]) -> None:
         """Remember the configuration just fitted, as the caller's context and as the one held."""
-        self.configured_from = task_context
+        self.configured_from = task
         self._configured_as = None
-        if task_context is not None:
-            self._configured_as = {self._fingerprint(task_context)}
-            if self.task_context is not None and self.task_context is not task_context:
-                self._configured_as.add(self._fingerprint(self.task_context))
+        if task is not None:
+            self._configured_as = {self._fingerprint(task)}
+            if self.task is not None and self.task is not task:
+                self._configured_as.add(self._fingerprint(self.task))
         self._stale = False
         # Only a configuration that completed is remembered for recall.
         self._remembered = (dict(self._snapshot(), history=[])   # memory spans one session
-                            if task_context is not None else None)
+                            if task is not None else None)
 
     def abandon(self) -> None:
         """A start_task failed part way: no task counts as configured, so the next one fits."""
@@ -171,35 +171,35 @@ class BehavioralReadout:
                     # was fitted on the model as it was before.
                     self._stale = True
 
-    def recall(self, task_context: TaskContext) -> bool:
-        """Reinstate the configuration a past session fitted for ``task_context``, if still valid."""
+    def recall(self, task: TaskContext) -> bool:
+        """Reinstate the configuration a past session fitted for ``task``, if still valid."""
         if self._remembered is None:
             return False
         current = self._snapshot()
         self._restore(self._remembered)
-        if self.is_configured_for(task_context):
+        if self.is_configured_for(task):
             return True
         self._restore(current)
         return False
 
-    def start_task(self, task_context_or_task, fitting_stimuli=None,
+    def start_task(self, task_or_type, fitting_stimuli=None,
                    **kwargs) -> None:
         del kwargs
         owner = self.owner
-        if isinstance(task_context_or_task, TaskContext):
-            task_context = task_context_or_task
+        if isinstance(task_or_type, TaskContext):
+            task = task_or_type
         else:
-            task_context = TaskContext(
-                task_type=task_context_or_task,
+            task = TaskContext(
+                task_type=task_or_type,
                 fitting_stimuli=fitting_stimuli,
             )
-        self.task_context = task_context
+        self.task = task
 
-        task_type = task_context.task_type
-        if task_context.readout_fit not in ('current', 'intact'):
-            raise ValueError(f"readout_fit must be 'current' or 'intact', not {task_context.readout_fit!r}.")
-        if task_context.response is not None:
-            self._start_response_task(task_context)
+        task_type = task.task_type
+        if task.readout_fit not in ('current', 'intact'):
+            raise ValueError(f"readout_fit must be 'current' or 'intact', not {task.readout_fit!r}.")
+        if task.response is not None:
+            self._start_response_task(task)
             return
         if task_type != 'passive' and not owner._requires_behavioral_readout(task_type):
             raise ValueError(
@@ -212,10 +212,10 @@ class BehavioralReadout:
             self.readout_classifier = None
             return
 
-        instruction = task_context.instruction
-        label_set = task_context.label_set
-        fitting = task_context.fitting_stimuli
-        prefer = task_context.prefer_path or 'auto'
+        instruction = task.instruction
+        label_set = task.label_set
+        fitting = task.fitting_stimuli
+        prefer = task.prefer_path or 'auto'
         if prefer not in ('auto', 'generation', 'readout'):
             raise ValueError(
                 f"TaskContext.prefer_path must be one of "
@@ -229,7 +229,7 @@ class BehavioralReadout:
         if prefer == 'generation':
             if not gen_viable:
                 raise ValueError(
-                    f"Model '{owner.identifier}' cannot run task "
+                    f"Subject '{owner.identifier}' cannot run task "
                     f"'{task_type}' via generation path "
                     f"(prefer_path='generation'): "
                     f"requires an answer function registered with "
@@ -243,7 +243,7 @@ class BehavioralReadout:
         if prefer == 'readout':
             if not readout_viable:
                 raise ValueError(
-                    f"Model '{owner.identifier}' cannot run task "
+                    f"Subject '{owner.identifier}' cannot run task "
                     f"'{task_type}' via readout path "
                     f"(prefer_path='readout'): "
                     f"requires TaskContext.fitting_stimuli to be set."
@@ -273,7 +273,7 @@ class BehavioralReadout:
             owner._fit_behavioral_readout(fitting)
         else:
             raise ValueError(
-                f"Model '{owner.identifier}' cannot run behavioral task "
+                f"Subject '{owner.identifier}' cannot run behavioral task "
                 f"'{task_type}': TaskContext provides neither fitting_stimuli "
                 f"(needed for readout path) nor (instruction + label_set, "
                 f"with BrainScoreModel(answer=...)) (needed for generation path)."
@@ -282,7 +282,7 @@ class BehavioralReadout:
     def _clear_task(self) -> None:
         self.history = []
         self.response_path = self.probability_source = None
-        self.task_context = None
+        self.task = None
         self.readout_classifier = None
         self.use_generation_for_task = False
         self.configured_from = None
@@ -300,24 +300,24 @@ class BehavioralReadout:
 
         owner = self.owner
         task_type = (
-            self.task_context.task_type
-            if self.task_context is not None else None
+            self.task.task_type
+            if self.task is not None else None
         )
         if owner._behavioral_readout_layer is None:
             raise ValueError(
-                f"Model '{owner.identifier}' was asked to perform a behavioral "
+                f"Subject '{owner.identifier}' was asked to perform a behavioral "
                 f"task (task_type={task_type!r}) but no "
                 f"behavioral_readout_layer is set. Register the model with "
                 f"BrainScoreModel(..., behavioral_readout_layer='<layer name>')."
             )
 
         labels = self.extract_labels(fitting_stimuli)
-        intact = (self.task_context is not None and self.task_context.readout_fit == 'intact')
+        intact = (self.task is not None and self.task.readout_fit == 'intact')
         with (owner._perturbations.intact() if intact else nullcontext()):
             features = owner._extract_behavioral_features(fitting_stimuli)
 
         from brainscore_core.responses import Scale
-        response = self.task_context.response if self.task_context is not None else None
+        response = self.task.response if self.task is not None else None
         if isinstance(response, Scale):
             from brainscore._model.behavior import RatingRegressor
             self.readout_classifier = RatingRegressor().fit(features, labels)
@@ -372,24 +372,24 @@ class BehavioralReadout:
         features = self.owner._extract_behavioral_features(stimuli)
         return _implied(self.readout_classifier.predict_proba(features), 'readout')
 
-    def _start_response_task(self, task_context) -> None:
+    def _start_response_task(self, task) -> None:
         """Choose how a Choice, Scale or Text answer is produced, before any compute."""
         from brainscore_core.responses import Choice, Scale, Text
-        owner, response = self.owner, task_context.response
-        prefer = task_context.prefer_path or 'auto'
+        owner, response = self.owner, task.response
+        prefer = task.prefer_path or 'auto'
         if prefer not in ('auto', 'generation', 'likelihood', 'readout'):
             raise ValueError("prefer_path must be 'auto', 'generation', 'likelihood' or 'readout'; "
                              f'got {prefer!r}.')
         readout_wired = (owner._behavioral_readout_layer is not None
                          and bool(owner._extractors or owner._layer_extractors)
-                         and task_context.fitting_stimuli is not None)
+                         and task.fitting_stimuli is not None)
         reported_confidence = isinstance(response, Choice) and response.confidence is not None
         raw_scores = isinstance(response, Choice) and response.raw_scores
         if raw_scores and owner._likelihood_fn is None:
             # Raw scores come only from a likelihood part: no softmax of a readout, no guess.
             from brainscore_core.compatibility import CompatibilityError
             raise CompatibilityError(
-                f"Model '{owner.identifier}' cannot give raw scores of the options: "
+                f"Subject '{owner.identifier}' cannot give raw scores of the options: "
                 'they come only from a likelihood= part.')
         per_row = isinstance(response, Choice) and isinstance(response.labels, str)
         raw_text = isinstance(response, Choice) and response.raw_text
@@ -409,7 +409,7 @@ class BehavioralReadout:
                      'likelihood': 'likelihood= and a Choice without reported confidence',
                      'readout': 'behavioral_readout_layer=, an extractor and fitting_stimuli'}
             raise ValueError(
-                f"Model '{owner.identifier}' cannot give a {type(response).__name__} answer"
+                f"Subject '{owner.identifier}' cannot give a {type(response).__name__} answer"
                 + (' with reported confidence (needs reply=)' if reported_confidence else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {needs[p]}' for p in order))
         source = None
@@ -420,14 +420,14 @@ class BehavioralReadout:
             elif readout_wired and not per_row:
                 source = 'readout'
             else:
-                raise ValueError(f"Model '{owner.identifier}' cannot give implied probabilities: "
+                raise ValueError(f"Subject '{owner.identifier}' cannot give implied probabilities: "
                                  'it needs likelihood= or a readout (behavioral_readout_layer=, '
                                  'fitting_stimuli).')
         self.response_path, self.probability_source = path, source
         self.use_generation_for_task = False   # response tasks run through sessions only
         self.readout_classifier = None
         if 'readout' in (path, source):
-            owner._fit_behavioral_readout(task_context.fitting_stimuli)
+            owner._fit_behavioral_readout(task.fitting_stimuli)
 
     def respond(self, stimuli, channels, regions=()):
         """Answer a response task; return ``({channel: assembly}, {region: NeuroidAssembly})``.
@@ -439,7 +439,7 @@ class BehavioralReadout:
         so the recording is still the prompt pass.
         """
         from brainscore_core.responses import Choice, Scale, Text, labels_of, trial_prompt
-        owner, task = self.owner, self.task_context
+        owner, task = self.owner, self.task
         response, path = task.response, self.response_path
         layers = {region: self._region_layers(region) for region in regions}
         labels = labels_of(response)
@@ -661,12 +661,12 @@ class BehavioralReadout:
         A session that asks only for ``neural:<region>`` must get activity, even
         when an earlier session configured a task on this model (rule 4.1).
         """
-        saved = self.task_context
-        self.task_context = None
+        saved = self.task
+        self.task = None
         try:
             yield
         finally:
-            self.task_context = saved
+            self.task = saved
 
     def respond_and_record(self, stimuli, regions: Sequence[str]):
         """Answer every stimulus once and record ``regions`` from that same pass.
@@ -718,10 +718,10 @@ class BehavioralReadout:
 
     def _stamp(self, path, forward_pass):
         """How a recording was made, so task and passive recordings stay distinct."""
-        return {'task_type': self.task_context.task_type, 'path': path,
-                'response': type(self.task_context.response).__name__
-                if self.task_context.response is not None else None,
-                'forward_pass': forward_pass, 'readout_fit': self.task_context.readout_fit}
+        return {'task_type': self.task.task_type, 'path': path,
+                'response': type(self.task.response).__name__
+                if self.task.response is not None else None,
+                'forward_pass': forward_pass, 'readout_fit': self.task.readout_fit}
 
     def _read_out_and_record(self, stimuli, layers, raw: bool = False):
         from brainscore_core.responses import Scale
@@ -742,7 +742,7 @@ class BehavioralReadout:
         features = extracted.isel(neuroid=layer_of == readout_layer)
         if 'presentation' in features.dims and 'neuroid' in features.dims:
             features = features.transpose('presentation', 'neuroid')
-        if raw and isinstance(self.task_context.response, Scale):
+        if raw and isinstance(self.task.response, Scale):
             behavior = [(float(v), None) for v in self.readout_classifier.predict(features)]
         else:
             behavior = _implied(self.readout_classifier.predict_proba(features), 'readout')
@@ -769,13 +769,13 @@ class BehavioralReadout:
         )
 
         owner = self.owner
-        task_context = self.task_context
-        if task_context is None:
+        task = self.task
+        if task is None:
             raise RuntimeError(
                 "generate_predictions requires an active TaskContext."
             )
-        label_set = list(task_context.label_set)
-        instruction = task_context.instruction
+        label_set = list(task.label_set)
+        instruction = task.instruction
         label_to_idx = {lbl: i for i, lbl in enumerate(label_set)}
 
         n_stimuli = len(stimuli)

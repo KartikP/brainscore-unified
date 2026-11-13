@@ -230,8 +230,8 @@ def drive_behavior_and_neural_session(model, session, driver: str = "interact") 
     ``BehavioralReadout.respond_and_record``). Only ``BrainScoreModel`` runs
     this; it is reached through its session capability.
     """
-    task_context = getattr(session, "task", None)
-    if task_context is None:
+    task = getattr(session, "task", None)
+    if task is None:
         raise ValueError("A behavior session needs session.task.")
     time_bins = getattr(session, "time_bins", None)
     if time_bins is not None and len(time_bins) > 1:
@@ -241,43 +241,43 @@ def drive_behavior_and_neural_session(model, session, driver: str = "interact") 
     regions = [parse_channel(c)[1] for c in requested if parse_channel(c)[0] == "neural"]
     answers = [c for c in requested if parse_channel(c)[0] == "behavior"]
     # Refuse answers the task cannot give before any setup or compute.
-    if task_context.response is None and set(answers) - {"behavior"}:
+    if task.response is None and set(answers) - {"behavior"}:
         raise ValueError(f"{answers} need TaskContext(response=...); task_type "
-                         f"{task_context.task_type!r} answers on 'behavior'.")
-    if task_context.response is not None:
-        given = set(response_channels(task_context.response))
+                         f"{task.task_type!r} answers on 'behavior'.")
+    if task.response is not None:
+        given = set(response_channels(task.response))
         unanswered = sorted(set(answers) - given - {"behavior"})
         if unanswered:
             raise ValueError(
                 f"{unanswered} requested, but the task's response "
-                f"{type(task_context.response).__name__} answers only on "
+                f"{type(task.response).__name__} answers only on "
                 f"{sorted(given)}; ask for those or change the response.")
     _drivers.refuse_variance(model, session)
-    model.start_task(task_context)
+    model.start_task(task)
     # A streaming session reads one trial, answers it and sends its outputs, then
     # reads the next. Otherwise the inputs are read first. A model without the
     # trait keeps no history, so it can answer the whole table at once; one that
     # keeps history is answered trial by trial so a begin can fall between trials.
     if getattr(session, "streaming", False):
-        batches = enumerate(_drivers.stream_trials(session, task_context))
+        batches = enumerate(_drivers.stream_trials(session, task))
     else:
-        stimuli = _drivers.behavior_stimuli_from_session(session, task_context)
+        stimuli = _drivers.behavior_stimuli_from_session(session, task)
         if stimuli is None:
             raise ValueError("Recording during a task needs stimuli to present.")
         batches = ([(index, _drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]))
                     for index in range(len(stimuli))]
                    if _keeps_history(model) else [(0, stimuli)])
     for index, batch in batches:
-        if index == 0 or task_context.trial_memory == 'none':
+        if index == 0 or task.trial_memory == 'none':
             model._begin_episode()
-        if task_context.response is not None:
+        if task.response is not None:
             behavior, neural = model._behavioral.respond(batch, answers, regions)
         else:
             plain, neural = model._behavioral.respond_and_record(batch, regions)
             behavior = {"behavior": plain} if answers else {}
         # A value that is a StreamEvent keeps its meta: a reply's extra data (send_outputs).
         _drivers.send_outputs(session, {channel: behavior[channel] for channel in answers},
-                              float(index), {"driver": driver, "task_type": task_context.task_type})
+                              float(index), {"driver": driver, "task_type": task.task_type})
         for region in regions:
             session.respond(StreamEvent(channel=f"neural:{region}", payload=neural[region], t_ms=float(index),
                                      meta={"driver": driver, "record": region, "during": "behavior"}))

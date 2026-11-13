@@ -75,11 +75,10 @@ def test_session_reading_matches_start_task_then_process():
                         zip(expected.values.argmax(axis=1), benchmark._test_stimuli['image_label'])]
 
     from brainscore_core.streaming_helpers import behavioral_response
-    answered = behavioral_response(model(), TaskContext(
+    answered = behavioral_response(model(), benchmark._test_stimuli, TaskContext(
         task_type='probabilities', label_set=['real', 'pseudo'],
         fitting_stimuli=benchmark._train_stimuli,
-        instruction='Is this a real word or a pseudo word?', prefer_path='readout',
-        metadata={'stimulus_set': benchmark._test_stimuli}))
+        instruction='Is this a real word or a pseudo word?', prefer_path='readout'))
     np.testing.assert_array_equal(answered.values, expected.values)
     assert list(answered['stimulus_id'].values) == list(expected['stimulus_id'].values)
     assert list(answered['choice'].values) == choices

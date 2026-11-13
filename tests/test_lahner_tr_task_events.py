@@ -65,7 +65,7 @@ def capture_design(monkeypatch, benchmark):
     benchmark._events = collision_events()
     benchmark._assembly = collision_assembly()
 
-    def features(candidate):
+    def features(subject):
         benchmark._modality_per_feature = np.array(['video'])
         benchmark._feature_projection = 'none'
         return np.array([[1.0], [10.0]], dtype=np.float32), ['train_clip', 'test_clip']
@@ -208,13 +208,13 @@ def test_glm_beta_variants_are_unchanged(identifier):
 # ── Score labels (3A) and CV policy (F1) ──────────────────────────
 
 
-def synthetic_assembly(subjects, tasks, n_tr=12, n_voxels=3, seed=0):
+def synthetic_assembly(participants, tasks, n_tr=12, n_voxels=3, seed=0):
     rng = np.random.default_rng(seed)
-    n_runs = len(subjects)
+    n_runs = len(participants)
     return xr.DataArray(
         rng.standard_normal((n_runs, n_tr, n_voxels)).astype(np.float32),
         dims=('presentation', 'time_bin', 'neuroid'),
-        coords={'subject': ('presentation', list(subjects)),
+        coords={'subject': ('presentation', list(participants)),
                 'session': ('presentation', ['01'] * n_runs),
                 'run': ('presentation', [f'{i:02d}' for i in range(n_runs)]),
                 'task': ('presentation', list(tasks)),
@@ -232,8 +232,8 @@ def synthetic_events(assembly):
     return pd.DataFrame(rows)
 
 
-def score_synthetic(monkeypatch, benchmark, subjects=('a', 'a', 'b', 'b', 'c', 'c')):
-    assembly = synthetic_assembly(subjects, ['train'] * len(subjects))
+def score_synthetic(monkeypatch, benchmark, participants=('a', 'a', 'b', 'b', 'c', 'c')):
+    assembly = synthetic_assembly(participants, ['train'] * len(participants))
     benchmark._assembly = assembly
     benchmark._events = synthetic_events(assembly)
     benchmark._voxel_mask = np.ones(assembly.sizes['neuroid'], dtype=bool)
@@ -243,13 +243,13 @@ def score_synthetic(monkeypatch, benchmark, subjects=('a', 'a', 'b', 'b', 'c', '
         n_tr = assembly.sizes['time_bin']
         benchmark._motion = pd.concat([
             pd.DataFrame(dict(
-                subject=subject, session='01', task=task, run=run,
+                subject=participant, session='01', task=task, run=run,
                 **{column: rng.standard_normal(n_tr) for column in MOTION_COLUMNS}))
-            for subject, task, run in zip(assembly['subject'].values,
+            for participant, task, run in zip(assembly['subject'].values,
                                           assembly['task'].values,
                                           assembly['run'].values)])
 
-    def features(candidate):
+    def features(subject):
         benchmark._modality_per_feature = np.array(['video', 'video', 'audio'])
         benchmark._feature_projection = 'none'
         return rng.standard_normal((3, 3)).astype(np.float32), ['clip0', 'clip1', 'clip2']
@@ -299,12 +299,12 @@ def test_default_paths_carry_method_labels(monkeypatch, identifier, version):
 
 def test_subject_out_label_reports_whether_blocks_are_whole_subjects(monkeypatch):
     grouped = tr.Lahner2024BOLDMoments_timeresolved(cv_n_held_out_runs=2)
-    score = score_synthetic(monkeypatch, grouped, subjects=('a', 'a', 'b', 'b', 'c', 'c'))
+    score = score_synthetic(monkeypatch, grouped, participants=('a', 'a', 'b', 'b', 'c', 'c'))
     assert score.attrs['cv_policy'] == 'contiguous_run_blocks_in_assembly_order'
     assert score.attrs['cv_blocks_hold_out_whole_subjects'] is True
 
     interleaved = tr.Lahner2024BOLDMoments_timeresolved(cv_n_held_out_runs=2)
-    score = score_synthetic(monkeypatch, interleaved, subjects=('a', 'b', 'c', 'a', 'b', 'c'))
+    score = score_synthetic(monkeypatch, interleaved, participants=('a', 'b', 'c', 'a', 'b', 'c'))
     assert score.attrs['cv_blocks_hold_out_whole_subjects'] is False
 
 

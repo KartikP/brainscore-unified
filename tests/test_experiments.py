@@ -38,7 +38,7 @@ def protocol():
     def factory(repetition):
         yield Session([StreamEvent('observation', [1., 2.], 12)])
     return SessionProtocol('fixture', factory, repetitions=('baseline', 'ablation'),
-                          input_channels=('observation',), output_channels=('behavior',))
+                          required_input_channels=('observation',), requested_output_channels=('behavior',))
 
 
 def rows(path):
@@ -87,7 +87,7 @@ def test_identical_api_for_domain_payloads(tmp_path, domain, payload):
     def factory(repetition):
         yield Session([StreamEvent('observation', payload, 5)])
     result = Experiment(subject=Echo(), protocol=SessionProtocol(domain, factory,
-        input_channels=['observation'], output_channels=['motor']),
+        required_input_channels=['observation'], requested_output_channels=['motor']),
         tools=[RecordInputsOutputs()], output_dir=tmp_path/domain).run()
     output = next(e for e in rows(result.directory) if e['kind'] == 'output')
     assert output['payload'].t_ms == 5
@@ -125,7 +125,7 @@ def test_caught_error_fails_record_and_experiment(tmp_path):
             subject.process(1)
         except RuntimeError:
             pass
-    with pytest.raises(RuntimeError, match='caught model'):
+    with pytest.raises(RuntimeError, match='caught subject'):
         Experiment(subject=SimpleNamespace(process=fail),
             protocol=CallableProtocol('caught', evaluate), tools=[RecordInputsOutputs()],
             output_dir=tmp_path/'run').run()
@@ -163,7 +163,7 @@ def test_preflight_has_no_output_or_inference(tmp_path, failure):
         provider = TorchInstrumentation({'known': subject.layer})
     elif failure == 'channel':
         tools = []
-        p.input_channels = {'unsupported'}
+        p.required_input_channels = {'unsupported'}
     elif failure == 'missing_method':
         tools = []
         p = CallableProtocol('bad', lambda s, c: None, methods=['absent'])
@@ -401,7 +401,7 @@ def test_conditions_repetitions_shared_record_and_replay(tmp_path):
 
     schedule = SessionProtocol('conditions', factory,
         conditions=['normal', 'silenced', 'restored'], repetitions=[0, 1],
-        input_channels=['observation'], output_channels=['behavior'])
+        required_input_channels=['observation'], requested_output_channels=['behavior'])
     provider = TorchInstrumentation(torch.nn.ModuleDict({'layer': subject.layer}))
     def tools():
         return [RecordInputsOutputs(),
@@ -528,8 +528,8 @@ def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
     result = Experiment(
         subject=subject,
         protocol=SessionProtocol(identifier='two-repetitions', session_factory=factory,
-                                 repetitions=(0, 1), input_channels=('text',),
-                                 output_channels=('behavior',)),
+                                 repetitions=(0, 1), required_input_channels=('text',),
+                                 requested_output_channels=('behavior',)),
         tools=[RecordInputsOutputs()],
         output_dir=tmp_path / 'respond',
     ).run()
@@ -749,7 +749,7 @@ def test_record_failure_keeps_original_error_and_fails_run(tmp_path, caught):
     record = json.loads((tmp_path/'run'/'inputs_outputs'/'manifest.json').read_text())
     assert experiment['status'] == record['status'] == 'failed'
     if caught:
-        assert 'caught model or tool error' in experiment['error']['message']
+        assert 'caught subject or tool error' in experiment['error']['message']
     else:
         assert experiment['error']['type'] == 'TypeError'
     assert [e['kind'] for e in rows(tmp_path/'run')] == ['repetition_start']  # nothing after the loss
@@ -853,7 +853,7 @@ def test_session_protocol_relies_on_the_declared_contract(tmp_path):
     @contextmanager
     def factory(repetition):
         yield SimpleNamespace(next_input=lambda: None)
-    undeclared = SessionProtocol('fixture', factory, input_channels=('observation',),
-                                 output_channels=('behavior',))
+    undeclared = SessionProtocol('fixture', factory, required_input_channels=('observation',),
+                                 requested_output_channels=('behavior',))
     with pytest.raises(TypeError, match='must return a Session'):
         Experiment(subject=FixtureSubject(), protocol=undeclared, output_dir=tmp_path / 'run').run()

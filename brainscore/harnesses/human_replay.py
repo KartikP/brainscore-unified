@@ -92,7 +92,7 @@ def human_agreement(model_actions: Sequence[int],
                     human_counts: Sequence[Sequence[int]]) -> Dict[str, float]:
     """Score model choices against human choice counts (see module docstring)."""
     if len(model_actions) != len(human_counts):
-        raise ValueError('One model action is needed per human state')
+        raise ValueError('One subject action is needed per human state')
     model, human, chance = [], [], []
     for action, counts in zip(model_actions, human_counts):
         counts = np.asarray(counts, dtype=float)
@@ -144,10 +144,10 @@ class HumanAgreementBenchmark(BenchmarkBase):
         super().__init__(identifier=identifier, version=1, parent='closed_loop',
                          ceiling=Score(self._summary['ceiling']), bibtex=bibtex)
 
-    def __call__(self, candidate) -> Score:
+    def __call__(self, subject) -> Score:
         actions, counts = [], []
         for episode in self.episodes:
-            actions += replay_actions(candidate, [s for s, _ in episode], self.n_actions)
+            actions += replay_actions(subject, [s for s, _ in episode], self.n_actions)
             counts += [c for _, c in episode]
         result = human_agreement(actions, counts)
         score = Score(result['raw'] / result['ceiling'])

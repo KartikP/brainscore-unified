@@ -16,7 +16,7 @@ from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
 
-SUBJECTS = ('sub-01', 'sub-02', 'sub-03', 'sub-05')
+PARTICIPANTS = ('sub-01', 'sub-02', 'sub-03', 'sub-05')
 OUTPUT_CHANNEL = 'neural:Schaefer1000'
 TR_MS = 1490.0
 
@@ -95,19 +95,20 @@ class MirageSubject(Subject):
     required_channels = {'vision:video', 'audio', 'text'}
     out_channels = {OUTPUT_CHANNEL}
 
-    def __init__(self, *, predictor: Predictor, subject: str = 'sub-01') -> None:
-        if subject not in SUBJECTS:
-            raise ValueError(f'subject must be one of {SUBJECTS}')
+    def __init__(self, *, predictor: Predictor, participant: str = 'sub-01') -> None:
+        if participant not in PARTICIPANTS:
+            raise ValueError(f'participant must be one of {PARTICIPANTS}')
         self._predictor = predictor
-        self._subject = subject
+        self._participant = participant
 
     @property
-    def subject(self) -> str:
-        return self._subject
+    def participant(self) -> str:
+        """The participant whose trained output head predicts the BOLD."""
+        return self._participant
 
     @property
     def identifier(self) -> str:
-        return f'mirage-{self.subject}'
+        return f'mirage-{self.participant}'
 
     def participate(self, session: Session) -> None:
         requested = session.outputs
@@ -130,8 +131,8 @@ class MirageSubject(Subject):
             if (values.ndim != 2 or values.shape[0] < 1 or values.shape[1] != 1000
                     or values.dtype != np.float32 or not np.isfinite(values).all()):
                 raise ValueError('Native predictions must be finite float32 (TR, 1000) arrays')
-            if prediction.provenance.get('subject') != self.subject:
-                raise ValueError('Predictor returned a different trained subject head')
+            if prediction.provenance.get('participant') != self.participant:
+                raise ValueError('Predictor returned a different trained participant head')
             provenance = {
                 **prediction.provenance,
                 'umi_host': {'python': sys.version.split()[0], 'numpy': np.__version__,
@@ -146,9 +147,9 @@ class MirageSubject(Subject):
                     'clip_id': ('presentation', [clip.identifier] * n_trs),
                     'tr_index': ('presentation', np.arange(n_trs)),
                     'relative_time_ms': ('presentation', np.arange(n_trs) * TR_MS),
-                    'neuroid_id': ('neuroid', [f'{self.subject}:parcel-{i}' for i in range(1000)]),
+                    'neuroid_id': ('neuroid', [f'{self.participant}:parcel-{i}' for i in range(1000)]),
                     'parcel_index': ('neuroid', np.arange(1000)),
-                    'subject_id': ('neuroid', [self.subject] * 1000),
+                    'subject_id': ('neuroid', [self.participant] * 1000),
                 },
                 attrs={'signal_type': 'predicted_BOLD', 'provenance': provenance,
                        'time_reference': 'native output row grid relative to clip onset'},

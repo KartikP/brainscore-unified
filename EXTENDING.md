@@ -131,8 +131,8 @@ class YourBenchmark(BenchmarkBase):
         # Runs a session through subject.participate; works for any Subject.
         predictions = neural_response(
             subject=subject,
-            stimulus_set=self._stimulus_set,
-            record='IT',
+            stimuli=self._stimulus_set,
+            outputs=['neural:IT'],
             time_bins=[(70, 170)],
         )                                                    # -> NeuroidAssembly
         raw = self._metric(predictions, self._assembly)

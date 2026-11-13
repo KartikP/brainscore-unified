@@ -18,11 +18,11 @@ class _Benchmark:
     def __init__(self, undo):
         self.undo = undo
 
-    def __call__(self, candidate):
-        applied = apply_state_change(candidate, StateChange(
+    def __call__(self, subject):
+        applied = apply_state_change(subject, StateChange(
             kind='ablation', target=Selection(layer='x'), perturbation=Perturbation(kind='zero')))
         if self.undo:
-            apply_state_change(candidate, StateChange(kind='reset', handle_id=applied.handle_id))
+            apply_state_change(subject, StateChange(kind='reset', handle_id=applied.handle_id))
         return Score(1.0)
 
 

@@ -39,7 +39,7 @@ python examples/mirage_umi/run.py \
   --transcript /path/to/transcript.json \
   --out /path/to/fresh/results \
   --device cuda \
-  --subject sub-01
+  --participant sub-01
 ```
 
 The transcript is a JSON list of `{word, onset, duration}` records, with times

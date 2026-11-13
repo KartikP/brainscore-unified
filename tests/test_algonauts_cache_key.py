@@ -59,7 +59,7 @@ def test_frame_table_identifier_is_unchanged_and_the_video_table_has_its_own(tmp
     for index in range(2):
         (tmp_path / 'clips' / 'm1' / f'{index:04d}.mp4').write_bytes(b'')
     for form, tag in (('image', 'frames'), ('video', 'clips')):
-        benchmark = Algonauts2025Friends(subject=1, form=form, assembly_root=tmp_path)
+        benchmark = Algonauts2025Friends(participant=1, form=form, assembly_root=tmp_path)
         benchmark._stimulus_set = movies
         with patch.object(Algonauts2025Friends, '_stim_id_to_n_TRs', return_value={'m1': 2}), \
                 patch.object(Algonauts2025Friends, '_run_pool'), \

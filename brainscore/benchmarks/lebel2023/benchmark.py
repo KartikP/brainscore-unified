@@ -1,12 +1,12 @@
 """Whole-cortex voxelwise encoding on LeBel 2023 story-listening fMRI.
 
-One subject (UTS03) heard 25 spoken stories while BOLD was recorded every 2 s
+One participant (UTS03) heard 25 spoken stories while BOLD was recorded every 2 s
 across 20484 cortical vertices. The benchmark asks how much of that signal a
 model's language representation can predict.
 
 Protocol
 --------
-Text features are read from the candidate at one sample per TR, then delayed by
+Text features are read from the subject at one sample per TR, then delayed by
 1-4 TRs and concatenated. The delays let a linear model learn its own
 hemodynamic response per vertex, which is the convention in this literature and
 avoids committing to a fixed HRF shape.
@@ -45,15 +45,15 @@ DEFAULT_DELAYS = (1, 2, 3, 4)
 DEFAULT_ALPHA_GRID = (1e4, 1e5, 1e6, 3e6, 1e7, 3e7, 1e8)
 
 
-def _record(candidate, stimulus_set, region):
-    """The candidate's ``neural:<region>`` response to ``stimulus_set``.
+def _record(subject, stimuli, region):
+    """The subject's ``neural:<region>`` response to ``stimuli``.
 
     Runs through ``participate`` only, so any subject that declares the
     region can be scored. The old path also passed ``recording_type='fMRI'``.
     No session field is needed for it: ``BrainScoreModel`` ignores the value,
     and the language legacy adapter records with ``'fMRI'`` when none is given.
     """
-    return neural_response(candidate, stimulus_set, record=region)
+    return neural_response(subject, stimuli, [f'neural:{region}'])
 
 
 def _delay_within_stories(features, story_ids, delays):
@@ -278,20 +278,20 @@ class LeBel2023Encoding(BenchmarkBase):
                 load_dataset('LeBel2023-UTS03'))
         return self._cached
 
-    def _model_features(self, candidate, stimulus_set, assembly):
-        """Drive the candidate and return features in the assembly's row order.
+    def _model_features(self, subject, stimuli, assembly):
+        """Drive the subject and return features in the assembly's row order.
 
         Isolated from scoring so that features obtained another way — a model
         too large for the scoring environment, or a deliberately uninformative
         null — can be scored through exactly this path.
         """
-        predictions = _record(candidate, stimulus_set, self._region)
+        predictions = _record(subject, stimuli, self._region)
         return self._align_features(predictions, assembly)
 
-    def __call__(self, candidate) -> Score:
-        stimulus_set, assembly = self._data()
+    def __call__(self, subject) -> Score:
+        stimuli, assembly = self._data()
 
-        features = self._model_features(candidate, stimulus_set, assembly)
+        features = self._model_features(subject, stimuli, assembly)
         story_ids = np.asarray(assembly['story_id'].values)
 
         X, has_full_history = _delay_within_stories(
@@ -355,7 +355,7 @@ class LeBel2023Encoding(BenchmarkBase):
         missing = [sid for sid in wanted if sid not in position]
         if missing:
             raise ValueError(
-                f"model returned no features for {len(missing)} stimuli "
+                f"subject returned no features for {len(missing)} stimuli "
                 f"(first: {missing[0]})")
         order = np.fromiter((position[sid] for sid in wanted), dtype=int,
                             count=len(wanted))
@@ -413,11 +413,11 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
         word_stimuli, assembly, _ = self._word_data()
         return word_stimuli, assembly
 
-    def _model_features(self, candidate, stimulus_set, assembly):
+    def _model_features(self, subject, stimuli, assembly):
         """Read one feature per word, then resample onto the TR grid."""
         word_stimuli, _, _ = self._word_data()
         return self._pool_predictions(
-            _record(candidate, word_stimuli, self._region), assembly)
+            _record(subject, word_stimuli, self._region), assembly)
 
     def _pool_predictions(self, predictions, assembly):
         """Resample per-word model output onto the fMRI sampling grid.
@@ -436,7 +436,7 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
         wanted = np.asarray(word_stimuli['stimulus_id'].values)
         missing = [s for s in wanted if s not in position]
         if missing:
-            raise ValueError(f'model returned no features for {len(missing)} '
+            raise ValueError(f'subject returned no features for {len(missing)} '
                              f'words (first: {missing[0]})')
         order = np.fromiter((position[s] for s in wanted), dtype=int,
                             count=len(wanted))

@@ -128,7 +128,7 @@ def test_session_conditions_keep_baseline_and_restore_model(tmp_path):
 
     result = Experiment(subject=subject,
         protocol=SessionProtocol('leace', factory, conditions=['baseline', 'lesioned', 'restored'],
-                                 input_channels=['observation'], output_channels=['behavior']),
+                                 required_input_channels=['observation'], requested_output_channels=['behavior']),
         tools=[load_tool('record-io'), eraser],
         instrumentation=TorchInstrumentation({'population': subject.layer}),
         output_dir=tmp_path / 'run').run()

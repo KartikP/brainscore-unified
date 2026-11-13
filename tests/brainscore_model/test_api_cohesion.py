@@ -43,7 +43,7 @@ def test_mapping_replacement_drops_removed_routes_and_is_atomic():
                             region_modality_map={'IT': 'vision'},
                             activations_model={'vision': Extractor()})
     before = model.region_layer_map
-    with pytest.raises(ValueError, match='no preprocessor or extractor'):
+    with pytest.raises(ValueError, match='no extractor'):
         model.region_layer_map = {'A1': LayerSelector(name='x', modality='audio')}
     assert model.region_layer_map == before
     model.region_layer_map = {'V4': 'y'}
@@ -98,7 +98,7 @@ def test_explicit_source_is_independent_of_behavioral_task_configuration():
     from brainscore_core.model_interface import TaskContext
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     seen = []
-    def generate(model, stimuli, task_context):
+    def generate(model, stimuli, task):
         seen.extend(stimuli.sentence)
         return BehavioralAssembly(np.ones((len(stimuli),)), dims=['presentation'],
                                   coords={'stimulus_id': ('presentation', list(stimuli.stimulus_id))})

@@ -192,7 +192,7 @@ def test_experiment_warns_about_unregistered_channels_before_running():
     subject = Exploratory()
     protocol = SessionProtocol(
         identifier='exploratory', session_factory=lambda repetition: None,
-        input_channels=['unregistered_input'], output_channels=['behavior'],
+        required_input_channels=['unregistered_input'], requested_output_channels=['behavior'],
     )
     with pytest.warns(CompatibilityWarning, match='benchmark scoring requires'):
         protocol.validate(subject)
@@ -235,9 +235,9 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
         uses_session = True
         required_input_channels = {'vision:image'}
         requested_output_channels = {'behavior'}
-        def __call__(self, candidate):
+        def __call__(self, subject):
             run = session()
-            candidate.participate(run)
+            subject.participate(run)
             return Score(float(run.collect(channel='behavior').sum()))
     result = score(subject, SessionBenchmark(), check_mem=False)
     assert float(result) == pytest.approx(1)
@@ -245,7 +245,7 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
         subject=subject,
         protocol=SessionProtocol(
             identifier='notebook-channels', session_factory=lambda repetition: nullcontext(session()),
-            input_channels=['vision:image'], output_channels=['behavior'],
+            required_input_channels=['vision:image'], requested_output_channels=['behavior'],
         ),
         output_dir=tmp_path / 'experiment',
     )

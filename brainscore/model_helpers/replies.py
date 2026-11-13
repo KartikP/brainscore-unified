@@ -56,7 +56,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
             ids = torch.tensor([tokenizer(candidate, add_special_tokens=False)['input_ids']],
                                device=prompt_ids.device)
             if ids.shape[1] == 0:
-                raise ValueError(f'candidate {candidate!r} has no tokens to score')
+                raise ValueError(f'option {candidate!r} has no tokens to score')
             extended = {}
             for key, value in inputs.items():
                 # Every per-token input (ids, mask, token types) grows with the candidate.

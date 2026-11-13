@@ -221,8 +221,8 @@ def test_benchmark_keeps_its_identity_and_scores_a_participate_only_subject(benc
     subject = ParticipateOnlySubject()
     assert not hasattr(subject, 'process') and not hasattr(subject, 'start_recording')
     check_compatibility(subject, benchmark)
-    responses = neural_response(subject=subject, stimulus_set=benchmark._stimulus_set,
-                                record='IT', time_bins=[(70, 170)])
+    responses = neural_response(subject=subject, stimuli=benchmark._stimulus_set,
+                                outputs=['neural:IT'], time_bins=[(70, 170)])
     assert dict(responses.sizes) == {'presentation': 32, 'neuroid': 16}
     assert list(responses['stimulus_id'].values) == list(benchmark._stimulus_set['stimulus_id'])
     score = benchmark(subject)
@@ -252,7 +252,7 @@ def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
 
 def test_benchmark_template_dummy_candidate_is_scorable(benchmark):
     template_tests = _load('new_benchmark/test_benchmark.py', 'umi_template_benchmark_tests')
-    candidate = template_tests.DummyCandidate()
-    score = benchmark(candidate)
+    subject = template_tests.DummySubject()
+    score = benchmark(subject)
     assert np.isfinite(float(score))
-    assert candidate.requested == ('neural:IT',)
+    assert subject.requested == ('neural:IT',)
