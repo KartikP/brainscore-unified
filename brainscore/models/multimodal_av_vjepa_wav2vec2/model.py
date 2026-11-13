@@ -148,7 +148,6 @@ def _build_audio_wrapper(identifier: str, random_init: bool = False):
         max_duration_sec=60.0,
         batch_size=4,
         audio_loader=_wav_loader,
-        audio_input_key='input_values',
     )
     return wrapper, model
 

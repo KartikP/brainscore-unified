@@ -15,24 +15,19 @@ Usage:
     assembly = text_wrapper(stimulus_set, layers=['encoder.layers.10'])
 """
 
-import functools
 import logging
 from collections import OrderedDict
 from copy import deepcopy
-from typing import Callable, List, Optional, Union
 
 import numpy as np
 from tqdm.auto import tqdm
 
-from brainscore_core.assembly_builder import (
-    concat_neuroid_assemblies,
-    make_assembly,
-    make_layer_neuroid_coords,
-)
-from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.assembly_builder import concat_neuroid_assemblies
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core.extraction_cache import (
-    store_xarray, extraction_fingerprint, wrapper_config,
+from brainscore_core.extraction_cache import store_xarray
+from brainscore.model_helpers import _extractors
+from brainscore.model_helpers._extractors import (
+    LiveRecording, as_array, attach_stimulus_set, cache_signature, hooked, layer_assembly, run_batches,
 )
 
 
@@ -196,20 +191,13 @@ class TextWrapper:
             self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
-        # Cache key: prefer explicit backbone_id, fall back to identifier.
-        # Keeping this as a separate attribute lets BrainScoreModel swap the
-        # cache-key without disturbing log/telemetry identifiers.
+        # The cache key: backbone_id when given, else the identifier.
         self._backbone_id = backbone_id or self._identifier
-        self._stimuli_identifier = None
         self._provenance = None if provenance is None else deepcopy(dict(provenance))
 
     @property
     def identifier(self):
         return self._identifier
-
-    @identifier.setter
-    def identifier(self, value):
-        self._identifier = value
 
     @property
     def backbone_id(self):
@@ -250,9 +238,7 @@ class TextWrapper:
                                  'per_token inputs must supply their complete text explicitly.')
         activations = self._from_texts_cached(
             texts, layers, stimuli_identifier)
-
-        activations = self._attach_stimulus_set_meta(activations, stimulus_set)
-        return activations
+        return attach_stimulus_set(activations, stimulus_set)
 
     def _extract_texts(self, stimulus_set):
         from brainscore_core.text import contextualized_texts
@@ -267,25 +253,14 @@ class TextWrapper:
     )
 
     def cache_config(self):
-        return wrapper_config(self, self.CACHE_FIELDS)
+        return _extractors.cache_config(self, self.CACHE_FIELDS)
 
     def _from_texts_cached(self, texts, layers, stimuli_identifier=None):
-        if self._backbone_id and stimuli_identifier:
-            signature = extraction_fingerprint(
-                {"configuration": self.cache_config(), "inputs": texts},
-                cache_identifier=(f'{type(self).__module__}.{type(self).__name__}'
-                                  f'._from_texts_stored/identifier={self._backbone_id}'),
-            )
-            if signature is None:
-                return self._from_texts(texts, layers, stimuli_identifier)
-            return self._from_texts_stored(
-                identifier=self._backbone_id,
-                stimuli_identifier=stimuli_identifier,
-                layers=layers,
-                texts=texts,
-                extraction_fingerprint=signature,
-            )
-        return self._from_texts(texts, layers, stimuli_identifier)
+        signature = cache_signature(self, '_from_texts_stored', texts, stimuli_identifier)
+        if signature is None:
+            return self._from_texts(texts, layers, stimuli_identifier)
+        return self._from_texts_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
+                                       layers=layers, texts=texts, extraction_fingerprint=signature)
 
     @store_xarray(identifier_ignore=['texts', 'layers'], combine_fields={'layers': 'layer'})
     def _from_texts_stored(self, identifier, layers, stimuli_identifier, texts,
@@ -304,28 +279,8 @@ class TextWrapper:
     def _get_activations_batched(self, texts, layers):
         if self._layer_aggregation == 'per_token':
             return self._get_per_token_activations(texts, layers)
-
-        layer_activations = None
-        total = len(texts)
-
-        for batch_start in tqdm(range(0, total, self._batch_size),
-                                unit_scale=self._batch_size, desc="text activations"):
-            batch_end = min(batch_start + self._batch_size, total)
-            batch_texts = texts[batch_start:batch_end]
-
-            batch_activations = self.get_activations(batch_texts, layers)
-
-            if layer_activations is None:
-                layer_activations = OrderedDict()
-                for layer_name, layer_output in batch_activations.items():
-                    final_shape = (total,) + layer_output.shape[1:]
-                    layer_activations[layer_name] = np.empty(
-                        final_shape, dtype=layer_output.dtype)
-
-            for layer_name, layer_output in batch_activations.items():
-                layer_activations[layer_name][batch_start:batch_end] = layer_output
-
-        return layer_activations
+        return run_batches(texts, self._batch_size, lambda batch: self.get_activations(batch, layers),
+                           'text activations')
 
     # ── per_token path: chunked, per-input forward passes ──────────────
 
@@ -439,19 +394,9 @@ class TextWrapper:
         )
         tokens = {k: v.to(self._device) for k, v in encoding.items()}
 
-        layer_results: OrderedDict = OrderedDict()
-        hooks = []
-        for layer_name in layer_names:
-            layer = self._get_layer(layer_name)
-            hooks.append(self._register_hook(layer, layer_name, layer_results))
-
         self._model.eval()
-        try:
-            with torch.no_grad():
-                self._model(**tokens)
-        finally:
-            for h in hooks:
-                h.remove()
+        with hooked(self._model, layer_names, as_array) as layer_results, torch.no_grad():
+            self._model(**tokens)
 
         # Trim each row to its real (non-padded) token count and
         # concatenate along the time axis.
@@ -506,22 +451,9 @@ class TextWrapper:
         )
         tokens = {k: v.to(self._device) for k, v in tokens.items()}
 
-        layer_results = OrderedDict()
-        hooks = []
-
-        try:
-            for layer_name in layer_names:
-                layer = self._get_layer(layer_name)
-                hook = self._register_hook(layer, layer_name, layer_results)
-                hooks.append(hook)
-
-            self._model.eval()
-            with torch.no_grad():
-                self._model(**tokens)
-
-        finally:
-            for hook in hooks:
-                hook.remove()
+        self._model.eval()
+        with hooked(self._model, layer_names, as_array) as layer_results, torch.no_grad():
+            self._model(**tokens)
 
         # Aggregate over sequence dimension
         for layer_name in layer_results:
@@ -553,17 +485,10 @@ class TextWrapper:
         Returns a context manager; its ``take()`` gives the first forward pass
         since the previous take, aggregated as ``__call__`` aggregates one text.
         """
-        from brainscore.model_helpers.live_recording import live_recording
         if self._layer_aggregation not in ('last_token', 'mean_tokens'):
             raise NotImplementedError(
                 f'Recording during generation supports last_token or mean_tokens, '
                 f'not {self._layer_aggregation!r}.')
-        from brainscore.model_helpers.selection import split_site
-        for layer in layers:
-            if split_site(layer)[1] == 'input':
-                raise NotImplementedError(f'{layer!r}: recording a module input during generation is not supported.')
-            self._get_layer(layer)          # unknown layers fail before any compute
-
         def aggregate(activity):
             if activity.ndim == 3:
                 if activity.shape[0] != 1:
@@ -572,45 +497,12 @@ class TextWrapper:
                             else activity.mean(axis=1))
             return activity.reshape(1, -1)
 
-        return live_recording(self._get_layer, layers, aggregate,
-                              lambda activity: self._package(activity, [None]))
+        return LiveRecording(self._model, self._model, layers, lambda first, _call: self._package(
+            {layer: aggregate(activity) for layer, activity in first.items()}, [None]), as_array)
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
         return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
-
-    def _get_layer(self, layer_name):
-        from brainscore.model_helpers.selection import split_site
-        module = self._model
-        for part in split_site(layer_name)[0].split('.'):
-            module = getattr(module, part, None)
-            if module is None:
-                raise ValueError(
-                    f"Layer '{layer_name}' not found at part '{part}'")
-        return module
-
-    def _register_hook(self, layer, layer_name, target_dict):
-        from brainscore.model_helpers.selection import split_site
-
-        def hook_fn(_module, _input, output, name=layer_name):
-            if isinstance(output, (tuple, list)):
-                output = output[0]
-            # numpy has no bfloat16, and large models are routinely loaded in
-            # it, so a float tensor of any width is promoted on the way out
-            # rather than raising "unsupported ScalarType BFloat16". torch is
-            # imported per-method in this module, so the check reads the dtype
-            # off the tensor instead of naming torch types.
-            activations = output.detach().cpu()
-            if activations.dtype.is_floating_point:
-                activations = activations.float()
-            target_dict[name] = activations.numpy()
-
-        if split_site(layer_name)[1] == 'input':
-            # ':input' records the module's first input, the same tensor a
-            # ':input' perturbation modifies (see brainscore.perturbation).
-            return layer.register_forward_pre_hook(
-                lambda module, args: hook_fn(module, args, args[0]))
-        return layer.register_forward_hook(hook_fn)
 
     def _package(self, layer_activations, texts):
         """Package layer activations into NeuroidAssembly.
@@ -630,21 +522,8 @@ class TextWrapper:
             if activations.ndim == 3:
                 layer_assemblies.append(self._pack_3d(
                     activations, layer_name, len(texts), token_lengths, word_ids))
-                continue
-            # 2D legacy path
-            n_texts, n_features = activations.shape
-            coords = {
-                'stimulus_id': ('presentation', list(range(n_texts))),
-                **make_layer_neuroid_coords(
-                    self._identifier, layer_name, n_features,
-                    include=('neuroid_id', 'neuroid_num', 'model', 'layer')),
-            }
-            assembly = make_assembly(
-                activations,
-                coords=coords,
-                dims=['presentation', 'neuroid'],
-            )
-            layer_assemblies.append(assembly)
+            else:
+                layer_assemblies.append(layer_assembly(self._identifier, layer_name, activations))
 
         if len(layer_assemblies) == 1:
             return layer_assemblies[0]
@@ -669,23 +548,13 @@ class TextWrapper:
         can convert word onsets into per-token ``time_bin_start_ms`` /
         ``time_bin_end_ms``.
         """
-        _, t_max, n_features = activations.shape
+        t_max = activations.shape[1]
         # Construction-time presentation coord is ONLY stimulus_id —
         # multiple presentation coords here would build a MultiIndex via
         # gather_indexes that conflicts with downstream assign_coords on
-        # stimulus_id (e.g., from _attach_stimulus_set_meta). Extra coords are
+        # stimulus_id (e.g., from attach_stimulus_set). Extra coords are
         # attached AFTER construction as non-indexed coords.
-        coords = {
-            'stimulus_id': ('presentation', list(range(n_texts))),
-            **make_layer_neuroid_coords(
-                self._identifier, layer_name, n_features,
-                include=('neuroid_id', 'neuroid_num', 'model', 'layer')),
-        }
-        assembly = make_assembly(
-            activations,
-            coords=coords,
-            dims=['presentation', 'time_bin', 'neuroid'],
-        )
+        assembly = layer_assembly(self._identifier, layer_name, activations)
         if token_lengths is not None:
             assembly = assembly.assign_coords(
                 token_length=('presentation', list(map(int, token_lengths))))
@@ -752,37 +621,6 @@ class TextWrapper:
         return assembly.assign_coords(
             time_bin_start_ms=(('presentation', 'time_bin'), start),
             time_bin_end_ms=(('presentation', 'time_bin'), end))
-
-    def _attach_stimulus_set_meta(self, assembly, stimulus_set):
-        """Attach stimulus set metadata as coordinates on the presentation dim.
-
-        Resets any existing presentation MultiIndex first so re-assigning
-        stimulus_id (and any other column) doesn't collide with a pre-built
-        MultiIndex level. The MultiIndex was created by gather_indexes
-        during NeuroidAssembly construction and only matters for the 3D
-        per_token output where ``token_length`` adds a second presentation
-        coord; in the 2D case the reset is a no-op.
-        """
-        if 'presentation' in assembly.indexes:
-            try:
-                assembly = assembly.reset_index('presentation')
-            except (ValueError, KeyError):
-                # Older xarray builds raise on reset_index of a non-MultiIndex
-                # presentation dim; safe to ignore — assign_coords below will
-                # handle the simple case.
-                pass
-
-        stimulus_ids = list(stimulus_set['stimulus_id'].values)
-        assembly = assembly.assign_coords(
-            stimulus_id=('presentation', stimulus_ids))
-
-        for column in stimulus_set.columns:
-            if column == 'stimulus_id':
-                continue
-            assembly = assembly.assign_coords(
-                {column: ('presentation', list(stimulus_set[column].values))})
-
-        return assembly
 
 
 # Recording several layers in one call gives, for each layer, exactly what a

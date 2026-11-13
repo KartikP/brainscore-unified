@@ -5,8 +5,9 @@ One registration declares, and answers through ``participate`` (or ``process``):
 - recording: ``neural:<region>`` (``TextWrapper``; layer names accept the
   ``':input'`` site, e.g. ``'model.layers.14.mlp.down_proj:input'``), e.g. via
   ``brainscore_core.streaming_helpers.neural_response``,
-- interventions: ``lesion`` / ``stimulation`` (``build_pytorch_ablation_fn``; use
-  ``brainscore.instrumentation.intervene`` to apply one and undo only it),
+- interventions: ``lesion`` / ``stimulation`` (``build_pytorch_ablation_fn``; send one
+  with ``brainscore_core.streaming_helpers.apply_state_change`` or the ``Intervene``
+  tool, and undo only it with a reset ``StateChange`` that names its handle),
 - a ``reply`` part: a written answer to the trial's text through the chat
   template, under the task's generation settings (``Text(max_tokens=...,
   temperature=..., top_p=..., seed=...)``),

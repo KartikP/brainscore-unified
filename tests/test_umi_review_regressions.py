@@ -360,7 +360,8 @@ def test_context_expansion_preserves_stimulus_identifier(monkeypatch):
     seen = []
     monkeypatch.setattr(wrapper, '_from_texts_cached',
                         lambda texts, layers, identifier: seen.append((texts, identifier)))
-    monkeypatch.setattr(wrapper, '_attach_stimulus_set_meta', lambda output, stimuli: output)
+    monkeypatch.setattr('brainscore.model_helpers.text_wrapper.attach_stimulus_set',
+                        lambda output, stimuli: output)
     stimuli = _stimuli()
     wrapper._from_stimulus_set(stimuli, ['L'])
     stimuli['context_id'] = 'passage'

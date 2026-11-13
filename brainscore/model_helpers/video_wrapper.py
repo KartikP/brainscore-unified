@@ -28,10 +28,9 @@ The output assembly already has a ``time_bin`` dimension; downstream code
 matches against fMRI TRs) consumes it directly.
 
 Design symmetry with other wrappers:
-    - Identifier property → used by @store_xarray caching key
+    - ``backbone_id`` (default: the identifier) keys the @store_xarray cache
     - Accepts a StimulusSet with ``video_path`` column (or list of paths)
     - Takes ``layers`` kwarg; returns NeuroidAssembly
-    - No new methods — just the __call__ contract
 
 Design asymmetry (video-specific):
     - Accepts a configurable ``frame_sampler`` to extract T frames per video
@@ -66,9 +65,9 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
 )
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.temporal import window_plan
-from brainscore_core.extraction_cache import (
-    store_xarray, extraction_fingerprint, wrapper_config, file_inputs,
-)
+from brainscore_core.extraction_cache import store_xarray, file_inputs
+from brainscore.model_helpers import _extractors
+from brainscore.model_helpers._extractors import as_float32, cache_signature, hooked
 
 
 logger = logging.getLogger(__name__)
@@ -165,9 +164,6 @@ class VideoWrapper:
         forward_kwargs: Extra kwargs passed to the model's forward call
             for every batch (static only — no per-batch dynamic kwargs
             in this version).
-        hook_time_axis: Which axis of the hook output corresponds to time.
-            Default 1 (after batch). Set to 0 if hook drops the batch dim.
-            Ignored when ``post_hook_fn`` is set.
         post_hook_fn: Optional callable applied to raw hook output before
             the wrapper assumes a ``(B, T, features)`` layout. Use this for
             models whose hook output interleaves time and space in the
@@ -182,7 +178,6 @@ class VideoWrapper:
             video models have large T×C×H×W tensors.
         context_window_ms: If set, process long clips in windows of this
             duration instead of one whole-clip forward pass.
-        context_stride_ms: Window stride; defaults to ``context_window_ms``.
         context_strategy: Window placement strategy passed to
             ``window_plan``. Defaults to ``'block'``.
         out_of_bound: Padding for windows outside the clip: ``'repeat'``,
@@ -201,12 +196,10 @@ class VideoWrapper:
         num_frames: Optional[int] = None,
         frame_sampler: Optional[Callable] = None,
         forward_kwargs: Optional[Dict] = None,
-        hook_time_axis: int = 1,
         post_hook_fn: Optional[Callable[[np.ndarray], np.ndarray]] = None,
         t_to_time_ms_fn: Optional[Callable[[int, float], List[float]]] = None,
         batch_size: int = 1,
         context_window_ms: Optional[float] = None,
-        context_stride_ms: Optional[float] = None,
         context_strategy: str = 'block',
         out_of_bound: str = 'repeat',
         max_clip_ms: Optional[float] = None,
@@ -219,13 +212,11 @@ class VideoWrapper:
         self._num_frames = num_frames
         self._frame_sampler = frame_sampler or default_uniform_frame_sampler
         self._forward_kwargs = dict(forward_kwargs or {})
-        self._hook_time_axis = hook_time_axis
         self._post_hook_fn = post_hook_fn
         self._t_to_time_ms_fn = t_to_time_ms_fn or _default_time_mapping
         self._batch_size = batch_size
         # Long-clip temporal context (additive; None = current whole-clip path).
         self._context_window_ms = context_window_ms
-        self._context_stride_ms = context_stride_ms
         self._context_strategy = context_strategy
         self._out_of_bound = out_of_bound
         self._max_clip_ms = max_clip_ms
@@ -243,10 +234,6 @@ class VideoWrapper:
     @property
     def identifier(self) -> str:
         return self._identifier
-
-    @identifier.setter
-    def identifier(self, value: str) -> None:
-        self._identifier = value
 
     @property
     def backbone_id(self) -> str:
@@ -300,37 +287,24 @@ class VideoWrapper:
         '_num_frames',
         '_frame_sampler',
         '_forward_kwargs',
-        '_hook_time_axis',
         '_post_hook_fn',
         '_t_to_time_ms_fn',
         '_batch_size',
         '_context_window_ms',
-        '_context_stride_ms',
         '_context_strategy',
         '_out_of_bound',
         '_max_clip_ms',
     )
 
     def cache_config(self):
-        return wrapper_config(self, self.CACHE_FIELDS)
+        return _extractors.cache_config(self, self.CACHE_FIELDS)
 
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
-        if self._backbone_id and stimuli_identifier:
-            signature = extraction_fingerprint(
-                {"configuration": self.cache_config(), "inputs": file_inputs(paths)},
-                cache_identifier=(f'{type(self).__module__}.{type(self).__name__}'
-                                  f'._from_paths_stored/identifier={self._backbone_id}'),
-            )
-            if signature is None:
-                return self._from_paths(paths, layers, stimuli_identifier)
-            return self._from_paths_stored(
-                identifier=self._backbone_id,
-                stimuli_identifier=stimuli_identifier,
-                layers=layers,
-                paths=paths,
-                extraction_fingerprint=signature,
-            )
-        return self._from_paths(paths, layers, stimuli_identifier)
+        signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
+        if signature is None:
+            return self._from_paths(paths, layers, stimuli_identifier)
+        return self._from_paths_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
+                                       layers=layers, paths=paths, extraction_fingerprint=signature)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
@@ -392,17 +366,9 @@ class VideoWrapper:
         if video_batch.dtype != model_dtype and video_batch.is_floating_point():
             video_batch = video_batch.to(model_dtype)
 
-        layer_outputs: OrderedDict = OrderedDict()
-        hooks = []
-        try:
-            for name in layers:
-                hooks.append(self._register_hook(self._get_layer(name), name, layer_outputs))
-            self._model.eval()
-            with torch.no_grad():
-                self._model(video_batch, **self._forward_kwargs)
-        finally:
-            for hook in hooks:
-                hook.remove()
+        self._model.eval()
+        with hooked(self._model, layers, as_float32) as layer_outputs, torch.no_grad():
+            self._model(video_batch, **self._forward_kwargs)
         return {ln: self._flatten_layer_output(arr) for ln, arr in layer_outputs.items()}
 
     def _clip_duration_ms(self, path) -> Tuple[float, int, float]:
@@ -444,7 +410,6 @@ class VideoWrapper:
         """Chunked path: window the clip, forward each window, stitch to clip time."""
         duration_ms, total, fps = self._clip_duration_ms(path)
         windows = window_plan(duration_ms, self._context_window_ms,
-                              stride_ms=self._context_stride_ms,
                               strategy=self._context_strategy)
         nf = self._num_frames or max(
             1, int(round(self._context_window_ms / 1000.0 * self._target_fps)))
@@ -500,9 +465,8 @@ class VideoWrapper:
 
         If ``post_hook_fn`` was provided, defer to it — it handles
         arbitrary time/space layouts (e.g., VideoMAE's interleaved
-        seq_len). Otherwise use ``hook_time_axis`` to identify the
-        temporal dim in the hook's output, then flatten everything
-        after (B, T) into ``features``.
+        seq_len). Otherwise axis 1 is time, and everything after (B, T)
+        is flattened into ``features``.
         """
         if self._post_hook_fn is not None:
             out = self._post_hook_fn(arr)
@@ -515,30 +479,12 @@ class VideoWrapper:
             raise ValueError(
                 f"VideoWrapper hook output has ndim={arr.ndim}, expected >=2 "
                 f"(at minimum (B, T, ...)).")
-        if self._hook_time_axis != 1:
-            arr = np.moveaxis(arr, self._hook_time_axis, 1)
         B, T = arr.shape[0], arr.shape[1]
         return arr.reshape(B, T, -1)
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
         return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
-
-    def _get_layer(self, layer_name: str):
-        module = self._model
-        for part in layer_name.split('.'):
-            module = getattr(module, part, None)
-            if module is None:
-                raise ValueError(
-                    f"Layer '{layer_name}' not found at part '{part}'")
-        return module
-
-    def _register_hook(self, layer, layer_name: str, target_dict: OrderedDict):
-        def hook_fn(_module, _input, output, name=layer_name):
-            if isinstance(output, (tuple, list)):
-                output = output[0]
-            target_dict[name] = output.detach().cpu().float().numpy()
-        return layer.register_forward_hook(hook_fn)
 
     def _package(
         self,

@@ -29,6 +29,8 @@ class FailingModel(torch.nn.Module):
 @pytest.mark.parametrize('failure', ['forward', 'interrupt', 'registration'])
 def test_failed_extraction_removes_only_its_hooks(kind, failure, tmp_path):
     error = KeyboardInterrupt if failure == 'interrupt' else RuntimeError
+    if failure == 'registration' and kind != 'vision':
+        error = ValueError          # the unified extractors' own lookup of an unknown layer
     model = FailingModel(error)
     retained = model.layer.register_forward_hook(lambda *_: None)
     classes = dict(vision=PytorchWrapper, text=TextWrapper,
@@ -58,8 +60,9 @@ def test_failed_extraction_removes_only_its_hooks(kind, failure, tmp_path):
             lambda module, args, output: target_dict.__setitem__(
                 name, output.detach().numpy()))
 
-    wrapper.get_layer = wrapper._get_layer = get_layer
-    wrapper.register_hook = wrapper._register_hook = register
+    if kind == 'vision':            # the legacy wrapper looks layers up through its own methods
+        wrapper.get_layer = get_layer
+        wrapper.register_hook = register
     path = tmp_path / 'image.png'
     Image.new('RGB', (2, 2)).save(path)
     layers = ['layer', 'missing'] if failure == 'registration' else ['layer']

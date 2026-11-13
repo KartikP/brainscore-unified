@@ -1,4 +1,4 @@
-"""Shared device selection for the activations-model wrappers."""
+"""Shared device selection for the extractor wrappers."""
 
 
 def select_device(device=None):

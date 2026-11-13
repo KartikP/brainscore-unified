@@ -34,14 +34,11 @@ Long clips are split into consecutive, non-overlapping chunks of at most
 to mono before the processor.
 """
 
-import functools
 import logging
-import warnings
 from collections import OrderedDict
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional
 
 import numpy as np
-from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import (
     concat_neuroid_assemblies,
@@ -50,8 +47,10 @@ from brainscore_core.assembly_builder import (
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core.extraction_cache import (
-    store_xarray, extraction_fingerprint, wrapper_config, file_inputs,
+from brainscore_core.extraction_cache import store_xarray, file_inputs
+from brainscore.model_helpers import _extractors
+from brainscore.model_helpers._extractors import (
+    as_array, attach_stimulus_set, cache_signature, hooked, run_batches,
 )
 
 
@@ -121,9 +120,6 @@ class AudioWrapper:
             models are memory-hungry at long T.
         audio_loader: Optional callable ``(path, target_sr) -> 1-D float32
             waveform``. Defaults to torchaudio → librosa fallback.
-        audio_input_key: Reserved compatibility parameter. The current
-            implementation forwards the processor output dictionary unchanged
-            and does not remap a tensor with this value.
     """
 
     VALID_AGGREGATIONS = ('mean_time', 'time_series')
@@ -139,7 +135,6 @@ class AudioWrapper:
         max_duration_sec: Optional[float] = 60.0,
         batch_size: int = 4,
         audio_loader: Optional[Callable[[str, int], np.ndarray]] = None,
-        audio_input_key: str = 'input_values',
         device: Optional[str] = None,
     ):
         import torch
@@ -156,7 +151,6 @@ class AudioWrapper:
         self._max_duration_sec = max_duration_sec
         self._batch_size = batch_size
         self._audio_loader = audio_loader or _default_audio_loader
-        self._audio_input_key = audio_input_key
 
         from brainscore.model_helpers._device import select_device
         self._device = select_device(device)
@@ -190,10 +184,6 @@ class AudioWrapper:
     def identifier(self) -> str:
         return self._identifier
 
-    @identifier.setter
-    def identifier(self, value: str) -> None:
-        self._identifier = value
-
     @property
     def backbone_id(self) -> str:
         return self._backbone_id
@@ -226,8 +216,7 @@ class AudioWrapper:
             stimuli_identifier = stimulus_set.identifier
         paths = self._extract_paths(stimulus_set)
         activations = self._from_paths_cached(paths, layers, stimuli_identifier)
-        activations = self._attach_stimulus_set_meta(activations, stimulus_set)
-        return activations
+        return attach_stimulus_set(activations, stimulus_set)
 
     @staticmethod
     def _extract_paths(stimulus_set) -> List[str]:
@@ -248,30 +237,18 @@ class AudioWrapper:
         '_max_duration_sec',
         '_batch_size',
         '_audio_loader',
-        '_audio_input_key',
         '_target_sample_rate',
     )
 
     def cache_config(self):
-        return wrapper_config(self, self.CACHE_FIELDS)
+        return _extractors.cache_config(self, self.CACHE_FIELDS)
 
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
-        if self._backbone_id and stimuli_identifier:
-            signature = extraction_fingerprint(
-                {"configuration": self.cache_config(), "inputs": file_inputs(paths)},
-                cache_identifier=(f'{type(self).__module__}.{type(self).__name__}'
-                                  f'._from_paths_stored/identifier={self._backbone_id}'),
-            )
-            if signature is None:
-                return self._from_paths(paths, layers, stimuli_identifier)
-            return self._from_paths_stored(
-                identifier=self._backbone_id,
-                stimuli_identifier=stimuli_identifier,
-                layers=layers,
-                paths=paths,
-                extraction_fingerprint=signature,
-            )
-        return self._from_paths(paths, layers, stimuli_identifier)
+        signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
+        if signature is None:
+            return self._from_paths(paths, layers, stimuli_identifier)
+        return self._from_paths_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
+                                       layers=layers, paths=paths, extraction_fingerprint=signature)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
@@ -414,34 +391,15 @@ class AudioWrapper:
         pads internally anyway; we just lift that to a global pad so the
         per-batch shape is fixed.
         """
-        total = len(waveforms)
-        if total > 0:
+        if waveforms:
             max_len = max(len(w) for w in waveforms)
             waveforms = [
                 w if len(w) == max_len
                 else np.pad(w, (0, max_len - len(w)), mode='constant')
                 for w in waveforms
             ]
-
-        layer_outputs: Optional[OrderedDict] = None
-        for batch_start in tqdm(range(0, total, self._batch_size),
-                                unit_scale=self._batch_size,
-                                desc="audio activations"):
-            batch_end = min(batch_start + self._batch_size, total)
-            batch_waveforms = waveforms[batch_start:batch_end]
-
-            batch_activations = self._run_one_batch(batch_waveforms, layers)
-
-            if layer_outputs is None:
-                layer_outputs = OrderedDict()
-                for layer_name, layer_output in batch_activations.items():
-                    final_shape = (total,) + layer_output.shape[1:]
-                    layer_outputs[layer_name] = np.empty(
-                        final_shape, dtype=layer_output.dtype)
-            for layer_name, layer_output in batch_activations.items():
-                layer_outputs[layer_name][batch_start:batch_end] = layer_output
-
-        return layer_outputs
+        return run_batches(waveforms, self._batch_size, lambda batch: self._run_one_batch(batch, layers),
+                           'audio activations')
 
     def _run_one_batch(self, batch_waveforms, layers):
         import torch
@@ -457,19 +415,9 @@ class AudioWrapper:
         processed = {k: (v.to(self._device) if torch.is_tensor(v) else v)
                      for k, v in processed.items()}
 
-        layer_results: OrderedDict = OrderedDict()
-        hooks = []
-        for layer_name in layers:
-            layer = self._get_layer(layer_name)
-            hooks.append(self._register_hook(layer, layer_name, layer_results))
-
         self._model.eval()
-        try:
-            with torch.no_grad():
-                self._model(**processed)
-        finally:
-            for h in hooks:
-                h.remove()
+        with hooked(self._model, layers, as_array) as layer_results, torch.no_grad():
+            self._model(**processed)
 
         attention_mask = processed.get('attention_mask')
 
@@ -528,31 +476,9 @@ class AudioWrapper:
             out[layer_name] = act
         return out
 
-    # ── Hook plumbing ───────────────────────────────────────────────
-
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
         return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
-
-    def _get_layer(self, layer_name: str):
-        module = self._model
-        for part in layer_name.split('.'):
-            if part.isdigit() and hasattr(module, '__getitem__'):
-                module = module[int(part)]
-            else:
-                module = getattr(module, part, None)
-                if module is None:
-                    raise ValueError(
-                        f"Layer path {layer_name!r} broke at part "
-                        f"{part!r} while walking {self._identifier}.")
-        return module
-
-    def _register_hook(self, layer, layer_name, target_dict):
-        def hook_fn(_module, _input, output, name=layer_name):
-            if isinstance(output, (tuple, list)):
-                output = output[0]
-            target_dict[name] = output.detach().cpu().numpy()
-        return layer.register_forward_hook(hook_fn)
 
     # ── Packaging ───────────────────────────────────────────────────
 
@@ -627,36 +553,3 @@ class AudioWrapper:
             coords=coords,
             dims=['presentation', 'time_bin', 'neuroid'],
         )
-
-    def _attach_stimulus_set_meta(self, activations, stimulus_set):
-        """Copy stimulus-set columns into the presentation axis.
-
-        Resets any existing presentation MultiIndex first so re-assigning
-        ``stimulus_id`` doesn't collide with a pre-built MultiIndex level
-        (which gather_indexes builds during NeuroidAssembly construction
-        whenever there are multiple presentation coords). Same fix as
-        TextWrapper. The reset is a no-op when presentation has only the
-        single stimulus_id coord.
-        """
-        stimulus_ids = list(stimulus_set['stimulus_id'].values)
-        n = len(stimulus_ids)
-        if activations.sizes['presentation'] != n:
-            raise ValueError(
-                f"Mismatch between activations ({activations.sizes['presentation']}) "
-                f"and stimulus set ({n}) on the presentation axis."
-            )
-        if 'presentation' in activations.indexes:
-            try:
-                activations = activations.reset_index('presentation')
-            except (ValueError, KeyError):
-                pass
-        activations = activations.assign_coords({
-            'stimulus_id': ('presentation', stimulus_ids),
-        })
-        for column in stimulus_set.columns:
-            if column == 'stimulus_id':
-                continue
-            activations = activations.assign_coords({
-                column: ('presentation', list(stimulus_set[column].values)),
-            })
-        return activations

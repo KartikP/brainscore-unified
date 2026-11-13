@@ -63,7 +63,6 @@ def _build_random_wav2vec2(identifier: str):
         max_duration_sec=60.0,
         batch_size=4,
         audio_loader=_wav_loader,
-        audio_input_key='input_values',
     )
     return wrapper
 
