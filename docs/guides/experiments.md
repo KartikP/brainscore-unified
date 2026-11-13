@@ -67,8 +67,11 @@ For interventions, attach `Intervene(change, conditions=[...])` after the record
 It sends the intervention with `apply_state_change` at the start of each matching
 repetition and undoes it by its handle at the end. This is the one way to change a
 subject in an experiment ([Perturb and select units](perturb_and_select_units.md)). A readout is fitted on the network as it is during the run (`readout_fit='current'`,
-the default). `TaskContext(..., readout_fit='intact')` fits it with every change undone and
-tests the changed network, as an animal trained before a lesion is tested after it.
+the default). `TaskContext(..., readout_fit='intact')` fits it with every change switched
+off and tests the changed network, as an animal trained before a lesion is tested after it.
+Each change stays in place during the fit, so the order of the hooks on the network does
+not change. Only a change made by `build_pytorch_ablation_fn` can be switched off; with
+another intervention part active, the fit stops with an error.
 
 For models that generate answers, `RecordNeural(..., during='prompt')` keeps the prompt
 forward pass. The extractor must support recording during answers. Declared channels

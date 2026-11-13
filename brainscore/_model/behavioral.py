@@ -149,7 +149,7 @@ class BehavioralReadout:
         """The model changed (an intervention was applied or undone): fit again next time.
 
         A configuration with ``readout_fit='intact'`` stays: its readout was
-        fitted with every intervention undone, so a change leaves it as it is.
+        fitted with every intervention switched off, so a change leaves it as it is.
         """
         if not _fitted_intact(self.task):
             self._stale = True
@@ -534,9 +534,10 @@ class BehavioralReadout:
         """
         owner = self.owner
         from brainscore_core.compatibility import CompatibilityError
-        from .dispatch import extractor_for
+        from .dispatch import _is_clip, extractor_for
         from .recording import record_part, records_while_answering
-        cannot = [region for region in layers if not records_while_answering(owner, region)]
+        form = (_is_clip(stimuli),)
+        cannot = [region for region in layers if not records_while_answering(owner, region, form)]
         if cannot:
             raise CompatibilityError(
                 f'Subject {owner.identifier!r} cannot record {cannot} while it answers or acts: '
@@ -708,11 +709,10 @@ class BehavioralReadout:
 
 
 def _fitted_intact(task) -> bool:
-    """Whether a configuration for ``task`` is fitted with every intervention undone."""
+    """Whether a configuration for ``task`` is fitted with every intervention switched off."""
     return task is not None and task.readout_fit == 'intact'
 
 
-@contextmanager
 def _hook_recording(model, layers, identifier):
     """Forward hooks on ``model`` for extractors without ``record()``.
 
@@ -720,44 +720,18 @@ def _hook_recording(model, layers, identifier):
     output flattened per presentation, as a still-image extractor packages it.
     """
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-    from .recording import module_at
+    from brainscore.model_helpers._extractors import LiveRecording, as_float32
 
-    modules = {layer: module_at(model, layer) for layer in layers}   # unknown paths fail before compute
-    missing = [layer for layer, module in modules.items() if module is None]
-    if missing:
-        raise NotImplementedError(f'Layer {missing[0]!r} is not a module of the model passed as model=; '
-                                  'give the extractor a record(layers) method.')
-    captured = {}
-
-    def keep(layer):
-        def hook(_module, _inputs, output):
-            if layer not in captured:
-                output = output[0] if isinstance(output, (tuple, list)) else output
-                captured[layer] = np.asarray(output.detach().float().cpu().numpy())
-        return hook
-
-    handles = [module.register_forward_hook(keep(layer)) for layer, module in modules.items()]
-
-    class Recording:
-        @staticmethod
-        def take():
-            missing = [layer for layer in layers if layer not in captured]
-            if missing:
-                raise ValueError(f'No forward pass reached {missing} since the last presentation.')
-            rows = {layer: captured[layer].reshape(1, -1) for layer in layers}
-            captured.clear()
-            values = np.concatenate([rows[layer] for layer in layers], axis=1)
-            neuroid_layers = [layer for layer in layers for _ in range(rows[layer].shape[1])]
-            numbers = [i for layer in layers for i in range(rows[layer].shape[1])]
-            return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
-                'stimulus_id': ('presentation', ['?']),
-                'neuroid_id': ('neuroid', [f'{identifier}.{l}.{i}' for l, i in zip(neuroid_layers, numbers)]),
-                'neuroid_num': ('neuroid', numbers), 'layer': ('neuroid', neuroid_layers)})
-    try:
-        yield Recording()
-    finally:
-        for handle in handles:
-            handle.remove()
+    def take(first, _call):
+        rows = {layer: first[layer].reshape(1, -1) for layer in layers}
+        values = np.concatenate([rows[layer] for layer in layers], axis=1)
+        neuroid_layers = [layer for layer in layers for _ in range(rows[layer].shape[1])]
+        numbers = [i for layer in layers for i in range(rows[layer].shape[1])]
+        return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ['?']),
+            'neuroid_id': ('neuroid', [f'{identifier}.{l}.{i}' for l, i in zip(neuroid_layers, numbers)]),
+            'neuroid_num': ('neuroid', numbers), 'layer': ('neuroid', neuroid_layers)})
+    return LiveRecording(model, model, layers, take, as_float32)
 
 
 def _legacy_one_hot(answers, label_set, stimuli):

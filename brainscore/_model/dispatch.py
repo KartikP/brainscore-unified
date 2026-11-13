@@ -61,12 +61,18 @@ def fused_for(owner, detected):
 
 
 def extractor_for(owner, modality: str, stimuli):
-    """The extractor for ``modality``; with a still and a clip extractor, the one
-    matching the stimulus's form. None when the model has no such extractor."""
+    """The extractor for ``modality`` that reads ``stimuli`` (see ``extractor_for_form``)."""
+    return extractor_for_form(owner, modality, video=_is_clip(stimuli))
+
+
+def extractor_for_form(owner, modality: str, video: bool):
+    """The extractor for ``modality``; with an image and a video extractor, the one
+    for the form: ``vision:video`` when ``video``, else ``vision:image``. None when
+    the model has no such extractor."""
     modality = canonical_modality(modality)
     matching = [key for key in owner._extractors if canonical_modality(key) == modality]
     if len(matching) > 1 and modality == 'vision':
-        wanted = 'video' if _is_clip(stimuli) else 'vision'
+        wanted = 'video' if video else 'vision'
         matching = [key for key in matching if key == wanted] or matching
     return owner._extractors[matching[0]] if matching else None
 

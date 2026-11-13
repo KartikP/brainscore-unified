@@ -90,68 +90,6 @@ def _mean_pearson(Y_true_centered, Y_true_var, Y_pred):
     return float(np.mean(r))
 
 
-def banded_ridge_fit_predict(train_groups, test_groups, Y_train, alpha_grid,
-                             val_frac=0.2, seed=0):
-    """Banded ridge: one α per feature group, refit on the full training fold.
-
-    Args:
-        train_groups: list of 2-D arrays ``(n_train, n_features_g)``, one per
-            band/modality. Columns are concatenated; group ``g`` gets α_g.
-        test_groups: parallel list of ``(n_test, n_features_g)`` arrays.
-        Y_train: ``(n_train, n_targets)``.
-        alpha_grid: candidate α values searched as the full Cartesian product
-            over groups (cost = ``len(alpha_grid) ** len(train_groups)`` solves).
-        val_frac: fraction of the training fold held out to score α-tuples.
-        seed: RNG seed for the validation split.
-
-    Returns:
-        ``(Y_test_pred, best_alpha_tuple)``.
-    """
-    n_groups = len(train_groups)
-    rng = np.random.default_rng(seed)
-    n_train = train_groups[0].shape[0]
-    n_val = max(1, int(round(n_train * val_frac)))
-    perm = rng.permutation(n_train)
-    val_idx = perm[:n_val]
-    inner_idx = perm[n_val:]
-    sizes = [g.shape[1] for g in train_groups]
-
-    def stack(groups, idx):
-        return np.concatenate([g[idx] for g in groups], axis=1)
-
-    X_inner = stack(train_groups, inner_idx)
-    X_val = stack(train_groups, val_idx)
-    Y_inner = Y_train[inner_idx]
-    Y_val = Y_train[val_idx]
-
-    # Hoist the (n_obs × n_feat × n_feat) matmul out of the α-grid loop —
-    # only diag(λ) changes per α-tuple. One matmul + n_grid solves.
-    XtX_inner = X_inner.T @ X_inner
-    XtY_inner = X_inner.T @ Y_inner
-    Y_val_centered = Y_val - Y_val.mean(axis=0)
-    Y_val_var = (Y_val_centered ** 2).sum(axis=0)
-
-    def lam_for(alphas):
-        return np.concatenate([np.full(sizes[g], alphas[g])
-                               for g in range(n_groups)])
-
-    best_score = -np.inf
-    best_alpha = None
-    for alphas in product(*([alpha_grid] * n_groups)):
-        W = np.linalg.solve(XtX_inner + np.diag(lam_for(alphas)), XtY_inner)
-        score = _mean_pearson(Y_val_centered, Y_val_var, X_val @ W)
-        if score > best_score:
-            best_score = score
-            best_alpha = alphas
-
-    # Refit on the full training fold with the chosen α-tuple.
-    X_full_train = stack(train_groups, slice(None))
-    X_full_test = stack(test_groups, slice(None))
-    W = np.linalg.solve(X_full_train.T @ X_full_train + np.diag(lam_for(best_alpha)),
-                        X_full_train.T @ Y_train)
-    return X_full_test @ W, best_alpha
-
-
 # ---- brainscore/benchmarks/_scoring_utils.py ----
 
 def run_kfold_masks(run_idx, n_splits: int = 5, random_state: int = 0):
@@ -208,54 +146,6 @@ def masked_ridge_predictions(
             X[train_mask], Y[train_mask], X[test_mask],
             alpha=alpha, dtype=dtype)
     return held
-
-
-def summed_group_kfold_ridge_predictions(
-    feature_groups: Sequence[np.ndarray],
-    Y,
-    *,
-    alpha: float = 1.0,
-    n_splits: int = 5,
-    random_state: int = 0,
-    dtype=None,
-):
-    """KFold ridge per feature group, summed on the held-out folds."""
-    held = np.zeros_like(Y) if dtype is None else np.zeros(Y.shape, dtype=dtype)
-    n = feature_groups[0].shape[0]
-    for train_idx, test_idx in kfold_positions(
-            n, n_splits=n_splits, random_state=random_state):
-        for group in feature_groups:
-            held[test_idx] += ridge_fit_predict(
-                group[train_idx], Y[train_idx], group[test_idx],
-                alpha=alpha, dtype=dtype)
-    return held
-
-
-def callback_group_kfold_predictions(
-    feature_groups: Sequence[np.ndarray],
-    Y,
-    predict_fold,
-    *,
-    n_splits: int = 5,
-    random_state: int = 0,
-    dtype=None,
-):
-    """KFold predictions for feature groups using a caller-provided fold fit."""
-    held = np.zeros_like(Y) if dtype is None else np.zeros(Y.shape, dtype=dtype)
-    fold_info = []
-    n = feature_groups[0].shape[0]
-    for train_idx, test_idx in kfold_positions(
-            n, n_splits=n_splits, random_state=random_state):
-        train_groups = [group[train_idx] for group in feature_groups]
-        test_groups = [group[test_idx] for group in feature_groups]
-        result = predict_fold(train_groups, test_groups, Y[train_idx])
-        if isinstance(result, tuple):
-            pred, info = result
-            fold_info.append(info)
-        else:
-            pred = result
-        held[test_idx] = pred if dtype is None else np.asarray(pred, dtype=dtype)
-    return held, fold_info
 
 
 def finite_per_unit_pearson(Y_true, Y_pred):
@@ -687,63 +577,6 @@ def tr_cross_validated_ridge_within_participant(X_flat, Y_flat,
     return np.nanmean(per_participant_r, axis=0).astype(np.float32)
 
 
-# ---- brainscore/benchmarks/lahner2024/benchmark_timeresolved_multimodal.py (methods) ----
-
-def tr_multimodal_fit_score_with_groups(mode, n_pooled_splits, alpha_grid, feature_groups, Y_flat,
-                           run_idx_per_obs, subject_per_obs):
-    """Mode-specific ridge fit. Returns per-voxel Pearson r.
-
-    Voxel-batched (VOXEL_BATCH=2000) to keep peak memory bounded —
-    same pattern as the parent class's _cross_validated_ridge.
-    Without this, scoring on the 4042-voxel visualROI variant OOMs
-    around the held_out_preds shadow array + sklearn's per-fold
-    Y copies (CLAUDE.md note from M12-lite).
-    """
-    n_obs, n_voxels = Y_flat.shape
-    # Outer CV: shuffled K-fold over whole runs, subjects pooled
-    # (cv_mode='pooled_run_kfold'). subject_per_obs is not used.
-    fold_masks = list(run_kfold_masks(
-        run_idx_per_obs, n_splits=n_pooled_splits,
-        random_state=0))
-
-    per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)
-    VOXEL_BATCH = 2000
-    for v_start in range(0, n_voxels, VOXEL_BATCH):
-        v_end = min(v_start + VOXEL_BATCH, n_voxels)
-        Y_sub = Y_flat[:, v_start:v_end]
-        held_out_preds = np.full_like(Y_sub, np.nan, dtype=np.float32)
-
-        for tr_mask, te_mask in fold_masks:
-            Y_tr = Y_sub[tr_mask]
-            if mode == 'banded':
-                preds = tr_multimodal_banded_fit_predict(
-                    feature_groups, tr_mask, te_mask, Y_tr, alpha_grid)
-                held_out_preds[te_mask] = preds.astype(np.float32)
-            else:
-                preds = np.zeros((te_mask.sum(), v_end - v_start),
-                                 dtype=np.float32)
-                for group in feature_groups:
-                    preds += ridge_fit_predict(
-                        group[tr_mask], Y_tr, group[te_mask], alpha=1.0)
-                held_out_preds[te_mask] = preds
-
-        per_voxel_r[v_start:v_end] = valid_prediction_per_unit_pearson(
-            Y_sub, held_out_preds)
-
-    return per_voxel_r
-
-def tr_multimodal_banded_fit_predict(feature_groups, tr_mask, te_mask, Y_tr, alpha_grid):
-    """Banded ridge over (video, audio) feature groups — see
-    ``tools.banded_ridge``. Masks are applied here; row-indexing
-    commutes with the column-concat done inside the shared helper, so
-    this is equivalent to stacking-then-masking."""
-    train_groups = [g[tr_mask] for g in feature_groups]
-    test_groups = [g[te_mask] for g in feature_groups]
-    preds, _ = banded_ridge_fit_predict(
-        train_groups, test_groups, Y_tr, alpha_grid)
-    return preds
-
-
 # ---- brainscore/benchmarks/lahner2024/benchmark.py (inline code) ----
 
 def lahner_split_half_pearson(A, B):
@@ -763,22 +596,6 @@ def lahner_glm_score(model_mat, neural_mat):
         model_mat, neural_mat, alpha=1.0, n_splits=5,
         random_state=0, dtype=None)
     return pearson_summary(neural_mat, fold_preds)
-
-
-def lahner_multimodal_score(mode, features_groups, neural_mat, alpha_grid):
-    """``Lahner2024BOLDMoments_multimodal.__call__``, the fit."""
-    def banded(X_train_groups, X_test_groups, Y_train):
-        return banded_ridge_fit_predict(X_train_groups, X_test_groups, Y_train, alpha_grid)
-    chosen_alphas = []
-    if mode == 'banded':
-        fold_preds, chosen_alphas = callback_group_kfold_predictions(
-            features_groups, neural_mat, banded,
-            n_splits=5, random_state=0, dtype=None)
-    else:
-        fold_preds = summed_group_kfold_ridge_predictions(
-            features_groups, neural_mat, alpha=1.0, n_splits=5,
-            random_state=0, dtype=None)
-    return pearson_summary(neural_mat, fold_preds), chosen_alphas
 
 
 def lebel_folds(X, Y, story_ids, alpha_grid, per_voxel_alpha, n_splits=5, random_state=0):

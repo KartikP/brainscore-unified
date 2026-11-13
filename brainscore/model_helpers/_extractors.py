@@ -133,9 +133,15 @@ class LiveRecording:
         self._handles = []
 
     def __enter__(self):
-        self._handles = [self._model.register_forward_pre_hook(self._watch_call, with_kwargs=True)]
-        self._handles += [_hook(module, layer, lambda value, layer=layer: self._keep_first(layer, value))
-                          for layer, module in self._modules.items()]
+        try:
+            self._handles.append(self._model.register_forward_pre_hook(self._watch_call,
+                                                                       with_kwargs=True))
+            for layer, module in self._modules.items():
+                self._handles.append(_hook(module, layer, lambda value, layer=layer:
+                                           self._keep_first(layer, value)))
+        except BaseException:
+            self.__exit__()
+            raise
         return self
 
     def __exit__(self, *exception):

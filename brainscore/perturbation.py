@@ -4,7 +4,9 @@ Lives in ``unified`` (not ``core``) because it depends on ``torch``.
 :func:`build_pytorch_ablation_fn` turns a torch module into an intervention
 part that installs a forward hook to zero, scale or replace units at a layer.
 The hook is installed when the subject receives the intervention and removed
-when the intervention is undone by its handle, or by ``reset()``.
+when the intervention is undone by its handle, or by ``reset()``. Each change
+also has an on/off switch, so a readout can be fitted on the intact network
+(``readout_fit='intact'``) while every change stays in place.
 
 Usage::
 
@@ -37,11 +39,38 @@ Usage::
 from typing import Any, Callable, Tuple
 import dataclasses
 import uuid
+import weakref
 
 import numpy as np
 
 from brainscore.model_helpers.selection import split_site
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
+
+
+# The on/off switch of each change made here, keyed by its cleanup: switch(False)
+# makes the network intact and switch(True) makes the change again. The change
+# stays installed, so its hook keeps its place among the other hooks of the
+# network, and its handle and cleanup stay the same.
+_SWITCHES = weakref.WeakKeyDictionary()
+
+
+def _hooked(module, hook, site: str) -> Callable[[], None]:
+    """Install ``hook`` on ``module`` behind a switch; return its cleanup.
+
+    ``site == 'input'`` installs a forward pre-hook, otherwise a forward hook.
+    While the switch is off, the hook returns None and leaves the value as it is.
+    """
+    on = [True]
+
+    def gated(*args):
+        return hook(*args) if on[0] else None
+    handle = (module.register_forward_pre_hook(gated) if site == 'input'
+              else module.register_forward_hook(gated))
+
+    def cleanup() -> None:
+        handle.remove()
+    _SWITCHES[cleanup] = lambda active: on.__setitem__(0, active)
+    return cleanup
 
 
 def build_pytorch_ablation_fn(model: Any) -> Callable:
@@ -240,6 +269,17 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         def cleanup():
             with torch.no_grad():
                 parameter.data.copy_(saved)
+
+        edited = []
+
+        def switch(active):
+            with torch.no_grad():
+                if active:
+                    parameter.data.copy_(edited.pop())
+                else:
+                    edited.append(parameter.detach().clone())
+                    parameter.data.copy_(saved)
+        _SWITCHES[cleanup] = switch
         return PerturbationApplied(handle_id=str(uuid.uuid4()), target=state_change.target,
                                    perturbation=state_change.perturbation), cleanup
 
@@ -261,9 +301,8 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
             for head in heads:
                 _apply(hidden[..., head * head_dim:(head + 1) * head_dim], state_change.perturbation)
             return (hidden, *args[1:])
-        handle = projection.register_forward_pre_hook(hook)
         return PerturbationApplied(handle_id=str(uuid.uuid4()), target=state_change.target,
-                                   perturbation=state_change.perturbation), handle.remove
+                                   perturbation=state_change.perturbation), _hooked(projection, hook, 'input')
 
     def intervention(
         state_change: StateChange,
@@ -314,19 +353,12 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     f"'{state_change.target.layer}' with {n_units} units "
                     f"(valid 0..{n_units - 1})."
                 )
-        hook = _make_hook(state_change.target, perturbation)
-        handle = (layer.register_forward_pre_hook(hook) if site == 'input'
-                  else layer.register_forward_hook(hook))
-
+        cleanup = _hooked(layer, _make_hook(state_change.target, perturbation), site)
         applied = PerturbationApplied(
             handle_id=str(uuid.uuid4()),
             target=state_change.target,
             perturbation=state_change.perturbation,
         )
-
-        def cleanup() -> None:
-            handle.remove()
-
         return applied, cleanup
 
     return intervention

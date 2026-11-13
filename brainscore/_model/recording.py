@@ -40,37 +40,34 @@ def record_part(extractor):
         return None
 
 
-def module_at(model, path: str):
-    """The module of ``model`` at the dotted ``path``, or None when there is none."""
-    module = model
-    for part in path.split('.'):
-        if part.isdigit():
-            try:
-                module = module[int(part)]
-            except (IndexError, KeyError, TypeError):
-                return None
-        else:
-            module = getattr(module, part, None)
-        if module is None:
-            return None
-    return module
-
-
-def records_while_answering(owner, region: str) -> bool:
+def records_while_answering(owner, region: str, forms=None) -> bool:
     """Whether ``region`` can be recorded during the pass that answers or acts.
 
-    Read from what is wired: every extractor for the region's input has
-    ``record(layers)``, or every layer of the region is a module of the network
-    passed as ``model=`` (forward hooks). Pre-flight and the run use this rule,
-    so a pair that cannot record is N/A before any compute.
+    ``forms`` are input forms: True for ``vision:video``, False for
+    ``vision:image``. The run passes the form of its stimuli; pre-flight takes
+    the forms of the inputs the region is answered from (``output_inputs``).
+    For each form the extractor is the one the run selects
+    (``extractor_for_form``). It records when it has ``record(layers)``, or
+    when every layer of the region is a module of the network passed as
+    ``model=`` (forward hooks). An extractor for another form does not count.
     """
+    from .dispatch import extractor_for_form
+    from brainscore.model_helpers._extractors import get_layer
     modality = region_modality(owner, region)
-    extractors = [extractor for key, extractor in owner._extractors.items()
-                  if modality is not None and canonical_modality(key) == modality]
-    hooks = owner._model is not None and all(
-        module_at(owner._model, layer) is not None
-        for layer in region_selector(owner, region).layer_paths)
-    return bool(extractors) and all(record_part(e) is not None or hooks for e in extractors)
+    if modality is None:
+        return False
+    if forms is None:
+        listed = owner.output_inputs.get(f'neural:{region}', ())
+        forms = tuple({channel == 'vision:video' for channel in listed}) or (False, True)
+    hooks = owner._model is not None
+    if hooks:
+        try:
+            for layer in region_selector(owner, region).layer_paths:
+                get_layer(owner._model, layer)
+        except ValueError:
+            hooks = False
+    extractors = [extractor_for_form(owner, modality, video) for video in forms]
+    return any(e is not None and (record_part(e) is not None or hooks) for e in extractors)
 
 
 def declared_layers(owner, modality: Optional[str] = None):

@@ -109,7 +109,7 @@ def register() -> None:
     """Add the two channels and the capability. Call once."""
     register_channel(CatalogEntry(
         name=REQUEST,
-        kind='input',
+        direction='input',
         carried_by='StreamEvent',
         payload_contract='WordRequest(text: str)',
         handled_by=IDENTIFIER,
@@ -119,7 +119,7 @@ def register() -> None:
     ))
     register_channel(CatalogEntry(
         name=RESULT,
-        kind='output',
+        direction='output',
         carried_by='StreamEvent',
         payload_contract='WordCount(words: int, words_so_far: int)',
         handled_by=IDENTIFIER,

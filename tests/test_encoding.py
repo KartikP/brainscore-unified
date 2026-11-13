@@ -21,14 +21,12 @@ from brainscore.metrics.encoding import (
     NormalEquations,
     SklearnRidge,
     cross_validated_r,
-    each_band,
     fixed,
     grid_search,
     group_kfold,
     held_out_r,
     penalty_grid,
     random_group_split,
-    random_row_split,
     ridge,
     row_kfold,
     summarize,
@@ -85,7 +83,7 @@ class TestSolvers:
         X, Y = _data(p=7)
         bands = [X[:, :3], X[:, 3:]]
         lam = np.array([1.0] * 3 + [100.0] * 4)
-        pred, _ = ridge(grid_search([(1.0, 100.0)], partial(random_row_split)),
+        pred, _ = ridge(grid_search([(1.0, 100.0)], random_group_split),
                         NormalEquations(centre='none'))(
             [b[:90] for b in bands], Y[:90], [b[90:] for b in bands])
         expected = X[90:] @ np.linalg.solve(X[:90].T @ X[:90] + np.diag(lam),
@@ -118,7 +116,7 @@ class TestSolvers:
     def test_sklearn_refuses_a_search(self):
         X, Y = _data()
         with pytest.raises(ValueError, match='one fixed penalty'):
-            ridge(grid_search([(1.0,), (10.0,)], random_row_split), SklearnRidge())(X, Y, X)
+            ridge(grid_search([(1.0,), (10.0,)], random_group_split), SklearnRidge())(X, Y, X)
 
     def test_unknown_centre(self):
         with pytest.raises(ValueError, match='centre'):
@@ -134,7 +132,7 @@ class TestChoosers:
         X = rng.standard_normal((150, 30))
         Y = X[:, :2] @ rng.standard_normal((2, 5)) + 2.0 * rng.standard_normal((150, 5))
         grid = [(a,) for a in (1e-3, 1.0, 1e2, 1e4)]
-        split = partial(random_row_split, fraction=0.3, seed=4)
+        split = partial(random_group_split, fraction=0.3, seed=4)
         chosen = grid_search(grid, split)(NormalEquations(), [X], Y, None)
         (fit_rows, check_rows), = split(np.arange(150))
         means = [np.mean(per_unit_pearson(
@@ -163,7 +161,7 @@ class TestChoosers:
         both = np.concatenate([Y, np.full_like(Y, 7.0)], axis=1)
         grid = [(a,) for a in (1e-2, 1.0, 1e2, 1e4)]
         for undefined in ('zero', 'skip'):
-            choose = grid_search(grid, random_row_split, undefined_r=undefined)
+            choose = grid_search(grid, random_group_split, undefined_r=undefined)
             alone = choose(NormalEquations(), [X], Y, None).shared
             assert choose(NormalEquations(), [X], both, None).shared == alone
 
@@ -265,15 +263,6 @@ class TestScores:
         _same(finite, [1.0, 0.5])
         assert (median, mean) == (0.75, 0.75)
 
-    def test_each_band_adds_independent_fits(self):
-        from sklearn.linear_model import Ridge
-        X, Y = _data(p=5)
-        bands = [X[:, :2], X[:, 2:]]
-        pred, _ = each_band(ridge(1.0, SklearnRidge()))(
-            [b[:90] for b in bands], Y[:90], [b[90:] for b in bands])
-        expected = sum(Ridge(alpha=1.0).fit(b[:90], Y[:90]).predict(b[90:]) for b in bands)
-        np.testing.assert_allclose(pred, expected, rtol=1e-12)
-
 
 # -- Identity with the replaced code -----------------------------------------
 
@@ -310,50 +299,6 @@ class TestIdentityLahnerGLM:
         _same(np.nan_to_num(per_unit_pearson(A, B), nan=0.0), old.lahner_split_half_pearson(A, B))
 
 
-def _former_lahner_mode_fit(mode, alpha_grid):
-    """The fit of a former Lahner2024 multimodal analysis mode, built from the parts.
-
-    ``banded``: one joint ridge, one penalty per band chosen on a random 20 % of the
-    training rows, nothing centred. The other modes: scikit-learn ridge at penalty 1
-    per band, predictions added.
-    """
-    if mode == 'banded':
-        return ridge(grid_search(penalty_grid(alpha_grid, 2),
-                                 partial(random_row_split, fraction=0.2, seed=0)),
-                     NormalEquations(centre='none'))
-    return each_band(ridge(1.0, SklearnRidge()))
-
-
-LAHNER_BANDED_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
-
-
-class TestIdentityLahnerMultimodal:
-    """The former ``mode`` options of ``Lahner2024-fMRI-naturalistic-multimodal``,
-    composed from the parts (the registered ``concat`` is the GLM fit above)."""
-
-    @pytest.mark.parametrize('mode', ['concat', 'per_modality', 'video_only', 'banded'])
-    @pytest.mark.parametrize('dtype', [np.float32, np.float64])
-    def test_modes(self, mode, dtype):
-        rng = np.random.default_rng(3)
-        video = rng.standard_normal((180, 40)).astype(dtype)
-        audio = rng.standard_normal((180, 25)).astype(dtype)
-        neural = (video[:, :3] @ rng.standard_normal((3, 600))
-                  + rng.standard_normal((180, 600))).astype(dtype)
-        groups = {'concat': [np.concatenate([video, audio], axis=1)],
-                  'per_modality': [video, audio], 'video_only': [video],
-                  'banded': [video, audio]}[mode]
-        (ref_r, ref_median, ref_mean), ref_alphas = old.lahner_multimodal_score(
-            mode, groups, neural, LAHNER_BANDED_GRID)
-        r, chosen = cross_validated_r(groups, neural, row_kfold(180, n_splits=5, random_state=0),
-                                      _former_lahner_mode_fit(mode, LAHNER_BANDED_GRID))
-        finite, median, mean = summarize(r)
-        _same(finite, ref_r)
-        assert (median, mean) == (ref_median, ref_mean)
-        if mode == 'banded':
-            assert [fold.shared for fold in chosen] == list(ref_alphas)
-            assert ref_alphas
-
-
 def _tr_data(n_runs=20, per_run=60, n_feat=48, n_vox=4500, n_participants=4, seed=4):
     rng = np.random.default_rng(seed)
     n = n_runs * per_run
@@ -384,26 +329,6 @@ class TestIdentityLahnerTimeResolved:
         new = ParticipantRunBlocks(2).per_voxel_r(X, Y, run_idx, participants)
         _same(new, old.tr_cross_validated_ridge_within_participant(
             X, Y, run_idx, participants, n_held_out_per_participant=2))
-
-
-class TestIdentityLahnerTimeResolvedMultimodal:
-    """The former ``mode`` options of the time-resolved multimodal benchmark,
-    composed from the parts: shuffled K-fold over whole runs, voxel batches of
-    2000; ``banded`` chooses per voxel batch (C2)."""
-
-    @pytest.mark.parametrize('mode', ['per_modality', 'video_only', 'banded'])
-    def test_modes(self, mode):
-        X, Y, run_idx, participants = _tr_data(n_runs=16, per_run=40, n_vox=4300)
-        video, audio = X[:, :30], X[:, 30:]
-        groups = [video] if mode == 'video_only' else [video, audio]
-        n_splits = max(2, len(np.unique(run_idx)) // 4)
-        new, _ = cross_validated_r(groups, Y, list(group_kfold(run_idx, n_splits=n_splits,
-                                                                random_state=0)),
-                                   _former_lahner_mode_fit(mode, LAHNER_BANDED_GRID),
-                                   target_batch=2000)
-        ref = old.tr_multimodal_fit_score_with_groups(
-            mode, n_splits, LAHNER_BANDED_GRID, groups, Y, run_idx, participants)
-        _same(new, ref)
 
 
 def _stories(n_stories=8, per_story=30, n_feat=40, n_targets=400, seed=5):

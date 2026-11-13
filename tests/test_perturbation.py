@@ -200,6 +200,50 @@ class TestUndoIsExact:
         assert torch.equal(net(x).detach(), torch.tensor([[1., 2., 3., 4., 0., 0., 0., 0.]]))
 
 
+class TestIntactSwitchesChangesInPlace:
+    """``intact()`` switches each change off and on where it is: hook order,
+    handles and cleanups stay, and the network inside is the intact one."""
+
+    def test_hook_order_and_handles_stay(self, model_with_ablation):
+        bs, net = model_with_ablation
+        x = torch.tensor([[1., 2., 3., 4.]])
+        intact = net(x).detach().clone()
+        handles = [apply_state_change(bs, change).handle_id for change in (
+            StateChange(kind='ablation', target=Selection(layer='fc2'),
+                        perturbation=Perturbation(kind='scale', scale=2.0)),
+            StateChange(kind='weights', target=Selection(layer='fc1.weight', indices=[0]),
+                        perturbation=Perturbation(kind='zero')))]
+        net.fc2.register_forward_hook(lambda _m, _i, out: out + 1.0)   # added after: order matters
+        changed = net(x).detach().clone()
+        cleanups = dict(bs._interventions.active_interventions)
+        with bs._interventions.intact():
+            assert torch.equal(net(x).detach(), intact + 1.0)
+        assert torch.equal(net(x).detach(), changed)
+        assert bs._interventions.active_interventions == cleanups
+        for handle in reversed(handles):
+            apply_state_change(bs, StateChange(kind='reset', handle_id=handle))
+        assert torch.equal(net(x).detach(), intact + 1.0)
+
+    def test_another_intervention_part_is_refused_before_any_change(self):
+        net = _TwoLayerNet()
+
+        def intervention(change):
+            handle = net.fc1.register_forward_hook(lambda _m, _i, out: out * 0)
+            return PerturbationApplied(handle_id='own', target=change.target,
+                                       perturbation=change.perturbation), handle.remove
+        bs = BrainScoreModel('own', model=net, region_layer_map={},
+                             extractor={'vision': lambda stimuli, layers=None: stimuli},
+                             intervention=intervention)
+        apply_state_change(bs, StateChange(kind='ablation', target=Selection(layer='fc1'),
+                                           perturbation=Perturbation(kind='zero')))
+        x = torch.ones(1, 4)
+        with pytest.raises(NotImplementedError, match='switched off in place'):
+            with bs._interventions.intact():
+                pass
+        assert torch.equal(net(x), torch.zeros(1, 8))
+        assert list(bs._interventions.active_interventions) == ['own']
+
+
 # ── Layer-resolution edge cases ──────────────────────────────────────
 
 class TestLayerResolution:

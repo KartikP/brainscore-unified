@@ -17,8 +17,8 @@ def registries(monkeypatch):
 
 
 def test_external_input_output_state_reset_and_session():
-    for name, kind in (('test_request', 'input'), ('test_result', 'output')):
-        register_channel(CatalogEntry(name, kind, 'StreamEvent', 'int', 'test',
+    for name, direction in (('test_request', 'input'), ('test_result', 'output')):
+        register_channel(CatalogEntry(name, direction, 'StreamEvent', 'int', 'test',
                                      shape_validator=lambda x: isinstance(x, int)))
     setups = []
     class Tool(Capability):

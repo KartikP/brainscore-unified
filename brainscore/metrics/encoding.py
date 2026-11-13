@@ -14,8 +14,7 @@ A fit has three parts, and the benchmark hands in each one:
 
 ``ridge(penalty, solver)`` joins a penalty and a solver into a fit.
 ``cross_validated_r(features, Y, folds, fit)`` runs the fit on each fold and
-returns the Pearson r of each target on the held-out rows. ``each_band(fit)``
-fits each feature band alone and adds the predictions. The Pearson r is
+returns the Pearson r of each target on the held-out rows. The Pearson r is
 ``brainscore_core.metrics.per_unit_pearson``; this module has no second one.
 
 Features are one 2-D array, or a list of 2-D arrays (bands) with the same rows.
@@ -38,8 +37,8 @@ from brainscore_core.metrics import per_unit_pearson
 
 __all__ = [
     'Chosen', 'NormalEquations', 'SklearnRidge',
-    'cross_validated_r', 'each_band', 'fixed', 'grid_search', 'group_kfold',
-    'held_out_r', 'penalty_grid', 'random_group_split', 'random_row_split',
+    'cross_validated_r', 'fixed', 'grid_search', 'group_kfold',
+    'held_out_r', 'penalty_grid', 'random_group_split',
     'ridge', 'row_kfold', 'summarize',
 ]
 
@@ -90,19 +89,6 @@ def group_kfold(groups, n_splits: int = 5, random_state: int = 0,
     for train_pos, test_pos in islice(folds, n_used):
         yield (np.isin(groups, distinct[train_pos]),
                np.isin(groups, distinct[test_pos]))
-
-
-def random_row_split(groups, fraction: float = 0.2, seed: int = 0):
-    """One split that holds out a random ``fraction`` of the rows.
-
-    The labels in ``groups`` are not used, only their number. The rows keep the
-    order of the permutation. The former Lahner2024 multimodal ``banded``
-    analysis used this split; on autocorrelated rows it leaks (issue #86).
-    """
-    n_rows = len(groups)
-    n_check = max(1, int(round(n_rows * fraction)))
-    order = np.random.default_rng(seed).permutation(n_rows)
-    return [(order[n_check:], order[:n_check])]
 
 
 def random_group_split(groups, fraction: float = 0.25, seed: int = 0):
@@ -386,25 +372,6 @@ def ridge(penalty, solver):
     return fit
 
 
-def each_band(fit):
-    """A fit that fits each band alone with ``fit`` and adds the predictions.
-
-    Two independent encoders, summed (the former Lahner2024 ``per_modality``
-    mode). The sum is kept in the precision of the targets.
-    """
-    def fit_each(train_bands, Y_train, test_bands, groups=None):
-        train_bands, test_bands = _as_bands(train_bands), _as_bands(test_bands)
-        total = np.zeros((len(test_bands[0]), Y_train.shape[1]), dtype=Y_train.dtype)
-        chosen = []
-        for train, test in zip(train_bands, test_bands):
-            predictions, band_chosen = fit([train], Y_train, [test], groups)
-            total += predictions
-            chosen.append(band_chosen)
-        return total, chosen
-
-    return fit_each
-
-
 # -- Scores ------------------------------------------------------------------
 
 def held_out_r(Y, predictions) -> np.ndarray:
@@ -429,7 +396,7 @@ def cross_validated_r(features, Y, folds, fit, *, groups=None,
         features: ``(n_rows, n_features)`` or a list of bands with the same rows.
         Y: ``(n_rows, n_targets)`` recorded data.
         folds: ``(train_rows, test_rows)`` pairs, as masks or positions.
-        fit: from ``ridge`` or ``each_band``.
+        fit: from ``ridge``.
         groups: one label per row, handed to the inner split (stories, stimuli).
         target_batch: fit the targets in batches of this size, to bound memory.
             A chooser then chooses per batch, so a shared penalty depends on

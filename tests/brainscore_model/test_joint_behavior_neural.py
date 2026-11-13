@@ -157,6 +157,38 @@ def test_extractor_that_cannot_record_is_not_applicable_before_any_answer():
     assert net.passes == 0
 
 
+def _form_stimuli(column):
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b', 'c'], column: ['a.x', 'b.x', 'c.x']})
+    stimuli.identifier = f'joint-toy-{column}'
+    return stimuli
+
+
+@pytest.mark.parametrize('image_records', [True, False])
+@pytest.mark.parametrize('form, column', [('vision', 'image_path'), ('video', 'video_path')])
+def test_the_extractor_for_the_form_decides_recording(image_records, form, column):
+    """Pre-flight and the run select the extractor by the exact input form
+    (vision:image or vision:video); an extractor for the other form does not decide."""
+    net = ToyNet()
+    image, video = ((ToyExtractor, NoRecordExtractor) if image_records
+                    else (NoRecordExtractor, ToyExtractor))
+
+    def answer(stimulus_row, instruction, label_set):
+        return label_set[int(net.forward(stimulus_row['stimulus_id'])['late'][0]) % 2]
+    model = BrainScoreModel(identifier='forms', extractor={'vision': image(net), 'video': video(net)},
+                            region_layer_map={'A': LayerSelector('early', modality=form)},
+                            answer=answer)
+    records = image_records == (form == 'vision')
+    session = stimulus_session(_form_stimuli(column), ['behavior', 'neural:A'], task=GENERATE)
+    if records:
+        model.check_session_support({'behavior', 'neural:A'})
+        model.participate(session)
+        assert session.collect('neural:A').sizes['presentation'] == 3
+    else:
+        with pytest.raises(NotImplementedError, match='No session handler'):
+            model.check_session_support({'behavior', 'neural:A'})
+        assert net.passes == 0
+
+
 def test_undeclared_region_is_not_supported():
     with pytest.raises(NotImplementedError):
         _run(_model(ToyNet()), GENERATE, ['behavior', 'neural:IT'])
@@ -201,19 +233,28 @@ def _readout_task(fit):
                        fitting_stimuli=STIMULI, prefer_path='readout', readout_fit=fit)
 
 
-@pytest.mark.parametrize('fit, fitted_silenced', [('intact', False), ('current', True)])
-def test_readout_fit_chooses_the_network_it_learns_on(fit, fitted_silenced):
+def test_readout_fit_current_learns_on_the_changed_network():
     net = ToyNet()
     model = _model(net, behavioral_readout_layer='late')
     applied = apply_state_change(model, SILENCE)
-    session = _run(model, _readout_task(fit), ['behavior', 'neural:A'])
+    session = _run(model, _readout_task('current'), ['behavior', 'neural:A'])
     fitting, scoring = net.log[:len(STIMULI)], net.log[len(STIMULI):]
-    assert fitting == [fitted_silenced] * len(STIMULI)
+    assert fitting == [True] * len(STIMULI)
     assert scoring == [True] * len(STIMULI)                # tested on the changed network
     np.testing.assert_array_equal(session.collect('neural:A').values, [np.arange(3.)] * 3)  # silenced
     handle = applied.handle_id
     apply_state_change(model, StateChange(kind='reset', handle_id=handle))   # handle survives
     assert not net.silenced
+
+
+def test_readout_fit_intact_refuses_a_change_it_cannot_switch_off():
+    """The toy intervention has no switch; the fit stops before any pass."""
+    net = ToyNet()
+    model = _model(net, behavioral_readout_layer='late')
+    apply_state_change(model, SILENCE)
+    with pytest.raises(NotImplementedError, match='switched off in place'):
+        _run(model, _readout_task('intact'), ['behavior', 'neural:A'])
+    assert net.passes == 0 and net.silenced
 
 
 def test_readout_fit_is_validated():

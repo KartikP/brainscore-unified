@@ -21,27 +21,46 @@ class Interventions:
     def __init__(self, owner) -> None:
         self.owner = owner
         self.active_interventions: Dict[str, Callable[[], None]] = {}
-        self._changes: Dict[str, object] = {}   # handle -> resolved StateChange
 
     @contextmanager
     def intact(self):
-        """Undo every active change for the block, then apply each again.
+        """Switch every active change off for the block, then on again.
 
-        Inside the block no change is active, so an extraction may use the
-        activation cache of the intact model. Handles keep their identity, so a
-        later reset by handle still works.
+        Each change stays in place: its hook keeps its place among the other
+        hooks of the network, and its handle and cleanup do not change. Inside
+        the block the network is intact, so an extraction may use the
+        activation cache of the intact model. Only a change made by
+        ``build_pytorch_ablation_fn`` has a switch; with any other change
+        active, the block refuses before it changes anything.
         """
-        undone = dict(self.active_interventions)
-        for handle in reversed(list(undone)):
-            undone[handle]()
-        self.active_interventions = {}
+        from brainscore.perturbation import _SWITCHES
+        switches = [(handle, _SWITCHES.get(cleanup))
+                    for handle, cleanup in self.active_interventions.items()]
+        fixed = [handle for handle, switch in switches if switch is None]
+        if fixed:
+            raise NotImplementedError(
+                f"Subject '{self.owner.identifier}' cannot fit on the intact network: the "
+                f"active intervention(s) {fixed} cannot be switched off in place. Only "
+                f"build_pytorch_ablation_fn makes changes that can. Use "
+                f"readout_fit='current', or fit the readout before the change.")
+        off = []
         try:
+            for handle, switch in reversed(switches):
+                switch(False)
+                off.append((handle, switch))
             yield
         finally:
-            self.active_interventions = undone
-            for handle in undone:
-                _, cleanup = self.owner._intervention(self._changes[handle])
-                self.active_interventions[handle] = cleanup
+            failures = []
+            for handle, switch in reversed(off):
+                try:
+                    switch(True)
+                except Exception as error:                   # noqa: BLE001
+                    failures.append(f'{handle!r}: {type(error).__name__}: {error}')
+            if failures:
+                raise RuntimeError(
+                    f"{len(failures)} intervention(s) could not be switched on again, so "
+                    f"the network is not as the active interventions say. The handles "
+                    f"remain registered: {'; '.join(failures)}")
 
     def reset(self) -> None:
         """Undo every active intervention.
@@ -61,7 +80,6 @@ class Interventions:
                 failures.append((handle_id, error))
             else:
                 self.active_interventions.pop(handle_id, None)
-                self._changes.pop(handle_id, None)
         if failures:
             import warnings
             detail = '; '.join(f'{handle!r}: {type(err).__name__}: {err}'
@@ -96,7 +114,6 @@ class Interventions:
             # model changed with no way to retry.
             cleanup()
             self.active_interventions.pop(handle_id, None)
-            self._changes.pop(handle_id, None)
             return None
 
         if owner._intervention is None:
@@ -125,7 +142,6 @@ class Interventions:
                 f"An intervention must return a new handle_id for every call."
             )
         self.active_interventions[applied.handle_id] = cleanup
-        self._changes[applied.handle_id] = state_change
         return applied
 
 
