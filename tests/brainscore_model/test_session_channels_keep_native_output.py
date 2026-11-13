@@ -472,7 +472,7 @@ def test_external_events_with_position_hints_are_never_merged(positions):
                           meta={'column': 'image_path', 'stimulus_id': sid, 'stimulus_position': p,
                                 'table_row': ('forged', p)})
               for i, (sid, p) in enumerate(zip(IDS, positions))]
-    session = Session(events, ['neural:IT'], streaming=True)
+    session = Session(iter(events), ['neural:IT'])
     model.participate(session)
     assert len(calls) == 2
     assert session.collect('neural:IT').sizes['presentation'] == 2

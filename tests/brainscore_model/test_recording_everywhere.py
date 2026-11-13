@@ -81,8 +81,7 @@ def _model(net, region_map=None, replies=True):
 
 
 def _run(model, task, channels, streaming=False):
-    session = stimulus_session(STIMULI, channels, task=task)
-    session.streaming = streaming
+    session = stimulus_session(STIMULI, channels, task=task, streaming=streaming)
     model.participate(session)
     return session
 

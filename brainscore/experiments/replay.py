@@ -66,8 +66,10 @@ def replay_sessions(directory):
         from copy import deepcopy
         key = (repetition.condition, repetition.identifier)
         saved = deepcopy(inputs[key])
-        session = Session(saved)
-        for name, value in deepcopy(settings[key]).items():
+        context = deepcopy(settings[key])
+        # The source decides the delivery: a recorded stream replays as one.
+        session = Session(iter(saved) if context.pop('streaming', False) else saved)
+        for name, value in context.items():
             setattr(session, name, value)
         if 'outputs' not in settings[key] and trial_outputs[key]:
             # Older records have no request metadata. Keep the observed channel

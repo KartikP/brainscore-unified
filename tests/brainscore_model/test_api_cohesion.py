@@ -154,8 +154,7 @@ def test_common_session_collects_batch_and_streamed_assemblies(streaming):
     model = BrainScoreModel(identifier='delivery', region_layer_map={'language': 'x'},
                             extractor={'text': Extractor()})
     session = stimulus_session(StimulusSet({'sentence': ['one', 'two'], 'stimulus_id': ['1', '2']}),
-                            ['neural:language'])
-    session.streaming = streaming
+                            ['neural:language'], streaming=streaming)
     model.participate(session)
     assert session.collect().shape == (2, 4)
 
