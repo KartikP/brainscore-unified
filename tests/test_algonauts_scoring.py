@@ -7,23 +7,26 @@
   penalty chosen per parcel on held-out stimuli inside the training stimuli.
 - Each parcel gets its own penalties: parcels that depend on different bands
   get different tuples and are both predicted well.
-- With many bands, a random search tries a fixed number of penalty tuples.
 - Held-out prediction uses the preparation and the penalties of the training films.
 """
+from functools import partial
+
 import numpy as np
 import pytest
 
-from brainscore.benchmarks._scoring_utils import (
-    kfold_positions,
-    valid_prediction_per_unit_pearson,
-)
 from brainscore.benchmarks.algonauts2025 import scoring
 from brainscore.benchmarks.algonauts2025.benchmark import _Algonauts2025Base
 from brainscore.benchmarks.algonauts2025.projection import FeatureProjection
 from brainscore.benchmarks.algonauts2025.scoring import (
-    _alpha_tuples,
     fit_predict_banded,
     score_banded,
+)
+from brainscore.metrics.encoding import (
+    NormalEquations,
+    grid_search,
+    group_kfold,
+    held_out_r,
+    row_kfold,
 )
 
 GRID = _Algonauts2025Base.BANDED_ALPHA_GRID
@@ -66,7 +69,7 @@ def test_the_preparation_of_a_fold_never_sees_the_rows_of_its_test_stimuli(monke
                  alpha_grid=GRID, n_candidates=None)
     first = list(_Recorded.fits)
     stimuli = np.unique(groups)
-    folds = list(kfold_positions(len(stimuli), n_splits=5, random_state=0))
+    folds = list(row_kfold(len(stimuli), n_splits=5, random_state=0))
     assert len(first) == len(folds)
     for (fitted, _), (train_pos, _) in zip(first, folds):
         train = X[np.isin(groups, stimuli[train_pos])].astype(np.float64)
@@ -96,12 +99,16 @@ def test_both_runs_of_a_repeated_stimulus_stay_on_one_side_of_every_split(monkey
     keep = np.ones(len(groups), dtype=bool)
     sides = []
 
-    def recording(X_, Y_, groups_, *args, **kwargs):
-        sides.append(set(groups_))
-        return real(X_, Y_, groups_, *args, **kwargs)
+    def recording(*args, **kwargs):
+        fit = real(*args, **kwargs)
 
-    real = scoring.choose_penalties
-    monkeypatch.setattr(scoring, 'choose_penalties', recording)
+        def recorded(train, Y_, test, groups_):
+            sides.append(set(groups_))
+            return fit(train, Y_, test, groups_)
+        return recorded
+
+    real = scoring._banded_fit
+    monkeypatch.setattr(scoring, '_banded_fit', recording)
     score_banded({'a': (X, None)}, Y, groups, keep, _same, dim_cap=100,
                  alpha_grid=GRID, n_candidates=None)
     assert len(sides) == 5
@@ -122,22 +129,22 @@ def _reference_ridge(X, Y, groups, grid):
     stimuli = np.unique(groups)
     held = np.full(Y.shape, np.nan)
     chosen = []
-    for fold, (train_pos, test_pos) in enumerate(kfold_positions(len(stimuli), 5, 0)):
+    for fold, (train_pos, test_pos) in enumerate(row_kfold(len(stimuli), 5, 0)):
         train_stimuli = stimuli[train_pos]
         train = np.isin(groups, train_stimuli)
         test = np.isin(groups, stimuli[test_pos])
         Z = X.astype(np.float64) - X[train].mean(0)
         Z = Z / np.sqrt(Z[train].var(0).mean())
-        fit_pos, check_pos = next(kfold_positions(len(train_stimuli), 5, fold))
+        fit_pos, check_pos = next(row_kfold(len(train_stimuli), 5, fold))
         fit = np.isin(groups, train_stimuli[fit_pos])
         check = np.isin(groups, train_stimuli[check_pos])
-        r = np.array([valid_prediction_per_unit_pearson(
+        r = np.array([held_out_r(
             Y[check], Ridge(alpha=a).fit(Z[fit], Y[fit]).predict(Z[check])) for a in grid])
         best = np.full(Y.shape[1], np.asarray(grid)[np.nanargmax(np.nanmean(r, axis=1))])
         chosen.append(best)
         for p, alpha in enumerate(best):
             held[test, p] = Ridge(alpha=alpha).fit(Z[train], Y[train, p]).predict(Z[test])
-    return valid_prediction_per_unit_pearson(Y, held), chosen
+    return held_out_r(Y, held), chosen
 
 
 def test_one_band_is_a_ridge_with_an_intercept_and_a_tuned_penalty():
@@ -196,14 +203,6 @@ def test_excluded_rows_are_not_scored():
     np.testing.assert_allclose(got, ref, atol=0.02)
 
 
-def test_many_bands_use_a_random_search_over_the_penalties():
-    assert len(_alpha_tuples(GRID, 1, 60, 0)) == 11          # one band: the full grid
-    assert len(_alpha_tuples(GRID, 2, None, 0)) == 121       # no limit: the full grid
-    tuples = _alpha_tuples(GRID, 4, 60, 0)
-    assert len(tuples) == 60 and tuples == _alpha_tuples(GRID, 4, 60, 0)   # sampled, repeatable
-    assert all((alpha,) * 4 in tuples for alpha in GRID)     # every shared penalty is tried
-
-
 def test_prediction_uses_the_training_preparation_and_penalties():
     X, Y, groups = _synth(n_feat=30)
     keep = np.ones(len(groups), dtype=bool)
@@ -240,8 +239,11 @@ def test_prediction_uses_the_training_preparation_and_penalties():
 def test_a_constant_parcel_does_not_stop_the_choice_of_penalties():
     X, Y, groups = _synth(n_parcels=1)
     both = np.concatenate([Y, np.full_like(Y, 7.0)], axis=1)   # a constant parcel has no correlation
-    widths, tuples = [X.shape[1]], [(a,) for a in GRID]
-    kwargs = dict(n_splits=5, random_state=0)
-    alone = scoring.choose_penalties(X, Y, groups, widths, tuples, **kwargs)
-    with_constant = scoring.choose_penalties(X, both, groups, widths, tuples, **kwargs)
+    # The chooser of the benchmark: the first inner fold over stimuli, and a
+    # parcel without a correlation is left out of the mean.
+    choose = grid_search([(a,) for a in GRID],
+                         partial(group_kfold, n_splits=5, random_state=0, n_used=1),
+                         undefined_r='skip')
+    alone = choose(NormalEquations(), [X], Y, groups).index
+    with_constant = choose(NormalEquations(), [X], both, groups).index
     assert list(with_constant) == [alone[0]] * 2

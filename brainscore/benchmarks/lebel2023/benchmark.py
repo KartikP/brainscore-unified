@@ -20,15 +20,17 @@ raw correlation: the stimuli are heard once each, so there are no repeats from
 which to estimate a noise ceiling, and no normalisation is applied.
 """
 
+from functools import partial
+
 import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.streaming_helpers import neural_response
 
-from .._scoring_utils import pearson_summary, run_kfold_masks
-from ...tools.banded_ridge import (
-    _mean_pearson, dual_aware_ridge_predict, solve_and_project)
+from ...metrics.encoding import (
+    NormalEquations, cross_validated_r, grid_search, group_kfold,
+    random_group_split, ridge, summarize)
 
 BIBTEX = """@article{lebel2023natural,
   title={A natural language fMRI dataset for voxelwise encoding models},
@@ -112,133 +114,37 @@ def _zscore_per_story(values, story_ids):
     return out
 
 
-def _ridge_grouped_alpha(X_train, Y_train, X_test, stories_train, alpha_grid,
-                         random_state=0):
-    """Ridge whose penalty is chosen on held-out *stories*, then refit in full.
+def _encoding_fit(alpha_grid, per_voxel_alpha=False, random_state=0):
+    """The ridge of this benchmark, as a fit for ``cross_validated_r``.
 
-    Selecting the penalty on a random subset of rows does not work here: TRs
-    within a story are so correlated that near-duplicates of a validation row
-    sit in the selection-training set, which makes weak penalties look better
-    than they generalise. Holding out whole stories removes that shortcut. The
-    effect is large — a random inner split picks a penalty roughly an order of
-    magnitude too small.
+    Features are centred on the training rows and no intercept is fitted; the
+    targets are already standardised within each story. The solve is in
+    float32, in the dual form when features outnumber rows (a 27B model gives
+    5120 features per delay against about 7000 training rows).
 
-    Whichever Gram matrix is smaller is computed once and reused across the
-    grid, since only the diagonal penalty term changes per candidate.
+    The penalty is chosen on held-out *stories*, then refitted on the whole
+    training fold. Selecting it on a random subset of rows does not work here:
+    TRs within a story are so correlated that near-duplicates of a validation
+    row sit in the selection-training set, which makes weak penalties look
+    better than they generalise. The effect is large: a random inner split
+    picks a penalty roughly an order of magnitude too small.
+
+    By default one penalty is shared by all targets, chosen on one split that
+    holds out a quarter of the training stories. With ``per_voxel_alpha`` each
+    target gets its own penalty. That selection must be *nested*: measured on
+    this benchmark, a per-target choice on one held-out set scored 35% below a
+    single shared penalty, because with thousands of targets the selection
+    noise dominates. Averaging the validation scores over four inner folds of
+    stories before selecting is what makes the extra freedom pay (LITcoder's
+    ``single_alpha=False`` is its default).
     """
-    stories = np.unique(stories_train)
-    rng = np.random.default_rng(random_state)
-    n_val = max(1, len(stories) // 4)
-    val_stories = rng.choice(stories, n_val, replace=False)
-    is_val = np.isin(stories_train, val_stories)
-
-    # Centre features on the selection-training rows only; ridge here has no
-    # intercept term, so uncentred features would be penalised for their mean.
-    inner_mean = X_train[~is_val].mean(axis=0)
-    X_inner = X_train[~is_val] - inner_mean
-    X_val = X_train[is_val] - inner_mean
-    Y_inner, Y_val = Y_train[~is_val], Y_train[is_val]
-
-    Y_val_centered = Y_val - Y_val.mean(axis=0)
-    Y_val_var = (Y_val_centered ** 2).sum(axis=0)
-
-    n_inner, n_features = X_inner.shape
-    use_dual = n_features > n_inner
-    if use_dual:
-        gram = X_inner @ X_inner.T           # (n, n)
-        cross = X_val @ X_inner.T            # maps dual weights onto the split
-        target = Y_inner
-    else:
-        gram = X_inner.T @ X_inner           # (p, p)
-        target = X_inner.T @ Y_inner
-
-    if not use_dual:
-        cross = X_val
-
-    best_alpha, best_score = None, -np.inf
-    diagonal = np.diag_indices_from(gram)
-    penalised = gram.copy()
-    for alpha in alpha_grid:
-        penalised[diagonal] = gram[diagonal] + alpha
-        predicted = solve_and_project(penalised, cross, target)
-        score = _mean_pearson(Y_val_centered, Y_val_var, predicted)
-        if score > best_score:
-            best_score, best_alpha = score, alpha
-
-    full_mean = X_train.mean(axis=0)
-    return dual_aware_ridge_predict(
-        X_train - full_mean, Y_train, X_test - full_mean, best_alpha), best_alpha
-
-
-
-def _ridge_per_voxel_alpha(X_train, Y_train, X_test, stories_train, alpha_grid,
-                           random_state=0, n_inner_folds=4):
-    """Ridge with a penalty chosen independently for every target.
-
-    One shared penalty is a compromise across targets whose signal-to-noise
-    ratios differ by orders of magnitude: whole-cortex data mixes reliable
-    language-network vertices with vertices carrying almost no stimulus-locked
-    signal. Fitting a penalty per target is what reference encoding pipelines do
-    (LITcoder's ``single_alpha=False`` is its default).
-
-    The selection must be *nested*, not a single split. Choosing each target's
-    penalty on one held-out set means fitting one noisy estimate per target, and
-    with thousands of targets that selection noise dominates: measured on this
-    benchmark, single-split per-target selection scored 35% *below* a single
-    shared penalty. Averaging the validation scores over several inner folds
-    before selecting is what makes the extra freedom pay rather than cost.
-
-    Inner folds hold out whole stories, as elsewhere here — a random row split
-    leaks across autocorrelated samples.
-
-    Returns ``(predictions, chosen_alphas)`` with one alpha per target.
-    """
-    from brainscore_core.metrics import per_unit_pearson
-
-    n_targets = Y_train.shape[1]
-    val_scores = np.zeros((len(alpha_grid), n_targets), dtype=np.float64)
-    folds = 0
-    for inner_train, inner_val in run_kfold_masks(
-            stories_train, n_splits=n_inner_folds, random_state=random_state):
-        if not inner_val.any() or not inner_train.any():
-            continue
-        folds += 1
-        inner_mean = X_train[inner_train].mean(axis=0)
-        X_inner = X_train[inner_train] - inner_mean
-        X_val = X_train[inner_val] - inner_mean
-        Y_inner, Y_val = Y_train[inner_train], Y_train[inner_val]
-
-        n_inner, n_features = X_inner.shape
-        use_dual = n_features > n_inner
-        if use_dual:
-            gram = X_inner @ X_inner.T
-            cross, target = X_val @ X_inner.T, Y_inner
-        else:
-            gram = X_inner.T @ X_inner
-            cross, target = X_val, X_inner.T @ Y_inner
-
-        diagonal = np.diag_indices_from(gram)
-        penalised = gram.copy()
-        for index, alpha in enumerate(alpha_grid):
-            penalised[diagonal] = gram[diagonal] + alpha
-            predicted = solve_and_project(penalised, cross, target)
-            val_scores[index] += np.nan_to_num(
-                per_unit_pearson(Y_val, predicted), nan=0.0)
-    val_scores /= max(folds, 1)
-
-    chosen = val_scores.argmax(axis=0)
-    alphas = np.asarray(alpha_grid, dtype=float)[chosen]
-
-    # Refit on the full training fold, one solve per distinct penalty.
-    full_mean = X_train.mean(axis=0)
-    X_full, X_test_centred = X_train - full_mean, X_test - full_mean
-    predictions = np.empty((X_test.shape[0], n_targets), dtype=np.float32)
-    for index, alpha in enumerate(alpha_grid):
-        columns = np.flatnonzero(chosen == index)
-        if columns.size:
-            predictions[:, columns] = dual_aware_ridge_predict(
-                X_full, Y_train[:, columns], X_test_centred, alpha)
-    return predictions, alphas
+    solver = NormalEquations(centre='features', solve_dtype=None, shape_aware=True)
+    candidates = [(alpha,) for alpha in alpha_grid]
+    if per_voxel_alpha:
+        split = partial(group_kfold, n_splits=4, random_state=random_state)
+        return ridge(grid_search(candidates, split, per_target=True), solver)
+    split = partial(random_group_split, fraction=0.25, seed=random_state)
+    return ridge(grid_search(candidates, split), solver)
 
 
 class LeBel2023Encoding(BenchmarkBase):
@@ -305,23 +211,15 @@ class LeBel2023Encoding(BenchmarkBase):
         # against its own full time course.
         Y, story_ids = Y[has_full_history], story_ids[has_full_history]
 
-        held_out = np.full(Y.shape, np.nan, dtype=np.float32)
-        chosen_alphas = []
-        # Whole stories are held out; `run_kfold_masks` already does exactly
-        # this grouping for run ids, and a story is the same kind of block.
-        for train_mask, test_mask in run_kfold_masks(
-                story_ids, self._n_splits, self._random_state):
-            fitter = (_ridge_per_voxel_alpha if self._per_voxel_alpha
-                      else _ridge_grouped_alpha)
-            fold_prediction, alpha = fitter(
-                X[train_mask], Y[train_mask], X[test_mask],
-                story_ids[train_mask], self._alpha_grid,
-                random_state=self._random_state)
-            held_out[test_mask] = fold_prediction
-            chosen_alphas.append(
-                np.median(alpha).item() if np.ndim(alpha) else float(alpha))
-
-        per_vertex, median_r, mean_r = pearson_summary(Y, held_out)
+        # Whole stories are held out, in the outer folds and in the inner
+        # choice of the penalty.
+        per_vertex, chosen = cross_validated_r(
+            X, Y, group_kfold(story_ids, self._n_splits, self._random_state),
+            _encoding_fit(self._alpha_grid, self._per_voxel_alpha, self._random_state),
+            groups=story_ids)
+        # One value per fold: the penalty, or the median over targets.
+        chosen_alphas = [np.median(fold.per_target()[:, 0]).item() for fold in chosen]
+        per_vertex, median_r, mean_r = summarize(per_vertex)
 
         reported, extra_attrs = self._summarize(per_vertex, median_r, mean_r)
         score = Score(reported)

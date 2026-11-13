@@ -53,14 +53,7 @@ import pandas as pd
 
 from brainscore_core.metrics import Score
 
-from brainscore.benchmarks._scoring_utils import (
-    run_kfold_masks,
-    valid_prediction_per_unit_pearson,
-)
-from brainscore.tools.banded_ridge import (
-    banded_ridge_fit_predict,
-    ridge_fit_predict,
-)
+from brainscore.metrics.encoding import cross_validated_r, group_kfold
 from ._util import (
     read_stimulus_ids, record_clips, record_frames_per_clip, takes_audiovisual,
 )
@@ -70,8 +63,9 @@ from .benchmark_timeresolved import (
     FEATURE_DIM_CAP,
     CURRENT_VERSION,
     TRANSDUCTIVE_SVD,
+    VOXEL_BATCH,
 )
-from .benchmark_multimodal import DEFAULT_AUDIO_DIR
+from .benchmark_multimodal import DEFAULT_AUDIO_DIR, multimodal_fit
 
 
 class Lahner2024BOLDMoments_timeresolved_multimodal(
@@ -353,8 +347,8 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         else:
             feature_groups = [X_flat]
 
-        # Fit per mode. For 'banded' we use the BG-mod ridge from the
-        # GLM-beta variant. For 'per_modality' we sum separate fits.
+        # Fit per mode, with the same fits as the GLM-beta variant
+        # (``multimodal_fit``).
         per_voxel_r = self._fit_score_with_groups(
             feature_groups, Y_flat, run_idx_per_obs, subject_per_obs)
 
@@ -394,55 +388,19 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
                                run_idx_per_obs, subject_per_obs):
         """Mode-specific ridge fit. Returns per-voxel Pearson r.
 
-        Voxel-batched (VOXEL_BATCH=2000) to keep peak memory bounded —
-        same pattern as the parent class's _cross_validated_ridge.
-        Without this, scoring on the 4042-voxel visualROI variant OOMs
-        around the held_out_preds shadow array + sklearn's per-fold
-        Y copies (CLAUDE.md note from M12-lite).
+        Outer CV: shuffled K-fold over whole runs, subjects pooled
+        (cv_mode='pooled_run_kfold'); ``subject_per_obs`` is not used. Voxels
+        are fitted in batches of ``VOXEL_BATCH`` to bound memory, and the
+        ``banded`` penalties are chosen per batch (finding C2).
         """
-        n_obs, n_voxels = Y_flat.shape
-        # Outer CV: shuffled K-fold over whole runs, subjects pooled
-        # (cv_mode='pooled_run_kfold'). subject_per_obs is not used.
-        fold_masks = list(run_kfold_masks(
+        fold_masks = list(group_kfold(
             run_idx_per_obs, n_splits=self._n_pooled_splits(run_idx_per_obs),
             random_state=0))
-
-        per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)
-        VOXEL_BATCH = 2000
-        for v_start in range(0, n_voxels, VOXEL_BATCH):
-            v_end = min(v_start + VOXEL_BATCH, n_voxels)
-            Y_sub = Y_flat[:, v_start:v_end]
-            held_out_preds = np.full_like(Y_sub, np.nan, dtype=np.float32)
-
-            for tr_mask, te_mask in fold_masks:
-                Y_tr = Y_sub[tr_mask]
-                if self._mode == 'banded':
-                    preds = self._banded_fit_predict(
-                        feature_groups, tr_mask, te_mask, Y_tr)
-                    held_out_preds[te_mask] = preds.astype(np.float32)
-                else:
-                    preds = np.zeros((te_mask.sum(), v_end - v_start),
-                                     dtype=np.float32)
-                    for group in feature_groups:
-                        preds += ridge_fit_predict(
-                            group[tr_mask], Y_tr, group[te_mask], alpha=1.0)
-                    held_out_preds[te_mask] = preds
-
-            per_voxel_r[v_start:v_end] = valid_prediction_per_unit_pearson(
-                Y_sub, held_out_preds)
-
+        per_voxel_r, _ = cross_validated_r(
+            feature_groups, Y_flat, fold_masks,
+            multimodal_fit(self._mode, self.BANDED_ALPHA_GRID),
+            target_batch=VOXEL_BATCH)
         return per_voxel_r
-
-    def _banded_fit_predict(self, feature_groups, tr_mask, te_mask, Y_tr):
-        """Banded ridge over (video, audio) feature groups — see
-        ``tools.banded_ridge``. Masks are applied here; row-indexing
-        commutes with the column-concat done inside the shared helper, so
-        this is equivalent to stacking-then-masking."""
-        train_groups = [g[tr_mask] for g in feature_groups]
-        test_groups = [g[te_mask] for g in feature_groups]
-        preds, _ = banded_ridge_fit_predict(
-            train_groups, test_groups, Y_tr, self.BANDED_ALPHA_GRID)
-        return preds
 
 
 # ── Factory functions for the registered variants ─────────────────

@@ -88,10 +88,7 @@ from brainscore.temporal import (
     hrf_convolve,
 )
 from brainscore import load_dataset
-from brainscore.benchmarks._scoring_utils import (
-    masked_ridge_predictions,
-    valid_prediction_per_unit_pearson,
-)
+from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge
 from brainscore.data.lahner2024 import MOTION_COLUMNS
 
 # Reuse stimulus handling + bibtex from the GLM-beta variant.
@@ -105,6 +102,10 @@ from ._util import read_stimulus_ids, record_clips, record_frames_per_clip
 # Confirmed scanner / paradigm parameters (from EC2 recon, ds005165 v1.0.4)
 TR_SEC = 1.75
 SOA_SEC = 4.0
+
+# Voxels fitted together. It bounds memory (held-out predictions for all 20484
+# voxels are about 10 GB). A banded penalty is chosen per batch (finding C2).
+VOXEL_BATCH = 2000
 
 # Cap on per-stimulus feature dim before ridge — guards a 64GB OOM on g5.4xlarge
 # when n_TR_obs ≈ 127k and flattened ViT features ≈ 38k. See `_extract_per_stimulus_features`.
@@ -592,24 +593,14 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         voxel axis so peak memory is bounded by VOXEL_BATCH × n_obs × 4B (~1 GB).
         """
         n_runs = int(run_idx_per_obs.max() + 1)
-        n_obs, n_voxels = Y_flat.shape
-        per_voxel_r = np.full(n_voxels, np.nan, dtype=np.float32)
-
-        # Precompute fold masks once.
         fold_masks = [
             (np.isin(run_idx_per_obs, train_runs), np.isin(run_idx_per_obs, test_runs))
             for train_runs, test_runs in contiguous_block_cv(
                 n_samples=n_runs, block_size_samples=n_held_out)
         ]
-
-        VOXEL_BATCH = 2000
-        for v_start in range(0, n_voxels, VOXEL_BATCH):
-            v_end = min(v_start + VOXEL_BATCH, n_voxels)
-            Y_sub = Y_flat[:, v_start:v_end]
-            held_out_preds = masked_ridge_predictions(
-                X_flat, Y_sub, fold_masks, alpha=1.0, dtype=None)
-            per_voxel_r[v_start:v_end] = valid_prediction_per_unit_pearson(
-                Y_sub, held_out_preds)
+        per_voxel_r, _ = cross_validated_r(
+            X_flat, Y_flat, fold_masks, ridge(1.0, SklearnRidge()),
+            target_batch=VOXEL_BATCH)
         return per_voxel_r
 
     def _cross_validated_ridge_within_participant(self, X_flat, Y_flat,
@@ -633,7 +624,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         per_participant_r = np.full((len(unique_participants), n_voxels), np.nan,
                                     dtype=np.float32)
 
-        VOXEL_BATCH = 2000
         for s_idx, participant in enumerate(unique_participants):
             sub_obs = (participant_per_obs == participant)
             X_sub = X_flat[sub_obs]
@@ -650,14 +640,9 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 fold_masks.append((np.isin(run_sub, train_runs),
                                    np.isin(run_sub, test_runs)))
 
-            for v_start in range(0, n_voxels, VOXEL_BATCH):
-                v_end = min(v_start + VOXEL_BATCH, n_voxels)
-                Y_sub_batch = Y_sub_full[:, v_start:v_end]
-                held_out_preds = masked_ridge_predictions(
-                    X_sub, Y_sub_batch, fold_masks, alpha=1.0, dtype=None)
-                per_participant_r[s_idx, v_start:v_end] = (
-                    valid_prediction_per_unit_pearson(
-                        Y_sub_batch, held_out_preds))
+            per_participant_r[s_idx], _ = cross_validated_r(
+                X_sub, Y_sub_full, fold_masks, ridge(1.0, SklearnRidge()),
+                target_batch=VOXEL_BATCH)
 
         # Mean per-voxel r across participants, ignoring NaNs.
         return np.nanmean(per_participant_r, axis=0).astype(np.float32)

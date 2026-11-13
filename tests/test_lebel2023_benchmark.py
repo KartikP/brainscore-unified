@@ -9,13 +9,19 @@ import numpy as np
 import pytest
 
 from brainscore_core.contract import Subject
-from brainscore.benchmarks._scoring_utils import run_kfold_masks
 from brainscore.benchmarks.lebel2023.benchmark import (
     DEFAULT_DELAYS,
     _delay_within_stories,
-    _ridge_grouped_alpha,
+    _encoding_fit,
     _zscore_per_story,
 )
+from brainscore.metrics.encoding import group_kfold
+
+
+def _shared_penalty_fit(X_train, Y_train, X_test, stories_train, alpha_grid):
+    """The benchmark's fit with a shared penalty: ``(predictions, penalty)``."""
+    predictions, chosen = _encoding_fit(alpha_grid)(X_train, Y_train, X_test, stories_train)
+    return predictions, chosen.shared[0]
 
 pytestmark = pytest.mark.unit
 
@@ -135,7 +141,7 @@ class TestZScore:
 class TestStoryFolds:
     def test_no_story_appears_in_both_train_and_test(self):
         stories = np.repeat([f's{i}' for i in range(10)], 7)
-        for train_mask, test_mask in run_kfold_masks(stories, n_splits=5):
+        for train_mask, test_mask in group_kfold(stories, n_splits=5):
             assert not (train_mask & test_mask).any()
             overlap = set(stories[train_mask]) & set(stories[test_mask])
             assert not overlap
@@ -143,7 +149,7 @@ class TestStoryFolds:
     def test_every_sample_is_tested_exactly_once(self):
         stories = np.repeat([f's{i}' for i in range(10)], 7)
         counts = np.zeros(len(stories), dtype=int)
-        for _, test_mask in run_kfold_masks(stories, n_splits=5):
+        for _, test_mask in group_kfold(stories, n_splits=5):
             counts += test_mask
         assert (counts == 1).all()
 
@@ -155,7 +161,7 @@ class TestGroupedAlphaRidge:
         X = rng.normal(size=(len(stories), 5))
         W_true = rng.normal(size=(5, 3))
         Y = X @ W_true
-        pred, alpha = _ridge_grouped_alpha(
+        pred, alpha = _shared_penalty_fit(
             X, Y, X, stories, alpha_grid=(1e-6, 1e3))
         assert alpha == 1e-6
         assert np.corrcoef(pred[:, 0], Y[:, 0])[0, 1] > 0.99
@@ -167,7 +173,7 @@ class TestGroupedAlphaRidge:
         X = rng.normal(size=(len(stories), 5))
         Y = rng.normal(size=(len(stories), 3))
         grid = (1e-3, 1.0, 1e3)
-        _, alpha = _ridge_grouped_alpha(X, Y, X, stories, alpha_grid=grid)
+        _, alpha = _shared_penalty_fit(X, Y, X, stories, alpha_grid=grid)
         assert alpha in grid
 
 
@@ -281,7 +287,7 @@ class TestWideFeaturePath:
     """The dual branch is what large models take; it must be exercised too.
 
     A 27B model contributes 5120 features per delay, far more than there are
-    training rows, so ``_ridge_grouped_alpha`` takes its dual branch. The other
+    training rows, so ``_shared_penalty_fit`` takes its dual branch. The other
     scoring tests use narrow features and never reach it.
     """
 
@@ -292,7 +298,7 @@ class TestWideFeaturePath:
         # p > n after delays, forcing the dual form
         X = rng.normal(size=(n, 200))
         Y = X[:, :4] @ rng.normal(size=(4, 3)) + rng.normal(scale=0.01, size=(n, 3))
-        pred, alpha = _ridge_grouped_alpha(X, Y, X, stories, alpha_grid=(1e-3, 1.0, 1e3))
+        pred, alpha = _shared_penalty_fit(X, Y, X, stories, alpha_grid=(1e-3, 1.0, 1e3))
         assert X.shape[1] > (~np.isin(stories, np.unique(stories)[:1])).sum() // 2
         assert alpha in (1e-3, 1.0, 1e3)
         assert np.corrcoef(pred[:, 0], Y[:, 0])[0, 1] > 0.5

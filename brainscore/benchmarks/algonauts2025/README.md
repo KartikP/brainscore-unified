@@ -75,7 +75,7 @@ For a short run, `movies` limits the benchmark to named movies. Use the `stimulu
 ## Files
 
 - `benchmark.py`: the `Algonauts2025Friends`, `Algonauts2025FriendsS7` and `Algonauts2025OOD` classes, and the frame extractor, clip cutter and sound cutter.
-- `scoring.py`: the banded ridge with the preparation fitted per fold.
+- `scoring.py`: the preparation fitted per fold, and the settings of the banded ridge. The ridge itself (the penalty choice, the solve, the per-parcel Pearson r) is `brainscore/metrics/encoding.py`, shared with the Lahner2024 and LeBel2023 benchmarks.
 - `projection.py`: the reduction of one band.
 - `brainscore/data/algonauts2025/data_packaging/prepare_assembly.py`: builds the assemblies from the native files. See the data [README](../../data/algonauts2025/README.md).
 

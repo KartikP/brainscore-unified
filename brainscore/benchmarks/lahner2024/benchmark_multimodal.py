@@ -38,6 +38,7 @@ any compute so misuse is caught early. Use the
 non-multimodal variants for unimodal models.
 """
 
+from functools import partial
 from typing import Optional
 
 import numpy as np
@@ -46,12 +47,18 @@ import pandas as pd
 from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
-from brainscore.benchmarks._scoring_utils import (
-    callback_group_kfold_predictions,
-    pearson_summary,
-    summed_group_kfold_ridge_predictions,
+from brainscore.metrics.encoding import (
+    NormalEquations,
+    SklearnRidge,
+    cross_validated_r,
+    each_band,
+    grid_search,
+    penalty_grid,
+    random_row_split,
+    ridge,
+    row_kfold,
+    summarize,
 )
-from brainscore.tools.banded_ridge import banded_ridge_fit_predict
 from ._util import (
     read_stimulus_ids, record_clips, record_frames_per_clip, takes_audiovisual,
 )
@@ -67,6 +74,24 @@ from .benchmark import (
 # Default location of pre-extracted audio files. Override via constructor.
 DEFAULT_AUDIO_DIR = '~/.brainio/lahner2024_audio_16k'
 
+
+
+def multimodal_fit(mode: str, alpha_grid):
+    """The fit of a multimodal scoring mode; the time-resolved variant uses it too.
+
+    ``banded`` is one joint ridge with one penalty per feature group (video,
+    audio), chosen from ``alpha_grid`` on a random 20 % of the training rows,
+    with nothing centred. That inner split leaks on autocorrelated rows (issue
+    #86); a fix moves the scores, so it waits for a new benchmark version. Every
+    other mode fits one scikit-learn ridge at penalty 1 per feature group and
+    adds the predictions (one group for ``concat``, ``video_only`` and
+    ``audio_only``).
+    """
+    if mode == 'banded':
+        return ridge(grid_search(penalty_grid(alpha_grid, 2),
+                                 partial(random_row_split, fraction=0.2, seed=0)),
+                     NormalEquations(centre='none'))
+    return each_band(ridge(1.0, SklearnRidge()))
 
 class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
     """Audio + video variant of the Lahner2024 GLM-beta benchmark.
@@ -186,15 +211,6 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
 
     # ── Per-modality extraction + concat ──────────────────────────
 
-    def _banded_ridge_fit_predict(self, X_train_groups, X_test_groups,
-                                  Y_train):
-        """Banded ridge with per-group α — see ``tools.banded_ridge``.
-
-        Returns ``(Y_test_pred, (alpha_v, alpha_a))``.
-        """
-        return banded_ridge_fit_predict(
-            X_train_groups, X_test_groups, Y_train, self.BANDED_ALPHA_GRID)
-
     _read_stimulus_ids = staticmethod(read_stimulus_ids)
 
     @staticmethod
@@ -309,20 +325,12 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
             neural_mat = neural_mat[:, mask]
 
         n = features.shape[0]
-        chosen_alphas = []
-        if self._mode == 'banded':
-            fold_preds, chosen_alphas = callback_group_kfold_predictions(
-                features_groups, neural_mat, self._banded_ridge_fit_predict,
-                n_splits=5, random_state=0, dtype=None)
-        else:
-            # Per-modality ridge (sum of independents) when features_groups has
-            # 2 entries; concat / video_only / audio_only when it has 1.
-            fold_preds = summed_group_kfold_ridge_predictions(
-                features_groups, neural_mat, alpha=1.0, n_splits=5,
-                random_state=0, dtype=None)
-
-        per_voxel_r, median_r, mean_r = pearson_summary(
-            neural_mat, fold_preds)
+        per_voxel_r, chosen = cross_validated_r(
+            features_groups, neural_mat, row_kfold(n, n_splits=5, random_state=0),
+            multimodal_fit(self._mode, self.BANDED_ALPHA_GRID))
+        chosen_alphas = ([fold.shared for fold in chosen]
+                         if self._mode == 'banded' else [])
+        per_voxel_r, median_r, mean_r = summarize(per_voxel_r)
 
         score = Score(median_r / float(self.ceiling))
         score.attrs['raw'] = Score(median_r)

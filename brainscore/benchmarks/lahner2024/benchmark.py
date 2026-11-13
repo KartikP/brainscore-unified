@@ -32,7 +32,7 @@ Scoring pipeline:
        per video (mean of frame features)
     4. Average neural assembly across 10 repetitions → one BOLD vector
        per video per voxel
-    5. Cross-validated PLS regression → Pearson per voxel → median
+    5. 5-fold ridge (penalty 1, ``brainscore.metrics.encoding``) → Pearson per voxel → median
 
 ## IMPORTANT: what this benchmark does NOT measure
 
@@ -77,10 +77,14 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
 )
 from brainscore.temporal import expand_clip_to_frames
 from brainscore import load_dataset, load_stimulus_set
-from brainscore.benchmarks._scoring_utils import (
-    kfold_ridge_predictions,
-    pearson_summary,
+from brainscore.metrics.encoding import (
+    SklearnRidge,
+    cross_validated_r,
+    ridge,
+    row_kfold,
+    summarize,
 )
+from brainscore_core.metrics import per_unit_pearson
 from ._util import read_stimulus_ids, record_clips, record_frames_per_clip
 
 
@@ -372,14 +376,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
                 return out
             A = _mean_of_cols(half_a_cols)
             B = _mean_of_cols(half_b_cols)
-            # Vectorized per-voxel Pearson across stimuli axis
-            Am = A - A.mean(axis=0, keepdims=True)
-            Bm = B - B.mean(axis=0, keepdims=True)
-            num = (Am * Bm).sum(axis=0)
-            den = np.sqrt((Am ** 2).sum(axis=0) * (Bm ** 2).sum(axis=0))
-            with np.errstate(divide='ignore', invalid='ignore'):
-                r = np.where(den > 0, num / den, 0.0)
-            reliability_sum += r
+            # Per-voxel Pearson across stimuli; a constant voxel counts as 0.
+            reliability_sum += np.nan_to_num(per_unit_pearson(A, B), nan=0.0)
         r_half = reliability_sum / n_splits
         # Spearman-Brown: full-set reliability from half-set reliability
         r_full = 2 * r_half / (1 + r_half)
@@ -434,17 +432,15 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         if mask is not None:
             neural_mat = neural_mat[:, mask]
 
-        # 6. Cross-validated Ridge regression → per-voxel Pearson
-        # (using sklearn directly keeps brainscore_core dependency-clean)
+        # 6. Cross-validated ridge (scikit-learn, penalty 1) → per-voxel Pearson
         # Ridge auto-centers via its intercept; explicit per-feature
         # StandardScaler over-rescales heterogeneous-variance features and
         # costs ~0.18 raw r on Lahner2024 (see 2026-04-24 replication note).
         # Pass raw features directly.
-        fold_preds = kfold_ridge_predictions(
-            model_mat, neural_mat, alpha=1.0, n_splits=5,
-            random_state=0, dtype=None)
-        per_voxel_r, median_r, mean_r = pearson_summary(
-            neural_mat, fold_preds)
+        per_voxel_r, _ = cross_validated_r(
+            model_mat, neural_mat, row_kfold(len(model_mat), n_splits=5, random_state=0),
+            ridge(1.0, SklearnRidge()))
+        per_voxel_r, median_r, mean_r = summarize(per_voxel_r)
 
         # Ceiling normalization. The repo convention (see
         # the repository budget-curve sweep) normalizes PER VOXEL and

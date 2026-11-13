@@ -56,7 +56,10 @@ concatenated, letting each vertex learn its own hemodynamic lag rather than assu
 fixed HRF. Cross-validation holds out whole stories, because adjacent TRs within a story
 are correlated enough that a random split leaks. The ridge penalty is selected per fold on
 *held-out stories*, not a random row subset. A random inner split picks a penalty about an
-order of magnitude too small.
+order of magnitude too small. The features are centred on the training rows, no intercept
+is fitted, and the solve is in float32 (in the dual form when features outnumber rows).
+The fit is `brainscore/metrics/encoding.py`; `_encoding_fit` in `benchmark.py` gives its
+settings.
 
 Reported value: median held-out Pearson r across vertices. The value is raw, not ceiling-normalised.
 Each story is heard once, so no noise ceiling is estimable. Compare against the nulls
