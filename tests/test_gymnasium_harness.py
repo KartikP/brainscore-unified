@@ -10,13 +10,11 @@ pytest.importorskip("gymnasium")
 pytest.importorskip("minigrid")
 
 from brainscore import BrainScoreModel
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.gymnasium_harness import play_gym_episode, random_gym_policy, MINIGRID_ACTIONS
 
 
 def _random_model():
-    return BrainScoreModel('gym-random',
-                           policy=PolicyWrapper(random_gym_policy(0), max_history=0))
+    return BrainScoreModel('gym-random', policy=random_gym_policy(0))
 
 
 def test_play_gym_episode_runs_and_reports():
@@ -31,7 +29,7 @@ def test_play_gym_episode_runs_and_reports():
 def test_each_step_reaches_the_policy_as_a_row_with_a_frame():
     """The loop gives the policy one row per step, with the rendered frame."""
     rows = []
-    act = PolicyWrapper(random_gym_policy(0), max_history=0)
+    act = random_gym_policy(0)
 
     def policy(row):
         rows.append(row)

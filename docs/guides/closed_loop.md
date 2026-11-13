@@ -25,7 +25,7 @@ from brainscore import BrainScoreModel
 agent = BrainScoreModel(identifier='my-agent', policy=lambda row: {'motor': choose(row)})
 ```
 
-`PolicyWrapper` (in `brainscore.model_helpers.policy_wrapper`) adapts existing policy objects. A subject with its own loop can implement `participate` directly instead.
+Declare in `policy_in_channels` every row key the policy reads (default `('observation',)`); the session sends only those. A policy that needs earlier steps keeps them itself and clears them in `reset()`, which the model calls when an episode begins ([EXTENDING](../../EXTENDING.md#a-policy-that-keeps-history) has a complete example). A subject with its own loop can implement `participate` directly instead.
 
 ## Run an episode
 

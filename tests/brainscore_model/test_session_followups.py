@@ -154,8 +154,7 @@ def task_model(net, extractor_type, regions):
                            behavioral_readout_layer='late', answer=answer)
 
 
-READOUT = TaskContext(task_type='probabilities', label_set=['cat', 'dog'], fitting_stimuli=STIMULI,
-                      prefer_path='readout')
+READOUT = TaskContext(task_type='probabilities', label_set=['cat', 'dog'], fitting_stimuli=STIMULI)
 TASKS = {'readout': READOUT, 'generation': GENERATE}
 MIX = {'mix': CompositeSelector((('early', None), ('late', None)), modality='text')}
 

@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.grid_game import (
     GridGameEnv, ACTIONS, greedy_oracle_policy, random_action_policy,
     play_game, evaluate_policy,
@@ -21,7 +20,7 @@ def _embodied_model(policy):
     """A model that is *only* a policy — no extractors, no activations."""
     return BrainScoreModel(
         identifier='grid-player', model=None, region_layer_map={},
-        policy=PolicyWrapper(policy, max_history=4),
+        policy=policy,
     )
 
 
@@ -81,9 +80,9 @@ class TestClosedLoop:
         env = GridGameEnv(size=5, seed=3)
         calls = {'n': 0}
 
-        def counting_policy(obs, history):
+        def counting_policy(row):
             calls['n'] += 1
-            return greedy_oracle_policy(obs, history)
+            return greedy_oracle_policy(row)
 
         model = _embodied_model(counting_policy)
         res = play_game(model, env)

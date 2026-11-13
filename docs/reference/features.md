@@ -23,7 +23,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | --- | --- |
 | `LayerSelector`, `CompositeSelector`, several regions per run | [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb), [Lesson 8](../../notebooks/lessons/08_choose_units.ipynb) |
 | Native input forms: `vision:image`, `vision:video`, `VLMVideoWrapper`, `attrs['input_adaptation']` | [Core concepts 6](../02_core_concepts.md#6-compatibility) |
-| Behavior: `TaskContext` responses (`Choice`, `Scale`, `Text`), reported and implied answers, `reply`, `likelihood`, readout, `prefer_path` | [Behavior](../guides/behavior.md) |
+| Behavior: `TaskContext` responses (`Choice`, `Scale`, `Text`), reported and implied answers, `reply`, `likelihood`, readout | [Behavior](../guides/behavior.md) |
 | Perturbation: `Selection`, `StateChange`, `intervention` | [Perturb and select units](../guides/perturb_and_select_units.md) |
 | Unit selection: `IndexSelection`, `RandomSelection`, `FunctionalSelection` | same |
 | Closed loop: `policy`, rows, `EnvironmentSource`, specs | [Closed loop](../guides/closed_loop.md) |

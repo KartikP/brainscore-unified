@@ -128,7 +128,7 @@ def test_a_readout_and_an_answering_part_record_on_the_answering_path(tmp_path):
     """Before: the readout made pre-flight accept the region; the task took the
     reply, and AudioWrapper, with no record(layers), failed at run time."""
     model, stimuli = _build('audio', tmp_path, reply=True, behavioral_readout_layer='head')
-    task = TaskContext(instruction='Is it there?', response=Choice(['yes', 'no']), prefer_path='generation')
+    task = TaskContext(instruction='Is it there?', response=Choice(['yes', 'no']))
     session = stimulus_session(stimuli, ['behavior:choice', f'neural:{REGION}'], task=task)
     model.participate(session)
     assert session.collect(f'neural:{REGION}').attrs['recording']['path'] == 'generation'
@@ -177,7 +177,7 @@ def test_a_region_that_cannot_record_during_the_answer_is_not_applicable_before_
     model = BrainScoreModel('plain-audio', extractor={'audio': _Plain(wrapper)},
                             region_layer_map={REGION: regions[REGION]}, behavioral_readout_layer='head',
                             reply=lambda prompt: 'yes')
-    task = TaskContext(instruction='Is it there?', response=Choice(['yes', 'no']), prefer_path='generation')
+    task = TaskContext(instruction='Is it there?', response=Choice(['yes', 'no']))
     with pytest.raises(CompatibilityError, match='cannot record'):
         model.participate(stimulus_session(stimuli, channels, task=task))
     assert passes == []

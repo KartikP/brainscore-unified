@@ -111,7 +111,7 @@ class BehavioralReadout:
         return (task.task_type, id(fitting), cls._fitting_content(fitting),
                 task.instruction,
                 tuple(label_set) if label_set is not None else None,
-                task.prefer_path or 'auto', task.readout_fit,
+                task.readout_fit,
                 repr(task.response),
                 tuple(present) if present is not None else None)
 
@@ -315,20 +315,18 @@ class BehavioralReadout:
     def _choose_path(self, task) -> Tuple[str, Optional[str]]:
         """The part that answers ``task`` and the source of implied probabilities, before any compute.
 
-        ``prefer_path='auto'`` tries generation, then likelihood, then the
-        readout; another value names the one path to use. A legacy task
-        (``task_type`` with ``label_set``) is answered by ``answer=`` (with an
-        instruction and labels) or by the readout (with fitting stimuli).
+        The first part that can answer, in the order generation, likelihood,
+        readout. Which parts exist is a property of the model: a model meant to
+        answer through its readout is built without ``answer``/``reply``. A
+        legacy task (``task_type`` with ``label_set``) is answered by
+        ``answer=`` (with an instruction and labels) or by the readout (with
+        fitting stimuli).
         """
         from brainscore_core.responses import Choice, Scale
         owner, response = self.owner, task.response
-        prefer = task.prefer_path or 'auto'
-        if prefer not in ('auto',) + self._PATHS:
-            raise ValueError(f"TaskContext.prefer_path must be one of {('auto',) + self._PATHS}; "
-                             f'got {prefer!r}.')
         readout_wired = (owner._behavioral_readout_layer is not None
                          and bool(owner._extractors))
-        order = list(self._PATHS) if prefer == 'auto' else [prefer]
+        order = self._PATHS
         if response is None:
             can = {'generation': bool(owner._answer is not None and task.instruction and task.label_set),
                    'likelihood': False,
@@ -342,13 +340,13 @@ class BehavioralReadout:
                     f"Subject '{owner.identifier}' cannot run the behavioral task "
                     f"task_type={task.task_type!r}. Paths tried: "
                     + '; '.join(f'{p} needs {needs[p]}' for p in order))
-            if prefer == 'auto' and path == 'generation' and can['readout'] and readout_wired:
+            if path == 'generation' and can['readout'] and readout_wired:
                 import warnings
                 warnings.warn(
                     'Both generation and fitted readout are available; '
-                    "prefer_path='auto' selects generation and does not fit on "
-                    'fitting_stimuli. Set TaskContext.prefer_path to '
-                    "'generation' or 'readout' to choose explicitly.",
+                    'the answer function answers and the readout is not fitted on '
+                    'fitting_stimuli. To answer through the readout, build the '
+                    'model without answer=.',
                     UserWarning, stacklevel=4)
             return path, None
         readout_wired = readout_wired and task.fitting_stimuli is not None

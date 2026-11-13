@@ -29,7 +29,8 @@ def run_calls(policy, source, output_dir, *, report):
     saved = RunRecord(source)
     evidence = replay.verify_capture(saved, report)
     calls = list(replay.pairs(saved, evidence['calls']))
-    subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy))
+    subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy),
+                              policy_in_channels=LiberoChunkPolicy.inputs)
     def evaluate(model, context):
         differences = []
         for i, (request, output) in enumerate(calls):

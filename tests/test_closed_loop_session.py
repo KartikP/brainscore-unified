@@ -122,8 +122,20 @@ def test_run_environment_helper_takes_the_outputs(speech_channel):
 
 
 def test_a_stateful_policy_is_cleared_when_an_episode_begins():
-    from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-    model = BrainScoreModel('stateful', policy=PolicyWrapper(lambda obs, history: len(history)))
+    class Counting:
+        """Answers with the number of steps it remembers; reset() forgets them."""
+        def __init__(self):
+            self.history = []
+
+        def reset(self):
+            self.history.clear()
+
+        def __call__(self, row):
+            action = len(self.history)
+            self.history.append((row['observation'], action))
+            return {'motor': action}
+
+    model = BrainScoreModel('stateful', policy=Counting())
     first = run_environment(model, CountingEnvironment(3))
     second = run_environment(model, CountingEnvironment(3))   # no model.reset() in between
     assert first == second == [0, 1, 2]

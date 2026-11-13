@@ -16,7 +16,6 @@ def _benchmark():
     benchmark._train_stimuli = None
     benchmark._ceiling = Score(1.0)
     benchmark._version = 1
-    benchmark.prefer_path = 'generation'
     return benchmark
 
 
@@ -61,15 +60,13 @@ def test_session_reading_matches_the_configured_readout():
                                region_layer_map={}, behavioral_readout_layer='L')
 
     benchmark = _benchmark()
-    benchmark.prefer_path = 'readout'
     benchmark._train_stimuli = stimuli(['w1', 'w2', 'p1', 'p2'])
     benchmark._test_stimuli = stimuli(['w3', 'p3', 'w1', 'p1'])
 
     legacy = model()
     legacy.start_task(TaskContext(task_type='probabilities', label_set=['real', 'pseudo'],
                                   fitting_stimuli=benchmark._train_stimuli,
-                                  instruction='Is this a real word or a pseudo word?',
-                                  prefer_path='readout'))
+                                  instruction='Is this a real word or a pseudo word?'))
     expected = legacy._behavioral.predict_probabilities(benchmark._test_stimuli)
     choices = list(expected['choice'].values)
     expected_correct = [choices[int(i)] == label for i, label in
@@ -79,7 +76,7 @@ def test_session_reading_matches_the_configured_readout():
     answered = behavioral_response(model(), benchmark._test_stimuli, TaskContext(
         task_type='probabilities', label_set=['real', 'pseudo'],
         fitting_stimuli=benchmark._train_stimuli,
-        instruction='Is this a real word or a pseudo word?', prefer_path='readout'))
+        instruction='Is this a real word or a pseudo word?'))
     np.testing.assert_array_equal(answered.values, expected.values)
     assert list(answered['stimulus_id'].values) == list(expected['stimulus_id'].values)
     assert list(answered['choice'].values) == choices

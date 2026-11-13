@@ -157,6 +157,7 @@ class Bridge:
                 subject = BrainScoreModel(
                     identifier='pi05-libero',
                     policy=LiberoChunkPolicy(client, execution_horizon=self.horizon),
+                    policy_in_channels=LiberoChunkPolicy.inputs,
                 )
                 target = Selection(layer='action_out_proj', indices=[0])
                 tools = [RecordInputsOutputs()]

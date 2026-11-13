@@ -111,7 +111,7 @@ def _run(model, task, channels):
 
 
 GENERATE = TaskContext(task_type='label', label_set=['cat', 'dog'],
-                       instruction='Name the animal.', prefer_path='generation')
+                       instruction='Name the animal.')
 
 
 def test_answers_and_recording_come_from_one_presentation():
@@ -135,7 +135,7 @@ def test_readout_records_in_the_same_extraction():
     net = ToyNet()
     model = _model(net, behavioral_readout_layer='late')
     task = TaskContext(task_type='probabilities', label_set=['cat', 'dog'],
-                       fitting_stimuli=STIMULI, prefer_path='readout')
+                       fitting_stimuli=STIMULI)
     model.start_task(task)
     fitted = net.passes
     session = _run(model, task, ['behavior', 'neural:A'])
@@ -230,7 +230,7 @@ def test_passive_task_records_plain_viewing_unchanged():
 
 def _readout_task(fit):
     return TaskContext(task_type='probabilities', label_set=['cat', 'dog'],
-                       fitting_stimuli=STIMULI, prefer_path='readout', readout_fit=fit)
+                       fitting_stimuli=STIMULI, readout_fit=fit)
 
 
 def test_readout_fit_current_learns_on_the_changed_network():

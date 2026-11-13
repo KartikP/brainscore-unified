@@ -61,7 +61,7 @@ A **reported** answer is the model's reply, parsed. An **implied** measure is re
 | **Likelihood** | the model scores each label as its reply, without generating | choice, probabilities (implied) | `likelihood` |
 | **Readout** | a classifier or ridge regression on one layer, fitted on `fitting_stimuli` | choice, probabilities, rating (implied) | `behavioral_readout_layer` and an extractor |
 
-`prefer_path` (`'generation'`, `'likelihood'`, `'readout'` or `'auto'`) picks one; `'auto'` tries them in that order. A readout asks what information a layer holds; generation asks what the model does when asked. Set the path explicitly whenever your conclusion depends on it.
+The model answers by the first path it has, in that order. Which path a model uses is a property of the model, not of the task: to compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
 
 One benchmark can take models of both kinds, as long as it fills in both the instruction and `fitting_stimuli`. Choices, ratings and implied probabilities come from either kind. Reported confidence and written answers need a model that replies; for a readout-only model those benchmarks are N/A before any compute.
 
@@ -78,7 +78,7 @@ BrainScoreModel(..., reply=reply, likelihood=likelihood)
 
 **A part obeys the task or stops.** A `reply` or `likelihood` part reads the task from `prompt.response`. It obeys each setting the task gives (the generation settings of `Text`, `raw_text`, `raw_scores` and the options) or stops with an error; it never ignores a setting. For example, the Claude reply part raises `ValueError` for a temperature other than 1.0, for `top_p` and for `seed`, because the Anthropic API cannot obey them.
 
-**Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged. The same chooser picks the path for them: `answer` (with `instruction` and `label_set`), then the readout (with `fitting_stimuli`); `prefer_path` names one. The answer keeps its older form: one-hot rows over `label_set`, where only an exact label counts (`attrs['measure']['source']` is `'answer'`), or the readout's probabilities. A behavioral answer comes only from a session (`behavioral_response`, `stimulus_session` and `participate`); `process()` does not answer a task.
+**Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged. The same chooser picks the path for them: `answer` (with `instruction` and `label_set`), then the readout (with `fitting_stimuli`). The answer keeps its older form: one-hot rows over `label_set`, where only an exact label counts (`attrs['measure']['source']` is `'answer'`), or the readout's probabilities. A behavioral answer comes only from a session (`behavioral_response`, `stimulus_session` and `participate`); `process()` does not answer a task.
 
 ## Hosted models
 

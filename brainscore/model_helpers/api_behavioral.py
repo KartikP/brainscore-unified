@@ -485,6 +485,9 @@ def build_api_action_fn(
 ) -> Callable:
     """Build a ``policy(row) -> {'motor': StreamEvent}`` that plays a grid
     episode (GridGameEnv or Gymnasium/MiniGrid) via a closed-weight API model.
+    It reads ``observation`` and ``instruction``: build the model with
+    ``policy_in_channels=('observation', 'instruction')``. It keeps its own
+    history (``.trace``) and clears it in ``reset()``.
 
     :param obs_mode: ``'vision'`` (default) sends the rendered RGB frame as an
         image; ``'ascii'`` sends the text board (``observation['ascii']``) — text

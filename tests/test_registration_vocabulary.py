@@ -318,7 +318,7 @@ def test_readout_reads_the_readout_layer(registration, tmp_path):
     identifier, module, model = registration
     fitting = _images(tmp_path, 'fit', [4, 5, 6, 4, 5, 6], labels=['dog', 'cat'] * 3)
     scoring = _images(tmp_path, 'score', [5, 4, 6])
-    task = TaskContext(task_type='probabilities', fitting_stimuli=fitting, prefer_path='readout')
+    task = TaskContext(task_type='probabilities', fitting_stimuli=fitting)
     via_session = behavioral_response(model, scoring, task)
     _call_logs()
     model.start_task(task)

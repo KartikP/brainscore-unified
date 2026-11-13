@@ -67,7 +67,8 @@ class Recordable:
             self.net.hooks.remove(seen.append)
 
 
-def _model(net, region_map=None):
+def _model(net, region_map=None, replies=True):
+    """A model with reply and likelihood parts; without ``replies`` it answers by likelihood."""
     def reply(prompt):
         net.forward(prompt.text())
         return 'cat'
@@ -78,7 +79,7 @@ def _model(net, region_map=None):
                 for i, c in enumerate(candidates)}
     return BrainScoreModel('toy', extractor={'text': Recordable(net)},
                            region_layer_map=region_map or {'A': LayerSelector('early', modality='text')},
-                           reply=reply, likelihood=likelihood)
+                           reply=reply if replies else None, likelihood=likelihood)
 
 
 def _run(model, task, channels, streaming=False):
@@ -94,17 +95,15 @@ def _prompt_text(stimulus_text):
 
 def test_recording_during_likelihood_scoring_is_the_prompt_pass():
     net = Net()
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
-                       prefer_path='likelihood')
-    recorded = _run(_model(net), task, ['behavior:probabilities', 'neural:A']).collect('neural:A')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
+    recorded = _run(_model(net, replies=False), task, ['behavior:probabilities', 'neural:A']).collect('neural:A')
     expected = [Net().forward(_prompt_text(s))['early'] for s in ('x', 'yy', 'zzz')]
     np.testing.assert_array_equal(recorded.values, expected)
 
 
 def test_a_reply_with_implied_probabilities_records_the_prompt_pass():
     net = Net()
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
-                       prefer_path='generation')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
     session = _run(_model(net), task, ['behavior:choice', 'behavior:probabilities', 'neural:A'])
     expected = [Net().forward(_prompt_text(s))['early'] for s in ('x', 'yy', 'zzz')]
     np.testing.assert_array_equal(session.collect('neural:A').values, expected)

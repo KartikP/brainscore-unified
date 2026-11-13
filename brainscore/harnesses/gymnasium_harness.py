@@ -136,10 +136,10 @@ def play_gym_episode(subject, env_id: str, max_steps: int = 60, seed: int = 0,
 
 
 def random_gym_policy(seed: int = 0):
-    """Uniform-random discrete policy — the closed-loop null floor for a Gym env."""
+    """Uniform-random discrete policy (``row -> {'motor': action}``), the closed-loop null floor for a Gym env."""
     rng = np.random.RandomState(seed)
 
-    def policy(observation, history):
-        n = len(observation.get('legal_actions', {})) or 7
-        return int(rng.randint(0, n))
+    def policy(row):
+        n = len(row['observation'].get('legal_actions', {})) or 7
+        return {'motor': int(rng.randint(0, n))}
     return policy

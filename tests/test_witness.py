@@ -18,14 +18,12 @@ from brainscore_core.streaming_helpers import (behavioral_response, drain_sessio
                                                neural_response, session_stimuli)
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly, NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.grid_game import GridGameEnv, play_game, greedy_oracle_policy
 from brainscore.witness import Witness
 
 
 def _oracle_model():
-    return BrainScoreModel('grid-oracle',
-                           policy=PolicyWrapper(greedy_oracle_policy, max_history=4))
+    return BrainScoreModel('grid-oracle', policy=greedy_oracle_policy)
 
 
 def test_witness_records_environment_steps():

@@ -170,9 +170,9 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
     """ROAR lexical decision — paper-replication (Honarmand et al. 2026).
 
     Test on 100 stimuli (50 real + 50 pseudo). Readout fits on 400 separate
-    stimuli; generation answers the instruction without fitting. The default
-    ``prefer_path='auto'`` uses generation when available and readout otherwise.
-    Explicit paths get distinct benchmark identifiers.
+    stimuli; generation answers the instruction without fitting. A subject
+    with an answering part answers through it; a subject built without one
+    answers through its readout (the path is a property of the subject).
     Metric: model accuracy on test set, ceiling-normalized by human
     mean accuracy on the same test stimuli.
 
@@ -192,11 +192,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
     requested_output_channels = frozenset({'behavior'})
     trial_memory = 'none'
 
-    def __init__(self, channels: Sequence[str] = ('vision:image',), *,
-                 prefer_path: str = 'auto'):
-        if prefer_path not in ('auto', 'generation', 'readout'):
-            raise ValueError("prefer_path must be 'auto', 'generation', or 'readout'.")
-        self.prefer_path = prefer_path
+    def __init__(self, channels: Sequence[str] = ('vision:image',)):
         channels = tuple(channels)
         if len(channels) != 1 or channels[0] not in _CHANNEL_COLUMNS:
             raise ValueError(
@@ -218,11 +214,8 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         test_ids = list(self._test_stimuli['stimulus_id'].values)
         self._human_accuracy = _human_accuracy_on_stimuli(self._human_ds, test_ids)
 
-        suffix = _CHANNEL_SUFFIX[channel]
-        if prefer_path != 'auto':
-            suffix += f'-{prefer_path}'
         super().__init__(
-            identifier=f'Yeatman2021-lexical_decision-{suffix}',
+            identifier=f'Yeatman2021-lexical_decision-{_CHANNEL_SUFFIX[channel]}',
             version=1,
             parent='behavioral',
             ceiling=Score(self._human_accuracy),
@@ -230,13 +223,12 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         )
 
     def __call__(self, subject) -> Score:
-        # The task declares how to answer; auto preserves the registered variants.
+        # The subject's parts decide how it answers: an answer function, else the readout.
         task = TaskContext(
             task_type='probabilities',
             fitting_stimuli=self._train_stimuli,
             label_set=['real', 'pseudo'],
             instruction='Is this a real word or a pseudo word?',
-            prefer_path=self.prefer_path,
         )
         # The 100-item test set is what gets answered; the fitting stimuli only
         # train a readout.
@@ -270,7 +262,6 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
                                 normalized=True)
         score.attrs['n_test_stimuli'] = len(stim_ids)
         score.attrs['n_invalid_answers'] = int(invalid.sum())
-        score.attrs['requested_behavioral_path'] = self.prefer_path
         score.attrs['dyslexia_threshold'] = DYSLEXIA_THRESHOLD
         score.attrs['dyslexic'] = bool(raw_accuracy < DYSLEXIA_THRESHOLD)
         # Breakdown by stimulus class

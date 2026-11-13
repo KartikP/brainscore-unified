@@ -484,8 +484,8 @@ class BrainScoreModel(UnifiedModel):
     def _reset_providers(self) -> list:
         """Clear the episode state of every part once; return the failures.
 
-        Callable capabilities and extractors may own episode/history state.
-        A bound-method registration resets its owner.
+        A part (policy, answer, reply, likelihood, extractor) that keeps episode
+        state declares it with a ``reset()`` method; it is called once per part.
         """
         providers = [self._policy, self._answer, self._reply, self._likelihood,
                      *self._extractors.values()]
@@ -508,8 +508,7 @@ class BrainScoreModel(UnifiedModel):
             raise RuntimeError('A model provider failed to clear its episode state.') from failures[0]
 
     def _reset_provider(self, provider, seen: Set[int]) -> None:
-        """Reset one provider (a callable part or extractor) once; a bound method resets its owner."""
-        provider = getattr(provider, '__self__', provider)
+        """Call ``reset()`` of one part (a callable or an extractor) once, if it has one."""
         if provider is None or provider is self or id(provider) in seen:
             return
         seen.add(id(provider))

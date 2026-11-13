@@ -40,7 +40,6 @@ from brainscore.experiments import (
     TorchInstrumentation,
 )
 from brainscore.harnesses.grid_game import GridGameEnv, GridGameEnvironment
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore_core.events import Selection
 from brainscore import BrainScoreModel
 from brainscore_core.streaming import Session, StreamEvent
@@ -114,9 +113,9 @@ def visual_policy(model, processor, *, fallback, prompt=VISUAL_PROMPT, max_new_t
 
     stats = {'parse_miss': 0, 'calls': 0}
 
-    def policy(observation, history):
+    def policy(row):
         stats['calls'] += 1
-        img = Image.fromarray(observation['frame']).resize((320, 320), Image.NEAREST)
+        img = Image.fromarray(row['observation']['frame']).resize((320, 320), Image.NEAREST)
         messages = [{'role': 'user', 'content': [
             {'type': 'image'}, {'type': 'text', 'text': prompt}]}]
         text = processor.apply_chat_template(messages, tokenize=False,
@@ -126,8 +125,8 @@ def visual_policy(model, processor, *, fallback, prompt=VISUAL_PROMPT, max_new_t
             out = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         ans = processor.decode(out[0][inputs['input_ids'].shape[1]:],
                                skip_special_tokens=True)
-        return response_for_answer(ans, parse_directional_action(ans, prefer_last=True),
-                                   fallback, stats)
+        return {'motor': response_for_answer(ans, parse_directional_action(ans, prefer_last=True),
+                                             fallback, stats)}
 
     return policy, stats
 
@@ -139,18 +138,18 @@ def answer_response(answer: str) -> StreamEvent:
 
 
 def with_provenance(policy: Callable, *, provenance: dict[str, Any]) -> Callable:
-    """Wrap a policy so every response carries provenance in its metadata.
+    """Wrap a policy so every motor response carries provenance in its metadata.
 
-    The policy may return a motor ``StreamEvent`` or a bare action.
+    The policy returns ``{'motor': action}``; the action may be a ``StreamEvent``.
     """
-    def respond(observation, history) -> StreamEvent:
-        result = policy(observation, history)
+    def respond(row) -> dict:
+        result = policy(row)['motor']
         if not isinstance(result, StreamEvent):
             result = StreamEvent('motor', result, None)
-        return replace(result, meta={
+        return {'motor': replace(result, meta={
             **result.meta,
             'provenance': deepcopy({**result.meta.get('provenance', {}), **provenance}),
-        })
+        })}
 
     return respond
 
@@ -188,13 +187,13 @@ class _LoggedGrid(GridGameEnvironment):
 def direct_episode(policy: Callable, seed: int, *, size: int, max_steps: int) -> dict:
     """Reference loop: no session, subject, recorder or hooks.
 
-    The policy may return a motor ``StreamEvent`` or a bare action.
+    The policy returns ``{'motor': action}``; the action may be a ``StreamEvent``.
     """
     env = GridGameEnv(size=size, seed=seed, max_steps=max_steps)
     observation = env.reset(seed=seed)
     actions, total = [], 0.
     for _ in range(max_steps):
-        result = policy(observation, ())
+        result = policy({'observation': observation})['motor']
         action = int(result.payload if isinstance(result, StreamEvent) else result)
         observation, reward, done, _ = env.step(action)
         actions.append(action)
@@ -253,8 +252,7 @@ def qualify(output_dir: Path, load: Callable[[], tuple], *, asset_dir: Path | No
                     yield session
 
             result = Experiment(
-                subject=BrainScoreModel(identifier=identifier,
-                                        policy=PolicyWrapper(policy, max_history=0)),
+                subject=BrainScoreModel(identifier=identifier, policy=policy),
                 protocol=SessionProtocol(
                     identifier='grid-game', session_factory=factory, repetitions=seeds,
                     required_input_channels={'observation'}, requested_output_channels={'motor'},

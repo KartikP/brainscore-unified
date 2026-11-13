@@ -121,8 +121,7 @@ def test_plain_behavior_without_a_response_is_unchanged():
         return label_set[0]
 
     model = BrainScoreModel(identifier='toy-answer', answer=answer)
-    task = TaskContext(task_type='probabilities', instruction='Pick.', label_set=['cat', 'dog'],
-                       prefer_path='generation')
+    task = TaskContext(task_type='probabilities', instruction='Pick.', label_set=['cat', 'dog'])
     session = _ask(model, task, ['behavior'])
     assert session.collect('behavior').sizes['presentation'] == 4
     assert len(calls) == 4

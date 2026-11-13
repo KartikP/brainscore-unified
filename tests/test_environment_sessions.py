@@ -13,11 +13,24 @@ from brainscore.experiments import Experiment, SessionProtocol, RecordInputsOutp
 from brainscore.experiments.replay import read_events, replay_sessions
 from brainscore.harnesses.grid_game import GridGameEnv, GridGameEnvironment, greedy_oracle_policy, play_game
 from brainscore.harnesses.gymnasium_harness import GymnasiumEnvironment, play_gym_episode
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 
 
 def subject(policy=greedy_oracle_policy):
-    return BrainScoreModel('grid', policy=PolicyWrapper(policy))
+    return BrainScoreModel('grid', policy=policy)
+
+
+class RememberingOracle:
+    """The oracle, keeping its (observation, action) pairs until reset()."""
+    def __init__(self):
+        self.history = []
+
+    def reset(self):
+        self.history.clear()
+
+    def __call__(self, row):
+        outputs = greedy_oracle_policy(row)
+        self.history.append((row['observation'], outputs['motor']))
+        return outputs
 
 
 def test_action_spec_is_one_shared_definition():
@@ -33,7 +46,7 @@ def test_grid_session_preserves_reference_actions_rewards_and_score(seed):
     distance = env._manhattan()
     actions, total = [], 0.
     while True:
-        action = greedy_oracle_policy(obs, ())
+        action = greedy_oracle_policy({'observation': obs})['motor']
         obs, reward, done, info = env.step(action)
         actions.append(action)
         total += reward
@@ -75,7 +88,7 @@ def test_gym_session_preserves_seeded_direct_reference():
         env.close()
     rng = np.random.RandomState(1)
     result = play_gym_episode(
-        subject(lambda obs, history: int(rng.randint(7))),
+        subject(lambda row: {'motor': int(rng.randint(7))}),
         'MiniGrid-Empty-5x5-v0', max_steps=10, seed=7,
     )
     assert result['actions'] == actions
@@ -94,7 +107,7 @@ def test_gym_invalid_action_never_steps_and_closes(action):
         close=lambda: calls.append('close'),
     )
     with pytest.raises(ValueError):
-        run_environment(subject(lambda obs, history: action), GymnasiumEnvironment(env))
+        run_environment(subject(lambda row: {'motor': action}), GymnasiumEnvironment(env))
     assert calls == ['close']
 
 
@@ -107,7 +120,8 @@ def test_session_tools_record_applied_actions_and_replay_saved_observations(tmp_
         with Session(source, ('motor',)) as session:
             sessions.append(session)
             yield session
-    model = subject()
+    policy = RememberingOracle()
+    model = subject(policy)
     result = Experiment(
         subject=model,
         protocol=SessionProtocol(
@@ -126,7 +140,7 @@ def test_session_tools_record_applied_actions_and_replay_saved_observations(tmp_
     assert inputs[0].payload == 'begin' and inputs[-1].meta['reason'] in ('terminal', 'truncated')
     assert len(applied) == len(sessions[0].emitted) > 0
     assert all(e.t_ms is None for e in outputs)
-    assert not model._policy.history  # SessionProtocol reset after the trial.
+    assert not policy.history  # SessionProtocol reset after the trial.
     replay = Experiment(
         subject=subject(), protocol=replay_sessions(result.directory),
         tools=[RecordInputsOutputs()], output_dir=tmp_path/'replay',

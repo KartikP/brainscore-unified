@@ -3,7 +3,7 @@
 GridGameEnvironment declares observations/actions for an EnvironmentSource.
 The oracle reads privileged _state; visual policies use the rendered frame.
 """
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
@@ -187,13 +187,14 @@ class GridGameEnvironment:
         return row, 'truncated' if (done or self._step_num >= self.max_steps) else None
 
 
-def greedy_oracle_policy(observation: Dict[str, Any], history) -> int:
+def greedy_oracle_policy(row: Mapping[str, Any]) -> Dict[str, int]:
     """Move to reduce Manhattan distance to the goal (reads privileged state).
 
+    A policy: ``row -> {'motor': action}``; it reads ``row['observation']``.
     Optimal on wall-free boards; a strong (not always optimal) baseline with
     walls. Used as the upper-reference in the closed-loop validation.
     """
-    st = observation['_state']
+    st = row['observation']['_state']
     (ar, ac), (gr, gc) = st['agent'], st['goal']
     walls = set(map(tuple, st['walls']))
     size = st['size']
@@ -202,17 +203,15 @@ def greedy_oracle_policy(observation: Dict[str, Any], history) -> int:
         nr, nc = ar + dr, ac + dc
         if 0 <= nr < size and 0 <= nc < size and (nr, nc) not in walls:
             candidates.append((abs(nr - gr) + abs(nc - gc), a))
-    if not candidates:
-        return 0
-    return min(candidates)[1]
+    return {'motor': min(candidates)[1] if candidates else 0}
 
 
 def random_action_policy(seed: int = 0) -> Callable:
-    """Return a uniform-random discrete policy — the closed-loop null floor."""
+    """Return a uniform-random discrete policy (``row -> {'motor': action}``), the closed-loop null floor."""
     rng = np.random.RandomState(seed)
 
-    def policy(observation, history) -> int:
-        return int(rng.randint(0, len(ACTIONS)))
+    def policy(row) -> Dict[str, int]:
+        return {'motor': int(rng.randint(0, len(ACTIONS)))}
 
     return policy
 

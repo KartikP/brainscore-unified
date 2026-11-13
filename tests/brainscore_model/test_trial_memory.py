@@ -4,7 +4,6 @@ import pytest
 
 from brainscore import BrainScoreModel, score
 from brainscore.harnesses.human_replay import replay_actions
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore_core._evaluation.measures import record_measures
 from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
@@ -138,15 +137,20 @@ def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
 
 def test_replay_keeps_a_lesion_and_clears_the_policy_between_episodes():
     class Policy:
+        """Keeps the observations of its episode; reset() clears them."""
         def __init__(self):
             self.steps_seen = []
+            self.history = []
 
-        def __call__(self, observation, history):
-            self.steps_seen.append(len(history))
-            return 0
+        def reset(self):
+            self.history.clear()
+
+        def __call__(self, row):
+            self.steps_seen.append(len(self.history))
+            self.history.append(row['observation'])
+            return {'motor': 0}
 
     inner = Policy()
-    wrapper = PolicyWrapper(inner, max_history=8)
     state = {'lesion': False}
 
     def intervention(change):
@@ -157,7 +161,7 @@ def test_replay_keeps_a_lesion_and_clears_the_policy_between_episodes():
         return PerturbationApplied(handle_id='h', target=change.target,
                                    perturbation=change.perturbation, applied_at=0), cleanup
 
-    model = BrainScoreModel('s', policy=wrapper, intervention=intervention)
+    model = BrainScoreModel('s', policy=inner, intervention=intervention)
     apply_state_change(model, StateChange(kind='ablation', target=Selection(layer='x'),
                                           perturbation=Perturbation(kind='zero')))
     steps = [{'observation': {'state': i}} for i in range(3)]

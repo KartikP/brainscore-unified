@@ -54,7 +54,8 @@ class RecordedPolicy:
         self.policy = policy
         self.route = route
         self.recorder = recorder
-        self.subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy))
+        self.subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy),
+                                       policy_in_channels=LiberoChunkPolicy.inputs)
         self.calls = 0
         self.calling = False  # true while a request is being answered
 

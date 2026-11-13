@@ -67,7 +67,7 @@ def test_a_legacy_task_with_an_answer_part_calls_it_once_per_stimulus_and_keeps_
     calls = []
     model = _model(calls, answer=True, reply=True, likelihood=True)
     with pytest.warns(UserWarning, match="answer function returned 'neither'"):
-        session = _run(model, ['behavior'], TaskContext(**LEGACY, prefer_path='generation'))
+        session = _run(model, ['behavior'], TaskContext(**LEGACY))
     assert calls == [('answer', sid, 'Which animal?', ['cat', 'dog']) for sid in 'abc']
     assert model._behavioral.response_path is None   # the session gave the task back
     (event,) = session.emitted
@@ -82,22 +82,19 @@ def test_a_legacy_task_with_an_answer_part_calls_it_once_per_stimulus_and_keeps_
     assert answer.attrs['measure'] == {'kind': 'reported', 'source': 'answer'}
 
 
-@pytest.mark.parametrize('prefer_path', [None, 'auto'])
-def test_a_legacy_task_on_auto_prefers_the_answer_and_warns_when_a_readout_could_fit(prefer_path):
+def test_a_legacy_task_prefers_the_answer_and_warns_when_a_readout_could_fit():
     calls = []
     model = _model(calls, answer=True)
     with pytest.warns(UserWarning, match='Both generation and fitted readout'):
-        session = _run(model, ['behavior'], TaskContext(**LEGACY, fitting_stimuli=FITTING,
-                                                        prefer_path=prefer_path))
+        session = _run(model, ['behavior'], TaskContext(**LEGACY, fitting_stimuli=FITTING))
     assert [call[0] for call in calls] == ['answer'] * 3
     assert session.collect('behavior').attrs['measure'] == {'kind': 'reported', 'source': 'answer'}
 
 
-def test_a_legacy_task_with_a_readout_gives_implied_probabilities_and_no_part_is_called():
+def test_a_legacy_task_on_a_model_built_without_an_answer_part_is_read_out():
     calls = []
-    model = _model(calls, answer=True)
-    answer = _run(model, ['behavior'], TaskContext(**LEGACY, fitting_stimuli=FITTING,
-                                                   prefer_path='readout')).collect('behavior')
+    model = _model(calls)
+    answer = _run(model, ['behavior'], TaskContext(**LEGACY, fitting_stimuli=FITTING)).collect('behavior')
     assert calls == []
     assert answer.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
     assert answer.values.argmax(1).tolist() == [0, 1, 0]
@@ -176,9 +173,6 @@ def test_the_one_chooser_names_every_path_it_tried():
         model.start_task(TaskContext(**LEGACY))
     with pytest.raises(ValueError, match='cannot give a Choice answer. Paths tried'):
         model.start_task(TaskContext(response=Choice(['cat', 'dog'])))
-    with pytest.raises(ValueError, match=r"prefer_path must be one of \('auto', 'generation', "
-                                         r"'likelihood', 'readout'\)"):
-        model.start_task(TaskContext(**LEGACY, prefer_path='guess'))
 
 
 @pytest.mark.parametrize('provider, image_first, settings', [

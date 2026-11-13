@@ -115,13 +115,6 @@ def _text_task(**fields):
     return TaskContext(task_type='label', **fields)
 
 
-def test_forced_generation_without_answer_names_answer_parameter():
-    subject = BrainScoreModel(identifier='no-answer', in_channels={'text'})
-    task = _text_task(instruction='choose', label_set=['yes', 'no'], prefer_path='generation')
-    with pytest.raises(ValueError, match=r'generation needs answer='):
-        subject.start_task(task)
-
-
 def test_unviable_behavioral_task_names_answer_parameter():
     subject = BrainScoreModel(identifier='no-path', in_channels={'text'})
     with pytest.raises(ValueError, match='Paths tried') as error:

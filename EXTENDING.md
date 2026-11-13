@@ -108,6 +108,45 @@ region is then recorded during any task, from the forward pass that produces the
 answer or the action. Without it, the region is recorded during a task only through
 hooks on the network passed as `model=`, and otherwise the pair is N/A.
 
+#### A policy that keeps history
+
+A policy has one form: `policy(row) -> {output channel: payload}`. The session sends
+one row per step and keeps no history for the policy. A policy that needs earlier steps
+keeps them itself and empties them in `reset()`:
+
+```python
+from collections import deque
+
+from brainscore import BrainScoreModel
+
+
+class TurnWhenBlocked:
+    """Moves on; turns when the last move left the observation unchanged."""
+
+    def __init__(self, max_history=8):
+        self.history = deque(maxlen=max_history)   # (observation, action) pairs, oldest first
+
+    def reset(self):
+        self.history.clear()
+
+    def __call__(self, row):
+        observation = row['observation']
+        blocked = bool(self.history) and self.history[-1][0] == observation
+        action = (self.history[-1][1] + 1) % 4 if blocked else 0
+        self.history.append((observation, action))
+        return {'motor': action}
+
+
+agent = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked(),
+                        policy_in_channels=('observation',))
+```
+
+The model calls `reset()` of the object given as `policy=` when an episode begins (every
+`begin` signal: at the start of each closed-loop session, and of each trial when the
+task's `trial_memory` is `'none'`) and when `model.reset()` runs. A bound method has no
+`reset()` of its own, so give the object. Declare in `policy_in_channels` every row key
+the policy reads; the session sends only those.
+
 ### Seam 2 — a new benchmark
 
 A benchmark drives the subject model and scores it. Subclass `BenchmarkBase`, implement

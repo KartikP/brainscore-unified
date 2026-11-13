@@ -47,6 +47,6 @@ class MyITBenchmark(Benchmark):
 - Score `chance-baseline` and `random-vit-b-32` first. A model result is only meaningful above these floors.
 - Fit any readout or regression on different stimuli from the ones you test on.
 - Build the score with `benchmark_score`, so it says whether the value is raw or ceiled (`normalized`) and carries its `ceiling`; record how the ceiling was computed.
-- Behavioral benchmarks that depend on how an answer is produced should set `TaskContext(prefer_path='readout')` or `'generation'` explicitly ([Behavior](behavior.md)).
+- How a model answers (its answer function or its readout) is a property of the model. A behavioral benchmark that accepts both fills in the instruction and `fitting_stimuli`; to compare the paths, score one model built for each path ([Behavior](behavior.md)).
 
 [Lesson 2](../../notebooks/lessons/02_your_first_benchmark.ipynb) builds a complete toy benchmark. Registered examples live in `brainscore/benchmarks/`.

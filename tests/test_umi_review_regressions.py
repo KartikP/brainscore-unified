@@ -271,7 +271,7 @@ def test_reset_and_readout_clear_composite_recording():
         extractor={'text': _Extractor(np.ones((4, 2)))}, behavioral_readout_layer='L')
     model.start_recording('IT', time_bins=[(0, 1)])
     # Readout extraction must also work while composite recording is configured.
-    task = TaskContext('probabilities', fitting_stimuli=_stimuli(), prefer_path='readout')
+    task = TaskContext('probabilities', fitting_stimuli=_stimuli())
     model.start_task(task)
     assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
     model.reset()
@@ -280,14 +280,36 @@ def test_reset_and_readout_clear_composite_recording():
     assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
 
 
-@pytest.mark.parametrize('bound_method', [False, True])
-def test_model_reset_clears_policy_history(bound_method):
-    from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-    wrapper = PolicyWrapper(lambda observation, history: len(history))
-    model = BrainScoreModel('policy', policy=wrapper.__call__ if bound_method else wrapper)
+class _CountingPolicy:
+    """Answers with the number of steps it remembers; reset() forgets them."""
+    def __init__(self):
+        self.history = []
+
+    def reset(self):
+        self.history.clear()
+
+    def __call__(self, row):
+        action = len(self.history)
+        self.history.append((row['observation'], action))
+        return {'motor': action}
+
+
+def test_model_reset_clears_policy_history():
+    model = BrainScoreModel('policy', policy=_CountingPolicy())
     assert model.process({'observation': {}}) == {'motor': 0}
+    assert model.process({'observation': {}}) == {'motor': 1}
     model.reset()
     assert model.process({'observation': {}}) == {'motor': 0}
+
+
+def test_a_part_declares_its_episode_state_with_its_own_reset():
+    """One declared way: the part given to the model has reset(). A bound method
+    is a part without one, so its object is not reset."""
+    policy = _CountingPolicy()
+    model = BrainScoreModel('policy', policy=policy.__call__)
+    model.process({'observation': {}})
+    model.reset()
+    assert model.process({'observation': {}}) == {'motor': 1}
 
 
 def test_vision_adapter_reset_reaches_real_commitment():

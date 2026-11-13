@@ -54,7 +54,6 @@ class TestTaskContext:
         assert ctx.label_set is None
         assert ctx.fitting_stimuli is None
         assert ctx.instruction is None
-        assert ctx.prefer_path is None
         assert ctx.metadata == {}
 
     def test_metadata_default_is_independent(self):
@@ -408,25 +407,24 @@ class TestBrainScoreModelDispatch:
         assert text_proc.call_args is None
 
 
-# -- TaskContext.prefer_path dispatch tests ----------------------------------
+# -- Behavioral path dispatch tests ------------------------------------------
 
-class TestPreferPathDispatch:
-    """Verify that TaskContext.prefer_path correctly forces the dispatch path
-    even when multiple paths are viable, and emits clear errors when the
-    forced path is not viable."""
+class TestBehavioralPathDispatch:
+    """The parts a model is built with decide its behavioral path; a path
+    that cannot run errors clearly."""
 
     def _make_dual_path_model(self, has_generation=True, has_readout=True):
         """A model with both behavioral_readout_layer AND answer set,
-        so that auto-dispatch would have a real choice to make."""
-        gen_fn = (lambda stim_row, instruction, label_set: label_set[0]
-                  if has_generation else None)
+        so that dispatch has a real choice to make."""
+        answer = ({'answer': lambda stim_row, instruction, label_set: label_set[0]}
+                  if has_generation else {})
         return BrainScoreModel(
             identifier='dual-path-model',
             model=None,
             region_layer_map={'IT': 'layer4'},
             extractor={'vision': make_stub_extractor()},
-            answer=gen_fn,
             behavioral_readout_layer='layer4' if has_readout else None,
+            **answer,
         )
 
     def _fitting_stub(self):
@@ -434,37 +432,16 @@ class TestPreferPathDispatch:
         readout fitting code can pretend to fit."""
         return StubStimulusSet(columns=['image_file_name', 'stimulus_id', 'label'])
 
-    def test_force_generation_without_answer_raises(self):
-        """prefer_path='generation' on a model without answer errors clearly."""
-        m = BrainScoreModel(
-            identifier='readout-only',
-            model=None,
-            region_layer_map={'IT': 'layer4'},
-            extractor={'vision': make_stub_extractor()},
-            behavioral_readout_layer='layer4',
-            # no answer
-        )
+    def test_readout_only_model_without_fitting_stimuli_raises(self):
+        """A model built without answer= reads out; without fitting_stimuli it errors clearly."""
+        m = self._make_dual_path_model(has_generation=False)
         ctx = TaskContext(
             task_type='probabilities',
             label_set=['real', 'pseudo'],
             instruction="Is this real?",
-            fitting_stimuli=self._fitting_stub(),
-            prefer_path='generation',
+            fitting_stimuli=None,           # missing
         )
-        with pytest.raises(ValueError, match="generation"):
-            m.start_task(ctx)
-
-    def test_force_readout_without_fitting_stimuli_raises(self):
-        """prefer_path='readout' on a TaskContext without fitting_stimuli errors clearly."""
-        m = self._make_dual_path_model()
-        ctx = TaskContext(
-            task_type='probabilities',
-            label_set=['real', 'pseudo'],
-            instruction="Is this real?",
-            fitting_stimuli=None,           # ← missing
-            prefer_path='readout',
-        )
-        with pytest.raises(ValueError, match="readout"):
+        with pytest.raises(ValueError, match="readout needs TaskContext.fitting_stimuli"):
             m.start_task(ctx)
 
     def test_unknown_task_type_raises(self):

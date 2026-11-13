@@ -25,7 +25,7 @@ pytestmark = pytest.mark.unit
 STIMULI = StimulusSet({'stimulus_id': ['a', 'b', 'c'], 'sentence': ['x', 'yy', 'zzz']})
 STIMULI.identifier = 'task-protocol-toy'
 TASK = TaskContext(task_type='label', label_set=['short', 'long'],
-                   instruction='Is it long?', prefer_path='generation')
+                   instruction='Is it long?')
 
 
 class Net:

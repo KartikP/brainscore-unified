@@ -272,8 +272,8 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     assert experiment.run().manifest['status'] == 'complete'
 
 
-@pytest.mark.parametrize('prefer_path', ['auto', 'generation', 'readout'])
-def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefer_path):
+def test_roar_task_carries_no_answer_path_and_splits_train_from_test(monkeypatch):
+    """How a subject answers is its own property: the ROAR task names no path."""
     from brainscore.benchmarks.roar_yeatman2021 import benchmark as module
     from brainscore_core import Subject
     from brainscore_core.streaming import StreamEvent
@@ -290,9 +290,8 @@ def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefe
     })
     monkeypatch.setattr(module, 'load_stimulus_set', lambda identifier: stimuli)
     monkeypatch.setattr(module, 'load_dataset', lambda identifier: human)
-    benchmark = module.Yeatman2021LexicalDecision(channels=('text',), prefer_path=prefer_path)
-    suffix = '' if prefer_path == 'auto' else f'-{prefer_path}'
-    assert benchmark.identifier == f'Yeatman2021-lexical_decision-text{suffix}'
+    benchmark = module.Yeatman2021LexicalDecision(channels=('text',))
+    assert benchmark.identifier == 'Yeatman2021-lexical_decision-text'
     tasks = []
     truth = dict(zip(stimuli.stimulus_id, stimuli.image_label))
 
@@ -314,10 +313,10 @@ def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefe
                                  'label_set': ['real', 'pseudo']}))
 
     result = benchmark(Reader())
-    assert tasks[0].prefer_path == prefer_path
+    assert not hasattr(tasks[0], 'prefer_path')
     assert result.attrs['n_test_stimuli'] == len(benchmark._test_stimuli)
     assert float(result) == 1
-    assert result.attrs['requested_behavioral_path'] == prefer_path
+    assert 'requested_behavioral_path' not in result.attrs
     assert not set(benchmark._train_stimuli.stimulus_id) & set(benchmark._test_stimuli.stimulus_id)
 
 

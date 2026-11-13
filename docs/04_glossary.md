@@ -40,7 +40,6 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`participate(session)`** | The one evaluation method every subject implements. |
 | **`Perturbation`** | How an intervention changes selected units: `zero`, `scale`, `drive` or `replace`. |
 | **`policy`** | A `BrainScoreModel` part: `row -> {output channel: payload}`. |
-| **`prefer_path`** | A `TaskContext` field that names the path a `BrainScoreModel` answers by: `generation` (`reply` or `answer`), `likelihood` or `readout`. `'auto'` tries them in that order. |
 | **`process(...)`** | A convenience method on `BrainScoreModel` and adapters for interactive use. Not part of the contract. It records activity; a behavioral answer comes only from a session. |
 | **Protocol** | The procedure of an experiment: which conditions, how many repetitions, where sessions begin and end, and when the subject is reset. |
 | **`record`** | To read activity from a subject; a saved run is a `RunRecord`. What to record is a requested output (`neural:<region>`), never a separate argument. |
@@ -63,7 +62,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`StimulusSet`** | A table with one row per stimulus; `stimulus_id` links each row to its response. |
 | **Subject** | The thing evaluated: anything that declares channels and implements `participate`. Every function that takes it names the argument `subject`. A person in the data is a participant. |
 | **Task** | The `TaskContext` of a session, given as `task`: what the subject is asked to do. |
-| **`TaskContext`** | What the subject is asked to do (`instruction`, or `task_type='passive'`), the form of the answer (`response`: `Choice`, `Scale`, `Text`), labeled `fitting_stimuli` for a readout, and `prefer_path`. |
+| **`TaskContext`** | What the subject is asked to do (`instruction`, or `task_type='passive'`), the form of the answer (`response`: `Choice`, `Scale`, `Text`), and labeled `fitting_stimuli` for a readout. Which part answers is a property of the model. |
 | **Visual form** | Whether a subject takes pictures (`vision:image`), video (`vision:video`) or both, natively. Benchmarks show each stimulus in its own form when the subject has it, and record any adaptation on the score. |
 | **Prompt** | One trial as a replying model sees it, in order: the instruction, the stimulus parts (in `present` order), then the response's directive. |
 | **Generation settings** | `max_tokens`, `temperature`, `top_p`, `seed` on a `Text` response. They belong to the task; a `reply` part reads them from `prompt.response`. |

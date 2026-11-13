@@ -21,7 +21,6 @@ from brainscore import BrainScoreModel
 from brainscore.harnesses.grid_game import (
     GridGameEnv, play_game, greedy_oracle_policy, random_action_policy,
 )
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.benchmarks._score import benchmark_score
 
 
@@ -38,13 +37,10 @@ def _run(subject, n_episodes, size, max_steps, base_seed):
 
 
 def policy_model(policy, identifier):
-    """Wrap a bare ``(observation, history) -> action`` policy as a scorable
-    subject (the same shape a real model takes: a ``policy`` part on a
-    ``BrainScoreModel``). Used for the oracle ceiling + random floor."""
-    return BrainScoreModel(
-        identifier=identifier,
-        policy=PolicyWrapper(policy, max_history=4),
-    )
+    """A ``row -> {'motor': action}`` policy as a scorable subject (the same
+    shape a real model takes: a ``policy`` part on a ``BrainScoreModel``). Used
+    for the oracle ceiling + random floor; both read ``observation``."""
+    return BrainScoreModel(identifier=identifier, policy=policy)
 
 
 class GridGameBenchmark(BenchmarkBase):
