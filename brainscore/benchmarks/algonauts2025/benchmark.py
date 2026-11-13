@@ -373,7 +373,8 @@ class _Algonauts2025Base(BenchmarkBase):
         needed = self._N_FOLDS
         while needed - math.ceil(needed / self._N_FOLDS) < self._N_FOLDS:
             needed += 1
-        if n_stimuli < needed:
+        # Only the training split is cross-validated; a held-out split needs no split.
+        if self._split == 'friends' and n_stimuli < needed:
             raise ValueError(
                 f"movies give {n_stimuli} stimuli; the benchmark needs at least "
                 f"{needed} for 5-fold scoring over stimuli. Name more movies.")

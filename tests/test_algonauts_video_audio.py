@@ -540,6 +540,16 @@ def test_too_few_runs_raise(tmp_path, n_movies, ok):
                 benchmark.assembly
 
 
+def test_one_held_out_film_can_be_selected_but_the_training_split_needs_more(tmp_path):
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025FriendsS7, Algonauts2025OOD
+    for cls in (Algonauts2025FriendsS7, Algonauts2025OOD):
+        benchmark = cls(subject=1, form='video+audio', assembly_root=tmp_path, movies=MOVIES[:1])
+        kept = benchmark._only_movies(_assembly(MOVIES))
+        assert kept.sizes['presentation'] == N_TRS
+    with pytest.raises(ValueError, match='Name more movies'):
+        _benchmark(tmp_path, movies=MOVIES[:1])._only_movies(_assembly(MOVIES))
+
+
 def test_unknown_movies_raise(tmp_path):
     benchmark = _benchmark(tmp_path, movies=MOVIES[:6] + ['friends_s09e99a'])
     with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)), \

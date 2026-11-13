@@ -9,7 +9,7 @@ from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
-from brainscore.harnesses.coggym import CogGymRunner, _PROMPT_NOTE, _require_every_input
+from brainscore.harnesses.coggym import CogGymRunner, _PROMPT_NOTE
 from brainscore_core.compatibility import CompatibilityError
 
 from . import EXPERIMENTS
@@ -41,8 +41,10 @@ class CogGymBenchmark(BenchmarkBase):
     text as the instruction, the message parts (``text``, ``vision:image``,
     ``vision:video``) in CogGym's order, and the temperature and length as
     settings on a ``Text`` response. The subject answers on ``behavior:text``
-    and CogGym parses the answer. A subject must take every kind of part the
-    experiment shows; otherwise the benchmark is N/A for it before any compute.
+    and CogGym parses the answer. A subject that takes in only some of these
+    inputs runs with the others dropped (a partial match); the score records
+    ``attrs['compatibility']`` with the match level and the dropped inputs.
+    The benchmark is N/A only for an incompatible pair, before any compute.
     A ``BrainScoreModel`` with a ``reply`` part and the matching inputs runs it.
 
     Scores can differ a little from scores made with CogGym's own client. The
@@ -135,8 +137,8 @@ class CogGymBenchmark(BenchmarkBase):
         # Experiment supplies the subject (model interface) and context (run
         # directory and artifact registration). CogGym still owns the trial loop.
         def evaluate(subject, context):
-            check_channel_compatibility(subject, self)
-            _require_every_input(subject, self)
+            # A partial match runs with the dropped inputs left out; the score says so.
+            match = check_channel_compatibility(subject, self)
             native = runner.protocol(reset=_require_reset(reset))
             # Call evaluate(), not run(): the outer protocol already owns the run.
             # The runner records each request and answer as one session, in its
@@ -179,6 +181,7 @@ class CogGymBenchmark(BenchmarkBase):
                 repetition_note='Five repeats match the reference README example, not a guarantee of leaderboard replication.',
                 input_adaptation=dict(_PROMPT_NOTE),
             )
+            score.attrs['compatibility'] = match.as_attrs()
             return score
 
         return CallableProtocol(
@@ -192,7 +195,6 @@ class CogGymBenchmark(BenchmarkBase):
     def __call__(self, candidate: Subject) -> Score:
         """Run benchmark(subject) with input/output recording and return its Score."""
         check_channel_compatibility(candidate, self)
-        _require_every_input(candidate, self)
         protocol = self.protocol(model=candidate.identifier, reset=_require_reset(self._reset))
         directory = self._output_dir
         if directory is None:

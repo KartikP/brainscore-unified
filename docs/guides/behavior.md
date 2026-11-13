@@ -33,7 +33,7 @@ Three fields of `Choice` serve a library that compares options by their likeliho
 | `raw_scores=True` | `behavior:probabilities` carries each option's score exactly as the `likelihood` part gave it (summed log probability), not normalized; `attrs['measure']['scale']` is `'log'`. Only a `likelihood` part gives it; any other model is N/A. |
 | `raw_text=True` | the stimulus text is shown exactly as given: no directive, and no instruction. A `likelihood` part scores `f"{text} {option}"` as plain text, with no chat template and no beginning-of-sequence token. A `reply` part gets no added sentence but still answers through its chat template. |
 
-**The order of a trial.** A model that replies receives a `Prompt`: the instruction, the stimulus, then the response's directive. When a stimulus has several parts (a sentence and a clip), say the order people saw them in with `present`; a stimulus with several parts and no order fails before any compute:
+**The order of a trial.** A model that replies receives a `Prompt`: the instruction, the stimulus, then the response's directive. When a stimulus has several parts (a sentence and a clip), say the order people saw them in with `present`; a stimulus with several parts and no order fails before any compute. A model that does not take in a part (a text-only model on a task with a clip) gets the task without that entry, so its trial shows only the parts it takes in. An entry that names a column no stimulus has is an error for every model:
 
 ```python
 TaskContext(instruction='Which way does the ball move?', present=('text', 'video'),

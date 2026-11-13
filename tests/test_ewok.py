@@ -274,9 +274,8 @@ def test_choice_prompt_is_ewoks_own_text_with_nothing_added(prepared, tmp_path):
     assert all(p.response.labels==('1','2') and p.response.raw_text for p in prompts)
 
 
-@pytest.mark.parametrize('parts', [{'likelihood'}, {'answer'}])
-def test_likelihood_or_answer_parts_also_run_choice(prepared, tmp_path, parts):
-    """Any part that gives behavior:choice runs it, not only a reply."""
+def test_a_likelihood_part_also_runs_choice(prepared, tmp_path, parts={'likelihood'}):
+    """A likelihood part gives behavior:choice, not only a reply. An answer part cannot: raw text."""
     def likelihood(prompt, candidates):
         return {label: (0. if label==native_choice(prompt) else -1.) for label in candidates}
     def answer(stimulus_row, instruction, label_set):
@@ -285,6 +284,13 @@ def test_likelihood_or_answer_parts_also_run_choice(prepared, tmp_path, parts):
                           **({'likelihood':likelihood} if 'likelihood' in parts else {'answer':answer}))
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
     assert float(b(model))==1
+
+
+def test_an_answer_part_cannot_run_the_raw_text_choice(prepared, tmp_path):
+    model=BrainScoreModel('fixture', supported_modalities={'text'}, answer=lambda row, instruction, labels: '1')
+    b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
+    with pytest.raises(ValueError,match='cannot give a Choice answer'):
+        b(model)
 
 
 def test_failure_preserves_failed_run(prepared, tmp_path):

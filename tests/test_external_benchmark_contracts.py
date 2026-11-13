@@ -9,6 +9,7 @@ import pytest
 
 import brainscore
 from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
+from brainscore_core.contract import Subject
 from brainscore_core.score_status import score_or_na
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore.data.preparation import prepare_dataset
@@ -22,19 +23,14 @@ from .test_ewok import native, prepared, subject, NativeModel, EWoKProvider
 pytestmark = pytest.mark.unit
 
 
-@pytest.mark.parametrize('experiment,content,modalities', [
-    ('Aboody2025Inferring/exp1', ['image'], ('text', 'vision')),
-    ('Fu2025Hierarchical/exp1', ['image', 'video'], ('text', 'vision', 'video')),
-])
-def test_media_requires_explicit_support_and_preserves_payload(
-    reference, tmp_path, experiment, content, modalities,
-):
-    """A subject without a media form the trials need is N/A before any compute.
+_MEDIA = [
+    ('Aboody2025Inferring/exp1', ['image'], ('text', 'vision'), {'vision:image'}),
+    ('Fu2025Hierarchical/exp1', ['image', 'video'], ('text', 'vision', 'video'),
+     {'vision:image', 'vision:video'}),
+]
 
-    Pre-flight alone lets a partial match run, so the benchmark and the runner
-    check that the subject takes every kind of part; the pictures are never
-    dropped silently.
-    """
+
+def _media_benchmark(reference, tmp_path, experiment, content):
     root, cli = reference
     (root / 'evaluation/public_manifest.json').write_text(json.dumps({
         'experiments': [{'path': experiment}],
@@ -42,21 +38,24 @@ def test_media_requires_explicit_support_and_preserves_payload(
     clip = tmp_path / 'clip.mp4'
     clip.write_bytes(b'not decoded here')
     parts = {'image': image_part(), 'video': {'type': 'video', 'path': str(clip), 'mime_type': 'video/mp4'}}
-    messages = [{'role': 'user', 'content': [parts[kind] for kind in content]}]
+    messages = [{'role': 'user', 'content': [{'type': 'text', 'text': 'look'},
+                                             *[parts[kind] for kind in content]]}]
     cli.build_messages = lambda *args: ('instructions', messages)
     benchmark = brainscore.load_benchmark(f'CogGym.{experiment.replace("/", ".")}', checkout=root,
                                           reset=lambda repetition: None)
+    return root, clip, benchmark
+
+
+@pytest.mark.parametrize('experiment,content,modalities,media', _MEDIA)
+def test_subject_taking_every_input_has_a_full_match(
+    reference, tmp_path, experiment, content, modalities, media,
+):
+    """Every part reaches the reply, in CogGym's order; the match is full."""
+    root, clip, benchmark = _media_benchmark(reference, tmp_path, experiment, content)
     prompts = []
-    def capture(prompt):
-        prompts.append(prompt)
-        return '50'
-    text_subject = make_subject(capture)
-    with pytest.raises(CompatibilityError, match='does not declare'):
-        benchmark(text_subject)
-    assert score_or_na(benchmark, text_subject).attrs['status'] == 'N/A'
-    assert prompts == []
-    candidate = make_subject(capture, modalities)
-    check_channel_compatibility(candidate, benchmark)
+    candidate = make_subject(lambda prompt: prompts.append(prompt) or '50', modalities)
+    match = check_channel_compatibility(candidate, benchmark)
+    assert match.kind == 'full' and not match.dropped_inputs
     runner = CogGymRunner(
         root, experiment=experiment, model='fixture', modalities=['text', *content],
     )
@@ -66,18 +65,94 @@ def test_media_requires_explicit_support_and_preserves_payload(
         tools=[RecordInputsOutputs()], output_dir=tmp_path / 'media',
     ).run()
     assert len(prompts) == 3
-    # Every part reaches the reply, in CogGym's order, after the instruction.
-    assert [kind for kind, _ in prompts[0].parts] == ['text', *content]
+    assert [kind for kind, _ in prompts[0].parts] == ['text', 'text', *content]
     shown = dict(zip(prompts[0].names, (value for _, value in prompts[0].parts)))
     assert Path(shown['image_path']).read_bytes() == base64.b64decode(PIXEL)
     if 'video' in content:
         assert shown['video_path'] == str(clip)
+
+
+@pytest.mark.parametrize('experiment,content,modalities,media', _MEDIA)
+def test_text_only_subject_runs_with_the_media_dropped_and_is_stamped(
+    reference, scored_reference, tmp_path, experiment, content, modalities, media,
+):
+    """A subject without the media form gets no event on it and a prompt without it."""
+    root, clip, benchmark = _media_benchmark(reference, tmp_path, experiment, content)
+    prompts = []
+    text_subject = make_subject(lambda prompt: prompts.append(prompt) or '50')
+    match = check_channel_compatibility(text_subject, benchmark)
+    assert match.kind == 'partial' and match.dropped_inputs == media
+    score = benchmark(text_subject)
+    assert len(prompts) == 15
+    for prompt in prompts:
+        assert [kind for kind, _ in prompt.parts] == ['text', 'text']
+        assert prompt.names == ('instruction', 'text')
+    assert score.attrs['compatibility']['match'] == 'partial'
+    assert score.attrs['compatibility']['dropped_inputs'] == sorted(media)
+    assert 'instruction' in score.attrs['compatibility']['consumed_inputs']
+    # A protocol run through Experiment carries the same label.
+    protocol = benchmark.protocol(model='fixture', reset=lambda repetition: None)
+    result = Experiment(subject=text_subject, protocol=protocol,
+                        output_dir=tmp_path / 'partial').run()
+    assert result.value.attrs['compatibility']['match'] == 'partial'
+
+
+def test_text_only_subject_receives_no_picture_event(reference, scored_reference, tmp_path):
+    root, clip, benchmark = _media_benchmark(
+        reference, tmp_path, 'Aboody2025Inferring/exp1', ['image'])
+    events = []
+    score = benchmark(_Recorder(events))
+    assert events and 'vision:image' not in events
+    assert {'instruction', 'text'} >= set(events)
+    # The label rides on the score of a direct run and of a protocol run.
+    for labelled in (score, Experiment(
+            subject=_Recorder([]), output_dir=tmp_path / 'protocol',
+            protocol=benchmark.protocol(model='recorder', reset=lambda repetition: None)).run().value):
+        assert labelled.attrs['compatibility']['match'] == 'partial'
+        assert labelled.attrs['compatibility']['dropped_inputs'] == ['vision:image']
+
+
+class _Recorder(Subject):
+    """A contract subject that records the channel of every input event."""
+
+    identifier = 'recorder'
+    in_channels = frozenset({'instruction', 'text'})
+    out_channels = frozenset({'behavior:text'})
+
+    def __init__(self, channels, in_channels=None):
+        self.channels = channels
+        if in_channels is not None:
+            self.in_channels = in_channels
+
+    def participate(self, session):
+        # Every shipped subject keeps only the streams it declares (rule 5.5).
+        session.declare_inputs(self.in_channels)
+        while (event := session.next_input()) is not None:
+            self.channels.append(event.channel)
+            session.respond(StreamEvent('behavior:text', '50', event.t_ms, dict(event.meta)))
+
+    def reset(self):
+        pass
+
+
+@pytest.mark.parametrize('experiment,content,modalities,media', _MEDIA)
+def test_subject_with_no_shared_input_or_no_text_answer_is_still_na(
+    reference, tmp_path, experiment, content, modalities, media,
+):
+    """Only an incompatible pair is N/A, before any model call."""
+    root, clip, benchmark = _media_benchmark(reference, tmp_path, experiment, content)
+    prompts = []
+    capture = lambda prompt: prompts.append(prompt) or '50'
+    # Takes none of the inputs the experiment sends (instruction, text, pictures).
+    no_input = _Recorder([], in_channels=frozenset({'audio'}))
     with pytest.raises(CompatibilityError):
-        Experiment(
-            subject=text_subject, protocol=runner.protocol(reset=lambda repetition: None),
-            output_dir=tmp_path / 'unsupported',
-        ).run()
-    assert len(prompts) == 3
+        benchmark(no_input)
+    assert score_or_na(benchmark, no_input).attrs['status'] == 'N/A'
+    # Cannot answer on behavior:text.
+    no_text = brainscore.load_model('chance-baseline')
+    with pytest.raises(CompatibilityError):
+        benchmark(no_text)
+    assert prompts == [] and no_input.channels == []
 
 
 def test_coggym_parts_keep_their_order_within_one_trial(reference, tmp_path):

@@ -57,9 +57,12 @@ inputs the trials show. Each CogGym call reaches the model on the common
 channels: the system text is the task's instruction, the message parts are one
 stimulus row (`text`, `vision:image`, `vision:video`) in CogGym's order, and the
 temperature and length are settings on the task's `Text` response. The model
-answers on `behavior:text`, and CogGym parses the answer. A model that lacks a
-media form the experiment needs is N/A before any compute; the pictures are
-never left out.
+answers on `behavior:text`, and CogGym parses the answer. A subject that lacks a
+media form runs with that form dropped. The score records `match: partial` and
+the dropped inputs in `score.attrs['compatibility']`. Such a score is a control
+for the dropped input, not a result for the full experiment. A subject that
+takes none of the experiment's inputs, or cannot answer on `behavior:text`, is
+N/A before any compute.
 
 ```python
 benchmark = brainscore.load_benchmark("CogGym.Hu2023Fine.exp1", reset=lambda repetition: None)

@@ -216,3 +216,13 @@ def test_multi_trial_reasoning_skips_trials_without_reasoning(tmp_path):
     result = run(tmp_path / 'none', answering(reasoning=[None, None]))
     record = next(RunRecord(result.directory / 'reasoning').outputs())
     assert record['reasoning_available'] is False and record['reasoning'] == []
+
+
+def test_multi_trial_reasoning_accepts_a_list_of_blocks_for_a_trial(tmp_path):
+    """Two trials: the first has two blocks, the second has none. All blocks stay, in order."""
+    first = [{'text': 'step one', 'kind': 'chain_of_thought'}, 'step two']
+    result = run(tmp_path, answering(reasoning=[first, None]))
+    record = next(RunRecord(result.directory / 'reasoning').outputs())
+    assert record['reasoning_available'] is True
+    assert [block['text'] for block in record['reasoning']] == ['step one', 'step two']
+    assert record['reasoning'][0]['kind'] == 'chain_of_thought'

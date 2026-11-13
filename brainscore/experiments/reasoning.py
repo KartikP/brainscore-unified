@@ -24,6 +24,9 @@ def _blocks(value):
     for item in values:
         if item is None:
             continue   # a trial of a multi-trial answer that gave no reasoning
+        if isinstance(item, list):
+            result.extend(_blocks(item))   # the blocks of one trial, in order
+            continue
         if isinstance(item, str):
             block = {'text': item}
         elif isinstance(item, dict):

@@ -437,7 +437,8 @@ def build_api_reply(
         ``(model, system, messages, settings)`` that returns the text, or a
         ``StreamEvent`` with the text as payload and the extra data as meta.
     :param cache_dir: if set, replies are cached per trial, keyed on the
-        provider, the model, the system text, the turns and the settings.
+        provider, the model, the system text, the turns and the settings. A
+        sampled call (temperature above 0) with no seed is never cached.
     """
     call = provider if callable(provider) else _REPLY_PROVIDERS[provider]
     provider_name = getattr(provider, '__name__', str(provider))
@@ -457,10 +458,13 @@ def build_api_reply(
         system, messages = _reply_messages(prompt)
         key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings],
                                         sort_keys=True).encode('utf-8')).hexdigest()
-        answer = cache.get(key) if cache is not None else None
+        # A sampled call without a seed differs on each repetition: do not cache it.
+        use_cache = cache is not None and not (
+            (settings.get('temperature') or 0) > 0 and settings.get('seed') is None)
+        answer = cache.get(key) if use_cache else None
         if answer is None:
             answer = call(model, system, messages, settings)
-            if cache is not None:
+            if use_cache:
                 cache.set(key, {'text': answer.payload, 'meta': answer.meta}
                           if isinstance(answer, StreamEvent) else answer)
         elif isinstance(answer, dict):

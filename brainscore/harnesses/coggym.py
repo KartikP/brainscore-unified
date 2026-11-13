@@ -32,10 +32,10 @@ import pandas as pd
 
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY, validate_slider_responses
-from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
+from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Text
-from brainscore_core.streaming import Session, channel_declared
+from brainscore_core.streaming import Session
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.instrumentation import observed
@@ -99,22 +99,6 @@ def _load_reference(checkout):
             'in your experiment environment. Local providers need no API key.'
         ) from error
     return importlib.import_module(f'{name}.cli'), importlib.import_module(f'{name}.analyze')
-
-
-def _require_every_input(subject, declarer) -> None:
-    """Refuse, before any compute, a subject that lacks an input every trial needs.
-
-    Pre-flight runs a subject whose inputs match the benchmark's in part. A
-    CogGym trial shows all of its parts, so a subject that cannot take its
-    pictures or clips would answer without them. That is N/A, not a score.
-    """
-    missing = sorted(channel for channel in declarer.required_input_channels
-                     if not channel_declared(channel, subject.in_channels))
-    if missing:
-        raise CompatibilityError(
-            f"Subject '{subject.identifier}' does not declare {missing}. The CogGym trials "
-            f'show {sorted(declarer.required_input_channels)}; a subject must take every '
-            'part, or the trials would run with parts left out.')
 
 
 def _check_image(part) -> bytes:
@@ -248,10 +232,10 @@ class CogGymRunner:
     CogGymBenchmark instead uses the README example's five repetitions.
     Set these values explicitly when comparing direct and registered runs.
 
-    A subject runs the protocol when it declares ``instruction`` and every
-    kind of part the selected trials show (``text``, ``vision:image``,
+    A subject runs the protocol when it takes in at least one of the inputs
+    the selected trials send (``instruction``, ``text``, ``vision:image``,
     ``vision:video``: ``required_input_channels``) and answers on
-    ``behavior:text``. A ``BrainScoreModel`` with a ``reply`` part does both.
+    ``behavior:text``. An input it cannot take is dropped (a partial match). A ``BrainScoreModel`` with a ``reply`` part does both.
     """
 
     def __init__(
@@ -326,8 +310,9 @@ class CogGymRunner:
                 raise ValueError(f'Provider must support these modalities: {sorted(required)}')
             shown |= required
             self._prompt_trials.setdefault(_prompt_key(system, messages), []).append(trial.id)
-        # The channels a subject must take: the system text is the instruction, and
-        # every kind of part the selected trials show (see _require_every_input).
+        # The inputs the experiment sends: the system text is the instruction, and
+        # every kind of part the selected trials show. A subject that cannot take
+        # one runs with it dropped (Contract Rules 5.2, 5.5, 5.6).
         self.required_input_channels = frozenset(
             {'instruction'} | {_PART_CHANNELS[kind] for kind in shown})
         self.requested_output_channels = frozenset({'behavior:text'})
@@ -368,7 +353,6 @@ class CogGymRunner:
         def evaluate(subject, context):
             # Reject missing media support before the first provider call.
             check_channel_compatibility(subject, self)
-            _require_every_input(subject, self)
             def register(path):
                 context.artifact(
                     path, producer='CogGym evaluator via UMI adapter',

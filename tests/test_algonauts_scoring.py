@@ -235,3 +235,13 @@ def test_prediction_uses_the_training_preparation_and_penalties():
     with pytest.raises(ValueError, match='differ from the training bands'):
         fit_predict_banded({'IT': (X, ids)}, Y, groups, keep, _same, {'V4': (new, ids)}, _same,
                            dim_cap=5, alpha_grid=GRID, n_candidates=60)
+
+
+def test_a_constant_parcel_does_not_stop_the_choice_of_penalties():
+    X, Y, groups = _synth(n_parcels=1)
+    both = np.concatenate([Y, np.full_like(Y, 7.0)], axis=1)   # a constant parcel has no correlation
+    widths, tuples = [X.shape[1]], [(a,) for a in GRID]
+    kwargs = dict(n_splits=5, random_state=0)
+    alone = scoring.choose_penalties(X, Y, groups, widths, tuples, **kwargs)
+    with_constant = scoring.choose_penalties(X, both, groups, widths, tuples, **kwargs)
+    assert list(with_constant) == [alone[0]] * 2

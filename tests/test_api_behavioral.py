@@ -410,11 +410,28 @@ class TestApiReply:
         provider, calls = _recording_provider()
         reply = build_api_reply(provider, 'm-1', cache_dir=tmp_path)
         shown = (('text', 'x'),)
-        for response in (Text(temperature=1.0), Text(temperature=1.0), Text(temperature=0.5),
-                         Text(temperature=1.0, max_tokens=8)):
+        for response in (Text(temperature=1.0, seed=1), Text(temperature=1.0, seed=1),
+                         Text(temperature=0.5, seed=1), Text(temperature=1.0, seed=1, max_tokens=8)):
             reply(Prompt(shown, response=response))
         # The repeated request is served from the cache; each new setting is a new request.
         assert len(calls) == 3
+
+    def test_a_sampled_call_without_a_seed_is_not_cached(self, tmp_path):
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt, Text
+        calls = []
+
+        def provider(model, system, messages, settings):
+            calls.append(1)
+            return f'answer {len(calls)}'
+        reply = build_api_reply(provider, 'm-1', cache_dir=tmp_path)
+        shown = (('text', 'x'),)
+        sampled = [reply(Prompt(shown, response=Text(temperature=1.0))) for _ in range(5)]
+        assert len(calls) == 5 and len(set(sampled)) == 5
+        for response in (Text(temperature=1.0, seed=2), Text(temperature=0.0), Text()):
+            first = reply(Prompt(shown, response=response))
+            assert reply(Prompt(shown, response=response)) == first
+        assert len(calls) == 8
 
     @pytest.mark.parametrize('settings', [{'temperature': 0.5}, {'temperature': 1.0, 'top_p': 0.9},
                                           {'seed': 1}])

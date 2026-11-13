@@ -110,7 +110,9 @@ def choose_penalties(X, Y, groups, widths, tuples, *, n_splits, random_state):
         scores[index] = _pearson_per_column(Yc[check], Xc[check] @ W)
     if not np.isfinite(scores).any():
         raise np.linalg.LinAlgError('No penalty tuple gave a solvable banded ridge.')
-    best = int(np.nanargmax(np.where(np.isfinite(scores), scores, np.nan).mean(axis=1)))
+    valid = np.where(np.isfinite(scores), scores, np.nan)
+    # Mean over the parcels that have a correlation: a constant parcel has none.
+    best = int(np.nanargmax(np.nanmean(valid, axis=1)))
     return np.full(Y.shape[1], best)
 
 

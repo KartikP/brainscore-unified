@@ -392,10 +392,11 @@ class BehavioralReadout:
                 f"Model '{owner.identifier}' cannot give raw scores of the options: "
                 'they come only from a likelihood= part.')
         per_row = isinstance(response, Choice) and isinstance(response.labels, str)
+        raw_text = isinstance(response, Choice) and response.raw_text
         can = {
             'generation': not raw_scores and (owner._reply_fn is not None or (
                 owner._generation_fn is not None and isinstance(response, Choice)
-                and not reported_confidence)),
+                and not reported_confidence and not raw_text)),   # answer= takes no settings
             'likelihood': (owner._likelihood_fn is not None and isinstance(response, Choice)
                            and not reported_confidence),
             'readout': (readout_wired and isinstance(response, (Choice, Scale))

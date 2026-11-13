@@ -662,3 +662,20 @@ def test_chat_parts_scores_plain_text_under_raw_text():
     # The text alone first (the pass a recording keeps), then the options; never a template.
     assert seen['ids'][0].tolist() == [tok('ab')['input_ids']]
     assert not hasattr(processor, 'kwargs')
+
+
+def test_an_answer_part_cannot_serve_a_raw_text_choice():
+    """answer= takes no response settings and adds its own directive, so it is refused."""
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    calls = []
+
+    def answer(stimulus_row, instruction, label_set):
+        calls.append(1)
+        return label_set[0]
+    model = BrainScoreModel(identifier='answerer', supported_modalities={'text'}, answer=answer)
+    task = TaskContext(response=Choice(labels='options', raw_text=True))
+    session = stimulus_session(_options_stimuli(), ['behavior:choice'], task)
+    with pytest.raises(ValueError, match='cannot give a Choice answer'):
+        model.participate(session)
+    assert calls == []
