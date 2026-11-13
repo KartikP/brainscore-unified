@@ -3,11 +3,11 @@ import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.compatibility import CompatibilityError
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core._evaluation.compatibility import check_channel_compatibility
+from brainscore_core.compatibility import check_channel_compatibility
 
 pytestmark = pytest.mark.unit
 

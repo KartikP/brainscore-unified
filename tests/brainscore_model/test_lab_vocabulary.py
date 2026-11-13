@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import StateChange, PerturbationApplied, Perturbation, Selection
+from brainscore_core.events import StateChange, PerturbationApplied, Perturbation, Selection
 from brainscore_core.streaming import FixedSource, Session, Source, StreamEvent
 from brainscore_core.streaming_helpers import stimulus_session
 
@@ -68,7 +68,7 @@ def test_extractor_and_buffered_session_work_across_modalities(modality, column)
 
 
 def test_answer_gives_one_choice_for_each_stimulus():
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
     def answer(stimulus_row, instruction, label_set):
@@ -111,7 +111,7 @@ def test_non_callable_extractor_names_extractor_signature():
 
 
 def _text_task(**fields):
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     return TaskContext(task_type='label', **fields)
 
 

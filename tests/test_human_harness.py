@@ -7,7 +7,7 @@ unwired harness fails explicitly.
 """
 import pytest
 
-from brainscore_core.model_interface import Subject, TaskContext
+from brainscore_core.contract import Subject, TaskContext
 from brainscore.harnesses.human import HumanHarness
 
 

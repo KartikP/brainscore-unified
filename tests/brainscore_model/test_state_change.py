@@ -14,7 +14,7 @@ Covers:
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange
+from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.streaming_helpers import apply_state_change
 
 

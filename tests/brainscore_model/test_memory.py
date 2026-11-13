@@ -32,7 +32,7 @@ class TestProbeThroughParticipate:
     """The feature-width probe runs one session through participate for every subject."""
 
     def test_participate_only_subject_is_probed_from_its_declarations(self):
-        from brainscore_core.model_interface import Subject
+        from brainscore_core.contract import Subject
         from brainscore_core.streaming import StreamEvent
 
         class Native(Subject):

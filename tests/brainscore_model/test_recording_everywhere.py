@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore.selection import CompositeSelector, LayerSelector

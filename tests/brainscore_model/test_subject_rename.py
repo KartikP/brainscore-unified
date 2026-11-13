@@ -2,7 +2,7 @@
 
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Subject, UnifiedModel
+from brainscore_core.contract import Subject, UnifiedModel
 
 
 class TestSubjectRename:

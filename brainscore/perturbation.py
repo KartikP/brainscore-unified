@@ -41,12 +41,7 @@ import uuid
 import numpy as np
 
 from brainscore.model_helpers.selection import split_site
-from brainscore_core.model_interface import (
-    Perturbation,
-    PerturbationApplied,
-    Selection,
-    StateChange,
-)
+from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 
 
 def build_pytorch_ablation_fn(model: Any) -> Callable:

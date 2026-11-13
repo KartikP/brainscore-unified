@@ -40,7 +40,7 @@ import pandas as pd
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.contract import TaskContext
 from brainscore_core.metrics import Score
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.responses import Choice
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.benchmarks._score import not_estimated

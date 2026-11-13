@@ -11,7 +11,7 @@ from brainscore.experiments import (
 )
 from brainscore.experiments.replay import _equal, read_events
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import (
     stimulus_session,

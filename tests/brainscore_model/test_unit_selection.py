@@ -12,7 +12,7 @@ import pytest
 
 from brainscore import BrainScoreModel, UnitSelection, FunctionalSelection, RandomSelection, IndexSelection
 from brainscore_core import Subject
-from brainscore_core.model_interface import Selection, Perturbation, PerturbationApplied, StateChange
+from brainscore_core.events import Selection, Perturbation, PerturbationApplied, StateChange
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -276,7 +276,7 @@ def test_subset_without_original_addresses_is_rejected():
 
 
 def test_matched_to_copies_the_functional_selection_settings():
-    from brainscore_core.model_interface import Selection
+    from brainscore_core.events import Selection
     from brainscore.selection import RandomSelection
     population = list(range(10, 60))
     units = Selection(layer='features.12', indices=[11, 12, 13], axis=1, expected_shape=(512, 13, 13),
@@ -290,7 +290,7 @@ def test_matched_to_copies_the_functional_selection_settings():
 
 def test_matched_to_needs_a_population():
     import pytest
-    from brainscore_core.model_interface import Selection
+    from brainscore_core.events import Selection
     from brainscore.selection import RandomSelection
     with pytest.raises(ValueError, match='unit population'):
         RandomSelection.matched_to(Selection(layer='x', indices=[0], metadata={}))

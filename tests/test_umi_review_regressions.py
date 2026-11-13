@@ -9,7 +9,8 @@ from torch import nn
 
 from brainscore_core.streaming_helpers import apply_state_change
 from brainscore import BrainScoreModel, CompositeSelector, LayerSelector, RandomSelection
-from brainscore_core.model_interface import TaskContext, StateChange, Perturbation
+from brainscore_core.contract import TaskContext
+from brainscore_core.events import StateChange, Perturbation
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuroidAssembly, BehavioralAssembly,
 )

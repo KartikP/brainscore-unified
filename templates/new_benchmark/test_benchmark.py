@@ -16,7 +16,7 @@ os.environ.setdefault('RESULTCACHING_DISABLE', '1')
 import numpy as np
 import pytest
 
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.streaming import StreamEvent
 

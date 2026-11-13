@@ -3,7 +3,7 @@ from contextlib import contextmanager
 
 from brainscore.experiments import (Experiment, RecordInputsOutputs, SessionProtocol,
                                     compare_outputs, replay_sessions)
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 

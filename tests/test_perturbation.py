@@ -9,7 +9,7 @@ import pytest
 torch = pytest.importorskip('torch')
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange
+from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore.perturbation import build_pytorch_ablation_fn
 from brainscore_core.streaming_helpers import apply_state_change
 
@@ -314,7 +314,7 @@ class TestIndexValidation:
         # Index perturbation acts on axis -1 (spatial for conv), so index 5 is
         # VALID even though out_channels=4; it must APPLY (not be rejected) and
         # zero spatial column 5. This would fail against c5879b1.
-        from brainscore_core.model_interface import PerturbationApplied
+        from brainscore_core.events import PerturbationApplied
         net = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3))  # output (N, 4, H-2, W-2)
         bs = BrainScoreModel('conv', net, {}, extractor={'vision': lambda stimuli, layers=None: stimuli},
                              intervention=build_pytorch_ablation_fn(net))

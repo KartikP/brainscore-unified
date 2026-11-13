@@ -20,7 +20,7 @@ from brainscore_core import io_catalog
 from brainscore.capabilities import capability_registry
 from brainscore_core.compatibility import check_compatibility
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly

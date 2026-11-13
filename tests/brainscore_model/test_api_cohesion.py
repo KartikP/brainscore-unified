@@ -96,7 +96,7 @@ def test_common_session_keeps_custom_events():
 
 
 def test_explicit_source_is_independent_of_behavioral_task_configuration():
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     seen = []
     def generate(model, stimuli, task):
@@ -184,7 +184,7 @@ def test_external_selector_routing_does_not_require_a_dataclass():
 
 
 def test_generation_inputs_need_no_placeholder_extractors():
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     model = BrainScoreModel(
         identifier='output-only', supported_modalities={'text'},
         answer=lambda stimulus_row, instruction, label_set: label_set[0],
@@ -207,7 +207,7 @@ def test_generation_inputs_need_no_placeholder_extractors():
 @pytest.mark.parametrize('prefer_path', ['auto', 'generation', 'readout'])
 def test_behavioral_path_choice_is_explicit_or_warns(monkeypatch, prefer_path):
     import warnings
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     model = BrainScoreModel(
         identifier='dual-path', supported_modalities={'text'},
         answer=lambda **kwargs: 'yes', behavioral_readout_layer='layer',
@@ -231,7 +231,7 @@ def test_behavioral_path_choice_is_explicit_or_warns(monkeypatch, prefer_path):
 
 def test_named_readout_layer_without_extractor_is_not_a_second_path():
     import warnings
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     model = BrainScoreModel(
         identifier='answer-only', supported_modalities={'text'},
         answer=lambda **kwargs: 'yes', behavioral_readout_layer='features',

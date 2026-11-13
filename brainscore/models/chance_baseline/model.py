@@ -19,7 +19,8 @@ import pandas as pd
 from brainscore import BrainScoreModel
 from collections.abc import Mapping
 
-from brainscore_core.model_interface import StateChange, UnifiedModel, TaskContext
+from brainscore_core.contract import UnifiedModel, TaskContext
+from brainscore_core.events import StateChange
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly,
 )

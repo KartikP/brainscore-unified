@@ -10,7 +10,6 @@ import brainscore
 class _FakeModel:
     identifier = 'fake-model'
     supported_modalities = set()
-    available_modalities = set()
     required_modalities = set()
     region_layer_map = {}
     in_channels = {'text'}

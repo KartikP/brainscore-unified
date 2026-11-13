@@ -11,8 +11,8 @@ import pytest
 from brainscore import BrainScoreModel
 from brainscore.harnesses.grid_game import GridGameEnv, GridGameEnvironment
 from brainscore_core.compatibility import check_compatibility
-from brainscore_core.model_interface import (
-    Perturbation, PerturbationApplied, Selection, StateChange, TaskContext)
+from brainscore_core.contract import TaskContext
+from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import apply_state_change, run_environment, stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly

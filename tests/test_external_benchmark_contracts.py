@@ -339,7 +339,7 @@ def test_the_library_channels_are_gone():
 @pytest.mark.parametrize('library', ['coggym', 'ewok'])
 def test_one_score_checks_compatibility_once(library, scored_reference, prepared, monkeypatch):
     """score() runs the one pre-flight; an adapter benchmark adds no check of its own."""
-    import brainscore_core._evaluation.compatibility as compatibility
+    import brainscore_core.compatibility as compatibility
     calls = []
     original = compatibility.check_channel_compatibility
     monkeypatch.setattr(compatibility, 'check_channel_compatibility',

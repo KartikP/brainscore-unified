@@ -188,7 +188,7 @@ def test_check_memory_probes_a_requested_region_with_a_frame_and_sizes_off_TR_co
     recorded = {}
 
     import numpy as np
-    from brainscore_core.model_interface import UnifiedModel
+    from brainscore_core.contract import UnifiedModel
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
     class _ImageOnlyModel(UnifiedModel):  # a typed subject: probed through participate

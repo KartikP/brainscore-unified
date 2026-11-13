@@ -104,7 +104,7 @@ def test_both_towers_are_wired(built):
     assert len(text.kwargs['model'].layers) == 64
     # Same identifier and cache key as the earlier text-only registration.
     assert (text.identifier, text.kwargs['backbone_id']) == ('qwen3.6-27b-text', 'qwen3.6-27b')
-    assert {'vision', 'text'} <= set(model.available_modalities)
+    assert {'vision', 'text'} <= set(model.supported_modalities)
     # Stills as images, clips as video, from the same vision tower.
     assert {'vision:image', 'vision:video'} <= model.in_channels
     assert model.extractor['video'].kwargs['model'] is vision.kwargs['model']

@@ -3,7 +3,8 @@ import pandas as pd
 import xarray as xr
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange, TaskContext
+from brainscore_core.contract import TaskContext
+from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.streaming import StreamEvent
 from brainscore_core._sessions.buffered import _state_change_session
 from brainscore_core.streaming_helpers import (

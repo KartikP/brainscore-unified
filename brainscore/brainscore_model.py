@@ -19,6 +19,7 @@ from brainscore_core.events import (
 from ._model.intervention import Interventions
 from ._model.recording import Recorder
 from .selection import UnitSelector, _promote_to_selector
+from brainscore_core.extraction_cache import weight_fingerprint_scope
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import (
     drain_session_inputs as _drain_neural_stream_events,
@@ -413,7 +414,9 @@ class BrainScoreModel(UnifiedModel):
             from .capabilities.registry import _setup_once
             _setup_once(self, handler)
             # A task the session configures ends with the session (rule 4.5).
-            with self._behavioral.session_scope():
+            # Weights are hashed once per session for the activation cache key;
+            # inside score() the run's scope is reused.
+            with self._behavioral.session_scope(), weight_fingerprint_scope():
                 handler.participate(self, session.declare_inputs(self.in_channels))
 
     def detect_modalities(self, stimuli) -> Set[str]:
@@ -447,7 +450,7 @@ class BrainScoreModel(UnifiedModel):
         task after a session gave the caller's task back.
         """
         from dataclasses import replace
-        from brainscore_core.session_view import declared_only
+        from brainscore_core.streaming_helpers import declared_only
         if isinstance(task, TaskContext):
             if (self._behavioral.is_configured_for(task)
                     or self._behavioral.recall(task)):

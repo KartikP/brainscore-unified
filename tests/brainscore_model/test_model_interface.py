@@ -2,7 +2,7 @@ import pytest
 import warnings
 
 from brainscore import BrainScoreModel, UnitSelector, LayerSelector
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 
 
 # -- Helpers ------------------------------------------------------------------
@@ -1181,7 +1181,6 @@ class TestBrainScoreModelColumnDetection:
     def test_video_model_reports_the_unified_vision_modality(self):
         m = self._make_model('video')
         assert m.supported_modalities == {'vision'}
-        assert m.available_modalities == {'vision'}
 
     def test_video_extractor_resolves_under_canonical_vision(self):
         # a video-keyed extractor records a video column, detected as 'vision'
@@ -1205,4 +1204,4 @@ class TestBrainScoreModelColumnDetection:
             extractor={'video': make_stub_extractor('out')},
             required_modalities={'video'},
         )
-        assert m.available_modalities == {'vision'}
+        assert m.supported_modalities == {'vision'}

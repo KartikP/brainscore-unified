@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Text
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import stimulus_session

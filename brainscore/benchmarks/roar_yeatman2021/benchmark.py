@@ -44,7 +44,7 @@ import numpy as np
 from brainscore import load_dataset, load_stimulus_set
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response
 from brainscore.benchmarks._score import benchmark_score
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet

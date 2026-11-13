@@ -246,7 +246,7 @@ def test_layer_pca_configuration_and_lazy_state(monkeypatch):
 
 def test_pytorch_perturbation_hooks_participate_and_reset_restores_key():
     from brainscore.perturbation import build_pytorch_ablation_fn
-    from brainscore_core.model_interface import StateChange, Selection, Perturbation
+    from brainscore_core.events import StateChange, Selection, Perturbation
     from brainscore_core.extraction_cache import model_config
     model = torch.nn.Sequential(torch.nn.Linear(2, 2))
     original = fingerprint(model_config(model))

@@ -12,7 +12,7 @@ import pytest
 
 from brainscore import BrainScoreModel
 from brainscore_core import Subject
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import (behavioral_response, drain_session_inputs,
                                                neural_response, session_stimuli)

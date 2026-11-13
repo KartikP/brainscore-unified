@@ -7,7 +7,7 @@ Extend the unified interface through five registries and Capability.
 For a model registration, instantiate `BrainScoreModel`, the concrete `Subject`
 subclass that composes wrappers, recording, and capability callables. For benchmark
 type annotations or a custom implementation, use the abstract `Subject` contract.
-Both are importable from `brainscore_core.model_interface`. A native `Subject`
+Import `BrainScoreModel` from `brainscore` and `Subject` from `brainscore_core.contract`. A native `Subject`
 declares identity and input/output channels and implements `participate(session)`;
 it does not need `process()` or a layer map. `UnifiedModel` extends `Subject`
 with `process`, task/recording setup, and layer/modality declarations.

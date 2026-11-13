@@ -19,7 +19,7 @@ from .selection import (
     RandomSelection, UnitSelection, UnitSelector, selection_coordinates,
     selection_unit_indices,
 )
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.benchmarks import Benchmark
 from brainscore_core.metrics import Metric, Score
 

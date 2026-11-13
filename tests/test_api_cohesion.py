@@ -8,7 +8,7 @@ import torch
 import xarray as xr
 from brainscore.experiments import SessionProtocol, Repetition, TorchInstrumentation
 from brainscore import FunctionalSelection
-from brainscore_core.model_interface import Selection
+from brainscore_core.events import Selection
 from brainscore_core.streaming import Session
 
 

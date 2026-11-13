@@ -37,7 +37,7 @@ def test_session_reading_matches_the_configured_readout():
     """ROAR reads through behavioral_response; on a BrainScoreModel the answers
     are the ones the readout configured by start_task gives."""
     import numpy as np
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
     words = {'w1': 'cat', 'w2': 'dog', 'w3': 'sun', 'p1': 'florp', 'p2': 'blick', 'p3': 'zund'}

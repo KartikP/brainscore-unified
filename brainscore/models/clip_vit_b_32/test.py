@@ -8,7 +8,7 @@ from PIL import Image
 
 from brainscore import BrainScoreModel
 from brainscore_core.legacy_facade import LegacyBenchmarkFacade
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 

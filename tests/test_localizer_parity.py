@@ -17,7 +17,7 @@ from brainscore import BrainScoreModel, CompositeSelector, FunctionalSelection
 from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
 from brainscore.perturbation import build_pytorch_ablation_fn
 from brainscore.selection import UnitSelector, selection_coordinates, selection_unit_indices
-from brainscore_core.model_interface import Perturbation, Selection, StateChange
+from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet

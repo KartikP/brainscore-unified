@@ -12,7 +12,7 @@ import torch
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore.selection import LayerSelector
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet

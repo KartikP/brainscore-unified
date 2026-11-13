@@ -13,7 +13,7 @@ from brainscore.brainscore_model import BrainScoreModel
 from dataclasses import replace
 
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.selection import LayerSelector
 from brainscore_core.streaming_helpers import stimulus_session

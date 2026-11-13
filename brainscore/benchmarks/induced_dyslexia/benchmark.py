@@ -49,7 +49,7 @@ from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.metrics import Score
 from brainscore import FunctionalSelection, RandomSelection
-from brainscore_core.model_interface import StateChange, Selection, Perturbation
+from brainscore_core.events import StateChange, Selection, Perturbation
 from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.benchmarks._score import benchmark_score
 

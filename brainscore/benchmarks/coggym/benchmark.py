@@ -5,7 +5,7 @@ from pathlib import Path
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore.benchmarks._score import not_estimated
 from brainscore.experiments import CallableProtocol
 from brainscore.harnesses.adapter import adapter_score, run_recorded

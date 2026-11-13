@@ -84,7 +84,7 @@ class _Recorder:
 
 
 def test_a_clip_recorded_during_a_task_uses_the_clip_extractor_and_keeps_time():
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
     model = BrainScoreModel('m', extractor={'vision': _Recorder(1.0, False), 'video': _Recorder(5.0, True)},
@@ -101,7 +101,7 @@ def test_a_clip_recorded_during_a_task_uses_the_clip_extractor_and_keeps_time():
 
 def test_a_multi_image_trial_is_recorded_per_image():
     from contextlib import contextmanager
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
 

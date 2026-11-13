@@ -9,7 +9,7 @@ import pytest
 
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore_core import TaskContext
-from brainscore_core._data.assembly_builder import make_assembly, make_layer_neuroid_coords
+from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords
 from brainscore_core.streaming import Session
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -622,7 +622,7 @@ def test_optional_empty_layer_may_be_absent_from_the_extractor_output():
 
 
 def test_time_guard_keeps_presentation_index_level_names():
-    from brainscore_core._data.time_axis import require_one_time_axis
+    from brainscore_core.time_axis import require_one_time_axis
     def block(layer, trial_name):
         out = NeuroidAssembly(np.ones((2, 2, 1), dtype='float32'), dims=['presentation', 'time_bin', 'neuroid'],
                               coords={'stimulus_id': ('presentation', ['same', 'same']),

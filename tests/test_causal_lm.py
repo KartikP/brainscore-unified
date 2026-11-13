@@ -9,7 +9,7 @@ pytestmark = pytest.mark.unit
 torch = pytest.importorskip('torch')
 
 from brainscore_core.streaming_helpers import apply_state_change
-from brainscore_core.model_interface import Perturbation, Selection, StateChange
+from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.causal_lm import build_causal_lm_subject
 

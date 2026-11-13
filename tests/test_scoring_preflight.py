@@ -102,7 +102,7 @@ def test_each_scoring_call_gets_a_fresh_weight_scope(module_name, monkeypatch):
             assert cache.fingerprint(tensor) == keys[-1]
             return Score(0.5)
     model = SimpleNamespace(
-        identifier='test-model', available_modalities={'text'}, required_modalities={'text'},
+        identifier='test-model', supported_modalities={'text'}, required_modalities={'text'},
         in_channels={'text'}, required_channels={'text'}, out_channels={'behavior'}, region_layer_map={},
         output_inputs={},
     )

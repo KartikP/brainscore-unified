@@ -7,7 +7,7 @@ import pytest
 from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.memory import MemoryError
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 
 
 class _Subject(Subject):

@@ -17,7 +17,7 @@ stimulus presentation.
 """
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
-from brainscore_core.model_interface import UnifiedModel, TaskContext
+from brainscore_core.contract import UnifiedModel, TaskContext
 
 
 def _no_hardware(*_args, **_kwargs):

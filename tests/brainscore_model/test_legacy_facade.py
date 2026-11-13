@@ -155,7 +155,7 @@ def test_single_time_bin_in_any_benchmark_form_leaves_response_unchanged(time_bi
 
 # --- the facade runs any subject through participate ------------------------
 
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
@@ -235,7 +235,7 @@ def test_declared_visual_degrees_reads_the_legacy_vision_setting_or_none():
 
 # --- setup once, measure many times (review findings 1 to 4) ---------------
 
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 
 def _labelled_images(n=4, with_text=False):
     frame = {'stimulus_id': [f'f{i}' for i in range(n)],

@@ -26,7 +26,7 @@ import torch
 from PIL import Image
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.hf_compat import pin_image_processor
 
 

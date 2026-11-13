@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response, neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly, NeuroidAssembly)

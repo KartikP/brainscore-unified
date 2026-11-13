@@ -9,7 +9,7 @@ from brainscore_core._evaluation.measures import record_measures
 from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.metrics import Score
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Text
 from brainscore_core.streaming import Session, begin_event, _with_trial_memory
 from brainscore_core.streaming_helpers import apply_state_change, stimulus_session

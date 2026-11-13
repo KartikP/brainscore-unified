@@ -13,7 +13,7 @@ from brainscore_core import Subject
 from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore_core.metrics import Score
 from brainscore import RandomSelection
-from brainscore_core.model_interface import PerturbationApplied, Selection
+from brainscore_core.events import PerturbationApplied, Selection
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet

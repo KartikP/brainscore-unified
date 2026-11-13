@@ -5,7 +5,7 @@ import torch
 from PIL import Image
 
 import brainscore
-from brainscore_core.model_interface import StateChange, Selection, Perturbation
+from brainscore_core.events import StateChange, Selection, Perturbation
 from brainscore_core.streaming_helpers import apply_state_change, neural_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 

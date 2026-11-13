@@ -8,7 +8,8 @@ import pytest
 
 from brainscore.capabilities import capability_registry
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange, TaskContext
+from brainscore_core.contract import TaskContext
+from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 
 
 class StubActivationsModel:
