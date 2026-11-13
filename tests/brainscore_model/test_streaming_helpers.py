@@ -285,40 +285,6 @@ def test_neural_response_without_time_bins_keeps_2d_output():
     xr.testing.assert_identical(scored, expected)
 
 
-def test_event_only_reconstruction_is_input_columns_only():
-    events = [
-        StreamEvent(
-            channel="vision",
-            payload="s0.png",
-            t_ms=0.0,
-            meta={
-                "stimulus_id": "s0",
-                "stimulus_index": 0,
-                "column": "image_path",
-                "object_name": "cat",
-            },
-        ),
-        StreamEvent(
-            channel="text",
-            payload="cat sentence",
-            t_ms=0.0,
-            meta={
-                "stimulus_id": "s0",
-                "stimulus_index": 0,
-                "column": "sentence",
-                "object_name": "cat",
-            },
-        ),
-    ]
-
-    reconstructed = BrainScoreModel._reconstruct_stimulus_set_from_events(events)
-
-    assert list(reconstructed["stimulus_id"].values) == ["s0"]
-    assert list(reconstructed["image_path"].values) == ["s0.png"]
-    assert list(reconstructed["sentence"].values) == ["cat sentence"]
-    assert "object_name" not in reconstructed.columns
-
-
 def _behavior_model(features, model_cls=BrainScoreModel):
     return model_cls(
         identifier="test-model",
@@ -608,8 +574,8 @@ def test_apply_state_change_produces_handle_and_ack_event():
 
     session = _state_change_session(state_change)
     _ = session.next_input()
-    from brainscore_core.streaming_helpers import _drive_state_change_via_process
-    _drive_state_change_via_process(model, session, state_change)
+    from brainscore_core.streaming_helpers import drive_state_change_session
+    drive_state_change_session(model, session, state_change=state_change, driver="process")
 
     applied = session.collect("perturbation")
 

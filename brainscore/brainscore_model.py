@@ -25,7 +25,6 @@ from .selection import CompositeSelector, LayerSelector, UnitSelector, _promote_
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import (
     drain_session_inputs as _drain_neural_stream_events,
-    reconstruct_stimulus_set_from_events as _reconstruct_neural_stimulus_set,
     session_outputs,
     session_stimuli as _neural_stimuli_from_stream_session,
 )
@@ -211,8 +210,9 @@ class BrainScoreModel(UnifiedModel):
             example by a closed-weight ``answer`` function. Extractor mappings
             already declare their inputs; do not repeat them here.
         :param required_modalities: input modalities the model cannot run without.
-        :param backbone_id: shared cache key so registrations with identical weights
-            reuse one activation cache.
+        :param backbone_id: recorded on the model and returned by ``backbone_id``.
+            It does not key any cache. Each extractor keys its own cache with the
+            ``backbone_id`` given to the extractor.
         :param region_modality_map: compatibility routing map. Prefer the modality
             field on LayerSelector or CompositeSelector in region_layer_map.
 
@@ -478,12 +478,6 @@ class BrainScoreModel(UnifiedModel):
     def region_layer_map(self, region_layer_map) -> None:
         self._install_region_layer_map(region_layer_map)
 
-    def set_region_layer(self, region: str, value) -> None:
-        """Replace one region's layer or selector, keeping its existing routing."""
-        updated = dict(self._region_layer_selectors)
-        updated[region] = value
-        self._install_region_layer_map(updated)
-
     @property
     def region_layer_selectors(self) -> Dict[str, "UnitSelector"]:
         return dict(self._region_layer_selectors)
@@ -496,19 +490,6 @@ class BrainScoreModel(UnifiedModel):
     @property
     def available_modalities(self) -> Set[str]:
         return {canonical_modality(m) for m in self._preprocessors.keys()}
-
-    @property
-    def input_modalities(self) -> Set[str]:
-        """The RAW declared input-modality keys (pre-canonicalization).
-
-        ``supported_modalities`` canonicalizes ``video`` into ``vision`` (temporal
-        vision) so compatibility and routing treat them as one modality. This
-        property keeps the *declared processing style* instead: a native-video
-        model reports ``'video'`` here (its VideoWrapper consumes whole clips) but
-        ``'vision'`` in ``supported_modalities``. Benchmarks that must present
-        whole clips vs. still frames route on this, not on ``supported_modalities``.
-        """
-        return set(self._preprocessors.keys())
 
     @property
     def required_modalities(self) -> Set[str]:
@@ -808,17 +789,6 @@ class BrainScoreModel(UnifiedModel):
             # The model changed under the readout: the next start_task fits
             # again even when the task object is the one already configured.
             self._behavioral.invalidate()
-
-    @staticmethod
-    def _reconstruct_stimulus_set_from_events(events: List[StreamEvent]):
-        """Rebuild a minimal StimulusSet from event-carried input columns.
-
-        This fallback preserves only input-channel payload columns plus
-        ``stimulus_id``. It is not metadata-faithful: metric-critical
-        presentation metadata such as ``object_name`` must come from
-        session.stimulus_set, or from a future event-carried metadata path.
-        """
-        return _reconstruct_neural_stimulus_set(events)
 
     @classmethod
     def _requires_behavioral_readout(cls, task_type: str) -> bool:

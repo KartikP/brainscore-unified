@@ -65,7 +65,7 @@ def test_held_out_splits_raise_when_scored_directly():
         Algonauts2025FriendsS7, Algonauts2025OOD)
     for cls in (Algonauts2025FriendsS7, Algonauts2025OOD):
         b = cls(subject=1)
-        with pytest.raises(ValueError, match="no ground truth|Codabench"):
+        with pytest.raises(ValueError, match="prediction target.*generate_predictions"):
             b(candidate=None)
 
 

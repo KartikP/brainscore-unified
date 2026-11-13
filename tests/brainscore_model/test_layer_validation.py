@@ -38,8 +38,6 @@ def test_region_layer_map_setters_are_validated():
     model = _model({'IT': 'layer4'})
     with pytest.raises(ValueError, match='layr2'):
         model.region_layer_map = {'V1': 'layr2'}
-    with pytest.raises(ValueError, match='layr2'):
-        model.set_region_layer('V1', 'layr2')
     assert dict(model.region_layer_map) == {'IT': 'layer4'}
 
 

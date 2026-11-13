@@ -935,12 +935,12 @@ class _Algonauts2025Base(BenchmarkBase):
     def __call__(self, candidate) -> Score:
         if self._split != 'friends':
             raise ValueError(
-                f"Held-out split {self._split!r} has no ground truth to score "
-                f"against; it is a Codabench prediction target. Call "
-                f"`generate_predictions(candidate, out_dir)` to produce the "
-                f"per-parcel prediction .npy, then bundle those .npy files into a "
-                f"zip in the Codabench layout (one entry per subject/episode) and "
-                f"upload it. (Use Algonauts2025Friends for in-distribution CV scoring.)"
+                f"The {self._split!r} benchmark is a prediction target, not a score: "
+                f"its fMRI is withheld, so score() cannot rate a model on it. "
+                f"Call `generate_predictions(candidate, out_dir)` on this benchmark "
+                f"to write the per-parcel predictions as .npy files, bundle them in "
+                f"the Codabench zip layout and upload them. For a score, use the "
+                f"`Algonauts2025-friends-sub{self._subject:02d}` benchmark."
             )
         return self._score_friends_train(candidate)
 
@@ -1081,9 +1081,9 @@ class Algonauts2025Friends(_Algonauts2025Base):
 class Algonauts2025FriendsS7(_Algonauts2025Base):
     """Held-out Friends Season 7 — Codabench leaderboard target.
 
-    fMRI ground truth is withheld. __call__ returns predicted
-    per-parcel time series in the format Codabench expects rather than
-    a Pearson-r score.
+    fMRI ground truth is withheld. Scoring it by name raises an error.
+    Use ``generate_predictions`` to write the predicted per-parcel time
+    series that Codabench expects.
     """
 
     def __init__(self, subject: int, **kwargs):
@@ -1095,8 +1095,8 @@ class Algonauts2025FriendsS7(_Algonauts2025Base):
 class Algonauts2025OOD(_Algonauts2025Base):
     """Held-out OOD movies — Codabench OOD leaderboard target.
 
-    Same shape as FriendsS7: returns predicted per-parcel time series
-    rather than a Pearson-r score.
+    Same use as FriendsS7: call ``generate_predictions``; scoring by name
+    raises an error.
     """
 
     def __init__(self, subject: int, **kwargs):

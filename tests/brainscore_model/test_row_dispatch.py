@@ -1,4 +1,4 @@
-"""Output-type metric dispatch and row dispatch.
+"""Row dispatch.
 
 A closed-loop step is a row (a mapping of channel -> payload). ``process(row)``
 routes it to the agent's policy, which returns a mapping of output channel ->
@@ -9,8 +9,7 @@ from typing import get_args
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import PerturbationApplied, Selection, Perturbation, InputEvent, OutputEvent, output_event_kind, dispatch_metric
-from brainscore_core.streaming import StreamEvent
+from brainscore_core.model_interface import InputEvent, OutputEvent
 
 
 class TestUnions:
@@ -18,41 +17,6 @@ class TestUnions:
         names = {getattr(arg, '__name__', None) for arg in get_args(InputEvent)}
         assert 'Mapping' in names
         assert 'Mapping' in {getattr(arg, '__name__', None) for arg in get_args(OutputEvent)}
-
-
-class TestOutputEventKind:
-    def test_stream_events_perturbation(self):
-        assert output_event_kind(StreamEvent('motor', [0.0], None)) == 'motor'
-        assert output_event_kind(StreamEvent('text', 'x', None)) == 'text'
-        pa = PerturbationApplied(
-            handle_id='h', target=Selection(layer='L', indices=[0]),
-            perturbation=Perturbation(kind='zero'))
-        assert output_event_kind(pa) == 'perturbation'
-
-    def test_assembly_kinds_via_duck_typing(self):
-        # core can't import brainio's concrete classes; classification is by
-        # MRO class name, so locally-named stand-ins resolve correctly.
-        class NeuroidAssembly:  # noqa: N801
-            pass
-
-        class BehavioralAssembly:  # noqa: N801
-            pass
-
-        assert output_event_kind(NeuroidAssembly()) == 'neural'
-        assert output_event_kind(BehavioralAssembly()) == 'behavioral'
-
-    def test_unknown(self):
-        assert output_event_kind(object()) == 'unknown'
-
-
-class TestDispatchMetric:
-    def test_dispatch_by_kind(self):
-        metric_map = {'text': 'M', 'behavioral': 'B'}
-        assert dispatch_metric(StreamEvent('text', 'x', None), metric_map) == 'M'
-
-    def test_missing_kind_raises(self):
-        with pytest.raises(KeyError, match='neural'):
-            dispatch_metric(StreamEvent('motor', [0.0], None), {'neural': 'N'})
 
 
 class TestProcessRow:

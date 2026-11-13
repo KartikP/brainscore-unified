@@ -106,12 +106,12 @@ def test_explicit_source_is_independent_of_behavioral_task_configuration():
                        metadata={'stimulus_set': StimulusSet({'sentence': ['wrong']})})
     explicit = StimulusSet({'sentence': ['actual'], 'stimulus_id': ['1']})
     # Check the driver directly, so this test isolates task/source composition.
-    from brainscore_core.streaming_helpers import _drive_behavior_session_via_process
+    from brainscore_core.streaming_helpers import drive_behavior_session
     from types import SimpleNamespace
     subject = SimpleNamespace(start_task=lambda context: None,
                               process=lambda stimuli: generate(None, stimuli, task))
     session = stimulus_session(explicit, ['behavior'], task=task)
-    _drive_behavior_session_via_process(subject, session)
+    drive_behavior_session(subject, session)
     assert seen == ['actual']
     assert session.collect().shape == (1,)
 

@@ -10,7 +10,6 @@ from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
 from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
 from brainscore.harnesses.coggym import CogGymRunner, _PROMPT_NOTE
-from brainscore_core.compatibility import CompatibilityError
 
 from . import EXPERIMENTS
 
@@ -22,9 +21,10 @@ def _require_reset(reset):
     caller supplies it, because only the caller knows its provider.
     """
     if reset is None:
-        raise CompatibilityError(
-            'Supply reset=provider.reset to the CogGym benchmark. '
-            'Stateless providers can explicitly use lambda repetition: None.'
+        raise ValueError(
+            'The CogGym benchmark needs a reset callback. Load it with '
+            "load_benchmark('CogGym...', reset=provider.reset). "
+            'A provider with no state can pass reset=lambda repetition: None.'
         )
     return reset
 

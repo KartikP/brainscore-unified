@@ -190,16 +190,11 @@ class TestBrainScoreModelConstruction:
         m.region_layer_map = {'IT': 'layer4'}
         assert dict(m.region_layer_map) == {'IT': 'layer4'}
 
-    def test_set_region_layer_updates_one_region(self):
-        m = self._model({'V1': 'layer1', 'IT': 'layer4'})
-        m.set_region_layer('IT', 'layer8')
-        assert m.region_layer_map == {'V1': 'layer1', 'IT': 'layer8'}
-
     def test_setter_keeps_selectors_and_layer_paths_in_step(self):
         """The two derived views must not drift — the reason direct edits are
         refused in the first place."""
         m = self._model()
-        m.set_region_layer('IT', 'layer4')
+        m.region_layer_map = {'IT': 'layer4'}
         assert m.region_layer_map['IT'] == 'layer4'
         assert m.region_layer_selectors['IT'].layer_path == 'layer4'
         assert set(m.region_layer_map) == set(m.region_layer_selectors)
@@ -207,7 +202,7 @@ class TestBrainScoreModelConstruction:
     def test_recording_follows_a_reassigned_layer(self):
         """The end the wart broke: changing the map must change what is read."""
         m = self._model({'IT': 'layer1'})
-        m.set_region_layer('IT', 'layer9')
+        m.region_layer_map = {'IT': 'layer9'}
         m.start_recording('IT')
         assert m._recording_layers == ['layer9']
 
@@ -222,19 +217,6 @@ class TestBrainScoreModelConstruction:
             },
         )
         assert m.supported_modalities == {'vision', 'text'}
-
-    def test_input_modalities_preserves_raw_video_key(self):
-        # channel unification canonicalizes video->vision in supported_modalities,
-        # but input_modalities keeps the raw declared key so a benchmark can tell a
-        # native-video model (VideoWrapper) from a still-image one.
-        m = BrainScoreModel(
-            identifier='vjepa',
-            model=None,
-            region_layer_map={'IT': 'blocks.16'},
-            preprocessors={'video': lambda m, s, **kw: None},
-        )
-        assert m.supported_modalities == {'vision'}   # canonicalized
-        assert m.input_modalities == {'video'}        # raw, un-canonicalized
 
     def test_with_activations_model(self):
         act_model = StubActivationsModel()

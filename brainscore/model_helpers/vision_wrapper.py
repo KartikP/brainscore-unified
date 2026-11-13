@@ -15,7 +15,8 @@ they stay separate, focused, and independently testable -- they are just kept
 
 Auto-detection is a heuristic. When it cannot decide, or guesses wrong, pass
 ``kind='frame' | 'temporal' | 'vlm'`` explicitly -- that is the escape hatch.
-All three feed the single ``vision`` channel; a benchmark only ever sees ``vision``.
+The frame and VLM strategies feed ``vision:image``; the temporal strategy feeds
+``vision:video``. A model declares the form it takes.
 """
 from typing import Any, Callable, Optional
 

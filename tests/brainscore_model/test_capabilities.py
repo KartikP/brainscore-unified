@@ -300,9 +300,3 @@ def test_self_registering_capability_file_dispatches_without_host_edits(tmp_path
         capability_registry.pop('test-demo-capability', None)
         sys.path.remove(str(tmp_path))
         sys.modules.pop('demo_capability_plugin', None)
-
-
-def test_embodied_action_names_alias_closed_loop_capability():
-    from brainscore.capabilities.closed_loop import ClosedLoopCapability
-    from brainscore.capabilities.embodied_action import EmbodiedActionCapability
-    assert EmbodiedActionCapability is ClosedLoopCapability

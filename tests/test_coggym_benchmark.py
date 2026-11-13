@@ -93,7 +93,7 @@ def test_environment_checkout_and_explicit_provider_reset(scored_reference, monk
     root, _ = scored_reference
     monkeypatch.setenv('BRAINSCORE_COGGYM_CHECKOUT', str(root))
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1')
-    with pytest.raises(CompatibilityError, match='provider.reset'):
+    with pytest.raises(ValueError, match='reset=provider.reset'):
         benchmark(make_subject(reply_with_trial))
     assert math.isnan(float(benchmark.ceiling))
 
@@ -233,7 +233,7 @@ def test_reset_is_required_before_any_request(scored_reference):
     root, _ = scored_reference
     subject = _ParticipateOnlySubject()
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root)
-    with pytest.raises(CompatibilityError, match='provider.reset'):
+    with pytest.raises(ValueError, match='reset=provider.reset'):
         benchmark(subject)
     assert subject.requests == []
 
