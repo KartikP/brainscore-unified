@@ -227,6 +227,8 @@ def prepare_stimuli(stimulus_set, n_scans: Dict[str, int], media: Sequence[str],
             folder.mkdir(parents=True, exist_ok=True)
             if not all(path.exists() for path in paths):
                 planned.append((video_path, str(folder), len(paths)))
+        if any(not Path(video).exists() for video, *_ in planned):
+            raise FileNotFoundError(f'Movie files to cut are absent: {[v for v, *_ in planned if not Path(v).exists()]}.')
         if kind == 'frames':
             worker = _extract_frames_one
             jobs = [(video, out_dir, fps_offset, resize, n) for video, out_dir, n in planned]

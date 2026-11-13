@@ -506,10 +506,12 @@ class AudioWrapper:
         longest = self._max_duration_sec and int(self._max_duration_sec * self._target_sample_rate)
 
         def inputs(args, kwargs):
-            wave = kwargs.get('input_values', args[0] if args else None)
-            if wave is not None and (wave.shape[0] != 1 or (longest and wave.shape[-1] > longest)):
+            given = [kwargs[key] for key in ('input_values', 'input_features') if kwargs.get(key) is not None]
+            wave = kwargs.get('input_values')
+            if len(given) != 1 or given[0].shape[0] != 1 or (wave is not None and longest and wave.shape[-1] > longest):
                 raise ValueError(f'A recording during a task keeps one clip of at most max_duration_sec='
-                                 f'{self._max_duration_sec} s per pass; this pass shows {tuple(wave.shape)}.')
+                                 f'{self._max_duration_sec} s per pass, as input_values or input_features; this '
+                                 f'pass shows {({k: tuple(v.shape) for k, v in kwargs.items() if hasattr(v, "shape")})}.')
             return attention_mask(args, kwargs), None if wave is None else wave.shape[-1]
 
         def package(activity, read, row):

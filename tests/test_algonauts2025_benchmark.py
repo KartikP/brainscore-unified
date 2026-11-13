@@ -310,3 +310,24 @@ def test_frame_form_plan_still_probes_an_image(tmp_path):
     b._assembly = _mock_assembly_two_runs(tr_per_run=20)[0]
     probe = b.execution_plan.probe_stimuli
     assert 'image_file_name' in probe.columns and 'video_path' not in probe.columns
+
+
+def test_predictions_read_the_settings_of_the_benchmarks_only():
+    """The prediction tool reads the public, read-only settings; a training split that
+    differs in one of them is refused before any recording."""
+    import inspect
+    import re
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+    from brainscore.tools import algonauts2025_predictions
+    from brainscore.tools.algonauts2025_predictions import generate_predictions
+    assert not re.search(r'\._[a-z]', inspect.getsource(algonauts2025_predictions))
+    held_out = Algonauts2025(participant=2, split='ood', stimulus_window=3, hrf_delay=2)
+    assert dict(held_out.settings) == dict(participant=2, split='ood', channels=frozenset({'vision:image'}),
+                                           streaming=False, stimulus_window=3, hrf_delay=2)
+    with pytest.raises(TypeError):
+        held_out.settings['participant'] = 1
+    for other in (dict(participant=1), dict(hrf_delay=3), dict(streaming=True), dict(split='friends_s7'),
+                  dict(channels=('vision:video',))):
+        train = Algonauts2025(**{**held_out.settings, 'split': 'friends', **other})
+        with pytest.raises(ValueError, match='Friends training split of the same participant'):
+            generate_predictions(None, held_out, '/nonexistent', train_benchmark=train)

@@ -29,23 +29,15 @@ def generate_predictions(subject, held_out: Algonauts2025, out_dir, train_benchm
     streaming; by default it is built from ``held_out``. Its ``movies`` limit the
     training films; the ``movies`` of ``held_out`` limit the predicted films.
     """
-    if held_out._split == 'friends':
+    settings = held_out.settings
+    if settings['split'] == 'friends':
         raise ValueError(
             "generate_predictions is for held-out splits; the friends "
             "training split is scored via __call__.")
-    train = train_benchmark or Algonauts2025(
-        participant=held_out._participant, channels=held_out._channels,
-        streaming=held_out._streaming)
-    if train._participant != held_out._participant or train._split != 'friends':
-        raise ValueError('Prediction requires Friends training data for the same participant.')
-    if train._channels != held_out._channels:
-        raise ValueError('Training and prediction must send the same channels.')
-    if train._streaming != held_out._streaming:
-        raise ValueError('Training and prediction must present the table the same way '
-                         '(streaming).')
-    if (train._stimulus_window, train._hrf_delay) != (
-            held_out._stimulus_window, held_out._hrf_delay):
-        raise ValueError('Training and prediction must use the same stimulus window and HRF delay.')
+    train = train_benchmark or Algonauts2025(**{**settings, 'split': 'friends'})
+    if dict(train.settings) != {**settings, 'split': 'friends'}:
+        raise ValueError('Prediction requires the Friends training split of the same participant, '
+                         'with the same channels, streaming, stimulus window and HRF delay.')
     from brainscore_core.compatibility import check_compatibility
     check_compatibility(subject, held_out)
     train_bands, Y, groups, keep, stack = train.regression_inputs(subject)
@@ -55,11 +47,11 @@ def generate_predictions(subject, held_out: Algonauts2025, out_dir, train_benchm
         dim_cap=held_out.LAYER_DIM_CAP, alpha_grid=held_out.BANDED_ALPHA_GRID,
         n_candidates=held_out.BANDED_CANDIDATES)
     os.makedirs(out_dir, exist_ok=True)
-    participant, split = held_out._participant, held_out._split
+    participant, split = settings['participant'], settings['split']
     path = os.path.join(out_dir, f'sub-{participant:02d}_{split}.npy')
     np.save(path, preds)
     return {'path': path, 'predictions': preds, 'participant': participant,
             'split': split, 'n_TRs': int(preds.shape[0]),
-            'bands': list(held_out.CHANNEL_REGIONS[held_out._channels]),
+            'bands': list(held_out.CHANNEL_REGIONS[settings['channels']]),
             'penalties': summary, 'penalty_protocol': PENALTY_PROTOCOL,
             'feature_projection_protocol': PROJECTION_PROTOCOL}

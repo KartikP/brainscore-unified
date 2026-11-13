@@ -167,15 +167,17 @@ class _Tokens:
                 'attention_mask': torch.tensor([pad([1] * len(row), 0) for row in ids])}
 
 
+@pytest.mark.parametrize('batch', [1, 3])
 @pytest.mark.parametrize('aggregation', ['last_token', 'mean_tokens'])
 @pytest.mark.parametrize('side', ['left', 'right'])
-def test_text_of_unequal_length_padded_on_either_side(monkeypatch, side, aggregation):
+def test_text_of_unequal_length_padded_on_either_side(monkeypatch, side, aggregation, batch):
+    """The last real token and the mean of the real tokens, whatever the padding side and batch."""
     from brainscore.model_helpers.text_wrapper import TextWrapper
     network, tokens = _Ids(), _Tokens(side)
-    wrapper = TextWrapper(network, tokens, identifier='ids', layer_aggregation=aggregation, batch_size=3,
+    wrapper = TextWrapper(network, tokens, identifier='ids', layer_aggregation=aggregation, batch_size=batch,
                           device='cpu')
     stimuli = StimulusSet({'stimulus_id': ['x', 'y', 'z'], 'sentence': ['ab', 'abc', 'e']})
-    stimuli.identifier = f'ids-{side}-{aggregation}'
+    stimuli.identifier = f'ids-{side}-{aggregation}-{batch}'
     texts = dict(zip(stimuli['stimulus_id'], stimuli['sentence']))
 
     def reply(prompt):
@@ -439,3 +441,130 @@ def test_an_input_changed_in_place_between_passes_is_refused_before_the_later_pa
                 network(*args, **kwargs)
         assert len(passes) == 1
         recording.take(stimuli.iloc[0])
+
+
+# ── What a pass keeps: a copy of its first output, and the mask of either call form ──
+
+class _Reused(torch.nn.Module):
+    """Returns, and gives ``inner``, one buffer that each pass adds one to."""
+
+    def __init__(self):
+        super().__init__()
+        self.inner = torch.nn.Identity()
+        self.buffer = torch.zeros(1, 1, 1)
+
+    def forward(self, input_ids=None, attention_mask=None):
+        self.buffer += 1
+        return self.inner(self.buffer)
+
+
+@pytest.mark.parametrize('layer', ['inner', 'inner:input'])
+def test_a_later_pass_does_not_change_the_kept_first_pass(layer):
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+    network = _Reused()
+    wrapper = TextWrapper(network, None, identifier='reused', device='cpu')
+    with wrapper.record([layer]) as recording:
+        network(input_ids=torch.tensor([[1]]))
+        network(input_ids=torch.tensor([[1]]))
+        assert recording.take()[layer].values[0, 0] == 1.0
+
+
+@pytest.mark.parametrize('aggregation, expected', [('last_token', 2.0), ('mean_tokens', 1.5)])
+def test_a_positional_attention_mask_reduces_the_text_as_a_keyword_mask(aggregation, expected):
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+    network = _Ids()
+    wrapper = TextWrapper(network, None, identifier='ids', layer_aggregation=aggregation, device='cpu')
+    with wrapper.record(['layer']) as recording:
+        network(torch.tensor([[1, 2, 0]]), torch.tensor([[1, 1, 0]]))
+        assert recording.take()['layer'].values[0, 0] == expected
+
+
+def test_a_positional_attention_mask_reduces_the_sound_as_a_keyword_mask():
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
+    network = _Sound()
+    wrapper = AudioWrapper(network, None, identifier='sound', device='cpu', target_sample_rate=4)
+    wave, mask = torch.tensor([[2.0, 4.0, 9.0]]), torch.tensor([[1, 1, 0]])
+    taken = []
+    for call in (lambda: network(wave, mask), lambda: network(input_values=wave, attention_mask=mask)):
+        with wrapper.record(['high']) as recording:
+            call()
+            taken.append(recording.take()['high'].values[0, 0])
+    assert taken == [3.0, 3.0]
+
+
+class _Features(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer = torch.nn.Identity()
+
+    def forward(self, input_features=None, input_values=None, pixel_values=None):
+        return self.layer(next(v for v in (input_features, input_values, pixel_values) if v is not None))
+
+
+@pytest.mark.parametrize('call, refused', [
+    (dict(input_features=torch.ones(2, 4, 1)), 'one clip'),
+    (dict(pixel_values=torch.ones(1, 4, 1)), 'one clip'),
+    (dict(input_features=torch.ones(1, 4, 1)), None),
+])
+def test_an_audio_pass_is_checked_before_it_runs(call, refused):
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
+    network = _Features()
+    passes = _counted(network)
+    wrapper = AudioWrapper(network, None, identifier='features', device='cpu', target_sample_rate=4)
+    with wrapper.record(['layer']) as recording:
+        if refused:
+            with pytest.raises(ValueError, match=refused):
+                network(**call)
+            assert passes == []
+        else:
+            network(**call)
+            assert recording.take()['layer'].values.shape == (1, 1)
+
+
+# ── A custom extractor's own axis coordinates ──
+
+class _Clocked:
+    """A custom extractor: a ``time_bin`` axis named by its own coordinate (``clock`` per trial)."""
+    identifier = backbone_id = 'clocked'
+
+    def __init__(self, clocks):
+        self.clocks = list(clocks)
+
+    @staticmethod
+    def _one(stimulus_ids, clock):
+        from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+        return NeuroidAssembly(np.ones((len(stimulus_ids), 2, 1)), dims=['presentation', 'time_bin', 'neuroid'],
+                               coords={'stimulus_id': ('presentation', list(stimulus_ids)), 'time_bin': clock,
+                                       'neuroid_id': ('neuroid', ['L.0']), 'layer': ('neuroid', ['L'])})
+
+    def __call__(self, stimuli, layers, **kwargs):
+        return self._one(stimuli['stimulus_id'], self.clocks[0])
+
+    def record(self, layers, stimuli=None):
+        clocks, one = iter(self.clocks), self._one
+
+        class Recording:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_):
+                return False
+
+            def take(self, row=None):
+                return {'L': one(['?'], next(clocks))}
+        return Recording()
+
+
+@pytest.mark.parametrize('clocks', [[[10.0, 20.0]] * 2, [[10.0, 20.0], [10.0, 30.0]]])
+def test_a_task_recording_keeps_the_axis_coordinates_of_a_custom_extractor(monkeypatch, clocks):
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b'], 'sentence': ['x', 'y']})
+    stimuli.identifier = 'clocked'
+    model = BrainScoreModel('clocked', extractor={'text': _Clocked(clocks)}, region_layer_map={'R': 'L'},
+                            reply=lambda prompt: 'yes')
+    if clocks[0] == clocks[1]:
+        task, passive = _sessions(model, stimuli, ['R'], monkeypatch, 'all')['neural:R']
+        assert_equal(task, passive)
+        assert list(task['time_bin'].values) == [10.0, 20.0]
+    else:
+        with pytest.raises(ValueError, match="different 'time_bin' coordinates"):
+            model.participate(stimulus_session(stimuli, ['behavior:choice', 'neural:R'], TASK))

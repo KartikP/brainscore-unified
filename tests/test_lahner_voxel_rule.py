@@ -178,3 +178,39 @@ def test_the_region_is_selected_before_the_fit(monkeypatch, tmp_path):
         Recorder({'vision:video'}))
     np.testing.assert_array_equal(again.attrs['per_voxel_r'], r)
     assert repr(float(again)) == repr(float(score))
+
+
+@pytest.mark.parametrize('confounds', [(), ('trans_x', 'rot_y', 'csf')])
+def test_a_voxel_is_preprocessed_alike_in_any_selection(monkeypatch, tmp_path, confounds):
+    """Confound regression and z-score of a kept voxel give the same bits whether the
+    region or every voxel is preprocessed: no step mixes voxels, even in rounding."""
+    runs = tr_runs()
+    rng = np.random.default_rng(12)
+    bold = 10000.0 + 50.0 * rng.standard_normal((len(runs), N_TR, N_VOXELS))
+    bold[:, :, 5] = 10000.0
+    install(monkeypatch, tmp_path, runs=runs, bold=bold)
+    benchmark = Lahner2024BOLDMoments_timeresolved(confounds=confounds)
+    design = np.zeros((len(runs), N_TR, 2), dtype=np.float32)
+    every = benchmark._concatenate_with_mask(design, benchmark.assembly)[1]
+    for voxels in ([5], [0, 5, 9], range(0, N_VOXELS, 7)):
+        region = mask_of(voxels)
+        np.testing.assert_array_equal(
+            benchmark._concatenate_with_mask(design, benchmark.assembly, region)[1], every[:, region])
+
+
+@pytest.mark.parametrize('r,ceiling,kept', [
+    ([0.2, np.inf, 0.8], None, [0.2, 0.8]),
+    ([0.2, -np.inf, np.nan, 0.8], None, [0.2, 0.8]),
+    ([0.2, 0.4, 0.6, 0.8], [1.0, np.inf, 0.0, -0.5], [0.2]),
+    ([0.2, 0.4, 0.6], [0.5, np.nan, 0.5], [0.2, 0.6]),
+])
+def test_only_finite_r_and_valid_ceilings_count(r, ceiling, kept):
+    from types import SimpleNamespace
+    from brainscore_core.metrics import Score
+    from brainscore.benchmarks.lahner2024.benchmark import voxel_score
+    benchmark = SimpleNamespace(ceiling=Score(1.0), version=2, voxel_mask=None)
+    score = voxel_score(benchmark, np.array(r), None if ceiling is None else np.array(ceiling))
+    assert score.attrs['n_voxels_scored'] == len(kept)
+    assert score.attrs['n_voxels_excluded'] == len(r) - len(kept)
+    assert score.attrs['mean_r'] == pytest.approx(np.mean(kept))
+    assert float(score.attrs['raw']) == pytest.approx(np.median(kept))

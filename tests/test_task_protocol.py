@@ -458,6 +458,40 @@ def test_fused_chat_extractor_splits_one_pass_by_input(tmp_path):
     np.testing.assert_allclose(recorded.values[0], [hidden[:3].mean(0), hidden[3:].mean(0), hidden[-1]], rtol=1e-5)
 
 
+class TwoLayerVLM(TinyVLM):
+    """``lm.layers.0`` runs before ``lm.layers.1``."""
+    def __init__(self):
+        super().__init__()
+        self.lm.layers.append(torch.nn.Linear(4, 4))
+
+    def forward(self, input_ids, attention_mask=None, **kwargs):
+        return self.lm.layers[1](self.lm.layers[0](self.embed(input_ids)))
+
+
+def test_fused_chat_extractor_gives_the_layers_in_the_order_of_the_request(tmp_path):
+    """The order of the passive output since the fused extractor was added: the request's,
+    whatever order the pass runs the layers in."""
+    from brainscore.model_helpers.fused import fused_chat_extractor
+    from brainscore.selection import CompositeSelector
+    from brainscore_core.streaming_helpers import stimulus_session
+    model = TwoLayerVLM()
+    fused = fused_chat_extractor(model, ImageTokenProcessor(), root=model.lm, identifier='tiny-fused')
+    stimuli = StimulusSet({'stimulus_id': ['s', 't'], 'sentence': ['ab', 'ba']})
+    stimuli.identifier = 'fused-order'
+    forward = fused(stimuli, layers=['layers.0', 'layers.1'])
+    reverse = fused(stimuli, layers=['layers.1', 'layers.0'])
+    assert list(dict.fromkeys(reverse['layer'].values)) == ['layers.1', 'layers.0']
+    np.testing.assert_array_equal(reverse.values, np.concatenate([forward.values[..., 4:], forward.values[..., :4]], 2))
+    assert list(reverse['neuroid_id'].values) == [f'tiny-fused.layers.{layer}.{i}' for layer in (1, 0) for i in range(4)]
+    subject = BrainScoreModel('fused-order', extractor={('vision', 'text'): fused}, region_layer_map={
+        'R': CompositeSelector(layers=(('layers.1', None), ('layers.0', (0, 2))), modality='text')})
+    session = stimulus_session(stimuli, ['neural:R'])
+    subject.participate(session)
+    recorded = session.collect('neural:R')
+    assert list(recorded['neuroid_id'].values) == (
+        [f'tiny-fused.layers.1.{i}' for i in range(4)] + ['tiny-fused.layers.0.0', 'tiny-fused.layers.0.2'])
+
+
 def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
     from types import SimpleNamespace
     from brainscore_core import check_compatibility

@@ -188,7 +188,7 @@ def voxel_score(benchmark, per_voxel_r, ceiling_per_voxel: Optional[np.ndarray] 
     raw median is divided by ``benchmark.ceiling``.
     """
     r = np.asarray(per_voxel_r)
-    counts = ~np.isnan(r)
+    counts = np.isfinite(r)
     if ceiling_per_voxel is not None:
         ceiling_per_voxel = np.asarray(ceiling_per_voxel, dtype=float)
         counts &= np.isfinite(ceiling_per_voxel) & (ceiling_per_voxel > 0)

@@ -916,11 +916,15 @@ def _trials_to_assembly(trials, stimuli, layer: str, region: str):
                          'length (clips of one duration, sequences of one length) together.')
     dims = ['presentation', *extra, 'neuroid']
 
-    def names(dim):
+    def names(dim):         # MultiIndex levels and ordinary coordinates, the dimension's own (time_bin) too
         index = first.indexes.get(dim)
         listed = list(index.names) if isinstance(index, pd.MultiIndex) else []
-        return listed + [name for name, coord in first.coords.items()
-                         if coord.dims == (dim,) and name != dim and name not in listed]
+        return listed + [name for name, coord in first.coords.items() if coord.dims == (dim,) and name not in listed
+                         and (name != dim or not listed and dim != 'presentation')]
+    for dim, name in ((dim, name) for dim in [*extra, 'neuroid'] for name in names(dim)):
+        if any(not pd.Index(trial[name].values).equals(pd.Index(first[name].values)) for trial in trials):
+            raise ValueError(f'Trials gave different {name!r} coordinates on {dim!r}; one assembly '
+                             'keeps one axis, as the passive recording does.')
     coords = {name: ('neuroid', np.asarray(first[name].values)) for name in names('neuroid')}
     coords['region'] = ('neuroid', [region] * first.sizes['neuroid'])
     for column in stimuli.columns:

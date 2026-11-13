@@ -66,10 +66,11 @@ Version 2 is the only version. Compared with version 1 it changes:
   voxels and kept the region after. Every step of the fit treats a voxel on
   its own (confound regression, z-score, ridge at a fixed penalty, Pearson),
   so in exact arithmetic the r of a kept voxel does not depend on the other
-  voxels. In float32, scikit-learn's ridge rounds the fit of a voxel
-  according to the voxels that share its batch, so a region score moves in
-  the last digits only (at most 8e-8 on synthetic data). A region variant
-  now needs about the region's share of the memory and time.
+  voxels. The confound regression and the z-score run in float64 per voxel and
+  round alike in any selection; only scikit-learn's float32 ridge rounds a
+  voxel's fit by the voxels in its batch, so a region score moves in the last
+  digits. Against commit eb6a4d5 (float32 preprocessing) scores move by rounding
+  (at most 8e-7 on synthetic data). A region needs its share of memory and time.
 - The score keeps ``per_voxel_r`` (one value per scored voxel, NaN where a
   voxel has no correlation) and counts the left-out voxels in
   ``n_voxels_excluded``.
@@ -553,7 +554,8 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             Y_run = bold[run_idx, :n_TR, :]
             if voxels is not None:
                 Y_run = Y_run[:, voxels]
-            Y_run = Y_run.astype(np.float32)
+            # float64, one contiguous row per voxel, sums along a row only: no voxel affects another.
+            Y_run = np.array(Y_run.T, dtype=np.float64, order='C')
 
             if motion_lookup is not None:
                 key = (str(participants_per_run[run_idx]),
@@ -562,17 +564,16 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                        str(runs_per_run[run_idx]))
                 M = motion_lookup.get(key)
                 if M is not None and len(M) >= n_TR:
-                    M = M[:n_TR]
                     # OLS with intercept: residuals of Y on [1, M].
-                    M_design = np.concatenate([np.ones((n_TR, 1), dtype=np.float32), M],
-                                              axis=1)
-                    B, *_ = np.linalg.lstsq(M_design, np.nan_to_num(Y_run), rcond=None)
-                    Y_run = Y_run - M_design @ B
+                    M_design = np.concatenate([np.ones((n_TR, 1)), M[:n_TR]], axis=1)
+                    filled = np.nan_to_num(Y_run)
+                    for p, m in zip(np.linalg.pinv(M_design), M_design.T):
+                        Y_run = Y_run - (filled * p).sum(axis=1, keepdims=True) * m
 
-            mu = np.nanmean(Y_run, axis=0, keepdims=True)
-            sd = np.nanstd(Y_run, axis=0, keepdims=True)
+            mu = np.nanmean(Y_run, axis=1, keepdims=True)
+            sd = np.nanstd(Y_run, axis=1, keepdims=True)
             with np.errstate(invalid='ignore', divide='ignore'):
-                Y_run = np.where(sd > 0, (Y_run - mu) / sd, 0.0)
+                Y_run = np.where(sd > 0, (Y_run - mu) / sd, 0.0).T.astype(np.float32)
             Y_chunks.append(Y_run)
             run_chunks.append(np.full(n_TR, run_idx, dtype=np.int32))
             participant_chunks.append(np.full(n_TR, str(participants_per_run[run_idx]), dtype=object))

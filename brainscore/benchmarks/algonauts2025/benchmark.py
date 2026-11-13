@@ -40,6 +40,7 @@ import logging
 import math
 from collections import Counter
 from pathlib import Path
+from types import MappingProxyType
 from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -195,6 +196,13 @@ class Algonauts2025(BenchmarkBase):
             ceiling=not_estimated(),   # the score is the raw correlation
             bibtex=BIBTEX,
         )
+
+    @property
+    def settings(self) -> MappingProxyType:
+        """What a held-out prediction shares with its training split, read only."""
+        return MappingProxyType(dict(participant=self._participant, split=self._split, channels=self._channels,
+                                     streaming=self._streaming, stimulus_window=self._stimulus_window,
+                                     hrf_delay=self._hrf_delay))
 
     @property
     def assembly(self):

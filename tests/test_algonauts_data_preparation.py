@@ -126,6 +126,42 @@ def test_a_missing_prepared_file_names_the_packaging_command(tmp_path):
         per_scan_stimuli(films, {'m1': 2}, ['clips', 'sound'], 'friends', 1, tmp_path)
 
 
+@pytest.mark.parametrize('prepared', ['complete', 'partial', 'absent'])
+def test_the_table_needs_the_prepared_files_and_not_the_movie_files(tmp_path, prepared):
+    """The prepared files the assembly counts decide the table; the movie files are only
+    the packaging script's input."""
+    films = _films(tmp_path, ('a', 'b'))
+    for movie in ('a', 'b'):
+        (tmp_path / f'{movie}.mkv').unlink()
+    for movie, n in {'complete': (('a', 2), ('b', 2)), 'partial': (('a', 2),), 'absent': ()}[prepared]:
+        _place(tmp_path, 'frames', movie, n)
+    if prepared == 'complete':
+        table = per_scan_stimuli(films, {'a': 2, 'b': 2}, ['frames'], 'friends', 1, tmp_path)
+        assert list(table['clip_id']) == ['a', 'a', 'b', 'b']
+    else:
+        with pytest.raises(FileNotFoundError, match='prepare_stimuli --split friends'):
+            per_scan_stimuli(films, {'a': 2, 'b': 2}, ['frames'], 'friends', 1, tmp_path)
+
+
+def test_packaging_refuses_an_absent_movie_file_it_must_cut(tmp_path):
+    films = _films(tmp_path, ('a',))
+    (tmp_path / 'a.mkv').unlink()
+    with pytest.raises(FileNotFoundError, match='Movie files to cut are absent'):
+        prep.prepare_stimuli(films, {'a': 2}, ['frames'], tmp_path / 'prepared')
+
+
+def test_the_packaging_command_keeps_a_root_with_spaces(tmp_path):
+    import shlex
+    root = tmp_path / 'Friends prepared; $HOME'
+    root.mkdir()
+    with pytest.raises(FileNotFoundError) as refused:
+        per_scan_stimuli(_films(tmp_path), {'m1': 2}, ['clips', 'sound'], 'friends', 1, root)
+    command = str(refused.value).split('`')[1]
+    assert shlex.split(command) == [
+        'python', '-m', 'brainscore.data.algonauts2025.data_packaging.prepare_stimuli', '--split', 'friends',
+        '--participant', '1', '--media', 'clips', 'sound', '--prepared-root', str(root)]
+
+
 def test_scans_per_stimulus_counts_the_scans_of_each_film():
     import xarray as xr
     assembly = xr.DataArray([0] * 5, dims='presentation',

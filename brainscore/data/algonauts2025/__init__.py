@@ -8,6 +8,7 @@ and the per-scan tables through ``per_scan_stimuli``.
 """
 
 import hashlib
+import shlex
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Optional, Sequence
@@ -37,7 +38,7 @@ MEDIA = {
     'clips': ('clips', '.mp4', 0, 'video_path'),
     'sound': ('sound', '.wav', 0, 'audio_path'),
 }
-_PREPARE_STIMULI = 'python -m brainscore.data.algonauts2025.data_packaging.prepare_stimuli'
+_PREPARE_STIMULI = ['python', '-m', 'brainscore.data.algonauts2025.data_packaging.prepare_stimuli']
 
 
 def default_data_root() -> Path:
@@ -114,16 +115,14 @@ def scan_files(stimulus_set, n_scans: Dict[str, int], root: Path, kind: str):
     """``(stimulus_id, movie file, folder, files)`` for each movie that has scans.
 
     File ``t`` of a movie is ``<root>/<folder of kind>/<stimulus_id>/<t + first>``.
-    A movie whose source file is absent, or that has no scans in ``n_scans``,
-    is left out.
+    A movie without scans in ``n_scans`` is left out. The movie file is only
+    named here: the packaging script reads it, the prepared table does not.
     """
     folder_name, suffix, first, _ = MEDIA[kind]
     movies = []
     for _, row in stimulus_set.iterrows():
         stimulus_id = row['stimulus_id']
         video_path = Path(row['video_path'])
-        if not video_path.exists():
-            continue
         n = n_scans.get(stimulus_id)
         if n is None:
             continue
@@ -159,10 +158,11 @@ def per_scan_stimuli(stimulus_set, n_scans: Dict[str, int], media: Sequence[str]
                      'clip_id': stimulus_id, 't_within_run': t}
                     for stimulus_id, _, _, paths in movies for t in range(len(paths))]
     if missing:
+        command = shlex.join([*_PREPARE_STIMULI, '--split', split, '--participant', str(participant),
+                              '--media', *media, '--prepared-root', str(root)])
         raise FileNotFoundError(
             f"{len(missing)} of {n_files} prepared stimulus files are missing; the first is "
-            f"{missing[0]}. Prepare them with `{_PREPARE_STIMULI} --split {split} "
-            f"--participant {participant} --media {' '.join(media)} --prepared-root {root}`; "
+            f"{missing[0]}. Prepare them with `{command}`; "
             "see brainscore/data/algonauts2025/README.md.")
     df = pd.DataFrame(rows)
     for column, paths in columns.items():

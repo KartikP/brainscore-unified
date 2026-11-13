@@ -101,7 +101,8 @@ class LiveRecording:
     ``convert``, from the first pass since the previous take (the last value of
     a module that runs twice in it); later passes (generated tokens) are not kept.
 
-    ``inputs(args, kwargs)`` runs in the forward pre-hook of that first pass. It
+    ``inputs(args, kwargs)`` runs in the forward pre-hook of that first pass;
+    ``kwargs`` also holds the positional arguments, named by ``forward``. It
     returns, as values, what packaging reads from the inputs (an attention mask,
     patch counts), or raises for a pass the extractor cannot package as
     ``__call__`` would, before the pass computes. With ``one_input``, a later
@@ -119,6 +120,8 @@ class LiveRecording:
         self._package = package or (lambda activity, read, _row: (activity, read))
         self._inputs, self._one_input = inputs or (lambda args, kwargs: None), one_input
         self._modules = {layer: get_layer(root, layer) for layer in self.layers}
+        self._names = [p.name for p in inspect.signature(model.forward).parameters.values()
+                       if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)]
         self._handles = []
         self._clear()
 
@@ -143,7 +146,7 @@ class LiveRecording:
 
     def _before(self, _module, args, kwargs):
         if self._passes == 0:
-            self._read = self._inputs(args, kwargs)
+            self._read = self._inputs(args, {**dict(zip(self._names, args)), **kwargs})
             self._shown = _copy((args, kwargs)) if self._one_input else None
         elif self._one_input and not _same(self._shown, (args, kwargs)):
             raise ValueError(
@@ -157,7 +160,7 @@ class LiveRecording:
 
     def _keep(self, layer, value):
         if self._passes == 0:
-            self._activity[layer] = self._convert(value)
+            self._activity[layer] = _copy(self._convert(value))     # the network may reuse the buffer
 
     def take(self, row=None):
         """The first forward pass since the last take, packaged by the extractor."""

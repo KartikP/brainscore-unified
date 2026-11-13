@@ -218,8 +218,8 @@ the session before any compute.
   that answers; that pass cannot be split, so the value does not change it.
 - **Layers of different dtypes.** One call cannot keep each layer's dtype, so an
   extractor of `brainscore.model_helpers` refuses such a call; a session then records
-  each region in its own call under both values. A task that answers in one pass refuses
-  regions whose layers have different dtypes.
+  each region in its own call under both values. A task that answers in one pass keeps
+  one assembly per layer, so each layer keeps its dtype in that pass.
 - **A benchmark that sets it restores the earlier value.** Set it only for your own
   run, so that the next run in the same process gets the value it expects:
 
