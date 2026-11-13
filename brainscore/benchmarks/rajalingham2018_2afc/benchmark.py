@@ -5,13 +5,14 @@ global 24-way classifier softmax. This variant scores models that make the *actu
 2-AFC choice (see the sample, pick between two object tokens). The scoring is
 deliberately symmetric: model choices and human choices BOTH flow through the
 metric's ``build_response_matrix_from_responses -> dprimes -> correlate`` path, and
-the result is normalized by the human split-half ceiling — the identical computation
-the stock benchmark uses for its noise ceiling. So a model is scored exactly like a
-human subject; the only thing that varies across paths is *how the choice is made*:
+the result is normalized by the human split-half ceiling, computed with the same
+ceiling function as the stock benchmark. Two things differ from the stock
+benchmark: this module normalizes the aggregate score (the stock benchmark
+normalizes each split), and it uses the public data (``.public``). So a model is
+scored like a human subject; the only thing that varies across paths is *how the choice is made*:
 
   - generation  : a VLM answers LEFT/RIGHT on the composed montage
   - similarity  : nearest object token to the sample in feature space
-  - readout     : argmax of a fitted classifier's {P(sample), P(dist)}
   - random      : coin flip (the chance null)
 
 This module is model-agnostic: it turns a choices DataFrame into a score. The paths

@@ -11,7 +11,7 @@ stimuli = brainscore.load_stimulus_set('LeBel2023-UTS03-words')   # what was sho
 responses = brainscore.load_dataset('LeBel2023-UTS03')            # what was recorded
 ```
 
-`load_dataset` and `load_stimulus_set` look in the unified registry first, then in the vision and language registries, so classic datasets such as `MajajHong2015.public` load the same way.
+`load_dataset` looks in the unified registry first, then in the vision and language registries; `load_stimulus_set` looks in the unified registry, then in the vision registry. Classic datasets such as `MajajHong2015.public` load the same way.
 
 To present your own images instead, build a stimulus set from a table with `stimulus_id` and `image_path` columns ([Wrap your model](wrap_your_model.md#try-it-on-your-own-images)).
 
@@ -25,7 +25,7 @@ To present your own images instead, build a stimulus set from a table with `stim
 | `EWoK-core-1.0` | `EWoK-core-1.0` | world-knowledge contrasts and their answer keys | local: gated text | `EWoK-core-1.0-logprobs`, `-choice` |
 | `Yeatman2021` | `Yeatman2021` | word and pseudoword images with human lexical decisions (ROAR) | hosted | `Yeatman2021-lexical_decision-*` |
 
-CogGym's experiments, human results and scoring code come from the authors' repository at a pinned revision; point `BRAINSCORE_COGGYM_CHECKOUT` at that checkout. `python -m brainscore.data local` lists every file you supply yourself, where to get it and whether it is found.
+CogGym's experiments, human results and scoring code come from the authors' repository at a pinned revision; point `BRAINSCORE_COGGYM_CHECKOUT` at that checkout. `python -m brainscore.data` lists the files you supply yourself that a plugin declares as a local asset (the Algonauts 2025 files, the CogGym checkout, the EWoK data, the language atlas and the LeBel source pickle), where to get each and whether it is found; `python -m brainscore.data <name>` prints how to obtain one. The Lahner2024 frame and sound folders are not in that list.
 
 ## Add a data plugin
 
@@ -39,11 +39,32 @@ brainscore/data/<name>/
 Register a loader for each assembly and each stimulus set:
 
 ```python
+import numpy as np
+import pandas as pd
+import brainscore
 from brainscore import data_registry, stimulus_set_registry
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+
+def load_stimuli():                 # read your stimulus table here
+    return StimulusSet(pd.DataFrame({'stimulus_id': ['s0', 's1'],
+                                     'image_path': ['s0.png', 's1.png']}))
+
+
+def load_responses():               # read your recordings here
+    return NeuroidAssembly(np.zeros((2, 3)), dims=['presentation', 'neuroid'],
+                           coords={'stimulus_id': ('presentation', ['s0', 's1']),
+                                   'condition': ('presentation', ['a', 'a']),
+                                   'neuroid_id': ('neuroid', [0, 1, 2])})
+
 
 data_registry['MyStudy2026'] = load_responses           # returns a DataAssembly
 stimulus_set_registry['MyStudy2026'] = load_stimuli     # returns a StimulusSet
+print(brainscore.load_dataset('MyStudy2026').shape)      # (2, 3)
 ```
+
+`templates/new_data/` is a complete data plugin with loaders, image files and tests.
 
 Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in `brainscore/data/local.py`, so users get instructions instead of a missing-file error.
 

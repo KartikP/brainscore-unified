@@ -16,9 +16,12 @@ from .benchmark_timeresolved import (
 # - `channels`: the visual stream only (records neural:IT), or the visual stream
 #   and the sound track (also records neural:A1);
 # - the voxels: all, `reliability_threshold=0.3` (`-visualROI`: split-half
-#   reliability at least 0.3, about 2000 to 5000 voxels in visual cortex), or
-#   `voxel_mask_fn=build_auditory_mask` (`-auditoryROI`: early auditory cortex and
-#   the planum, Destrieux atlas on fsaverage5);
+#   reliability at least 0.3, chosen by reliability anywhere on the cortex, not by
+#   an atlas; the reliability is computed on all stimuli, the test folds included,
+#   and the time-resolved `-visualROI` uses the GLM-beta reliability of the same
+#   participants and runs), or `voxel_mask_fn=build_auditory_mask`
+#   (`-auditoryROI`: early auditory cortex, lateral STG and the planum, Destrieux
+#   atlas on fsaverage5);
 # - for TR time series, the fold rule and the confounds regressed out of the BOLD.
 # Only the GLM-beta visual ROI divides by a measured ceiling (`VISUAL_ROI_CEILING`);
 # the other variants return the raw correlation. Every line is version 2 (see the
@@ -44,8 +47,8 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = part
 # task, run).
 # `-improved`: per-run motion regression (9 fmriprep confounds, residuals replace the
 # BOLD before the z-score) and blocks of 10 runs held out inside each participant,
-# per-voxel r averaged across participants. The ROI raw r moved by +0.001 to +0.016
-# and the whole-cortex r fell by about half.
+# per-voxel r averaged across participants. No stored result measures the effect
+# of these changes on the score.
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved'] = (
     Lahner2024BOLDMoments_timeresolved)
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-visualROI'] = partial(

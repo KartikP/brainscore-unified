@@ -11,7 +11,8 @@ The model-builder workflow it enables:
                            preprocessing=my_preproc)  # runnable BrainScoreModel
     # then refine the layer→region map with the layer-mapping explorer:
     #   from brainscore.tools.layer_mapping import sweep_model
-    #   sweep_model(wrapper, stimuli, brain, profile.recommendations[0].block_layers)
+    #   sweep_model(wrapper, stimuli, target, target_stimulus_ids,
+    #               profile.recommendations[0].block_layers)
 
 What it removes from the builder's plate (the friction observed registering
 CLIP / Qwen-VL / BLIP-2 / VideoMAE / V-JEPA / Wav2Vec2 by hand):
@@ -19,7 +20,11 @@ CLIP / Qwen-VL / BLIP-2 / VideoMAE / V-JEPA / Wav2Vec2 by hand):
   1. **Wrapper choice.** Picks the activations-model wrapper
      (``PytorchWrapper`` for images, ``VLMVisionWrapper`` for a flattened-patch
      VLM encoder, ``VideoWrapper`` for video, ``TextWrapper`` /
-     ``AudioWrapper``) from the model's class, config, and module tree.
+     ``AudioWrapper``) from the model's class, config, and module tree. The
+     match is on substrings of those names, so a name that happens to contain a
+     signal word is misread (``FastViT`` contains ``ast``, an audio signal;
+     ``Sophia`` contains ``phi``, a language-model family): check the
+     recommendation before you use it.
   2. **Layer discovery.** Finds the repeated indexed block list
      (``encoder.layers.*`` / ``model.layers.*`` / ``blocks.*`` / …) — the
      natural recording targets — instead of the builder reading the source.
@@ -157,8 +162,9 @@ class ModelProfile:
             m = rec.provisional_region_layer_map()
             for region, layer in m.items():
                 key = region if region not in out else f"{region}_{rec.modality}"
-                # prefix the layer with the submodule path so it is addressable
-                # from the full model when towers are wrapped separately
+                # The layer path is relative to this sub-module, with no prefix:
+                # each sub-module gets its own wrapper, so two sub-modules can give
+                # the same path. Route such regions with LayerSelector(modality=...).
                 out[key] = layer
         return out
 

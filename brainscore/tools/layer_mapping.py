@@ -11,11 +11,20 @@ mapping approaches head-to-head so they can be compared:
   3. multiple full layers        — concatenation of the top-N full layers
   4. CompositeSelector           — top-K units from each of the top-N layers
 
-Selection is non-circular by construction: a **functional-localization split**
-separates the data into a LOCALIZER set (used to rank layers and identify
-selective units) and a held-out TEST set (used to fit the readout and score).
-No stimulus used to choose a unit is used to score it — the encoding analogue of
-an fMRI localizer run, and the same logic as ``FunctionalSelection``.
+The stimuli are split once into a LOCALIZER set and a TEST set. For each layer,
+a ridge readout is fit on the localizer stimuli and scored on the test stimuli
+(median per-voxel Pearson r); that test score is ``per_layer_r``. Layers are
+ranked by this test score: ``best_layer``, ``top_layers`` and the "standard
+layer mapping" score (the maximum over layers) all choose on the TEST split.
+The best-layer score is therefore optimistic: with many layers, the maximum of
+noisy test scores is above what the chosen layer scores on new stimuli (on 20
+layers of pure noise, the best test r is well above the mean). Units inside a
+layer are chosen on the localizer only (``unit_predictivity``), so unit choice
+does not see the test stimuli.
+
+For an unbiased score, choose the layer on data that is not used to score it:
+for example, run :func:`explore_layer_mapping` on one set of stimuli, keep
+``best_layer``, and score that layer on a separate set (or on a benchmark).
 
 Scoring is decoupled from extraction (``explore_layer_mapping`` takes features +
 target), so it is testable offline; :func:`sweep_model` extracts then maps.
@@ -150,16 +159,20 @@ def normalize_by_ceiling(r: np.ndarray, ceiling: np.ndarray,
 class LayerMappingResult:
     """Per-layer test scores + per-unit localizer predictivity; selectors on demand.
 
-    ``per_layer_r`` and the approach scores are computed on the held-out TEST
-    split; ``unit_predictivity`` (used to pick units) is computed on the
-    LOCALIZER split — so a unit is never selected and scored on the same data.
+    ``per_layer_r`` is computed on the TEST split, and ``best_layer`` and
+    ``top_layers`` rank layers by it, so the layer choice uses the test split and
+    ``best_r`` is optimistic. ``unit_predictivity`` (used to pick units) is
+    computed on the LOCALIZER split, so a unit is never selected and scored on
+    the same data.
     """
     layer_order: List[str]
     per_layer_r: List[float]
     unit_predictivity: Sequence[np.ndarray]   # per layer: per-unit |corr| on the LOCALIZER.
     # A list of 1-D arrays (one per layer), so layers may have DIFFERENT widths
-    # (CNN stages: 256/512/1024/2048). A uniform 2-D array also works (indexing
-    # [li] yields the row), keeping older callers valid.
+    # (CNN stages: 256/512/1024/2048) here and in score_budget_curve. A uniform
+    # 2-D array also works (indexing [li] yields the row), keeping older callers
+    # valid. score_approaches does not support different widths: its random-unit
+    # nulls draw from the best layer's width for every layer.
     localizer_idx: np.ndarray
     test_idx: np.ndarray
     alpha: float = 1.0
@@ -218,6 +231,9 @@ def explore_layer_mapping(features_by_layer: Dict[str, np.ndarray], target: np.n
                           seed: int = 0) -> LayerMappingResult:
     """Rank layers (test score) and rank units (localizer predictivity).
 
+    The layer ranking uses the test split, so the score of the top layer is an
+    optimistic estimate; see the module docstring.
+
     :param features_by_layer: ``{layer_path: (n_stimuli, n_units)}`` (same row
         order as ``target``).
     :param target: ``(n_stimuli, n_voxels)`` brain responses.
@@ -250,13 +266,19 @@ def score_approaches(features_by_layer: Dict[str, np.ndarray], target: np.ndarra
     """Score the four mapping approaches on the held-out TEST split, each paired
     with a matched **random-selection null**.
 
-    Unit/layer choices come from the localizer (via ``result``); each approach's
-    readout is fit on the localizer and scored on the test split. For every
+    Unit choices come from the localizer; layer choices (the best layer, the
+    top-N layers) come from ``result``, which ranks layers on the test split, so
+    every approach that uses them is scored on the data that chose its layers
+    and is optimistic. Each approach's readout is fit on the localizer and
+    scored on the test split. For every
     approach a null is computed with the SAME feature budget but the selection
     randomized (random units / random layers), averaged over ``n_null_seeds``
     seeds and scored identically — so a selection only "counts" if it beats the
     random draw of the same size. Each result carries ``random_null`` (mean) and
     ``random_null_sd``.
+
+    Every layer must have the width of the best layer: the random-unit nulls
+    draw indices up to that width, and ``n_features`` assumes it.
     """
     Y = np.asarray(target, np.float64)
     L, T = result.localizer_idx, result.test_idx

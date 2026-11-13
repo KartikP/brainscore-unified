@@ -9,10 +9,54 @@ Choose one of two routes.
 
 ## BrainScoreModel in four steps
 
+The code on this page runs as written. A small network stands in for yours; replace
+`net`, `preprocess` and the image files with your own:
+
+```python
+import os
+import tempfile
+
+import numpy as np
+import torch
+from PIL import Image
+
+
+class Net(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer1 = torch.nn.Conv2d(3, 12, 3)
+        self.layer3 = torch.nn.Conv2d(12, 12, 3)
+        self.layer4 = torch.nn.Sequential(torch.nn.ReLU(), torch.nn.AdaptiveAvgPool2d(2),
+                                          torch.nn.Flatten(), torch.nn.Linear(48, 8))
+
+    def forward(self, x):
+        return self.layer4(self.layer3(self.layer1(x)))
+
+
+torch.manual_seed(0)
+net = Net().eval()
+
+
+def preprocess(paths):
+    """Image files -> the batch the network expects."""
+    images = [np.asarray(Image.open(path).convert('RGB').resize((16, 16)), np.float32) / 255
+              for path in paths]
+    return torch.from_numpy(np.stack(images)).permute(0, 3, 1, 2)
+
+
+folder = tempfile.mkdtemp()
+image_paths = {}
+for seed, name in enumerate(['cat', 'dog']):
+    image_paths[name] = os.path.join(folder, f'{name}.png')
+    pixels = np.random.RandomState(seed).randint(0, 256, (16, 16, 3), dtype=np.uint8)
+    Image.fromarray(pixels).save(image_paths[name])
+```
+
 **1. Find the layer paths.**
 
 ```python
-[name for name, _ in net.named_modules() if name]
+print([name for name, _ in net.named_modules() if name])
+# ['layer1', 'layer3', 'layer4', 'layer4.0', 'layer4.1', 'layer4.2', 'layer4.3']
 ```
 
 **2. Build one extractor per input type.** Pick the wrapper from the [class map](../03_class_map.md#extractor-one-per-input-type).
@@ -31,7 +75,7 @@ vision = PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess
 region_layer_map = {'V1': 'layer1', 'V4': 'layer3', 'IT': 'layer4'}
 ```
 
-This map is a hypothesis. To choose layers from data, run the layer mapping explorer (`brainscore_vision.tools.layer_mapping_explorer`), which scores each layer on standard region benchmarks.
+This map is a hypothesis. To choose layers from data, run the layer mapping explorer (`brainscore_vision.tools.layer_mapping_explorer`), which scores each layer on standard region benchmarks. The layer it picks scores best on those benchmarks because it was picked there, so report the model's score on data that did not take part in the choice.
 
 **4. Assemble.**
 
@@ -45,6 +89,9 @@ model = BrainScoreModel(
     region_layer_map=region_layer_map,
     behavioral_readout_layer='layer4',           # optional: behavior by readout
 )
+print(sorted(model.out_channels))
+# ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt',
+#  'neural:IT', 'neural:V1', 'neural:V4']
 ```
 
 Pass the same `net` object to the extractor and to `model=`, so recording and interventions act on the same network.
@@ -64,22 +111,27 @@ A stimulus set is a table with one row per stimulus: a `stimulus_id` and an `ima
 ```python
 import pandas as pd
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from brainscore_core.streaming_helpers import neural_response
 
 stimuli = StimulusSet(pd.DataFrame({
     'stimulus_id': ['cat', 'dog'],
-    'image_path': ['/path/to/cat.png', '/path/to/dog.png'],
+    'image_path': [image_paths['cat'], image_paths['dog']],   # the paths of your files
 }))
 stimuli.identifier = 'my-images'          # names the activation cache entry
 
-model.start_recording('IT')
-activations = model.process(stimuli)      # (presentation, neuroid)
+activations = neural_response(model, stimuli, ['neural:IT'])
+print(activations.dims, activations.shape)   # ('presentation', 'neuroid') (2, 8)
 ```
+
+`neural_response` runs a session through `model.participate`, as a benchmark does. In a
+notebook, `model.start_recording('IT')` followed by `model.process(stimuli)` gives the same
+assembly; `process` is a convenience of `BrainScoreModel`, not part of the contract.
 
 The column name tells the model what kind of input each row holds (`sentence` for text, `audio_path` for audio). A `stimulus_paths` dictionary alone is not enough.
 
 ## Models with several inputs
 
-Give each tower its own extractor. If two towers use the same layer names, route regions with `LayerSelector`:
+Give each input type its own extractor. If two extractors use the same layer names, route regions with `LayerSelector`. This example needs a network with an image part and a text part, such as CLIP (`clip`, with one wrapper for each part):
 
 ```python
 from brainscore import LayerSelector
@@ -104,11 +156,21 @@ The [CLIP registration](../../brainscore/models/clip_vit_b_32/model.py) is a com
 A hosted model or any system that only returns answers has no extractor. Declare its input and give it the parts that answer: a `reply` for tasks with a response (choices, ratings, written answers) and, for older `task_type`/`label_set` tasks, an `answer`:
 
 ```python
+def my_reply(prompt):                                      # calls your API in a real model
+    return 'real'
+
+
+def my_answer(*, stimulus_row, instruction, label_set):   # likewise
+    return label_set[0]
+
+
 model = BrainScoreModel(identifier='my-api-model', in_channels={'text'},
                         reply=my_reply, answer=my_answer)
+print(sorted(model.out_channels))
+# ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']
 ```
 
-For a hosted API, `build_api_reply(provider, model_id)` and `build_api_generation_fn(provider, model_id)` build both from one client per provider ([Behavior](behavior.md)).
+For a hosted API, `build_api_reply(provider, model_id)` (a `reply`) and `build_api_generation_fn(provider, model_id)` (an `answer`) build both from one client per provider ([Behavior](behavior.md)).
 
 It can take part in behavioral benchmarks but not neural ones; neural benchmarks will report N/A.
 

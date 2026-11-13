@@ -16,9 +16,15 @@ See `EXTENDING.md` (Seam 2) for the contract.
 
 A variant of a benchmark is one more registry line: `benchmark_registry['<id>-<suffix>'] = partial(YourBenchmark, <arguments>)` (or `lambda: YourBenchmark(<arguments>)`). Put the arguments that make the variant in that line, for example `channels=('text',)` for a variant that sends text. Do not write a subclass or a factory function that only passes arguments. Write a subclass only when it adds behavior. The identifier of a variant stays fixed once registered.
 
+From the `templates/` folder, the template benchmark scores the template model
+offline:
+
 ```python
 import brainscore
-score = brainscore.score('<some-model>', '<your-id>')
+import new_model, new_benchmark      # registers 'your-model' and 'your-benchmark'
+
+score = brainscore.score('your-model', 'your-benchmark')
+print(score.attrs['metric'], score.attrs['normalized'])   # linear_predictivity True
 ```
 
 ## The interface contract

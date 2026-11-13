@@ -9,7 +9,8 @@ This page connects the [core concepts](02_core_concepts.md) to the classes you w
 | Score a model on a benchmark | `brainscore.score(model, benchmark)` with objects or registered names |
 | Run your own session on a subject | `subject.participate(session)` |
 | Run a study with conditions, repetitions and tools | `Experiment(...).run()` |
-| Try something quickly in a notebook on a `BrainScoreModel` | `model.process(...)` after `start_recording(...)` or `start_task(...)` |
+| Record a region of a subject on some stimuli | `neural_response(subject, stimuli, ['neural:IT'])` |
+| Try something quickly in a notebook on a `BrainScoreModel` | `model.process(...)` after `start_recording(...)` |
 
 `participate(session)` is the only method the contract requires, and the only one benchmarks and experiments call. `process(...)` is a convenience that exists on `BrainScoreModel` and the legacy adapters; it does the same computation without a session. Use it interactively, but do not write benchmarks against it.
 
@@ -94,10 +95,10 @@ Each wrapper is named after what it wraps; pick the one for your model. A model 
 
 | Part | Signature | Ready-made builders |
 | --- | --- | --- |
-| `answer` | `(stimulus_row, instruction, label_set) -> label` | `build_api_generation_fn` (hosted APIs) |
+| `answer` | `(stimulus_row, instruction, label_set) -> label` | `build_api_generation_fn` (hosted APIs; the name is older than the part's) |
 | `reply` | `prompt -> text` (or a `StreamEvent` with extra data) | `build_api_reply` (hosted APIs), `chat_parts` (Hugging Face chat models) |
 | `likelihood` | `(prompt, candidates) -> {candidate: log probability}` | `chat_parts` |
-| `policy` | `row -> {output channel: payload}`; keeps its own history and clears it in `reset()` | `build_api_action_fn` (hosted APIs), `DroidPolicy`, `LiberoChunkPolicy` |
+| `policy` | `row -> {output channel: payload}`; keeps its own history and clears it in `reset()` | `build_api_action_fn` (hosted APIs; the name is older than the part's), `DroidPolicy` (`brainscore.harnesses.droid_policy`), `LiberoChunkPolicy` (`brainscore.harnesses.libero_policy`) |
 | `intervention` | `StateChange -> (PerturbationApplied, undo_function)` | `build_pytorch_ablation_fn(net)` |
 | `behavioral_readout_layer` | a layer path | |
 
@@ -174,9 +175,11 @@ classDiagram
 
 | Names | Module |
 | --- | --- |
-| `Subject`, `BrainScoreModel`, `TaskContext`, `Benchmark`, `Score`, selections, events, `check_compatibility` | `brainscore_core` |
+| `Subject`, `TaskContext`, `Benchmark`, `Score`, `Selection`, `StateChange`, `Perturbation`, `check_compatibility` | `brainscore_core` |
 | `StreamEvent`, `Session`, `FixedSource` | `brainscore_core.streaming` |
 | `run_environment`, `neural_response`, `apply_state_change` | `brainscore_core.streaming_helpers` |
-| `score`, `load_model`, `load_benchmark` | `brainscore` |
-| Wrappers | `brainscore.model_helpers.<name>_wrapper` |
+| `score`, `load_model`, `load_benchmark`, `BrainScoreModel`, `LayerSelector`, `CompositeSelector`, `IndexSelection`, `RandomSelection`, `FunctionalSelection` | `brainscore` |
+| `PytorchWrapper` | `brainscore_vision.model_helpers.activations.pytorch` |
+| The other wrappers | `brainscore.model_helpers.<name>_wrapper` |
 | `Experiment`, protocols, tools, replay | `brainscore.experiments` |
+| `RunRecord` | `brainscore.run_record` |

@@ -18,6 +18,72 @@ interventions. This page is the reference for what they use.
 
 ## The pieces
 
+The code on this page runs as written. A small network with an `answer` part and an
+`intervention` part stands in for your subject, eight random images with a `noise`
+column for your stimuli, and a lesion of `layer3` for your intervention:
+
+```python
+import os
+import tempfile
+
+import numpy as np
+import pandas as pd
+import torch
+from PIL import Image
+from brainscore import BrainScoreModel
+from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore_core import Perturbation, Selection, StateChange, TaskContext
+from brainscore_core.responses import Choice
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+
+
+class Net(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer3 = torch.nn.Conv2d(3, 12, 3)
+        self.layer4 = torch.nn.Sequential(torch.nn.ReLU(), torch.nn.AdaptiveAvgPool2d(1),
+                                          torch.nn.Flatten(), torch.nn.Linear(12, 6))
+
+    def forward(self, x):
+        return self.layer4(self.layer3(x))
+
+
+def preprocess(paths):
+    images = [np.asarray(Image.open(path).convert('RGB'), np.float32) / 255 for path in paths]
+    return torch.from_numpy(np.stack(images)).permute(0, 3, 1, 2)
+
+
+torch.manual_seed(0)
+net = Net().eval()
+
+folder = tempfile.mkdtemp()
+rows = []
+for index in range(8):
+    path = os.path.join(folder, f'{index}.png')
+    Image.fromarray(np.random.RandomState(index).randint(0, 256, (8, 8, 3), dtype=np.uint8)).save(path)
+    rows.append({'stimulus_id': f'image{index}', 'image_path': path,
+                 'noise': [0.0, 0.5][index % 2]})            # a stimulus factor
+stimuli = StimulusSet(pd.DataFrame(rows))
+stimuli.identifier = 'my-images'
+
+
+def answer(*, stimulus_row, instruction, label_set):
+    """Reads the network's first output unit as the choice."""
+    images = preprocess([stimulus_row['image_path']]).to(next(net.parameters()).device)
+    with torch.no_grad():
+        return label_set[int(net(images)[0, 0] > 0)]
+
+
+subject = BrainScoreModel(identifier='my-cnn', model=net, region_layer_map={'IT': 'layer4'},
+                          extractor={'vision': PytorchWrapper(identifier='my-cnn', model=net,
+                                                              preprocessing=preprocess)},
+                          answer=answer, intervention=build_pytorch_ablation_fn(net))
+task = TaskContext(instruction='Animal or vehicle?', response=Choice(['animal', 'vehicle']))
+lesion = StateChange(kind='ablation', target=Selection(layer='layer3'),
+                     perturbation=Perturbation(kind='zero'))
+```
+
 ```python
 from brainscore.experiments import Experiment, Intervene, RecordBehavior, RecordNeural, TaskProtocol
 
@@ -25,7 +91,8 @@ protocol = TaskProtocol(stimuli, task, identifier='animal-or-vehicle',
                         conditions=['intact', 'lesioned'], repetitions=[0])
 experiment = Experiment(subject=subject, protocol=protocol,
                         tools=[RecordNeural(['IT']), RecordBehavior(),
-                               Intervene(lesion, conditions=['lesioned'])])
+                               Intervene(lesion, conditions=['lesioned'])],
+                        output_dir='runs/my-study')
 experiment.validate()          # checks subject, protocol and tools against each other; runs nothing
 result = experiment.run()
 choices = result.behavior(condition='lesioned', repetition=0, measure='choice')
@@ -90,17 +157,17 @@ The bundled [asset notes](../../notebooks/assets/lessons/README.md) record data 
 
 ## Lower-level tools
 
-When the recorders do not cover what you need, build sessions yourself and attach tools that reach into the network. `Ablate`, `ScaleActivity` and `PatchActivity` change the network outside the subject: use them for a model that is not a subject (an OpenPI policy server, a bare network). A subject is changed with `Intervene`.
+When the recorders do not cover what you need, build sessions yourself and attach tools that reach into the network. A subject is changed with `Intervene`, as here. `Ablate`, `ScaleActivity` and `PatchActivity` change the network outside the subject: use them only for a model that is not a subject (an OpenPI policy server, a bare network).
 
 ```python
 from contextlib import contextmanager
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore.experiments import (Experiment, SessionProtocol, RecordInputsOutputs,
-                                    RecordActivity, Ablate, TorchInstrumentation)
+                                    RecordActivity, Intervene, TorchInstrumentation)
 
 @contextmanager
 def make_session(repetition):                # repetition.condition, repetition.identifier
-    yield stimulus_session(stimuli, ['behavior'])
+    yield stimulus_session(stimuli, ['behavior'], task)   # a behavior session needs its task
 
 protocol = SessionProtocol(identifier='silence-layer3', session_factory=make_session,
                            conditions=['baseline', 'silenced'], repetitions=[0, 1, 2],
@@ -109,9 +176,9 @@ protocol = SessionProtocol(identifier='silence-layer3', session_factory=make_ses
 experiment = Experiment(
     subject=subject,
     protocol=protocol,
-    tools=[RecordInputsOutputs(),                        # save inputs, outputs, events
-           Ablate(['layer3'], conditions=['silenced']),   # zero layer3 in one condition
-           RecordActivity(['layer3'])],                   # every forward pass, unaggregated
+    tools=[RecordInputsOutputs(),                          # save inputs, outputs, events
+           Intervene(lesion, conditions=['silenced']),     # zero layer3 in one condition
+           RecordActivity(['layer3'])],                    # every forward pass, unaggregated
     instrumentation=TorchInstrumentation(net),
     output_dir='runs/silence-layer3',
     metadata={'checkpoint': 'v1.2', 'seed': 7},
@@ -137,8 +204,10 @@ List tools in this order: recorders, activity recorded *before* an intervention,
 
 A tool watches a run in two places only: the session (`on_event`, `RecordInputsOutputs`,
 and `observed(session, sink)` from `brainscore.instrumentation` outside an experiment) for
-inputs and outputs, and `TorchInstrumentation` (`RecordActivity`) for layers. No tool wraps
-a method of the subject.
+inputs and outputs, and `TorchInstrumentation` (`RecordActivity`) for layers. No experiment
+tool wraps a method of the subject. `Witness` (`brainscore.witness`), an observer used
+outside experiments, is the exception: inside its `with` block it replaces the subject's
+`participate` with one that watches the session, and it restores the method at the end.
 
 Targets are layer paths or `Selection` objects, the same ones used in [Perturb and select units](perturb_and_select_units.md).
 
@@ -162,20 +231,22 @@ an analysis can count or drop invalid trials:
 
 ```python
 valid = trials[trials['choice_valid']]
-valid.groupby(['condition', 'noise'])['choice'].apply(lambda c: (c == 'animal').mean())
+print(valid.groupby(['condition', 'noise'])['choice'].apply(lambda c: (c == 'animal').mean()))
 ```
 
 ## Read and replay
 
 ```python
-for event in result.record.events():        # or RunRecord('runs/silence-layer3')
+from brainscore.experiments import replay_sessions, compare_outputs
+
+result = ExperimentResult.open('runs/silence-layer3')   # the run saved with RecordInputsOutputs
+for event in list(result.record.events())[:3]:          # or RunRecord(...), from brainscore.run_record
     print(event['condition'], event['repetition_id'], event['kind'])
 outputs = list(result.record.outputs())
 
-from brainscore.experiments import replay_sessions, compare_outputs
 replay = Experiment(subject=subject, protocol=replay_sessions(result.directory),
                     tools=[RecordInputsOutputs()], output_dir='runs/replay').run()
-compare_outputs(result.directory, replay.directory)
+print(compare_outputs(result.directory, replay.directory)['equal'])   # True
 ```
 
 Replay sends the saved inputs again. It does not re-run a simulator; in closed-loop tasks the new actions do not change the saved observations. Reattach intervention tools explicitly when replaying.
@@ -196,8 +267,14 @@ def evaluate(subject, context):
         answers.append(session.collect('behavior'))
     return my_score(answers)
 
+
+def my_score(answers):                       # the evaluator's own scoring
+    return len(answers)
+
+
 protocol = CallableProtocol(identifier='classic-benchmark', evaluate=evaluate,
                             repetitions=[0, 1, 2])
+print(Experiment(subject=subject, protocol=protocol).run().value)   # 3
 ```
 
 The evaluator keeps its own loop, resets and scoring; the tools still attach.

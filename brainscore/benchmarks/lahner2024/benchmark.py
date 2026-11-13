@@ -401,6 +401,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
 # For a predictivity correlation the ceiling is sqrt(reliability): the highest r a
 # perfect model could reach given measurement noise. This is the median over the 4042
 # ROI voxels of sqrt(_split_half_reliability(assembly, n_splits=20, random_state=0)),
-# the same Spearman-Brown-corrected reliability that selects those voxels. Pinned
-# rather than recomputed so scoring stays reproducible and cheap.
+# the same Spearman-Brown-corrected reliability that selects those voxels. The
+# constant only marks the variant that divides by a ceiling: the score recomputes
+# the per-voxel ceilings from the assembly and does not read this value.
 VISUAL_ROI_CEILING = 0.7304512193654528

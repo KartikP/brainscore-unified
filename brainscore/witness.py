@@ -3,9 +3,11 @@
 ``Witness`` watches the sessions of one subject during a ``with`` block. It
 uses the one way to watch a run, ``observed(session, sink)``: every session the
 subject takes part in is wrapped in ``observed``, so the Witness sees the
-session's input events and the subject's responses. It reads no attribute of
-the subject except ``identifier`` and works for every subject, because every
-subject takes part through ``participate``.
+session's input events and the subject's responses. To reach those sessions,
+it replaces ``participate`` on the subject instance for the ``with`` block and
+puts the original back at the end. Apart from that method it reads only the
+subject's ``identifier``, so it works for every subject, because every subject
+takes part through ``participate``.
 
 One :class:`WitnessEvent` is kept per response: the inputs delivered since the
 previous response (what the subject saw) and the response (what it did). A
@@ -15,7 +17,7 @@ episode is one event per action.
     from brainscore.witness import Witness
     with Witness(subject, label='CLIP · MajajHong.IT') as w:
         score = benchmark(subject)
-    w.save('/tmp/run')          # trace.json + one panel PNG per recorded event
+    w.save('/tmp/run')          # trace.json + up to max_panels (12) panel PNGs, evenly spaced
 
 Rendering (``w.save``) imports matplotlib and PIL only when it draws a panel.
 """

@@ -23,8 +23,12 @@ that the model's own forward already computed.
 Reconstruction is modality-specific:
   * vision — de-normalize ``x*std + mean`` (exact, given mean/std)
   * text   — ``tokenizer.decode(ids)`` (exact, incl. special tokens / truncation)
-  * audio  — the resampled waveform (raw-waveform models); a spectrogram image
-             for spectrogram models (sound inversion would be lossy)
+  * audio  — the resampled waveform of a 1-D or 2-D float input
+             (raw-waveform models). There is no spectrogram reconstruction, and
+             the modality guess (``infer_modality``) sends a 3-D float input with
+             1 or 3 in its third-from-last axis, such as a ``(B, 1, S)`` waveform
+             or a ``(1, 80, T)`` spectrogram, to vision; pass ``modality='audio'``
+             to PerceptWindow for such a waveform.
 
 Heavy renderers (PIL / soundfile / matplotlib) are imported lazily in ``save``;
 the recorder and the pure reconstruction functions need only numpy + torch.

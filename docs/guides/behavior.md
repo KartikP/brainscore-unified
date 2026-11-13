@@ -1,6 +1,24 @@
 # Behavior
 
-Behavioral benchmarks compare answers instead of activity. A `TaskContext` says what the subject is asked to do; its `response` says what form the answer takes:
+Behavioral benchmarks compare answers instead of activity. A `TaskContext` says what the subject is asked to do; its `response` says what form the answer takes.
+
+The code on this page runs as written with these stand-ins: a few words as stimuli, and a model whose `reply` part always answers "real". Replace them with your stimuli and your model:
+
+```python
+import pandas as pd
+from brainscore import BrainScoreModel
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+
+def word_table(words, labels):
+    return StimulusSet(pd.DataFrame({'stimulus_id': words, 'sentence': words, 'label': labels}))
+
+
+train_stimuli = word_table(['house', 'blick', 'table', 'florp'], ['real', 'pseudo', 'real', 'pseudo'])
+test_stimuli = word_table(['river', 'snarp'], ['real', 'pseudo'])
+model = BrainScoreModel(identifier='always-real', in_channels={'text'},
+                        reply=lambda prompt: 'real')   # a reply part: always answers 'real'
+```
 
 ```python
 from brainscore_core import TaskContext
@@ -49,6 +67,7 @@ session = stimulus_session(test_stimuli, ['behavior:choice'], task)
 model.participate(session)
 choices = session.collect('behavior:choice')   # BehavioralAssembly: presentation x choice
 model.reset()
+print(choices.values.tolist())   # [[1.0, 0.0], [1.0, 0.0]]: 'real' for both words
 ```
 
 ## Reported and implied
@@ -67,7 +86,7 @@ One benchmark can take models of both kinds, as long as it fills in both the ins
 
 A reply that cannot be parsed is recorded as invalid: NaN values, `answer_valid` is `False`, the reply is kept in `raw_answer` and the reason in `parse_error`. Nothing is credited. Written answers are stored as written; scoring them (a parser, a judge, a comparison with people) is the benchmark's job.
 
-**Parts.** `reply(prompt)` returns the model's raw reply to one trial. It may also return extra data the way a policy does: a `StreamEvent` with the text as payload and the extra data (for example `reasoning` or `token_usage`) as meta. The meta goes into the answer event, where `RecordReasoning` reads `meta['reasoning']`. An answer event that holds several trials keeps, under each key, a list with one value per trial. `likelihood(prompt, candidates)` returns the log probability of each candidate answer. `chat_parts(model, processor)` in `brainscore.model_helpers.replies` builds both for a Hugging Face chat model; it shows the prompt's parts in order, images as images and clips as video:
+**Parts.** `reply(prompt)` returns the model's raw reply to one trial. It may also return extra data the way a policy does: a `StreamEvent` with the text as payload and the extra data (for example `reasoning` or `token_usage`) as meta. The meta goes into the answer event, where `RecordReasoning` reads `meta['reasoning']`. An answer event that holds several trials keeps, under each key, a list with one value per trial. `likelihood(prompt, candidates)` returns the log probability of each candidate answer. `chat_parts(model, processor)` in `brainscore.model_helpers.replies` builds both for a Hugging Face chat model; it shows the prompt's parts in order, images as images and clips as video. This example needs a chat model and its processor (`hf_model`, `processor`), so it downloads weights:
 
 ```python
 reply, likelihood = chat_parts(hf_model, processor, chat_template_kwargs={'enable_thinking': False})
@@ -82,7 +101,7 @@ BrainScoreModel(..., reply=reply, likelihood=likelihood)
 
 ## Hosted models
 
-`build_api_generation_fn` (in `brainscore.model_helpers.api_behavioral`) builds an `answer` for a hosted model API. Such a model has no layers, so it can take part in behavioral benchmarks only.
+`build_api_generation_fn` (in `brainscore.model_helpers.api_behavioral`; the name is older than the part's) builds an `answer` for a hosted model API. Such a model has no layers, so it can take part in behavioral benchmarks only.
 
 `build_api_reply` builds a `reply` part from the same clients: one table, `PROVIDERS`, with one client per provider. A custom client is a callable `(model, system, messages, settings)` that returns the text, or a `StreamEvent` with the text as payload. It shows the trial's text and images in order, sends the task's instruction as the system text, and obeys the task's generation settings. It returns the reasoning (when the provider gives it) and the token counts (`token_usage`) as extra data. A provider that refuses a setting the task gives fails before any request: the Anthropic API has no seed and refuses `top_p` and any temperature other than its default 1.0 (which is then not sent). Each registered closed model has both parts under one identifier: a task with a response (a choice, a rating, a written answer such as CogGym's) goes to the `reply` part, as for every model that has one; an older `task_type`/`label_set` task goes to the `answer` part.
 

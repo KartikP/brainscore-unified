@@ -7,8 +7,9 @@ keys on every unified score:
 - ``raw``: a ``Score``, the metric value before any ceiling normalization;
 - ``ceiling``: a ``Score``, the reference the benchmark holds. When no ceiling
   is measured it is :func:`not_estimated` (NaN, ``attrs['status'] ==
-  'not_estimated'``); Lahner2024 whole cortex, Lahner2024 time-resolved and
-  LeBel2023 keep their registered ``Score(1.0)``;
+  'not_estimated'``); LeBel2023, the induced-dyslexia benchmarks and every
+  Lahner2024 variant except ``Lahner2024-fMRI-naturalistic-visualROI`` keep
+  ``Score(1.0)``;
 - ``normalized``: ``True`` when the score is the raw value divided by a measured
   ceiling, ``False`` when the score is the raw value (Communication Rule 2.4:
   the two never share a column);

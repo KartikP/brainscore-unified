@@ -13,11 +13,18 @@ topographic, behavioral, causal). See `EXTENDING.md` (Seam 3) for the full contr
 4. Add `from . import <your_name>` to `brainscore/metrics/__init__.py`.
 5. Adapt `test_metric.py` and run it (`pytest brainscore/metrics/<your_name>/test_metric.py`).
 
+From the `templates/` folder, with the data template for an assembly:
+
 ```python
 import brainscore
-metric = brainscore.load_metric('<your-id>')
-score  = metric(model_assembly, brain_assembly)
+import new_data, new_metric          # registers 'your-measurements' and 'your-metric'
+
+measured = brainscore.load_dataset('your-measurements')
+metric = brainscore.load_metric('your-metric')
+print(round(float(metric(measured, measured)), 6))   # identical assemblies: 1.0
 ```
+
+In a benchmark, the first argument is the model's response and the second the measured data.
 
 ## Worked reference
 

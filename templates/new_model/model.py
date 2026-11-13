@@ -1,10 +1,10 @@
 """TODO: one-line description of the model and what it can be scored on.
 
-A model is ONE BrainScoreModel construction. The optional slots you fill decide which
-dispatch branches process() can take (see
-https://brain-score.github.io/public/UMI/architecture.html for the full router):
-  - extractor     -> neural recording + behavioral readout
-  - answer        -> behavioral answers in words (instruction-following)
+A model is ONE BrainScoreModel construction. The optional parts you fill decide which
+channels the subject declares, and so which sessions it can take part in (see
+https://brain-score.github.io/public/UMI/architecture.html for the full map):
+  - extractor     -> neural:<region> outputs (+ behavioral readout with behavioral_readout_layer)
+  - answer, reply -> behavioral answers in words (instruction-following)
   - policy        -> closed loop (a row of channel -> payload)
   - intervention  -> lesion/perturbation (StateChange)
 Leave a slot as None if the model doesn't support that capability.

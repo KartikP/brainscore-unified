@@ -1,7 +1,7 @@
 """Auditory-ROI mask for Lahner2024 fsaverage5 voxels.
 
 Built from the Destrieux 2009 surface atlas (10242 vertices per hemi,
-matching the Lahner assembly). Selects early auditory + planum cortex:
+matching the Lahner assembly). Selects early auditory cortex, lateral STG and the planum:
 
     33: G_temp_sup-G_T_transv     (Heschl's gyrus — primary auditory)
     34: G_temp_sup-Lateral        (lateral STG — auditory association)
@@ -13,7 +13,7 @@ Excludes label 74 (S_temporal_sup, full superior temporal sulcus) —
 that's a broader region that includes multimodal social-perception
 voxels and would dilute a clean audio-cortex mask.
 
-Total: ~526 voxels across both hemispheres on fsaverage5.
+Total: 715 voxels on fsaverage5 (377 left, 338 right).
 
 The Lahner assembly is concatenated as (left || right) → 20484 voxels.
 The mask has that length; a Lahner2024 benchmark takes it as

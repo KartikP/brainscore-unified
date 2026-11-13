@@ -137,7 +137,7 @@ class TestPreflightInScore:
         saved = score_metadata.record_measures
         del score_metadata.record_measures
         try:
-            with pytest.raises(ImportError, match='core ad7288a or later'):
+            with pytest.raises(ImportError, match='score_metadata.record_measures'):
                 brainscore.score(MagicMock(), MagicMock(), check_mem=False)
         finally:
             score_metadata.record_measures = saved

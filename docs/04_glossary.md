@@ -5,6 +5,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | Term | Meaning |
 | --- | --- |
 | **Ablate** | An experiment tool that sets selected unit outputs of a network that is not a subject to zero during chosen conditions. A subject is changed with `Intervene`. |
+| **`BRAINSCORE_REGIONS_PER_PASS`** | An environment variable: `all` (default) records every requested region of an extractor that declares `independent_layers` in one pass; `one` gives each region its own pass. Any other value stops the session before any compute. |
 | **Adapter** | A permanent wrapper that presents a classic Brain-Score vision or language model as a subject. |
 | **`answer`** | A `BrainScoreModel` part: `(stimulus_row, instruction, label_set) -> label`. It phrases and parses its own prompt. It answers an older `task_type`/`label_set` task and a plain `Choice`; a task with settings goes to `reply`. |
 | **Assembly** | A labeled array. `NeuroidAssembly` has `presentation` (stimuli), `neuroid` (units) and optionally `time_bin`. `BehavioralAssembly` holds choices. |
@@ -16,17 +17,19 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Column table** | The one table that says which channel each stimulus column feeds, such as `image_path` to `vision:image` and `sentence` to `text`: `io_catalog.stimulus_columns()`. Sessions, pre-flight and `BrainScoreModel` read it; `register_channel(..., columns=...)` adds to it. |
 | **Compatibility** | The pre-flight check, from declarations only, of whether a subject can take part in a benchmark. Failing pairs are N/A. |
 | **`CompositeSelector`** | A region defined by units from several layers. |
+| **Data plugin** | A folder `brainscore/data/<name>/` that registers the stimuli and recorded responses of one study (`stimulus_set_registry`, `data_registry`). Scripts that build its files, such as the frame, clip and sound preparation of the Friends movie data, are in its `data_packaging/` folder. A benchmark reaches the data only through `load_dataset` and `load_stimulus_set`. |
 | **Condition** | A setting compared within an experiment, such as `baseline` or `silenced`. |
 | **Control events** | Three events on the `control` channel: `begin` opens an episode, `respond` asks the subject to answer, `end` closes the episode and says why (`terminal`, `truncated` or `failure`). A subject gets them only if it declares the `control` input. |
 | **`EnvironmentSource`** | A source that drives an environment (`reset`, `step`): each action changes the next row. |
 | **Event (`StreamEvent`)** | One item on a channel: `channel`, `payload`, `t_ms`, `meta`. |
 | **Experiment** | A subject, a protocol, tools and an output folder, run together. Produces a saved record; need not produce a score. |
-| **`extractor`** | A `BrainScoreModel` part, one per input type, that prepares inputs, runs the network and returns layer activity. |
+| **`extractor`** | A `BrainScoreModel` part, one per input type, that prepares inputs, runs the network and returns layer activity: `extractor(stimuli, layers)`. Its `record(layers, stimuli)` records a region while another part runs the network; the recording's `take(row)` gives one assembly per layer. |
 | **`independent_layers`** | What an extractor declares when its output for some layers, cut to one layer, equals its output for that layer alone. The regions of one session that it records then share one call. Every wrapper in `brainscore.model_helpers` declares it; any other extractor runs once per region. `BRAINSCORE_REGIONS_PER_PASS=one` gives every region its own pass. |
 | **Instrumentation** | The connection that lets tools reach inside a model, such as `TorchInstrumentation`. |
 | **`intervention`** | A change to a subject while it runs (a lesion, a stimulation, a drug), and the `BrainScoreModel` part that applies it: `StateChange -> (PerturbationApplied, undo_function)`. The channel name (`lesion`, `stimulation`, `pharmacological`) says the kind. |
 | **Layer path** | A module's name in the network, such as `layer3.0.conv1`; list them with `named_modules()`. |
 | **`in_channels`, `out_channels`** | What a subject declares: the inputs it can take and the outputs it can give. |
+| **`required_channels`** | The inputs a subject cannot run without; a subset of `in_channels`. A benchmark that does not provide all of them is N/A. |
 | **`LayerSelector`** | One layer as a region; `modality=` picks the extractor in a model with more than one. |
 | **`likelihood`** | A `BrainScoreModel` part: `(prompt, candidates) -> {candidate: log probability}`. Scores each option as the reply, without generating; gives choices and implied probabilities. |
 | **Metric** | The calculation that compares model outputs with measured data. |
@@ -38,8 +41,8 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`output_inputs`** | A subject declaration: for an output channel, the input channels it can be answered from. The subject answers the output when it takes in at least one of them from the benchmark. An output that is not listed can be answered from any input. |
 | **Participant** | A person whose data a benchmark holds. Data coordinates keep the name the data has (for example the `subject` coordinate of an fMRI assembly). |
 | **`participate(session)`** | The one evaluation method every subject implements. |
-| **`Perturbation`** | How an intervention changes selected units: `zero`, `scale`, `drive` or `replace`. |
-| **`policy`** | A `BrainScoreModel` part: `row -> {output channel: payload}`. |
+| **`Perturbation`** | How an intervention changes selected units: `zero`, `scale` or `drive` for activity; `replace` only for weights and attention heads. |
+| **`policy`** | A `BrainScoreModel` part, in one form: `row -> {output channel: payload}`. `policy_in_channels` (default `('observation',)`) names the row keys it reads; `policy_out_channels` (default `('motor',)`) the outputs it answers on. A policy that keeps history clears it in `reset()`. |
 | **`process(...)`** | A convenience method on `BrainScoreModel` and adapters for interactive use. Not part of the contract. It records activity; a behavioral answer comes only from a session. |
 | **Protocol** | The procedure of an experiment: which conditions, how many repetitions, where sessions begin and end, and when the subject is reset. |
 | **`record`** | To read activity from a subject; a saved run is a `RunRecord`. What to record is a requested output (`neural:<region>`), never a separate argument. |
@@ -69,10 +72,10 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Raw text, raw scores** | `Choice(raw_text=True)` shows the stimulus text exactly as given, with no added sentence; a part that scores options scores `f"{text} {option}"` as plain text. `Choice(raw_scores=True)` returns each option's summed log probability, not normalized. `Choice(labels='options')`, with a column name in place of the options, reads options that differ for each row from that stimulus column. |
 | **Reported / implied** | A reported answer is the model's parsed reply; an implied one is read from its internals (a readout, or a language model's likelihoods). Results say which in `attrs['measure']`. |
 | **Trial memory** | How long a subject keeps its trials: `none` (default; each trial is its own episode) or `history` (one episode; the subject keeps what it took in and answered on earlier trials; needs the trait `memory:trial_history`). |
-| **Tool** | Equipment attached to an experiment. It watches the session (inputs and outputs) or the layers (`TorchInstrumentation`), or changes the subject through a declared channel (`Intervene`). No tool wraps a method of the subject. |
+| **Tool** | Equipment attached to an experiment. It watches the session (inputs and outputs) or the layers (`TorchInstrumentation`), or changes the subject through a declared channel (`Intervene`). No experiment tool wraps a method of the subject; `Witness`, an observer outside experiments, replaces `participate` for its block and restores it. Experiment tools are in `brainscore.experiments`; tools that are fitted, saved and applied (linear probe, LEACE, steering) and the Algonauts prediction export are in `brainscore/tools/`. |
 | **Row** | One closed-loop step: a mapping of channel to payload. A policy answers it with a mapping of output channel to payload. |
 | **Trait `memory:trial_history`** | A subject declares it when it keeps earlier trials and its answers from `begin` until `end`. A `BrainScoreModel` declares it with `memory='trial_history'`. |
 | **Typed helpers** | Shorthands that build one session and collect it: `neural_response(subject, stimuli, outputs)`, `behavioral_response(subject, stimuli, task)`, `apply_state_change(subject, state_change)`, `run_environment(subject, environment)`. They use the words of `stimulus_session`. |
 | **Trial** | A unit within a session: one stimulus (one `StimulusSet` row, perhaps with several parts) followed by a response. |
 | **`UnitSelection`** | A recipe for choosing units (`IndexSelection`, `RandomSelection`, `FunctionalSelection`) that resolves to a `Selection`. |
-| **Wrapper** | An extractor shipped with Brain-Score, such as `VLMVisionWrapper` or `TextWrapper`. |
+| **Wrapper** | An extractor shipped with Brain-Score: `PytorchWrapper` (in `brainscore_vision`), `VLMVisionWrapper`, `VLMVideoWrapper`, `VideoWrapper`, `TextWrapper`, `AudioWrapper` (in `brainscore.model_helpers`). |

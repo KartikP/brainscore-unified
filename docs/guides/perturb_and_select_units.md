@@ -1,5 +1,53 @@
 # Perturb and select units
 
+The code on this page runs as written. A small network, its image preparation and
+twelve images labeled `face` or `object` stand in for your network and your localizer:
+
+```python
+import os
+import tempfile
+
+import numpy as np
+import pandas as pd
+import torch
+from PIL import Image
+from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+
+class Net(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer3 = torch.nn.Conv2d(3, 12, 3)
+        self.layer4 = torch.nn.Sequential(torch.nn.ReLU(), torch.nn.AdaptiveAvgPool2d(2),
+                                          torch.nn.Flatten(), torch.nn.Linear(48, 64))
+
+    def forward(self, x):
+        return self.layer4(self.layer3(x))
+
+
+def preprocess(paths):
+    images = [np.asarray(Image.open(path).convert('RGB'), np.float32) / 255 for path in paths]
+    return torch.from_numpy(np.stack(images)).permute(0, 3, 1, 2)
+
+
+torch.manual_seed(0)
+net = Net().eval()
+vision = PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess)
+
+folder = tempfile.mkdtemp()
+rows = []
+for index in range(12):
+    label = 'face' if index % 2 == 0 else 'object'
+    pixels = np.random.RandomState(index).randint(0, 128, (16, 16, 3), dtype=np.uint8)
+    pixels[..., 0] += 127 if label == 'face' else 0      # the 'face' images are redder
+    path = os.path.join(folder, f'{index}.png')
+    Image.fromarray(pixels).save(path)
+    rows.append({'stimulus_id': f'image{index}', 'image_path': path, 'label': label})
+localizer_stimuli = StimulusSet(pd.DataFrame(rows))
+localizer_stimuli.identifier = 'my-localizer'
+```
+
 ## Interventions
 
 An intervention changes the subject while it runs: a lesion, a stimulation or a drug. Three objects describe it:
@@ -7,7 +55,7 @@ An intervention changes the subject while it runs: a lesion, a stimulation or a 
 | Object | Says |
 | --- | --- |
 | `Selection(layer, indices=None, axis=-1)` | Which units. `indices=None` means the whole layer. |
-| `Perturbation(kind='zero' \| 'scale' \| 'drive' \| 'replace', scale=..., amount=...)` | How to change them. |
+| `Perturbation(kind='zero' \| 'scale' \| 'drive' \| 'replace', scale=..., amount=...)` | How to change them. An ablation of activity takes `zero`, `scale` or `drive`; `replace` changes weights or attention heads only, and an activity ablation with it fails at the first forward pass. |
 | `StateChange(kind='ablation', target=..., perturbation=...)` | The intervention. `StateChange(kind='reset', handle_id=...)` undoes one. |
 
 A `BrainScoreModel` applies an intervention with its `intervention` part, which declares the `lesion`, `stimulation` and `pharmacological` inputs. For PyTorch networks, build the part with forward hooks. There is one way to send an intervention: a session on the declared channel. `apply_state_change` builds that session:
@@ -53,11 +101,16 @@ A `UnitSelection` is a recipe that `resolve(subject)` turns into a `Selection`:
 `FunctionalSelection` records the region through a session: it works for any subject that records the region, and it takes the labels from the `contrast_column` of the localizer stimuli. For a region that spans several layers, `resolve_layers(subject)` gives one `Selection` per layer. Resolve every recipe before the intervention: the target of a `StateChange` is a resolved `Selection`. An unresolved recipe is refused with an error that names this fix. Two reasons: the localizer is its own session, and a subject takes part in one session at a time; and a resolved target is the exact set of units, so a recorded run replays without the localizer. Always compare a localized lesion with random units of the same number, drawn from the same population:
 
 ```python
-selected = FunctionalSelection('IT', localizer_stimuli, contrast=(['face'], ['object']), n_units=50).resolve(model)
-population = selected.metadata['unit_population']
-control = RandomSelection(selected.layer, n_units=50, n_total=len(population),
-                          population=population, seed=0).resolve(model)
+from brainscore import FunctionalSelection, RandomSelection
+
+selected = FunctionalSelection('IT', localizer_stimuli, contrast=(['face'], ['object']),
+                               n_units=10).resolve(model)
+control = RandomSelection.matched_to(selected, seed=0).resolve(model)
+print(selected.layer, len(selected.indices), control.layer, len(control.indices))   # layer4 10 layer4 10
 ```
+
+`RandomSelection.matched_to` takes the layer, the number of units, the population and the
+axis from the selection, so the control draws from the same units in the same way.
 
 Use held-out stimuli for the localizer and for the test, and several random seeds.
 

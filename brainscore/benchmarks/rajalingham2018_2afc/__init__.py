@@ -4,7 +4,8 @@ match-to-sample choice, scored as a subject against the human pool.
 The original ``Rajalingham2018-i2n`` reconstructs the binary task from a global
 24-way classifier softmax; this variant presents the sample plus two object
 choice tokens and scores whichever per-trial choice the model makes (generation,
-similarity, readout, or chance) through the identical i1/i2n d-prime pipeline.
+similarity, or chance; ``score_2afc.py`` has no readout path) through the same
+i1/i2n d-prime pipeline.
 
 Public surface:
   - ``benchmark.score_choices`` / ``benchmark.score_all`` — score a choices DataFrame

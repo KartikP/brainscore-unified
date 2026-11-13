@@ -21,7 +21,7 @@ with `process`, task/recording setup, and layer/modality declarations.
 Everything is a factory registered under a string identifier. All five registries live
 in `brainscore/__init__.py`:
 
-```python
+```text
 data_registry:         Dict[str, Callable[[], DataAssembly]]
 stimulus_set_registry: Dict[str, Callable[[], StimulusSet]]
 metric_registry:       Dict[str, Callable[[], Metric]]
@@ -36,19 +36,28 @@ that those domain registries populate lazily — see
 missing because it is not in a registry dict.
 
 A plugin is a subpackage whose `__init__.py` adds a factory to the
-matching registry; the parent package imports it so registration runs on load. Load by id:
+matching registry; the parent package imports it so registration runs on load. Load by id.
+The folders in `templates/` are such plugins; started from the `templates/` folder, this
+runs as written:
 
 ```python
 import brainscore
-data      = brainscore.load_dataset("your-data")
-stimuli   = brainscore.load_stimulus_set("your-stimuli")
+import new_data, new_metric, new_benchmark, new_model   # importing a template registers it
+
+stimuli   = brainscore.load_stimulus_set('your-stimuli')
+data      = brainscore.load_dataset('your-measurements')
 metric    = brainscore.load_metric('your-metric')
+model     = brainscore.load_model('your-model')
 benchmark = brainscore.load_benchmark('your-benchmark')
 score     = brainscore.score('your-model', 'your-benchmark')
+print(len(stimuli), data.shape)   # 32 (32, 16)
 ```
 
-`load_*` checks the unified registry first, then the `brainscore_vision` /
-`brainscore_language` registries.
+The score is a number near zero: the template model has random weights.
+
+`load_model`, `load_benchmark` and `load_dataset` check the unified registry first, then
+the `brainscore_vision` and `brainscore_language` registries; `load_metric` and
+`load_stimulus_set` fall back to `brainscore_vision` only.
 
 ---
 
@@ -98,9 +107,9 @@ Factories that fetch multi-gigabyte checkpoints should use the local pre-downloa
 guard before any loader call; see [model downloads](docs/archive/model_downloads.md) and
 `brainscore/models/blip2_opt_2_7b/model.py` for the pattern.
 
-Custom extraction providers should expose output-affecting state through `cache_config()`.
+A custom extractor should expose output-affecting state through `cache_config()`.
 Disable result caching if that state cannot be represented. Make `.data` alias or
-NumPy weight edits between scoring runs, because they bypass within-run change
+NumPy weight edits only between scoring runs, because they bypass within-run change
 tracking. See [activation caching](docs/archive/caching.md) for supported paths and limits.
 
 Give a custom extractor `record(layers, stimuli)` as well (see `brainscore/extractor.py`):
@@ -119,7 +128,17 @@ keeps them itself and empties them in `reset()`:
 ```python
 from collections import deque
 
+import numpy as np
+
+import brainscore
 from brainscore import BrainScoreModel
+
+
+def same(a, b):
+    """Whether two observations are equal; an observation can be a dict of arrays."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(same(a[key], b[key]) for key in a)
+    return np.array_equal(a, b)
 
 
 class TurnWhenBlocked:
@@ -133,7 +152,7 @@ class TurnWhenBlocked:
 
     def __call__(self, row):
         observation = row['observation']
-        blocked = bool(self.history) and self.history[-1][0] == observation
+        blocked = bool(self.history) and same(self.history[-1][0], observation)
         action = (self.history[-1][1] + 1) % 4 if blocked else 0
         self.history.append((observation, action))
         return {'motor': action}
@@ -141,7 +160,11 @@ class TurnWhenBlocked:
 
 agent = BrainScoreModel(identifier='turn-when-blocked', policy=TurnWhenBlocked(),
                         policy_in_channels=('observation',))
+score = brainscore.score(agent, 'GridGame-reach-5x5')   # 15 episodes, so 15 resets
 ```
+
+The grid game's observation is a dict of arrays, so the policy compares observations
+with `same`; `==` on two arrays is an array, not one truth value.
 
 The model calls `reset()` of the object given as `policy=` when an episode begins (every
 `begin` signal: at the start of each closed-loop session, and of each trial when the
@@ -149,7 +172,8 @@ task's `trial_memory` is `'none'`) and when `model.reset()` runs. The same holds
 part (`policy=`, `answer=`, `reply=`, `likelihood=`, an extractor): `reset()` is called on
 a part that has it, and on the owner of a part that is a bound method (`policy=agent.act`
 resets `agent`), once per object. Declare in `policy_in_channels` every row key
-the policy reads; the session sends only those.
+the policy reads (default `('observation',)`); the session sends only those. Declare in
+`policy_out_channels` the outputs the policy answers on (default `('motor',)`).
 
 ### Seam 2 — a new benchmark
 
@@ -157,21 +181,25 @@ A benchmark drives the subject model and scores it. Subclass `BenchmarkBase`, im
 `__call__(subject)`:
 
 ```python
-from brainscore_core.benchmarks import BenchmarkBase, ceil_score
+from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.streaming_helpers import neural_response
-from brainscore import benchmark_registry, load_metric, load_stimulus_set
+from brainscore import benchmark_registry, load_dataset, load_metric, load_stimulus_set
+from brainscore.benchmarks import benchmark_score
+
+BIBTEX = ''   # the citation of the data
+
 
 class YourBenchmark(BenchmarkBase):
     # Checked before any compute, so a mismatched model is N/A instead of failing mid-run.
-    required_input_channels = {'vision'}
+    required_input_channels = {'vision:image'}
     requested_output_channels = {'neural:IT'}
     uses_session = True
 
     def __init__(self):
         super().__init__(identifier='your-benchmark', ceiling=Score(1.0),  # or your estimate
                          version=1, parent='neural', bibtex=BIBTEX)
-        self._assembly = load_assembly()        # target measurements
+        self._assembly = load_dataset('your-measurements')      # target measurements
         self._stimulus_set = load_stimulus_set('your-stimuli')
         self._metric = load_metric('your-metric')
 
@@ -184,10 +212,16 @@ class YourBenchmark(BenchmarkBase):
             time_bins=[(70, 170)],
         )                                                    # -> NeuroidAssembly
         raw = self._metric(predictions, self._assembly)
-        return ceil_score(raw, self.ceiling)
+        return benchmark_score(self, float(raw) / float(self.ceiling), raw=raw,
+                               metric='your-metric', normalized=True)
+
 
 benchmark_registry['your-benchmark'] = lambda: YourBenchmark()
 ```
+
+`benchmark_score` writes the attributes every unified score carries (`raw`, `ceiling`,
+`normalized`, `metric`, `benchmark_version`). `templates/new_benchmark/benchmark.py` is a
+complete version of this class that scores the template model as shipped.
 
 Then add `from . import your_name` to `brainscore/benchmarks/__init__.py`. For naturalistic /
 temporal data, reuse `brainscore/temporal.py` (`temporal_bin`, `hrf_convolve`,
@@ -229,7 +263,7 @@ import os
 previous = os.environ.get('BRAINSCORE_REGIONS_PER_PASS')
 os.environ['BRAINSCORE_REGIONS_PER_PASS'] = 'one'
 try:
-    score = benchmark(subject)
+    score = brainscore.score(model, benchmark)   # the template model and benchmark loaded above
 finally:
     if previous is None:
         del os.environ['BRAINSCORE_REGIONS_PER_PASS']
@@ -296,12 +330,13 @@ def answer(*, stimulus_row, instruction, label_set):
 capability that runs through `subject.participate(session)`.
 
 Builders: a function that builds a part is called `build_<part>` and returns
-it, for example `build_policy()` returns the function passed as `policy=`. The
-ready-made builders work the same way: `build_api_generation_fn(...)` returns an
-`answer`, `build_api_action_fn(...)` a `policy`, and
-`build_pytorch_ablation_fn(model)` an `intervention`.
+it, for example `build_policy()` returns the function passed as `policy=`. Three
+ready-made builders still carry the names of removed parts:
+`build_api_generation_fn(...)` returns an `answer`, `build_api_action_fn(...)` a
+`policy`, and `build_pytorch_ablation_fn(model)` an `intervention`.
 
 The interface evaluates checkpoints; it does not train. Register the checkpoint.
-For a discovery or analysis pipeline, work directly with `process()` outputs — see
-`notebooks/04_multiregion_geometry.ipynb` for an end-to-end analysis that never
-produces a `Score`.
+For a discovery or analysis pipeline that produces no `Score`, run an
+[experiment](docs/guides/experiments.md): it records the requested regions and answers
+and saves them for analysis. [Lesson 10](notebooks/lessons/10_run_an_experiment.ipynb)
+runs one end to end.

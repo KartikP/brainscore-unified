@@ -1,13 +1,12 @@
-"""Environment and subject harnesses for the v1.5 interface.
+"""Environments, policies, a human subject and adapters for external libraries.
 
-A harness adapts a concrete subject or environment to the device-agnostic core
-contract. v1.5 keeps all device specifics out of ``core``; they live here.
-
-The robotics harness is the home for the DROID-shaped embodied rows and the
-helpers that pack and validate them. The
-grid_game harness is a self-contained video-game environment with a closed-loop
-driver. A human harness and other environment harnesses (Atari, browser) are
-reserved.
+Device specifics stay out of ``core``; they live here. ``robotics`` holds the
+DROID-shaped embodied rows and the helpers that pack and validate them;
+``grid_game`` and ``gymnasium_harness`` are environments with a closed-loop
+driver; ``multi_agent`` passes outputs between subjects; ``droid_policy`` and
+``libero_policy`` are ready-made policies; ``human`` and ``human_replay`` are a
+prototype human subject; ``adapter``, ``coggym`` and ``ewok`` adapt external
+experiment libraries to the common channels.
 """
 from . import robotics
 from . import human

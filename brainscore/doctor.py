@@ -94,7 +94,8 @@ def report():
         lines.append(f'{problems} environment problem(s). Resolve the errors above before scoring.')
         if dependency_problems:
             lines.append('Dependency mismatches can make scoring wrong rather than merely broken: '
-                         'install the pinned environment (environment-unified.yml).')
+                         'install with the pinned versions (unified/install/setup.sh, or pip install '
+                         'with -c unified/install/v2-constraints.txt; see the unified README).')
     else:
         lines.append('Dependencies are within bounds. Missing data assets above '
                      'are only needed by the benchmarks that name them; run '

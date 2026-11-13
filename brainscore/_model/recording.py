@@ -165,8 +165,10 @@ class Recorder:
         """Configure the layers extracted by subsequent ``process`` calls.
 
         A string names one region, and a list records several targets in one
-        extraction. Unknown names are treated as raw layer paths with a warning,
-        whether supplied alone or in a list.
+        extraction. A name that is not a region is read as a layer path: when
+        the extractor lists its layers, a name that is not one of them raises
+        ``ValueError`` (with close matches); when it lists none, the name is
+        used as given, with a warning. Strings and lists follow the same rule.
         ``recording_type`` is accepted for legacy adapter compatibility and is
         otherwise ignored by ``BrainScoreModel``.
         """

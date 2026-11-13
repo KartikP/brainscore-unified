@@ -2,7 +2,7 @@
 
 Run models across compatible Brain-Score benchmarks, record their responses, and attach experiment tools. A `Subject` connects the model to the experiment; `BrainScoreModel` supplies extraction and task helpers. Use `Experiment` to combine a protocol with recording and intervention tools.
 
-**Start here:** [Lesson 1: your first subject](notebooks/lessons/01_your_first_subject.ipynb), then [Lesson 10: a whole study in one notebook](notebooks/lessons/10_run_an_experiment.ipynb) (design a task, record answers and activity, save the run, turn it into a benchmark). Reference: [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [All lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
+**Start here:** [Lesson 1: your first subject](notebooks/lessons/01_your_first_subject.ipynb), then [Lesson 10: a whole study in one notebook](notebooks/lessons/10_run_an_experiment.ipynb) (design a task, record answers and activity, save the run, turn it into a benchmark). [Score a model](docs/guides/score_a_model.md) scores a first pair with no download. Reference: [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [All lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
 
 UMI is a v2 source candidate. See the [release policy](docs/archive/production_release.md) for remaining qualification.
 
@@ -11,16 +11,19 @@ UMI is a v2 source candidate. See the [release policy](docs/archive/production_r
 - `brainscore/model_helpers/`: extraction wrappers for image, text, VLM vision, video and audio.
 - `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, human-harness scaffold), and the adapters for external experiment libraries (`adapter.py` holds what every adapter shares; `coggym.py`, `ewok.py`).
 - `brainscore/models/`: registered models (CLIP, Qwen-VL, BLIP-2, V-JEPA, null controls and others).
-- `brainscore/benchmarks/`: registered benchmarks (ROAR, MajajHong-unified, Pereira-unified, Lahner2024, Algonauts2025 and others).
+- `brainscore/benchmarks/`: registered benchmarks (ROAR, induced dyslexia, Lahner2024, LeBel2023, Algonauts2025, CogGym, EWoK, the grid game). The `-unified` regression variants of MajajHong2015 and Pereira2018 are registered in the vision and language packages.
 - `brainscore/metrics/`: scoring metrics.
+- `brainscore/data/`: data plugins (stimuli, recorded responses, and the packaging scripts that build them).
+- `brainscore/tools/`: tools to fit, apply and register (linear probe, LEACE, steering, layer mapping, auto-register, Algonauts prediction export).
 
 ## Install
 
 Requires Python 3.11, `conda` (miniforge or miniconda) and `git`.
 
 **On a new machine** (recommended): the bootstrap clones all four repositories, with core,
-vision and language at the commits this version of unified was tested with
-(`install/peer-revisions.json`), builds the pinned environment and checks it:
+vision and language at the commits named in `install/peer-revisions.json` (the last pinned
+set; a branch in work can need later peer commits), builds the pinned environment and
+checks it:
 
 ```bash
 mkdir brainscore-umi && cd brainscore-umi

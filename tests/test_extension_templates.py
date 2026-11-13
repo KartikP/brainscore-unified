@@ -157,6 +157,54 @@ def test_capability_readme_example_runs():
     assert response == {'motor': 0}
 
 
+# --- every code block of the user documents ----------------------------------------
+
+DOCUMENTS = Path(__file__).parents[1]
+# Blocks that need weights, data or a GPU, by (page, index of its python block).
+NEEDS_DOWNLOADS = {
+    ('docs/guides/score_a_model.md', 1): 'CLIP weights and the MajajHong2015 data',
+    ('docs/guides/existing_models.md', 0): 'alexnet weights and the MajajHong2015 data',
+    ('docs/guides/data.md', 0): 'the hosted LeBel2023 assembly',
+    ('docs/guides/behavior.md', 4): 'a Hugging Face chat model and its processor',
+    ('docs/guides/wrap_your_model.md', 6): 'CLIP and its image and text wrappers',
+}
+
+
+def _documented_pages():
+    pages = [DOCUMENTS / 'README.md', DOCUMENTS / 'EXTENDING.md']
+    for folder in ('docs', 'docs/guides', 'docs/reference'):
+        pages += sorted((DOCUMENTS / folder).glob('*.md'))
+    pages += sorted(TEMPLATES.glob('**/README.md'))
+    return [page for page in pages
+            if re.search(r'^```python', page.read_text(encoding='utf-8'), flags=re.M)]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize('page', _documented_pages(),
+                         ids=lambda page: str(page.relative_to(DOCUMENTS)))
+def test_documented_code_blocks_run(page, tmp_path):
+    """Each page's python blocks run in order, as written, in a fresh interpreter.
+
+    The template READMEs and EXTENDING.md import the templates by folder name, so they
+    run from templates/; every other page runs in an empty folder. Blocks that need a
+    download are left out (NEEDS_DOWNLOADS, with the reason).
+    """
+    import os
+    import subprocess
+    import sys
+    relative = str(page.relative_to(DOCUMENTS))
+    blocks = re.findall(r'^```python[^\n]*\n(.*?)^```', page.read_text(encoding='utf-8'),
+                        flags=re.S | re.M)
+    code = '\n'.join(block for index, block in enumerate(blocks)
+                     if (relative, index) not in NEEDS_DOWNLOADS)
+    in_templates = relative.startswith('templates/') or relative == 'EXTENDING.md'
+    environment = dict(os.environ, RESULTCACHING_DISABLE='1', MPLBACKEND='Agg')
+    result = subprocess.run([sys.executable, '-'], input=code, capture_output=True, text=True,
+                            cwd=TEMPLATES if in_templates else tmp_path, env=environment,
+                            timeout=600)
+    assert result.returncode == 0, result.stderr[-3000:]
+
+
 # --- new_benchmark -----------------------------------------------------------------
 
 @pytest.fixture

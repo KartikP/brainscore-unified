@@ -8,7 +8,7 @@ extra forward pass) and strided/capped.
 
     with ActivationWindow(network, layers=['blocks.20']) as rec:
         run_interaction(...)                 # each forward pass fires the hooks
-    acts = rec.stack('blocks.20', reduce='mean')   # (n_calls, hidden) — one vector per tick
+    acts = rec.stack('blocks.20', reduce='mean')   # (n_calls, last axis) — one vector per tick
 
 ``target`` is a torch Module, or a list or mapping of them: the network a
 subject runs. ``layers`` are dotted submodule paths; omit to hook the outermost
@@ -152,8 +152,11 @@ class ActivationWindow:
     def stack(self, layer: str, reduce: Optional[str] = None):
         """Stack a layer's per-call activations into one array of shape
         ``(n_calls, *feature)``. ``reduce='mean'`` first mean-pools each call over
-        all but the last (feature) dim — useful when seq-length varies tick to
-        tick, and the form you want for inter-agent RSA."""
+        all but the last dim — useful when seq-length varies tick to tick, and
+        the form you want for inter-agent RSA. The last dim is the hidden size of
+        a transformer layer, but the width of a convolution output
+        ``(batch, channels, height, width)``: permute or reduce such a layer
+        yourself to keep its channels."""
         arrs = self.by_layer().get(layer)
         if not arrs:
             raise KeyError(f"no captures for layer {layer!r}")

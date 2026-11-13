@@ -406,9 +406,11 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                             & set(stimuli['stimulus_id'].astype(str).tolist()))
         frames = lambda: (lambda table: table[table['clip_id'].isin(unique_ids)])(  # noqa: E731
             frame_table(stimuli, list(DEFAULT_SAMPLE_TIMES_MS), self._frames_dir))
-        # A subject that takes no audio, or records no A1, is scored on the visual
-        # stream alone, also with the audio channel (the GLM-beta benchmark refuses
-        # it instead; kept as it was).
+        # A subject that records no A1 is N/A in pre-flight. A subject that takes a
+        # visual input but no audio passes pre-flight (one benchmark input is enough)
+        # and is scored here on the visual stream alone, but the attrs below still
+        # say 'concat' (a known fault, not fixed here; the GLM-beta benchmark raises
+        # instead).
         if not (self._audio and takes_audiovisual(subject)):
             def clips():
                 table = clip_table(stimuli, f'{stimuli.identifier}-videos')

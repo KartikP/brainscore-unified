@@ -268,7 +268,7 @@ def load_stimulus_set(identifier: str, *args, **kwargs):
     except PluginNotFoundError:
         pass
     raise KeyError(
-        f"StimulusSet '{identifier}' not found in unified, vision, or language registries.")
+        f"StimulusSet '{identifier}' not found in unified or vision registries.")
 
 
 def _resolve_identifier(obj, default: str) -> str:
@@ -310,8 +310,8 @@ def score(model_identifier, benchmark_identifier,
         from brainscore_core.score_metadata import record_measures
     except ImportError as error:
         raise ImportError(
-            'brainscore needs a brainscore_core with score_metadata.record_measures '
-            '(core ad7288a or later); install the core revision in install/peer-revisions.json'
+            'brainscore needs a brainscore_core with score_metadata.record_measures; '
+            'install the core revision named in install/peer-revisions.json'
         ) from error
 
     import time as _time

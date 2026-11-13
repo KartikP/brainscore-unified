@@ -30,10 +30,11 @@ and scan number. Per run, ``stimulus_window`` scans are stacked and shifted by
 ``hrf_delay`` scans; the first ``excluded_samples_start`` and the last
 ``excluded_samples_end`` scans are left out.
 
-The fit and the score. 5 folds over films. Per fold, each band is centred,
-reduced to at most ``LAYER_DIM_CAP`` components and scaled on the training films
-only; a banded ridge with one penalty tuple for all parcels, chosen on held-out
-training films, predicts the test films (``scoring.py``). The score is the raw
+The fit and the score. 5 folds over stimuli (half-episodes and Movie10
+segments; all runs of one stimulus stay on one side). Per fold, each band is
+centred, reduced to at most ``LAYER_DIM_CAP`` components and scaled on the
+training stimuli only; a banded ridge with one penalty tuple for all parcels,
+chosen on held-out training stimuli, predicts the test stimuli (``scoring.py``). The score is the raw
 median per-parcel Pearson r. No ceiling is measured.
 """
 import logging
@@ -109,7 +110,7 @@ class Algonauts2025(BenchmarkBase):
     # One penalty per decade from 1e-2 to 1e8; the bands are standardized.
     BANDED_ALPHA_GRID = tuple(float(10.0 ** e) for e in range(-2, 9))
     # Components kept for each band, and penalty tuples tried by the random search
-    # when the full grid (5 ** number of bands) is larger.
+    # when the full grid (11 ** number of bands: 11 penalties per band) is larger.
     LAYER_DIM_CAP = 100
     BANDED_CANDIDATES = 60
 

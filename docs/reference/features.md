@@ -34,7 +34,7 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Timed delivery: `windowed_stream`, `stimulus_session(..., streaming=True)` | [Core concepts 4](../02_core_concepts.md#4-session) |
 | Temporal helpers: `temporal_bin`, HRF convolution, contiguous-block cross-validation | `brainscore.temporal`, [Experiment 10](../../notebooks/experiments/10_story_listening_fmri.ipynb) |
 | Score provenance and status (`score.attrs`, N/A scores) | [Score a model](../guides/score_a_model.md) |
-| Activation caching keyed by weights, settings and inputs | [Perturb and select units](../guides/perturb_and_select_units.md#perturb) |
+| Activation caching keyed by weights, settings and inputs | [Perturb and select units](../guides/perturb_and_select_units.md#interventions) |
 
 ## Experimental: usable, but interfaces may change
 
@@ -45,9 +45,9 @@ Features are grouped by how much you need to know to use them, and by how settle
 | Robotics harnesses: DROID, LIBERO, OpenPI instrumentation | See [archive](../archive/) for qualification records. |
 | Game and multi-agent harnesses: Gymnasium, grid games, `multi_agent_rollout` (one session per subject for the whole conversation; answers on `behavior:text`, heard on `text`) | [Experiment 8](../../notebooks/experiments/08_learning_in_a_closed_loop.ipynb), [Experiment 13](../../notebooks/experiments/13_passing_outputs_between_subjects.ipynb) |
 | Attribution and activation patching | `brainscore.experiments.attribution` |
-| Reasoning records (`RecordReasoning`) | Records only reasoning text a subject exposes in the extra data of its answer events (`meta['reasoning']`). A `BrainScoreModel` part cannot put reasoning there yet. |
+| Reasoning records (`RecordReasoning`) | Records only reasoning text a subject exposes in the extra data of its answer events (`meta['reasoning']`). A `reply` part puts it there when it returns a `StreamEvent` with `reasoning` in its meta; an `answer` part cannot. |
 | `PerceptWindow`, `ActivationWindow` (hooks on a torch network; `TorchInstrumentation` uses `ActivationWindow`) | Prefer `RecordActivity` in experiments. Pass the network, not the subject. |
-| `Witness` (a panel per response of a subject, from its sessions) | `brainscore.witness`; watches sessions with `observed`. |
+| `Witness` (a panel per response of a subject, from its sessions) | `brainscore.witness`; inside its `with` block it replaces the subject's `participate` with one that watches each session with `observed`, and restores it at the end. |
 | Brain-surface visualization | `brainscore.visualization` |
 | Human participants through the same session interface | Prototype, `brainscore.harnesses.human`. |
 

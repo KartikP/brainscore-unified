@@ -6,8 +6,10 @@ model's language representation can predict.
 
 Protocol
 --------
-Text features are read from the subject at one sample per TR, then delayed by
-1-4 TRs and concatenated. The delays let a linear model learn its own
+The default identifier reads text features per word (each word with its running
+32-word context) and resamples them onto the TR grid with a Lanczos filter; the
+``-contextwindow`` variant reads one context window per TR. The features are then
+delayed by 1-4 TRs and concatenated. The delays let a linear model learn its own
 hemodynamic response per vertex, which is the convention in this literature and
 avoids committing to a fixed HRF shape.
 
@@ -16,8 +18,9 @@ strongly autocorrelated, so a random split over samples would place near-copies
 of a test sample in the training set and inflate the score.
 
 The reported value is the median Pearson r across vertices, held out. It is a
-raw correlation: the stimuli are heard once each, so there are no repeats from
-which to estimate a noise ceiling, and no normalisation is applied.
+raw correlation: the assembly holds one presentation of each story, so there
+are no repeats from which to estimate a noise ceiling, and no normalisation is
+applied.
 """
 
 from functools import partial
@@ -132,12 +135,11 @@ def _encoding_fit(alpha_grid, per_voxel_alpha=False, random_state=0):
 
     By default one penalty is shared by all targets, chosen on one split that
     holds out a quarter of the training stories. With ``per_voxel_alpha`` each
-    target gets its own penalty. That selection must be *nested*: measured on
-    this benchmark, a per-target choice on one held-out set scored 35% below a
-    single shared penalty, because with thousands of targets the selection
-    noise dominates. Averaging the validation scores over four inner folds of
-    stories before selecting is what makes the extra freedom pay (LITcoder's
-    ``single_alpha=False`` is its default).
+    target gets its own penalty, chosen on validation scores averaged over four
+    inner folds of stories. No stored result shows that this beats one shared
+    penalty on this benchmark; the earlier notes disagree on the size of the loss
+    and on whether the nested choice recovers it, so treat it as unvalidated
+    (LITcoder's ``single_alpha=False`` is its default).
     """
     solver = NormalEquations(centre='features', solve_dtype=None, shape_aware=True)
     candidates = [(alpha,) for alpha in alpha_grid]

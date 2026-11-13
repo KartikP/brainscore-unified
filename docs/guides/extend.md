@@ -45,7 +45,7 @@ class CountOutputs(Tool):
             self.count += 1
 ```
 
-For resources or saved files, override `attach(context)` as a context manager; add `validate` and `describe` for requirements and configuration. Copy payloads before keeping them; never modify them. `register_tool(identifier, factory)` makes a tool loadable by name. A complete external package is in [examples/partner_tool](../../examples/partner_tool/README.md).
+For resources or saved files, override `attach(context)` as a context manager; add `validate` and `describe` for requirements and configuration. Copy payloads before keeping them; never modify them. `register_tool(identifier, factory)` (from `brainscore.tools`) makes a tool loadable by name with `load_tool`. A complete external package is in [examples/partner_tool](../../examples/partner_tool/README.md).
 
 ## A new instrumentation backend
 

@@ -190,7 +190,8 @@ class IndexSelection(UnitSelection):
 @dataclass
 class RandomSelection(UnitSelection):
     """``n_units`` units drawn uniformly at random from ``[0, n_total)`` — the
-    causal control for any functional selection.
+    causal control for any functional selection. When ``n_units`` is larger
+    than ``n_total``, it draws all ``n_total`` units without an error.
 
     Deterministic given ``seed``; needs no forward pass (``resolve`` ignores the
     subject). Match ``layer`` / ``n_units`` / ``n_total`` to a
@@ -306,9 +307,10 @@ class FunctionalSelection(UnitSelection):
         ``neural:<region>``).
     :param contrast: ``(positive_labels, negative_labels)`` matched against
         ``contrast_column`` of ``localizer_stimuli``.
-    :param sign: ``'positive'`` keeps units that respond MORE to the positive
-        group (d > 0), ``'negative'`` the opposite, ``'abs'`` the most
-        discriminating either way.
+    :param sign: ``'positive'`` ranks units by d (MORE response to the positive
+        group), ``'negative'`` by -d, ``'abs'`` by |d|. With ``threshold`` a unit
+        is kept when its ranked value is at least the threshold; with ``n_units``
+        the top ``n_units`` are kept, even when their d has the other sign.
     """
     region: str
     localizer_stimuli: Any

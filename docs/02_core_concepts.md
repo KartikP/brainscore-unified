@@ -61,7 +61,7 @@ WordLengthReader().participate(session)
 session.collect()
 ```
 
-**Sessions do not have to stream.** One event can carry a whole batch, and `stimulus_session(stimulus_set, outputs, task)` (from `brainscore_core.streaming_helpers`) delivers a full stimulus table. Pass `streaming=True` to deliver one row at a time. Streaming one input at a time, time windows and real-time pacing are options. Windows and pacing are generators that you give to `Session` as its source.
+**Sessions do not have to stream.** One event can carry a whole batch, and `stimulus_session(stimuli, outputs, task)` (from `brainscore_core.streaming_helpers`) delivers a full stimulus table. Pass `streaming=True` to deliver one row at a time. Streaming one input at a time, time windows and real-time pacing are options. Windows and pacing are generators that you give to `Session` as its source.
 
 | Source | Use it when |
 | --- | --- |
@@ -81,18 +81,24 @@ Two builders make a session: `stimulus_session(stimuli, outputs, task)` and `env
 A **benchmark** is a fixed test: it presents stimuli, requests outputs, and compares them with measured data using a **metric**, returning a **`Score`**. A benchmark is called with the subject.
 
 ```python
+import numpy as np
 from brainscore_core import Benchmark, Score
+
 
 class ToyReadingTimes(Benchmark):
     identifier = 'toy-reading-times'
+    version = 1
     uses_session = True
     required_input_channels = {'text'}
     requested_output_channels = {'behavior'}
+    words = ['cat', 'elephant', 'dog', 'hippopotamus']
+    measured_ms = [310, 390, 330, 520]       # made-up reading times, one per word
 
     def __call__(self, subject):
-        session = Session([...])   # present the stimuli
+        session = Session([StreamEvent('text', word, t_ms=i * 500) for i, word in enumerate(self.words)])
         subject.participate(session)
-        return Score(my_metric(session.collect(), measured_data))
+        predicted = [event.payload for event in session.collect()]
+        return Score(np.corrcoef(predicted, self.measured_ms)[0, 1])   # the metric
 ```
 
 A **raw** score is the metric value itself. A **ceiled** score divides by the benchmark's estimate of how well the data can be predicted at all, and can exceed 1. Report which one you use.
@@ -124,7 +130,9 @@ A subject declares what it can take and give; a benchmark, a protocol and a tool
 
 ```python
 import brainscore
-brainscore.score(WordLengthReader(), ToyReadingTimes())   # checks compatibility, then runs
+
+score = brainscore.score(WordLengthReader(), ToyReadingTimes())   # checks compatibility, then runs
+print(round(float(score), 2))   # 0.97
 ```
 
 ## 7. BrainScoreModel and its parts
@@ -142,9 +150,22 @@ Writing `participate` by hand works for anything. For neural networks, `BrainSco
 | `policy` | Your function that maps an environment observation to an action. | `observation` in, `motor` out |
 | `intervention` | Your function that applies an intervention and returns how to undo it. Send changes with `apply_state_change` or the `Intervene` tool. | `lesion`, `stimulation`, `pharmacological` in; `perturbation` out |
 
+`net` is your network and `preprocess` turns image files into its input batch. Here a
+two-layer network stands in, and no image is loaded:
+
 ```python
+from collections import OrderedDict
+
+import torch
 from brainscore import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+
+net = torch.nn.Sequential(OrderedDict(layer3=torch.nn.Conv2d(3, 8, 3), layer4=torch.nn.Conv2d(8, 8, 3)))
+
+
+def preprocess(paths):
+    raise NotImplementedError('load the images at paths as the batch net expects')
+
 
 model = BrainScoreModel(
     identifier='my-cnn',
@@ -152,7 +173,7 @@ model = BrainScoreModel(
     extractor={'vision': PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess)},
     region_layer_map={'V4': 'layer3', 'IT': 'layer4'},
 )
-model.out_channels   # {'neural:V4', 'neural:IT'}
+print(sorted(model.out_channels))   # ['neural:IT', 'neural:V4']
 ```
 
 A `region_layer_map` is a hypothesis about correspondence. Only a benchmark's comparison with measured data can support it.

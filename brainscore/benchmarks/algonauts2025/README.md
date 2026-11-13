@@ -24,7 +24,7 @@ held_out = Algonauts2025(participant=1, split='friends_s7')
 result = generate_predictions(subject, held_out, out_dir)
 ```
 
-Calling a held-out benchmark raises `ValueError`, because the data has no ground truth. `generate_predictions` writes one `sub-<NN>_<split>.npy` file of shape `(n_TRs, 1000)`. Zip these files in the Codabench layout and upload them. The repository ships no zip bundler.
+Calling a held-out benchmark raises `ValueError`, because the data has no ground truth. `generate_predictions` writes one `sub-<NN>_<split>.npy` file of shape `(n_TRs, 1000)`: all TRs of the split in one array, with no split by episode. The Codabench submission takes one array per episode, so split the array by episode before you zip it. The repository ships no code for that step and no zip bundler.
 
 ## What the benchmark sends
 
@@ -78,7 +78,7 @@ For a short run, `movies` limits the benchmark to named movies. Use the `stimulu
 
 ## Held-out prediction
 
-`brainscore.tools.algonauts2025_predictions.generate_predictions(subject, held_out, out_dir)` uses the same method without the outer folds. It records the same bands on the participant's Friends training films and on the held-out split. It fits the preparation of each band on the training films, chooses the penalties for each parcel on held-out training stimuli, fits one banded ridge on all training films and predicts every TR of the held-out split. Training and prediction must use the same participant, channels, stimulus window, HRF delay and `streaming`. The `movies` of the training benchmark limit the training films; the `movies` of the held-out benchmark limit the predicted films. The result lists the bands and the chosen penalties.
+`brainscore.tools.algonauts2025_predictions.generate_predictions(subject, held_out, out_dir)` uses the same method without the outer folds. It records the same bands on the participant's Friends training films and on the held-out split. It fits the preparation of each band on the training films, chooses one penalty tuple for all parcels on held-out training stimuli, fits one banded ridge on all training films and predicts every TR of the held-out split. Training and prediction must use the same participant, channels, stimulus window, HRF delay and `streaming`. The `movies` of the training benchmark limit the training films; the `movies` of the held-out benchmark limit the predicted films. The result lists the bands and the chosen penalties.
 
 ## Files
 
