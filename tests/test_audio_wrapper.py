@@ -439,6 +439,14 @@ class TestTemporalCoords:
         w._run_one_batch([wav], layers=['encoder'])
         assert w._step_ms == pytest.approx(20.0, rel=1e-6)
 
+    def test_units_carry_the_shared_neuroid_coords(self, wrapper):
+        """The same unit coordinates as every other extractor: neuroid_num, model."""
+        layers = {'enc.0': np.zeros((2, 3), np.float32), 'enc.1': np.zeros((2, 2), np.float32)}
+        assembly = wrapper._package(layers, paths=['a', 'b'])
+        assert list(assembly['neuroid_num'].values) == [0, 1, 2, 0, 1]
+        assert set(assembly['model'].values) == {'test-wrapper'}
+        assert list(assembly['layer'].values) == ['enc.0'] * 3 + ['enc.1'] * 2
+
     def test_pack_3d_time_coords_independent_of_layer_name(self, wrapper):
         """time_bin_start_ms / time_bin_end_ms only depend on _step_ms
         and n_time, not the layer name — important for multi-layer

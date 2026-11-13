@@ -569,7 +569,10 @@ class VideoWrapper:
             assembly, 'stimulus_id', stimulus_ids)
 
     def _attach_stimulus_set_meta(self, assembly, stimulus_set):
-        """Attach remaining stimulus set columns as presentation coords."""
+        """Attach remaining stimulus set columns as presentation coords.
+
+        A column that cannot be attached raises, as in the other extractors.
+        """
         for column in stimulus_set.columns:
             if column == 'stimulus_id':
                 continue
@@ -579,11 +582,8 @@ class VideoWrapper:
                 continue
             except (KeyError, AttributeError):
                 pass
-            try:
-                assembly = assembly.assign_coords(
-                    {column: ('presentation', list(stimulus_set[column].values))})
-            except Exception:
-                pass
+            assembly = assembly.assign_coords(
+                {column: ('presentation', list(stimulus_set[column].values))})
         return assembly
 
 

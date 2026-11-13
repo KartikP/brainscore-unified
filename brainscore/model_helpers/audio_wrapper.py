@@ -517,9 +517,7 @@ class AudioWrapper:
         coords = {
             'stimulus_id': ('presentation', stimulus_id),
             'stimulus_path': ('presentation', list(paths)),
-            **make_layer_neuroid_coords(
-                self._identifier, layer_name, n_features,
-                include=('neuroid_id', 'layer')),
+            **make_layer_neuroid_coords(self._identifier, layer_name, n_features),
         }
         return make_assembly(
             activations,
@@ -534,9 +532,7 @@ class AudioWrapper:
             'stimulus_id': ('presentation', stimulus_id),
             'stimulus_path': ('presentation', list(paths)),
             'time_bin_id': ('time_bin', time_bin_ids),
-            **make_layer_neuroid_coords(
-                self._identifier, layer_name, n_features,
-                include=('neuroid_id', 'layer')),
+            **make_layer_neuroid_coords(self._identifier, layer_name, n_features),
         }
         # If the wrapper knows its model's per-step duration (set during
         # the first forward pass), expose absolute ms boundaries on the

@@ -211,8 +211,8 @@ def attach_stimulus_set(assembly, stimuli):
 
     The presentation index is reset first, so that ``stimulus_id`` does not
     collide with a level of a MultiIndex built at construction. A MultiIndex
-    becomes one coordinate per level; a plain index stays as a coordinate named
-    ``presentation_``.
+    becomes one coordinate per level. A plain index holds only positions, which
+    ``stimulus_id`` replaces, so it is dropped.
     """
     stimulus_ids = list(stimuli['stimulus_id'].values)
     if assembly.sizes['presentation'] != len(stimulus_ids):
@@ -220,10 +220,8 @@ def attach_stimulus_set(assembly, stimuli):
             f"Mismatch between activations ({assembly.sizes['presentation']}) "
             f"and stimulus set ({len(stimulus_ids)}) on the presentation axis.")
     if 'presentation' in assembly.indexes:
-        try:
-            assembly = assembly.reset_index('presentation')
-        except (ValueError, KeyError):
-            pass
+        multi = getattr(assembly.indexes['presentation'], 'nlevels', 1) > 1
+        assembly = assembly.reset_index('presentation', drop=not multi)
     assembly = assembly.assign_coords(stimulus_id=('presentation', stimulus_ids))
     for column in stimuli.columns:
         if column != 'stimulus_id':

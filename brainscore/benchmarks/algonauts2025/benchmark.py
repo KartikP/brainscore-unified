@@ -42,6 +42,7 @@ the same features both ways.
 assembly). Only those movies are cut and scored. This is for short runs.
 """
 import hashlib
+import logging
 import math
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -61,6 +62,7 @@ from brainscore.data.algonauts2025 import (
 from brainscore.benchmarks._score import benchmark_score, not_estimated
 from .scoring import PENALTY_PROTOCOL, PROJECTION_PROTOCOL, fit_predict_banded, score_banded
 
+logger = logging.getLogger(__name__)
 
 BIBTEX = """@article{gifford2025algonauts,
   title={The Algonauts Project 2025 Challenge: How the Human Brain Makes Sense of Multimodal Movies},
@@ -514,8 +516,8 @@ class Algonauts2025(BenchmarkBase):
                 for video, out_dir, n_TRs in planned]
 
         if jobs:
-            print(f'  extracting frames for {len(jobs)} videos via '
-                  f'ffmpeg (n_workers={n_workers})...')
+            logger.debug('extracting frames for %d videos via ffmpeg (n_workers=%d)',
+                         len(jobs), n_workers)
             self._run_pool(_ffmpeg_extract_one, jobs, n_workers)
 
         # ffmpeg sometimes outputs fewer frames than the assembly's
@@ -525,8 +527,7 @@ class Algonauts2025(BenchmarkBase):
         n_filled = self._fill_trailing_files(
             frames_dir, '.jpg', 1, stim_to_n_TRs)
         if n_filled > 0:
-            print(f'  filled {n_filled} trailing frames by '
-                  f'duplicating last-extracted')
+            logger.debug('filled %d trailing frames by duplicating the last one', n_filled)
 
         df = pd.DataFrame(rows)
         out_set = StimulusSet(df)
@@ -596,7 +597,7 @@ class Algonauts2025(BenchmarkBase):
         with ctx.Pool(processes=n_workers) as pool:
             for done, _ in enumerate(pool.imap_unordered(worker, jobs), 1):
                 if done % 25 == 0 or done == len(jobs):
-                    print(f'    {done}/{len(jobs)} videos done', flush=True)
+                    logger.debug('%d/%d videos done', done, len(jobs))
 
     def _fill_trailing_files(self, root: Path, ext: str, first_index: int,
                              stim_to_n_TRs: Dict[str, int]) -> int:
@@ -647,13 +648,12 @@ class Algonauts2025(BenchmarkBase):
             clips_dir, '.mp4', 0, 'video_path', stim_to_n_TRs)
         jobs = [(video, out_dir, resize, n_TRs) for video, out_dir, n_TRs in planned]
         if jobs:
-            print(f'  cutting clips for {len(jobs)} videos via '
-                  f'ffmpeg (n_workers={n_workers})...')
+            logger.debug('cutting clips for %d videos via ffmpeg (n_workers=%d)',
+                         len(jobs), n_workers)
             self._run_pool(_ffmpeg_cut_clips_one, jobs, n_workers)
         n_filled = self._fill_trailing_files(clips_dir, '.mp4', 0, stim_to_n_TRs)
         if n_filled > 0:
-            print(f'  filled {n_filled} trailing clips by '
-                  f'duplicating last-cut')
+            logger.debug('filled %d trailing clips by duplicating the last one', n_filled)
 
         df = pd.DataFrame(rows)
         # A movie that ffmpeg could not cut leaves no clips. Stop here, before a model reads a missing file.
@@ -696,13 +696,12 @@ class Algonauts2025(BenchmarkBase):
         rows, planned = self._plan_per_TR_files(
             sound_dir, '.wav', 0, 'audio_path', stim_to_n_TRs)
         if planned:
-            print(f'  cutting sound for {len(planned)} videos via '
-                  f'ffmpeg (n_workers={n_workers})...')
+            logger.debug('cutting sound for %d videos via ffmpeg (n_workers=%d)',
+                         len(planned), n_workers)
             self._run_pool(_ffmpeg_cut_sound_one, planned, n_workers)
         n_filled = self._fill_trailing_files(sound_dir, '.wav', 0, stim_to_n_TRs)
         if n_filled > 0:
-            print(f'  filled {n_filled} trailing sound chunks by '
-                  f'duplicating last-cut')
+            logger.debug('filled %d trailing sound chunks by duplicating the last one', n_filled)
 
         sound = {row['stimulus_id']: row['audio_path'] for row in rows}
         missing = [path for path in sound.values() if not Path(path).exists()]
@@ -766,15 +765,14 @@ class Algonauts2025(BenchmarkBase):
                 raise ValueError(
                     f"the stimuli have {len(stimuli)} rows but {channel} answered "
                     f"{features.shape[0]}; cannot trust input order.")
-            print(f'  band {region}: {features.shape}')
             bands[region] = (features, feature_ids)
         return bands
 
     def _assembly_bands(self, subject, regions):
         """The bands of ``_record_bands``, aligned to the TR rows of the assembly."""
         table = self._expand_to_per_TR_stimuli()
-        print(f"  recording {['neural:' + region for region in regions]} for {len(table)} rows "
-              f"({'stream' if self._streaming else 'table'})...")
+        logger.debug('recording %s for %d rows (%s)', ['neural:' + region for region in regions],
+                     len(table), 'stream' if self._streaming else 'table')
         frame_ids = list(table['stimulus_id'])
         return {region: (self._align_features_to_assembly(features, frame_ids, table), ids)
                 for region, (features, ids) in self._record_bands(subject, table, regions).items()}
@@ -814,16 +812,6 @@ class Algonauts2025(BenchmarkBase):
         X = np.full((n_TRs, features.shape[1]), np.nan, dtype=np.float32)
         a_stim = list(self.assembly['stimulus_id'].values)
         a_t = list(self.assembly['t_within_run'].values)
-        # Diagnostic: confirm dict + feat_idx coverage on the first TR
-        first_key = (str(a_stim[0]), int(a_t[0]))
-        first_fid = stim_t_to_frame_id.get(first_key)
-        first_row = feat_idx.get(first_fid) if first_fid else None
-        print(f'  diag: first TR key={first_key!r}, '
-              f'fid={first_fid!r}, row={first_row!r}', flush=True)
-        print(f'  diag: stim_t_to_frame_id size={len(stim_t_to_frame_id)}, '
-              f'feat_idx size={len(feat_idx)}', flush=True)
-        print(f'  diag: sample feat_idx keys: '
-              f'{list(feat_idx.keys())[:3]}', flush=True)
         missing_fid = 0
         missing_row = 0
         for i in range(n_TRs):
@@ -838,16 +826,13 @@ class Algonauts2025(BenchmarkBase):
             X[i] = features[row]
         missing = missing_fid + missing_row
         if missing > 0:
-            print(f'  diag: missing breakdown — '
-                  f'no frame_id in stim_t map: {missing_fid}, '
-                  f'no row in feat_idx: {missing_row}', flush=True)
-        if missing > 0:
             # Some TRs may lack frames (e.g., assembly TRs past the
             # video's actual duration). Fill each with the nearest earlier
             # valid TR of the same run (the first valid one at a run start),
             # never across a run boundary.
-            print(f'  WARNING: {missing} of {n_TRs} TRs had no frame; '
-                  f'filling from the same run.')
+            logger.warning('%d of %d TRs had no frame (%d not in the stimulus table, %d not '
+                           'recorded); filling each from the same run.',
+                           missing, n_TRs, missing_fid, missing_row)
             run_idx, _ = self._runs_and_keep(drop_excluded=False)
             for run in np.unique(run_idx):
                 rows = np.flatnonzero(run_idx == run)
@@ -961,9 +946,9 @@ class Algonauts2025(BenchmarkBase):
         run_idx, keep = self._runs_and_keep()
         groups = self._stimulus_groups()
         Y = self.assembly.values
-        print(f'  {len(np.unique(run_idx))} runs of {len(np.unique(groups))} stimuli; '
-              f'{int(keep.sum())} of {len(keep)} TRs after exclusions')
-        print(f'  banded ridge over bands {list(bands)} (5 folds over stimuli)...')
+        logger.debug('%d runs of %d stimuli; %d of %d TRs after exclusions; banded ridge over '
+                     'bands %s (5 folds over stimuli)', len(np.unique(run_idx)),
+                     len(np.unique(groups)), int(keep.sum()), len(keep), list(bands))
         per_parcel_r, info = score_banded(
             bands, Y, groups, keep, self._stacker(run_idx),
             dim_cap=self.LAYER_DIM_CAP, alpha_grid=self.BANDED_ALPHA_GRID,

@@ -87,7 +87,6 @@ class TestManifest:
             assert asset.source.startswith('http'), f'{name} has no source'
             assert asset.why_local.strip(), f'{name} does not say why it is local'
             assert asset.obtain.strip(), f'{name} does not say what to download'
-            assert asset.used_by, f'{name} is needed by nothing'
 
     def test_names_are_stable_identifiers(self):
         for name in local.REGISTRY:
@@ -130,8 +129,26 @@ class TestFriendsLocation:
         (tmp_path / 'prepared').mkdir()
         local.check_benchmark_assets(identifier)
 
-    def test_registered_friends_identifiers_are_all_covered(self):
-        import brainscore.benchmarks.algonauts2025  # noqa: F401
-        from brainscore import benchmark_registry
-        registered = {i for i in benchmark_registry if i.startswith('Algonauts2025-')}
-        assert registered <= set(local.ALGONAUTS_PREPARED.used_by)
+
+
+def test_records_name_exactly_the_registered_benchmarks_that_read_them():
+    """The pre-check in score() reads ``used_by``; a missing identifier skips the
+    check, an extra one refuses a benchmark that does not need the asset."""
+    from brainscore import benchmark_registry
+    registered = set(benchmark_registry)
+
+    def family(prefix):
+        return {identifier for identifier in registered if identifier.startswith(prefix)}
+
+    expected = {
+        'algonauts2025-root': family('Algonauts2025-'),
+        'algonauts2025-prepared': family('Algonauts2025-'),
+        'coggym-checkout': family('CogGym.'),
+        'ewok-core-1.0': family('EWoK-core-1.0-'),
+        'lana-atlas': {'LeBel2023-UTS03-encoding-languagemask'},
+        'lebel2023-pickle': set(),       # the registered variants read the hosted files
+    }
+    assert all(identifiers for name, identifiers in expected.items() if name != 'lebel2023-pickle')
+    assert {name: set(asset.used_by) for name, asset in local.REGISTRY.items()} == expected
+    for name, asset in local.REGISTRY.items():
+        assert len(asset.used_by) == len(set(asset.used_by)), f'{name} repeats an identifier'
