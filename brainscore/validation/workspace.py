@@ -29,7 +29,6 @@ SUITES = {
         'tests/test_io_catalog_preflight.py',
         'tests/test_channel_registry.py',
         'tests/test_contract_drift.py',
-        'tests/test_output_event.py',
         'tests/test_native_subject.py',
         'tests/test_participate_contract.py',
         'tests/test_legacy_facade.py',
@@ -66,7 +65,6 @@ SUITES = {
         'tests/test_unified_adapter.py',
         'tests/test_legacy_facade_scoring.py',
         'tests/test_preflight.py',
-        'tests/test_subject_conformance.py',
         'tests/test_hmax_runtime.py',
         'tests/test_activation_cache_key.py',
         'tests/test_activation_cache_integrity.py',
@@ -90,7 +88,6 @@ SUITES = {
     'language': [
         'tests/test_unified_adapter.py',
         'tests/test_preflight.py',
-        'tests/test_subject_conformance.py',
         'tests/test_kv_cache.py',
         'tests/test_kv_cache_slicing.py',
         'tests/test_pereira2018_registry.py',

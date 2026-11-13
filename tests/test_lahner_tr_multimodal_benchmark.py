@@ -3,73 +3,13 @@
 Skips anything that needs a real forward pass or the 11 GB TR-resolved
 assembly download — those run on EC2, not local.
 
-Validates: registry, mode validation, factory functions, voxel-mask
-injection (auditory-ROI variant), null-control model registrations,
+Validates: mode validation, factory functions, voxel-mask
+injection (auditory-ROI variant),
 ``_modality_per_feature`` tagging logic.
 """
 import pytest
 
 import brainscore
-
-
-# ── Registry presence ─────────────────────────────────────────────
-
-
-def test_tr_multimodal_benchmarks_registered():
-    for ident in (
-        'Lahner2024-fMRI-naturalistic-timeresolved-multimodal',
-        'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI',
-        'Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI',
-    ):
-        assert ident in brainscore.benchmark_registry, (
-            f"missing benchmark registration: {ident}")
-
-
-def test_null_control_model_combos_registered():
-    """All 4 signal/null permutations of vjepa1+wav2vec2."""
-    for ident in (
-        'vjepa1-wav2vec2',
-        'random-vjepa1-wav2vec2',
-        'vjepa1-random-wav2vec2',
-        'random-vjepa1-random-wav2vec2',
-    ):
-        assert ident in brainscore.model_registry, (
-            f"missing model registration: {ident}")
-
-
-def test_random_wav2vec2_audio_null_registered():
-    """Standalone audio-only null."""
-    assert 'random-wav2vec2-base' in brainscore.model_registry
-
-
-def test_clip_wav2vec2_combos_registered():
-    """All 4 signal/null permutations for CLIP+Wav2Vec2."""
-    for ident in (
-        'clip-wav2vec2',
-        'random-clip-wav2vec2',
-        'clip-random-wav2vec2',
-        'random-clip-random-wav2vec2',
-    ):
-        assert ident in brainscore.model_registry, (
-            f"missing CLIP+Wav2Vec2 combo: {ident}")
-
-
-def test_blip2_wav2vec2_registered():
-    assert 'blip2-wav2vec2' in brainscore.model_registry
-
-
-def test_qwen_vl_wav2vec2_registered():
-    assert 'qwen2.5-vl-wav2vec2' in brainscore.model_registry
-
-
-def test_total_multimodal_combo_count():
-    """Sanity: 11 A+V combos total spanning V-JEPA / CLIP / BLIP-2 /
-    Qwen-VL families plus the standalone random-Wav2Vec2 audio null."""
-    combos = [k for k in brainscore.model_registry
-              if 'wav2vec' in k.lower()]
-    assert len(combos) == 11, (
-        f"expected 11 wav2vec2-related registrations, got {len(combos)}: "
-        f"{sorted(combos)}")
 
 
 # ── Mode validation ───────────────────────────────────────────────

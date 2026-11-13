@@ -2,7 +2,6 @@
 
 Data is on EC2 (~100 GB DataLad pull); these tests don't load any of
 it. They verify:
-- All 14 registry entries exist (subject x split, and two more forms of sub01).
 - Constructor validates subject ∈ {1, 2, 3, 5} and the channels.
 - ``__call__`` raises NotImplementedError until the assembly
   preparation pipeline runs on EC2.
@@ -12,36 +11,6 @@ it. They verify:
 import pytest
 
 import brainscore
-
-
-# ── Registry presence ─────────────────────────────────────────────
-
-
-def test_friends_benchmarks_registered_per_subject():
-    for sub in (1, 2, 3, 5):
-        assert (f'Algonauts2025-friends-sub{sub:02d}'
-                in brainscore.benchmark_registry)
-
-
-def test_friends_s7_benchmarks_registered_per_subject():
-    for sub in (1, 2, 3, 5):
-        assert (f'Algonauts2025-friends-s7-sub{sub:02d}'
-                in brainscore.benchmark_registry)
-
-
-def test_ood_benchmarks_registered_per_subject():
-    for sub in (1, 2, 3, 5):
-        assert (f'Algonauts2025-ood-sub{sub:02d}'
-                in brainscore.benchmark_registry)
-
-
-def test_total_algonauts_benchmark_count():
-    """Three splits × four subjects = 12 entries, plus the video and video-audio
-    variants of sub01."""
-    entries = [k for k in brainscore.benchmark_registry
-               if k.startswith('Algonauts2025-')]
-    assert len(entries) == 14, (
-        f"expected 14 Algonauts entries, got {len(entries)}: {sorted(entries)}")
 
 
 # ── Constructor validation ────────────────────────────────────────
@@ -281,12 +250,6 @@ import shutil
 needs_ffmpeg = pytest.mark.skipif(
     shutil.which('ffmpeg') is None or shutil.which('ffprobe') is None,
     reason='ffmpeg and ffprobe are needed')
-
-
-def test_video_variant_is_registered_for_sub01_train_only():
-    entries = sorted(k for k in brainscore.benchmark_registry
-                     if k.startswith('Algonauts2025-') and k.endswith('-video'))
-    assert entries == ['Algonauts2025-friends-sub01-video']
 
 
 def test_video_variant_identifier_and_declarations(tmp_path):

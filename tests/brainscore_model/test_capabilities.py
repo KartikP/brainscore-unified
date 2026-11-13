@@ -4,6 +4,8 @@ import importlib
 import sys
 import textwrap
 
+import pytest
+
 from brainscore.capabilities import capability_registry
 from brainscore import BrainScoreModel
 from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange, TaskContext
@@ -45,7 +47,7 @@ def test_neural_encoding_capability_is_registered_dispatch_path():
     assert result == 'vision_assembly'
     assert act_model.call_args['stimuli'] is stimuli
     assert act_model.call_args['layers'] == ['layer4']
-    assert 'neural-encoding' in model._capability_state
+    model.capability_state('neural-encoding')   # set up by the registry, else KeyError
 
 
 def test_no_event_capability_answers_behavior():
@@ -57,10 +59,10 @@ def test_no_event_capability_answers_behavior():
         model='torch_model',
         region_layer_map={'IT': 'layer4'},
         extractor={'vision': act_model},
+        answer=lambda stimulus_row, instruction, label_set: label_set[0],
     )
-    model._behavioral.task = TaskContext(task_type='probabilities')
-    model._behavioral.response_path = 'generation'
-    model._behavioral.readout_classifier = object()
+    model.start_task(TaskContext(task_type='probabilities', instruction='Which?',
+                                 label_set=['a', 'b']))
     model.start_recording('IT')
     stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
 
@@ -86,7 +88,7 @@ def test_closed_loop_capability_dispatches_a_row():
     assert 'closed-loop' in capability_registry
     assert result == {'motor': [0.0, 1.0]}
     assert calls == [row]
-    assert 'closed-loop' in model._capability_state
+    model.capability_state('closed-loop')
 
 
 def test_closed_loop_capability_dispatches_a_text_message():
@@ -137,8 +139,7 @@ def test_state_change_capability_dispatches_and_tracks_cleanup():
     assert 'intervention' in capability_registry
     assert isinstance(result, PerturbationApplied)
     assert result.handle_id == 'capability-handle'
-    assert 'capability-handle' in model._interventions.active_interventions
-    assert 'intervention' in model._capability_state
+    model.capability_state('intervention')
 
     reset_result = model.process(
         StateChange(kind='reset', handle_id='capability-handle')
@@ -146,7 +147,8 @@ def test_state_change_capability_dispatches_and_tracks_cleanup():
 
     assert reset_result is None
     assert cleanup_calls == ['capability-handle']
-    assert model._interventions.active_interventions == {}
+    with pytest.raises(KeyError, match='No active intervention'):   # nothing left to undo
+        model.process(StateChange(kind='reset', handle_id='capability-handle'))
 
 
 def test_self_registering_capability_file_dispatches_without_host_edits(tmp_path):

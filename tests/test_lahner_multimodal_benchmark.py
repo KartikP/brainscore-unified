@@ -2,23 +2,12 @@
 
 Skips anything that needs a real forward pass (model weights, audio files
 on disk) — those run out-of-band via score_multimodal.py. This file just
-checks that the benchmark registers, validates subjects, and assembles
+checks that the benchmark validates subjects and assembles
 the per-modality stim sets correctly.
 """
 import pytest
 
 import brainscore
-
-
-def test_benchmark_registered():
-    assert ('Lahner2024-fMRI-naturalistic-multimodal'
-            in brainscore.benchmark_registry)
-    assert ('Lahner2024-fMRI-naturalistic-multimodal-visualROI'
-            in brainscore.benchmark_registry)
-
-
-def test_multimodal_model_registered():
-    assert 'vjepa1-wav2vec2' in brainscore.model_registry
 
 
 def test_benchmark_rejects_unimodal_candidate():

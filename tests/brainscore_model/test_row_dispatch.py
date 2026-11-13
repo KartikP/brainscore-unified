@@ -4,19 +4,9 @@ A closed-loop step is a row (a mapping of channel -> payload). ``process(row)``
 routes it to the agent's policy, which returns a mapping of output channel ->
 payload. A message between agents is text.
 """
-from typing import get_args
-
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import InputEvent, OutputEvent
-
-
-class TestUnions:
-    def test_rows_are_in_both_unions(self):
-        names = {getattr(arg, '__name__', None) for arg in get_args(InputEvent)}
-        assert 'Mapping' in names
-        assert 'Mapping' in {getattr(arg, '__name__', None) for arg in get_args(OutputEvent)}
 
 
 class TestProcessRow:

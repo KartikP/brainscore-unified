@@ -58,14 +58,23 @@ def test_reading_the_extractor_mapping_keeps_declarations():
     assert model.supported_modalities == {'vision', 'text'}
 
 
-@pytest.mark.parametrize('columns', [
-    ['image_file_name'], ['image_path'], ['filename'], ['sentence'], ['text'],
-    ['video_path'], ['audio_path'], ['mystery_col'], ['image_file_name', 'sentence'],
+@pytest.mark.parametrize('extractors, columns, expected', [
+    (('vision', 'text'), ['image_file_name'], {'vision'}),
+    (('vision', 'text'), ['image_path'], {'vision'}),
+    (('vision', 'text'), ['filename'], {'vision'}),
+    (('vision', 'text'), ['sentence'], {'text'}),
+    (('vision', 'text'), ['text'], {'text'}),
+    (('vision', 'text'), ['image_file_name', 'sentence'], {'vision', 'text'}),
+    (('vision', 'text'), ['video_path'], {'vision'}),       # video folds into vision
+    (('vision', 'text'), ['audio_path'], set()),            # no audio extractor
+    (('vision', 'text'), ['mystery_col'], set()),
+    (('vision',), ['image_file_name', 'sentence'], {'vision'}),  # no text extractor
+    (('audio',), ['audio_path'], {'audio'}),
+    (('video',), ['video_path'], {'vision'}),
 ])
-def test_detect_modalities_matches_dispatch(columns):
-    model, _ = _model_and_extractors()
-    stimuli = _Columns(columns)
-    assert model.detect_modalities(stimuli) == model._dispatcher.detect_modalities(stimuli)
+def test_detect_modalities_reads_the_columns(extractors, columns, expected):
+    model = BrainScoreModel('m', extractor={key: _FakeExtractor(key) for key in extractors})
+    assert model.detect_modalities(_Columns(columns)) == expected
 
 
 def test_extractor_mapping_survives_reset_and_reuse():

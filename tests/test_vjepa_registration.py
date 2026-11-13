@@ -12,7 +12,6 @@ Full end-to-end scoring on Lahner2024 is run on EC2 (not in unit tests).
 import numpy as np
 import pytest
 
-import brainscore
 from brainscore.models.vjepa.model import (
     REGION_LAYER_MAP,
     NUM_INPUT_FRAMES,
@@ -20,10 +19,6 @@ from brainscore.models.vjepa.model import (
     NUM_SPATIAL_PATCHES,
     _vjepa_post_hook,
 )
-
-
-def test_vjepa_registered():
-    assert 'vjepa2-vitl' in brainscore.model_registry
 
 
 def test_vjepa_constants():

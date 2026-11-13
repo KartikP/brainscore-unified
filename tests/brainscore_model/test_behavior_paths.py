@@ -82,12 +82,15 @@ def test_a_legacy_task_with_an_answer_part_calls_it_once_per_stimulus_and_keeps_
     assert answer.attrs['measure'] == {'kind': 'reported', 'source': 'answer'}
 
 
-def test_a_legacy_task_on_auto_prefers_the_answer_and_warns_when_a_readout_could_fit():
+@pytest.mark.parametrize('prefer_path', [None, 'auto'])
+def test_a_legacy_task_on_auto_prefers_the_answer_and_warns_when_a_readout_could_fit(prefer_path):
     calls = []
     model = _model(calls, answer=True)
     with pytest.warns(UserWarning, match='Both generation and fitted readout'):
-        model.start_task(TaskContext(**LEGACY, fitting_stimuli=FITTING))
-    assert model._behavioral.response_path == 'generation'
+        session = _run(model, ['behavior'], TaskContext(**LEGACY, fitting_stimuli=FITTING,
+                                                        prefer_path=prefer_path))
+    assert [call[0] for call in calls] == ['answer'] * 3
+    assert session.collect('behavior').attrs['measure'] == {'kind': 'reported', 'source': 'answer'}
 
 
 def test_a_legacy_task_with_a_readout_gives_implied_probabilities_and_no_part_is_called():

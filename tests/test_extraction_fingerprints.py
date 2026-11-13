@@ -91,8 +91,10 @@ def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, 
     wrapper._batch_size = 1
     np.testing.assert_array_equal(method(['a', 'b'], ['L'], 'stimuli'), expected)
     assert len(calls) == 3
-    # Separate instance with identical config and the same registered weights.
+    # Separate instance with identical config and the same registered weights,
+    # registered under another identifier with the same backbone_id: one entry.
     other = _wrapper(cls)
+    other._identifier = 'another-registration'
     other._model.load_state_dict(wrapper._model.state_dict())
     monkeypatch.setattr(other, f'_from_{inp}', lambda *a, **k: pytest.fail('cache missed'))
     np.testing.assert_array_equal(getattr(other, f'_from_{inp}_cached')(['a', 'b'], ['L'], 'stimuli'), expected)

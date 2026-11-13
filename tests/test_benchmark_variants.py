@@ -1,4 +1,4 @@
-"""Pin the registered benchmarks of the unified package, and what each one builds.
+"""Pin the registered benchmarks and models of the unified package, and what each benchmark builds.
 
 A variant of a benchmark is a registry line (`lambda` or `partial` of a class with
 arguments). This file pins every identifier, and for each benchmark that builds
@@ -248,3 +248,21 @@ def test_a_registry_line_builds_the_pinned_benchmark(identifier):
     assert benchmark.trial_memory == trial_memory
     assert sorted(benchmark.required_input_channels) == inputs
     assert sorted(benchmark.requested_output_channels) == outputs
+
+
+MODELS = [
+    'blip2-opt-2.7b', 'blip2-wav2vec2', 'chance-baseline', 'claude-haiku-behavioral',
+    'claude-opus-behavioral', 'clip-random-wav2vec2', 'clip-vit-b-32', 'clip-wav2vec2',
+    'deepseek-chat-behavioral', 'deepseek-r1-behavioral', 'gpt-4o-behavioral', 'gpt2',
+    'llama-3.3-70b-behavioral', 'or-claude-sonnet-behavioral', 'qwen2.5-0.5b-instruct',
+    'qwen2.5-vl-3b', 'qwen2.5-vl-3b-bf16', 'qwen2.5-vl-3b-vwfa', 'qwen2.5-vl-7b',
+    'qwen2.5-vl-7b-vwfa', 'qwen2.5-vl-wav2vec2', 'qwen3.6-27b', 'random-clip-random-wav2vec2',
+    'random-clip-wav2vec2', 'random-vit-b-32', 'random-vjepa1-random-wav2vec2',
+    'random-vjepa1-wav2vec2', 'random-wav2vec2-base', 'videomae-base', 'vjepa1-random-wav2vec2',
+    'vjepa1-vitl', 'vjepa1-wav2vec2', 'vjepa2-vitl',
+]
+
+
+def test_the_registered_model_identifiers_are_the_pinned_list():
+    """A model identifier is stable: adding one adds a line here, removing one is a decision."""
+    assert sorted(brainscore.model_registry) == sorted(MODELS)

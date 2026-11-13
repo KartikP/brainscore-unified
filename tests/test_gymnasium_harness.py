@@ -28,18 +28,16 @@ def test_play_gym_episode_runs_and_reports():
     assert all(0 <= a < len(MINIGRID_ACTIONS) for a in res['actions'])
 
 
-def test_episode_drives_process_environment_step(monkeypatch):
-    """Confirm the loop actually calls model.process with a row carrying a frame."""
-    seen = {}
-    model = _random_model()
-    orig = model.process
+def test_each_step_reaches_the_policy_as_a_row_with_a_frame():
+    """The loop gives the policy one row per step, with the rendered frame."""
+    rows = []
+    act = PolicyWrapper(random_gym_policy(0), max_history=0)
 
-    def spy(ev):
-        seen.setdefault('events', 0)
-        seen['events'] += 1
-        assert 'frame' in ev['observation'] and np.asarray(ev['observation']['frame']).ndim == 3
-        return orig(ev)
+    def policy(row):
+        rows.append(row)
+        return act(row)
 
-    model.process = spy
-    res = play_gym_episode(model, 'MiniGrid-Empty-5x5-v0', max_steps=15, seed=0)
-    assert seen['events'] == res['steps']
+    res = play_gym_episode(BrainScoreModel('gym-spy', policy=policy), 'MiniGrid-Empty-5x5-v0',
+                           max_steps=15, seed=0)
+    assert len(rows) == res['steps']
+    assert all(np.asarray(row['observation']['frame']).ndim == 3 for row in rows)

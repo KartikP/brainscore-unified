@@ -279,13 +279,6 @@ class TestGameActionFn:
 
 
 class TestRegistration:
-    def test_models_registered(self):
-        import brainscore
-        for ident in ('claude-opus-behavioral', 'claude-haiku-behavioral',
-                      'gpt-4o-behavioral', 'deepseek-chat-behavioral',
-                      'deepseek-r1-behavioral'):
-            assert ident in brainscore.model_registry
-
     def test_deepseek_is_text_only(self):
         # DeepSeek's API has no vision; it must declare text only so a vision
         # benchmark doesn't route to it at the compatibility check.

@@ -6,7 +6,7 @@ import pytest
 import torch
 
 from brainscore.experiments import (
-    Ablate, Experiment, PatchActivity, RecordInputsOutputs, ScaleActivity,
+    Ablate, Experiment, PatchActivity, RecordActivity, RecordInputsOutputs, ScaleActivity,
     SessionProtocol, TorchInstrumentation,
 )
 from brainscore.run_record import RunRecord
@@ -39,13 +39,21 @@ def protocol() -> SessionProtocol:
                            repetitions=[0, 1], required_input_channels=['observation'], requested_output_channels=['behavior'])
 
 
-def test_loader_returns_existing_implementation_and_fresh_instances():
-    loaded = load_tool('ablate', targets=['population'])
-    assert type(loaded) is Ablate
-    assert loaded.name == 'ablation' and loaded.phase == 'intervene'
-    assert loaded.describe() == Ablate(['population']).describe()
-    assert loaded is not load_tool('ablate', targets=['population'])
-    assert 'ablate' in list_tools()
+@pytest.mark.parametrize('tool, arguments, constructed, name, phase', [
+    ('ablate', {'targets': ['population']}, lambda: Ablate(['population']), 'ablation', 'intervene'),
+    ('record-activity', {'targets': ['population'], 'name': 'before', 'when': 'before'},
+     lambda: RecordActivity(['population'], name='before', when='before'), 'before',
+     'before_intervention'),
+    ('record-io', {}, lambda: RecordInputsOutputs(), 'inputs_outputs', 'observe'),
+])
+def test_a_loaded_tool_is_the_existing_class_with_the_same_configuration(tool, arguments, constructed,
+                                                                          name, phase):
+    loaded = load_tool(tool, **arguments)
+    assert type(loaded) is type(constructed())
+    assert (loaded.name, loaded.phase) == (name, phase)
+    assert loaded.describe() == constructed().describe()
+    assert loaded is not load_tool(tool, **arguments)    # a fresh instance each time
+    assert tool in list_tools()
 
 
 def test_loaded_and_constructed_ablation_have_identical_filtered_results(tmp_path):

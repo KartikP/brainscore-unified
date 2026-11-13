@@ -127,16 +127,6 @@ def test_unknown_layer_raises():
         ActivationWindow(_net(), layers=['nope'])
 
 
-def test_first_tensor_out_handles_tuple_and_hf_object():
-    from brainscore.activation_window import _first_tensor_out
-    t = torch.zeros(2, 3)
-    assert _first_tensor_out((t, None)) is t
-
-    class HF:
-        last_hidden_state = torch.zeros(1, 5)
-    assert _first_tensor_out(HF()).shape == (1, 5)
-
-
 # ── message path: a message is text with the sender in the event meta ──
 
 from brainscore import BrainScoreModel

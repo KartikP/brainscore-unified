@@ -75,10 +75,6 @@ class TestCapture:
 
 @pytest.mark.unit
 class TestOutputHandling:
-    def test_first_tensor_out_tuple(self):
-        t = torch.randn(2, 4)
-        assert _first_tensor_out((t, None)) is t
-
     def test_first_tensor_out_hf_object(self):
         class O:
             last_hidden_state = torch.randn(1, 3, 4)

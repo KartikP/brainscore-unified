@@ -11,7 +11,7 @@ from brainscore.experiments import (
     Experiment, RecordActivity, SessionProtocol, TorchInstrumentation, compare_outputs,
 )
 from brainscore.run_record import RunRecord
-from brainscore.tools import attach_tools, list_tools, load_tool
+from brainscore.tools import attach_tools, load_tool
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
 from brainscore_core.streaming import Session, StreamEvent
@@ -38,15 +38,6 @@ def protocol() -> SessionProtocol:
         yield Session([StreamEvent('observation', [[1., 2., 3.]], None)])
     return SessionProtocol('record-activity-check', factory, conditions=['baseline', 'lesioned'],
                            required_input_channels=['observation'], requested_output_channels=['behavior'])
-
-
-def test_loader_returns_existing_recorder_with_names_and_positions():
-    loaded = load_tool('record-activity', targets=['population'], name='before', when='before')
-    assert type(loaded) is RecordActivity
-    assert loaded.name == 'before' and loaded.phase == 'before_intervention'
-    assert loaded.describe() == RecordActivity(['population'], name='before', when='before').describe()
-    assert loaded is not load_tool('record-activity', targets=['population'])
-    assert 'record-activity' in list_tools()
 
 
 def test_two_loaded_recorders_match_existing_tools_around_loaded_ablation(tmp_path):

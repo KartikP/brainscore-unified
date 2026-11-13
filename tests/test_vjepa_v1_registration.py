@@ -13,7 +13,6 @@ import pytest
 import torch
 import torch.nn as nn
 
-import brainscore
 from brainscore.models.vjepa_v1.model import (
     REGION_LAYER_MAP,
     NUM_INPUT_FRAMES,
@@ -25,10 +24,6 @@ from brainscore.models.vjepa_v1.model import (
     _make_preprocessing,
     _BCTPermuteAdapter,
 )
-
-
-def test_vjepa_v1_registered():
-    assert 'vjepa1-vitl' in brainscore.model_registry
 
 
 def test_constants_match_vitl16():

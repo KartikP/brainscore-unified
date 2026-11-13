@@ -1,20 +1,17 @@
 """Tests for BrainScoreModel behavioral readout.
 
-Validates the ProbabilitiesClassifier pattern ported into brainscore_core:
-- start_task(TaskContext(task_type='probabilities', fitting_stimuli=...)) fits a classifier
-- subsequent process() returns BehavioralAssembly with per-label probabilities
-- labels and choice coordinate are preserved
-- reset() clears the classifier
-- missing behavioral_readout_layer raises a clear error
+Through behavioral_response (a session):
+- a task with fitting stimuli gives a BehavioralAssembly of per-label probabilities
+- the choice coordinate keeps the order in which the fitting labels first appear
+- reset() discards the fitted readout; a passive task fits nothing
+- a missing behavioral_readout_layer raises a clear error
 """
 
-from collections import OrderedDict
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from brainscore._model.behavior import ProbabilitiesClassifier
 from brainscore import BrainScoreModel
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response
@@ -24,75 +21,19 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
-# ── ProbabilitiesClassifier unit tests ─────────────────────────
-
-def _make_features(n_samples: int, n_features: int = 8, seed: int = 0) -> NeuroidAssembly:
-    rng = np.random.default_rng(seed)
-    data = rng.normal(size=(n_samples, n_features)).astype(np.float64)
-    return NeuroidAssembly(
-        data,
-        coords={
-            'stimulus_id': ('presentation', [f's{i}' for i in range(n_samples)]),
-            'neuroid_id': ('neuroid', [f'n{j}' for j in range(n_features)]),
-        },
-        dims=['presentation', 'neuroid'],
-    )
-
-
-class TestProbabilitiesClassifier:
-    def test_fit_and_predict_shape(self):
-        X = _make_features(12)
-        y = ['cat'] * 6 + ['dog'] * 6
-        clf = ProbabilitiesClassifier()
-        clf.fit(X, y)
-        pred = clf.predict_proba(X)
-        assert isinstance(pred, BehavioralAssembly)
-        assert pred.dims == ('presentation', 'choice')
-        assert pred.shape == (12, 2)
-
-    def test_probabilities_sum_to_one(self):
-        X = _make_features(20)
-        y = ['a', 'b', 'c'] * 6 + ['a', 'b']
-        clf = ProbabilitiesClassifier()
-        clf.fit(X, y)
-        pred = clf.predict_proba(X)
-        row_sums = pred.values.sum(axis=1)
-        assert np.allclose(row_sums, 1.0, atol=1e-6)
-
-    def test_choice_coord_preserves_label_order(self):
-        X = _make_features(9)
-        y = ['z', 'a', 'z', 'm', 'a', 'z', 'm', 'a', 'z']  # first seen order: z, a, m
-        clf = ProbabilitiesClassifier()
-        clf.fit(X, y)
-        assert clf.label_set == ['z', 'a', 'm']
-        pred = clf.predict_proba(X)
-        assert list(pred.coords['choice'].values) == ['z', 'a', 'm']
-
-    def test_predict_before_fit_raises(self):
-        X = _make_features(4)
-        clf = ProbabilitiesClassifier()
-        with pytest.raises(RuntimeError, match="before fit"):
-            clf.predict_proba(X)
-
-    def test_predict_needs_2d(self):
-        clf = ProbabilitiesClassifier()
-        clf.fit(_make_features(10), ['a'] * 5 + ['b'] * 5)
-        bad = np.ones((3, 4, 5))
-        with pytest.raises(ValueError, match="2-D"):
-            clf.predict_proba(bad)
-
-
 # ── BrainScoreModel behavioral integration tests ───────────────
 
 def _fake_preprocessor_returning(features_matrix):
-    """Return a callable that behaves like a TextWrapper/VLMVisionWrapper
-    — has an `identifier` so BrainScoreModel duck-types it as a full
-    extractor that takes (stimuli, layers) and returns a NeuroidAssembly.
-    """
+    """An extractor that takes (stimuli, layers), returns a NeuroidAssembly,
+    and keeps the stimulus ids of each call in ``calls``."""
     class FakeExtractor:
         identifier = 'fake-extractor'
 
+        def __init__(self):
+            self.calls = []
+
         def __call__(self, stimuli, layers=None, **kwargs):
+            self.calls.append(list(stimuli['stimulus_id']))
             n = len(stimuli)
             # return features for the requested number of stimuli
             data = features_matrix[:n] if features_matrix.shape[0] >= n else \
@@ -125,31 +66,10 @@ class TestBrainScoreModelBehavioral:
         return _make_image_stimulus_set(['cat'] * 6 + ['dog'] * 6)
 
     @pytest.fixture
-    def test_stimuli(self):
+    def scored_stimuli(self):
         return _make_image_stimulus_set(['cat'] * 3 + ['dog'] * 3, identifier='test_stim2')
 
-    def test_start_task_fits_classifier(self, labeled_stimuli):
-        rng = np.random.default_rng(0)
-        features = rng.normal(size=(12, 8))
-        extractor = _fake_preprocessor_returning(features)
-        model = BrainScoreModel(
-            identifier='test-model',
-            model=None,
-            region_layer_map={},
-            extractor={'vision': extractor},
-            behavioral_readout_layer='some_layer',
-        )
-        assert model._behavioral.readout_classifier is None
-
-        model.start_task(TaskContext(
-            task_type='probabilities',
-            fitting_stimuli=labeled_stimuli,
-            label_set=['cat', 'dog'],
-        ))
-        assert model._behavioral.readout_classifier is not None
-        assert model._behavioral.readout_classifier.fitted
-
-    def test_behavior_session_returns_behavioral_assembly(self, labeled_stimuli, test_stimuli):
+    def test_behavior_session_returns_behavioral_assembly(self, labeled_stimuli, scored_stimuli):
         features = np.random.default_rng(42).normal(size=(12, 8))
         # Make labels linearly separable for stability
         features[:6, 0] += 3.0  # cat rows shift
@@ -163,12 +83,23 @@ class TestBrainScoreModelBehavioral:
             behavioral_readout_layer='some_layer',
         )
         task = TaskContext(task_type='probabilities', fitting_stimuli=labeled_stimuli)
-        result = behavioral_response(model, test_stimuli, task)
+        result = behavioral_response(model, scored_stimuli, task)
         assert isinstance(result, BehavioralAssembly)
         assert result.dims == ('presentation', 'choice')
         assert result.shape == (6, 2)
         # Sums to 1
         assert np.allclose(result.values.sum(axis=1), 1.0, atol=1e-6)
+        assert result.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
+
+    def test_choice_keeps_the_first_seen_order_of_the_fitting_labels(self):
+        labels = ['z', 'a', 'z', 'm', 'a', 'z', 'm', 'a', 'z']
+        fitting = _make_image_stimulus_set(labels, identifier='order_fit')
+        features = np.random.default_rng(0).normal(size=(9, 8))
+        model = BrainScoreModel('test-model', extractor={'vision': _fake_preprocessor_returning(features)},
+                                behavioral_readout_layer='some_layer')
+        result = behavioral_response(model, _make_image_stimulus_set(['z', 'a'], identifier='order_test'),
+                                     TaskContext(task_type='probabilities', fitting_stimuli=fitting))
+        assert list(result['choice'].values) == ['z', 'a', 'm']
 
     def test_process_returns_neural_before_task(self, labeled_stimuli):
         features = np.random.default_rng(0).normal(size=(12, 8))
@@ -195,13 +126,13 @@ class TestBrainScoreModelBehavioral:
             extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
         )
-        model.start_task(TaskContext(
-            task_type='probabilities',
-            fitting_stimuli=labeled_stimuli,
-        ))
-        assert model._behavioral.readout_classifier is not None
+        task = TaskContext(task_type='probabilities', fitting_stimuli=labeled_stimuli)
+        model.start_task(task)
+        model.start_task(task)                   # the same task keeps its fitted readout
+        assert len(extractor.calls) == 1
         model.reset()
-        assert model._behavioral.readout_classifier is None
+        model.start_task(task)                   # after reset the readout is fitted again
+        assert len(extractor.calls) == 2
 
     def test_missing_readout_layer_raises(self, labeled_stimuli):
         features = np.random.default_rng(0).normal(size=(12, 8))
@@ -231,18 +162,18 @@ class TestBrainScoreModelBehavioral:
         )
         # 'passive' is neural-style, no readout needed
         model.start_task(TaskContext(task_type='passive'))
-        assert model._behavioral.readout_classifier is None
+        assert extractor.calls == []             # nothing was fitted
 
 
 class TestBrainScoreModelGenerationPath:
     """Validate the alternative instruction+generation dispatch path."""
 
     @pytest.fixture
-    def test_stimuli(self):
+    def scored_stimuli(self):
         return _make_image_stimulus_set(
             ['cat'] * 3 + ['dog'] * 3, identifier='gen_test')
 
-    def test_generation_path_routes_correctly(self, test_stimuli):
+    def test_generation_path_routes_correctly(self, scored_stimuli):
         """Model with an answer function and TaskContext(instruction, label_set)
         should dispatch to generation, not readout."""
         calls = []
@@ -266,11 +197,7 @@ class TestBrainScoreModelGenerationPath:
             label_set=['cat', 'dog'],
             instruction='What animal is this?',
         )
-        model.start_task(task)
-        assert model._behavioral.response_path == 'generation'
-        assert model._behavioral.readout_classifier is None
-
-        result = behavioral_response(model, test_stimuli, task)
+        result = behavioral_response(model, scored_stimuli, task)
         assert result.dims == ('presentation', 'choice')
         assert result.shape == (6, 2)
         # Each row should be a one-hot
@@ -280,7 +207,7 @@ class TestBrainScoreModelGenerationPath:
         # Instruction should be forwarded verbatim
         assert all(c[1] == 'What animal is this?' for c in calls)
 
-    def test_readout_path_still_works_when_no_instruction(self, test_stimuli):
+    def test_readout_path_still_works_when_no_instruction(self, scored_stimuli):
         """If TaskContext has fitting_stimuli but no instruction, dispatch
         to the readout path even when the model has an answer function."""
         features = np.random.default_rng(0).normal(size=(6, 8))
@@ -295,40 +222,16 @@ class TestBrainScoreModelGenerationPath:
         )
         fitting = _make_image_stimulus_set(['cat'] * 3 + ['dog'] * 3,
                                             identifier='gen_fit')
-        model.start_task(TaskContext(
+        result = behavioral_response(model, scored_stimuli, TaskContext(
             task_type='probabilities',
             fitting_stimuli=fitting,
             label_set=['cat', 'dog'],
             # no instruction
         ))
-        assert model._behavioral.response_path == 'readout'
-        assert model._behavioral.readout_classifier is not None
+        # The answer part takes keywords only, so a call would raise.
+        assert result.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
 
-    def test_generation_path_prefers_generation_when_both_available(
-            self, test_stimuli):
-        """If both fitting_stimuli AND (instruction + label_set) are
-        present, prefer generation path (the paper's preferred method
-        for instruction-following VLMs)."""
-        fitting = _make_image_stimulus_set(['cat'] * 3 + ['dog'] * 3,
-                                            identifier='gen_fit2')
-        model = BrainScoreModel(
-            identifier='test-vlm',
-            model=None,
-            region_layer_map={},
-            extractor={'vision': lambda *a, **kw: None},
-            behavioral_readout_layer='some_layer',
-            answer=lambda **kw: 'cat',
-        )
-        model.start_task(TaskContext(
-            task_type='probabilities',
-            fitting_stimuli=fitting,
-            label_set=['cat', 'dog'],
-            instruction='What animal is this?',
-        ))
-        assert model._behavioral.response_path == 'generation'
-        assert model._behavioral.readout_classifier is None
-
-    def test_error_when_no_path_viable(self, test_stimuli):
+    def test_error_when_no_path_viable(self, scored_stimuli):
         """TaskContext with no fitting_stimuli, no answer function, no
         instruction+label_set combo → clear error."""
         model = BrainScoreModel(

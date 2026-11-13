@@ -6,8 +6,9 @@ accept an optional ``backbone_id`` parameter that overrides the per-model
 share backbone weights can set the same backbone_id and reuse cached
 activations across registrations.
 
-These tests exercise the construction contract + cache-key propagation
-*without* actually triggering a forward pass (which would need real weights).
+These tests check the construction contract (the attribute each wrapper keeps).
+That two registrations with one backbone_id share one cache entry is tested on a
+real temporary cache in test_extraction_fingerprints.py.
 """
 
 from unittest.mock import MagicMock
@@ -41,28 +42,6 @@ class TestTextWrapperBackboneId:
         assert w.backbone_id == 'gpt2-124M'
         assert w.identifier == 'custom-gpt2'
 
-    def test_cache_call_uses_backbone_id(self, tmp_path, monkeypatch):
-        """_from_texts_cached passes backbone_id, not identifier, to the
-        stored function."""
-        w = self._make(identifier='wrapper-a', backbone_id='shared-backbone')
-        captured = {}
-
-        def fake_stored(identifier, stimuli_identifier, layers, texts, extraction_fingerprint):
-            captured['identifier'] = identifier
-            return 'sentinel'
-
-        monkeypatch.setenv('RESULTCACHING_DISABLE', '0')
-        monkeypatch.chdir(tmp_path)
-        for name in ('a.png', 'a.mp4'):
-            (tmp_path / name).write_bytes(b'input')
-        w.cache_config = lambda: {"test_configuration": 1}
-        w._from_texts_stored = fake_stored
-        result = w._from_texts_cached(
-            texts=['hello'], layers=['layer'], stimuli_identifier='stim-1')
-        assert result == 'sentinel'
-        assert captured['identifier'] == 'shared-backbone'
-
-
 # ── VLMVisionWrapper ─────────────────────────────────────────────────
 
 class TestVLMVisionWrapperBackboneId:
@@ -85,26 +64,6 @@ class TestVLMVisionWrapperBackboneId:
     def test_explicit_backbone_id(self):
         w = self._make(identifier='blip-2-opt-2.7b', backbone_id='vit-g-14')
         assert w.backbone_id == 'vit-g-14'
-
-    def test_cache_call_uses_backbone_id(self, tmp_path, monkeypatch):
-        w = self._make(identifier='a', backbone_id='shared-vit')
-        captured = {}
-
-        def fake_stored(identifier, stimuli_identifier, layers, paths, extraction_fingerprint):
-            captured['identifier'] = identifier
-            return 'sentinel'
-
-        monkeypatch.setenv('RESULTCACHING_DISABLE', '0')
-        monkeypatch.chdir(tmp_path)
-        for name in ('a.png', 'a.mp4'):
-            (tmp_path / name).write_bytes(b'input')
-        w.cache_config = lambda: {"test_configuration": 1}
-        w._from_paths_stored = fake_stored
-        result = w._from_paths_cached(
-            paths=['a.png'], layers=['layer'], stimuli_identifier='stim-1')
-        assert result == 'sentinel'
-        assert captured['identifier'] == 'shared-vit'
-
 
 # ── VideoWrapper ─────────────────────────────────────────────────────
 
@@ -131,23 +90,3 @@ class TestVideoWrapperBackboneId:
     def test_explicit_backbone_id(self):
         w = self._make(identifier='vjepa1-vitl', backbone_id='vit-l-16-video')
         assert w.backbone_id == 'vit-l-16-video'
-
-    def test_cache_call_uses_backbone_id(self, tmp_path, monkeypatch):
-        w = self._make(identifier='vjepa-a', backbone_id='vjepa-shared-l16')
-        captured = {}
-
-        def fake_stored(identifier, stimuli_identifier, layers, paths, extraction_fingerprint):
-            captured['identifier'] = identifier
-            return 'sentinel'
-
-        monkeypatch.setenv('RESULTCACHING_DISABLE', '0')
-        monkeypatch.chdir(tmp_path)
-        for name in ('a.png', 'a.mp4'):
-            (tmp_path / name).write_bytes(b'input')
-        w.cache_config = lambda: {"test_configuration": 1}
-        w._from_paths_stored = fake_stored
-        result = w._from_paths_cached(
-            paths=['a.mp4'], layers=['layer'], stimuli_identifier='stim-1')
-        assert result == 'sentinel'
-        assert captured['identifier'] == 'vjepa-shared-l16'
-
