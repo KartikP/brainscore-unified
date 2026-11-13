@@ -233,14 +233,17 @@ class TestScoringEndToEnd:
 
     def test_score_carries_the_documented_attrs(self):
         score = self._benchmark()(subject=None)
-        for key in ('raw', 'mean_r', 'n_targets', 'alphas', 'ceiling', 'error'):
+        for key in ('raw', 'per_vertex_r', 'mean_r', 'n_targets', 'alphas', 'ceiling',
+                    'normalized', 'metric', 'benchmark_version', 'error'):
             assert key in score.attrs, key
         assert len(score.attrs['alphas']) == 3          # one per fold
         assert score.attrs['n_targets'] == 8
 
     def test_reported_value_is_the_median_of_the_per_vertex_correlations(self):
         score = self._benchmark()(subject=None)
-        assert np.isclose(float(score), np.median(np.asarray(score.attrs['raw'])))
+        assert np.isclose(float(score), np.median(np.asarray(score.attrs['per_vertex_r'])))
+        assert float(score.attrs['raw']) == float(score)
+        assert score.attrs['normalized'] is False and float(score.attrs['ceiling']) == 1.0
 
     def test_max_targets_subsamples_and_records_the_index(self):
         score = self._benchmark(n_vertices=8, max_targets=4)(subject=None)

@@ -14,48 +14,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from brainscore import BrainScoreModel
-
-
-# ── BrainScoreModel construction ─────────────────────────────────────
-
-class TestBrainScoreModelBackboneId:
-
-    def test_default_backbone_id_equals_identifier(self):
-        model = BrainScoreModel(
-            identifier='clip-vit-b-32',
-            model=None,
-            region_layer_map={},
-            preprocessors={'vision': lambda x: x},
-        )
-        assert model.backbone_id == 'clip-vit-b-32'
-
-    def test_explicit_backbone_id_overrides(self):
-        model = BrainScoreModel(
-            identifier='blip-2-opt-2.7b',
-            model=None,
-            region_layer_map={},
-            preprocessors={'vision': lambda x: x},
-            backbone_id='vit-g-14-openclip',
-        )
-        assert model.backbone_id == 'vit-g-14-openclip'
-        # identifier is preserved for logging/telemetry
-        assert model.identifier == 'blip-2-opt-2.7b'
-
-    def test_two_models_same_backbone_share_backbone_id(self):
-        m1 = BrainScoreModel(
-            identifier='blip-2-opt-2.7b', model=None, region_layer_map={},
-            preprocessors={'vision': lambda x: x},
-            backbone_id='vit-g-14',
-        )
-        m2 = BrainScoreModel(
-            identifier='instruct-blip', model=None, region_layer_map={},
-            preprocessors={'vision': lambda x: x},
-            backbone_id='vit-g-14',
-        )
-        assert m1.backbone_id == m2.backbone_id
-        assert m1.identifier != m2.identifier
-
 
 # ── TextWrapper ──────────────────────────────────────────────────────
 
@@ -193,18 +151,3 @@ class TestVideoWrapperBackboneId:
         assert result == 'sentinel'
         assert captured['identifier'] == 'vjepa-shared-l16'
 
-
-# ── Invariant: different backbone_ids produce different cache keys ──
-
-def test_different_backbone_ids_dont_collide():
-    """Two BrainScoreModels with different backbone_ids do not share a
-    cache entry — same stimulus_identifier, different key."""
-    m1 = BrainScoreModel(
-        identifier='a', model=None, region_layer_map={},
-        preprocessors={'vision': lambda x: x}, backbone_id='vit-l',
-    )
-    m2 = BrainScoreModel(
-        identifier='b', model=None, region_layer_map={},
-        preprocessors={'vision': lambda x: x}, backbone_id='vit-g',
-    )
-    assert m1.backbone_id != m2.backbone_id

@@ -282,7 +282,7 @@ class TestRegistration:
         from brainscore.models.api_closed.model import get_model
         m = get_model('deepseek-r1-behavioral')
         assert m.supported_modalities == {'text'}
-        assert callable(m._generation_fn)
+        assert callable(m._answer)
 
     def test_deepseek_provider_is_openai_compatible(self):
         # The DeepSeek provider is the OpenAI-compatible adapter pointed at a
@@ -335,8 +335,8 @@ class TestRegistration:
         from brainscore.models.api_closed.model import get_model
         m = get_model('claude-opus-behavioral')
         assert m.supported_modalities == {'vision', 'text'}
-        assert callable(m._generation_fn)
-        assert m._activations_model is None
+        assert callable(m._answer)
+        assert dict(m.extractor) == {}
 
     def test_neural_extraction_raises_clear_error(self):
         from brainscore.models.api_closed.model import get_model
@@ -520,7 +520,7 @@ class TestApiReply:
         assert set(REGISTRY) <= set(brainscore.model_registry)
         assert not any(identifier.endswith('-reply') for identifier in brainscore.model_registry)
         model = get_model('claude-opus-behavioral')
-        assert callable(model._generation_fn) and callable(model._reply_fn)
+        assert callable(model._answer) and callable(model._reply)
         assert 'behavior:text' in model.out_channels
         assert model.supported_modalities == {'vision', 'text'}
 

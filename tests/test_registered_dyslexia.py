@@ -134,4 +134,4 @@ def test_registered_model_benchmark_path_and_hook_cleanup(registered_toy):
 def test_original_registration_is_unchanged(registered_toy):
     subject = brainscore.load_model('qwen2.5-vl-3b')
     assert 'VWFA' not in subject.region_layer_map
-    assert subject._state_change_fn is None
+    assert subject._intervention is None

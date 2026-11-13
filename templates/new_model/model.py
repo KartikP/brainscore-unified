@@ -57,5 +57,4 @@ def get_model() -> BrainScoreModel:
         # policy=build_policy(...),
         # intervention=build_intervention(...),
         # behavioral_readout_layer='TODO.layer',
-        # backbone_id='shared-backbone-id',                     # share a feature cache
     )

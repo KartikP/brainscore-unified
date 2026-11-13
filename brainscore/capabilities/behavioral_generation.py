@@ -10,24 +10,24 @@ class BehavioralGenerationCapability(Capability):
     identifier = 'behavioral-generation'
     order = 100
 
-    def enabled_for(self, model) -> bool:
+    def enabled_for(self, subject) -> bool:
         return (
-            model._behavioral.use_generation_for_task
-            and model._behavioral.task is not None
-            and model._requires_behavioral_readout(model._behavioral.task.task_type)
+            subject._behavioral.use_generation_for_task
+            and subject._behavioral.task is not None
+            and subject._requires_behavioral_readout(subject._behavioral.task.task_type)
         )
 
-    def handles(self, model, event, **kwargs) -> bool:
-        del model, kwargs
+    def handles(self, subject, event, **kwargs) -> bool:
+        del subject, kwargs
         try:
             event.columns
         except AttributeError:
             return False
         return True
 
-    def process(self, model, stimuli, **kwargs):
+    def process(self, subject, stimuli, **kwargs):
         del kwargs
-        return model._generate_predictions(stimuli)
+        return subject._generate_predictions(stimuli)
 
 
 register_capability(BehavioralGenerationCapability())

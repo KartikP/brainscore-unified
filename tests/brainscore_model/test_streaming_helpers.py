@@ -29,7 +29,6 @@ from .test_closed_loop_rows import (
 from .test_model_interface import (
     _XArrayActivationsModel,
     _XArrayPreprocessor,
-    make_stub_preprocessor,
 )
 from .test_state_change import (
     _counting_state_change_fn,
@@ -109,27 +108,27 @@ def _native_neural_model(extractor, model_cls=BrainScoreModel):
         identifier="native-neural",
         model=None,
         region_layer_map={"IT": "layer4"},
-        preprocessors={"vision": extractor},
+        extractor={"vision": extractor},
     )
 
 
-def _native_state_change_model(state_change_fn, model_cls=BrainScoreModel):
+def _native_state_change_model(intervention, model_cls=BrainScoreModel):
     return model_cls(
         identifier="native-state-change",
         model=None,
         region_layer_map={},
-        preprocessors={"vision": lambda stimuli: stimuli},
-        state_change_fn=state_change_fn,
+        supported_modalities={"vision"},
+        intervention=intervention,
     )
 
 
-def _native_environment_model(action_fn, model_cls=BrainScoreModel):
+def _native_environment_model(policy, model_cls=BrainScoreModel):
     return model_cls(
         identifier="native-environment",
         model=None,
         region_layer_map={},
-        preprocessors={"vision": lambda stimuli: stimuli},
-        policy=action_fn,
+        supported_modalities={"vision"},
+        policy=policy,
         policy_inputs=("vision:image", "proprioception", "instruction"),
     )
 
@@ -141,11 +140,7 @@ def _native_multimodal_model(model_cls=BrainScoreModel):
         identifier="native-multimodal",
         model=None,
         region_layer_map={"IT": LayerSelector("layer.10", modality="vision")},
-        preprocessors={
-            "vision": make_stub_preprocessor(),
-            "text": text,
-        },
-        activations_model=activations,
+        extractor={"vision": activations, "text": text},
     )
     return model, activations, text
 
@@ -156,14 +151,15 @@ class _TemporalBrainScoreModel(BrainScoreModel):
             identifier="native-temporal",
             model=None,
             region_layer_map={"IT": "temporal_layer"},
-            preprocessors={"vision": lambda stimuli: stimuli},
+            # process() is replaced below; the extractor only declares the input.
+            extractor={"vision": lambda stimuli, layers=None: None},
         )
 
     def process(self, input_event, multi_modality=False):
         del multi_modality
         stimulus_ids = list(input_event["stimulus_id"].values)
         neuroid_ids = ["temporal_layer.0", "temporal_layer.1"]
-        if self._time_bins is None:
+        if self._recorder.time_bins is None:
             return NeuroidAssembly(
                 np.array([[1.0, 2.0], [3.0, 4.0]]),
                 coords={
@@ -175,17 +171,17 @@ class _TemporalBrainScoreModel(BrainScoreModel):
             )
 
         data = np.arange(
-            len(stimulus_ids) * len(self._time_bins) * 2, dtype=float
-        ).reshape(len(stimulus_ids), len(self._time_bins), 2)
+            len(stimulus_ids) * len(self._recorder.time_bins) * 2, dtype=float
+        ).reshape(len(stimulus_ids), len(self._recorder.time_bins), 2)
         return NeuroidAssembly(
             data,
             coords={
                 "stimulus_id": ("presentation", stimulus_ids),
                 "time_bin_start_ms": (
-                    "time_bin", [start for start, _ in self._time_bins]
+                    "time_bin", [start for start, _ in self._recorder.time_bins]
                 ),
                 "time_bin_end_ms": (
-                    "time_bin", [end for _, end in self._time_bins]
+                    "time_bin", [end for _, end in self._recorder.time_bins]
                 ),
                 "neuroid_id": ("neuroid", neuroid_ids),
                 "layer": ("neuroid", ["temporal_layer"] * 2),
@@ -290,7 +286,7 @@ def _behavior_model(features, model_cls=BrainScoreModel):
         identifier="test-model",
         model=None,
         region_layer_map={},
-        preprocessors={"vision": _fake_preprocessor_returning(features)},
+        extractor={"vision": _fake_preprocessor_returning(features)},
         behavioral_readout_layer="some_layer",
     )
 
@@ -339,8 +335,8 @@ def _generation_model(calls, model_cls=BrainScoreModel):
         identifier="test-vlm",
         model=None,
         region_layer_map={},
-        preprocessors={"vision": lambda *args, **kwargs: None},
-        generation_fn=fake_generate,
+        extractor={"vision": lambda *args, **kwargs: None},
+        answer=fake_generate,
     )
 
 
@@ -493,7 +489,7 @@ def _ablation_state_change():
 def test_native_state_change_reset_restores_baseline():
     model_state = {"output": 1.0}
 
-    def state_change_fn(state_change):
+    def intervention(state_change):
         saved = model_state["output"]
         model_state["output"] = 0.0
         applied = PerturbationApplied(
@@ -508,7 +504,7 @@ def test_native_state_change_reset_restores_baseline():
         return applied, cleanup
 
     model = _native_state_change_model(
-        state_change_fn, model_cls=_ParticipateTrackingBrainScoreModel
+        intervention, model_cls=_ParticipateTrackingBrainScoreModel
     )
     applied = apply_state_change(model, _ablation_state_change())
     assert model_state["output"] == 0.0

@@ -1,4 +1,4 @@
-"""Behavioral ``generation_fn`` for closed-weight API models (Claude, GPT-4, Gemini).
+"""Behavioral ``answer`` part for closed-weight API models (Claude, GPT-4, Gemini).
 
 A closed-weight model exposes only its OUTPUT — not internal activations — so it
 plugs straight into ``BrainScoreModel``'s behavioral generation path with NO core
@@ -7,7 +7,7 @@ providers.
 
 What it handles (the "graceful" parts):
   - one closure shape for every provider, matching the
-    ``generation_fn(stimulus_row, instruction, label_set) -> str`` contract;
+    ``answer(stimulus_row, instruction, label_set) -> str`` contract;
   - lazy SDK import + env-var API keys (no hard dependency, no key in code);
   - per-stimulus on-disk response cache keyed by (provider, model, instruction,
     label_set, stimulus) — re-runs don't re-bill AND the scored result reproduces
@@ -20,8 +20,8 @@ any task (a choice, a rating, a written answer such as CogGym's) from the
 trial's prompt and obeys the task's generation settings.
 
 What it intentionally does NOT do: neural-encoding paths. Closed APIs don't expose
-layer activations, so an API model has ``activations_model=None`` and its nominal
-preprocessors raise a clear error if a neural benchmark tries to extract from it.
+layer activations, so an API model has no ``extractor``; it declares its inputs with
+``supported_modalities``, and a neural benchmark gets a clear error.
 """
 import base64
 import hashlib
@@ -212,7 +212,7 @@ def build_api_generation_fn(
     image_columns: Sequence[str] = IMAGE_COLUMNS,
     text_columns: Sequence[str] = TEXT_COLUMNS,
 ) -> Callable:
-    """Build a ``generation_fn(stimulus_row, instruction, label_set) -> str``
+    """Build an ``answer(stimulus_row, instruction, label_set) -> str``
     that answers a forced-choice behavioral task via a closed-weight API model.
 
     :param provider: ``'anthropic'`` / ``'openai'``, or a callable adapter
@@ -474,11 +474,11 @@ def build_api_reply(
     return reply
 
 
-# ── closed-loop game: action_fn ───────────────────────────────
+# ── closed-loop game: policy ───────────────────────────────
 # The video game is agentic, not forced-choice: it drives the model through
 # process(row) -> {'motor': action} one tick at a time (see
 # brainscore.harnesses.gymnasium_harness.play_gym_episode). This builds an
-# action_fn closure that shows the rendered frame + the legal-action menu to an
+# policy closure that shows the rendered frame + the legal-action menu to an
 # API model and parses back an action index. Same providers/cache as above.
 
 def _encode_frame(frame, resize: int = 384) -> Tuple[str, str]:

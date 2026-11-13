@@ -31,14 +31,11 @@ import numpy as np
 import pandas as pd
 
 from brainscore.experiments import CallableProtocol
+from brainscore.harnesses.adapter import run_request
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY, validate_slider_responses
-from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Text
-from brainscore_core.streaming import Session
-from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore.instrumentation import observed
 
 
 REFERENCE_REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
@@ -169,15 +166,17 @@ def _written_answer(event) -> str:
 class _SubjectProvider:
     """Translate CogGym provider calls into sessions on the common channels.
 
-    Each provider call is one ``stimulus_session``: one stimulus row (the
+    CogGym calls the object that answers its requests a provider; this one
+    answers through the subject. Each provider call is one ``run_request``
+    session: one stimulus row (the
     message parts in order), a ``TaskContext`` (the system text as the
     instruction, a ``Text`` response with the call's temperature and length,
     the order of the parts, ``trial_memory='none'``) and the output
     ``behavior:text``. The subject answers through ``participate`` only
     (Contract Rule 1.1). Each session is one repetition of the run record
-    (``<CogGym repetition>.<call>``) and is observed with ``observed``, so
-    tools record the request and the answer between that session's own
-    boundaries, and ``replay_sessions`` rebuilds one session per call. The
+    (``<CogGym repetition>.<call>``), so tools record the request and the
+    answer between that session's own boundaries, and ``replay_sessions``
+    rebuilds one session per call. The
     subject is not reset between calls; the provider's reset(repetition)
     runs only between CogGym repetitions.
 
@@ -200,15 +199,10 @@ class _SubjectProvider:
         stimuli = StimulusSet(pd.DataFrame([{'stimulus_id': trial_ids[0], **row}]))
         task = TaskContext(instruction=system, present=present, trial_memory='none',
                            response=Text(max_tokens=max_tokens, temperature=float(temperature)))
-        session = stimulus_session(stimuli, ['behavior:text'], task)
         record_repetition = f'{self.repetition}.{self.call_index}'
         self.call_index += 1
-        with self.context.repetition(record_repetition):
-            self.context.publish('session_context', {
-                name: getattr(session, name) for name in Session.context_fields
-                if getattr(session, name, None) is not None})
-            with observed(session, self.context):
-                self.subject.participate(session)
+        session = run_request(self.subject, self.context, record_repetition,
+                              stimuli, ['behavior:text'], task)
         answers = [event for event in session.emitted if event.channel == 'behavior:text']
         if len(answers) != 1:
             raise TypeError(f'CogGym needs one behavior:text answer for each call; got {len(answers)}')
@@ -235,7 +229,11 @@ class CogGymRunner:
     A subject runs the protocol when it takes in at least one of the inputs
     the selected trials send (``instruction``, ``text``, ``vision:image``,
     ``vision:video``: ``required_input_channels``) and answers on
-    ``behavior:text``. An input it cannot take is dropped (a partial match). A ``BrainScoreModel`` with a ``reply`` part does both.
+    ``behavior:text``. An input it cannot take is dropped (a partial match). A
+    ``BrainScoreModel`` with a ``reply`` part does both. The protocol checks no
+    compatibility itself: ``score()`` does it for the benchmark, and
+    ``check_compatibility(subject, runner)`` says before an ``Experiment``
+    whether a subject fits.
     """
 
     def __init__(
@@ -351,8 +349,6 @@ class CogGymRunner:
             raise TypeError('Supply a reset(repetition) callback for your provider')
 
         def evaluate(subject, context):
-            # Reject missing media support before the first provider call.
-            check_channel_compatibility(subject, self)
             def register(path):
                 context.artifact(
                     path, producer='CogGym evaluator via UMI adapter',

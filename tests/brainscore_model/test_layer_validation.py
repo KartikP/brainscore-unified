@@ -73,8 +73,8 @@ def test_routed_region_is_checked_against_its_own_tower():
         BrainScoreModel('two', extractor=extractor,
                         region_layer_map={'language': LayerSelector('layer4', modality='text')})
     with pytest.raises(ValueError, match="'vision' extractor"):
-        BrainScoreModel('two', extractor=extractor, region_layer_map={'IT': 'encoder.layers.1'},
-                        region_modality_map={'IT': 'vision'})
+        BrainScoreModel('two', extractor=extractor,
+                        region_layer_map={'IT': LayerSelector('encoder.layers.1', modality='vision')})
 
 
 def test_callable_extractor_without_layer_names_is_not_validated():

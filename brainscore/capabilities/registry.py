@@ -1,4 +1,9 @@
-"""Capability registry for BrainScoreModel."""
+"""The one capability registry of BrainScoreModel.
+
+``BrainScoreModel.check_session_support`` reads it to find the capability that
+runs a session; ``BrainScoreModel.process`` reads it to find the capability
+that answers an event. Both read it in the same order.
+"""
 
 from typing import Dict, Iterable
 
@@ -19,25 +24,23 @@ def register_capability(capability: Capability, *, replace: bool = False) -> Cap
     return capability
 
 
-def enabled_capabilities(model) -> Iterable[Capability]:
-    """Yield capabilities enabled for ``model`` in stable dispatch order."""
+def enabled_capabilities(subject) -> Iterable[Capability]:
+    """Yield the capabilities enabled for ``subject``, in order (``order``, then
+    ``identifier``), each set up before it is yielded."""
     for capability in sorted(capability_registry.values(),
                              key=lambda c: (c.order, c.identifier)):
-        if not capability.enabled_for(model):
+        if not capability.enabled_for(subject):
             continue
-        _setup_once(model, capability)
+        _setup_once(subject, capability)
         yield capability
 
 
-def _setup_once(model, capability: Capability) -> None:
-    if not hasattr(model, '_capability_state'):
-        model._capability_state = {}
-    if not hasattr(model, '_capability_setup_done'):
-        model._capability_setup_done = set()
-    if capability.identifier in model._capability_setup_done:
+def _setup_once(subject, capability: Capability) -> None:
+    """Run ``capability.setup`` for ``subject`` once, before the capability first runs."""
+    if capability.identifier in subject._capability_setup_done:
         return
-    state = capability.setup(model)
-    model._capability_state[capability.identifier] = (
+    state = capability.setup(subject)
+    subject._capability_state[capability.identifier] = (
         state if state is not None else {}
     )
-    model._capability_setup_done.add(capability.identifier)
+    subject._capability_setup_done.add(capability.identifier)

@@ -56,9 +56,9 @@ The method follows multi-layer encoding with banded ridge (himalaya, Dupre la To
 
 With one band, this is a ridge with an intercept and a tuned penalty. The inner choice uses the preparation fitted on all training stimuli of the fold, so the inner held-out stimuli took part in that fit. The test stimuli of the fold took part in no fit.
 
-No ceiling is measured. The score is the raw median per-parcel Pearson r, with `normalized = False` and `ceiling_status = not_estimated`. The score also lists:
+No ceiling is measured. The score is the raw median per-parcel Pearson r, with `normalized = False` and a `ceiling` whose `attrs['status']` is `not_estimated`. The score also lists:
 
-- `raw`, `metric`, `mean_r`, `n_parcels_scored`, `n_TRs`, and `per_parcel_r` (the score of each parcel in Schaefer order);
+- `raw`, `metric`, `benchmark_version`, `mean_r`, `n_parcels_scored`, `n_TRs`, and `per_parcel_r` (the score of each parcel in Schaefer order);
 - `stimulus_window`, `hrf_delay`, `excluded_samples_start`, `excluded_samples_end` and `cv_groups = stimulus_id`;
 - `input_channels` (the sorted channels), `presentation`, `bands`, `band_channels` and `components_per_band` (the real number for each band);
 - `alpha_grid`, `alpha_candidates`, `penalty_protocol = one_tuple_for_all_parcels_on_one_inner_split_of_held_out_stimuli` and `feature_projection_protocol = centred_svd_and_scale_fitted_on_training_stimuli`;

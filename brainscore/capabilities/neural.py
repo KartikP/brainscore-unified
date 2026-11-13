@@ -11,10 +11,10 @@ class NeuralEncodingCapability(Capability):
     identifier = 'neural-encoding'
     order = 1000
 
-    def enabled_for(self, model) -> bool:
-        return bool(model._preprocessors)
+    def enabled_for(self, subject) -> bool:
+        return bool(subject._input_keys)
 
-    def handles(self, model, event, **kwargs) -> bool:
+    def handles(self, subject, event, **kwargs) -> bool:
         del kwargs
         try:
             event.columns
@@ -22,30 +22,30 @@ class NeuralEncodingCapability(Capability):
             return False
         return True
 
-    def process(self, model, stimuli, **kwargs):
+    def process(self, subject, stimuli, **kwargs):
         multi_modality = kwargs.get('multi_modality', False)
-        detected = model._detect_modalities(stimuli)
+        detected = subject.detect_modalities(stimuli)
 
         if not detected:
             from brainscore_core.io_catalog import stimulus_columns
             from brainscore_core.streaming import parse_channel
             accepted = {m: sorted(c for c, channel in stimulus_columns().items()
                                   if parse_channel(channel)[0] == canonical_modality(m))
-                        for m in model.supported_modalities}
+                        for m in subject.supported_modalities}
             raise ValueError(
                 f"No column in this stimulus set says what kind of input it holds "
                 f"(columns present: {list(stimuli.columns)}). Add one column per input "
-                f"this model takes; each row holds the input itself or its file path, "
+                f"this subject takes; each row holds the input itself or its file path, "
                 f"for example stimuli['image_path'] = [...] for images. Columns this "
-                f"model reads: {accepted}. A stimulus_paths dict alone is not enough: "
+                f"subject reads: {accepted}. A stimulus_paths dict alone is not enough: "
                 f"the column names the input type."
             )
 
-        layers = model._recorder.current_layers()
-        modality = model._pick_modality(detected)
+        layers = subject._recorder.current_layers()
+        modality = subject._pick_modality(detected)
         requested_modalities = {
-            model._region_modality_map[r] for r in model._recorder.recording_regions
-            if r in model._region_modality_map}
+            subject._region_modality_map[r] for r in subject._recorder.recording_regions
+            if r in subject._region_modality_map}
         requested_modalities = {canonical_modality(m) for m in requested_modalities}
         missing = requested_modalities - detected
         if missing:
@@ -62,26 +62,26 @@ class NeuralEncodingCapability(Capability):
         # multi-modality fan-out — so a non-selected layer-aware tower does not
         # false-positive the selected plain-callable path.
         will_run = detected if (multi_modality and len(detected) > 1) else {modality}
-        if (not layers and model._region_layer_map_dict
-                and not model._recorder.composite_recording
-                and any(model._supports_layer_extraction(m) for m in will_run)):
+        if (not layers and subject._region_layer_map_dict
+                and not subject._recorder.composite_recording
+                and any(subject._supports_layer_extraction(m) for m in will_run)):
             raise ValueError(
-                f"Subject '{model.identifier}' records no region: request a "
+                f"Subject '{subject.identifier}' records no region: request a "
                 f"neural channel in the session, for example "
                 f"stimulus_session(stimuli, ['neural:IT']). Without one the "
                 f"recording has 0 neuroids. Known regions: "
-                f"{sorted(model._region_layer_map_dict.keys())}."
+                f"{sorted(subject._region_layer_map_dict.keys())}."
             )
 
         from .._model.dispatch import fused_for
-        if (multi_modality or fused_for(model, detected) is not None) and len(detected) > 1:
-            return model._process_multi_modality(stimuli, detected, layers)
+        if (multi_modality or fused_for(subject, detected) is not None) and len(detected) > 1:
+            return subject._process_multi_modality(stimuli, detected, layers)
 
         if not multi_modality and len(detected) > 1:
             import warnings
             warnings.warn(
                 f"Stimulus set contains multiple supported modalities "
-                f"{sorted(detected)} for model '{model.identifier}'. "
+                f"{sorted(detected)} for subject '{subject.identifier}'. "
                 f"Default process(..., multi_modality=False) will use "
                 f"'{modality}' via recording-target routing or MODALITY_PRIORITY. Pass "
                 f"multi_modality=True to extract all supported modalities, "
@@ -89,13 +89,13 @@ class NeuralEncodingCapability(Capability):
                 UserWarning,
                 stacklevel=2,
             )
-        if (model._recorder.composite_recording
-                and model._supports_layer_extraction(modality)):
-            return model._process_composite_regions(stimuli, modality)
-        layers = model._filter_layers_for_modality(layers, modality)
-        assembly = model._extract_for_modality(stimuli, modality, layers)
-        if model._recorder.is_multi_region and model._supports_layer_extraction(modality):
-            assembly = model._tag_neuroids_with_regions(assembly, modality)
+        if (subject._recorder.composite_recording
+                and subject._supports_layer_extraction(modality)):
+            return subject._process_composite_regions(stimuli, modality)
+        layers = subject._filter_layers_for_modality(layers, modality)
+        assembly = subject._extract_for_modality(stimuli, modality, layers)
+        if subject._recorder.is_multi_region and subject._supports_layer_extraction(modality):
+            assembly = subject._tag_neuroids_with_regions(assembly, modality)
         return assembly
 
 

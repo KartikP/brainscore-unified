@@ -16,7 +16,7 @@ from .registry import register_capability
 
 
 class ClosedLoopCapability(Capability):
-    """Route a row (one closed-loop step) to the model's ``policy``.
+    """Route a row (one closed-loop step) to the subject's ``policy``.
 
     ``policy`` has one signature: it receives a row and returns a mapping of
     output channel -> payload. A message from another agent is a ``text`` entry
@@ -27,22 +27,22 @@ class ClosedLoopCapability(Capability):
     identifier = 'closed-loop'
     order = 300
 
-    def handles(self, model, event, **kwargs) -> bool:
-        del model, kwargs
+    def handles(self, subject, event, **kwargs) -> bool:
+        del subject, kwargs
         return isinstance(event, Mapping)
 
-    def process(self, model, event, **kwargs):
+    def process(self, subject, event, **kwargs):
         del kwargs
-        if model._action_fn is None:
+        if subject._policy is None:
             raise NotImplementedError(
-                f"Subject '{model.identifier}' has no policy. Closed-loop evaluation "
+                f"Subject '{subject.identifier}' has no policy. Closed-loop evaluation "
                 f"requires BrainScoreModel(policy=...), a callable "
                 f"policy(row) -> {{output channel: payload}}."
             )
-        outputs = model._action_fn(event)
+        outputs = subject._policy(event)
         if not isinstance(outputs, Mapping):
             raise TypeError(
-                f"Subject '{model.identifier}' policy returned {type(outputs).__name__}; "
+                f"Subject '{subject.identifier}' policy returned {type(outputs).__name__}; "
                 f"expected a mapping of output channel -> payload, for example "
                 f"{{'motor': action}}."
             )

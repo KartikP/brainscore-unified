@@ -10,8 +10,7 @@ pytestmark = pytest.mark.unit
 
 
 def subject(policy):
-    return BrainScoreModel('s', None, {}, {}, None,
-                           policy=PolicyWrapper(policy, max_history=8))
+    return BrainScoreModel('s', policy=PolicyWrapper(policy, max_history=8))
 
 
 def steps(n):

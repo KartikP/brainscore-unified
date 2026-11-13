@@ -16,7 +16,7 @@ pytestmark = pytest.mark.unit
 class FixtureSubject(Subject):
     identifier = 'fixture'
     in_channels = {'observation'}
-    out_channels = {'behavior', 'activity'}
+    out_channels = {'behavior'}
     def __init__(self):
         self.layer = torch.nn.Linear(2, 2, bias=False)
         with torch.no_grad():
@@ -167,7 +167,9 @@ def test_preflight_has_no_output_or_inference(tmp_path, failure):
     elif failure == 'missing_method':
         tools = []
         p = CallableProtocol('bad', lambda s, c: None, methods=['absent'])
-    with pytest.raises(ValueError):
+    from brainscore_core.compatibility import CompatibilityError
+    # A channel mistake is refused by the compatibility rule score() uses.
+    with pytest.raises(CompatibilityError if failure == 'channel' else ValueError):
         Experiment(subject=subject, protocol=p, tools=tools, instrumentation=provider,
                    output_dir=tmp_path/'run').run()
     assert not (tmp_path/'run').exists()
@@ -243,7 +245,7 @@ def test_cancellation_and_resource_cleanup(tmp_path, exception):
             closed.append(True)
     subject.participate = lambda session: (_ for _ in ()).throw(exception)
     with pytest.raises(type(exception)):
-        Experiment(subject=subject, protocol=SessionProtocol('fail', factory),
+        Experiment(subject=subject, protocol=SessionProtocol('fail', factory, required_input_channels=['observation']),
             tools=[RecordInputsOutputs(), Ablate(['x'])],
             instrumentation=TorchInstrumentation({'x': subject.layer}),
             output_dir=tmp_path/'run').run()

@@ -15,13 +15,18 @@ class InterventionCapability(Capability):
     identifier = 'intervention'
     order = 50
 
-    def handles(self, model, event, **kwargs) -> bool:
-        del model, kwargs
+    def handles(self, subject, event, **kwargs) -> bool:
+        del subject, kwargs
         return isinstance(event, StateChange)
 
-    def process(self, model, event, **kwargs):
+    def process(self, subject, event, **kwargs):
         del kwargs
-        return model._interventions.dispatch_state_change(event)
+        try:
+            return subject._interventions.dispatch_state_change(event)
+        finally:
+            # The subject changed under the readout: the next start_task fits
+            # again even when the task object is the one already configured.
+            subject._behavioral.invalidate()
 
 
 register_capability(InterventionCapability())

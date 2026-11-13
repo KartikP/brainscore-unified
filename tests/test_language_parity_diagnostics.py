@@ -118,7 +118,7 @@ def test_observe_actual_tiny_routes_and_replay_ablations(monkeypatch, language_p
     from brainscore.validation.language_parity_diagnostics import ablate, observe_case
 
     native, adapter = language_pair
-    native._preprocessors['text']._batch_size = 1
+    native.extractor['text']._batch_size = 1
     def subject_factory(case, route):
         native.reset()
         adapter.reset()

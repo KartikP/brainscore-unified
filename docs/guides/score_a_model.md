@@ -19,6 +19,8 @@ What happens:
 2. **Memory check.** One stimulus is run to estimate the memory the full benchmark needs. Pass `check_mem=False` to skip it.
 3. **The benchmark runs** the subject through sessions and returns a `Score`. If the benchmark leaves an intervention active on the subject, `score` fails.
 
+Every unified benchmark score carries the same attributes: `raw` (the metric value before any ceiling normalization), `ceiling` (the reference, a `Score`), `normalized` (whether the score is `raw` divided by a measured ceiling; when it is `False` the score is the raw value, and the ceiling is NaN with `attrs['status'] == 'not_estimated'`, or `Score(1.0)` for Lahner2024 and LeBel2023), `metric`, `benchmark_version`, `benchmark_identifier` and `compatibility`. A raw score and a normalized score are not on one scale.
+
 ## Find models and benchmarks
 
 ```python

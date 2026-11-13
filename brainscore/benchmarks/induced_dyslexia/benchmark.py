@@ -51,6 +51,7 @@ from brainscore_core.metrics import Score
 from brainscore import FunctionalSelection, RandomSelection
 from brainscore_core.model_interface import StateChange, Selection, Perturbation
 from brainscore_core.streaming_helpers import apply_state_change
+from brainscore.benchmarks._score import benchmark_score
 
 from ..roar_yeatman2021.benchmark import (
     Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX,
@@ -200,8 +201,10 @@ class InducedDyslexia(BenchmarkBase):
         specific_deficit = random_acc - lesioned_acc      # >0 ⇒ word-form-specific
         dyslexic = bool(lesioned_acc < DYSLEXIA_THRESHOLD and specific_deficit > 0)
 
-        score = Score(lesioned_acc)
-        score.attrs['raw'] = Score(lesioned_acc)
+        # The score is the lesioned reading accuracy; the ceiling (no deficit)
+        # is a reference and does not divide it.
+        score = benchmark_score(self, lesioned_acc, raw=lesioned_acc,
+                                metric='lesioned_reading_accuracy', normalized=False)
         score.attrs['baseline_accuracy'] = baseline_acc
         score.attrs['lesioned_accuracy'] = lesioned_acc
         score.attrs['random_control_accuracy'] = random_acc

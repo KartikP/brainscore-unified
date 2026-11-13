@@ -183,21 +183,44 @@ The output folder holds `experiment.json` (setup, status, provenance), `result.j
 
 ```python
 from brainscore.experiments import CallableProtocol
-from brainscore.instrumentation import observed
+from brainscore.harnesses.adapter import run_request
 
 def evaluate(subject, context):
+    answers = []
     for trial in range(3):
-        with context.repetition(trial):
-            session = stimulus_session(stimuli, ['behavior'], task)
-            with observed(session, context):      # record this session's inputs and outputs
-                subject.participate(session)
-    return my_score()
+        # One request is one session, recorded as record repetition `trial`.
+        session = run_request(subject, context, trial, stimuli, ['behavior'], task)
+        answers.append(session.collect('behavior'))
+    return my_score(answers)
 
 protocol = CallableProtocol(identifier='classic-benchmark', evaluate=evaluate,
                             repetitions=[0, 1, 2])
 ```
 
-The evaluator keeps its own loop, resets and scoring; the tools still attach. It records
-each session with `observed`. For a system that is not a subject (a policy server, an
-external library object), name the methods to record instead, for example
+The evaluator keeps its own loop, resets and scoring; the tools still attach.
+`run_request` records each session between its own repetition boundaries, so
+`replay_sessions` rebuilds it. For a system that is not a subject (a policy server,
+an external library object), name the methods to record instead, for example
 `CallableProtocol(..., methods=['infer'])`. There is no default method.
+
+### Connect an external experiment library (an adapter)
+
+An adapter maps an external library (CogGym, EWoK) onto the common channels
+(Contract Rules 3.8, 3.9). `brainscore.harnesses.adapter` holds what every adapter
+shares, so a new adapter writes only what is specific to its library:
+
+1. How the library states a trial: one stimulus row (its parts in the library's
+   order) and a `TaskContext` (the system text as the instruction, the generation
+   settings on the response).
+2. One `run_request(subject, context, repetition, stimuli, outputs, task)` per
+   library request, and how the library parses the answer.
+3. How the library scores the answers, as one number.
+4. The benchmark: `required_input_channels`, `requested_output_channels`,
+   `trial_memory`, `ceiling=not_estimated()`, a `protocol()` that returns a
+   `CallableProtocol`, a `__call__` that returns
+   `run_recorded(subject, self.protocol(), output_dir)`, and the score from
+   `adapter_score(self, value, metric=..., input_adaptation=..., context=context)`,
+   where `input_adaptation` says why the number can differ from the library's own.
+
+The adapter checks no compatibility itself: `score()` checks the pair once before
+any compute.

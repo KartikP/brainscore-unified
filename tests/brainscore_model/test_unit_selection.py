@@ -187,7 +187,7 @@ def _make_model(intervention=None, region_layer_map=None):
     return BrainScoreModel(
         identifier='test-unit-selection', model=None,
         region_layer_map=region_layer_map or {},
-        preprocessors={'vision': lambda x: x},
+        supported_modalities={'vision'},
         intervention=intervention,
     )
 
@@ -225,7 +225,7 @@ def test_an_unresolved_selection_is_refused_with_the_fix(target):
     sc = StateChange(kind='ablation', target=target, perturbation=Perturbation(kind='zero'))
     with pytest.raises(TypeError, match=r'selection\.resolve\(subject\)'):
         apply_state_change(model, sc)
-    assert captured == {} and model._active_interventions == {}
+    assert captured == {} and model._interventions.active_interventions == {}
 
 
 def test_intervene_refuses_an_unresolved_selection_before_any_run():
@@ -256,7 +256,7 @@ def test_a_resolved_functional_selection_is_applied_through_a_session():
                                 n_units=3).resolve(model)
     applied = apply_state_change(model, StateChange('ablation', target=units,
                                                     perturbation=Perturbation('zero')))
-    assert captured['target'] is units and applied.handle_id in model._active_interventions
+    assert captured['target'] is units and applied.handle_id in model._interventions.active_interventions
     assert units.layer == 'enc.5' and len(units.indices) == 3
 
 

@@ -1,11 +1,10 @@
-"""The two UMI vision registrations wire the same parts through the public slots.
+"""The two UMI vision registrations wire their parts through the public slots.
 
 ``clip_vit_b_32_unified`` and ``qwen25_vl_3b_unified`` (in brainscore_vision)
-moved from the deprecated ``preprocessors=`` / ``activations_model=`` /
-``generation_fn=`` constructor names to ``extractor=`` and ``answer=``. These
-fixtures rebuild the old constructor call from the same parts and check that the
-move changed nothing: the same wrapper answers each input kind, the same layers
-are recorded, and assemblies, readouts and generated answers are identical.
+pass ``extractor=`` and ``answer=`` and name each region's tower with
+``LayerSelector(modality=...)``. These checks build each registration with
+deterministic stand-ins and check that each input kind reaches the right
+wrapper and layer, and that readouts and generated answers are as expected.
 
 Torch, transformers and the wrappers are deterministic stand-ins, so this runs
 offline without model weights. It checks constructor wiring only; it is NOT
@@ -34,7 +33,8 @@ from brainscore_core.streaming_helpers import behavioral_response, neural_respon
 pytestmark = pytest.mark.unit
 
 FOLDERS = {'clip-vit-b-32': 'clip_vit_b_32_unified', 'qwen2.5-vl-3b': 'qwen25_vl_3b_unified'}
-DEPRECATED = {'preprocessors', 'activations_model', 'generation_fn', 'action_fn', 'state_change_fn'}
+REMOVED = {'preprocessors', 'activations_model', 'generation_fn', 'action_fn', 'state_change_fn',
+           'region_modality_map', 'backbone_id'}
 PUBLIC_SLOTS = {'extractor', 'answer', 'policy', 'intervention'}
 RESPONSES = {4: ' Real ', 5: 'it looks pseudo to me', 6: 'unsure'}  # keyed by image width
 
@@ -60,8 +60,6 @@ class FakeExtractor:
         self.calls, self.resets = [], 0
         FakeExtractor.instances.append(self)
 
-    # Same parameters as the real TextWrapper / VLMVisionWrapper __call__
-    # (checked below), which is what the old constructor normalization inspects.
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
         stimulus_ids = [str(value) for value in stimuli['stimulus_id']]
         self.calls.append((tuple(stimulus_ids), tuple(layers)))
@@ -204,39 +202,11 @@ def _TOWERS(module):
             for region in module.REGION_LAYER_MAP}
 
 
-def _old_wiring(identifier, module, new):
-    """The constructor call as it was before the migration, given the same parts."""
-    BrainScoreModel = module.BrainScoreModel
-    vision, text = FakeExtractor.instances
-    with pytest.warns(DeprecationWarning, match='deprecated'):
-        if identifier == 'clip-vit-b-32':
-            return BrainScoreModel(
-                identifier=identifier,
-                model=new._model,
-                region_layer_map=module.REGION_LAYER_MAP,
-                region_modality_map=_TOWERS(module),
-                preprocessors={'vision': vision.kwargs['preprocessing'], 'text': text},
-                activations_model=vision,
-                visual_degrees=8,
-                behavioral_readout_layer='encoder.layers.10',
-            )
-        return BrainScoreModel(
-            identifier=identifier,
-            model=new._model,
-            region_layer_map=module.REGION_LAYER_MAP,
-            region_modality_map=_TOWERS(module),
-            preprocessors={'vision': vision, 'text': text},
-            visual_degrees=8,
-            generation_fn=new._generation_fn,
-            behavioral_readout_layer='blocks.28',
-        )
-
-
 @pytest.fixture(params=sorted(FOLDERS))
-def pair(request, build):
+def registration(request, build):
     identifier = request.param
-    module, new = build(identifier)
-    return identifier, module, _old_wiring(identifier, module, new), new
+    module, model = build(identifier)
+    return identifier, module, model
 
 
 # --- stimuli ------------------------------------------------------------------
@@ -297,31 +267,23 @@ def test_registrations_pass_only_public_slot_names():
                  and getattr(node.func, 'id', None) == 'BrainScoreModel']
         assert len(calls) == 1, folder
         keywords = {keyword.arg for keyword in calls[0].keywords}
-        assert not keywords & DEPRECATED, folder
+        assert not keywords & REMOVED, folder
         assert 'extractor' in keywords, folder
 
 
-def test_old_and_new_constructors_normalize_identically(pair):
-    identifier, module, old, new = pair
-    BrainScoreModel = module.BrainScoreModel
+def test_constructor_wiring(registration):
+    identifier, module, model = registration
     vision, text = FakeExtractor.instances
-    assert [(key, extractor) for key, extractor in new._extractors.items()] == \
-        [('vision', vision), ('text', text)]
-    assert [(key, id(value)) for key, value in old._extractors.items()] == \
-        [(key, id(value)) for key, value in new._extractors.items()]
-    assert old._layer_extractors == new._layer_extractors == {'vision', 'text'}
+    assert list(model.extractor.items()) == [('vision', vision), ('text', text)]
     # The same layer of each region, and each region names its tower (a model
     # with two extractors must).
-    assert old._region_layer_map_dict == new._region_layer_map_dict == module.REGION_LAYER_MAP
-    assert old._region_modality_map == new._region_modality_map == _TOWERS(module)
-    assert list(old.capability_config.items()) == list(new.capability_config.items())
-    assert old._generation_fn is new._generation_fn
-    assert (old._action_fn, old._state_change_fn) == (new._action_fn, new._state_change_fn) == (None, None)
-    for name in ('identifier', 'backbone_id', 'supported_modalities', 'required_modalities',
-                 'in_channels', 'out_channels', 'required_channels'):
-        assert getattr(old, name) == getattr(new, name), name
-    assert old.visual_degrees() == new.visual_degrees() == 8
-    assert old._model is new._model
+    assert {region: selector.layer_path for region, selector in model.region_layer_map.items()} \
+        == module.REGION_LAYER_MAP
+    assert {region: selector.modality for region, selector in model.region_layer_map.items()} \
+        == _TOWERS(module)
+    assert model.in_channels == {'vision:image', 'text', 'control', 'instruction'} - (
+        set() if identifier == 'qwen2.5-vl-3b' else {'instruction'})
+    assert model.visual_degrees() == 8
 
 
 CASES = {
@@ -332,82 +294,63 @@ CASES = {
 }
 
 
-def test_neural_assemblies_are_identical(pair, tmp_path):
-    identifier, module, old, new = pair
+def test_each_input_reaches_its_wrapper_and_layer(registration, tmp_path):
+    identifier, module, model = registration
     images, sentences = _images(tmp_path, 'image', [4, 5, 6]), _sentences()
     vision_wrapper = identifier if identifier == 'clip-vit-b-32' else f'{identifier}-vision'
     expected_wrapper = {'images': vision_wrapper, 'sentences': f'{identifier}-text'}
     for record, kind in CASES[identifier]:
         stimuli = images if kind == 'images' else sentences
-        outputs = []
-        for subject in (old, new):
-            subject.start_recording(record, time_bins=[(70, 170)])
-            outputs.append((subject.process(stimuli), _call_logs()))
-            if isinstance(record, str):
-                outputs.append((neural_response(subject=subject, stimuli=stimuli,
-                                                outputs=[f'neural:{record}'], time_bins=[(70, 170)]),
-                             _call_logs()))
-        half = len(outputs) // 2
-        for (old_assembly, old_log), (new_assembly, new_log) in zip(outputs[:half], outputs[half:]):
-            _assert_same(old_assembly, new_assembly)
-            assert old_log == new_log and any(new_log), (record, kind)
+        model.start_recording(record, time_bins=[(70, 170)])
+        assembly = model.process(stimuli)
+        assert any(_call_logs()), (record, kind)
+        if isinstance(record, str):
+            via_session = neural_response(subject=model, stimuli=stimuli,
+                                          outputs=[f'neural:{record}'], time_bins=[(70, 170)])
+            _assert_same(assembly, via_session)
+            _call_logs()
         layers = [module.REGION_LAYER_MAP[r] for r in ([record] if isinstance(record, str) else record)]
-        assert set(new_assembly['layer'].values) == set(layers)
-        assert all(str(n).startswith(expected_wrapper[kind] + '.') for n in new_assembly['neuroid_id'].values)
+        assert set(assembly['layer'].values) == set(layers)
+        assert all(str(n).startswith(expected_wrapper[kind] + '.') for n in assembly['neuroid_id'].values)
 
 
-def test_readout_behavior_is_identical(pair, tmp_path):
-    identifier, module, old, new = pair
+def test_readout_reads_the_readout_layer(registration, tmp_path):
+    identifier, module, model = registration
     fitting = _images(tmp_path, 'fit', [4, 5, 6, 4, 5, 6], labels=['dog', 'cat'] * 3)
     scoring = _images(tmp_path, 'score', [5, 4, 6])
-    results = []
-    for subject in (old, new):
-        task = TaskContext(task_type='probabilities', fitting_stimuli=fitting,
-                           prefer_path='readout')
-        results.append((behavioral_response(subject, scoring, task), _call_logs()))
-        subject.start_task(task)
-        results.append((subject.process(scoring), _call_logs()))
-    for (old_output, old_log), (new_output, new_log) in zip(results[:2], results[2:]):
-        _assert_same(old_output, new_output)
-        assert old_log == new_log
+    task = TaskContext(task_type='probabilities', fitting_stimuli=fitting, prefer_path='readout')
+    via_session = behavioral_response(model, scoring, task)
+    _call_logs()
+    model.start_task(task)
+    direct = model.process(scoring)
+    log = _call_logs()
+    _assert_same(via_session, direct)
     readout = {'clip-vit-b-32': 'encoder.layers.10', 'qwen2.5-vl-3b': 'blocks.28'}[identifier]
-    assert all(layers == (readout,) for log in results[3][1] for _, layers in log)
+    assert all(layers == (readout,) for calls in log for _, layers in calls)
 
 
-def test_qwen_answer_path_is_identical(build, tmp_path):
-    module, new = build('qwen2.5-vl-3b')
-    old = _old_wiring('qwen2.5-vl-3b', module, new)
-    qwen = new._model
+def test_qwen_answer_path(build, tmp_path):
+    module, model = build('qwen2.5-vl-3b')
+    qwen = model._model
     processor = next(made for kind, _, _, made in module.loads if kind == 'AutoProcessor')
     stimuli = _images(tmp_path, 'word', [4, 5, 6])
     task = TaskContext(task_type='label', instruction='Is this a real word?',
                        label_set=['real', 'pseudo'])
-    results = []
-    for subject in (old, new):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter('always')
-            output = behavioral_response(subject, stimuli, task)
-        results.append((output, [str(w.message) for w in caught], list(qwen.generate_calls),
-                        list(processor.prompts)))
-        qwen.generate_calls.clear()
-        processor.prompts.clear()
-    (old_output, old_warnings, old_calls, old_prompts), (new_output, new_warnings, new_calls, new_prompts) = results
-    _assert_same(old_output, new_output)
-    assert old_warnings == new_warnings and any('unsure' in w for w in new_warnings)
-    assert old_calls == new_calls == [{'device': 'fake-device', 'max_new_tokens': 8, 'do_sample': False}] * 3
-    assert old_prompts == new_prompts == ['Is this a real word? Answer with exactly one of: real, pseudo.'] * 3
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        output = behavioral_response(model, stimuli, task)
+    assert any('unsure' in str(w.message) for w in caught)
+    assert qwen.generate_calls == [{'device': 'fake-device', 'max_new_tokens': 8, 'do_sample': False}] * 3
+    assert processor.prompts == ['Is this a real word? Answer with exactly one of: real, pseudo.'] * 3
     # exact match -> 'real', word match -> 'pseudo', unparseable -> invalid
-    np.testing.assert_array_equal(new_output.values, [[1, 0], [0, 1], [np.nan, np.nan]])
-    assert list(new_output['answer_valid'].values) == [True, True, False]
+    np.testing.assert_array_equal(output.values, [[1, 0], [0, 1], [np.nan, np.nan]])
+    assert list(output['answer_valid'].values) == [True, True, False]
 
 
-def test_reset_reaches_the_same_wrappers(pair):
-    _, _, old, new = pair
-    for subject in (old, new):
-        subject.reset()
-        assert [part.resets for part in FakeExtractor.instances] == [1, 1]
-        for part in FakeExtractor.instances:
-            part.resets = 0
+def test_reset_reaches_the_wrappers(registration):
+    _, _, model = registration
+    model.reset()
+    assert [part.resets for part in FakeExtractor.instances] == [1, 1]
 
 
 # --- retained configuration ----------------------------------------------------
@@ -437,7 +380,7 @@ def test_clip_keeps_its_wrappers_and_preprocessing(build, tmp_path):
     assert preprocessing([path]).shape == (1, 4, 4, 3)   # RGBA converted to RGB
     assert processor.images_seen[-1].mode == 'RGB'
     assert model._behavioral_readout_layer == 'encoder.layers.10'
-    assert model._generation_fn is None
+    assert model._answer is None
 
 
 def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
@@ -464,26 +407,4 @@ def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
                            'identifier': 'qwen2.5-vl-3b-text',
                            'layer_aggregation': 'last_token', 'max_length': 512}
     assert model._behavioral_readout_layer == 'blocks.28'
-    assert model._generation_fn is not None
-
-
-def test_stand_ins_match_the_real_wrapper_signatures():
-    """The old wiring found extractors in preprocessors by their call signature."""
-    root = Path(list(find_spec('brainscore').submodule_search_locations)[0]) / 'model_helpers'
-    expected = ['self', 'stimuli', 'layers', 'stimuli_identifier']
-    for filename, class_name in (('text_wrapper.py', 'TextWrapper'),
-                                 ('vlm_vision_wrapper.py', 'VLMVisionWrapper')):
-        tree = ast.parse((root / filename).read_text(encoding='utf-8'))
-        cls = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == class_name)
-        call = next(node for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == '__call__')
-        assert [argument.arg for argument in call.args.args] == expected, class_name
-        assert call.args.kwarg is not None, class_name
-
-
-def test_a_vision_region_is_not_recorded_from_sentences(pair):
-    """Each region names its tower, so a text stimulus recorded at 'IT' is refused.
-    Before, it silently read the text tower's layer of the same name."""
-    _, _, _, new = pair
-    new.start_recording('IT', time_bins=[(70, 170)])
-    with pytest.raises(ValueError, match='missing input modalities'):
-        new.process(_sentences())
+    assert model._answer is not None

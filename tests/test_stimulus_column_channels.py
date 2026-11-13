@@ -107,4 +107,4 @@ def test_brainscore_model_detects_inputs_from_the_one_table():
     for columns, expected in [(['image_file_name'], {'vision'}), (['video_path'], {'vision'}),
                               (['sentence', 'audio_path'], {'text', 'audio'}),
                               (['stimulus_id', 'object_name'], set())]:
-        assert model._detect_modalities(SimpleNamespace(columns=columns)) == expected
+        assert model.detect_modalities(SimpleNamespace(columns=columns)) == expected

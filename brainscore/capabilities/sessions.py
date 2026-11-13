@@ -6,6 +6,7 @@ channels and run the matching sessions, registered the same way as any added
 capability, so ``participate``, ``check_session_support`` and the declared
 channels all read one registry. They sort after added capabilities
 (``order`` 10000), so an added capability that claims the same outputs wins.
+Each takes the session role only (see ``Capability``).
 """
 
 from contextlib import ExitStack
@@ -19,107 +20,100 @@ from brainscore_core import streaming_helpers as _drivers
 from brainscore_core.streaming import StreamEvent, parse_channel
 from brainscore_core.responses import response_channels
 
-
-class _SessionCapability(Capability):
-    """A capability that only runs sessions; it handles no ``process`` events."""
-
-    order = 10000
-
-    def handles(self, model, event, **kwargs) -> bool:
-        del model, event, kwargs
-        return False
-
-    def process(self, model, event, **kwargs):  # pragma: no cover - never handled
-        raise NotImplementedError(self.identifier)
+# After every added capability (default order 1000), so an added one that
+# claims the same outputs runs the session.
+_SESSION_ORDER = 10000
 
 
-class NeuralSessions(_SessionCapability):
+class NeuralSessions(Capability):
+    order = _SESSION_ORDER
     identifier = 'neural-sessions'
 
-    def enabled_for(self, model) -> bool:
+    def enabled_for(self, subject) -> bool:
         # A region map names where to record; only a wired extractor can
         # record there, so a map without one declares nothing (rule 2.4).
-        return bool(model.region_layer_map) and bool(model._extractors)
+        return bool(subject.region_layer_map) and bool(subject._extractors)
 
-    def declared_output_channels(self, model):
-        return {f'neural:{region}' for region in model.region_layer_map}
+    def declared_output_channels(self, subject):
+        return {f'neural:{region}' for region in subject.region_layer_map}
 
-    def supports_session(self, model, channels) -> bool:
-        return bool(channels) and set(channels) <= self.declared_output_channels(model)
+    def supports_session(self, subject, channels) -> bool:
+        return bool(channels) and set(channels) <= self.declared_output_channels(subject)
 
-    def participate(self, model, session) -> None:
+    def participate(self, subject, session) -> None:
         task = getattr(session, 'task', None)
         if task is not None and task.task_type != 'passive':
             # The session's task decides what the subject does (rule 4.1):
             # record during the task; the answers are not sent.
-            drive_behavior_and_neural_session(model, session)
+            drive_behavior_and_neural_session(subject, session)
             return
         # A passive session records activity even after a task was configured.
-        model._begin_episode()
+        subject._begin_episode()
         # A subject that keeps history is shown one trial at a time (same scores,
         # different arrival), so each independent trial can begin empty.
-        per_trial = (_keeps_history(model)
+        per_trial = (_keeps_history(subject)
                      and (task is None or task.trial_memory == 'none'))
-        with model._behavioral.suspended():
+        with subject._behavioral.suspended():
             from .._model.channels import run_neural_channels
 
             def runner(stimuli, channel_regions, time_bins, multi_modality):
-                return run_neural_channels(model, stimuli, channel_regions,
+                return run_neural_channels(subject, stimuli, channel_regions,
                                            time_bins, multi_modality)
             if getattr(session, 'streaming', False) or per_trial:
                 _drivers.drive_neural_session_streaming(
-                    model, session, channel_runner=runner, on_begin=model._begin_episode)
+                    subject, session, channel_runner=runner, on_begin=subject._begin_episode)
             else:
-                _drivers.drive_neural_session(model, session, allow_multi_modality=True,
+                _drivers.drive_neural_session(subject, session, allow_multi_modality=True,
                                               channel_runner=runner)
 
 
-class BehaviorSessions(_SessionCapability):
+class BehaviorSessions(Capability):
+    order = _SESSION_ORDER
     identifier = 'behavior-sessions'
 
-    def enabled_for(self, model) -> bool:
-        return (model._behavioral_readout_layer is not None
-                or model._generation_fn is not None
-                or model._reply_fn is not None or model._likelihood_fn is not None)
+    def enabled_for(self, subject) -> bool:
+        return (subject._behavioral_readout_layer is not None
+                or subject._answer is not None
+                or subject._reply is not None or subject._likelihood is not None)
 
-    def declared_input_channels(self, model):
-        replies = (model._generation_fn, model._reply_fn, model._likelihood_fn)
+    def declared_input_channels(self, subject):
+        replies = (subject._answer, subject._reply, subject._likelihood)
         return {'instruction'} if any(part is not None for part in replies) else set()
 
-    def declared_output_channels(self, model):
+    def declared_output_channels(self, subject):
         # Each part declares the kinds of answer it can give (rule 2.4).
         channels = {'behavior'}
-        if model._behavioral_readout_layer is not None:
+        if subject._behavioral_readout_layer is not None:
             channels |= {'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt'}
-        if model._generation_fn is not None:
+        if subject._answer is not None:
             channels |= {'behavior:choice'}
-        if model._reply_fn is not None:
+        if subject._reply is not None:
             channels |= {'behavior:choice', 'behavior:rating', 'behavior:confidence',
                          'behavior:text'}
-        if model._likelihood_fn is not None:
+        if subject._likelihood is not None:
             channels |= {'behavior:choice', 'behavior:probabilities', 'behavior:rt'}
         return channels
 
-    def supports_session(self, model, channels) -> bool:
+    def supports_session(self, subject, channels) -> bool:
         # Behavior alone, or behavior plus regions recorded during the same answers.
         behavior = {c for c in channels if c == 'behavior' or c.startswith('behavior:')}
         recorded = set(channels) - behavior
-        return bool(behavior) and behavior <= self.declared_output_channels(model) and recorded <= {
-            f'neural:{region}' for region in model.region_layer_map}
+        return bool(behavior) and behavior <= self.declared_output_channels(subject) and recorded <= {
+            f'neural:{region}' for region in subject.region_layer_map}
 
-    def participate(self, model, session) -> None:
+    def participate(self, subject, session) -> None:
         requested = set(_drivers.session_outputs(session))
         task = getattr(session, 'task', None)
         if requested != {'behavior'} or (task is not None and task.response is not None):
-            drive_behavior_and_neural_session(model, session)
+            drive_behavior_and_neural_session(subject, session)
         elif getattr(session, 'streaming', False):
-            _drivers.drive_behavior_session_streaming(model, session,
-                                                      on_begin=model._begin_episode)
+            _drivers.drive_behavior_session_streaming(subject, session,
+                                                      on_begin=subject._begin_episode)
         else:
-            _drivers.drive_behavior_session(model, session, on_begin=model._begin_episode)
+            _drivers.drive_behavior_session(subject, session, on_begin=subject._begin_episode)
 
 
-class MotorSessions(_SessionCapability):
+class MotorSessions(Capability):
     """Closed loop: read a row per step, call the policy, answer on its output channels.
 
     ``neural:<region>`` may be requested with the policy's outputs: the regions
@@ -129,30 +123,31 @@ class MotorSessions(_SessionCapability):
     """
 
     identifier = 'motor-sessions'
+    order = _SESSION_ORDER
 
-    def enabled_for(self, model) -> bool:
-        return model._action_fn is not None
+    def enabled_for(self, subject) -> bool:
+        return subject._policy is not None
 
-    def declared_input_channels(self, model):
-        return set(model._policy_inputs)
+    def declared_input_channels(self, subject):
+        return set(subject._policy_inputs)
 
-    def declared_output_channels(self, model):
-        return set(model._policy_outputs)
+    def declared_output_channels(self, subject):
+        return set(subject._policy_outputs)
 
-    def supports_session(self, model, channels) -> bool:
+    def supports_session(self, subject, channels) -> bool:
         channels = set(channels)
-        recorded = (_NEURAL.declared_output_channels(model)
-                    if _NEURAL.enabled_for(model) else set())
-        outputs = set(model._policy_outputs)
+        recorded = (_NEURAL.declared_output_channels(subject)
+                    if _NEURAL.enabled_for(subject) else set())
+        outputs = set(subject._policy_outputs)
         return bool(channels & outputs) and channels <= outputs | recorded
 
-    def participate(self, model, session) -> None:
+    def participate(self, subject, session) -> None:
         requested = _drivers.session_outputs(session)
         regions = [parse_channel(c)[1] for c in requested if parse_channel(c)[0] == 'neural']
         if not regions:
-            _drivers.drive_environment_session(model, session, on_begin=model._begin_episode)
+            _drivers.drive_environment_session(subject, session, on_begin=subject._begin_episode)
             return
-        recorded = _RecordedPolicy(model, session, regions)
+        recorded = _RecordedPolicy(subject, session, regions)
         with recorded:
             _drivers.drive_environment_session(recorded, session, on_begin=recorded.begin)
 
@@ -160,14 +155,14 @@ class MotorSessions(_SessionCapability):
 class _RecordedPolicy:
     """``process(row)`` that also records regions from the forward pass the policy ran."""
 
-    def __init__(self, model, session, regions) -> None:
-        self.model, self.session, self.regions = model, session, regions
-        self.layers = {region: model._behavioral._region_layers(region) for region in regions}
+    def __init__(self, subject, session, regions) -> None:
+        self.subject, self.session, self.regions = subject, session, regions
+        self.layers = {region: subject._behavioral._region_layers(region) for region in regions}
         self.step = 0
         self._stack = ExitStack()
 
     def __enter__(self) -> '_RecordedPolicy':
-        recordings = self.model._behavioral._open_recordings(None, self.layers)
+        recordings = self.subject._behavioral._open_recordings(None, self.layers)
         self.live = {modality: self._stack.enter_context(recording)
                      for modality, recording in recordings.items()}
         return self
@@ -177,13 +172,13 @@ class _RecordedPolicy:
 
     def begin(self) -> None:
         self.step = 0
-        self.model._begin_episode()
+        self.subject._begin_episode()
 
     def process(self, row):
-        outputs = self.model.process(row)
+        outputs = self.subject.process(row)
         trial = {modality: recording.take() for modality, recording in self.live.items()}
         stimuli = pd.DataFrame({'stimulus_id': [f'step_{self.step}']})
-        for region, assembly in self.model._behavioral._trial_regions(
+        for region, assembly in self.subject._behavioral._trial_regions(
                 [trial], stimuli, self.layers).items():
             self.session.respond(StreamEvent(
                 channel=f'neural:{region}', payload=assembly, t_ms=float(self.step),
@@ -192,7 +187,7 @@ class _RecordedPolicy:
         return outputs
 
 
-class InterventionSessions(_SessionCapability):
+class InterventionSessions(Capability):
     """Take an intervention (a ``StateChange``) on each intervention channel; answer on ``perturbation``.
 
     Enabled by ``BrainScoreModel(intervention=...)``. ``apply_state_change`` and
@@ -200,21 +195,22 @@ class InterventionSessions(_SessionCapability):
     """
 
     identifier = 'intervention-sessions'
+    order = _SESSION_ORDER
 
-    def enabled_for(self, model) -> bool:
-        return model._state_change_fn is not None
+    def enabled_for(self, subject) -> bool:
+        return subject._intervention is not None
 
-    def declared_input_channels(self, model):
+    def declared_input_channels(self, subject):
         return set(INTERVENTION_CHANNELS)
 
-    def declared_output_channels(self, model):
+    def declared_output_channels(self, subject):
         return {'perturbation'}
 
-    def supports_session(self, model, channels) -> bool:
+    def supports_session(self, subject, channels) -> bool:
         return set(channels) == {'perturbation'}
 
-    def participate(self, model, session) -> None:
-        _drivers.drive_state_change_session(model, session)
+    def participate(self, subject, session) -> None:
+        _drivers.drive_state_change_session(subject, session)
 
 
 _NEURAL = NeuralSessions()
@@ -222,12 +218,12 @@ for _capability in (_NEURAL, BehaviorSessions(), MotorSessions(), InterventionSe
     register_capability(_capability)
 
 
-def _keeps_history(model) -> bool:
-    """True when the model declares ``memory:trial_history``: only then can a trial see an earlier one."""
-    return 'memory:trial_history' in model.traits
+def _keeps_history(subject) -> bool:
+    """True when the subject declares ``memory:trial_history``: only then can a trial see an earlier one."""
+    return 'memory:trial_history' in subject.traits
 
 
-def drive_behavior_and_neural_session(model, session, driver: str = "interact") -> None:
+def drive_behavior_and_neural_session(subject, session, driver: str = "interact") -> None:
     """Record ``neural:<region>`` while the subject does the session's task.
 
     ``behavior`` is sent too when requested.
@@ -259,10 +255,10 @@ def drive_behavior_and_neural_session(model, session, driver: str = "interact") 
                 f"{unanswered} requested, but the task's response "
                 f"{type(task.response).__name__} answers only on "
                 f"{sorted(given)}; ask for those or change the response.")
-    _drivers.refuse_variance(model, session)
-    model.start_task(task)
+    _drivers.refuse_variance(subject, session)
+    subject.start_task(task)
     # A streaming session reads one trial, answers it and sends its outputs, then
-    # reads the next. Otherwise the inputs are read first. A model without the
+    # reads the next. Otherwise the inputs are read first. A subject without the
     # trait keeps no history, so it can answer the whole table at once; one that
     # keeps history is answered trial by trial so a begin can fall between trials.
     if getattr(session, "streaming", False):
@@ -273,14 +269,14 @@ def drive_behavior_and_neural_session(model, session, driver: str = "interact") 
             raise ValueError("Recording during a task needs stimuli to present.")
         batches = ([(index, _drivers.preserve_stimulus_set_type(stimuli, stimuli.iloc[[index]]))
                     for index in range(len(stimuli))]
-                   if _keeps_history(model) else [(0, stimuli)])
+                   if _keeps_history(subject) else [(0, stimuli)])
     for index, batch in batches:
         if index == 0 or task.trial_memory == 'none':
-            model._begin_episode()
+            subject._begin_episode()
         if task.response is not None:
-            behavior, neural = model._behavioral.respond(batch, answers, regions)
+            behavior, neural = subject._behavioral.respond(batch, answers, regions)
         else:
-            plain, neural = model._behavioral.respond_and_record(batch, regions)
+            plain, neural = subject._behavioral.respond_and_record(batch, regions)
             behavior = {"behavior": plain} if answers else {}
         # A value that is a StreamEvent keeps its meta: a reply's extra data (send_outputs).
         _drivers.send_outputs(session, {channel: behavior[channel] for channel in answers},

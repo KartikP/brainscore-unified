@@ -52,8 +52,8 @@ class TestDeclaredChannelsRun:
             'all-parts', region_layer_map={'IT': 'layer'},
             extractor={'vision': lambda stimuli, layers: None},
             behavioral_readout_layer='layer',
-            action_fn=lambda step: None,
-            state_change_fn=lambda change: (None, lambda: None))
+            policy=lambda step: None,
+            intervention=lambda change: (None, lambda: None))
 
     def test_every_part_declares_registered_channels(self):
         model = self._model()

@@ -80,14 +80,14 @@ def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
         _load_preprocess_images, processor=processor, image_size=224)
     backbone_id = ('random-clip-vit-b-32' if random_init
                    else 'clip-vit-b-32')
-    activations_model = PytorchWrapper(
+    vision_wrapper = PytorchWrapper(
         identifier=f'{combo_identifier}-vision',
         model=clip_model.vision_model,
         preprocessing=preprocessing,
     )
-    activations_model.image_size = 224
-    activations_model._extractor.identifier = backbone_id
-    return preprocessing, activations_model
+    vision_wrapper.image_size = 224
+    vision_wrapper._extractor.identifier = backbone_id
+    return preprocessing, vision_wrapper
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -100,7 +100,7 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     from brainscore.models._multimodal_av_shared import build_audio_wrapper
 
-    preprocessing, activations_model = _build_vision_wrapper(
+    preprocessing, vision_wrapper = _build_vision_wrapper(
         identifier, random_init=random_vision)
     audio_wrapper, _ = build_audio_wrapper(
         identifier, random_init=random_audio)
@@ -113,7 +113,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             for region, layer in REGION_LAYER_MAP.items()
         },
         extractor={
-            'vision': activations_model,
+            'vision': vision_wrapper,
             'audio': audio_wrapper,
         },
         required_modalities={'vision', 'audio'},

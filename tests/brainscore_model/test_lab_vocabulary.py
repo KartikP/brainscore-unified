@@ -34,33 +34,6 @@ def test_a_source_receives_the_response_its_session_collects():
     assert session.collect() == [event]
 
 
-@pytest.mark.parametrize('public,legacy', [
-    ('extractor', 'activations_model'), ('answer', 'generation_fn'),
-    ('policy', 'action_fn'), ('intervention', 'state_change_fn'),
-])
-def test_conflicting_component_spellings_fail_before_execution(public, legacy):
-    with pytest.raises(TypeError, match='not both'):
-        BrainScoreModel(identifier='conflict', **{public: lambda: None, legacy: lambda: None})
-
-
-@pytest.mark.parametrize('public,legacy', [
-    ('answer', 'generation_fn'), ('policy', 'action_fn'), ('intervention', 'state_change_fn'),
-])
-def test_legacy_config_cannot_silently_override_public_component(public, legacy):
-    with pytest.raises(TypeError, match='multiple'):
-        BrainScoreModel(identifier='conflict', capability_config={legacy: lambda: None},
-                        **{public: lambda: None})
-
-
-def test_policy_dispatch_is_identical_with_both_spellings():
-    response = {'motor': np.arange(7, dtype=float)}
-    policy = lambda event: response
-    event = {}
-    new = BrainScoreModel(identifier='policy', policy=policy)
-    old = BrainScoreModel(identifier='policy', action_fn=policy)
-    assert new.process(event) is old.process(event) is response
-
-
 def test_intervention_cleanup_on_reset():
     active = []
     def intervene(change):
@@ -94,22 +67,20 @@ def test_extractor_and_buffered_session_work_across_modalities(modality, column)
     np.testing.assert_array_equal(session.collect().values, np.ones((2, 2)))
 
 
-def test_answer_matches_legacy_behavioral_output():
+def test_answer_gives_one_choice_for_each_stimulus():
     from brainscore_core.model_interface import TaskContext
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-    import xarray as xr
 
     def answer(stimulus_row, instruction, label_set):
         return label_set[0] if stimulus_row.sentence == 'first' else label_set[1]
     stimuli = StimulusSet({'sentence': ['first', 'second'], 'stimulus_id': ['a', 'b']})
     task = TaskContext(task_type='label', instruction='choose', label_set=['yes', 'no'])
-    outputs = []
-    for spelling in ('answer', 'generation_fn'):
-        subject = BrainScoreModel(identifier='answer', supported_modalities={'text'},
-                                  **{spelling: answer})
-        subject.start_task(task)
-        outputs.append(subject.process(stimuli))
-    xr.testing.assert_identical(*outputs)
+    subject = BrainScoreModel(identifier='answer', supported_modalities={'text'}, answer=answer)
+    subject.start_task(task)
+    output = subject.process(stimuli)
+    assert output['stimulus_id'].values.tolist() == ['a', 'b']
+    assert output['raw_answer'].values.tolist() == ['yes', 'no']
+    assert output.values.tolist() == [[1.0, 0.0], [0.0, 1.0]]
 
 
 def test_source_subclasses_can_extend_responses_with_super():
@@ -128,16 +99,14 @@ def test_source_subclasses_can_extend_responses_with_super():
 
 # -- Human-facing guidance names the canonical parameters --------------------
 
-def test_shared_extractor_without_modalities_names_extractor_mapping():
-    with pytest.raises(ValueError, match=r'extractor=\{modality: extractor\}') as error:
+def test_extractor_that_is_not_a_mapping_names_extractor_mapping():
+    with pytest.raises(TypeError, match=r'extractor must be a mapping \{modality: extractor\}'):
         BrainScoreModel(identifier='shared', extractor=lambda stimuli, layers: None)
-    assert 'activations_model' not in str(error.value)
 
 
 def test_non_callable_extractor_names_extractor_signature():
-    with pytest.raises(TypeError, match=r'extractor\(stimuli, layers=\.\.\.\)') as error:
+    with pytest.raises(TypeError, match=r'extractor\(stimuli, layers=\.\.\.\)'):
         BrainScoreModel(identifier='bad', extractor={'vision': 'not callable'})
-    assert 'activations_model' not in str(error.value)
 
 
 def _text_task(**fields):
@@ -148,9 +117,8 @@ def _text_task(**fields):
 def test_forced_generation_without_answer_names_answer_parameter():
     subject = BrainScoreModel(identifier='no-answer', supported_modalities={'text'})
     task = _text_task(instruction='choose', label_set=['yes', 'no'], prefer_path='generation')
-    with pytest.raises(ValueError, match=r'BrainScoreModel\(answer=\.\.\.\)') as error:
+    with pytest.raises(ValueError, match=r'BrainScoreModel\(answer=\.\.\.\)'):
         subject.start_task(task)
-    assert 'generation_fn' not in str(error.value)
 
 
 def test_unviable_behavioral_task_names_answer_parameter():
@@ -158,18 +126,6 @@ def test_unviable_behavioral_task_names_answer_parameter():
     with pytest.raises(ValueError, match='neither fitting_stimuli') as error:
         subject.start_task(_text_task())
     assert 'BrainScoreModel(answer=...)' in str(error.value)
-    assert 'generation_fn' not in str(error.value)
-
-
-def test_deprecated_extraction_callback_warning_points_to_extractor():
-    def callback(model, stimuli, recording_layer=None):
-        return None
-    with pytest.warns(DeprecationWarning) as record:
-        BrainScoreModel(identifier='callback', preprocessors={'vision': callback})
-    messages = [str(w.message) for w in record if 'Extraction callbacks' in str(w.message)]
-    assert len(messages) == 1
-    assert 'extractor={modality: extractor}' in messages[0]
-    assert 'activations_model' not in messages[0]
 
 
 # -- Core guide teaching example ---------------------------------------------

@@ -139,7 +139,7 @@ def test_unversioned_entry_is_logged_and_left_untouched(monkeypatch, isolated_ca
 
 def test_real_text_cache_preserves_values_and_pereira_context(language_pair, isolated_cache, monkeypatch):
     native, _ = language_pair
-    wrapper = native._preprocessors['text']
+    wrapper = native.extractor['text']
     wrapper._backbone_id = 'cache-fixture'
     isolated_cache(wrapper._from_texts_stored)
     calls = []

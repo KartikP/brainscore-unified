@@ -7,7 +7,7 @@ if this gets > 0.5 for balanced binary tasks, the benchmark's scoring
 has a leak somewhere.
 
 Implemented on the UnifiedModel compatibility base.
-It has no preprocessors, no activations, and no logistic readout.
+It has no extractor, no activations, and no logistic readout.
 Benchmarks that use start_task() and process() still work.
 """
 

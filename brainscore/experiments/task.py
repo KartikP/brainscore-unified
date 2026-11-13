@@ -70,10 +70,7 @@ class TaskProtocol(SessionProtocol):
         self.requested_output_channels = frozenset(channels)
 
     def validate(self, subject):
-        missing = self.required_traits - set(subject.traits)
-        if missing:
-            raise ValueError(f'This task needs subject traits {sorted(missing)}; '
-                             f'{subject.identifier!r} declares {sorted(subject.traits) or "none"}.')
+        # The required traits are checked with the channels by the one compatibility rule.
         if self.task.response is not None:
             missing = set(self.task.response.channels) - set(subject.out_channels)
             if missing:

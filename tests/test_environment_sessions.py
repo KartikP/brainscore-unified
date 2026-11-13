@@ -17,7 +17,7 @@ from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 
 
 def subject(policy=greedy_oracle_policy):
-    return BrainScoreModel('grid', action_fn=PolicyWrapper(policy))
+    return BrainScoreModel('grid', policy=PolicyWrapper(policy))
 
 
 def test_action_spec_is_one_shared_definition():
@@ -126,7 +126,7 @@ def test_session_tools_record_applied_actions_and_replay_saved_observations(tmp_
     assert inputs[0].payload == 'begin' and inputs[-1].meta['reason'] in ('terminal', 'truncated')
     assert len(applied) == len(sessions[0].emitted) > 0
     assert all(e.t_ms is None for e in outputs)
-    assert not model._action_fn.history  # SessionProtocol reset after the trial.
+    assert not model._policy.history  # SessionProtocol reset after the trial.
     replay = Experiment(
         subject=subject(), protocol=replay_sessions(result.directory),
         tools=[RecordInputsOutputs()], output_dir=tmp_path/'replay',
@@ -154,8 +154,9 @@ def test_caught_environment_failure_cannot_complete_an_experiment(tmp_path):
             yield session
     with pytest.raises(RuntimeError, match='before episode completion'):
         Experiment(
-            subject=Catches('broken', action_fn=lambda row: {'motor': 0}),
-            protocol=SessionProtocol('broken', factory),
+            subject=Catches('broken', policy=lambda row: {'motor': 0}),
+            protocol=SessionProtocol('broken', factory, required_input_channels=['observation'],
+                                     requested_output_channels=['motor']),
             tools=[RecordInputsOutputs()], output_dir=tmp_path/'broken',
         ).run()
     import json
@@ -172,8 +173,9 @@ def test_early_subject_return_cannot_complete_an_episode(tmp_path):
             yield session
     with pytest.raises(RuntimeError, match='before episode completion'):
         Experiment(
-            subject=Early('early', action_fn=lambda row: {'motor': 0}),
-            protocol=SessionProtocol('grid', factory),
+            subject=Early('early', policy=lambda row: {'motor': 0}),
+            protocol=SessionProtocol('grid', factory, required_input_channels=['observation'],
+                                     requested_output_channels=['motor']),
             tools=[RecordInputsOutputs()], output_dir=tmp_path/'early',
         ).run()
 

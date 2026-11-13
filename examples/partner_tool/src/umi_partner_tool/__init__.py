@@ -22,30 +22,28 @@ class LatencyObserver:
 
 
 class Amplitude(Capability):
+    """A session capability: it answers each signal with its amplitude."""
     identifier = 'partner-amplitude'
     input_channels = {'partner_signal'}
     output_channels = {'partner_amplitude'}
 
-    def enabled_for(self, model):
-        return bool(model.capability_config.get(self.identifier))
+    def enabled_for(self, subject):
+        return bool(subject.capability_config.get(self.identifier))
 
-    def setup(self, model):
+    def setup(self, subject):
         return {'calls': 0}
 
-    def supports_session(self, model, channels):
+    def supports_session(self, subject, channels):
         return set(channels) == self.output_channels
 
-    def participate(self, model, session):
+    def participate(self, subject, session):
+        # The session checks each signal and each answer against the catalog.
+        state = subject.capability_state(self.identifier)
         while (event := session.next_input()) is not None:
-            if self.handles(model, event):
-                session.respond(self.process(model, event))
-
-    def handles(self, model, event, **kwargs):
-        return isinstance(event, StreamEvent) and event.channel == 'partner_signal'
-
-    def process(self, model, event, **kwargs):
-        model.capability_state(self.identifier)['calls'] += 1
-        return StreamEvent('partner_amplitude', float(np.linalg.norm(event.payload)), event.t_ms)
+            if event.channel == 'partner_signal':
+                state['calls'] += 1
+                session.respond(StreamEvent('partner_amplitude',
+                                            float(np.linalg.norm(event.payload)), event.t_ms))
 
 
 def register():

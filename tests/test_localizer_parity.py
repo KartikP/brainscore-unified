@@ -141,7 +141,7 @@ def _stimuli():
 def _model(region_layer_map):
     net = _net()
     return net, BrainScoreModel('parity', model=net, region_layer_map=region_layer_map,
-                                preprocessors={'text': _Extractor(net, _inputs())},
+                                extractor={'text': _Extractor(net, _inputs())},
                                 intervention=build_pytorch_ablation_fn(net))
 
 

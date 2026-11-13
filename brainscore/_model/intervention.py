@@ -36,7 +36,7 @@ class Interventions:
             yield
         finally:
             for handle in handles:
-                _, cleanup = self.owner._state_change_fn(self._changes[handle])
+                _, cleanup = self.owner._intervention(self._changes[handle])
                 self.active_interventions[handle] = cleanup
 
     def reset(self) -> None:
@@ -95,7 +95,7 @@ class Interventions:
             self._changes.pop(handle_id, None)
             return None
 
-        if owner._state_change_fn is None:
+        if owner._intervention is None:
             raise NotImplementedError(
                 f"Subject '{owner.identifier}' has no intervention part. "
                 f"An intervention needs BrainScoreModel(intervention=...), a "
@@ -105,7 +105,7 @@ class Interventions:
             )
 
         require_resolved(state_change)
-        result = owner._state_change_fn(state_change)
+        result = owner._intervention(state_change)
         if (not isinstance(result, tuple) or len(result) != 2
                 or not isinstance(result[0], PerturbationApplied)
                 or not callable(result[1])):

@@ -7,11 +7,11 @@ from brainscore_core.streaming import Session, StreamEvent
 from . import register, LatencyObserver
 
 
-def amplitude(model, signal, t_ms, *sinks):
+def amplitude(subject, signal, t_ms, *sinks):
     """One session: send the signal, return the subject's amplitude response."""
     session = Session([StreamEvent('partner_signal', signal, t_ms)], ('partner_amplitude',))
     with observed(session, _Both(sinks)):
-        model.participate(session)
+        subject.participate(session)
     (response,) = session.emitted
     return response
 

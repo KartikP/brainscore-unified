@@ -393,7 +393,7 @@ class TestAutoRegisterLive:
         # provisional vision map wired
         assert set(bs_model._region_layer_map_dict) == {'V1', 'V2', 'V4', 'IT'}
         assert bs_model._region_layer_map_dict['V1'] == 'encoder.layers.0'
-        assert 'vision' in bs_model._preprocessors
+        assert 'vision' in bs_model.supported_modalities
 
     def test_vision_without_preprocessing_errors(self):
         with pytest.raises(ValueError, match="preprocessing"):
@@ -426,8 +426,7 @@ def test_live_registration_uses_the_documented_extractor_mapping(modality):
         subject = auto_register(
             make_gpt(), identifier='mapping-text', tokenizer=SimpleNamespace(),
         )
-    assert isinstance(subject._activations_model, dict)
-    assert set(subject._activations_model) == {modality}
+    assert set(subject.extractor) == {modality}
     assert subject.supported_modalities == {modality}
 
 

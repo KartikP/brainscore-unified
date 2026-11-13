@@ -5,7 +5,7 @@ The core pattern, from stimulus to binned assembly:
 
 1. Preprocessor expands a clip into individual frames/tokens with
    ``clip_id`` and ``frame_time_ms`` coordinates in the stimulus set.
-2. The activations_model (PytorchWrapper, TextWrapper, etc.) treats each
+2. The extractor (PytorchWrapper, TextWrapper, etc.) treats each
    row as an independent presentation and extracts per-frame activations.
    Timestamps ride through unchanged as presentation coordinates.
 3. After extraction, ``temporal_bin()`` reads ``clip_id`` and

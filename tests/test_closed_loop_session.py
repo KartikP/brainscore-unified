@@ -83,7 +83,7 @@ def _recording_model(net, forward_calls):
         return {'motor': int(scores.argmax())}
 
     return BrainScoreModel('recording-policy', model=net, region_layer_map={'V4': '0'},
-                           preprocessors={'vision': _Extractor()}, policy=policy)
+                           extractor={'vision': _Extractor()}, policy=policy)
 
 
 def test_one_session_yields_motor_and_neural_from_one_forward_pass():

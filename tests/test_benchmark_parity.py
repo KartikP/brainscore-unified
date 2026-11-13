@@ -118,7 +118,7 @@ def _vision_subject(case, route):
                              identifier='synthetic-parity', batch_size=4)
     if route == 'native':
         return BrainScoreModel('synthetic-native', model=model, region_layer_map=mapping,
-                               preprocessors={'vision': wrapper}, visual_degrees=8)
+                               extractor={'vision': wrapper}, visual_degrees=8)
     legacy = ModelCommitment('synthetic-legacy', wrapper, ['1'], region_layer_map=mapping, visual_degrees=8)
     return VisionModelAdapter(legacy) if route == 'adapter' else legacy
 
@@ -155,7 +155,7 @@ def test_harness_rejects_adapter_disguised_as_native(synthetic_benchmarks, langu
 
 def test_harness_detects_missing_native_context(synthetic_benchmarks, language_pair, constant_metric, monkeypatch):
     native, adapter = language_pair
-    wrapper = native._preprocessors['text']
+    wrapper = native.extractor['text']
     def factory(case, route):
         native.reset()
         adapter.reset()

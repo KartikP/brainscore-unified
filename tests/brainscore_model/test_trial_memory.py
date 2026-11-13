@@ -132,7 +132,7 @@ def test_begin_keeps_interventions_and_the_task_and_clears_episode_state():
     model._begin_episode()
     assert model._behavioral.history == []                             # h empty
     assert log == {'policy': 2, 'extractor': 2}
-    assert state['lesion'] and 'h' in model._active_interventions      # w unchanged
+    assert state['lesion'] and 'h' in model._interventions.active_interventions      # w unchanged
     assert model._behavioral.task is task                      # s unchanged
 
 
@@ -157,14 +157,14 @@ def test_replay_keeps_a_lesion_and_clears_the_policy_between_episodes():
         return PerturbationApplied(handle_id='h', target=change.target,
                                    perturbation=change.perturbation, applied_at=0), cleanup
 
-    model = BrainScoreModel('s', None, {}, {}, None, policy=wrapper, intervention=intervention)
+    model = BrainScoreModel('s', policy=wrapper, intervention=intervention)
     apply_state_change(model, StateChange(kind='ablation', target=Selection(layer='x'),
                                           perturbation=Perturbation(kind='zero')))
     steps = [{'observation': {'state': i}} for i in range(3)]
     replay_actions(model, steps, n_actions=2)
     replay_actions(model, steps, n_actions=2)
     assert inner.steps_seen == [0, 1, 2, 0, 1, 2]      # the episode state restarted at each begin
-    assert state['lesion'] and 'h' in model._active_interventions   # the lesion survived both
+    assert state['lesion'] and 'h' in model._interventions.active_interventions   # the lesion survived both
 
 
 class _Benchmark:
@@ -205,7 +205,7 @@ def test_a_lesion_the_caller_applied_is_not_counted_against_the_benchmark():
     apply_state_change(model, StateChange(kind='ablation', target=Selection(layer='x'),
                                           perturbation=Perturbation(kind='zero')))
     score(model, _Benchmark(undo=True), check_mem=False)
-    assert 'h0' in model._active_interventions         # the caller's lesion stays
+    assert 'h0' in model._interventions.active_interventions         # the caller's lesion stays
 
 
 def test_the_record_tracks_handles_applied_and_undone_across_sessions():
@@ -227,6 +227,8 @@ def test_the_experiment_plan_records_traits_and_trial_memory(tmp_path):
     assert plan['subject_traits'] == ['memory:trial_history']
     assert plan['protocol']['config']['trial_memory'] == 'history'
     assert 'memory:trial_history' in plan['protocol']['config']['required_traits']
-    with pytest.raises(ValueError, match='memory:trial_history'):
+    from brainscore_core.compatibility import CompatibilityError
+    # The protocol is checked with the rule score() uses.
+    with pytest.raises(CompatibilityError, match='memory:trial_history'):
         Experiment(subject=_model(None), protocol=protocol, tools=[RecordBehavior()],
                    output_dir=tmp_path / 'run2').validate()

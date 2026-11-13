@@ -84,7 +84,7 @@ def get_model():
         extractor={'vision': wrapper},        # wrapper owns input preparation and recording
         # optional capability slots:
         # answer=..., policy=..., intervention=...,
-        # behavioral_readout_layer=..., backbone_id=...,
+        # behavioral_readout_layer=..., memory=...,
     )
 
 model_registry['your-model'] = get_model
@@ -185,8 +185,10 @@ There are two related extension levels:
 2. **Add a new capability.** In your own package, define typed payloads,
    register their channels with `register_channel`, subclass
    `brainscore.capabilities.Capability` and register it once with
-   `register_capability`. Models opt in through `capability_config`. No core
-   edit is needed.
+   `register_capability`. A capability has one role: it runs sessions
+   (`supports_session`, `participate`) or answers events (`handles`,
+   `process`). Every method takes the model first, named `subject`. Models
+   opt in through `capability_config`. No core edit is needed.
 
 The constructor slots available to model authors are:
 

@@ -15,6 +15,7 @@ def _benchmark():
         'image_label': ['real', 'real', 'pseudo', 'pseudo']})
     benchmark._train_stimuli = None
     benchmark._ceiling = Score(1.0)
+    benchmark._version = 1
     benchmark.prefer_path = 'generation'
     return benchmark
 

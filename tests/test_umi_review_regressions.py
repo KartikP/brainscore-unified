@@ -8,7 +8,7 @@ import torch
 from torch import nn
 
 from brainscore_core.streaming_helpers import apply_state_change
-from brainscore import BrainScoreModel, CompositeSelector, RandomSelection
+from brainscore import BrainScoreModel, CompositeSelector, LayerSelector, RandomSelection
 from brainscore_core.model_interface import TaskContext, StateChange, Perturbation
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuroidAssembly, BehavioralAssembly,
@@ -146,7 +146,7 @@ def language_pair(monkeypatch):
     legacy = HuggingfaceSubject('tiny-legacy', {'language_system': 'transformer.h.0'},
                                model=net, tokenizer=tokenizer)
     native = BrainScoreModel('tiny-new', region_layer_map={'language_system': 'transformer.h.0'},
-                             preprocessors={'text': wrapper})
+                             extractor={'text': wrapper})
     adapter = LanguageModelAdapter(legacy)
     yield native, adapter
     native.reset()
@@ -182,7 +182,10 @@ def test_explicit_passage_changes_context_and_legacy_digest_is_preserved(languag
     assert not np.allclose(passage.values[1], independent.values[1])
     np.testing.assert_allclose(adapter.digest_text(list(stimuli.sentence))['neural'].values,
                                passage.values, atol=1e-6)
-    np.testing.assert_allclose(native.digest_text(list(stimuli.sentence))['neural'].values,
+    from brainscore_core.legacy_facade import LegacyBenchmarkFacade
+    facade = LegacyBenchmarkFacade(native)   # what score() gives a legacy benchmark
+    facade.start_neural_recording('language_system')
+    np.testing.assert_allclose(facade.digest_text(list(stimuli.sentence))['neural'].values,
                                passage.values, atol=1e-6)
 
 
@@ -199,12 +202,14 @@ def test_language_reset_clears_real_wrapped_measurements(language_pair):
 
 @pytest.mark.parametrize('composite', [False, True])
 def test_shared_layer_names_keep_towers_and_regions_separate(composite):
-    selector = CompositeSelector((('block', (1,)),)) if composite else 'block'
+    def selector(modality):
+        if composite:
+            return CompositeSelector((('block', (1,)),), modality=modality)
+        return LayerSelector(name='block', modality=modality)
     model = BrainScoreModel('two-towers',
-        region_layer_map={'IT': selector, 'language_system': selector},
-        region_modality_map={'IT': 'vision', 'language_system': 'text'},
-        preprocessors={'vision': _Extractor(np.ones((4, 2))),
-                       'text': _Extractor(np.full((4, 2), 9.0))})
+        region_layer_map={'IT': selector('vision'), 'language_system': selector('text')},
+        extractor={'vision': _Extractor(np.ones((4, 2))),
+                   'text': _Extractor(np.full((4, 2), 9.0))})
     stimuli = _stimuli()
     stimuli['image_path'] = ['unused.png'] * 4
     model.start_recording(['IT', 'language_system'])
@@ -239,7 +244,7 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
                       [3, 1, 3, 3, 0], [3, 2, 3, 3, 1]], dtype=torch.float32)
     model = BrainScoreModel('subset', model=net,
         region_layer_map={'VWFA': CompositeSelector(tuple((layer, (4, 1)) for layer in layers))},
-        preprocessors={'text': _Extractor(lambda: net.L(x).detach().numpy())},
+        extractor={'text': _Extractor(lambda: net.L(x).detach().numpy())},
         intervention=build_pytorch_ablation_fn(net))
     localizer = InducedDyslexia(n_units=1, channels=('text',),
         reading_benchmark=object(), localizer_stimuli=_stimuli())
@@ -261,14 +266,14 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
 def test_reset_and_readout_clear_composite_recording():
     model = BrainScoreModel('composite-reset',
         region_layer_map={'IT': CompositeSelector((('L', (0,)),))},
-        preprocessors={'text': _Extractor(np.ones((4, 2)))}, behavioral_readout_layer='L')
+        extractor={'text': _Extractor(np.ones((4, 2)))}, behavioral_readout_layer='L')
     model.start_recording('IT', time_bins=[(0, 1)])
     # Readout extraction must also work while composite recording is configured.
     task = TaskContext('probabilities', fitting_stimuli=_stimuli(), prefer_path='readout')
     model.start_task(task)
     assert isinstance(model.process(_stimuli()), BehavioralAssembly)
     model.reset()
-    assert not model._composite_recording and model._time_bins is None
+    assert not model._recorder.composite_recording and model._recorder.time_bins is None
     model.start_task(task)
     assert isinstance(model.process(_stimuli()), BehavioralAssembly)
 
@@ -277,7 +282,7 @@ def test_reset_and_readout_clear_composite_recording():
 def test_model_reset_clears_policy_history(bound_method):
     from brainscore.model_helpers.policy_wrapper import PolicyWrapper
     wrapper = PolicyWrapper(lambda observation, history: len(history))
-    model = BrainScoreModel('policy', action_fn=wrapper.__call__ if bound_method else wrapper)
+    model = BrainScoreModel('policy', policy=wrapper.__call__ if bound_method else wrapper)
     assert model.process({'observation': {}}) == {'motor': 0}
     model.reset()
     assert model.process({'observation': {}}) == {'motor': 0}
@@ -374,13 +379,15 @@ def test_provider_reset_attempts_remaining_providers_after_failure():
     class Provider:
         def __init__(self, fail=False):
             self.fail, self.calls = fail, 0
+        def __call__(self, *args, **kwargs):
+            return None
         def reset(self):
             self.calls += 1
             if self.fail:
                 raise ValueError('reset failed')
     first, second = Provider(True), Provider()
-    model = BrainScoreModel('providers', action_fn=first, generation_fn=second,
-                            preprocessors={'text': second})
+    model = BrainScoreModel('providers', policy=first, answer=second,
+                            extractor={'text': second})
     with pytest.raises(RuntimeError, match='not clean'):
         model.reset()
     assert first.calls == second.calls == 1

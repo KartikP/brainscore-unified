@@ -46,6 +46,7 @@ from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response
+from brainscore.benchmarks._score import benchmark_score
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -265,9 +266,8 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         ceiling_value = float(self.ceiling)
         ceiled = raw_accuracy / ceiling_value
 
-        score = Score(ceiled)
-        score.attrs['raw'] = Score(raw_accuracy)
-        score.attrs['ceiling'] = ceiling_value
+        score = benchmark_score(self, ceiled, raw=raw_accuracy, metric='accuracy',
+                                normalized=True)
         score.attrs['n_test_stimuli'] = len(stim_ids)
         score.attrs['n_invalid_answers'] = int(invalid.sum())
         score.attrs['requested_behavioral_path'] = self.prefer_path

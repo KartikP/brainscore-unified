@@ -22,16 +22,16 @@ class TestUnions:
 class TestProcessRow:
     def test_routes_to_policy_returning_outputs(self):
         agent = BrainScoreModel(
-            'responder', None, {}, {}, None,
+            'responder',
             policy=lambda row: {'text': f"reply<{row['text']}>"})
         assert agent.process({'text': 'ping'}) == {'text': 'reply<ping>'}
 
     def test_no_policy_raises(self):
-        model = BrainScoreModel('m', None, {}, {}, None)
+        model = BrainScoreModel('m')
         with pytest.raises(NotImplementedError, match='policy'):
             model.process({'text': 'x'})
 
     def test_bad_return_type_raises(self):
-        agent = BrainScoreModel('a', None, {}, {}, None, policy=lambda row: 'raw string')
+        agent = BrainScoreModel('a', policy=lambda row: 'raw string')
         with pytest.raises(TypeError, match='mapping of output channel'):
             agent.process({'text': 'x'})

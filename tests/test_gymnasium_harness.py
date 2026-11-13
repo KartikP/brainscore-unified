@@ -15,8 +15,8 @@ from brainscore.harnesses.gymnasium_harness import play_gym_episode, random_gym_
 
 
 def _random_model():
-    return BrainScoreModel('gym-random', None, {}, {}, None,
-                           action_fn=PolicyWrapper(random_gym_policy(0), max_history=0))
+    return BrainScoreModel('gym-random',
+                           policy=PolicyWrapper(random_gym_policy(0), max_history=0))
 
 
 def test_play_gym_episode_runs_and_reports():

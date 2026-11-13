@@ -85,6 +85,7 @@ from brainscore.metrics.encoding import (
     summarize,
 )
 from brainscore_core.metrics import per_unit_pearson
+from brainscore.benchmarks._score import benchmark_score
 from ._util import read_stimulus_ids, record_clips, record_frames_per_clip
 
 
@@ -142,6 +143,15 @@ def _extract_frame_with_cv2(video_path, time_ms: float, frames_dir: Path) -> str
     from PIL import Image
     Image.fromarray(frame).save(out_path)
     return str(out_path)
+
+
+def _ceiling_measured(benchmark) -> bool:
+    """Whether a Lahner2024 variant normalizes by a measured ceiling.
+
+    A variant built without a ceiling keeps ``Score(1.0)`` and reports the raw
+    correlation; only a variant given a measured ceiling normalizes.
+    """
+    return float(benchmark.ceiling) != 1.0
 
 
 class Lahner2024BOLDMoments(BenchmarkBase):
@@ -320,7 +330,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         to the scalar path and nothing changes for them.
         """
         import numpy as _np
-        if float(self.ceiling) == 1.0:
+        if not _ceiling_measured(self):
             return None
         rel = _np.asarray(self._split_half_reliability(), dtype=float)
         if mask is not None:
@@ -449,18 +459,22 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         # the same page incomparable. Prefer the per-voxel form whenever the reliability
         # vector is available (it always is on the ROI variants, which already compute it
         # to build the mask); fall back to the scalar only if it is not.
+        # The scalar path is taken only by the variants that keep ceiling=1.0, so
+        # only the per-voxel path normalizes.
         ceiling_vec = self._per_voxel_ceiling(mask)
         if ceiling_vec is not None:
             import numpy as _np
             normalized = _np.asarray(per_voxel_r, dtype=float) / ceiling_vec
-            score = Score(float(_np.nanmedian(normalized)))
-            score.attrs['ceiling_aggregation'] = 'per_voxel'
-            score.attrs['ceiling'] = float(_np.nanmedian(ceiling_vec))
+            score = benchmark_score(
+                self, float(_np.nanmedian(normalized)), raw=median_r,
+                metric='median_per_voxel_pearson_r', normalized=True,
+                ceiling=Score(float(_np.nanmedian(ceiling_vec))),
+                ceiling_aggregation='per_voxel')
         else:
-            score = Score(median_r / float(self.ceiling))
-            score.attrs['ceiling_aggregation'] = 'scalar'
-            score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
-        score.attrs['raw'] = Score(median_r)
+            score = benchmark_score(
+                self, median_r / float(self.ceiling), raw=median_r,
+                metric='median_per_voxel_pearson_r', normalized=False,
+                ceiling_aggregation='scalar')
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
         score.attrs['per_voxel_r'] = per_voxel_r   # exposed for bootstrap CIs

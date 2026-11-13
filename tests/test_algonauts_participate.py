@@ -121,7 +121,7 @@ REGION_MAPS = {
 @pytest.mark.parametrize('region_map', REGION_MAPS.values(), ids=REGION_MAPS.keys())
 def test_old_path_and_participate_give_identical_bands(benchmark, region_map):
     model = BrainScoreModel('synthetic', region_layer_map=region_map,
-                            preprocessors={'vision': _Extractor()})
+                            extractor={'vision': _Extractor()})
     regions = sorted(region_map)
     bands = benchmark._record_bands(model, _frames(), regions)
     for region in regions:

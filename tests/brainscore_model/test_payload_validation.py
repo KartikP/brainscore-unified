@@ -6,7 +6,7 @@ from brainscore import BrainScoreModel
 
 
 def _agent(seen):
-    return BrainScoreModel('agent', None, {}, {}, None,
+    return BrainScoreModel('agent',
                            policy=lambda row: seen.append(row) or {'motor': np.zeros(7)})
 
 

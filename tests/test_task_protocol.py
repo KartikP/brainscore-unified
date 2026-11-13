@@ -10,6 +10,7 @@ import pytest
 import torch
 
 from brainscore.brainscore_model import BrainScoreModel
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.model_interface import TaskContext
 from brainscore.selection import LayerSelector
@@ -127,7 +128,7 @@ def test_a_run_with_an_intervention_is_recorded_and_replayed(tmp_path):
     unchanged = Experiment(subject=subject, protocol=replay_sessions(original.directory),
                            tools=[RecordInputsOutputs()], output_dir=tmp_path / 'no-intervention').run()
     assert not compare_outputs(original.directory, unchanged.directory)['equal']
-    assert not net.silenced and subject._active_interventions == {}
+    assert not net.silenced and subject._interventions.active_interventions == {}
 
 
 def test_passive_task_records_viewing_and_refuses_behavior(tmp_path):
@@ -164,7 +165,7 @@ def test_recorder_for_an_undeclared_region_fails_before_running(tmp_path):
     net = Net()
     experiment = Experiment(subject=_subject(net), protocol=TaskProtocol(STIMULI, TASK),
                             tools=[RecordNeural(['IT'])], output_dir=tmp_path / 'run')
-    with pytest.raises(ValueError, match='neural:IT'):
+    with pytest.raises(CompatibilityError, match='neural:IT'):
         experiment.run()
     assert net.passes == 0
 
@@ -412,7 +413,7 @@ def test_a_memory_task_rejects_a_subject_without_memory(tmp_path):
     forgets = BrainScoreModel(identifier='forgets', supported_modalities={'text'}, reply=lambda p: 'no')
     protocol = TaskProtocol(STIMULI, TaskContext(response=Choice(['yes', 'no'])),
                             required_traits={'memory:trial_history'})
-    with pytest.raises(ValueError, match='memory:trial_history'):
+    with pytest.raises(CompatibilityError, match='memory:trial_history'):
         Experiment(subject=forgets, protocol=protocol, tools=[RecordBehavior()],
                    output_dir=tmp_path / 'x').validate()
 
@@ -492,9 +493,9 @@ def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
 
 
 @pytest.mark.parametrize('mistake, expected', [
-    ('output', "cannot produce requested outputs ['neural:IT']"),
-    ('input', "takes in none of the protocol inputs ['vision:image']"),
-    ('required', "requires inputs absent from the protocol ['vision:image']"),
+    ('output', "cannot produce output channels requested by benchmark 'task': {'neural:IT'}"),
+    ('input', "takes in none of the inputs benchmark 'task' sends: {'vision:image'}"),
+    ('required', "hard-requires input channels {'vision:image'}"),
 ])
 def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, expected):
     calls = []
@@ -509,12 +510,12 @@ def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, ex
     experiment = Experiment(subject=subject, protocol=TaskProtocol(stimuli, task),
                             tools=[RecordNeural(['IT'])] if mistake == 'output' else [RecordBehavior()],
                             output_dir=tmp_path / 'bad')
-    with pytest.raises(ValueError) as caught:
+    # The experiment uses the rule score() uses (core check_channel_compatibility).
+    with pytest.raises(CompatibilityError) as caught:
         experiment.run()
     message = str(caught.value)
     assert expected in message
     assert "Subject 'reader'" in message
-    assert 'in_channels=' in message and 'out_channels=' in message
     assert calls == []
     assert not experiment.output_dir.exists()
 
@@ -704,3 +705,40 @@ def test_an_answer_part_cannot_serve_a_raw_text_choice():
     with pytest.raises(ValueError, match='cannot give a Choice answer'):
         model.participate(session)
     assert calls == []
+
+
+@pytest.mark.parametrize('declares_control', [False, True])
+def test_an_experiment_and_a_benchmark_agree_on_which_pairs_fit(declares_control):
+    """A protocol is checked with the rule score() uses, including trial history and control."""
+    from types import SimpleNamespace
+    from brainscore_core.compatibility import check_compatibility
+    from brainscore_core.contract import Subject
+
+    class Remembers(Subject):
+        identifier = 'remembers'
+        in_channels = frozenset({'text', 'control'} if declares_control else {'text'})
+        out_channels = frozenset({'behavior'})
+        traits = frozenset({'memory:trial_history'})
+
+        def participate(self, session):
+            pass
+
+        def reset(self):
+            pass
+
+    from brainscore.experiments import SessionProtocol
+    protocol = SessionProtocol('memory-check', lambda repetition: None,
+                               required_input_channels=['text'],
+                               requested_output_channels=['behavior'])
+    benchmark = SimpleNamespace(identifier='memory-check', required_input_channels={'text'},
+                                requested_output_channels={'behavior'})
+    if declares_control:
+        protocol.validate(Remembers())
+        assert protocol.describe()['compatibility'] == \
+            check_compatibility(Remembers(), benchmark).as_attrs()
+    else:
+        # Trial history without control fails both ways (the old protocol rule let it pass).
+        with pytest.raises(CompatibilityError, match='control'):
+            check_compatibility(Remembers(), benchmark)
+        with pytest.raises(CompatibilityError, match='control'):
+            protocol.validate(Remembers())

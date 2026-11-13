@@ -32,14 +32,11 @@ class _FakeActivationsModel:
 
 class _FakeOwner:
     def __init__(self, perturbed):
-        self._activations_model = _FakeActivationsModel()
-        self._extractors = {'vision': self._activations_model}
+        self.vision_extractor = _FakeActivationsModel()
+        self._extractors = {'vision': self.vision_extractor}
         from types import SimpleNamespace
         self._interventions = SimpleNamespace(
             active_interventions={'h1': (lambda: None)} if perturbed else {})
-        self._preprocessors = {}
-        self._model = None
-        self._recording_layer = None
 
 
 def _clean_env():
@@ -52,7 +49,7 @@ def test_cache_bypassed_while_perturbed():
     out = InputDispatcher(owner).extract_for_modality('stim', 'vision', ['layer'])
     assert out == 'features'
     # cache was disabled DURING the perturbed extraction
-    assert owner._activations_model.seen_disable == '1'
+    assert owner.vision_extractor.seen_disable == '1'
     # and restored (removed) afterwards
     assert os.environ.get('RESULTCACHING_DISABLE') is None
 
@@ -62,7 +59,7 @@ def test_cache_untouched_when_not_perturbed():
     owner = _FakeOwner(perturbed=False)
     InputDispatcher(owner).extract_for_modality('stim', 'vision', ['layer'])
     # normal path: cache flag never set
-    assert owner._activations_model.seen_disable is None
+    assert owner.vision_extractor.seen_disable is None
     assert os.environ.get('RESULTCACHING_DISABLE') is None
 
 
@@ -71,7 +68,7 @@ def test_prior_disable_flag_is_restored():
     try:
         owner = _FakeOwner(perturbed=True)
         InputDispatcher(owner).extract_for_modality('stim', 'vision', ['layer'])
-        assert owner._activations_model.seen_disable == '1'
+        assert owner.vision_extractor.seen_disable == '1'
         assert os.environ.get('RESULTCACHING_DISABLE') == 'some.module'  # restored
     finally:
         _clean_env()

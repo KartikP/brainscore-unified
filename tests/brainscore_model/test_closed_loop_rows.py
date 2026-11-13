@@ -47,7 +47,7 @@ def _make_model(policy=None):
         identifier='test-embodied-policy',
         model=None,
         region_layer_map={},
-        preprocessors={'vision': lambda x: x},  # token preprocessor; unused
+        supported_modalities={'vision'},
         policy=policy,
         policy_inputs=('vision:image', 'proprioception', 'instruction'),
     )
@@ -105,40 +105,3 @@ class TestMultiStepRollout:
                      for i in range(5)]
         assert len(responses) == 5
         assert all('motor' in r for r in responses)
-
-
-# -- Composed dispatch table (register_input_handler) -------------------------
-
-class _FakeEvent:
-    """A brand-new input-event type, defined entirely outside core."""
-    pass
-
-
-def test_register_input_handler_routes_new_type():
-    """A new IO type routes to a registered handler WITHOUT editing process();
-    the table is the extension seam. Registration is copy-on-write per class."""
-    class _ModelWithFake(BrainScoreModel):
-        def _handle_fake(self, ev):
-            return f"handled:{type(ev).__name__}"
-    _ModelWithFake.register_input_handler(_FakeEvent, '_handle_fake')
-    sub = _ModelWithFake(identifier='fake', model=None, region_layer_map={},
-                         preprocessors={'vision': lambda x: x})
-    assert sub.process(_FakeEvent()) == 'handled:_FakeEvent'
-    # copy-on-write: the base class table is untouched.
-    assert not any(t is _FakeEvent for t, _ in BrainScoreModel._INPUT_HANDLERS)
-
-
-def test_register_input_handler_before_precedence():
-    """`before=` inserts ahead of an existing entry so it wins dispatch."""
-    from collections.abc import Mapping
-
-    class _ModelB(BrainScoreModel):
-        def _handle_specific(self, ev):
-            return 'specific'
-    _ModelB.register_input_handler(Mapping, '_handle_specific', before=Mapping)
-    sub = _ModelB(identifier='before', model=None, region_layer_map={},
-                  preprocessors={'vision': lambda x: x})
-    assert sub.process(_droid_row()) == 'specific'
-    # base dispatch is still the default for an un-subclassed model.
-    base = _make_model(policy=_droid_policy)
-    assert 'motor' in base.process(_droid_row())

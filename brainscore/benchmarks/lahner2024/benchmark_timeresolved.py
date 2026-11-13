@@ -95,7 +95,9 @@ from brainscore.data.lahner2024 import MOTION_COLUMNS
 from .benchmark import (
     BIBTEX,
     Lahner2024BOLDMoments,        # parent class — provides _videos_stimulus_set
+    _ceiling_measured,
 )
+from brainscore.benchmarks._score import benchmark_score
 from ._util import read_stimulus_ids, record_clips, record_frames_per_clip
 
 
@@ -302,9 +304,9 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         median_r = float(np.median(per_voxel_r_finite))
         mean_r = float(np.mean(per_voxel_r_finite))
 
-        score = Score(median_r / float(self.ceiling))
-        score.attrs['raw'] = Score(median_r)
-        score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
+        score = benchmark_score(
+            self, median_r / float(self.ceiling), raw=median_r,
+            metric='median_per_voxel_pearson_r', normalized=_ceiling_measured(self))
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
         score.attrs['n_runs'] = n_runs
@@ -328,8 +330,8 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
 
         Additive score attrs; they do not change any number.
         """
+        # benchmark_version is a common attribute, written by benchmark_score.
         attrs = dict(METHOD_ATTRS)
-        attrs['benchmark_version'] = int(self.version)
         attrs['event_key'] = EVENT_KEY_BY_VERSION[self.version]
         attrs['known_defects'] = KNOWN_DEFECTS_BY_VERSION[self.version]
         attrs['feature_projection_protocol'] = (

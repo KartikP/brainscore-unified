@@ -3,12 +3,12 @@ import pytest
 from brainscore import BrainScoreModel
 
 
-def test_brainscore_model_gets_channel_identity_from_preprocessors():
+def test_brainscore_model_gets_channel_identity_from_extractors():
     model = BrainScoreModel(
         identifier="brain-score-model",
         model=None,
         region_layer_map={"IT": "layer4"},
-        preprocessors={"vision": lambda *args, **kwargs: None},
+        extractor={"vision": lambda *args, **kwargs: None},
         behavioral_readout_layer="layer4",
     )
 

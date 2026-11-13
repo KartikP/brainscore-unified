@@ -29,6 +29,8 @@ import os
 
 import numpy as np
 import pytest
+
+from brainscore_core.compatibility import CompatibilityError
 import torch
 
 from brainscore.experiments import (
@@ -144,7 +146,7 @@ def test_valid_declarations_run(tmp_path, protocol):
 
 
 @pytest.mark.parametrize('case, error', [
-    ('missing channel', ValueError),
+    ('missing channel', CompatibilityError),
     ('missing tool provider', ValueError),
     ('unknown target', ValueError),
     ('wrong tool order', ValueError),

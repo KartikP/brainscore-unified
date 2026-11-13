@@ -58,6 +58,7 @@ from brainscore.data.algonauts2025 import (
     stimulus_set_identifier,
 )
 
+from brainscore.benchmarks._score import benchmark_score, not_estimated
 from .scoring import PENALTY_PROTOCOL, PROJECTION_PROTOCOL, fit_predict_banded, score_banded
 
 
@@ -247,13 +248,6 @@ def _features_in_order(response, stimuli):
     return _as_features(response)
 
 
-def _not_estimated() -> Score:
-    """No ceiling is measured for this benchmark; the score is the raw correlation."""
-    ceiling = Score(float('nan'))
-    ceiling.attrs['status'] = 'not_estimated'
-    return ceiling
-
-
 class Algonauts2025(BenchmarkBase):
     """Algonauts 2025 encoding benchmark for one participant and one split."""
 
@@ -345,7 +339,7 @@ class Algonauts2025(BenchmarkBase):
                         f'{self._SPLIT_SUFFIX[split]}{self._CHANNEL_SUFFIX[channels]}'),
             version=2,
             parent='naturalistic',
-            ceiling=_not_estimated(),
+            ceiling=not_estimated(),   # the score is the raw correlation
             bibtex=BIBTEX,
         )
 
@@ -978,11 +972,8 @@ class Algonauts2025(BenchmarkBase):
         finite = per_parcel_r[~np.isnan(per_parcel_r)]
         median_r = float(np.median(finite))
         # No ceiling is measured: the score is the raw median correlation.
-        score = Score(median_r)
-        score.attrs.update(
-            raw=Score(median_r),
-            normalized=False,
-            ceiling_status='not_estimated',
+        score = benchmark_score(
+            self, median_r, raw=median_r, normalized=False,
             metric='median_per_parcel_pearson_r',
             mean_r=float(np.mean(finite)),
             n_parcels_scored=int(len(finite)),

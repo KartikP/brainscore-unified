@@ -7,14 +7,6 @@ import xarray as xr
 from brainscore import BrainScoreModel, CompositeSelector
 
 
-def make_stub_preprocessor(return_value='default_output'):
-    """A 'vision' preprocessor placeholder; the activations_model does the
-    real extraction, so this is only here to register the modality."""
-    def preprocessor(model, stimuli, *, recording_layer=None, **kwargs):
-        return return_value
-    return preprocessor
-
-
 class StubStimulusSet:
     """Minimal stand-in for StimulusSet with column names."""
 
@@ -48,8 +40,7 @@ def _model(region_layer_map, units_per_layer=4):
     return BrainScoreModel(
         identifier='composite-test', model=None,
         region_layer_map=region_layer_map,
-        preprocessors={'vision': make_stub_preprocessor()},
-        activations_model=_MultiUnitActivations(units_per_layer),
+        extractor={'vision': _MultiUnitActivations(units_per_layer)},
     )
 
 
@@ -81,8 +72,8 @@ class TestCompositeMapping:
         sel = CompositeSelector(layers=(('layer.5', None), ('layer.8', None)))
         m = _model({'Vc': sel})
         m.start_recording('Vc')
-        assert m._composite_recording is True
-        assert m._recording_layers == ['layer.5', 'layer.8']
+        assert m._recorder.composite_recording is True
+        assert m._recorder.recording_layers == ['layer.5', 'layer.8']
 
     def test_composite_all_units(self):
         sel = CompositeSelector(layers=(('layer.5', None), ('layer.8', None)))

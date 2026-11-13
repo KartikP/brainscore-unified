@@ -10,24 +10,24 @@ class BehavioralReadoutCapability(Capability):
     identifier = 'behavioral-readout'
     order = 200
 
-    def enabled_for(self, model) -> bool:
+    def enabled_for(self, subject) -> bool:
         return (
-            model._behavioral.readout_classifier is not None
-            and model._behavioral.task is not None
-            and model._requires_behavioral_readout(model._behavioral.task.task_type)
+            subject._behavioral.readout_classifier is not None
+            and subject._behavioral.task is not None
+            and subject._requires_behavioral_readout(subject._behavioral.task.task_type)
         )
 
-    def handles(self, model, event, **kwargs) -> bool:
-        del model, kwargs
+    def handles(self, subject, event, **kwargs) -> bool:
+        del subject, kwargs
         try:
             event.columns
         except AttributeError:
             return False
         return True
 
-    def process(self, model, stimuli, **kwargs):
+    def process(self, subject, stimuli, **kwargs):
         del kwargs
-        return model._predict_probabilities(stimuli)
+        return subject._predict_probabilities(stimuli)
 
 
 register_capability(BehavioralReadoutCapability())

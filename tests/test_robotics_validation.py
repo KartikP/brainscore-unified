@@ -66,7 +66,7 @@ class _Policy:
 
 def _subject(policy):
     from brainscore import BrainScoreModel
-    return BrainScoreModel('s', None, {}, {}, None, policy=policy)
+    return BrainScoreModel('s', policy=policy)
 
 
 @pytest.mark.parametrize('field,value,message', [

@@ -173,7 +173,7 @@ def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_pat
     )
     subject = BrainScoreModel(
         identifier='spatial-cnn',
-        activations_model={'vision': wrapper},
+        extractor={'vision': wrapper},
         region_layer_map={'IT': '0'},
     )
     selected = FunctionalSelection(
@@ -196,8 +196,9 @@ def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_pat
     assert not network[0]._forward_hooks
 
 
-def test_experiment_warns_about_unregistered_channels_before_running():
-    from brainscore_core.compatibility import CompatibilityWarning, CompatibilityError
+def test_experiment_refuses_unregistered_channels_as_scoring_does():
+    """An experiment uses the compatibility rule of score(): a channel must be registered."""
+    from brainscore_core.compatibility import CompatibilityError
     from brainscore_core.contract import Subject
 
     class Exploratory(Subject):
@@ -213,7 +214,7 @@ def test_experiment_warns_about_unregistered_channels_before_running():
         identifier='exploratory', session_factory=lambda repetition: None,
         required_input_channels=['unregistered_input'], requested_output_channels=['behavior'],
     )
-    with pytest.warns(CompatibilityWarning, match='benchmark scoring requires'):
+    with pytest.raises(CompatibilityError, match="unknown channel 'unregistered_input'"):
         protocol.validate(subject)
     subject.in_channels = {'behavior'}
     with pytest.raises(CompatibilityError, match='registry marks'):

@@ -1,15 +1,31 @@
 """Capability extension contract for BrainScoreModel."""
 
-from abc import ABC, abstractmethod
 from typing import Any, Dict
 
 
-class Capability(ABC):
-    """Self-contained BrainScoreModel behavior.
+class Capability:
+    """One ability of a BrainScoreModel, with one role.
 
-    A capability owns one dispatch path plus any per-model setup/state it
-    needs. New capabilities subclass this contract and register themselves;
-    the BrainScoreModel host and Subject ABC stay unchanged.
+    A capability runs sessions, or it answers events; it does not do both.
+
+    - A session capability claims the outputs a session requests
+      (``supports_session``) and runs that session (``participate``);
+      ``subject.participate(session)`` reaches it. A capability added from
+      another package normally takes this role.
+    - An event capability claims one event (``handles``) and answers it
+      (``process``). The built-in session capabilities reach these through the
+      session drivers, which call the subject's ``process``.
+
+    Implement the pair for the role; the other pair declines by default. One
+    registry holds both roles and tries them in ``order``, lower first, ties by
+    ``identifier``. The built-in event capabilities have orders 50 to 1000 and
+    the built-in session capabilities 10000, so an added capability (default
+    1000) is tried before a built-in one that claims the same outputs.
+
+    Every method takes the subject (the ``BrainScoreModel``) first. Per-subject
+    state comes from ``setup`` and is read back with
+    ``subject.capability_state(identifier)``; settings come from
+    ``subject.capability_config``.
     """
 
     identifier: str
@@ -17,49 +33,53 @@ class Capability(ABC):
     input_channels = frozenset()
     output_channels = frozenset()
 
-    def declared_input_channels(self, model):
-        """Input channels this capability adds for ``model``."""
-        del model
-        return set(self.input_channels)
-
-    def declared_output_channels(self, model):
-        """Output channels this capability adds for ``model``."""
-        del model
-        return set(self.output_channels)
-
-    def reset(self, model, state) -> None:
-        """Release experiment state. Retain configuration needed by later calls."""
-        state.clear()
-
-    def supports_session(self, model, channels) -> bool:
-        """Opt into a complete requested output combination before execution."""
-        return False
-
-    def participate(self, model, session) -> None:
-        """Execute a session accepted by supports_session."""
-        raise NotImplementedError(self.identifier)
-
-
-    def setup(self, model) -> Dict[str, Any]:
-        """Return this capability's initial per-model state.
-
-        The registry stores it before dispatch; read it back in ``handles`` /
-        ``process`` with ``model.capability_state(self.identifier)``.
-        """
-        del model
-        return {}
-
-    def enabled_for(self, model) -> bool:
-        """Whether this capability should be considered for ``model``."""
-        del model
+    def enabled_for(self, subject) -> bool:
+        """Whether this capability is considered for ``subject``."""
+        del subject
         return True
 
-    @abstractmethod
-    def handles(self, model, event, **kwargs) -> bool:
-        """Return True when this capability should process ``event``."""
-        ...
+    def declared_input_channels(self, subject):
+        """Input channels this capability adds for ``subject``."""
+        del subject
+        return set(self.input_channels)
 
-    @abstractmethod
-    def process(self, model, event, **kwargs):
-        """Process ``event`` for ``model``."""
-        ...
+    def declared_output_channels(self, subject):
+        """Output channels this capability adds for ``subject``."""
+        del subject
+        return set(self.output_channels)
+
+    def setup(self, subject) -> Dict[str, Any]:
+        """Return this capability's initial per-subject state.
+
+        The registry stores it before the capability first runs; read it back
+        with ``subject.capability_state(self.identifier)``.
+        """
+        del subject
+        return {}
+
+    def reset(self, subject, state) -> None:
+        """Release experiment state. Retain configuration needed by later calls."""
+        del subject
+        state.clear()
+
+    # --- session role ---------------------------------------------------
+
+    def supports_session(self, subject, channels) -> bool:
+        """Claim a complete requested output combination before any input is read."""
+        del subject, channels
+        return False
+
+    def participate(self, subject, session) -> None:
+        """Run a session this capability claimed with ``supports_session``."""
+        raise NotImplementedError(self.identifier)
+
+    # --- event role -----------------------------------------------------
+
+    def handles(self, subject, event, **kwargs) -> bool:
+        """Claim ``event``, which the subject's ``process`` received."""
+        del subject, event, kwargs
+        return False
+
+    def process(self, subject, event, **kwargs):
+        """Answer an event this capability claimed with ``handles``."""
+        raise NotImplementedError(self.identifier)

@@ -29,6 +29,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidA
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.streaming_helpers import neural_response
 from brainscore import benchmark_registry
+from brainscore.benchmarks import benchmark_score
 import brainscore_vision
 
 BIBTEX = """TODO: @article{...} citation for the data."""
@@ -144,10 +145,10 @@ class YourBenchmark(BenchmarkBase):
         )
         # 3) score against the target, then normalize by the ceiling
         raw = self._metric(predictions, self._assembly)
-        score = Score(float(raw) / float(self.ceiling))
-        score.attrs['raw'] = raw
-        score.attrs['ceiling'] = self.ceiling
-        return score
+        # benchmark_score writes the attributes every unified score carries:
+        # raw, ceiling, normalized, metric and benchmark_version.
+        return benchmark_score(self, float(raw) / float(self.ceiling), raw=raw,
+                               metric='linear_predictivity', normalized=True)
 
 
 benchmark_registry['your-benchmark'] = lambda: YourBenchmark()

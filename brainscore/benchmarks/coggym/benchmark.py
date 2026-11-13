@@ -2,13 +2,13 @@
 from collections.abc import Callable
 import math
 from pathlib import Path
-import tempfile
 
 from brainscore_core.benchmarks import BenchmarkBase
-from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
-from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
+from brainscore.benchmarks._score import not_estimated
+from brainscore.experiments import CallableProtocol
+from brainscore.harnesses.adapter import adapter_score, run_recorded
 from brainscore.harnesses.coggym import CogGymRunner, _PROMPT_NOTE
 
 from . import EXPERIMENTS
@@ -42,9 +42,9 @@ class CogGymBenchmark(BenchmarkBase):
     ``vision:video``) in CogGym's order, and the temperature and length as
     settings on a ``Text`` response. The subject answers on ``behavior:text``
     and CogGym parses the answer. A subject that takes in only some of these
-    inputs runs with the others dropped (a partial match); the score records
-    ``attrs['compatibility']`` with the match level and the dropped inputs.
-    The benchmark is N/A only for an incompatible pair, before any compute.
+    inputs runs with the others dropped (a partial match); ``score()`` checks
+    the pair once before any compute and records ``attrs['compatibility']``
+    with the match level and the dropped inputs. Only an incompatible pair is N/A.
     A ``BrainScoreModel`` with a ``reply`` part and the matching inputs runs it.
 
     Scores can differ a little from scores made with CogGym's own client. The
@@ -101,8 +101,6 @@ class CogGymBenchmark(BenchmarkBase):
         # The trials decide which kinds of part a subject must take.
         preflight = CogGymRunner(model='preflight', **self._configuration)
         self.required_input_channels = preflight.required_input_channels
-        ceiling = Score(float('nan'))
-        ceiling.attrs['status'] = 'not_estimated'
         identifier = f'CogGym.{experiment.replace("/", ".")}'
         self._reference_profile = (repetitions, temperature, max_tokens) == (5, 1.0, 512)
         if not self._reference_profile:
@@ -111,7 +109,7 @@ class CogGymBenchmark(BenchmarkBase):
             identifier=identifier,
             version=1,
             parent='behavioral',
-            ceiling=ceiling,
+            ceiling=not_estimated(),
             bibtex='@misc{coggym2026, title={CogGym: Towards Large-Scale Comparative '
                    'Evaluation of Human and Machine Cognition}, year={2026}, '
                    'url={https://arxiv.org/abs/2609.21259}}',
@@ -137,8 +135,6 @@ class CogGymBenchmark(BenchmarkBase):
         # Experiment supplies the subject (model interface) and context (run
         # directory and artifact registration). CogGym still owns the trial loop.
         def evaluate(subject, context):
-            # A partial match runs with the dropped inputs left out; the score says so.
-            match = check_channel_compatibility(subject, self)
             native = runner.protocol(reset=_require_reset(reset))
             # Call evaluate(), not run(): the outer protocol already owns the run.
             # The runner records each request and answer as one session, in its
@@ -162,27 +158,18 @@ class CogGymBenchmark(BenchmarkBase):
                 )
             # Keep CogGym's R² unchanged. Attributes explain how it was obtained;
             # no human-ceiling normalization is applied.
-            score = Score(value)
-            score.attrs.update(
-                benchmark_identifier=self.identifier,
-                raw=Score(value),
-                metric='pearson_r_squared',
-                ceiling_status='not_estimated',
-                normalized=False,
-                leaderboard_eligible=False,
+            return adapter_score(
+                self, value, metric='pearson_r_squared', context=context,
+                input_adaptation=_PROMPT_NOTE,
                 modality=self.modality,
                 configuration=result['configuration'],
                 coverage=result['repetitions'],
                 response_validation=validation,
                 native_analysis=result,
-                run_directory=str(context.directory),
                 evaluation_scope='public_subset',
                 reference_profile=self._reference_profile,
                 repetition_note='Five repeats match the reference README example, not a guarantee of leaderboard replication.',
-                input_adaptation=dict(_PROMPT_NOTE),
             )
-            score.attrs['compatibility'] = match.as_attrs()
-            return score
 
         return CallableProtocol(
             self.identifier,
@@ -193,27 +180,10 @@ class CogGymBenchmark(BenchmarkBase):
         )
 
     def __call__(self, subject: Subject) -> Score:
-        """Run benchmark(subject) with input/output recording and return its Score."""
-        check_channel_compatibility(subject, self)
-        protocol = self.protocol(model=subject.identifier, reset=_require_reset(self._reset))
-        directory = self._output_dir
-        if directory is None:
-            # Keep implicit recordings only for this call, even if scoring fails.
-            with tempfile.TemporaryDirectory(prefix='brainscore-coggym-') as temporary:
-                score = self._run(subject, protocol, Path(temporary) / 'run')
-                score.attrs['run_directory'] = None
-                score.attrs['records_retained'] = False
-                return score
-        score = self._run(subject, protocol, directory)
-        score.attrs['records_retained'] = True
-        return score
+        """Run benchmark(subject) with input/output recording and return its Score.
 
-    def _run(self, subject: Subject, protocol: CallableProtocol, directory: Path) -> Score:
-        result = Experiment(
-            subject=subject,
-            protocol=protocol,
-            tools=[RecordInputsOutputs()],
-            output_dir=directory,
-        ).run()
-        # Experiment also returns the run directory; the benchmark returns the score.
-        return result.value
+        Default scoring deletes the call records on success and failure; an
+        explicit ``output_dir`` keeps them. ``score()`` runs the pre-flight.
+        """
+        protocol = self.protocol(model=subject.identifier, reset=_require_reset(self._reset))
+        return run_recorded(subject, protocol, self._output_dir)

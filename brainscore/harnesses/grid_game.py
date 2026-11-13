@@ -246,7 +246,7 @@ def evaluate_policy(make_model: Callable[[Callable], Any],
                     base_seed: int = 100) -> Dict[str, float]:
     """Play ``n_episodes`` fresh games with ``policy`` and aggregate.
 
-    ``make_model(action_fn)`` builds the ``BrainScoreModel`` wrapping the policy
+    ``make_model(policy)`` builds the ``BrainScoreModel`` wrapping the policy
     (kept as a factory so the caller controls model identity/wrappers). Returns
     success rate, mean steps-to-solve, and mean efficiency.
     """

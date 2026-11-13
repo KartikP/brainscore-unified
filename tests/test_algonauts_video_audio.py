@@ -461,7 +461,8 @@ def test_stream_and_table_give_equal_bands_and_scores(tmp_path):
     assert len(folds) == 5 and all(set(entry['penalties']) == set(regions)
                                    for fold in folds for entry in fold['tuples'])
     assert stream_score.attrs['normalized'] is False
-    assert stream_score.attrs['ceiling_status'] == 'not_estimated'
+    assert stream_score.attrs['ceiling'].attrs['status'] == 'not_estimated'
+    assert stream_score.attrs['metric'] == 'median_per_parcel_pearson_r'
     assert float(stream_score) == float(stream_score.attrs['raw'])
     assert stream_score.attrs['components_per_band'] == {r: N_UNITS for r in regions}
     assert stream_score.attrs['cv_groups'] == 'stimulus_id'

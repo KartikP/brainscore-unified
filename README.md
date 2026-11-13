@@ -9,7 +9,7 @@ UMI is a v2 source candidate. See the [release policy](docs/archive/production_r
 ## Layout
 
 - `brainscore/model_helpers/`: extraction wrappers for image, text, VLM vision, video and audio, and the stateful `PolicyWrapper` for closed-loop sessions.
-- `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, human-harness scaffold).
+- `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, human-harness scaffold), and the adapters for external experiment libraries (`adapter.py` holds what every adapter shares; `coggym.py`, `ewok.py`).
 - `brainscore/models/`: registered models (CLIP, Qwen-VL, BLIP-2, V-JEPA, null controls and others).
 - `brainscore/benchmarks/`: registered benchmarks (ROAR, MajajHong-unified, Pereira-unified, Lahner2024, Algonauts2025 and others).
 - `brainscore/metrics/`: scoring metrics.

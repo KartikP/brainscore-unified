@@ -122,7 +122,7 @@ class TestTextWrapperIntegration:
             region_layer_map={
                 'language_system': 'encoder.layers.10',
             },
-            preprocessors={
+            extractor={
                 'text': clip_text_wrapper,
             },
         )
@@ -170,7 +170,7 @@ class TestTextWrapperCausalMode:
     def test_process_matches_wrapper(self, gpt2_text_wrapper, text_stimuli):
         model = BrainScoreModel(
             identifier='gpt2-dispatch',
-            preprocessors={'text': gpt2_text_wrapper},
+            extractor={'text': gpt2_text_wrapper},
             region_layer_map={'language_system': 'h.11'},
         )
         model.start_recording('language_system')

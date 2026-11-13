@@ -77,7 +77,7 @@ def _make_model(intervention=None):
         identifier='test-state-change',
         model=None,
         region_layer_map={},
-        preprocessors={'vision': lambda x: x},
+        supported_modalities={'vision'},
         intervention=intervention,
     )
 
@@ -161,7 +161,7 @@ class TestInterventionDispatch:
             perturbation=Perturbation(kind='zero'),
         )
         applied = apply_state_change(model, sc)
-        assert applied.handle_id in model._active_interventions
+        assert applied.handle_id in model._interventions.active_interventions
 
     def test_state_change_fn_must_return_tuple(self):
         def bad_fn(state_change):
@@ -235,7 +235,7 @@ class TestResetClearsPerturbations:
         assert len(state['installed']) == 3
         model.reset()
         assert state['installed'] == set()
-        assert model._active_interventions == {}
+        assert model._interventions.active_interventions == {}
 
     def test_reset_tolerates_failing_cleanup(self):
         # If one cleanup raises, the others should still run.
@@ -273,7 +273,7 @@ class TestResetClearsPerturbations:
         # handle is deliberately retained: forgetting it would leave the model
         # damaged while reporting nothing active. Only the succeeding two are
         # deregistered.
-        assert list(model._active_interventions) == ['h-1']
+        assert list(model._interventions.active_interventions) == ['h-1']
 
 
 class TestSelectiveReset:
@@ -296,8 +296,8 @@ class TestSelectiveReset:
 
         apply_state_change(model, StateChange(kind='reset', handle_id=a.handle_id))
         assert state['installed'] == {b.handle_id}
-        assert a.handle_id not in model._active_interventions
-        assert b.handle_id in model._active_interventions
+        assert a.handle_id not in model._interventions.active_interventions
+        assert b.handle_id in model._interventions.active_interventions
 
     def test_kind_reset_unknown_handle_raises(self):
         fn, _ = _counting_state_change_fn()
@@ -358,7 +358,7 @@ class TestSyntheticAblationLifecycle:
         model.reset()
         # Side effect undone
         assert model_state['output'] == 1.0
-        assert applied.handle_id not in model._active_interventions
+        assert applied.handle_id not in model._interventions.active_interventions
 
 
 class TestCleanupFailuresAreNotLost:

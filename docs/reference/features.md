@@ -42,7 +42,6 @@ Features are grouped by how much you need to know to use them, and by how settle
 | --- | --- |
 | `VLMVisionWrapper`, `VideoWrapper` and other large-model wrappers | Tested on specific registrations (Qwen-VL, BLIP-2, V-JEPA, VideoMAE). |
 | Custom channels, tools and capabilities (`register_channel`, `register_tool`, `register_capability`) | [Extend UMI](../guides/extend.md). Long-term structure still under discussion. |
-| `register_input_handler` | Superseded by capabilities; emits a deprecation warning. |
 | Robotics harnesses: DROID, LIBERO, OpenPI instrumentation | See [archive](../archive/) for qualification records. |
 | Game and multi-agent harnesses: Gymnasium, grid games, `multi_agent_rollout`, `Message` | [Experiment 8](../../notebooks/experiments/08_learning_in_a_closed_loop.ipynb), [Experiment 13](../../notebooks/experiments/13_passing_outputs_between_subjects.ipynb) |
 | Attribution and activation patching | `brainscore.experiments.attribution` |
@@ -54,9 +53,9 @@ Features are grouped by how much you need to know to use them, and by how settle
 
 ## Names
 
-Each part has one current name. The older names in the right column still work but emit a deprecation warning, except `interact`, which was renamed without an alias. Do not use the older names in new code.
+Each part has one name. The older names in the right column were removed without an alias; code that uses them fails with a `TypeError`.
 
-| Current | Older name |
+| Current | Removed name |
 | --- | --- |
 | `participate(session)` | `interact(session)` |
 | `extractor=` | `activations_model=`, `preprocessors=` |
@@ -64,5 +63,6 @@ Each part has one current name. The older names in the right column still work b
 | `policy=` | `action_fn=` |
 | `intervention=` | `state_change_fn=` |
 | `region_layer_map` values with `modality=` | `region_modality_map=` |
+| `backbone_id=` on the extractor | `backbone_id=` on `BrainScoreModel` |
 
 `process(...)` is not deprecated, but it is a convenience on `BrainScoreModel` and the adapters, not part of the contract. Benchmarks call `participate`.

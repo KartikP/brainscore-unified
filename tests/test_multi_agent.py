@@ -160,7 +160,7 @@ def test_rollout_drives_brainscoremodel_via_process_row():
     """A real BrainScoreModel agent (policy) is driven through process(row)."""
     def responder(row):
         return {'text': f"ack<{row['text']}>"}
-    agent = BrainScoreModel('bsm', None, {}, {}, None, policy=responder)
+    agent = BrainScoreModel('bsm', policy=responder)
     med = MessageMediator(task='hi')
     transcript = multi_agent_rollout([agent], med, n_turns=1)
     assert transcript[0]['action'] == 'ack<hi>'

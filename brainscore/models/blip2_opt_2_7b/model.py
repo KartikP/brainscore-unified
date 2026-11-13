@@ -44,7 +44,7 @@ REGION_LAYER_MAP = {
 }
 
 
-def _make_generation_fn(blip_model, blip_processor, max_new_tokens: int = 8):
+def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
     """Generation callable for BLIP-2 instruction-following.
 
     BLIP-2 OPT-2.7B isn't as instruction-tuned as Qwen-VL (no RLHF), so we
@@ -133,19 +133,19 @@ def get_model(identifier: str) -> BrainScoreModel:
     # Vision: PytorchWrapper wraps vision_model. BLIP-2's vision_model can be
     # called standalone (forward signature: pixel_values -> last_hidden_state)
     # so the full model wrapper isn't needed.
-    activations_model = PytorchWrapper(
+    vision_wrapper = PytorchWrapper(
         identifier=identifier,
         model=blip_model.vision_model,
         preprocessing=preprocessing,
     )
-    activations_model.image_size = 224
+    vision_wrapper.image_size = 224
 
     # ViT-G hook outputs (batch, 257, 1408) flatten to 361K features per image.
     # That's too many for sklearn PLS at scoring time. LayerPCA(1000) is the
     # convention used by LayerSelection / Layer Mapping Explorer — it fits a
     # PCA on 1000 ImageNet validation images and reduces hook output to 1000D.
     # First-time overhead is ~1-2 min per layer; result cached to disk.
-    LayerPCA.hook(activations_model, n_components=1000)
+    LayerPCA.hook(vision_wrapper, n_components=1000)
 
     # Text: TextWrapper wraps the OPT decoder. Causal LM → last_token aggregation.
     # Wrap language_model.model.decoder so layer paths are 'layers.{N}'.
@@ -171,7 +171,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     blip_model = blip_model.to(target_device)
 
     # Generation path (BLIP-2's OPT decoder does instruction-style completion).
-    generation_fn = _make_generation_fn(blip_model, blip_processor)
+    answer = _make_answer(blip_model, blip_processor)
 
     return BrainScoreModel(
         identifier=identifier,
@@ -186,11 +186,11 @@ def get_model(identifier: str) -> BrainScoreModel:
             for region, layer in REGION_LAYER_MAP.items()
         },
         extractor={
-            'vision': activations_model,
+            'vision': vision_wrapper,
             'text': text_wrapper,
         },
         visual_degrees=8,
-        answer=generation_fn,
+        answer=answer,
         # Readout path also available — PCA-1000 features from 'IT' layer.
         behavioral_readout_layer='encoder.layers.34',
     )

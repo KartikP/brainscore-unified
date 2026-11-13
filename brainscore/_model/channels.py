@@ -47,7 +47,7 @@ def _plan(model, stimuli, regions: List[str]) -> List[str]:
     (``MODALITY_PRIORITY`` of the input each reads, then request order), the
     order in which a combined recording would run its extractors.
     """
-    detected = model._detect_modalities(stimuli)
+    detected = model.detect_modalities(stimuli)
     routing = model._region_modality_map
     modality_of = {region: canonical_modality(routing[region])
                    for region in regions if region in routing}

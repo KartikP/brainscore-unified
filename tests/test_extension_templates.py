@@ -119,11 +119,10 @@ def test_capability_model_refuses_an_invalid_result(capability):
     for valid in (capability.WordCount(words=0, words_so_far=0), capability.WordCount(words=2, words_so_far=5)):
         assert not io_catalog.validate(capability.RESULT, valid, io_catalog.OUTPUT)
     subject = capability.build_model()
-    request = StreamEvent(channel=capability.REQUEST, payload=capability.WordRequest(text='a b'), t_ms=0.0)
-    subject.process(request)
+    subject.participate(Session(_requests(capability, 'a b'), [capability.RESULT]))
     subject.capability_state(capability.IDENTIFIER)['words_so_far'] = -10   # corrupt the running total
-    with pytest.raises(ValueError, match='shape_validator'):
-        subject.process(request)
+    with pytest.raises(ValueError, match='shape_validator'):   # the session checks each answer
+        subject.participate(Session(_requests(capability, 'a b'), [capability.RESULT]))
 
 
 @pytest.mark.parametrize('settings', [{'min_length': True}, {'min_length': False}, {'min_length': None},
@@ -135,8 +134,6 @@ def test_capability_checks_settings_in_setup_before_compute(capability, settings
     with pytest.raises(ValueError, match='min_length'):
         subject.participate(session)
     assert session.next_input() is not None and session.emitted == []   # nothing consumed or answered
-    with pytest.raises(ValueError, match='min_length'):
-        subject.process(_requests(capability, 'one two')[0])
 
 
 @pytest.mark.parametrize('min_length', [True, 0, None, 2.0])

@@ -222,7 +222,7 @@ def test_tr_multimodal_variant_falls_back_to_one_tower_from_declarations(monkeyp
 # exact removed lines. Each benchmark runs once through participate and once
 # with them patched in, on the same BrainScoreModel; results must be identical.
 
-from brainscore import BrainScoreModel
+from brainscore import BrainScoreModel, LayerSelector
 from brainscore.temporal import temporal_bin
 from brainscore.benchmarks.lahner2024 import (
     benchmark as glm_module, benchmark_multimodal as mm_module,
@@ -254,13 +254,14 @@ class _Extractor:
 
 def _model(visual_key):
     """An audio-visual model; ``vision`` + ``text`` takes stills, ``video`` clips."""
-    preprocessors = {visual_key: _Extractor(3, 'v'), 'audio': _Extractor(2, 'a')}
+    extractors = {visual_key: _Extractor(3, 'v'), 'audio': _Extractor(2, 'a')}
     if visual_key == 'vision':
-        preprocessors['text'] = _Extractor(3, 't')   # vision + text, like CLIP
+        extractors['text'] = _Extractor(3, 't')   # vision + text, like CLIP
     return BrainScoreModel(f'synthetic-{visual_key}',
-                           region_layer_map={'IT': 'visual.layer', 'A1': 'audio.layer'},
-                           region_modality_map={'IT': visual_key, 'A1': 'audio'},
-                           preprocessors=preprocessors)
+                           region_layer_map={
+                               'IT': LayerSelector(name='visual.layer', modality=visual_key),
+                               'A1': LayerSelector(name='audio.layer', modality='audio')},
+                           extractor=extractors)
 
 
 def _old_record_clips(subject, clips, region, time_bins):

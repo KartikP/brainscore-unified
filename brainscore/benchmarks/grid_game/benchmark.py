@@ -9,8 +9,8 @@ ceiled by the greedy oracle, with the random-action floor in ``attrs``.
 This is the closed-loop capability as a *registered benchmark*, not just a script —
 the same closed loop that drives the scaling-curve demo. The environment IS the
 data source (a deterministic simulator seeded per episode), so there is no
-dataset to download. The subject must declare an ``action_fn`` (it emits
-the ``motor`` channel); a feature/behavioral model with no ``action_fn`` is
+dataset to download. The subject must have a ``policy`` part (it emits
+the ``motor`` channel); a feature/behavioral model with no ``policy`` part is
 correctly incompatible.
 """
 import numpy as np
@@ -22,6 +22,7 @@ from brainscore.harnesses.grid_game import (
     GridGameEnv, play_game, greedy_oracle_policy, random_action_policy,
 )
 from brainscore.model_helpers.policy_wrapper import PolicyWrapper
+from brainscore.benchmarks._score import benchmark_score
 
 
 def _run(subject, n_episodes, size, max_steps, base_seed):
@@ -38,7 +39,7 @@ def _run(subject, n_episodes, size, max_steps, base_seed):
 
 def policy_model(policy, identifier):
     """Wrap a bare ``(observation, history) -> action`` policy as a scorable
-    subject (the same shape a real model takes: ``action_fn`` on a
+    subject (the same shape a real model takes: a ``policy`` part on a
     ``BrainScoreModel``). Used for the oracle ceiling + random floor."""
     return BrainScoreModel(
         identifier=identifier,
@@ -86,10 +87,8 @@ class GridGameBenchmark(BenchmarkBase):
     def __call__(self, subject) -> Score:
         rate, eff = _run(subject, n_episodes=self.n_episodes, size=self.size,
                          max_steps=self.max_steps, base_seed=self.base_seed)
-        ceiling = float(self.ceiling)
-        score = Score(rate / ceiling)
-        score.attrs['raw'] = Score(rate)
-        score.attrs['ceiling'] = ceiling
+        score = benchmark_score(self, rate / float(self.ceiling), raw=rate,
+                                metric='success_rate', normalized=True)
         score.attrs['success_rate'] = rate
         score.attrs['mean_efficiency'] = eff
         score.attrs['random_floor'] = self._random_floor

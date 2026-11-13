@@ -30,7 +30,7 @@ class TestDeviceAgnosticRow:
             identifier="generic-policy",
             model=None,
             region_layer_map={},
-            preprocessors={"vision": lambda x: x},
+            supported_modalities={"vision"},
             policy=policy,
         )
         assert model.process({"observation": {"n": 21}}) == {"motor": 42}

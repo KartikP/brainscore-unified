@@ -359,7 +359,7 @@ def test_data_source_choice_required(tmp_path):
 def test_feature_only_subject_rejected(prepared):
     from brainscore_core.compatibility import CompatibilityError
     benchmark=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared)
-    with pytest.raises(CompatibilityError):benchmark(brainscore.load_model('chance-baseline'))
+    with pytest.raises(CompatibilityError):brainscore.score(brainscore.load_model('chance-baseline'),benchmark,check_mem=False)
 
 
 def test_real_hooks_change_score_and_restore(prepared, tmp_path):
@@ -604,9 +604,10 @@ def test_a_subject_without_a_likelihood_part_is_na(prepared):
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
     for subject in (chooser(), BrainScoreModel('answers', supported_modalities={'text'},
                                                  answer=lambda stimulus_row, instruction, label_set: '1')):
+        # score() runs the one pre-flight; the benchmark checks nothing itself.
         with pytest.raises(CompatibilityError):
-            benchmark(subject)
-        assert score_or_na(benchmark, subject).attrs['status'] == 'N/A'
+            brainscore.score(subject, benchmark, check_mem=False)
+        assert score_or_na(brainscore.score, subject, benchmark, check_mem=False).attrs['status'] == 'N/A'
 
 
 def test_replay_rebuilds_one_session_per_request(prepared, tmp_path):

@@ -18,11 +18,10 @@ from brainscore.harnesses.grid_game import (
 
 
 def _embodied_model(policy):
-    """A model that is *only* a policy — no preprocessors, no activations."""
+    """A model that is *only* a policy — no extractors, no activations."""
     return BrainScoreModel(
         identifier='grid-player', model=None, region_layer_map={},
-        preprocessors={}, activations_model=None,
-        action_fn=PolicyWrapper(policy, max_history=4),
+        policy=PolicyWrapper(policy, max_history=4),
     )
 
 
@@ -78,7 +77,7 @@ class TestClosedLoop:
         assert res['steps'] == res['optimal_steps']
         assert res['efficiency'] == 1.0
 
-    def test_process_dispatches_to_action_fn(self):
+    def test_process_dispatches_to_policy(self):
         # The loop must go through model.process(row), not a side door.
         env = GridGameEnv(size=5, seed=3)
         calls = {'n': 0}
@@ -89,7 +88,7 @@ class TestClosedLoop:
 
         model = _embodied_model(counting_policy)
         res = play_game(model, env)
-        assert calls['n'] == res['steps']     # one action_fn call per tick
+        assert calls['n'] == res['steps']     # one policy call per tick
         assert res['solved']
 
     def test_actions_are_legal_indices(self):

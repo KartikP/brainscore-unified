@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional, Set, Tuple
 
 from ..capabilities import enabled_capabilities
-from brainscore_core.events import OutputEvent, StateChange
+from brainscore_core.events import OutputEvent
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.io_catalog import canonical_modality
 
@@ -43,24 +43,6 @@ def _activation_cache_disabled():
                     os.environ['RESULTCACHING_DISABLE'] = _cache_disable_prev
 
 
-def register_input_handler(cls, event_type: type, handler_name: str,
-                           before: Optional[type] = None) -> None:
-    """Compatibility hook; new integrations should register a Capability."""
-    import warnings
-    warnings.warn(
-        'register_input_handler is deprecated; register a Capability instead.',
-        DeprecationWarning, stacklevel=3)
-    if '_INPUT_HANDLERS' not in cls.__dict__:
-        cls._INPUT_HANDLERS = list(cls._INPUT_HANDLERS)
-    entry = (event_type, handler_name)
-    if before is not None:
-        for i, (existing_type, _) in enumerate(cls._INPUT_HANDLERS):
-            if existing_type is before:
-                cls._INPUT_HANDLERS.insert(i, entry)
-                return
-    cls._INPUT_HANDLERS.append(entry)
-
-
 def _is_clip(stimuli) -> bool:
     """Whether a stimulus table has a column that feeds ``vision:video``."""
     from brainscore_core.io_catalog import column_channel
@@ -89,96 +71,38 @@ def extractor_for(owner, modality: str, stimuli):
     return owner._extractors[matching[0]] if matching else None
 
 
-def normalize_extractors(owner, preprocessors, activations_model):
-    """Adapt registration forms once to ``extractor(stimuli, layers=...)``.
+def normalize_extractors(owner, extractor):
+    """The ``extractor`` argument as a modality -> extractor mapping.
 
-    ``activations_model`` here is the normalized ``extractor`` argument (the
-    compatibility spelling is the same slot). Explicit extractors never use
-    attribute-based capability discovery. Older registrations that put
-    extraction functions in preprocessors are adapted by their callable
-    signature at this compatibility boundary.
+    A fused extractor is registered under every input type it takes at once,
+    ``{('vision', 'text'): fused}``. It also serves each type alone unless a
+    single-type extractor is registered for it.
     """
     from collections.abc import Mapping
-    import inspect
 
-    if isinstance(activations_model, Mapping):
-        # A fused extractor is registered under every input type it takes at
-        # once, {('vision', 'text'): fused}. It also serves each type alone
-        # unless a single-type extractor is registered for it.
-        fused = [(frozenset(canonical_modality(m) for m in key), value)
-                 for key, value in activations_model.items() if isinstance(key, tuple)]
-        extractors = {}
-        # The raw key names stay: ``video`` declares ``vision:video``. Dispatch
-        # canonicalizes when it looks an extractor up.
-        for key, value in activations_model.items():
-            if isinstance(key, tuple):
-                for modality in key:
-                    extractors.setdefault(modality, value)
-        extractors.update({key: value for key, value in activations_model.items()
-                           if not isinstance(key, tuple)})
-        owner._fused_extractors = fused
-    elif activations_model is not None:
-        if not preprocessors:
-            raise ValueError(
-                'A single shared extractor needs its input modalities declared. '
-                'Pass extractor={modality: extractor} instead.')
-        extractors = {key: activations_model for key in preprocessors}
-    else:
-        extractors = {}
+    if extractor is None:
+        return {}
+    if not isinstance(extractor, Mapping):
+        raise TypeError(
+            'extractor must be a mapping {modality: extractor}; the keys declare '
+            'the inputs, for example extractor={"vision": wrapper}.')
+    owner._fused_extractors = [
+        (frozenset(canonical_modality(m) for m in key), value)
+        for key, value in extractor.items() if isinstance(key, tuple)]
+    extractors = {}
+    # The raw key names stay: ``video`` declares ``vision:video``. Dispatch
+    # canonicalizes when it looks an extractor up.
+    for key, value in extractor.items():
+        if isinstance(key, tuple):
+            for modality in key:
+                extractors.setdefault(modality, value)
+    extractors.update({key: value for key, value in extractor.items()
+                       if not isinstance(key, tuple)})
     if any(not callable(value) for value in extractors.values()):
         raise TypeError(
             'Every extractor must be callable as extractor(stimuli, layers=...). '
             'Check the values passed in extractor={modality: extractor}.')
-    layer_extractors = set(extractors)
-    for modality, preprocessor in preprocessors.items():
-        if modality in extractors:
-            # Historically the single wrapper applied only to vision; an
-            # extractor supplied in another modality takes precedence there.
-            if isinstance(activations_model, Mapping) or canonical_modality(modality) == 'vision':
-                continue
-        if not callable(preprocessor):
-            continue
-        try:
-            signature = inspect.signature(preprocessor)
-        except (TypeError, ValueError) as error:
-            if modality in extractors:
-                continue
-            raise TypeError(
-                'Cannot inspect this preprocessor. Declare it explicitly as '
-                'extractor={modality: extractor}.') from error
-        variadic_wrapper = (not inspect.isfunction(preprocessor) and
-                            bool(signature.parameters) and all(
-                                p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD)
-                                for p in signature.parameters.values()))
-        if 'layers' in signature.parameters or variadic_wrapper:
-            extractors[modality] = preprocessor
-            layer_extractors.add(modality)
-        else:
-            try:
-                signature.bind(owner._model, object(), recording_layer=None)
-                accepts_legacy_call = True
-            except TypeError:
-                accepts_legacy_call = False
-            if modality in extractors and not accepts_legacy_call:
-                continue
-            import warnings
-            warnings.warn(
-                'Extraction callbacks in preprocessors are deprecated and are removed at '
-                'the public release. Use '
-                'extractor={modality: extractor}, where extractor accepts '
-                '(stimuli, layers=...).',
-                DeprecationWarning, stacklevel=3)
-            def extract(stimuli, *, layers, function=preprocessor):
-                if len(layers) > 1:
-                    raise ValueError(
-                        'This compatibility extraction callback accepts one layer. '
-                        'For multiple layers, use extractor={modality: '
-                        'extractor} with an extractor accepting (stimuli, layers=...).')
-                return function(owner._model, stimuli,
-                                recording_layer=layers[0] if layers else None)
-            extractors[modality] = extract
-            layer_extractors.discard(modality)
-    return extractors, layer_extractors
+    return extractors
 
 
 class InputDispatcher:
@@ -188,67 +112,37 @@ class InputDispatcher:
         self.owner = owner
 
     def process(self, input_event, multi_modality: bool = False) -> OutputEvent:
+        """Answer ``input_event`` with the first capability, in registry order,
+        that handles it. A ``StreamEvent`` and its answer are checked against
+        the channel catalog."""
         owner = self.owner
-        if isinstance(input_event, StreamEvent):
-            from brainscore_core.io_catalog import validate, INPUT, OUTPUT
+        stream = isinstance(input_event, StreamEvent)
+        if stream:
+            from brainscore_core.io_catalog import validate, INPUT
             issues = validate(input_event.channel, input_event.payload, INPUT)
             if issues:
                 raise ValueError('; '.join(issues))
-            output = self.process_capabilities(input_event, multi_modality)
-            if isinstance(output, StreamEvent):
-                issues = validate(output.channel, output.payload, OUTPUT)
-                if issues:
-                    raise ValueError('; '.join(issues))
-            return output
-        for event_type, handler_name in owner._INPUT_HANDLERS:
-            if isinstance(input_event, event_type):
-                return getattr(owner, handler_name)(input_event)
-        return owner._handle_stimulus_set(input_event, multi_modality)
-
-    def dispatch_state_change(self, input_event: 'StateChange') -> OutputEvent:
-        return self.process_capabilities(input_event)
-
-    def handle_row(self, input_event) -> OutputEvent:
-        return self.process_capabilities(input_event)
-
-    def handle_stimulus_set(self, stimuli,
-                            multi_modality: bool = False) -> OutputEvent:
-        return self.process_capabilities(stimuli, multi_modality)
-
-    def process_capabilities(self, input_event,
-                             multi_modality: bool = False) -> OutputEvent:
-        owner = self.owner
         for capability in enabled_capabilities(owner):
-            if capability.handles(owner, input_event,
-                                  multi_modality=multi_modality):
-                return capability.process(owner, input_event,
-                                          multi_modality=multi_modality)
-        raise TypeError(
-            f"Subject '{owner.identifier}' has no registered capability for "
-            f"input event type {type(input_event).__name__}."
-        )
+            if capability.handles(owner, input_event, multi_modality=multi_modality):
+                output = capability.process(owner, input_event, multi_modality=multi_modality)
+                break
+        else:
+            raise TypeError(
+                f"Subject '{owner.identifier}' has no registered capability for "
+                f"input event type {type(input_event).__name__}."
+            )
+        if stream and isinstance(output, StreamEvent):
+            from brainscore_core.io_catalog import validate, OUTPUT
+            issues = validate(output.channel, output.payload, OUTPUT)
+            if issues:
+                raise ValueError('; '.join(issues))
+        return output
 
-    def _preprocessor_for(self, modality: str):
-        """The preprocessor whose canonical modality matches ``modality``.
-
-        Resolves a legacy ``video``-keyed preprocessor when requested under the
-        canonical ``vision`` name (video is temporal vision). Raises ``KeyError``
-        when no key canonicalizes to ``modality``.
-        """
-        owner = self.owner
-        if modality in owner._preprocessors:
-            return owner._preprocessors[modality]
-        for key, value in owner._preprocessors.items():
-            if canonical_modality(key) == modality:
-                return value
-        raise KeyError(modality)
-
-    def _has_preprocessor_for(self, modality: str) -> bool:
-        try:
-            self._preprocessor_for(modality)
-            return True
-        except KeyError:
-            return False
+    def _declares(self, modality: str) -> bool:
+        """Whether a declared input key is ``modality`` or canonicalizes to it
+        (a ``video`` key is temporal vision)."""
+        keys = self.owner._input_keys
+        return modality in keys or any(canonical_modality(key) == modality for key in keys)
 
     def detect_modalities(self, stimuli) -> Set[str]:
         owner = self.owner
@@ -261,7 +155,7 @@ class InputDispatcher:
                 continue
             # The channel family is the modality: vision:image and vision:video are vision.
             modality = canonical_modality(parse_channel(channel)[0])
-            if self._has_preprocessor_for(modality):
+            if self._declares(modality):
                 detected.add(modality)
         return detected
 
@@ -274,7 +168,7 @@ class InputDispatcher:
 
     def supports_layer_extraction(self, modality: str) -> bool:
         return any(canonical_modality(key) == canonical_modality(modality)
-                   for key in self.owner._layer_extractors)
+                   for key in self.owner._extractors)
 
     def extract_for_modality(self, stimuli, modality: str, layers: List[str]):
         # An intervention (lesion/stimulation) is a mutable forward-hook that the
@@ -322,7 +216,7 @@ class InputDispatcher:
 
         sub_assemblies = []
         for modality in ordered:
-            if not self._has_preprocessor_for(modality):
+            if not self._declares(modality):
                 continue
             modality_layers = owner._filter_layers_for_modality(
                 layers, modality)
@@ -354,7 +248,7 @@ class InputDispatcher:
             raise ValueError(
                 f"multi_modality=True but no detected modality had a "
                 f"matching extractor. detected={detected}, "
-                f"available={set(owner._preprocessors.keys())}."
+                f"available={set(owner._input_keys)}."
             )
 
         return _concat_modalities_along_neuroid(sub_assemblies, xr)

@@ -82,7 +82,8 @@ def test_text_only_subject_runs_with_the_media_dropped_and_is_stamped(
     text_subject = make_subject(lambda prompt: prompts.append(prompt) or '50')
     match = check_channel_compatibility(text_subject, benchmark)
     assert match.kind == 'partial' and match.dropped_inputs == media
-    score = benchmark(text_subject)
+    # score() checks the pair once and stamps the match on the score.
+    score = brainscore.score(text_subject, benchmark, check_mem=False)
     assert len(prompts) == 15
     for prompt in prompts:
         assert [kind for kind, _ in prompt.parts] == ['text', 'text']
@@ -90,26 +91,22 @@ def test_text_only_subject_runs_with_the_media_dropped_and_is_stamped(
     assert score.attrs['compatibility']['match'] == 'partial'
     assert score.attrs['compatibility']['dropped_inputs'] == sorted(media)
     assert 'instruction' in score.attrs['compatibility']['consumed_inputs']
-    # A protocol run through Experiment carries the same label.
-    protocol = benchmark.protocol(model='fixture', reset=lambda repetition: None)
-    result = Experiment(subject=text_subject, protocol=protocol,
-                        output_dir=tmp_path / 'partial').run()
-    assert result.value.attrs['compatibility']['match'] == 'partial'
 
 
 def test_text_only_subject_receives_no_picture_event(reference, scored_reference, tmp_path):
     root, clip, benchmark = _media_benchmark(
         reference, tmp_path, 'Aboody2025Inferring/exp1', ['image'])
     events = []
-    score = benchmark(_Recorder(events))
+    score = brainscore.score(_Recorder(events), benchmark, check_mem=False)
     assert events and 'vision:image' not in events
     assert {'instruction', 'text'} >= set(events)
-    # The label rides on the score of a direct run and of a protocol run.
-    for labelled in (score, Experiment(
-            subject=_Recorder([]), output_dir=tmp_path / 'protocol',
-            protocol=benchmark.protocol(model='recorder', reset=lambda repetition: None)).run().value):
-        assert labelled.attrs['compatibility']['match'] == 'partial'
-        assert labelled.attrs['compatibility']['dropped_inputs'] == ['vision:image']
+    assert score.attrs['compatibility']['match'] == 'partial'
+    assert score.attrs['compatibility']['dropped_inputs'] == ['vision:image']
+    # A protocol run through Experiment drops the picture the same way.
+    events = []
+    Experiment(subject=_Recorder(events), output_dir=tmp_path / 'protocol',
+               protocol=benchmark.protocol(model='recorder', reset=lambda repetition: None)).run()
+    assert events and 'vision:image' not in events
 
 
 class _Recorder(Subject):
@@ -144,14 +141,16 @@ def test_subject_with_no_shared_input_or_no_text_answer_is_still_na(
     prompts = []
     capture = lambda prompt: prompts.append(prompt) or '50'
     # Takes none of the inputs the experiment sends (instruction, text, pictures).
+    # score() runs the one pre-flight; the benchmark checks nothing itself.
     no_input = _Recorder([], in_channels=frozenset({'audio'}))
     with pytest.raises(CompatibilityError):
-        benchmark(no_input)
-    assert score_or_na(benchmark, no_input).attrs['status'] == 'N/A'
+        brainscore.score(no_input, benchmark, check_mem=False)
+    assert score_or_na(brainscore.score, no_input, benchmark,
+                       check_mem=False).attrs['status'] == 'N/A'
     # Cannot answer on behavior:text.
     no_text = brainscore.load_model('chance-baseline')
     with pytest.raises(CompatibilityError):
-        benchmark(no_text)
+        brainscore.score(no_text, benchmark, check_mem=False)
     assert prompts == [] and no_input.channels == []
 
 
@@ -204,7 +203,7 @@ def test_coggym_reference_profile_reset_and_leaderboard_policy(scored_reference,
 
 @pytest.mark.parametrize('outcome', ['success', 'undefined_score', 'interrupted'])
 def test_coggym_implicit_records_always_deleted(scored_reference, tmp_path, monkeypatch, outcome):
-    import brainscore.benchmarks.coggym.benchmark as module
+    import brainscore.harnesses.adapter as module
     import tempfile
     root, analysis = scored_reference
     original = tempfile.TemporaryDirectory
@@ -238,7 +237,7 @@ def test_coggym_implicit_records_always_deleted(scored_reference, tmp_path, monk
         with pytest.raises(KeyboardInterrupt if outcome == 'interrupted' else ValueError):
             benchmark(subject)
     assert len(created) == 1 and not created[0].exists()
-    assert not list(tmp_path.glob('brainscore-coggym-*'))
+    assert not list(tmp_path.glob('brainscore-adapter-*'))
 
 
 @pytest.mark.parametrize('settings', [
@@ -262,7 +261,7 @@ def test_ewok_subject_without_the_text_input_rejected_without_calls(prepared, mo
                                 likelihood=lambda prompt, options: calls.append(prompt) or {})
     benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
     with pytest.raises(CompatibilityError):
-        benchmark(subject)
+        brainscore.score(subject, benchmark, check_mem=False)
     assert calls == []
 
 
@@ -289,7 +288,7 @@ def test_ewok_domains_and_source_have_distinct_stable_ids(native, tmp_path):
 
 @pytest.mark.parametrize('fail', [False, True])
 def test_ewok_implicit_records_deleted_on_success_and_failure(prepared, tmp_path, monkeypatch, fail):
-    import brainscore.benchmarks.ewok.benchmark as module
+    import brainscore.harnesses.adapter as module
     import tempfile
     original = tempfile.TemporaryDirectory
     created = []
@@ -335,3 +334,28 @@ def test_the_library_channels_are_gone():
                'conditional_logprob_request', 'context_choice_request', 'response_trace')
     assert not any(io_catalog.has(name) for name in removed)
     assert importlib.util.find_spec('brainscore.model_helpers.response_trace') is None
+
+
+@pytest.mark.parametrize('library', ['coggym', 'ewok'])
+def test_one_score_checks_compatibility_once(library, scored_reference, prepared, monkeypatch):
+    """score() runs the one pre-flight; an adapter benchmark adds no check of its own."""
+    import brainscore_core._evaluation.compatibility as compatibility
+    calls = []
+    original = compatibility.check_channel_compatibility
+    monkeypatch.setattr(compatibility, 'check_channel_compatibility',
+                        lambda subject, benchmark: calls.append(benchmark) or original(subject, benchmark))
+    if library == 'coggym':
+        root, _ = scored_reference
+        benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
+                                              reset=lambda repetition: None)
+        subject = make_subject(reply_with_trial)
+    else:
+        benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
+        subject = likelihood_subject(EWoKProvider(NativeModel()))
+    score = brainscore.score(subject, benchmark, check_mem=False)
+    assert calls == [benchmark]
+    assert score.attrs['compatibility']['match'] == 'full'
+    for key in ('raw', 'ceiling', 'normalized', 'metric', 'benchmark_version', 'input_adaptation'):
+        assert key in score.attrs, key
+    assert score.attrs['normalized'] is False
+    assert score.attrs['ceiling'].attrs['status'] == 'not_estimated'

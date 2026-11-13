@@ -24,8 +24,8 @@ from brainscore.witness import Witness
 
 
 def _oracle_model():
-    return BrainScoreModel('grid-oracle', None, {}, {}, None,
-                           action_fn=PolicyWrapper(greedy_oracle_policy, max_history=4))
+    return BrainScoreModel('grid-oracle',
+                           policy=PolicyWrapper(greedy_oracle_policy, max_history=4))
 
 
 def test_witness_records_environment_steps():

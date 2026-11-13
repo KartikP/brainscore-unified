@@ -68,7 +68,7 @@ def test_neural_session_collection_and_replay_preserve_metadata(tmp_path, stream
     subject = BrainScoreModel(
         identifier='length',
         model=None,
-        preprocessors={'text': extract},
+        extractor={'text': extract},
         region_layer_map={'IT': 'length', 'V4': 'early_length'},
     )
 
@@ -105,9 +105,9 @@ def test_behavior_session_collection_and_replay_preserve_task(tmp_path):
     subject = BrainScoreModel(
         identifier='answers',
         model=None,
-        preprocessors={'text': lambda inputs: inputs},
+        supported_modalities={'text'},
         region_layer_map={},
-        generation_fn=generate,
+        answer=generate,
     )
 
     @contextmanager
@@ -147,7 +147,7 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
     subject = BrainScoreModel(
         identifier='length',
         model=None,
-        preprocessors={'text': extract},
+        extractor={'text': extract},
         region_layer_map={'IT': 'length', 'V4': 'early_length'},
     )
 

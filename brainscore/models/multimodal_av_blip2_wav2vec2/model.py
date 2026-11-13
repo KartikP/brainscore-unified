@@ -73,14 +73,14 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     preprocessing = functools.partial(
         _load_preprocess_images, processor=blip_processor, image_size=224)
-    activations_model = PytorchWrapper(
+    vision_wrapper = PytorchWrapper(
         identifier=f'{identifier}-vision',
         model=blip_model.vision_model,
         preprocessing=preprocessing,
     )
-    activations_model.image_size = 224
-    LayerPCA.hook(activations_model, n_components=1000)
-    activations_model._extractor.identifier = 'blip2-vision-pca1000'
+    vision_wrapper.image_size = 224
+    LayerPCA.hook(vision_wrapper, n_components=1000)
+    vision_wrapper._extractor.identifier = 'blip2-vision-pca1000'
 
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)
 
@@ -100,7 +100,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             for region, layer in REGION_LAYER_MAP.items()
         },
         extractor={
-            'vision': activations_model,
+            'vision': vision_wrapper,
             'audio': audio_wrapper,
         },
         required_modalities={'vision', 'audio'},

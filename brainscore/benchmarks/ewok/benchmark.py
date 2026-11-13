@@ -33,22 +33,19 @@ import json
 import math
 from numbers import Real
 from pathlib import Path
-import tempfile
 
 import numpy as np
 import pandas as pd
 
 from brainscore_core.benchmarks import BenchmarkBase
-from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.contract import TaskContext
 from brainscore_core.metrics import Score
 from brainscore_core.model_interface import Subject
 from brainscore_core.responses import Choice
-from brainscore_core.streaming import Session
-from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
-from brainscore.instrumentation import observed
+from brainscore.benchmarks._score import not_estimated
+from brainscore.experiments import CallableProtocol
+from brainscore.harnesses.adapter import adapter_score, run_recorded, run_request
 from brainscore.presentation import response_stimulus_ids
 
 
@@ -120,23 +117,16 @@ def logprob_accuracy(values: list[float]) -> float:
 
 
 def _answers(subject: Subject, context, stimuli, mode: str, repetition: int) -> tuple:
-    """Present ``stimuli`` in one session and return one row of values per stimulus.
+    """Present ``stimuli`` in one request and return one row of values per stimulus.
 
     The session asks for the mode's output channel with the mode's task;
-    each row is its own trial. It is one repetition of the record, so
-    ``replay_sessions`` rebuilds exactly this session. The subject is not reset
-    here: a reset would remove interventions the caller applied around the run.
-    Returns the values, one row per stimulus in the order of ``stimuli`` and
-    one column per option, and the labels of the option axis.
+    each row is its own trial. Returns the values, one row per stimulus in the
+    order of ``stimuli`` and one column per option, and the labels of the
+    option axis.
     """
     response, channel = _TASKS[mode]
-    session = stimulus_session(stimuli, [channel], TaskContext(response=response, trial_memory='none'))
-    with context.repetition(repetition):
-        context.publish('session_context', {
-            name: getattr(session, name) for name in Session.context_fields
-            if getattr(session, name, None) is not None})
-        with observed(session, context):
-            subject.participate(session)
+    session = run_request(subject, context, repetition, stimuli, [channel],
+                          TaskContext(response=response, trial_memory='none'))
     if not any(event.channel == channel for event in session.emitted):
         raise TypeError(f'EWoK {mode} requires an answer on {channel}')
     answers = session.collect(channel)
@@ -210,11 +200,9 @@ class EWoKBenchmark(BenchmarkBase):
         if domains is not None:
             selection = json.dumps(sorted(set(domains))).encode()
             identifier += f'-domains-{hashlib.sha256(selection).hexdigest()[:12]}'
-        ceiling = Score(float('nan'))
-        ceiling.attrs['status'] = 'not_estimated'
         super().__init__(
             identifier=identifier, version=1, parent='behavioral',
-            ceiling=ceiling,
+            ceiling=not_estimated(),
             bibtex='@article{ivanova2025elements, title={Elements of World Knowledge}, '
                    'author={Ivanova, Anna and others}, year={2025}, '
                    'journal={Transactions of the Association for Computational Linguistics}, '
@@ -231,7 +219,6 @@ class EWoKBenchmark(BenchmarkBase):
         # Experiment supplies the subject (model interface) and context (run
         # directory and artifact registration).
         def evaluate(subject, context):
-            check_channel_compatibility(subject, self)
             # Recorded requests contain restricted item text; keep runs private.
             context.directory.chmod(0o700)
             scored = []
@@ -293,29 +280,22 @@ class EWoKBenchmark(BenchmarkBase):
             domains = {}
             for domain in sorted({r['domain'] for r in scored}):
                 domains[domain] = _mean_by_version([r for r in scored if r['domain'] == domain])[0]
-            score = Score(value)
-            score.attrs.update(
-                benchmark_identifier=self.identifier,
-                raw=Score(value), normalized=False, metric='accuracy',
-                ceiling_status='not_estimated', protocol=self._mode,
-                leaderboard_eligible=False,
+            return adapter_score(
+                self, value, metric='accuracy', context=context,
+                input_adaptation=_CHOICE_NOTE if self._mode == 'choice' else _LOGPROBS_NOTE,
+                protocol=self._mode,
                 aggregation='mean of within-version mean accuracies',
                 version_scores=versions, domain_scores=domains,
                 items=len(scored), questions=2 * len(scored),
                 invalid_answers=sum(r['invalid_answers'] for r in scored),
                 dataset_sha256=self._manifest['items_sha256'],
                 dataset_scope=self._manifest['scope'], domain_subset=self._subset,
-                run_directory=str(context.directory),
                 paper_replication=False,
             )
-            score.attrs['input_adaptation'] = dict(_CHOICE_NOTE if self._mode == 'choice'
-                                                   else _LOGPROBS_NOTE)
-            return score
         return CallableProtocol(
             self.identifier,
             evaluate,
-            # No method is observed: each session is recorded through
-            # observed in _answers.
+            # No method is observed: each request is recorded by run_request.
             methods=(),
             # The record repetition ids _answers uses: two per batch, counted
             # from 0. Tools select repetitions by these ids.
@@ -328,25 +308,9 @@ class EWoKBenchmark(BenchmarkBase):
         )
 
     def __call__(self, subject: Subject) -> Score:
-        """Run benchmark(subject) with input/output recording and return its Score."""
-        check_channel_compatibility(subject, self)
-        directory = self._output_dir
-        if directory is None:
-            # Default scoring returns only scores; delete private call records
-            # on both success and failure. Explicit output_dir opts into retention.
-            with tempfile.TemporaryDirectory(prefix='brainscore-ewok-') as temporary:
-                score = self._run(subject, Path(temporary) / 'run')
-                score.attrs['run_directory'] = None
-                score.attrs['records_retained'] = False
-                return score
-        score = self._run(subject, directory)
-        score.attrs['records_retained'] = True
-        return score
+        """Run benchmark(subject) with input/output recording and return its Score.
 
-    def _run(self, subject: Subject, directory: Path) -> Score:
-        result = Experiment(
-            subject=subject, protocol=self.protocol(),
-            tools=[RecordInputsOutputs()], output_dir=directory,
-        ).run()
-        # Experiment also returns the run directory; the benchmark returns the score.
-        return result.value
+        Default scoring deletes the private call records on success and failure;
+        an explicit ``output_dir`` keeps them. ``score()`` runs the pre-flight.
+        """
+        return run_recorded(subject, self.protocol(), self._output_dir)

@@ -30,7 +30,7 @@ def test_benchmark_rejects_unimodal_candidate():
         identifier='video-only',
         model=None,
         region_layer_map={'IT': 'layer.10'},
-        preprocessors={'video': lambda *a, **k: None},
+        extractor={'video': lambda *a, **k: None},
     )
     b = brainscore.load_benchmark(
         'Lahner2024-fMRI-naturalistic-multimodal-visualROI')

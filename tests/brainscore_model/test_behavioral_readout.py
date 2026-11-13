@@ -135,18 +135,18 @@ class TestBrainScoreModelBehavioral:
             identifier='test-model',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': extractor},
+            extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
         )
-        assert model._readout_classifier is None
+        assert model._behavioral.readout_classifier is None
 
         model.start_task(TaskContext(
             task_type='probabilities',
             fitting_stimuli=labeled_stimuli,
             label_set=['cat', 'dog'],
         ))
-        assert model._readout_classifier is not None
-        assert model._readout_classifier.fitted
+        assert model._behavioral.readout_classifier is not None
+        assert model._behavioral.readout_classifier.fitted
 
     def test_process_returns_behavioral_assembly(self, labeled_stimuli, test_stimuli):
         features = np.random.default_rng(42).normal(size=(12, 8))
@@ -158,7 +158,7 @@ class TestBrainScoreModelBehavioral:
             identifier='test-model',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': extractor},
+            extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
         )
         model.start_task(TaskContext(
@@ -179,7 +179,7 @@ class TestBrainScoreModelBehavioral:
             identifier='test-model',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': extractor},
+            extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
         )
         # Without start_task, process() returns neural features
@@ -194,16 +194,16 @@ class TestBrainScoreModelBehavioral:
             identifier='test-model',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': extractor},
+            extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
         )
         model.start_task(TaskContext(
             task_type='probabilities',
             fitting_stimuli=labeled_stimuli,
         ))
-        assert model._readout_classifier is not None
+        assert model._behavioral.readout_classifier is not None
         model.reset()
-        assert model._readout_classifier is None
+        assert model._behavioral.readout_classifier is None
 
     def test_missing_readout_layer_raises(self, labeled_stimuli):
         features = np.random.default_rng(0).normal(size=(12, 8))
@@ -212,7 +212,7 @@ class TestBrainScoreModelBehavioral:
             identifier='test-model',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': extractor},
+            extractor={'vision': extractor},
             # No behavioral_readout_layer
         )
         with pytest.raises(ValueError, match="behavioral_readout_layer"):
@@ -228,12 +228,12 @@ class TestBrainScoreModelBehavioral:
             identifier='test-model',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': extractor},
+            extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
         )
         # 'passive' is neural-style, no readout needed
         model.start_task(TaskContext(task_type='passive'))
-        assert model._readout_classifier is None
+        assert model._behavioral.readout_classifier is None
 
 
 class TestBrainScoreModelGenerationPath:
@@ -245,7 +245,7 @@ class TestBrainScoreModelGenerationPath:
             ['cat'] * 3 + ['dog'] * 3, identifier='gen_test')
 
     def test_generation_path_routes_correctly(self, test_stimuli):
-        """Model with generation_fn and TaskContext(instruction, label_set)
+        """Model with an answer function and TaskContext(instruction, label_set)
         should dispatch to generation, not readout."""
         calls = []
 
@@ -260,39 +260,39 @@ class TestBrainScoreModelGenerationPath:
             identifier='test-vlm',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': lambda *a, **kw: None},
-            generation_fn=fake_generate,
+            extractor={'vision': lambda *a, **kw: None},
+            answer=fake_generate,
         )
         model.start_task(TaskContext(
             task_type='probabilities',
             label_set=['cat', 'dog'],
             instruction='What animal is this?',
         ))
-        assert model._use_generation_for_task is True
-        assert model._readout_classifier is None
+        assert model._behavioral.use_generation_for_task is True
+        assert model._behavioral.readout_classifier is None
 
         result = model.process(test_stimuli)
         assert result.dims == ('presentation', 'choice')
         assert result.shape == (6, 2)
         # Each row should be a one-hot
         assert np.allclose(result.values.sum(axis=1), 1.0)
-        # generation_fn should be called once per stimulus
+        # the answer function should be called once per stimulus
         assert len(calls) == 6
         # Instruction should be forwarded verbatim
         assert all(c[1] == 'What animal is this?' for c in calls)
 
     def test_readout_path_still_works_when_no_instruction(self, test_stimuli):
         """If TaskContext has fitting_stimuli but no instruction, dispatch
-        to the readout path even when model has a generation_fn."""
+        to the readout path even when the model has an answer function."""
         features = np.random.default_rng(0).normal(size=(6, 8))
         extractor = _fake_preprocessor_returning(features)
         model = BrainScoreModel(
             identifier='test-model',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': extractor},
+            extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
-            generation_fn=lambda **kw: 'cat',  # shouldn't be called
+            answer=lambda **kw: 'cat',  # shouldn't be called
         )
         fitting = _make_image_stimulus_set(['cat'] * 3 + ['dog'] * 3,
                                             identifier='gen_fit')
@@ -302,8 +302,8 @@ class TestBrainScoreModelGenerationPath:
             label_set=['cat', 'dog'],
             # no instruction
         ))
-        assert model._use_generation_for_task is False
-        assert model._readout_classifier is not None
+        assert model._behavioral.use_generation_for_task is False
+        assert model._behavioral.readout_classifier is not None
 
     def test_generation_path_prefers_generation_when_both_available(
             self, test_stimuli):
@@ -316,9 +316,9 @@ class TestBrainScoreModelGenerationPath:
             identifier='test-vlm',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': lambda *a, **kw: None},
+            extractor={'vision': lambda *a, **kw: None},
             behavioral_readout_layer='some_layer',
-            generation_fn=lambda **kw: 'cat',
+            answer=lambda **kw: 'cat',
         )
         model.start_task(TaskContext(
             task_type='probabilities',
@@ -326,21 +326,21 @@ class TestBrainScoreModelGenerationPath:
             label_set=['cat', 'dog'],
             instruction='What animal is this?',
         ))
-        assert model._use_generation_for_task is True
-        assert model._readout_classifier is None
+        assert model._behavioral.use_generation_for_task is True
+        assert model._behavioral.readout_classifier is None
 
     def test_error_when_no_path_viable(self, test_stimuli):
-        """TaskContext with no fitting_stimuli, no generation_fn, no
+        """TaskContext with no fitting_stimuli, no answer function, no
         instruction+label_set combo → clear error."""
         model = BrainScoreModel(
             identifier='test-model',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': lambda *a, **kw: None},
+            extractor={'vision': lambda *a, **kw: None},
         )
         with pytest.raises(ValueError, match="neither fitting_stimuli"):
             model.start_task(TaskContext(
                 task_type='probabilities',
                 label_set=['cat', 'dog'],
-                # no fitting_stimuli and no generation_fn
+                # no fitting_stimuli and no answer function
             ))

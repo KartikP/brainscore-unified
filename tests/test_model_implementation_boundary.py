@@ -78,11 +78,17 @@ def test_selector_instance_pickle_round_trip():
     assert restored == selector
 
 
-def test_concrete_subject_keeps_typed_dispatch_order():
-    assert [(kind.__name__, handler) for kind, handler in BrainScoreModel._INPUT_HANDLERS] == [
-        ('StateChange', '_dispatch_state_change'),
-        ('Mapping', '_handle_row'),
-    ]
+def test_built_in_capabilities_keep_their_order():
+    """One registry routes events and sessions. Event capabilities come first, in
+    this order; the session capabilities come after any added capability."""
+    from brainscore.capabilities import capability_registry
+    order = {identifier: capability.order for identifier, capability in capability_registry.items()}
+    assert [identifier for identifier in sorted(order, key=lambda i: (order[i], i))
+            if order[identifier] < 10000] == [
+        'intervention', 'behavioral-generation', 'behavioral-readout', 'closed-loop',
+        'neural-encoding']
+    assert {order[i] for i in ('neural-sessions', 'behavior-sessions', 'motor-sessions',
+                               'intervention-sessions')} == {10000}
 
 
 @pytest.mark.parametrize('source', [

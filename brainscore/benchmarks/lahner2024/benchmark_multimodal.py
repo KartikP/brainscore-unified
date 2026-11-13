@@ -63,11 +63,13 @@ from ._util import (
     read_stimulus_ids, record_clips, record_frames_per_clip, takes_audiovisual,
 )
 
+from brainscore.benchmarks._score import benchmark_score
 from .benchmark import (
     BIBTEX,
     DEFAULT_SAMPLE_TIMES_MS,
     Lahner2024BOLDMoments,
     VIDEO_DURATION_MS,
+    _ceiling_measured,
 )
 
 
@@ -332,9 +334,9 @@ class Lahner2024BOLDMoments_multimodal(Lahner2024BOLDMoments):
                          if self._mode == 'banded' else [])
         per_voxel_r, median_r, mean_r = summarize(per_voxel_r)
 
-        score = Score(median_r / float(self.ceiling))
-        score.attrs['raw'] = Score(median_r)
-        score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
+        score = benchmark_score(
+            self, median_r / float(self.ceiling), raw=median_r,
+            metric='median_per_voxel_pearson_r', normalized=_ceiling_measured(self))
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
         # Same contract as the single-modality benchmark: expose the per-voxel scores

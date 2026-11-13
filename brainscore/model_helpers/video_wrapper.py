@@ -1,5 +1,5 @@
 """
-VideoWrapper — activations_model for native-temporal video models.
+VideoWrapper — extractor for native-temporal video models.
 
 Fourth wrapper class in the unified interface, alongside:
     - PytorchWrapper      (standard image models, batch x C x H x W)
@@ -145,7 +145,7 @@ def default_uniform_frame_sampler(
 
 
 class VideoWrapper:
-    """Wraps a video-native model for use as a BrainScoreModel activations_model.
+    """Wraps a video-native model for use as a BrainScoreModel extractor.
 
     Args:
         model: PyTorch module that accepts a video tensor and returns

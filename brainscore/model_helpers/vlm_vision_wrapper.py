@@ -1,5 +1,5 @@
 """
-VLMVisionWrapper — activations_model for VLM vision encoders with
+VLMVisionWrapper — extractor for VLM vision encoders with
 flattened-patch layouts.
 
 Symmetric with PytorchWrapper and TextWrapper. Handles VLMs whose vision

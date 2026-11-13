@@ -46,7 +46,7 @@ class TestPolicyWrapper:
             identifier="stateful-policy",
             model=None,
             region_layer_map={},
-            preprocessors={"vision": lambda x: x},
+            extractor={"vision": lambda stimuli, layers=None: stimuli},
             policy=pw,
         )
         obs = StreamEvent("observation", {"n": 10}, None)

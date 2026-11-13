@@ -3,6 +3,7 @@ from brainscore_core import io_catalog
 from brainscore.capabilities import Capability, capability_registry, register_capability
 from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
 from brainscore import BrainScoreModel
+from brainscore_core.streaming import Session
 
 
 @pytest.fixture(autouse=True)
@@ -21,34 +22,38 @@ def test_external_input_output_state_reset_and_session():
                                      shape_validator=lambda x: isinstance(x, int)))
     setups = []
     class Tool(Capability):
+        """A session capability: it runs the session and answers each request."""
         identifier = 'external-test'
         input_channels = {'test_request'}
         output_channels = {'test_result'}
-        def enabled_for(self, model):
-            return bool(model.capability_config.get(self.identifier))
-        def setup(self, model):
-            setups.append(model.identifier)
+        def enabled_for(self, subject):
+            return bool(subject.capability_config.get(self.identifier))
+        def setup(self, subject):
+            setups.append(subject.identifier)
             return {'calls': 0}
-        def handles(self, model, event, **kwargs):
-            return isinstance(event, StreamEvent) and event.channel == 'test_request'
-        def process(self, model, event, **kwargs):
-            state = model.capability_state(self.identifier)
-            state['calls'] += 1
-            return StreamEvent('test_result', state['calls'] + event.payload, event.t_ms)
-        def supports_session(self, model, channels):
+        def supports_session(self, subject, channels):
             return set(channels) == {'test_result'}
-        def participate(self, model, session):
+        def participate(self, subject, session):
+            state = subject.capability_state(self.identifier)
             while (event := session.next_input()) is not None:
-                session.respond(model.process(event))
+                state['calls'] += 1
+                session.respond(StreamEvent('test_result', state['calls'] + event.payload,
+                                            event.t_ms))
     register_capability(Tool())
     model = BrainScoreModel('external', capability_config={'external-test': True})
-    assert model.process(StreamEvent('test_request', 10, 5)).payload == 11
+
+    def run(payload):
+        session = Session([StreamEvent('test_request', payload, 5)], ('test_result',))
+        model.participate(session)
+        return session.collect('test_result')[0].payload
+
+    assert run(10) == 11
     assert len(setups) == 1
     model.reset()
-    assert model.process(StreamEvent('test_request', 10, 5)).payload == 11
+    assert run(10) == 11
     assert len(setups) == 2 and 'test_result' in model.out_channels
     with pytest.raises(ValueError):
-        model.process(StreamEvent('test_request', 'bad', 5))
+        Session([StreamEvent('test_request', 'bad', 5)], ('test_result',))
     with pytest.raises(NotImplementedError):
         model.check_session_support({'test_result', 'motor'})
 
@@ -58,10 +63,10 @@ def test_external_modality_routes_without_host_modification():
     register_channel(CatalogEntry('depth_sensor', 'input', 'StimulusSet', 'depth', 'test'),
                      columns=['depth_sample'])
     calls = []
-    def extract(model, stimuli, **kwargs):
+    def extract(stimuli, layers=None, **kwargs):
         calls.append(stimuli)
         return 'measured'
-    model = BrainScoreModel('depth', preprocessors={'depth_sensor': extract})
+    model = BrainScoreModel('depth', extractor={'depth_sensor': extract})
     assert model.process(StimulusSet({'depth_sample': ['fixture']})) == 'measured'
     assert len(calls) == 1
     with pytest.raises(ValueError, match='already belongs'):
@@ -75,7 +80,7 @@ def test_external_modality_routes_without_host_modification():
 def test_session_benchmark_checks_execution_support_before_compute():
     from types import SimpleNamespace
     from brainscore_core.compatibility import check_channel_compatibility, CompatibilityError
-    model = BrainScoreModel('motor-only', action_fn=lambda step: None)
+    model = BrainScoreModel('motor-only', policy=lambda step: None)
     benchmark = SimpleNamespace(identifier='session', uses_session=True,
         required_input_channels={'observation'}, requested_output_channels={'motor'})
     check_channel_compatibility(model, benchmark)

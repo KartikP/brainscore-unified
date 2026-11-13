@@ -275,12 +275,11 @@ class TowerExtractor:
         return _assembly(stimuli, self.layer, out.detach().numpy())
 
 
-def _two_tower_model(form, vision=None):
+def _two_tower_model(vision=None):
     vision, text = vision or Tower(2.), Tower(3)
     towers = {'vision': TowerExtractor(vision, 'v', 'vision_tower', VISION_X),
               'text': TowerExtractor(text, 't', 'text_tower', TEXT_X)}
-    kwargs = {'extractor': towers} if form == 'extractor' else {'activations_model': towers}
-    return BrainScoreModel('two-tower', region_layer_map=REGIONS, **kwargs), vision, text
+    return BrainScoreModel('two-tower', region_layer_map=REGIONS, extractor=towers), vision, text
 
 
 def _run_each_tower(model):
@@ -292,9 +291,8 @@ def _run_each_tower(model):
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize('form', ['extractor', 'activations_model'])
-def test_brainscoremodel_extractor_mapping_captures_both_towers(form):
-    model, vision, text = _two_tower_model(form)
+def test_brainscoremodel_extractor_mapping_captures_both_towers():
+    model, vision, text = _two_tower_model()
     reference = _run_each_tower(model)
     vision.forwards = text.forwards = 0
 
@@ -319,20 +317,8 @@ def test_brainscoremodel_extractor_mapping_captures_both_towers(form):
 
 
 @pytest.mark.unit
-def test_old_and_new_constructor_forms_return_identical_assemblies():
-    new, new_v, new_t = _two_tower_model('extractor')
-    old, old_v, old_t = _two_tower_model('activations_model')
-    with PerceptWindow([new_v, new_t]) as eye_new, PerceptWindow([old_v, old_t]) as eye_old:
-        outs_new, outs_old = _run_each_tower(new), _run_each_tower(old)
-    for a, b in zip(outs_new, outs_old):
-        _assert_same(a, b)
-    for a, b in zip(eye_new.captures, eye_old.captures):
-        assert a.module == b.module and torch.equal(a.tensor, b.tensor)
-
-
-@pytest.mark.unit
 def test_brainscoremodel_hooks_removed_when_body_raises():
-    model, vision, text = _two_tower_model('extractor')
+    model, vision, text = _two_tower_model()
     with pytest.raises(RuntimeError, match='mid-benchmark'):
         with PerceptWindow([vision, text]) as eye:
             model.start_recording('IT')
@@ -348,7 +334,7 @@ def test_brainscoremodel_hooks_removed_when_forward_raises():
     class Boom(nn.Module):
         def forward(self, x):
             raise ValueError('boom')
-    model, vision, text = _two_tower_model('extractor', vision=Boom())
+    model, vision, text = _two_tower_model(vision=Boom())
     with pytest.raises(ValueError, match='boom'):
         with PerceptWindow([vision, text]) as eye:
             model.start_recording('IT')

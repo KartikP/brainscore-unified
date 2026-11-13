@@ -1,5 +1,5 @@
 """
-AudioWrapper — fifth activations_model wrapper, symmetric with TextWrapper
+AudioWrapper — fifth extractor wrapper, symmetric with TextWrapper
 and VideoWrapper for audio waveform inputs.
 
 Wraps an audio backbone (Wav2Vec2, HuBERT, Wav2Vec-Bert, SeamlessM4T, Whisper,

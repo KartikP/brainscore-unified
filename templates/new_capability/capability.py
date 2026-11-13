@@ -10,7 +10,8 @@ three pieces, none of which edit Brain-Score's core:
 2. Catalog entries: register each channel name with its payload type, so a
    wrong payload is rejected before any model sees it.
 3. A ``Capability`` subclass: which models use it, which sessions it runs, and
-   how it answers one request.
+   how it answers each request. A capability takes one role; this one runs
+   sessions (``supports_session`` and ``participate``).
 
 Call ``register()`` once from your package's setup code. A second call raises
 ``ValueError`` instead of silently replacing a registered name. Only a model
@@ -66,24 +67,33 @@ class WordCountCapability(Capability):
     input_channels = frozenset({REQUEST})
     output_channels = frozenset({RESULT})
 
-    def enabled_for(self, model) -> bool:
+    def enabled_for(self, subject) -> bool:
         # Only models whose registration asks for this capability get it.
-        return IDENTIFIER in model.capability_config
+        return IDENTIFIER in subject.capability_config
 
-    def setup(self, model) -> dict:
+    def setup(self, subject) -> dict:
         # Fresh per-model state. Runs before the first request and again after
-        # model.reset(), so bad settings fail before anything is counted.
-        settings = model.capability_config[IDENTIFIER]
+        # subject.reset(), so bad settings fail before anything is counted.
+        settings = subject.capability_config[IDENTIFIER]
         min_length = settings.get('min_length') if isinstance(settings, dict) else None
         return {'min_length': _check_min_length(min_length), 'words_so_far': 0}
 
-    def handles(self, model, event, **kwargs) -> bool:
-        # model.process(event) routes events on our input channel here.
-        return isinstance(event, StreamEvent) and event.channel == REQUEST
+    def supports_session(self, subject, channels) -> bool:
+        # Claim sessions that ask for exactly our output channel.
+        return set(channels) == {RESULT}
 
-    def process(self, model, event, **kwargs) -> StreamEvent:
+    def participate(self, subject, session) -> None:
+        # Read each request the session delivers and send one answer back.
+        # The session checks both payloads against the catalog entries.
+        state = subject.capability_state(IDENTIFIER)
+        event = session.next_input()
+        while event is not None:
+            session.respond(self._count(state, event))
+            event = session.next_input()
+
+    @staticmethod
+    def _count(state, event) -> StreamEvent:
         # Answer one request. TODO: replace the counting with your behavior.
-        state = model.capability_state(IDENTIFIER)
         words = [word for word in event.payload.text.split()
                  if len(word) >= state['min_length']]
         state['words_so_far'] += len(words)
@@ -93,18 +103,6 @@ class WordCountCapability(Capability):
             t_ms=event.t_ms,
             meta=dict(event.meta),
         )
-
-    def supports_session(self, model, channels) -> bool:
-        # Claim sessions that ask for exactly our output channel.
-        return set(channels) == {RESULT}
-
-    def participate(self, model, session) -> None:
-        # Read each request the session delivers and send one answer back.
-        # model.process checks both payloads against the catalog entries.
-        event = session.next_input()
-        while event is not None:
-            session.respond(model.process(event))
-            event = session.next_input()
 
 
 def register() -> None:

@@ -16,7 +16,7 @@ register_channel(CatalogEntry(
 ))
 ```
 
-Experiments accept unregistered channel names with a warning; benchmark scoring requires registration.
+Experiments and benchmark scoring both refuse a channel that is not registered.
 
 An input channel can also claim stimulus-table columns. Each column then feeds the channel: a table session sends it on that channel, pre-flight accepts the channel, and a subject that does not declare the channel does not get the column.
 
@@ -54,3 +54,9 @@ To let `RecordActivity` and `Ablate` reach a framework other than PyTorch, imple
 ## A new capability
 
 A `Capability` adds a new kind of input handling to `BrainScoreModel` itself, with its own channels. Subclass `Capability` and register it with `register_capability`, both from `brainscore.capabilities`. Use this only when the behavior belongs inside the subject; for observing or changing runs, write a tool.
+
+A capability has one role. A session capability claims the outputs a session requests (`supports_session(subject, channels)`) and runs it (`participate(subject, session)`); `subject.participate(session)` reaches it. An added capability normally takes this role. An event capability claims one event (`handles(subject, event)`) and answers it (`process(subject, event)`); the built-in ones are the steps the session drivers reach through the model's `process`. Implement one pair; the other declines by default.
+
+Every method takes the model first, named `subject`. Per-model state comes from `setup(subject)` and is read back with `subject.capability_state(identifier)`; settings come from `subject.capability_config`, which holds what the registration passes as `capability_config={identifier: settings}`.
+
+One registry holds every capability and tries them in `order`, lower first, ties by `identifier`. Added capabilities default to 1000. The built-in event capabilities are 50 to 1000 and the built-in session capabilities 10000, so an added capability runs a session that a built-in one also claims. See `templates/new_capability/`.

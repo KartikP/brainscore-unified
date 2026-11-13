@@ -65,6 +65,8 @@ from .benchmark_timeresolved import (
     TRANSDUCTIVE_SVD,
     VOXEL_BATCH,
 )
+from brainscore.benchmarks._score import benchmark_score
+from .benchmark import _ceiling_measured
 from .benchmark_multimodal import DEFAULT_AUDIO_DIR, multimodal_fit
 
 
@@ -359,9 +361,9 @@ class Lahner2024BOLDMoments_timeresolved_multimodal(
         median_r = float(np.median(per_voxel_r_finite))
         mean_r = float(np.mean(per_voxel_r_finite))
 
-        score = Score(median_r / float(self.ceiling))
-        score.attrs['raw'] = Score(median_r)
-        score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
+        score = benchmark_score(
+            self, median_r / float(self.ceiling), raw=median_r,
+            metric='median_per_voxel_pearson_r', normalized=_ceiling_measured(self))
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
         # CV labels for the policy this path actually applies (F1).

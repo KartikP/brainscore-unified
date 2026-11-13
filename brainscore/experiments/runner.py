@@ -15,7 +15,7 @@ from typing import Iterator
 from brainscore.instrumentation import Call, observed
 from brainscore.run_record import PayloadCodec, RunRecord
 from brainscore.experiments._storage import check_output_directory
-from brainscore_core.compatibility import CompatibilityMatch, validate_channels
+from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.contract import Subject
 
 
@@ -129,6 +129,22 @@ class Repetition:
     identifier: object
 
 
+def participate_observed(subject, session, context):
+    """Run ``subject`` in ``session`` inside the current record repetition.
+
+    The session's settings are published first and its input and output events
+    are recorded between the repetition's boundaries, so ``replay_sessions``
+    rebuilds exactly this session. Every protocol that runs a session uses this
+    one block: ``SessionProtocol`` and the adapters for external libraries.
+    """
+    settings = {name: getattr(session, name) for name in _SESSION_CONTEXT_FIELDS
+                if getattr(session, name, None) is not None}
+    if settings:
+        context.publish('session_context', settings)
+    with observed(session, context):
+        subject.participate(session)
+
+
 class SessionProtocol:
     """Factory creates a fresh context-managed session for each independent repetition.
 
@@ -179,43 +195,24 @@ class SessionProtocol:
                 **({} if self.collect_outputs else {'collect_outputs': False})}
 
     def validate(self, subject):
+        """Check the subject against this protocol with the rule ``score()`` uses.
+
+        The protocol is the benchmark side: it declares the inputs it sends and
+        the outputs it requests, and core ``check_channel_compatibility``
+        decides the match (Contract Rule 5.2), so an experiment and a benchmark
+        agree on which pairs fit. An incompatible pair raises
+        ``CompatibilityError``; a channel name outside the catalog must be
+        registered with ``register_channel`` first.
+        """
         self._compatibility = None
         if not isinstance(subject, Subject):
             raise TypeError('SessionProtocol requires a Subject (participate, reset and channels)')
-        # Use scoring's channel rules; exploratory names remain usable with a warning.
-        for channels, direction, owner in (
-            (subject.in_channels, 'input', 'subject inputs'),
-            (subject.out_channels, 'output', 'subject outputs'),
-            (subject.required_channels, 'input', 'subject required inputs'),
-            (self.required_input_channels, 'input', 'protocol inputs'),
-            (self.requested_output_channels, 'output', 'protocol outputs'),
-        ):
-            validate_channels(set(channels), direction, owner, allow_unregistered=True)
         if (not self.conditions or any(not isinstance(c, str) or not c for c in self.conditions)
                 or len(set(self.conditions)) != len(self.conditions)):
             raise ValueError('Use nonempty, distinct condition names')
         if not self.repetitions or len(set(self.repetitions)) != len(self.repetitions):
             raise ValueError('Use nonempty, distinct, hashable repetition IDs')
-        consumed = self.required_input_channels & set(subject.in_channels)
-        missing_required = set(subject.required_channels) - self.required_input_channels
-        missing_outputs = self.requested_output_channels - set(subject.out_channels)
-        problems = []
-        if self.required_input_channels and not consumed:
-            problems.append(f'takes in none of the protocol inputs {sorted(self.required_input_channels)}')
-        if missing_required:
-            problems.append(f'requires inputs absent from the protocol {sorted(missing_required)}')
-        if missing_outputs:
-            problems.append(f'cannot produce requested outputs {sorted(missing_outputs)}')
-        if problems:
-            raise ValueError(f'Subject {subject.identifier!r} is incompatible with protocol '
-                             f'{self.identifier!r}: {"; ".join(problems)}. '
-                             f'Subject in_channels={sorted(subject.in_channels)}, '
-                             f'out_channels={sorted(subject.out_channels)}.')
-        self._compatibility = CompatibilityMatch(
-            subject=subject.identifier, benchmark=self.identifier,
-            consumed_inputs=frozenset(consumed),
-            dropped_inputs=frozenset(self.required_input_channels - set(subject.in_channels)),
-            requested_output_channels=frozenset(self.requested_output_channels))
+        self._compatibility = check_channel_compatibility(subject, self)
 
     def run(self, subject, context):
         results = []
@@ -227,15 +224,7 @@ class SessionProtocol:
                     with context.repetition(repetition, condition=condition), self.session_factory(request) as session:
                         if not isinstance(session, Session):
                             raise TypeError('Session factories must return a Session')
-                        settings = {
-                            name: getattr(session, name)
-                            for name in _SESSION_CONTEXT_FIELDS
-                            if getattr(session, name, None) is not None
-                        }
-                        if settings:
-                            context.publish('session_context', settings)
-                        with observed(session, context):
-                            subject.participate(session)
+                        participate_observed(subject, session, context)
                         if not session.complete:
                             raise RuntimeError('Environment session ended before episode completion')
                         if self.collect_outputs:
@@ -324,10 +313,10 @@ class CallableProtocol:
     for baseline and intervention conditions.
 
     The evaluator runs the subject through ``participate``. It owns the
-    repetitions too: it runs each session inside
-    ``context.repetition(identifier)`` and wraps it in
-    ``observed(session, context)``, so the record holds the input and output
-    events of each session between its own boundaries. It names those
+    repetitions too: it runs each session with
+    ``brainscore.harnesses.adapter.run_request`` (or ``participate_observed``
+    inside ``context.repetition(identifier)``), so the record holds the input
+    and output events of each session between its own boundaries. It names those
     identifiers in ``repetitions``, so tools can select them.
 
     For a system that is not a subject (a policy server, an external library

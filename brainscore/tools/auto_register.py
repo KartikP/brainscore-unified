@@ -251,7 +251,7 @@ def _meta_signal(meta: Dict[str, Any]) -> str:
 
 def _base_modality(modality: str) -> str:
     """Collapse the wrapper-level modality to the dispatch modality used by
-    ``BrainScoreModel.activations_model`` keys and ``required_modalities``."""
+    ``BrainScoreModel`` extractor keys and ``required_modalities``."""
     return {'vision_flat': 'vision', 'text_causal': 'text',
             'text_encoder': 'text'}.get(modality, modality)
 
@@ -529,7 +529,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     # return BrainScoreModel(
     #     identifier=identifier,
     #     region_layer_map=REGION_LAYER_MAP,
-    #     activations_model={{{extractor_entries}}},
+    #     extractor={{{extractor_entries}}},
     # )
 
 
@@ -588,13 +588,13 @@ def auto_register(model: Any,
                 "vision model needs a `preprocessing` callable "
                 "(image_filepaths -> (B,C,H,W) array/tensor).")
         from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
-        activations_model = PytorchWrapper(
+        vision_wrapper = PytorchWrapper(
             model=model, preprocessing=preprocessing, identifier=identifier)
         return BrainScoreModel(
             identifier=identifier,
             model=model,
             region_layer_map=region_layer_map,
-            extractor={'vision': activations_model},
+            extractor={'vision': vision_wrapper},
             visual_degrees=visual_degrees,
             required_modalities={base_modality},
             **brainscore_model_kwargs,

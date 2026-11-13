@@ -112,7 +112,10 @@ def test_registered_scoring_preserves_raw_score_and_repetitions(scored_reference
     score = brainscore.score(make_subject(capture), benchmark, check_mem=False)
     assert float(score) == float(score.attrs['raw']) == 0.375
     assert score.attrs['normalized'] is False
-    assert score.attrs['ceiling_status'] == 'not_estimated'
+    assert score.attrs['ceiling'].attrs['status'] == 'not_estimated'
+    assert score.attrs['metric'] == 'pearson_r_squared'
+    assert score.attrs['benchmark_version'] == 1
+    assert score.attrs['compatibility']['match'] == 'full'
     assert score.attrs['configuration']['repetitions'] == 2
     assert resets == [1, 2]
     assert len(calls) == 6
@@ -167,8 +170,9 @@ def test_feature_only_model_rejected_before_requests(scored_reference):
     root, _ = scored_reference
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
         reset=lambda repetition: None)
+    # score() runs the one pre-flight; the benchmark checks nothing itself.
     with pytest.raises(CompatibilityError):
-        benchmark(brainscore.load_model('chance-baseline'))
+        brainscore.score(brainscore.load_model('chance-baseline'), benchmark, check_mem=False)
 
 
 def test_configuration_is_not_discarded_on_domain_fallback():

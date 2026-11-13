@@ -116,7 +116,7 @@ def test_droid_no_target_leakage_timing_and_begin(tmp_path):
         def reset(self):
             self.begins += 1
     policy = Policy()
-    subject = BrainScoreModel('s', None, {}, {}, None, policy=policy)
+    subject = BrainScoreModel('s', policy=policy)
     with RunRecorder(tmp_path/'run', metadata={'fixture': True}) as recorder:
         result = evaluate_droid_episode(subject, droid_fixture(), action_spec=action_spec(),
                                          action_source=lambda row: row['action'], recorder=recorder)

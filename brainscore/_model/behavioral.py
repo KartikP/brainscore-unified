@@ -222,7 +222,7 @@ class BehavioralReadout:
                 f"('auto', 'generation', 'readout'); got {prefer!r}."
             )
 
-        gen_viable = (owner._generation_fn is not None
+        gen_viable = (owner._answer is not None
                       and instruction and label_set)
         readout_viable = fitting is not None
 
@@ -255,7 +255,7 @@ class BehavioralReadout:
         if gen_viable:
             # A readout exists only with a layer to read and an extractor to run.
             readout_wired = (owner._behavioral_readout_layer is not None
-                             and bool(owner._extractors or owner._layer_extractors))
+                             and bool(owner._extractors))
             if readout_viable and readout_wired:
                 import warnings
                 warnings.warn(
@@ -381,11 +381,11 @@ class BehavioralReadout:
             raise ValueError("prefer_path must be 'auto', 'generation', 'likelihood' or 'readout'; "
                              f'got {prefer!r}.')
         readout_wired = (owner._behavioral_readout_layer is not None
-                         and bool(owner._extractors or owner._layer_extractors)
+                         and bool(owner._extractors)
                          and task.fitting_stimuli is not None)
         reported_confidence = isinstance(response, Choice) and response.confidence is not None
         raw_scores = isinstance(response, Choice) and response.raw_scores
-        if raw_scores and owner._likelihood_fn is None:
+        if raw_scores and owner._likelihood is None:
             # Raw scores come only from a likelihood part: no softmax of a readout, no guess.
             from brainscore_core.compatibility import CompatibilityError
             raise CompatibilityError(
@@ -394,10 +394,10 @@ class BehavioralReadout:
         per_row = isinstance(response, Choice) and isinstance(response.labels, str)
         raw_text = isinstance(response, Choice) and response.raw_text
         can = {
-            'generation': not raw_scores and (owner._reply_fn is not None or (
-                owner._generation_fn is not None and isinstance(response, Choice)
+            'generation': not raw_scores and (owner._reply is not None or (
+                owner._answer is not None and isinstance(response, Choice)
                 and not reported_confidence and not raw_text)),   # answer= takes no settings
-            'likelihood': (owner._likelihood_fn is not None and isinstance(response, Choice)
+            'likelihood': (owner._likelihood is not None and isinstance(response, Choice)
                            and not reported_confidence),
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
                         and not reported_confidence and not raw_scores and not per_row),
@@ -415,7 +415,7 @@ class BehavioralReadout:
         source = None
         if isinstance(response, Choice) and (response.probabilities or response.reaction_time
                                              or response.raw_scores):
-            if path != 'readout' and owner._likelihood_fn is not None:
+            if path != 'readout' and owner._likelihood is not None:
                 source = 'likelihood'
             elif readout_wired and not per_row:
                 source = 'readout'
@@ -471,7 +471,7 @@ class BehavioralReadout:
         else:
             score_first = path == 'generation' and self.probability_source == 'likelihood'
             remember = owner._memory == 'trial_history'
-            if remember and owner._reply_fn is None and owner._likelihood_fn is None:
+            if remember and owner._reply is None and owner._likelihood is None:
                 raise ValueError("memory='trial_history' needs reply= or likelihood=; answer= cannot see "
                                  'earlier trials.')
 
@@ -480,27 +480,27 @@ class BehavioralReadout:
 
             if path == 'likelihood':
                 def call(row, prompt):
-                    scores = owner._likelihood_fn(with_history(prompt), list(prompt.response.labels))
+                    scores = owner._likelihood(with_history(prompt), list(prompt.response.labels))
                     if remember:
                         self.history.append((prompt, max(scores, key=scores.get)))
                     return scores
-            elif owner._reply_fn is not None:
+            elif owner._reply is not None:
                 def call(row, prompt):
                     shown = with_history(prompt)
                     # Scoring first keeps the recorded first pass the prompt alone.
-                    scores = (owner._likelihood_fn(shown, list(prompt.response.labels))
+                    scores = (owner._likelihood(shown, list(prompt.response.labels))
                               if score_first else None)
-                    reply, extra = _reply_and_meta(owner._reply_fn(shown))
+                    reply, extra = _reply_and_meta(owner._reply(shown))
                     if remember:
                         self.history.append((prompt, str(reply)))
                     return reply, scores, extra
             else:   # a registration's answer: it phrases and parses a Choice itself
                 def call(row, prompt):
-                    return owner._generation_fn(stimulus_row=row, instruction=task.instruction,
+                    return owner._answer(stimulus_row=row, instruction=task.instruction,
                                                 label_set=list(prompt.response.labels))
             replies, neural = self._per_stimulus(stimuli, layers, call, prompts)
             scores = None
-            if path == 'generation' and owner._reply_fn is not None:
+            if path == 'generation' and owner._reply is not None:
                 replies, scores, extras = (list(column) for column in zip(*replies)) if replies else ([], [], [])
             if path == 'likelihood':
                 logp = _score_rows(replies, row_labels)
@@ -522,7 +522,7 @@ class BehavioralReadout:
                 outputs['behavior:rating'] = _numbers(parsed, stimuli, 'reply', raw=replies)
             else:
                 parsed = [prompt.response.parse(str(reply)) for prompt, reply in zip(prompts, replies)]
-                source = 'reply' if owner._reply_fn is not None else 'answer'
+                source = 'reply' if owner._reply is not None else 'answer'
                 outputs['behavior:choice'] = _one_hot(
                     [label for label, _ in parsed], [label is not None for label, _ in parsed],
                     stimuli, row_labels, axis, source, raw=[str(r) for r in replies],
@@ -723,7 +723,7 @@ class BehavioralReadout:
         from brainscore_core.responses import Scale
         owner = self.owner
         readout_layer = owner._behavioral_readout_layer
-        modality = owner._pick_modality(owner._detect_modalities(stimuli))
+        modality = owner._pick_modality(owner.detect_modalities(stimuli))
         for region in layers:
             if owner._region_modality_map.get(region) and self._region_modality(region) != modality:
                 raise ValueError(
@@ -780,7 +780,7 @@ class BehavioralReadout:
 
         raw_answers, valid = [], []
         for i, (_, row) in enumerate(stimuli.iterrows()):
-            predicted = owner._generation_fn(
+            predicted = owner._answer(
                 stimulus_row=row,
                 instruction=instruction,
                 label_set=label_set,

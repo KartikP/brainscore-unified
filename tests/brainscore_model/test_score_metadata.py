@@ -41,15 +41,15 @@ def _stimuli():
 def _generation_model():
     return BrainScoreModel(
         identifier='test-vlm', model=None, region_layer_map={},
-        preprocessors={'vision': lambda *a, **kw: None},
-        generation_fn=lambda stimulus_row, instruction, label_set: 'cat')
+        extractor={'vision': lambda *a, **kw: None},
+        answer=lambda stimulus_row, instruction, label_set: 'cat')
 
 
 def _readout_model():
     features = np.random.default_rng(0).normal(size=(6, 8))
     return BrainScoreModel(
         identifier='test-readout', model=None, region_layer_map={},
-        preprocessors={'vision': _fake_preprocessor_returning(features)},
+        extractor={'vision': _fake_preprocessor_returning(features)},
         behavioral_readout_layer='some_layer')
 
 

@@ -37,7 +37,7 @@ def model_with_ablation():
         identifier='two-layer-test',
         model=net,
         region_layer_map={},
-        preprocessors={'vision': lambda x: x},
+        extractor={'vision': lambda stimuli, layers=None: stimuli},
         intervention=build_pytorch_ablation_fn(net),
     )
     return bs, net
@@ -155,18 +155,18 @@ class TestMultipleConcurrentAblations:
             perturbation=Perturbation(kind='zero'),
         ))
         assert a.handle_id != b.handle_id
-        assert len(bs._active_interventions) == 2
+        assert len(bs._interventions.active_interventions) == 2
         # Both act: fc1 unit 0 and fc2 unit 7 are zero (unit 7 is zero anyway).
         assert torch.equal(net(x).detach(), torch.tensor([[0., 2., 3., 4., 0., 0., 0., 0.]]))
 
         # Selectively undo just fc1 ablation; fc2 ablation remains
         apply_state_change(bs, StateChange(kind='reset', handle_id=a.handle_id))
-        assert len(bs._active_interventions) == 1
-        assert b.handle_id in bs._active_interventions
+        assert len(bs._interventions.active_interventions) == 1
+        assert b.handle_id in bs._interventions.active_interventions
         assert torch.equal(net(x).detach(), torch.tensor([[1., 2., 3., 4., 0., 0., 0., 0.]]))
 
         bs.reset()
-        assert len(bs._active_interventions) == 0
+        assert len(bs._interventions.active_interventions) == 0
 
 
 class TestUndoIsExact:
@@ -181,7 +181,7 @@ class TestUndoIsExact:
         assert not torch.equal(net(x).detach(), baseline)
         apply_state_change(bs, StateChange(kind='reset', handle_id=applied.handle_id))
         assert torch.equal(net(x).detach(), baseline)
-        assert bs._active_interventions == {}
+        assert bs._interventions.active_interventions == {}
 
     def test_two_interventions_stack_and_undo_selectively(self, model_with_ablation):
         bs, net = model_with_ablation
@@ -224,7 +224,7 @@ class TestLayerResolution:
             identifier='seq-test',
             model=net,
             region_layer_map={},
-            preprocessors={'vision': lambda x: x},
+            extractor={'vision': lambda stimuli, layers=None: stimuli},
             intervention=build_pytorch_ablation_fn(net),
         )
         # Sequential's children are accessed by integer index
@@ -316,7 +316,7 @@ class TestIndexValidation:
         # zero spatial column 5. This would fail against c5879b1.
         from brainscore_core.model_interface import PerturbationApplied
         net = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3))  # output (N, 4, H-2, W-2)
-        bs = BrainScoreModel('conv', net, {}, {'vision': lambda x: x},
+        bs = BrainScoreModel('conv', net, {}, extractor={'vision': lambda stimuli, layers=None: stimuli},
                              intervention=build_pytorch_ablation_fn(net))
         applied = apply_state_change(bs, StateChange(
             kind='ablation',
@@ -359,7 +359,7 @@ class TestInputSite:
 
     def _bs(self, net):
         return BrainScoreModel(identifier='gated-mlp-test', model=net, region_layer_map={},
-                               preprocessors={}, intervention=build_pytorch_ablation_fn(net))
+                               intervention=build_pytorch_ablation_fn(net))
 
     def _steer(self, bs, layer, perturbation, indices=None):
         return apply_state_change(bs, StateChange(kind='steer', perturbation=perturbation,

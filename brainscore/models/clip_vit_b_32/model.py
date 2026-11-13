@@ -62,12 +62,12 @@ def get_model(identifier: str) -> BrainScoreModel:
     )
 
     # Vision: PytorchWrapper wraps vision_model sub-module.
-    activations_model = PytorchWrapper(
+    vision_wrapper = PytorchWrapper(
         identifier=identifier,
         model=clip_model.vision_model,
         preprocessing=preprocessing,
     )
-    activations_model.image_size = 224
+    vision_wrapper.image_size = 224
 
     # Text: TextWrapper wraps text_model sub-module. CLIP's text encoder is
     # bidirectional (BERT-like), so mean_tokens aggregation is appropriate.
@@ -90,7 +90,7 @@ def get_model(identifier: str) -> BrainScoreModel:
             for region, layer in REGION_LAYER_MAP.items()
         },
         extractor={
-            'vision': activations_model,
+            'vision': vision_wrapper,
             'text': text_wrapper,
         },
         visual_degrees=8,

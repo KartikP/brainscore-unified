@@ -27,6 +27,7 @@ import numpy as np
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.streaming_helpers import neural_response
+from brainscore.benchmarks._score import benchmark_score
 
 from ...metrics.encoding import (
     NormalEquations, cross_validated_r, grid_search, group_kfold,
@@ -153,6 +154,8 @@ class LeBel2023Encoding(BenchmarkBase):
     # Sends the story words as text; each row carries its own context, so trials
     # are independent. The requested region is set from `region` in __init__.
     required_input_channels = frozenset({'text'})
+    # What the reported value is; a variant that reports another summary names it.
+    metric = 'median_per_vertex_pearson_r'
     trial_memory = 'none'
 
     def __init__(self, identifier='LeBel2023-UTS03-encoding', region='language_system',
@@ -222,14 +225,16 @@ class LeBel2023Encoding(BenchmarkBase):
         per_vertex, median_r, mean_r = summarize(per_vertex)
 
         reported, extra_attrs = self._summarize(per_vertex, median_r, mean_r)
-        score = Score(reported)
-        score.attrs.update(extra_attrs)
-        score.attrs['raw'] = per_vertex
+        # No ceiling is estimable (single presentation per story): the score is
+        # the raw correlation and the registered ceiling stays Score(1.0).
+        score = benchmark_score(self, reported, raw=reported, metric=self.metric,
+                                normalized=False, **extra_attrs)
+        # The score of each target, in target order, for a cortical surface.
+        score.attrs['per_vertex_r'] = per_vertex
         score.attrs['mean_r'] = mean_r
         score.attrs['n_targets'] = int(Y.shape[1])
         score.attrs['target_index'] = target_index
         score.attrs['alphas'] = chosen_alphas
-        score.attrs['ceiling'] = 'none — single presentation per story, raw r reported'
         score.attrs['error'] = float(np.std(per_vertex) / np.sqrt(len(per_vertex)))
         return score
 
@@ -391,6 +396,8 @@ class LeBel2023EncodingLanguageMask(LeBel2023EncodingWordLevel):
     Requires the LanA atlas, which Brain-Score cannot redistribute — see
     ``python -m brainscore.data lana-atlas``.
     """
+
+    metric = 'language_mask_mean_pearson_r'
 
     def __init__(self, identifier='LeBel2023-UTS03-encoding-languagemask',
                  top_fraction=None, **kwargs):

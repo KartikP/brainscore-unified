@@ -57,7 +57,7 @@ class TestRoarYeatman2021:
 
         raw = float(score.attrs['raw'])
         ceiled = float(score)
-        ceiling = score.attrs['ceiling']
+        ceiling = float(score.attrs['ceiling'])
 
         # Accuracy is in [0, 1]
         assert 0.0 <= raw <= 1.0

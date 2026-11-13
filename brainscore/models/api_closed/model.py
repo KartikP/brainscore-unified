@@ -1,8 +1,8 @@
 """Closed-weight API models, evaluated behaviorally through the unified interface.
 
 A closed-weight model (Claude, GPT-4) exposes only its output, so it registers as
-a ``BrainScoreModel`` with a ``generation_fn`` (the API closure) and NO
-``activations_model`` — it can run behavioral / instruction-following benchmarks
+a ``BrainScoreModel`` with an ``answer`` part (the API closure) and NO
+``extractor`` — it can run behavioral / instruction-following benchmarks
 (object matching, lexical decision, the game) but NOT activation-based neural
 encoding. Scoring requires the provider's API key in the environment
 (``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY``); registration + load do not.
@@ -56,7 +56,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         raise ValueError(f"unknown closed-API model '{identifier}'; "
                          f"known: {sorted(REGISTRY)}")
     cfg = REGISTRY[identifier]
-    generation_fn = build_api_generation_fn(
+    answer = build_api_generation_fn(
         provider=cfg['provider'],
         model=cfg['model'],
         max_tokens=16,
@@ -65,7 +65,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         supported_modalities=set(cfg['modalities']),
-        answer=generation_fn,
+        answer=answer,
         reply=build_api_reply(cfg['provider'], cfg['model'],
                               cache_dir=f"{_CACHE_ROOT}/{identifier}"),
     )
