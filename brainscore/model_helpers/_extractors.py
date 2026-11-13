@@ -190,7 +190,7 @@ def _copy(value):
     if isinstance(value, torch.Tensor):
         return value.detach().clone()
     if isinstance(value, np.ndarray):
-        return value.copy()
+        return value.copy(order='K')     # keep the memory layout: a later reduction rounds by it
     if isinstance(value, (tuple, list)):
         return type(value)(_copy(item) for item in value)
     if isinstance(value, dict):
