@@ -7,8 +7,8 @@ damaged". This converts an induced-dyslexia top-K ablation sweep into a
 registered Brain-Score benchmark
 built on the core ``UnitSelection`` family:
 
-  * the real-vs-pseudo Cohen's d localizer (the :class:`FunctionalSelection`
-                                   statistic, computed per reported layer)
+  * :class:`FunctionalSelection` — the real-vs-pseudo Cohen's d localizer,
+                                   resolved per reported layer
   * :class:`CompositeSelector`   — a multi-layer word-form region (the subject  
                                    declares it in ``region_layer_map``); localized
                                    per reported layer here
@@ -45,16 +45,13 @@ the project's K-sweep finding. Different localizer, same API.
 """
 from typing import List
 
-import numpy as np
-
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.metrics import Score
-from brainscore.selection import selection_unit_indices, selection_coordinates
-from brainscore import RandomSelection
+from brainscore import FunctionalSelection, RandomSelection
 from brainscore_core.model_interface import StateChange, Selection, Perturbation
-from brainscore_core.streaming_helpers import apply_state_change, neural_response
+from brainscore_core.streaming_helpers import apply_state_change
 
 from ..roar_yeatman2021.benchmark import (
     Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX,
@@ -114,50 +111,15 @@ class InducedDyslexia(BenchmarkBase):
     def _localize(self, subject) -> List[Selection]:
         """Return the lesion targets: one top-``n_units`` real-vs-pseudo set per layer.
 
-        Records the region once through ``participate``, localizes each layer
-        the recording reports in its ``layer`` coord (Cohen's d, highest
-        first), and addresses each lesion by that reported layer.
+        The :class:`FunctionalSelection` localizer records the region once
+        through ``participate``, localizes each layer the recording reports in
+        its ``layer`` coord (Cohen's d, highest first), and addresses each
+        lesion by that reported layer.
         """
-        asm = neural_response(subject, self._localizer_stimuli,
-                              [f'neural:{self.localizer_region}'])
-        extra = [d for d in asm.dims if d not in ('presentation', 'neuroid')]
-        if extra:
-            asm = asm.mean(extra)
-        asm = asm.transpose('presentation', 'neuroid')
-        try:
-            layer_coord = np.asarray(asm['layer'].values).ravel()
-        except KeyError:
-            raise ValueError(
-                f"induced-dyslexia addresses each lesion by the layer the recording "
-                f"reports; the '{self.localizer_region}' recording has no 'layer' coord "
-                f"on its neuroids.") from None
-        # Labels come from the benchmark's own stimuli, matched by stimulus_id,
-        # so a subject need not echo stimulus columns back.
-        label_of = dict(zip(self._localizer_stimuli['stimulus_id'].values,
-                            self._localizer_stimuli['image_label'].values))
-        labels = np.asarray([label_of[sid] for sid in asm['stimulus_id'].values])
-        vals = asm.values
-        pos = labels == 'real'
-        neg = labels == 'pseudo'
-        out = []
-        for L in dict.fromkeys(str(layer) for layer in layer_coord):
-            cols = np.where(layer_coord == L)[0]
-            sub = vals[:, cols]
-            mp, mn = sub[pos].mean(0), sub[neg].mean(0)
-            sp, sn = sub[pos].std(0, ddof=1), sub[neg].std(0, ddof=1)
-            pooled = np.sqrt((sp ** 2 + sn ** 2) / 2.0)
-            d = np.divide(mp - mn, pooled, out=np.zeros_like(mp, dtype=float),
-                          where=pooled > 0)
-            order = np.argsort(d)[::-1][:self.n_units]
-            population = selection_unit_indices(
-                asm.isel(neuroid=cols), subject, self.localizer_region)
-            axis, expected_shape = selection_coordinates(asm.isel(neuroid=cols))
-            out.append(Selection(layer=L, indices=sorted(int(i) for i in population[order]),
-                                 axis=axis, expected_shape=expected_shape,
-                                 metadata={'selector': 'functional',
-                                           'n_recorded': int(sub.shape[1]),
-                                           'unit_population': population.tolist()}))
-        return out
+        return FunctionalSelection(
+            self.localizer_region, self._localizer_stimuli,
+            contrast=(['real'], ['pseudo']), contrast_column='image_label',
+            n_units=self.n_units).resolve_layers(subject)
 
     # -- scoring ------------------------------------------------------------
     def _reading_accuracy(self, subject) -> float:

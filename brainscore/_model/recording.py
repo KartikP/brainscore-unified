@@ -3,28 +3,15 @@
 from typing import Dict, List, Optional, Tuple, Union
 
 from brainscore_core.io_catalog import canonical_modality
-from ..selection import CompositeSelector, LayerSelector
+from ..selection import LayerSelector, UnitSelector
 
 INPUT_SITE = ':input'
 
 
-def selector_layers(selector) -> Tuple[str, ...]:
-    return (tuple(selector.layer_paths) if isinstance(selector, CompositeSelector)
-            else (selector.layer_path,))
-
-
-def required_layers(selector) -> Tuple[str, ...]:
-    """The layers that must contribute neuroids to ``selector``'s region.
-
-    A composite layer whose selected unit subset is empty is intentionally
-    unused: it may be absent from the extractor output and is never required.
-    This one rule serves the composite check before unit selection and the
-    channel check after it.
-    """
-    if isinstance(selector, CompositeSelector):
-        return tuple(layer for layer, indices in selector.layers
-                     if indices is None or len(indices))
-    return selector_layers(selector)
+def region_selector(owner, region: str) -> UnitSelector:
+    """The selector that records ``region``: its region map entry, or else the
+    raw layer of that name. The selector answers which layers and units it uses."""
+    return owner._region_layer_selectors.get(region, LayerSelector(region))
 
 
 def declared_layers(owner, modality: Optional[str] = None):
@@ -71,7 +58,7 @@ def unknown_layer_message(owner, path: str, modality: Optional[str] = None) -> O
 def validate_region_layers(owner, selectors) -> None:
     """Fail at registration when a region maps to a layer its extractor lacks."""
     for region, selector in selectors.items():
-        for path in selector_layers(selector):
+        for path in selector.layer_paths:
             message = unknown_layer_message(owner, path, selector.modality)
             if message:
                 raise ValueError(f'region_layer_map[{region!r}]: {message}')
@@ -123,15 +110,12 @@ class Recorder:
                     f"Recording target {target!r} is not a region in region_layer_map; "
                     "treating it as a raw layer path. If you meant a region, check the spelling.",
                     UserWarning, stacklevel=2)
-        selectors = [owner._region_layer_selectors.get(target, LayerSelector(target))
-                     for target in targets]
+        selectors = [region_selector(owner, target) for target in targets]
         self.recording_regions = targets
         self.recording_layers = list(dict.fromkeys(
-            layer for selector in selectors
-            for layer in (selector.layer_paths if isinstance(selector, CompositeSelector)
-                          else (selector.layer_path,))))
+            layer for selector in selectors for layer in selector.layer_paths))
         self.recording_layer = self.recording_layers[0] if len(self.recording_layers) == 1 else None
-        self.composite_recording = any(isinstance(s, CompositeSelector) for s in selectors)
+        self.composite_recording = any(selector.gathers_units for selector in selectors)
         self.is_multi_region = len(targets) > 1
         self.time_bins = time_bins
 
@@ -162,8 +146,7 @@ class Recorder:
                 or canonical_modality(routing[region]) == canonical_modality(modality)]
 
     def layers_for_region(self, region):
-        return list(selector_layers(
-            self.owner._region_layer_selectors.get(region, LayerSelector(region))))
+        return list(region_selector(self.owner, region).layer_paths)
 
     def current_layers(self) -> List[str]:
         if self.recording_layers:
@@ -249,10 +232,8 @@ class Recorder:
         owner = self.owner
         blocks = []
         for region in self.regions_for_modality(modality):
-            selector = owner._region_layer_selectors.get(region, LayerSelector(region))
-            layer_paths = (list(selector.layer_paths)
-                           if isinstance(selector, CompositeSelector)
-                           else [selector.layer_path])
+            selector = region_selector(owner, region)
+            layer_paths = list(selector.layer_paths)
             assembly = owner._extract_for_modality(stimuli, modality, layer_paths)
             assembly = self.ensure_layer_provenance(
                 assembly,
@@ -260,7 +241,7 @@ class Recorder:
                 description=f"Composite region {region!r} output",
             )
             labels = set(np.asarray(assembly['layer'].values).astype(str))
-            needed = required_layers(selector)
+            needed = selector.required_layers
             missing = [layer for layer in needed if layer not in labels]
             if missing or labels - set(layer_paths):
                 raise ValueError(
@@ -268,7 +249,7 @@ class Recorder:
                     f"layer {list(needed)} (and none outside {layer_paths}); the "
                     f"extractor returned layers {sorted(labels)}.")
             assembly = self.ensure_unit_indices(assembly)
-            block = self.gather_composite_units(assembly, selector)
+            block = selector.gather_units(assembly)
             n = block.sizes['neuroid']
             block = block.assign_coords(
                 region=('neuroid', np.array([region] * n)))
@@ -300,21 +281,3 @@ class Recorder:
             indices.append(counts.get(layer, 0))
             counts[layer] = indices[-1] + 1
         return assembly.assign_coords(unit_index=('neuroid', np.asarray(indices)))
-
-    def gather_composite_units(self, assembly, selector):
-        """Keep the units selected from a possibly multi-layer assembly."""
-        import numpy as np
-
-        if not isinstance(selector, CompositeSelector):
-            return assembly
-        layer_coord = assembly['layer'].values
-        keep_positions: List[int] = []
-        for layer_path, indices in selector.layers:
-            layer_positions = np.where(layer_coord == layer_path)[0]
-            if indices is None:
-                keep_positions.extend(layer_positions.tolist())
-            else:
-                keep_positions.extend(layer_positions[list(indices)].tolist())
-        return assembly.isel(neuroid=keep_positions)
-
-

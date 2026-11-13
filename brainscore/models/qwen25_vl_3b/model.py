@@ -2,9 +2,8 @@
 Qwen2.5-VL-3B registered as a BrainScoreModel -- a true VLM where the vision
 encoder feeds into a causal language model.
 
-Uses the VisionWrapper facade with kind='vlm' for the vision path (it delegates
-to VLMVisionWrapper, which handles Qwen's flattened-patch layout with
-image_grid_thw metadata) and TextWrapper for the text path
+Uses VLMVisionWrapper for the vision path (it handles Qwen's flattened-patch
+layout with image_grid_thw metadata) and TextWrapper for the text path
 (causal mode with last_token aggregation). Both are class-based, cached via
 @store_xarray, and symmetric in their calling convention.
 
@@ -32,7 +31,7 @@ from brainscore_core.hf_compat import pin_image_processor
 
 
 REGION_LAYER_MAP = {
-    # Vision regions -- relative to model.visual (VisionWrapper/vlm root)
+    # Vision regions -- relative to model.visual (VLMVisionWrapper root)
     'V1': 'blocks.2',
     'V2': 'blocks.6',
     'V4': 'blocks.14',
@@ -150,7 +149,7 @@ def get_model(identifier: str) -> Subject:
 
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from brainscore.model_helpers.text_wrapper import TextWrapper
-    from brainscore.model_helpers.vision_wrapper import VisionWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
 
     qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         hf_id,
@@ -166,12 +165,10 @@ def get_model(identifier: str) -> Subject:
     qwen_processor = AutoProcessor.from_pretrained(hf_id, **download)
     qwen_processor = pin_image_processor(qwen_processor, hf_id, **download)
 
-    # Vision: VisionWrapper(kind='vlm') delegates to VLMVisionWrapper, which
-    # handles Qwen's flattened-patch layout.
+    # Vision: VLMVisionWrapper handles Qwen's flattened-patch layout.
     # image_grid_thw tells the wrapper how to segment patches back to images.
-    vision_wrapper = VisionWrapper(
+    vision_wrapper = VLMVisionWrapper(
         model=qwen_model.model.visual,
-        kind='vlm',
         processor=qwen_processor,
         identifier=f'{identifier}-vision',
         image_input_key='pixel_values',

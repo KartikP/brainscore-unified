@@ -64,21 +64,23 @@ Each `BrainScoreModel` part is a slot. Fill it with the class that matches your 
 
 | Your model's input | Use | Configure with |
 | --- | --- | --- |
-| Images (CNN, ViT) | `VisionWrapper(kind='frame')` | `preprocessing=` function |
-| Images in a vision-language model with flattened patches (Qwen-VL, LLaVA) | `VisionWrapper(kind='vlm')` | `processor=`, `layer_aggregation=` |
-| Video clips (V-JEPA, VideoMAE) | `VisionWrapper(kind='temporal')`, keyed `'video'` | `preprocessing=`, `post_hook_fn=` |
+| Images (CNN, ViT) | `PytorchWrapper` | `preprocessing=` function |
+| Images in a vision-language model with flattened patches (Qwen-VL, LLaVA) | `VLMVisionWrapper` | `processor=`, `layer_aggregation=` |
+| Video clips (V-JEPA, VideoMAE) | `VideoWrapper`, keyed `'video'` | `preprocessing=`, `post_hook_fn=` |
 | Video clips through a vision-language model (Qwen-VL) | `VLMVideoWrapper`, keyed `'video'` next to the image wrapper | the model's own processor |
 | Text | `TextWrapper` | `tokenizer=`, `layer_aggregation=` (`last_token`, `mean_tokens`, `per_token`) |
 | Audio | `AudioWrapper` | `processor=`, `layer_aggregation=` (`mean_time`, `time_series`) |
 | Something else | Any callable `extractor(stimuli, layers=[...])` returning a `NeuroidAssembly` | |
 
 ```python
-from brainscore.model_helpers.vision_wrapper import VisionWrapper
+from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+from brainscore.model_helpers.video_wrapper import VideoWrapper
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.model_helpers.audio_wrapper import AudioWrapper
 ```
 
-`kind` is inferred when omitted; check `wrapper.kind`. A model with two towers, such as CLIP, gets two entries: `extractor={'vision': image_wrapper, 'text': text_wrapper}`.
+Each wrapper is named after what it wraps; pick the one for your model. A model with two towers, such as CLIP, gets two entries: `extractor={'vision': image_wrapper, 'text': text_wrapper}`.
 
 ### `region_layer_map` values
 

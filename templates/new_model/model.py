@@ -19,8 +19,7 @@ import torch.nn as nn
 
 from brainscore import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import (
-    load_preprocess_images)
-from brainscore.model_helpers.vision_wrapper import VisionWrapper
+    PytorchWrapper, load_preprocess_images)
 
 IDENTIFIER = 'your-model'
 
@@ -38,11 +37,11 @@ def get_model() -> BrainScoreModel:
     ).eval()
 
     # TODO: pick the wrapper that matches your model. One of:
-    #   VisionWrapper (any vision: image / VLM / video — dispatches internally; pass kind= to force)
-    #   TextWrapper (LM) · AudioWrapper (HF audio encoder)
+    #   PytorchWrapper (images) · VLMVisionWrapper (images in a VLM with flattened patches)
+    #   VideoWrapper (video clips) · TextWrapper (LM) · AudioWrapper (HF audio encoder)
     # Configure input preparation on the wrapper; the subject routes each input
     # kind (vision, text, audio) to the extractor registered for it.
-    vision_extractor = VisionWrapper(
+    vision_extractor = PytorchWrapper(
         identifier=IDENTIFIER,
         model=backbone,
         preprocessing=lambda paths: load_preprocess_images(paths, image_size=64),

@@ -35,7 +35,7 @@ Translate only if you want features the classic interface lacks (several input t
 
 | Classic | `BrainScoreModel` |
 | --- | --- |
-| `PytorchWrapper(identifier, model, preprocessing)` | `extractor={'vision': VisionWrapper(identifier, model, preprocessing)}` |
+| `PytorchWrapper(identifier, model, preprocessing)` | `extractor={'vision': PytorchWrapper(identifier=..., model=..., preprocessing=...)}` |
 | `ModelCommitment(..., region_layer_map={'IT': 'layer4'})` | `region_layer_map={'IT': 'layer4'}` |
 | `behavioral_readout_layer='fc'` | `behavioral_readout_layer='fc'` |
 | `visual_degrees=8` | `visual_degrees=8` |

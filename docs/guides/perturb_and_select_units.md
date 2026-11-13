@@ -36,15 +36,15 @@ In a benchmark, deliver the change through a session with `apply_state_change(su
 
 ## Choose units by function
 
-A `UnitSelection` is a recipe that `resolve(model)` turns into a `Selection`:
+A `UnitSelection` is a recipe that `resolve(subject)` turns into a `Selection`:
 
 | Recipe | Chooses |
 | --- | --- |
 | `IndexSelection(layer, indices)` | The units you list. |
-| `FunctionalSelection(recording_target, localizer_stimuli, contrast=(['face'], ['object']), n_units=50)` | The units that respond most to one category over another, like an fMRI localizer. |
+| `FunctionalSelection(region, localizer_stimuli, contrast=(['face'], ['object']), n_units=50)` | The units that respond most to one category over another, like an fMRI localizer. |
 | `RandomSelection(layer, n_units, n_total, population=..., seed=...)` | Random units: the control. |
 
-A recipe can be passed directly as a `StateChange` target. Always compare a localized lesion with random units of the same number, drawn from the same population:
+`FunctionalSelection` records the region through a session: it works for any subject that records the region, and it takes the labels from the `contrast_column` of the localizer stimuli. For a region that spans several layers, `resolve_layers(subject)` gives one `Selection` per layer. A subject takes part in one session at a time, so resolve a `FunctionalSelection` before you send the change through a session. `IndexSelection` and `RandomSelection` can be passed directly as a `StateChange` target. Always compare a localized lesion with random units of the same number, drawn from the same population:
 
 ```python
 selected = FunctionalSelection('IT', localizer_stimuli, contrast=(['face'], ['object']), n_units=50).resolve(model)

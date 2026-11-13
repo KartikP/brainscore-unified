@@ -71,4 +71,4 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Typed helpers** | Shorthands that build one session and collect it: `neural_response(subject, stimuli, outputs)`, `behavioral_response(subject, stimuli, task)`, `apply_state_change(subject, state_change)`, `run_environment(subject, environment)`. They use the words of `stimulus_session`. |
 | **Trial** | A unit within a session: one stimulus (one `StimulusSet` row, perhaps with several parts) followed by a response. |
 | **`UnitSelection`** | A recipe for choosing units (`IndexSelection`, `RandomSelection`, `FunctionalSelection`) that resolves to a `Selection`. |
-| **Wrapper** | An extractor shipped with Brain-Score, such as `VisionWrapper` or `TextWrapper`. |
+| **Wrapper** | An extractor shipped with Brain-Score, such as `VLMVisionWrapper` or `TextWrapper`. |

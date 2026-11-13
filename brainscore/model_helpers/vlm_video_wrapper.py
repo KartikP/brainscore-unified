@@ -3,7 +3,7 @@
 Register it under the ``video`` key next to the still-image extractor, so the
 subject declares that it takes clips natively (``vision:video``):
 
-    extractor={'vision': VisionWrapper(..., kind='vlm'),
+    extractor={'vision': VLMVisionWrapper(model.model.visual, processor, ...),
                'video': VLMVideoWrapper(model.model.visual, processor, identifier=...)}
 
 Every frame of the clip is decoded and handed to the processor with the clip's

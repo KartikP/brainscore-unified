@@ -155,7 +155,7 @@ def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
     localizer = StimulusSet({'stimulus_id': list('abcd'), 'sentence': ['the cat', 'the dog', 'cat sat', 'dog ran'],
                              'label': ['x', 'x', 'y', 'y']})
     localizer.identifier = 'causal-lm-localizer'
-    target = FunctionalSelection(recording_target='mlp_in', localizer_stimuli=localizer,
+    target = FunctionalSelection(region='mlp_in', localizer_stimuli=localizer,
                                  contrast=(['x'], ['y']), n_units=3, sign='abs')
     assert target.resolve(model).layer == NEURON_IN
     before = _scores(model, ['the cat'], ['sat'], raw_text=False)

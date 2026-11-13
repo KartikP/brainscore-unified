@@ -18,9 +18,9 @@ Choose one of two routes.
 **2. Build one extractor per input type.** Pick the wrapper from the [class map](../03_class_map.md#extractor-one-per-input-type).
 
 ```python
-from brainscore.model_helpers.vision_wrapper import VisionWrapper
+from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
-vision = VisionWrapper(identifier='my-cnn', model=net, preprocessing=preprocess)
+vision = PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess)
 ```
 
 `preprocess` takes a list of image paths and returns the batch the network expects. Use the same preprocessing the model was trained with.

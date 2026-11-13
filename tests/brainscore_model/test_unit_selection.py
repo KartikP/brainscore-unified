@@ -1,28 +1,33 @@
-"""UnitSelection family: portable, resolve(model)-based perturbation selection.
+"""UnitSelection family: portable, resolve(subject)-based perturbation selection.
 
-Lifts the functional localizer (word-vs-non-word, Cohen's d ranking) and its
-random-unit control out of the experiment sweep scripts into reusable core
-classes. Unit tests run against a fake Subject (a synthetic assembly — no model
-weights); integration tests run through BrainScoreModel.process(StateChange) to
-prove a UnitSelection target is resolved to a Selection before state_change_fn
-sees it, and that the localizer's recording side-effect is restored.
+The functional localizer (word-vs-non-word, Cohen's d ranking) and its
+random-unit control. Unit tests run against a participate-only fake subject (a
+synthetic assembly, no model weights); integration tests run through
+BrainScoreModel.process(StateChange) to prove a UnitSelection target is
+resolved to a Selection before state_change_fn sees it, and that the
+localizer's recording side-effect is restored.
 """
 import numpy as np
 import pytest
-import xarray as xr
 
 from brainscore import BrainScoreModel, UnitSelection, FunctionalSelection, RandomSelection, IndexSelection
+from brainscore_core import Subject
 from brainscore_core.model_interface import Selection, Perturbation, PerturbationApplied, StateChange
+from brainscore_core.streaming import StreamEvent
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 # ── Fake Subject that returns a synthetic localizer assembly ─────────────
 
-def _localizer_assembly(layer='enc.5', n_neuro=10, discriminating=5):
+LABELS = ['word'] * 4 + ['nonword'] * 4
+
+
+def _localizer_assembly(layer='enc.5', n_neuro=10, discriminating=5, layers=None):
     """8 presentations (4 'word', 4 'nonword'); the first `discriminating`
     units respond strongly to 'word' (large Cohen's d), the rest have no group
     difference (d == 0, deterministically — not noise that might spike)."""
-    labels = ['word'] * 4 + ['nonword'] * 4
-    word = np.array([l == 'word' for l in labels])
+    word = np.array([l == 'word' for l in LABELS])
     rng = np.random.RandomState(0)
     data = np.zeros((8, n_neuro))
     # discriminating units: small within-group noise (so pooled std > 0) + a
@@ -32,22 +37,47 @@ def _localizer_assembly(layer='enc.5', n_neuro=10, discriminating=5):
     # non-discriminating units: constant per unit -> identical across groups -> d == 0
     for j in range(discriminating, n_neuro):
         data[:, j] = float(j)
-    return xr.DataArray(
-        data, dims=('presentation', 'neuroid'),
-        coords={'label': ('presentation', labels),
-                'layer': ('neuroid', [layer] * n_neuro)})
+    return NeuroidAssembly(
+        data, dims=['presentation', 'neuroid'],
+        coords={'stimulus_id': ('presentation', [f's{i}' for i in range(8)]),
+                'stimulus_index': ('presentation', list(range(8))),
+                'neuroid_id': ('neuroid', list(range(n_neuro))),
+                'layer': ('neuroid', layers or [layer] * n_neuro)})
 
 
-class _FakeSubject:
+def _localizer_stimuli():
+    stimuli = StimulusSet({'stimulus_id': [f's{i}' for i in range(8)],
+                           'sentence': [f'w{i}' for i in range(8)], 'label': LABELS})
+    stimuli.identifier = 'unit-selection-localizer'
+    return stimuli
+
+
+class _FakeSubject(Subject):
+    """A participate-only subject: it answers a neural session with a canned assembly."""
+    identifier = 'fake-localizer-subject'
+    in_channels = {'text'}
+    out_channels = {'neural:VWFA'}
+
     def __init__(self, assembly):
         self._asm = assembly
         self.recorded = None
 
-    def start_recording(self, target, time_bins=None, recording_type=None):
-        self.recorded = target
+    def participate(self, session):
+        (channel,) = session.outputs
+        self.recorded = channel
+        while session.next_input() is not None:
+            pass
+        session.respond(StreamEvent(channel, self._asm, 0.0, {}))
 
-    def process(self, stimuli, **kw):
-        return self._asm
+    def reset(self):
+        pass
+
+
+def _functional(**kwargs):
+    settings = dict(region='VWFA', localizer_stimuli=_localizer_stimuli(),
+                    contrast=(['word'], ['nonword']))
+    settings.update(kwargs)
+    return FunctionalSelection(**settings)
 
 
 # ── FunctionalSelection ──────────────────────────────────────────────
@@ -56,73 +86,67 @@ class TestFunctionalSelection:
 
     def test_positive_picks_discriminating_units(self):
         model = _FakeSubject(_localizer_assembly())
-        sel = FunctionalSelection(
-            recording_target='VWFA', localizer_stimuli='stim',
-            contrast=(['word'], ['nonword']), n_units=5, sign='positive',
-        ).resolve(model)
+        sel = _functional(n_units=5, sign='positive').resolve(model)
         assert isinstance(sel, Selection)
         assert sel.indices == [0, 1, 2, 3, 4]
         assert sel.layer == 'enc.5'                  # read from the assembly's layer coord
         assert sel.metadata['selector'] == 'functional'
         assert sel.metadata['n_recorded'] == 10
-        assert model.recorded == 'VWFA'              # recorded the requested region
+        assert model.recorded == 'neural:VWFA'       # recorded the requested region
 
     def test_negative_picks_the_complement(self):
         model = _FakeSubject(_localizer_assembly())
-        sel = FunctionalSelection(
-            recording_target='VWFA', localizer_stimuli='stim',
-            contrast=(['word'], ['nonword']), n_units=5, sign='negative',
-        ).resolve(model)
+        sel = _functional(n_units=5, sign='negative').resolve(model)
         assert sel.indices == [5, 6, 7, 8, 9]
 
     def test_abs_matches_positive_here(self):
         model = _FakeSubject(_localizer_assembly())
-        sel = FunctionalSelection(
-            recording_target='VWFA', localizer_stimuli='stim',
-            contrast=(['word'], ['nonword']), n_units=5, sign='abs',
-        ).resolve(model)
+        sel = _functional(n_units=5, sign='abs').resolve(model)
         assert sel.indices == [0, 1, 2, 3, 4]
 
     def test_threshold_mode_selects_above_cutoff(self):
         model = _FakeSubject(_localizer_assembly())
-        sel = FunctionalSelection(
-            recording_target='VWFA', localizer_stimuli='stim',
-            contrast=(['word'], ['nonword']), n_units=None, threshold=2.0,
-        ).resolve(model)
+        sel = _functional(n_units=None, threshold=2.0).resolve(model)
         assert sel.indices == [0, 1, 2, 3, 4]         # only the strong units clear d>=2
 
     def test_empty_contrast_group_raises(self):
         model = _FakeSubject(_localizer_assembly())
         with pytest.raises(ValueError, match='non-empty'):
-            FunctionalSelection(
-                recording_target='VWFA', localizer_stimuli='stim',
-                contrast=(['absent_label'], ['nonword']),
-            ).resolve(model)
+            _functional(contrast=(['absent_label'], ['nonword'])).resolve(model)
 
     def test_bad_sign_raises(self):
         model = _FakeSubject(_localizer_assembly())
         with pytest.raises(ValueError, match='sign must be'):
-            FunctionalSelection(
-                recording_target='VWFA', localizer_stimuli='stim',
-                contrast=(['word'], ['nonword']), sign='sideways',
-            ).resolve(model)
+            _functional(sign='sideways').resolve(model)
+        assert model.recorded is None                # refused before any session
 
     def test_multi_layer_recording_raises(self):
-        asm = _localizer_assembly()
-        asm = asm.assign_coords(layer=('neuroid', ['a'] * 5 + ['b'] * 5))
+        asm = _localizer_assembly(layers=['a'] * 5 + ['b'] * 5)
         with pytest.raises(ValueError, match='spans 2 layers'):
-            FunctionalSelection(
-                recording_target='VWFA', localizer_stimuli='stim',
-                contrast=(['word'], ['nonword']), n_units=3,
-            ).resolve(_FakeSubject(asm))
+            _functional(n_units=3).resolve(_FakeSubject(asm))
+
+    def test_resolve_layers_gives_one_selection_per_layer(self):
+        asm = _localizer_assembly(layers=['b'] * 3 + ['a'] * 7)
+        selections = _functional(n_units=None, threshold=2.0).resolve_layers(_FakeSubject(asm))
+        assert [s.layer for s in selections] == ['b', 'a']   # recording order
+        # units 0-4 discriminate: all three of layer b, the first two of layer a
+        assert [s.indices for s in selections] == [[0, 1, 2], [0, 1]]
+        assert [s.metadata['n_recorded'] for s in selections] == [3, 7]
+
+    def test_recording_without_layer_is_refused(self):
+        asm = _localizer_assembly().reset_index('neuroid').drop_vars('layer')
+        with pytest.raises(ValueError, match="no 'layer' coord"):
+            _functional(n_units=1).resolve(_FakeSubject(asm))
+
+    def test_labels_come_from_the_stimuli(self):
+        """A subject need not send stimulus columns back; presentations may come in any order."""
+        asm = _localizer_assembly().isel(presentation=[7, 0, 6, 1, 5, 2, 4, 3])
+        sel = _functional(n_units=5).resolve(_FakeSubject(asm))
+        assert sel.indices == [0, 1, 2, 3, 4]
 
     def test_collapses_extra_time_bin_dim(self):
         asm = _localizer_assembly().expand_dims({'time_bin': 3}).copy()
-        model = _FakeSubject(asm)
-        sel = FunctionalSelection(
-            recording_target='VWFA', localizer_stimuli='stim',
-            contrast=(['word'], ['nonword']), n_units=5,
-        ).resolve(model)
+        sel = _functional(n_units=5).resolve(_FakeSubject(asm))
         assert sel.indices == [0, 1, 2, 3, 4]
 
 
@@ -273,7 +297,7 @@ def test_subset_without_original_addresses_is_rejected():
     model = _FakeSubject(_localizer_assembly(n_neuro=2, discriminating=1))
     model.region_layer_selectors = {'VWFA': CompositeSelector((('enc.5', (4, 1)),))}
     with pytest.raises(ValueError, match='original unit_index'):
-        FunctionalSelection('VWFA', 'stim', (['word'], ['nonword']), n_units=1).resolve(model)
+        FunctionalSelection('VWFA', _localizer_stimuli(), (['word'], ['nonword']), n_units=1).resolve(model)
 
 
 def test_matched_to_copies_the_functional_selection_settings():

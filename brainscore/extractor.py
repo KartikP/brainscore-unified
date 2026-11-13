@@ -4,7 +4,7 @@ An extractor owns input preparation, the forward pass, hooks, caching and
 assembly packaging. ``BrainScoreModel(extractor={modality: extractor})``
 takes one per modality; the keys declare the modalities the subject takes in.
 "Wrapper" is the name of the extractors Brain-Score ships (``TextWrapper``,
-``VisionWrapper``, ...). Nothing needs to subclass this protocol.
+``PytorchWrapper``, ...). Nothing needs to subclass this protocol.
 """
 
 from typing import Any, Protocol, Sequence

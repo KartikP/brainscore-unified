@@ -1,10 +1,8 @@
 """Model harnesses (activations-model wrappers).
 
-``VisionWrapper`` is the single vision entry point -- it dispatches to the
-frame / temporal / VLM-patch strategy internally. The other wrappers
-(``TextWrapper``, ``AudioWrapper``, ``VideoWrapper``, ``VLMVisionWrapper``) are
-imported from their own modules.
+Each wrapper is named after what it wraps and is imported from its own module:
+``PytorchWrapper`` (still images, from
+``brainscore_vision.model_helpers.activations.pytorch``), ``VLMVisionWrapper``
+(images in a vision-language model with flattened patches), ``VideoWrapper``
+(video clips), ``TextWrapper`` and ``AudioWrapper``.
 """
-from .vision_wrapper import VisionWrapper
-
-__all__ = ["VisionWrapper"]

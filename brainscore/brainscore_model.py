@@ -3,7 +3,6 @@
 import threading
 from contextlib import contextmanager
 from copy import copy
-from dataclasses import replace
 from types import MappingProxyType
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
@@ -21,7 +20,7 @@ from brainscore_core.events import (
 )
 from ._model.perturbation import PerturbationManager
 from ._model.recording import Recorder
-from .selection import CompositeSelector, LayerSelector, UnitSelector, _promote_to_selector
+from .selection import UnitSelector, _promote_to_selector
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import (
     drain_session_inputs as _drain_neural_stream_events,
@@ -437,13 +436,11 @@ class BrainScoreModel(UnifiedModel):
             if modality is not None:
                 if canonical_modality(modality) not in self.supported_modalities:
                     raise ValueError(f"Region {region!r} references modalities with no extractor: {modality!r}")
-                if isinstance(selector, (LayerSelector, CompositeSelector)):
-                    selectors[region] = replace(selector, modality=modality)
-                elif selector.modality != modality:
-                    # External selectors need only the UnitSelector contract,
-                    # not a dataclass constructor accepting our optional field.
+                if selector.modality != modality:
+                    # A copy, so the caller's selector is not changed. Any
+                    # selector takes the field, also a frozen dataclass.
                     routed = copy(selector)
-                    routed.modality = modality
+                    object.__setattr__(routed, 'modality', modality)
                     selectors[region] = routed
         if len({id(extractor) for extractor in self._extractors.values()}) > 1:
             unrouted = sorted(r for r, sel in selectors.items() if sel.modality is None)
@@ -470,8 +467,9 @@ class BrainScoreModel(UnifiedModel):
         remain selectors, so assigning this mapping back preserves every setting.
         """
         return MappingProxyType({
-            region: (selector.name if isinstance(selector, LayerSelector)
-                     and selector.modality is None else selector)
+            # A selector that its own layer path promotes to is shown as that path.
+            region: (selector.layer_path
+                     if _promote_to_selector(selector.layer_path) == selector else selector)
             for region, selector in self._region_layer_selectors.items()})
 
     @region_layer_map.setter

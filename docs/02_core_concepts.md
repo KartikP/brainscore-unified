@@ -142,12 +142,12 @@ Writing `participate` by hand works for anything. For neural networks, `BrainSco
 
 ```python
 from brainscore import BrainScoreModel
-from brainscore.model_helpers.vision_wrapper import VisionWrapper
+from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 
 model = BrainScoreModel(
     identifier='my-cnn',
     model=net,
-    extractor={'vision': VisionWrapper(identifier='my-cnn', model=net, preprocessing=preprocess)},
+    extractor={'vision': PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess)},
     region_layer_map={'V4': 'layer3', 'IT': 'layer4'},
 )
 model.out_channels   # {'neural:V4', 'neural:IT'}

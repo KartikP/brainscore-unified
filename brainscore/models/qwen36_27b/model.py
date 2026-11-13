@@ -7,7 +7,7 @@ language decoder, replies, likelihoods and interventions from one checkpoint.
   model.language_model.layers.{0-63}  -- 64 decoder layers
 
 Region paths are relative to the wrapper that records them: vision regions to
-``model.visual`` (``VisionWrapper(kind='vlm')``), the language region to
+``model.visual`` (``VLMVisionWrapper``), the language region to
 ``model.language_model`` (``TextWrapper``). The language decoder is the same
 module the earlier text-only registration wrapped, under the same identifier
 and cache key, so text recordings are unchanged.
@@ -107,7 +107,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
     from brainscore_core.hf_compat import pin_image_processor
     from brainscore.model_helpers.text_wrapper import TextWrapper
-    from brainscore.model_helpers.vision_wrapper import VisionWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     from brainscore.perturbation import build_pytorch_ablation_fn
 
     # 56 GB at bf16, so placement is automatic. Left to itself accelerate packs
@@ -126,9 +126,8 @@ def get_model(identifier: str) -> BrainScoreModel:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    vision = VisionWrapper(
+    vision = VLMVisionWrapper(
         model=visual,
-        kind='vlm',
         processor=processor,
         identifier=f'{identifier}-vision',
         image_input_key='pixel_values',
