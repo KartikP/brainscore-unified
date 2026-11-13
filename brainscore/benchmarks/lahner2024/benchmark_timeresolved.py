@@ -8,7 +8,7 @@ temporal kit (`hrf_convolve`, `contiguous_block_cv`) end-to-end.
 
 ## Design: clip-mean onset-impulse HRF model
 
-For each (subject, session, task, run), the brain produces a continuous BOLD
+For each (participant, session, task, run), the brain produces a continuous BOLD
 time-series at TR=1.75 s across the whole run (~263 TRs covering ~113
 stimulus events at 4 s SOA). The model produces ONE feature vector per clip:
 any native time bins (video tubelets, audio frames) are averaged before the
@@ -24,30 +24,30 @@ a model of the stimulus's native time course. A full temporal protocol
 (native feature timestamps, exact onsets, durations, scan timing) would be a
 separate benchmark.
 
-## Pipeline (per model)
+## Pipeline (per subject)
 
     1. Discover unique stimuli from events (1102 unique videos).
     2. Record per-stimulus features ONCE through participate (neural_response):
-       - video-native models: per-clip features at the model's native time
-         bins, always mean-pooled over the time_bin axis to one vector
-       - frame-aggregation models: per-clip features (mean of N still frames)
-       If the feature width exceeds FEATURE_DIM_CAP, a TruncatedSVD is fit on
+       - a subject that declares ``vision:video``: whole clips, its native
+         time bins mean-pooled to one vector
+       - any other subject: the mean of N still frames per clip
+       - with the ``audio`` channel, also ``neural:A1`` for the sound track of
+         each clip, joined column-wise after the visual stream
+       If a stream is wider than FEATURE_DIM_CAP, a TruncatedSVD is fit on
        ALL stimuli (including those in held-out runs) — a transductive
        projection, recorded on the score.
-    3. For each (subject, session, task, run):
+    3. For each run (participant, session, task, run):
        a. Place each clip's vector at floor(onset_sec / TR) within the run.
        b. HRF-convolve along the time axis (canonical SPM double-gamma).
        c. Crop to the run's valid TR length.
     4. Concatenate the runs' feature time-series into the design matrix X and
        the runs' z-scored BOLD into Y.
-    5. Per-voxel ridge (alpha=1.0) with whole-run held-out CV:
-       - cv_mode='subject_out' (default): contiguous blocks of
-         ``cv_n_held_out_runs`` (default 52) runs in assembly order; this
-         holds out one participant per fold only if the assembly lists each
-         participant's runs together (checked and recorded on the score).
-       - cv_mode='within_subject': per participant, contiguous blocks of
-         ``within_subject_n_held_out`` runs; per-voxel r averaged over
-         participants.
+    5. Per-voxel ridge (alpha=1.0) with whole-run held-out CV, by the fold rule:
+       - ``RunBlocks(52)`` (default): contiguous blocks of 52 runs in assembly
+         order; this holds out one participant per fold only if the assembly
+         lists each participant's runs together (checked and recorded).
+       - ``ParticipantRunBlocks(10)``: per participant, contiguous blocks of
+         10 runs; per-voxel r averaged over participants.
        Every held-out stimulus is also shown in training runs, so the score
        measures generalization to new runs of seen stimuli, not to new
        stimuli.
@@ -72,10 +72,10 @@ the feature design all differ. A score difference between this variant and
 of temporal information.
 """
 
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Sequence
 
 import numpy as np
-import xarray as xr
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
@@ -87,18 +87,31 @@ from brainscore.temporal import (
     double_gamma_hrf,
     hrf_convolve,
 )
-from brainscore import load_dataset
+from brainscore import load_dataset, load_stimulus_set
 from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge
-from brainscore.data.lahner2024 import MOTION_COLUMNS
+from brainscore.benchmarks._score import benchmark_score
 
-# Reuse stimulus handling + bibtex from the GLM-beta variant.
 from .benchmark import (
     BIBTEX,
-    Lahner2024BOLDMoments,        # parent class — provides _videos_stimulus_set
+    _VISUAL,
     _ceiling_measured,
+    _split_half_reliability,
+    _select_voxels,
 )
-from brainscore.benchmarks._score import benchmark_score
-from ._util import read_stimulus_ids, record_clips, record_frames_per_clip
+from ._util import (
+    DEFAULT_AUDIO_DIR,
+    DEFAULT_SAMPLE_TIMES_MS,
+    align,
+    channel_regions,
+    clip_table,
+    frame_table,
+    read_stimulus_ids,
+    record_clips,
+    record_visual,
+    resolve_frames_dir,
+    takes_audiovisual,
+    time_mean,
+)
 
 
 # Confirmed scanner / paradigm parameters (from EC2 recon, ds005165 v1.0.4)
@@ -106,11 +119,11 @@ TR_SEC = 1.75
 SOA_SEC = 4.0
 
 # Voxels fitted together. It bounds memory (held-out predictions for all 20484
-# voxels are about 10 GB). A banded penalty is chosen per batch (finding C2).
+# voxels are about 10 GB).
 VOXEL_BATCH = 2000
 
 # Cap on per-stimulus feature dim before ridge — guards a 64GB OOM on g5.4xlarge
-# when n_TR_obs ≈ 127k and flattened ViT features ≈ 38k. See `_extract_per_stimulus_features`.
+# when n_TR_obs ≈ 127k and flattened ViT features ≈ 38k.
 FEATURE_DIM_CAP = 512
 CLIP_DURATION_SEC = 3.0
 
@@ -145,57 +158,151 @@ METHOD_ATTRS = {
 TRANSDUCTIVE_SVD = 'transductive_truncated_svd_fit_on_all_stimuli'
 
 
+# ── Fold rules ────────────────────────────────────────────────────────
+
+class RunBlocks:
+    """Hold out contiguous blocks of ``n_runs`` runs, in assembly order.
+
+    One fold holds out one participant only if the assembly lists each
+    participant's runs together; the score records whether it does.
+    """
+
+    def __init__(self, n_runs: int = 52):
+        self.n_runs = n_runs
+
+    def per_voxel_r(self, X, Y, run_idx, participant_per_obs) -> np.ndarray:
+        """Held-out Pearson r per voxel; ridge at penalty 1, voxels in batches."""
+        n_runs = int(run_idx.max() + 1)
+        folds = [(np.isin(run_idx, train_runs), np.isin(run_idx, test_runs))
+                 for train_runs, test_runs in contiguous_block_cv(
+                     n_samples=n_runs, block_size_samples=self.n_runs)]
+        r, _ = cross_validated_r(X, Y, folds, ridge(1.0, SklearnRidge()),
+                                 target_batch=VOXEL_BATCH)
+        return r
+
+    def attrs(self, assembly) -> dict:
+        # The label values are the historical ones ('subject_out'); they name participants.
+        participants = [str(p) for p in assembly['subject'].values]
+        return {
+            'cv_mode': 'subject_out',
+            'cv_n_held_out_runs': self.n_runs,
+            'cv_policy': 'contiguous_run_blocks_in_assembly_order',
+            'cv_block_runs': int(self.n_runs),
+            'cv_blocks_hold_out_whole_subjects': _blocks_hold_out_whole_participants(
+                participants, self.n_runs),
+        }
+
+
+class ParticipantRunBlocks:
+    """Within each participant, hold out contiguous blocks of ``n_runs`` of its
+    runs; the per-voxel r is averaged over participants (NaN-aware).
+
+    Standard fMRI encoding practice (Conwell, Allen, NSD); it avoids the
+    cross-participant mean leakage of ``RunBlocks``.
+    """
+
+    def __init__(self, n_runs: int = 10):
+        self.n_runs = n_runs
+
+    def per_voxel_r(self, X, Y, run_idx, participant_per_obs) -> np.ndarray:
+        participants = np.unique(participant_per_obs)
+        r = np.full((len(participants), Y.shape[1]), np.nan, dtype=np.float32)
+        for index, participant in enumerate(participants):
+            rows = participant_per_obs == participant
+            runs = run_idx[rows]
+            own_runs = np.unique(runs)
+            folds = [(np.isin(runs, own_runs[train]), np.isin(runs, own_runs[test]))
+                     for train, test in contiguous_block_cv(
+                         n_samples=len(own_runs), block_size_samples=self.n_runs)]
+            r[index], _ = cross_validated_r(X[rows], Y[rows], folds, ridge(1.0, SklearnRidge()),
+                                            target_batch=VOXEL_BATCH)
+        return np.nanmean(r, axis=0).astype(np.float32)
+
+    def attrs(self, assembly) -> dict:
+        return {
+            'cv_mode': 'within_subject',
+            'cv_n_held_out_runs': self.n_runs,
+            'cv_policy': 'within_subject_contiguous_run_blocks',
+            'cv_block_runs': int(self.n_runs),
+        }
+
+
+def _blocks_hold_out_whole_participants(participants_per_run: List[str], block_runs: int) -> bool:
+    """True if every contiguous block of ``block_runs`` runs is one participant
+    whose runs are all inside that block (a true leave-one-participant-out)."""
+    for train_runs, test_runs in contiguous_block_cv(
+            n_samples=len(participants_per_run), block_size_samples=block_runs):
+        test_participants = {participants_per_run[i] for i in test_runs}
+        train_participants = {participants_per_run[i] for i in train_runs}
+        if len(test_participants) != 1 or test_participants & train_participants:
+            return False
+    return True
+
+
+def _cap(features):
+    """``(features, projected)``: a stream wider than ``FEATURE_DIM_CAP`` projected
+    by a TruncatedSVD fit on every stimulus (transductive)."""
+    if features.shape[1] <= FEATURE_DIM_CAP:
+        return features, False
+    from sklearn.decomposition import TruncatedSVD
+    svd = TruncatedSVD(n_components=FEATURE_DIM_CAP, random_state=0)
+    return svd.fit_transform(features).astype(np.float32), True
+
+
 # ── Benchmark class ───────────────────────────────────────────────────
 
 class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
-    """Predict per-TR BOLD time-series for each BoldMoments scanning run.
+    """Predict per-TR BOLD time-series for each BOLDMoments scanning run.
 
-    Inherits stimulus-handling helpers from `Lahner2024BOLDMoments` (the
-    GLM-beta variant) — stimuli are identical between the two variants.
-    Only the neural target and the regression machinery differ.
+    Same stimuli as ``Lahner2024BOLDMoments`` (GLM betas); the neural target
+    and the regression differ.
+
+    Args:
+        channels: what the benchmark sends, as for ``Lahner2024BOLDMoments``.
+        folds: the fold rule, ``RunBlocks(52)`` (default) or ``ParticipantRunBlocks(10)``.
+        confounds: columns of the motion sidecar regressed out of each run's
+            BOLD before the z-score (``MOTION_COLUMNS``); none by default.
+        ceiling, reliability_threshold, voxel_mask_fn, audio_dir: as for
+            ``Lahner2024BOLDMoments``. The reliability is the GLM-beta one: both
+            assemblies share the fsaverage5 voxels.
+        identifier_suffix: appended to ``Lahner2024-fMRI-naturalistic``.
+        version: the event key (see the module docstring).
     """
 
-    # Sends the clips on `vision:video`, or frames sampled from them on `vision:image`, by the
-    # subject's declared form, and asks for the region it records. Each clip is an independent trial.
-    required_input_channels = frozenset({'vision:image', 'vision:video'})
-    requested_output_channels = frozenset({'neural:IT'})
-    trial_memory = 'none'
+    trial_memory = 'none'   # each clip is an independent trial
 
     def __init__(
         self,
+        channels: Sequence[str] = _VISUAL,
+        folds=RunBlocks(52),
+        confounds: Sequence[str] = (),
         ceiling: Optional[float] = None,
-        cv_n_held_out_runs: int = 52,
         reliability_threshold: Optional[float] = None,
+        voxel_mask_fn=None,
+        audio_dir: Optional[str] = None,
         identifier_suffix: str = '-timeresolved',
-        apply_motion_regression: bool = False,
-        cv_mode: str = 'subject_out',           # 'subject_out' | 'within_subject'
-        within_subject_n_held_out: int = 10,    # block size when cv_mode='within_subject'
         version: int = CURRENT_VERSION,
     ):
-        if cv_mode not in ('subject_out', 'within_subject'):
-            raise ValueError(f"cv_mode must be 'subject_out' or 'within_subject', got {cv_mode!r}")
         if version not in EVENT_KEY_BY_VERSION:
             raise ValueError(
                 f"version must be one of {sorted(EVENT_KEY_BY_VERSION)}, got {version!r}")
-        self._cv_n_held_out_runs = cv_n_held_out_runs
+        if reliability_threshold is not None and voxel_mask_fn is not None:
+            raise ValueError('Give reliability_threshold or voxel_mask_fn, not both.')
+        channels, regions = channel_regions(channels)
+        self.required_input_channels = channels
+        self.requested_output_channels = frozenset(f'neural:{region}' for region in regions)
+        self._audio = 'audio' in channels
+        self._folds = folds
+        self._confounds = list(confounds)
         self._reliability_threshold = reliability_threshold
-        self._apply_motion_regression = apply_motion_regression
-        self._cv_mode = cv_mode
-        self._within_subject_n_held_out = within_subject_n_held_out
+        self._voxel_mask_fn = voxel_mask_fn
+        self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
+        self._frames_dir = resolve_frames_dir()
         self._voxel_mask: Optional[np.ndarray] = None
         self._assembly: Optional[NeuronRecordingAssembly] = None
         self._events = None
         self._motion = None
         self._stimulus_set = None
-        # Set by feature extraction; records whether a projection was fit.
-        self._feature_projection: Optional[str] = None
-
-        # Delegate stimulus prep to the GLM-beta variant — identical stimuli.
-        # We also reuse its reliability machinery for visualROI variants
-        # (TR-resolved has no per-stim reps to compute split-half on).
-        self._stim_helper = Lahner2024BOLDMoments(
-            reliability_threshold=reliability_threshold)
-
         super().__init__(
             identifier=f'Lahner2024-fMRI-naturalistic{identifier_suffix}',
             version=version,
@@ -214,36 +321,31 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     @property
     def events(self):
         if self._events is None:
-            self._events = load_dataset(
-                'Lahner2024-fMRI-timeresolved-events')
+            self._events = load_dataset('Lahner2024-fMRI-timeresolved-events')
         return self._events
 
     @property
     def motion(self):
-        """Lazy-load motion sidecar; returns None if motion regression is off."""
-        if not self._apply_motion_regression:
+        """The motion sidecar; ``None`` without confounds."""
+        if not self._confounds:
             return None
         if self._motion is None:
-            self._motion = load_dataset(
-                'Lahner2024-fMRI-timeresolved-motion')
+            self._motion = load_dataset('Lahner2024-fMRI-timeresolved-motion')
         return self._motion
 
     @property
     def stimulus_set(self):
-        return self._stim_helper.stimulus_set
+        if self._stimulus_set is None:
+            self._stimulus_set = load_stimulus_set('BOLDMoments')
+        return self._stimulus_set
 
     @property
     def voxel_mask(self) -> Optional[np.ndarray]:
-        """Lazy boolean mask over the 20484 fsaverage5 voxels.
-
-        Computed via the GLM-beta variant's split-half reliability (which has
-        per-stim reps); the same mask is meaningful here because both variants
-        share the identical fsaverage5 voxel space.
-        """
-        if self._reliability_threshold is None:
-            return None
+        """The scored voxels (``None``: all 20484); computed once."""
         if self._voxel_mask is None:
-            self._voxel_mask = self._stim_helper._get_voxel_mask()
+            self._voxel_mask = _select_voxels(
+                self._reliability_threshold, self._voxel_mask_fn,
+                lambda: _split_half_reliability(load_dataset('Lahner2024-fMRI')))
         return self._voxel_mask
 
     def _sanity_check_assembly(self, assembly):
@@ -261,42 +363,21 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             "TR-resolved assembly must have time_bin > 1; got the GLM-beta variant by mistake?"
 
     def __call__(self, subject) -> Score:
-        # 1. Get per-stimulus model features (one feature vector per unique stimulus).
-        per_stim_features, stimulus_ids = self._extract_per_stimulus_features(subject)
-        # per_stim_features shape: (n_stimuli, n_features)
-        # stimulus_ids: list of length n_stimuli
+        # 1. One feature vector per unique stimulus.
+        features, stimulus_ids, stream_attrs = self._features(subject)
 
-        # 2. For each run: place per-stim features at onset TRs, HRF-convolve.
+        # 2. Place each clip's vector at its onset TR, HRF-convolve within each run.
         assembly = self.assembly
-        n_runs = assembly.sizes['presentation']
-        feature_ts_convolved = self._build_design(
-            per_stim_features, stimulus_ids, assembly)
+        design = self._build_design(features, stimulus_ids, assembly)
 
-        # 3. Concatenate (run, TR) → flat (n_obs, n_features); same for BOLD.
-        #    Optionally regress motion confounds out of BOLD per-run before
-        #    z-score. Track the participant per observation so within_subject CV can split
-        #    runs within each participant independently.
+        # 3. Flatten (run, TR) into rows; regress the confounds out of the BOLD and
+        #    z-score it per run and voxel.
         X_flat, Y_flat, run_idx_per_obs, participant_per_obs = self._concatenate_with_mask(
-            feature_ts_convolved, assembly)
+            design, assembly)
 
-        # 4. Per-voxel ridge regression. Two CV modes:
-        #    - 'subject_out' (default): contiguous blocks of cv_n_held_out_runs
-        #      (52) runs in assembly order; one participant per block only if the
-        #      assembly groups each participant's runs (recorded on the score).
-        #    - 'within_subject': per-participant contiguous blocks of K runs,
-        #      per-voxel r averaged across participants.
-        if self._cv_mode == 'within_subject':
-            per_voxel_r = self._cross_validated_ridge_within_participant(
-                X_flat, Y_flat, run_idx_per_obs, participant_per_obs,
-                n_held_out_per_participant=self._within_subject_n_held_out,
-            )
-        else:
-            per_voxel_r = self._cross_validated_ridge(
-                X_flat, Y_flat, run_idx_per_obs,
-                n_held_out=self._cv_n_held_out_runs,
-            )
-
-        # 5. Aggregate. Apply voxel mask first if visualROI variant.
+        # 4. Per-voxel ridge under the fold rule; 5. keep the scored voxels.
+        per_voxel_r = self._folds.per_voxel_r(X_flat, Y_flat, run_idx_per_obs,
+                                              participant_per_obs)
         mask = self.voxel_mask
         if mask is not None:
             per_voxel_r = per_voxel_r[mask]
@@ -309,49 +390,77 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             metric='median_per_voxel_pearson_r', normalized=_ceiling_measured(self))
         score.attrs['mean_r'] = mean_r
         score.attrs['n_voxels_scored'] = int(len(per_voxel_r_finite))
-        score.attrs['n_runs'] = n_runs
+        score.attrs['n_runs'] = assembly.sizes['presentation']
         score.attrs['n_observations'] = int(len(Y_flat))
-        score.attrs['cv_mode'] = self._cv_mode
-        score.attrs['cv_n_held_out_runs'] = (self._within_subject_n_held_out
-                                              if self._cv_mode == 'within_subject'
-                                              else self._cv_n_held_out_runs)
-        score.attrs['motion_regressed'] = bool(self._apply_motion_regression)
+        score.attrs['motion_regressed'] = bool(self._confounds)
         score.attrs['pipeline'] = 'continuous_time_encoding'
-        score.attrs.update(self._cv_policy_attrs(assembly))
-        score.attrs.update(self._method_attrs())
+        score.attrs.update(self._folds.attrs(assembly))
+        score.attrs.update(self._method_attrs(stream_attrs.pop('feature_projection_protocol')))
         score.attrs['ridge_alpha'] = 1.0
         score.attrs['inner_validation'] = 'none_fixed_alpha'
+        score.attrs.update(stream_attrs)
         return score
 
     # ── Score labels ───────────────────────────────────────────────
 
-    def _method_attrs(self) -> dict:
-        """Version, event key, known defects and method description (3A).
-
-        Additive score attrs; they do not change any number.
-        """
+    def _method_attrs(self, feature_projection: str) -> dict:
+        """Version, event key, known defects and method description (3A)."""
         # benchmark_version is a common attribute, written by benchmark_score.
         attrs = dict(METHOD_ATTRS)
         attrs['event_key'] = EVENT_KEY_BY_VERSION[self.version]
         attrs['known_defects'] = KNOWN_DEFECTS_BY_VERSION[self.version]
-        attrs['feature_projection_protocol'] = (
-            self._feature_projection or 'not_recorded')
+        attrs['feature_projection_protocol'] = feature_projection
         attrs['feature_dim_cap'] = FEATURE_DIM_CAP
         return attrs
 
-    def _cv_policy_attrs(self, assembly) -> dict:
-        """Describe the outer CV the parent ridge actually applies."""
-        if self._cv_mode == 'within_subject':
-            return {
-                'cv_policy': 'within_subject_contiguous_run_blocks',
-                'cv_block_runs': int(self._within_subject_n_held_out),
-            }
-        participants = [str(s) for s in assembly['subject'].values]
-        return {
-            'cv_policy': 'contiguous_run_blocks_in_assembly_order',
-            'cv_block_runs': int(self._cv_n_held_out_runs),
-            'cv_blocks_hold_out_whole_subjects': _blocks_hold_out_whole_participants(
-                participants, self._cv_n_held_out_runs),
+    # ── Features ───────────────────────────────────────────────────
+
+    def _features(self, subject):
+        """``(features (n_stimuli, n_features), stimulus_ids, attrs)``.
+
+        One forward pass per unique stimulus of the events (at most 1102 videos).
+        """
+        stimuli = self.stimulus_set
+        unique_ids = sorted(set(self.events['stimulus_id'].unique().tolist())
+                            & set(stimuli['stimulus_id'].astype(str).tolist()))
+        frames = lambda: (lambda table: table[table['clip_id'].isin(unique_ids)])(  # noqa: E731
+            frame_table(stimuli, list(DEFAULT_SAMPLE_TIMES_MS), self._frames_dir))
+        # A subject that takes no audio, or records no A1, is scored on the visual
+        # stream alone, also with the audio channel (the GLM-beta benchmark refuses
+        # it instead; kept as it was).
+        if not (self._audio and takes_audiovisual(subject)):
+            def clips():
+                table = clip_table(stimuli, f'{stimuli.identifier}-videos')
+                return table[table['stimulus_id'].isin(unique_ids)]
+            visual = record_visual(subject, clips, frames)
+            features, projected = _cap(time_mean(visual))
+            attrs = {'feature_projection_protocol': TRANSDUCTIVE_SVD if projected else 'none'}
+            if self._audio:
+                attrs.update(mode='concat', pipeline='tr_resolved_multimodal_concat')
+            return features, read_stimulus_ids(visual), attrs
+        # Two streams. Differences from the one-stream route above, kept so no score
+        # moves: the clip table is built in sorted stimulus order and named
+        # '-timeresolved-multimodal-video' (the one-stream table keeps the table
+        # order), each stream is projected on its own, and the joined features are
+        # cast to float32.
+        visual = record_visual(
+            subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-timeresolved-multimodal-video',
+                                        ids=unique_ids), frames)
+        sound = record_clips(subject, clip_table(
+            stimuli, f'{stimuli.identifier}-timeresolved-multimodal-audio', ids=unique_ids,
+            audio_dir=self._audio_dir), 'A1')
+        stimulus_ids = read_stimulus_ids(visual)
+        v_features, v_projected = _cap(time_mean(visual))
+        a_features, a_projected = _cap(align(time_mean(sound), read_stimulus_ids(sound),
+                                             stimulus_ids))
+        features = np.concatenate([v_features, a_features], axis=1).astype(np.float32)
+        return features, stimulus_ids, {
+            'feature_projection_protocol': (TRANSDUCTIVE_SVD + '_per_modality'
+                                            if v_projected or a_projected else 'none'),
+            'n_features_video': int(v_features.shape[1]),
+            'n_features_audio': int(a_features.shape[1]),
+            'mode': 'concat',
+            'pipeline': 'tr_resolved_multimodal_concat',
         }
 
     # ── Design matrix ──────────────────────────────────────────────
@@ -372,7 +481,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         for run_idx, run_events in enumerate(self._events_per_run(assembly)):
             for _, ev in run_events.iterrows():
                 if ev['stimulus_id'] not in stim_idx:
-                    continue   # oddball or stimulus the model couldn't process
+                    continue   # oddball or stimulus the subject was not shown
                 onset_TR = int(np.floor(ev['onset_sec'] / TR_SEC))
                 if 0 <= onset_TR < n_TR_max:
                     feature_ts[run_idx, onset_TR, :] += per_stim_features[stim_idx[ev['stimulus_id']]]
@@ -404,65 +513,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                 str(participants[run_idx]), str(sessions[run_idx]),
                 str(tasks[run_idx]), str(runs[run_idx]), groups=groups)
 
-    # ── Helpers ────────────────────────────────────────────────────
-
-    def _extract_per_stimulus_features(self, subject):
-        """One forward pass per unique stimulus → (n_stimuli, n_features).
-
-        Builds a unique-stimulus set from events (≤1102 unique videos), then
-        dispatches based on subject's modality support:
-        - video-native: use _videos_stimulus_set, mean-pool over time_bin axis
-        - frame-aggregation: use _expand_videos + temporal_bin to one bin
-        Returns (features array (n_stimuli, n_features), stimulus_ids list).
-        """
-        from .benchmark import VIDEO_DURATION_MS
-
-        # Unique stimulus_ids in events that ALSO appear in our stimulus_set
-        unique_event_ids = set(self.events['stimulus_id'].unique().tolist())
-        full_stim = self._stim_helper.stimulus_set
-        stim_set_ids = set(full_stim['stimulus_id'].astype(str).tolist())
-        unique_ids = sorted(unique_event_ids & stim_set_ids)
-
-        # Record neural:IT through participate. Mirrors the GLM-beta variant:
-        # IT-mapped features predict whole-cortex BOLD via per-voxel ridge.
-        time_bins = [(0, VIDEO_DURATION_MS)]
-
-        # Clips natively when the subject declares vision:video, frames otherwise.
-        from .benchmark import Lahner2024BOLDMoments
-        if Lahner2024BOLDMoments._is_native_video(subject):
-            video_stim = self._stim_helper._videos_stimulus_set()
-            # Restrict to the unique_ids we need
-            video_stim = video_stim[video_stim['stimulus_id'].isin(unique_ids)]
-            result = record_clips(subject, video_stim, 'IT', time_bins)
-            data = result.values
-            if data.ndim == 3:    # (presentation, time_bin, neuroid) → mean over time
-                features = data.mean(axis=1)
-            else:                  # (presentation, neuroid)
-                features = data
-            stimulus_ids = read_stimulus_ids(result)
-        else:
-            frame_stim = self._stim_helper._expand_videos()
-            frame_stim = frame_stim[frame_stim['clip_id'].isin(unique_ids)]
-            per_video = record_frames_per_clip(subject, frame_stim, 'IT', time_bins)
-            features = per_video.values[:, 0, :]
-            stimulus_ids = list(
-                per_video.indexes['presentation'].get_level_values('clip_id'))
-
-        # Cap feature dim before per-voxel ridge — flattened ViT layer outputs
-        # (e.g. CLIP encoder.layers.10 = 50 tokens × 768 = 38400) make X scale
-        # to (127k TR-obs × 38k feat × 4B) ≈ 19 GB and OOM the 64GB box.
-        # TruncatedSVD to 512 keeps almost all variance and shrinks X 75×.
-        # The SVD is fit on every stimulus, including those only shown in
-        # held-out runs (transductive); recorded on the score.
-        self._feature_projection = 'none'
-        if features.shape[1] > FEATURE_DIM_CAP:
-            from sklearn.decomposition import TruncatedSVD
-            svd = TruncatedSVD(n_components=FEATURE_DIM_CAP, random_state=0)
-            features = svd.fit_transform(features).astype(np.float32)
-            self._feature_projection = TRANSDUCTIVE_SVD
-
-        return features, stimulus_ids
-
     def _events_by_run_key(self) -> dict:
         """Group events by (subject, session, task, run), keeping row order."""
         ev = self.events
@@ -478,14 +528,12 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             for group_key, positions in key_frame.groupby(key, sort=False).indices.items()
         }
 
-    def _events_for_run(self, participant, session, task, run, groups: Optional[dict] = None):
-        """Events of one (subject, session, task, run).
+    def _events_for_run(self, participant, session, task, run, groups: dict):
+        """Events of one run (participant, session, task, run).
 
         Raises if the run has no events, or if the selection holds more than
         one task (two tasks must never feed one run's design).
         """
-        if groups is None:
-            groups = self._events_by_run_key()
         key = (str(participant), str(session), str(task), str(run))
         if key not in groups:
             raise ValueError(
@@ -516,24 +564,15 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
     def _concatenate_with_mask(self, feature_ts_convolved, assembly):
         """Flatten (run, TR, ...) into long (n_obs, ...) tables, masking padding.
 
-        Pipeline per run:
+        Per run:
           1. Slice to n_valid_TR (drop padding).
-          2. (Optional) regress motion confounds out of BOLD per voxel — OLS
-             of BOLD on [trans_x..rot_z, FD, csf, white_matter] + intercept,
-             keep residuals. Standard fMRI denoising step (Power 2014, Ciric
-             2017). Adds noise-cleaning before z-score.
-          3. Per-voxel z-score the residual BOLD. Removes participant-specific DC
-             that would otherwise leak into the ridge intercept across folds.
+          2. With confounds: OLS of the BOLD on [1, confounds] per voxel, keep the
+             residuals (Power 2014, Ciric 2017).
+          3. Per-voxel z-score. Removes participant-specific DC that would
+             otherwise leak into the ridge intercept across folds.
 
-        Returns:
-            X_flat: (n_obs, n_features)
-            Y_flat: (n_obs, n_voxels)
-            run_idx_per_obs: (n_obs,) int — index into assembly's presentation
-                axis. Two presentations may differ in participant; same run_idx ⇒
-                same run.
-            participant_per_obs: (n_obs,) object — participant string per observation.
-                Threaded through so within-participant CV can split runs WITHIN
-                each participant independently.
+        Returns ``(X_flat, Y_flat, run_idx_per_obs, participant_per_obs)``;
+        ``run_idx_per_obs`` indexes the assembly's presentation axis.
         """
         n_valid = assembly['n_valid_TR'].values.astype(int)
         bold = assembly.transpose('presentation', 'time_bin', 'neuroid').values
@@ -547,7 +586,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         motion_lookup = None
         if motion_df is not None:
             motion_lookup = {
-                (s, ses, t, r): g[MOTION_COLUMNS].values.astype(np.float32)
+                (s, ses, t, r): g[self._confounds].values.astype(np.float32)
                 for (s, ses, t, r), g in motion_df.groupby(
                     ['subject', 'session', 'task', 'run'], sort=False)
             }
@@ -568,7 +607,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                     # OLS with intercept: residuals of Y on [1, M].
                     M_design = np.concatenate([np.ones((n_TR, 1), dtype=np.float32), M],
                                               axis=1)
-                    # solve M_design @ B = Y → B (n_motion+1, n_voxels)
                     B, *_ = np.linalg.lstsq(M_design, np.nan_to_num(Y_run), rcond=None)
                     Y_run = Y_run - M_design @ B
 
@@ -585,79 +623,3 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         run_idx_per_obs = np.concatenate(run_chunks, axis=0)
         participant_per_obs = np.concatenate(participant_chunks, axis=0)
         return X_flat, Y_flat, run_idx_per_obs, participant_per_obs
-
-    def _cross_validated_ridge(self, X_flat, Y_flat, run_idx_per_obs, n_held_out: int):
-        """Hold out contiguous blocks of ``n_held_out`` runs (assembly order);
-        ridge per voxel; return (n_voxels,) Pearson array.
-
-        Voxel-batched: holding the full held_out_preds (n_obs × 20484 × 4B = 10 GB)
-        plus sklearn's internal Y copies during fit blew past 64GB. We batch the
-        voxel axis so peak memory is bounded by VOXEL_BATCH × n_obs × 4B (~1 GB).
-        """
-        n_runs = int(run_idx_per_obs.max() + 1)
-        fold_masks = [
-            (np.isin(run_idx_per_obs, train_runs), np.isin(run_idx_per_obs, test_runs))
-            for train_runs, test_runs in contiguous_block_cv(
-                n_samples=n_runs, block_size_samples=n_held_out)
-        ]
-        per_voxel_r, _ = cross_validated_r(
-            X_flat, Y_flat, fold_masks, ridge(1.0, SklearnRidge()),
-            target_batch=VOXEL_BATCH)
-        return per_voxel_r
-
-    def _cross_validated_ridge_within_participant(self, X_flat, Y_flat,
-                                              run_idx_per_obs, participant_per_obs,
-                                              n_held_out_per_participant: int):
-        """Per-participant run-block ridge; average per-voxel r across participants.
-
-        For each participant independently: hold out contiguous blocks of K runs across that
-        participant's runs only (block_size_samples=n_held_out_per_participant), fit
-        ridge on participant-internal train, predict participant-internal held-out.
-        Compute per-voxel pearson r on held-out predictions stitched across
-        the participant's CV folds. Final per-voxel r = mean across participants
-        (NaN-aware).
-
-        This matches standard fMRI encoding practice (Conwell, Allen, NSD)
-        where train/test splits are within-participant, and avoids the cross-
-        participant mean-leakage that plagues subject_out CV.
-        """
-        n_obs, n_voxels = Y_flat.shape
-        unique_participants = np.unique(participant_per_obs)
-        per_participant_r = np.full((len(unique_participants), n_voxels), np.nan,
-                                    dtype=np.float32)
-
-        for s_idx, participant in enumerate(unique_participants):
-            sub_obs = (participant_per_obs == participant)
-            X_sub = X_flat[sub_obs]
-            Y_sub_full = Y_flat[sub_obs]
-            run_sub = run_idx_per_obs[sub_obs]
-            sub_unique_runs = np.unique(run_sub)
-            n_sub_runs = len(sub_unique_runs)
-
-            fold_masks = []
-            for train_local, test_local in contiguous_block_cv(
-                    n_samples=n_sub_runs, block_size_samples=n_held_out_per_participant):
-                train_runs = sub_unique_runs[train_local]
-                test_runs  = sub_unique_runs[test_local]
-                fold_masks.append((np.isin(run_sub, train_runs),
-                                   np.isin(run_sub, test_runs)))
-
-            per_participant_r[s_idx], _ = cross_validated_r(
-                X_sub, Y_sub_full, fold_masks, ridge(1.0, SklearnRidge()),
-                target_batch=VOXEL_BATCH)
-
-        # Mean per-voxel r across participants, ignoring NaNs.
-        return np.nanmean(per_participant_r, axis=0).astype(np.float32)
-
-
-
-def _blocks_hold_out_whole_participants(participants_per_run: List[str], block_runs: int) -> bool:
-    """True if every contiguous block of ``block_runs`` runs is one participant
-    whose runs are all inside that block (a true leave-one-participant-out)."""
-    for train_runs, test_runs in contiguous_block_cv(
-            n_samples=len(participants_per_run), block_size_samples=block_runs):
-        test_participants = {participants_per_run[i] for i in test_runs}
-        train_participants = {participants_per_run[i] for i in train_runs}
-        if len(test_participants) != 1 or test_participants & train_participants:
-            return False
-    return True

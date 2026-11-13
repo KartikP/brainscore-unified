@@ -5,15 +5,14 @@ MajajHong/Pereira reported ceiling-normalized scores, so the two could not be sh
 one scale. The ceiling was measured on EC2 (task7_ceiling.json) and pinned; these tests
 guard that it stays applied and stays sane.
 
-No model weights, no data download -- these assert on benchmark construction only.
+No model weights, no data download.
 """
+import numpy as np
 import pytest
 
 import brainscore
-from brainscore.benchmarks.lahner2024.benchmark import (
-    VISUAL_ROI_CEILING,
-    Lahner2024BOLDMoments,
-)
+from brainscore.benchmarks.lahner2024 import VISUAL_ROI_CEILING, Lahner2024BOLDMoments
+from tests.lahner_synthetic import N_VOXELS, Recorder, install
 
 
 @pytest.mark.unit
@@ -44,39 +43,29 @@ def test_normalized_beats_raw_but_stays_below_one():
 
 
 @pytest.mark.unit
-def test_per_voxel_ceiling_returns_none_when_not_normalized():
-    # Whole cortex keeps ceiling=1.0, so it must take the scalar path unchanged --
-    # the per-voxel branch must not silently alter variants that were never normalized.
-    whole = Lahner2024BOLDMoments()
-    assert whole._per_voxel_ceiling(mask=None) is None
-
-
-@pytest.mark.unit
-def test_roi_variant_uses_the_per_voxel_branch():
-    # The repo convention is median(r_i / c_i), not median(r_i) / median(c_i).
-    # Guard that the ROI variant is wired to the per-voxel helper at all: it must not
-    # report ceiling == 1.0, which is what sends it down the scalar fallback.
-    roi = brainscore.benchmark_registry['Lahner2024-fMRI-naturalistic-visualROI']()
-    assert float(roi.ceiling) != 1.0
-
-
-@pytest.mark.unit
 def test_whole_cortex_variant_does_not_borrow_the_roi_ceiling():
     # The ceiling was measured on the 4042-voxel ROI mask. Whole cortex has a very
     # different reliability profile, so applying this number there would be wrong.
-    whole = Lahner2024BOLDMoments()
-    assert float(whole.ceiling) == 1.0
+    assert float(Lahner2024BOLDMoments().ceiling) == 1.0
 
 
-@pytest.mark.unit
-def test_scored_voxels_can_be_placed_back_on_a_surface():
-    """The per-voxel scores are ordered over KEPT voxels; without the index mapping
-    they cannot be rendered on a cortex at all (and a wrong guess would draw a
-    plausible-looking but anatomically meaningless map)."""
-    import inspect
-    from brainscore.benchmarks.lahner2024 import benchmark as mod
-    src = inspect.getsource(mod)
-    assert "score.attrs['voxel_mask_indices']" in src, (
-        "voxel_mask_indices is what lets per-voxel scores be placed back onto "
-        "fsaverage5; dropping it silently breaks every cortical figure")
-    assert "np.flatnonzero(mask)" in src
+def test_whole_cortex_takes_the_scalar_path(monkeypatch, tmp_path):
+    install(monkeypatch, tmp_path)
+    score = brainscore.load_benchmark('Lahner2024-fMRI-naturalistic')(Recorder({'vision:video'}))
+    assert score.attrs['ceiling_aggregation'] == 'scalar'
+    assert score.attrs['normalized'] is False
+    assert float(score) == float(score.attrs['raw'])
+
+
+def test_roi_normalizes_per_voxel_and_names_the_scored_voxels(monkeypatch, tmp_path):
+    """The repo convention is median(r_i / c_i), not median(r_i) / median(c_i); the
+    per-voxel scores are ordered over the kept voxels, and the indices place them back
+    on the surface."""
+    install(monkeypatch, tmp_path)
+    score = brainscore.load_benchmark('Lahner2024-fMRI-naturalistic-visualROI')(
+        Recorder({'vision:video'}))
+    assert score.attrs['ceiling_aggregation'] == 'per_voxel'
+    assert score.attrs['normalized'] is True
+    indices = score.attrs['voxel_mask_indices']
+    assert len(indices) == score.attrs['voxel_mask_n_kept'] == len(score.attrs['per_voxel_r'])
+    assert np.all(np.diff(indices) > 0) and indices[-1] < N_VOXELS

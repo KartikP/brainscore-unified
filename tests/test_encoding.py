@@ -310,15 +310,30 @@ class TestIdentityLahnerGLM:
         _same(np.nan_to_num(per_unit_pearson(A, B), nan=0.0), old.lahner_split_half_pearson(A, B))
 
 
+def _former_lahner_mode_fit(mode, alpha_grid):
+    """The fit of a former Lahner2024 multimodal analysis mode, built from the parts.
+
+    ``banded``: one joint ridge, one penalty per band chosen on a random 20 % of the
+    training rows, nothing centred. The other modes: scikit-learn ridge at penalty 1
+    per band, predictions added.
+    """
+    if mode == 'banded':
+        return ridge(grid_search(penalty_grid(alpha_grid, 2),
+                                 partial(random_row_split, fraction=0.2, seed=0)),
+                     NormalEquations(centre='none'))
+    return each_band(ridge(1.0, SklearnRidge()))
+
+
+LAHNER_BANDED_GRID = (1.0, 10.0, 100.0, 1000.0, 10000.0)
+
+
 class TestIdentityLahnerMultimodal:
-    """``Lahner2024-fMRI-naturalistic-multimodal{,-visualROI,-auditoryROI}``,
-    every mode."""
+    """The former ``mode`` options of ``Lahner2024-fMRI-naturalistic-multimodal``,
+    composed from the parts (the registered ``concat`` is the GLM fit above)."""
 
     @pytest.mark.parametrize('mode', ['concat', 'per_modality', 'video_only', 'banded'])
     @pytest.mark.parametrize('dtype', [np.float32, np.float64])
     def test_modes(self, mode, dtype):
-        from brainscore.benchmarks.lahner2024.benchmark_multimodal import (
-            Lahner2024BOLDMoments_multimodal, multimodal_fit)
         rng = np.random.default_rng(3)
         video = rng.standard_normal((180, 40)).astype(dtype)
         audio = rng.standard_normal((180, 25)).astype(dtype)
@@ -327,11 +342,10 @@ class TestIdentityLahnerMultimodal:
         groups = {'concat': [np.concatenate([video, audio], axis=1)],
                   'per_modality': [video, audio], 'video_only': [video],
                   'banded': [video, audio]}[mode]
-        grid = Lahner2024BOLDMoments_multimodal.BANDED_ALPHA_GRID
         (ref_r, ref_median, ref_mean), ref_alphas = old.lahner_multimodal_score(
-            mode, groups, neural, grid)
+            mode, groups, neural, LAHNER_BANDED_GRID)
         r, chosen = cross_validated_r(groups, neural, row_kfold(180, n_splits=5, random_state=0),
-                                      multimodal_fit(mode, grid))
+                                      _former_lahner_mode_fit(mode, LAHNER_BANDED_GRID))
         finite, median, mean = summarize(r)
         _same(finite, ref_r)
         assert (median, mean) == (ref_median, ref_mean)
@@ -354,45 +368,41 @@ def _tr_data(n_runs=20, per_run=60, n_feat=48, n_vox=4500, n_participants=4, see
 
 class TestIdentityLahnerTimeResolved:
     """``Lahner2024-fMRI-naturalistic-timeresolved{,-visualROI,-improved,
-    -improved-visualROI}``: scikit-learn ridge at penalty 1, voxel batches of 2000."""
+    -improved-visualROI}``: scikit-learn ridge at penalty 1, voxel batches of 2000,
+    through the two fold rules."""
 
-    def test_subject_out(self):
-        from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
-            Lahner2024BOLDMoments_timeresolved as TR)
-        X, Y, run_idx, _ = _tr_data()
-        new = TR._cross_validated_ridge(object.__new__(TR), X, Y, run_idx, n_held_out=4)
+    def test_run_blocks(self):
+        from brainscore.benchmarks.lahner2024 import RunBlocks
+        X, Y, run_idx, participants = _tr_data()
+        new = RunBlocks(4).per_voxel_r(X, Y, run_idx, participants)
         _same(new, old.tr_cross_validated_ridge(X, Y, run_idx, n_held_out=4))
         assert new.dtype == np.float32
 
-    def test_within_participant(self):
-        from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
-            Lahner2024BOLDMoments_timeresolved as TR)
+    def test_run_blocks_within_participant(self):
+        from brainscore.benchmarks.lahner2024 import ParticipantRunBlocks
         X, Y, run_idx, participants = _tr_data()
-        new = TR._cross_validated_ridge_within_participant(
-            object.__new__(TR), X, Y, run_idx, participants, n_held_out_per_participant=2)
+        new = ParticipantRunBlocks(2).per_voxel_r(X, Y, run_idx, participants)
         _same(new, old.tr_cross_validated_ridge_within_participant(
             X, Y, run_idx, participants, n_held_out_per_participant=2))
 
 
 class TestIdentityLahnerTimeResolvedMultimodal:
-    """``Lahner2024-fMRI-naturalistic-timeresolved-multimodal{,-visualROI,
-    -auditoryROI}``, the modes other than ``concat`` (``concat`` is the
-    time-resolved path above). ``banded`` keeps its choice per voxel batch (C2)."""
+    """The former ``mode`` options of the time-resolved multimodal benchmark,
+    composed from the parts: shuffled K-fold over whole runs, voxel batches of
+    2000; ``banded`` chooses per voxel batch (C2)."""
 
     @pytest.mark.parametrize('mode', ['per_modality', 'video_only', 'banded'])
     def test_modes(self, mode):
-        from brainscore.benchmarks.lahner2024.benchmark_timeresolved_multimodal import (
-            Lahner2024BOLDMoments_timeresolved_multimodal as TRM)
         X, Y, run_idx, participants = _tr_data(n_runs=16, per_run=40, n_vox=4300)
         video, audio = X[:, :30], X[:, 30:]
         groups = [video] if mode == 'video_only' else [video, audio]
-        benchmark = object.__new__(TRM)
-        benchmark._mode = mode
-        benchmark._cv_n_held_out_runs = 4
-        new = benchmark._fit_score_with_groups(groups, Y, run_idx, participants)
+        n_splits = max(2, len(np.unique(run_idx)) // 4)
+        new, _ = cross_validated_r(groups, Y, list(group_kfold(run_idx, n_splits=n_splits,
+                                                                random_state=0)),
+                                   _former_lahner_mode_fit(mode, LAHNER_BANDED_GRID),
+                                   target_batch=2000)
         ref = old.tr_multimodal_fit_score_with_groups(
-            mode, benchmark._n_pooled_splits(run_idx), TRM.BANDED_ALPHA_GRID,
-            groups, Y, run_idx, participants)
+            mode, n_splits, LAHNER_BANDED_GRID, groups, Y, run_idx, participants)
         _same(new, ref)
 
 

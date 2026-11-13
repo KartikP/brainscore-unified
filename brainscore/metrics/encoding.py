@@ -96,8 +96,8 @@ def random_row_split(groups, fraction: float = 0.2, seed: int = 0):
     """One split that holds out a random ``fraction`` of the rows.
 
     The labels in ``groups`` are not used, only their number. The rows keep the
-    order of the permutation. The Lahner multimodal ``banded`` mode uses this
-    split; on autocorrelated rows it leaks (issue #86).
+    order of the permutation. The former Lahner2024 multimodal ``banded``
+    analysis used this split; on autocorrelated rows it leaks (issue #86).
     """
     n_rows = len(groups)
     n_check = max(1, int(round(n_rows * fraction)))
@@ -182,7 +182,7 @@ class NormalEquations:
             features and the targets and adds the target mean back: a ridge with
             an unpenalized intercept (Algonauts2025). ``'features'`` centres
             only the features and fits no intercept (LeBel2023). ``'none'``
-            centres nothing (Lahner2024 multimodal ``banded``).
+            centres nothing (the former Lahner2024 ``banded`` analysis).
         solve_dtype: the precision of the solve. The Gram matrix is computed in
             the precision of the inputs and then converted. ``None`` keeps the
             input precision (LeBel2023 solves in float32).
@@ -389,7 +389,7 @@ def ridge(penalty, solver):
 def each_band(fit):
     """A fit that fits each band alone with ``fit`` and adds the predictions.
 
-    Two independent encoders, summed (the Lahner multimodal ``per_modality``
+    Two independent encoders, summed (the former Lahner2024 ``per_modality``
     mode). The sum is kept in the precision of the targets.
     """
     def fit_each(train_bands, Y_train, test_bands, groups=None):
@@ -433,7 +433,8 @@ def cross_validated_r(features, Y, folds, fit, *, groups=None,
         groups: one label per row, handed to the inner split (stories, stimuli).
         target_batch: fit the targets in batches of this size, to bound memory.
             A chooser then chooses per batch, so a shared penalty depends on
-            the batch (the Lahner time-resolved benchmarks; finding C2).
+            the batch (finding C2). The Lahner2024 time-resolved benchmark
+            batches at a fixed penalty, where the batch changes nothing.
 
     Returns ``(r, chosen)``: ``r`` has one value per target (NaN without a
     correlation); ``chosen`` lists what each fit returned, batch by batch and

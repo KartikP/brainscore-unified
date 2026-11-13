@@ -141,8 +141,8 @@ def test_lahner_runtime_benchmarks_resolve_data_via_registry(monkeypatch):
     assert benchmark.stimulus_set == 'stimulus:BOLDMoments'
 
     monkeypatch.setattr(lahner_tr, 'load_dataset', fake_load_dataset)
-    timeresolved = lahner_tr.Lahner2024BOLDMoments_timeresolved(
-        apply_motion_regression=True)
+    from brainscore.data.lahner2024 import MOTION_COLUMNS
+    timeresolved = lahner_tr.Lahner2024BOLDMoments_timeresolved(confounds=MOTION_COLUMNS)
     assert timeresolved.events == 'data:Lahner2024-fMRI-timeresolved-events'
     assert timeresolved.motion == 'data:Lahner2024-fMRI-timeresolved-motion'
 

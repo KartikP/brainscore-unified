@@ -16,8 +16,8 @@ voxels and would dilute a clean audio-cortex mask.
 Total: ~526 voxels across both hemispheres on fsaverage5.
 
 The Lahner assembly is concatenated as (left || right) → 20484 voxels.
-We build a boolean mask of that length and the existing voxel-mask
-plumbing in ``Lahner2024BOLDMoments_multimodal`` consumes it as-is.
+The mask has that length; a Lahner2024 benchmark takes it as
+``voxel_mask_fn=build_auditory_mask``.
 """
 from typing import Iterable
 

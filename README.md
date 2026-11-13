@@ -74,7 +74,7 @@ interface is exercised, but the result is not a brain-alignment claim.
 | Behavioral lexical decision | ROAR / Yeatman2021 | validated | Registered image/text variants, shared split, ceiling, and CLIP-above-chance scoring are tested. |
 | Video neural encoding | Lahner2024 BOLDMoments | EC2-only | Local tests verify registration, temporal preprocessing, and V-JEPA wiring; full scoring is EC2-only. |
 | Audio wrapper | Wav2Vec2-style features | structurally-tested | Construction, stimulus columns, aggregation, truncation, and cache keys are unit-tested without weights. |
-| Audio+video fMRI | Lahner2024 multimodal | EC2-only | Registry, mode validation, null controls, and modality tagging are local; real forward/data runs are EC2-only. |
+| Audio+video fMRI | Lahner2024 multimodal | EC2-only | Registry, channel routing, voxel masks and both streams are tested locally on synthetic data; real forward/data runs are EC2-only. |
 | Movie multimodal fMRI | Algonauts2025 / CNeuroMod | EC2-only | Fourteen benchmark entries and the banded-ridge scoring are tested locally; the data assembly is about 100 GB on EC2. Three forms exist: one frame per scan (`vision:image`), one 1.49 s clip per scan (`vision:video`, participant 1 only) and the clip with its sound (`vision:video` and `audio`, participant 1 only). Every form predicts all parcels from every region the model maps. No form sends speech text. |
 | Intervention | `apply_state_change`, `Intervene` | structurally-tested | Hook install, indexed ablation, concurrent handles, and reset are tested on a toy torch model. |
 | Closed-loop action | GridGame `policy` | demo-only | Floor, ceiling, deterministic boards, and registration are tested; the game is an interface demo. |
