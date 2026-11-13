@@ -21,7 +21,7 @@ To present your own images instead, build a stimulus set from a table with `stim
 | --- | --- | --- | --- | --- |
 | `Lahner2024-fMRI`, `-timeresolved`, `-timeresolved-events`, `-timeresolved-motion` | `BOLDMoments` | fMRI to 1,102 three-second videos, as GLM betas and as TR time series with events and motion confounds | hosted | `Lahner2024-fMRI-naturalistic*` |
 | `LeBel2023-UTS03` | `LeBel2023-UTS03` (one row per TR), `LeBel2023-UTS03-words` (one row per word) | whole-cortex fMRI while listening to 25 stories, one participant | hosted (default settings); other settings build from the source pickle | `LeBel2023-UTS03-encoding*` |
-| `Algonauts2025-{friends,friends-s7,ood}-sub{01,02,03,05}` | `Algonauts2025-{friends,friends-s7,ood}` | Courtois NeuroMod fMRI while watching Friends and films, Schaefer 1,000 parcels | local: data-use agreement | `Algonauts2025-*` |
+| `Algonauts2025-{friends,friends-s7,ood}-sub{01,02,03,05}` | `Algonauts2025-{friends,friends-s7,ood}` | Courtois NeuroMod fMRI while watching Friends and films, Schaefer 1,000 parcels | local: data-use agreement | `Algonauts2025-friends-sub*`; the held-out `friends-s7` and `ood` splits have no fMRI and serve prediction export only (`Algonauts2025(split=...)`, see the [benchmark README](../../brainscore/benchmarks/algonauts2025/README.md)) |
 | `EWoK-core-1.0` | `EWoK-core-1.0` | world-knowledge contrasts and their answer keys | local: gated text | `EWoK-core-1.0-logprobs`, `-choice` |
 | `Yeatman2021` | `Yeatman2021` | word and pseudoword images with human lexical decisions (ROAR) | hosted | `Yeatman2021-lexical_decision-*` |
 

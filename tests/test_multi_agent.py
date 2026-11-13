@@ -168,6 +168,134 @@ def test_a_region_is_recorded_during_each_answer():
         assert np.isfinite(np.asarray(recorded.values)).all()
 
 
+# ── turn boundaries and errors ───────────────────────────────────────
+
+def _within(seconds, run):
+    """Run ``run()`` in a thread; a run that does not end in ``seconds`` fails the test."""
+    import threading
+    outcome = {}
+
+    def target():
+        try:
+            outcome['value'] = run()
+        except BaseException as error:
+            outcome['error'] = error
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    assert not thread.is_alive(), 'the rollout did not end'
+    if 'error' in outcome:
+        raise outcome['error']
+    return outcome['value']
+
+
+class Recorder(EchoAgent):
+    """Answers each turn on ``behavior:text`` and ``neural:IT``, in a given order,
+    and keeps every event it sent. Raises ``RuntimeError(fail)`` at ``fail_at``:
+    'start' (before the first turn), 'after_answer' (after the last answer),
+    'end' (on the end signal) or 'exit' (when ``participate`` returns)."""
+    out_channels = {'behavior:text', 'neural:IT'}
+
+    def __init__(self, identifier, neural_first=True, skip=None, fail_at=None, turns=None):
+        super().__init__(identifier)
+        self.neural_first, self.skip, self.fail_at, self.turns = neural_first, skip, fail_at, turns
+        self.sent = []
+
+    def participate(self, session):
+        if self.fail_at == 'start':
+            raise RuntimeError('broken at start')
+        session.declare_inputs(self.in_channels)
+        turn = 0
+        while (event := session.next_input()) is not None:
+            if event.channel == 'control' and event.payload == 'respond':
+                answer = StreamEvent('behavior:text', f'{self.identifier} {turn}', event.t_ms)
+                neural = StreamEvent('neural:IT', np.full((1, 2), float(turn)), event.t_ms)
+                for out in ([neural, answer] if self.neural_first else [answer, neural]):
+                    if (turn, out.channel) != self.skip:
+                        session.respond(out)
+                        self.sent.append(out)
+                turn += 1
+                if self.fail_at == 'after_answer' and turn == self.turns:
+                    raise RuntimeError('broken after the answer')
+            elif event.channel == 'control' and event.payload.startswith('end') and self.fail_at == 'end':
+                raise RuntimeError('broken at the end')
+        if self.fail_at == 'exit':
+            raise RuntimeError('broken at exit')
+
+
+def _run(subjects, n_turns=2, mediator=None):
+    return _within(10, lambda: multi_agent_rollout(
+        subjects, mediator or DialogueMediator(start='hi'), n_turns=n_turns,
+        outputs=('behavior:text', 'neural:IT')))
+
+
+@pytest.mark.parametrize('neural_first', [True, False])
+def test_each_turn_holds_its_own_outputs_in_either_order(neural_first):
+    a, b = Recorder('alice', neural_first), Recorder('bob', neural_first)
+    transcript = _run([a, b], n_turns=3)
+    assert [(e['turn'], e['subject']) for e in transcript] == [
+        (t, s) for t in range(3) for s in ('alice', 'bob')]
+    for subject in (a, b):
+        entries = [e for e in transcript if e['subject'] == subject.identifier]
+        for entry in entries:
+            sent = {e.channel: e.payload for e in subject.sent[2 * entry['turn']:2 * entry['turn'] + 2]}
+            assert entry['action'] == sent['behavior:text'] == f"{subject.identifier} {entry['turn']}"
+            assert entry['neural:IT'] is sent['neural:IT']
+            assert entry['neural:IT'][0, 0] == entry['turn']
+
+
+def test_the_two_orders_can_mix_in_one_conversation():
+    transcript = _run([Recorder('alice', True), Recorder('bob', False)])
+    assert [e['neural:IT'][0, 0] for e in transcript] == [0, 0, 1, 1]
+
+
+@pytest.mark.parametrize('neural_first', [True, False])
+def test_a_turn_without_a_requested_output_names_subject_turn_and_channel(neural_first):
+    subjects = [Recorder('alice', neural_first), Recorder('bob', neural_first, skip=(1, 'neural:IT'))]
+    with pytest.raises(ValueError, match=r"'bob' sent no 'neural:IT' in turn 1"):
+        _run(subjects)
+
+
+@pytest.mark.parametrize('fail_at', ['after_answer', 'end', 'exit'])
+def test_an_error_after_the_final_answer_reaches_the_caller(fail_at):
+    subjects = [Recorder('alice'), Recorder('bob', fail_at=fail_at, turns=2)]
+    message = {'after_answer': 'after the answer', 'end': 'at the end', 'exit': 'at exit'}[fail_at]
+    with pytest.raises(RuntimeError, match=f'broken {message}'):
+        _run(subjects)
+
+
+def test_an_error_before_the_first_turn_reaches_the_caller():
+    with pytest.raises(RuntimeError, match='broken at start'):
+        _run([Recorder('alice'), Recorder('bob', fail_at='start')])
+
+
+def test_a_subject_that_returns_without_answering_ends_the_run():
+    class Silent(Recorder):
+        def participate(self, session):
+            return None
+    with pytest.raises(RuntimeError, match="'bob' ended before its turn 0"):
+        _run([Recorder('alice'), Silent('bob')])
+
+
+@pytest.mark.parametrize('method', ['observe', 'apply'])
+def test_an_error_of_the_mediator_ends_every_thread(method):
+    class Broken(DialogueMediator):
+        def observe(self, identifier, incoming):
+            if method == 'observe' and identifier == 'bob':
+                raise RuntimeError('mediator broken')
+            return super().observe(identifier, incoming)
+
+        def apply(self, identifier, event):
+            if method == 'apply' and identifier == 'bob':
+                raise RuntimeError('mediator broken')
+            super().apply(identifier, event)
+    import threading
+    before = threading.active_count()
+    with pytest.raises(RuntimeError, match='mediator broken'):
+        _run([Recorder('alice'), Recorder('bob')], mediator=Broken(start='hi'))
+    assert threading.active_count() == before
+
+
 # ── ActivationWindow unit behavior ───────────────────────────────────
 
 def _net():

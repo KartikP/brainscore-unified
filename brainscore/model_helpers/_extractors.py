@@ -52,6 +52,22 @@ def as_array(output) -> np.ndarray:
     return activity.numpy()
 
 
+def as_numpy(output) -> np.ndarray:
+    """A hooked output as numpy in its own dtype: the first element of a tuple.
+
+    Only a float type that numpy cannot hold (bfloat16) becomes float32. The
+    audio extractor keeps the precision of its network up to its temporal
+    reduction.
+    """
+    activity = _tensor(output).cpu()
+    try:
+        return activity.numpy()
+    except TypeError:
+        if not activity.dtype.is_floating_point:
+            raise
+        return activity.float().numpy()
+
+
 def as_float32(output) -> np.ndarray:
     """A hooked output as float32 numpy, whatever its type: the first element of a tuple."""
     return _tensor(output).cpu().float().numpy()

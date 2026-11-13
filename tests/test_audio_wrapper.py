@@ -228,6 +228,65 @@ class TestAggregate:
             wrapper._aggregate({'l': act}, attention_mask=None)
 
 
+class TestPrecision:
+    """The audio extractor keeps the dtype of its network until the temporal
+    reduction: the hook output becomes numpy as it is, and only a dtype numpy
+    cannot hold (bfloat16) becomes float32."""
+
+    @staticmethod
+    def _network(dtype):
+        import torch
+        import torch.nn as nn
+
+        class _Network(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.encoder = nn.Identity()
+                self.seen = []
+
+            def forward(self, input_values, attention_mask=None):
+                generator = torch.Generator().manual_seed(0)
+                activity = torch.randn(input_values.shape[0], 3, 2, generator=generator,
+                                       dtype=torch.float64) * 100
+                activity[:, :, 0] = torch.tensor([2049., 1., -2048.], dtype=torch.float64)
+                if dtype == torch.float64:
+                    activity[:, :, 1] = torch.tensor([100000001., 1., -100000000.], dtype=torch.float64)
+                activity = activity.to(dtype)
+                self.seen.append(activity)
+                self.encoder(activity)
+
+        return _Network()
+
+    def _extract(self, dtype, aggregation):
+        from brainscore.model_helpers.audio_wrapper import AudioWrapper
+        network = self._network(dtype)
+        wrapper = AudioWrapper(model=network, processor=_FakeProcessor(), identifier='precision',
+                               layer_aggregation=aggregation, batch_size=1)
+        waves = [np.zeros(1600, np.float32), np.zeros(1600, np.float32)]
+        return wrapper._get_activations_batched(waves, ['encoder'])['encoder'], network.seen
+
+    @pytest.mark.parametrize('aggregation', ['mean_time', 'time_series'])
+    @pytest.mark.parametrize('dtype_name', ['float16', 'float32', 'float64'])
+    def test_activity_keeps_the_network_dtype(self, dtype_name, aggregation):
+        import torch
+        activity, seen = self._extract(getattr(torch, dtype_name), aggregation)
+        raw = np.concatenate([tensor.numpy() for tensor in seen])
+        expected = raw if aggregation == 'time_series' else raw.mean(axis=1)
+        assert activity.dtype == np.dtype(dtype_name)
+        np.testing.assert_array_equal(activity, expected)
+
+    def test_float64_mean_is_not_rounded(self):
+        import torch
+        activity, _ = self._extract(torch.float64, 'mean_time')
+        assert activity[0, 1] == pytest.approx(2 / 3, abs=0)
+
+    def test_bfloat16_becomes_float32(self):
+        import torch
+        activity, seen = self._extract(torch.bfloat16, 'time_series')
+        assert activity.dtype == np.float32
+        np.testing.assert_array_equal(activity, np.concatenate([t.float().numpy() for t in seen]))
+
+
 # ── Waveform loading + truncation ───────────────────────────────────
 
 class TestWaveformLoading:

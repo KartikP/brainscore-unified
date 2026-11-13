@@ -183,9 +183,7 @@ LANA_ATLAS = register(LocalAsset(
 
 # Friends benchmarks: every registered identifier that reads the prepared files.
 _ALGONAUTS_IDENTIFIERS = (
-    [f'Algonauts2025-{split}-sub{participant:02d}'
-     for split in ('friends', 'friends-s7', 'ood')
-     for participant in (1, 2, 3, 5)]
+    [f'Algonauts2025-friends-sub{participant:02d}' for participant in (1, 2, 3, 5)]
     + ['Algonauts2025-friends-sub01-video',
        'Algonauts2025-friends-sub01-video-audio'])
 

@@ -50,7 +50,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_array, attach_stimulus_set, cache_signature, hooked, run_batches,
+    LiveRecording, as_numpy, attach_stimulus_set, cache_signature, hooked, run_batches,
 )
 
 
@@ -416,7 +416,7 @@ class AudioWrapper:
                      for k, v in processed.items()}
 
         self._model.eval()
-        with hooked(self._model, layers, as_array) as layer_results, torch.no_grad():
+        with hooked(self._model, layers, as_numpy) as layer_results, torch.no_grad():
             self._model(**processed)
 
         self._measure_step(layer_results, max(len(w) for w in batch_waveforms))
@@ -497,7 +497,7 @@ class AudioWrapper:
                 self._measure_step(first, waveform.shape[-1])
             return self._package(self._aggregate(first, kwargs.get('attention_mask')), ['?'])
 
-        return LiveRecording(self._model, self._model, layers, take, as_array)
+        return LiveRecording(self._model, self._model, layers, take, as_numpy)
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""

@@ -24,10 +24,13 @@ sees each of its turns, and an output requested with ``outputs`` in addition
 to the answer (for example ``neural:IT``) is recorded during the pass that
 made the answer and is returned in the transcript.
 
-``participate`` returns only when its session ends, and every session stays
-open for the whole conversation, so each one runs in its own thread. Only one
-subject acts at a time: the harness gives the turn, waits for the answer, then
-gives the next turn. A run is therefore as deterministic as its subjects.
+Threads: ``participate`` returns only when its session ends, and every session
+stays open for the whole conversation, so each one runs in its own thread.
+Only one subject acts at a time, so a run is as deterministic as its subjects.
+
+The outputs of a turn are what the subject sends between the ``respond`` signal
+of that turn and the next one, in any order. A turn that misses a requested
+output, or an error of any subject, stops the run with an error.
 """
 import contextvars
 import queue
@@ -35,7 +38,7 @@ import threading
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
 from brainscore_core.contract import Subject
-from brainscore_core.streaming import Session, StreamEvent
+from brainscore_core.streaming import CONTROL_CHANNEL, RESPOND, Session, StreamEvent
 from brainscore_core.streaming_helpers import environment_session
 
 
@@ -88,12 +91,17 @@ class _Seat:
 
     ``reset`` and ``step`` wait until the harness gives the subject its next
     row, or ends the conversation. ``step`` hands the answer to the harness.
+    ``turns`` holds each turn's outputs (channel to payload), from the session
+    events; ``error`` is what the subject's thread raised, if anything.
     """
 
     def __init__(self, channel: str) -> None:
         self.channel = channel
         self.rows: queue.Queue = queue.Queue()      # harness -> subject: (row, end reason)
-        self.answers: queue.Queue = queue.Queue()   # subject -> harness: payload, or the error
+        self.answers: queue.Queue = queue.Queue()   # subject -> harness: payload, or _ENDED
+        self.turns: List[Dict[str, Any]] = []
+        self.duplicate: Optional[tuple] = None      # (turn, channel) answered twice
+        self.error: Optional[BaseException] = None
 
     def reset(self):
         return self.rows.get()
@@ -101,6 +109,20 @@ class _Seat:
     def step(self, outputs):
         self.answers.put(outputs[self.channel])
         return self.rows.get()
+
+    def on_input(self, event) -> None:
+        if isinstance(event, StreamEvent) and event.channel == CONTROL_CHANNEL and event.payload == RESPOND:
+            self.turns.append({})
+
+    def on_output(self, event: StreamEvent) -> None:
+        turn = len(self.turns) - 1
+        if turn < 0 or event.channel in self.turns[turn]:
+            self.duplicate = self.duplicate or (turn, event.channel)
+            return
+        self.turns[turn][event.channel] = event.payload
+
+
+_ENDED = object()   # put on ``answers`` when a subject's thread ends
 
 
 def multi_agent_rollout(subjects: Union[Sequence, Dict[str, Any]],
@@ -144,21 +166,21 @@ def multi_agent_rollout(subjects: Union[Sequence, Dict[str, Any]],
     for thread in threads:
         thread.start()
 
-    transcript: List[Dict[str, Any]] = []
-    turns: List[List[Dict[str, Any]]] = [[] for _ in subjects]   # the entries of each subject
+    order_of_answers: List[tuple] = []     # (turn, seat index) in the order the answers came
     last: Optional[StreamEvent] = None
     reason = 'terminal'
     try:
         for turn in range(n_turns):
-            for subject, seat, entries in zip(subjects, seats, turns):
+            for index, (subject, seat) in enumerate(zip(subjects, seats)):
                 seat.rows.put((dict(mediator.observe(subject.identifier, last)), None))
                 answer = seat.answers.get()
-                if isinstance(answer, BaseException):
-                    raise answer
+                if answer is _ENDED:
+                    raise seat.error or RuntimeError(
+                        f'The session of {subject.identifier!r} ended before its turn {turn}. '
+                        "Declare 'control' in in_channels and answer on the respond signal.")
                 last = StreamEvent(action_channel, answer, None, {'sender': subject.identifier})
                 mediator.apply(subject.identifier, last)
-                entries.append({'turn': turn, 'subject': subject.identifier, 'action': answer})
-                transcript.append(entries[-1])
+                order_of_answers.append((turn, index))
     except BaseException:
         reason = 'failure'
         raise
@@ -167,36 +189,39 @@ def multi_agent_rollout(subjects: Union[Sequence, Dict[str, Any]],
             seat.rows.put(({}, reason))
         for thread in threads:
             thread.join()
-    for entries, session in zip(turns, sessions):
-        _add_recordings(entries, session, action_channel)
-    return transcript
+    for subject, seat in zip(subjects, seats):
+        if seat.error is not None:
+            raise seat.error
+        _check_turns(subject.identifier, seat, n_turns, outputs)
+    return [{'turn': turn, 'subject': subjects[index].identifier,
+             'action': seats[index].turns[turn][action_channel],
+             **{channel: payload for channel, payload in seats[index].turns[turn].items()
+                if channel != action_channel}}
+            for turn, index in order_of_answers]
 
 
 def _take_part(subject, session, seat: _Seat) -> None:
-    """Run the subject's session; give the harness any error, or say the session ended."""
+    """Run the subject's session; keep its error on the seat, then wake a waiting harness."""
     try:
-        with session:
+        with session, session.observe(on_input=seat.on_input, on_output=seat.on_output):
             subject.participate(session)
-        seat.answers.put(RuntimeError(
-            f'The session of {subject.identifier!r} ended before its turn. '
-            "Declare 'control' in in_channels and answer on the respond signal."))
     except BaseException as error:
-        seat.answers.put(error)
+        seat.error = error
+    finally:
+        seat.answers.put(_ENDED)
 
 
-def _add_recordings(entries, session: Session, action_channel: str) -> None:
-    """Put a subject's other outputs in the entry of the turn they were sent in.
-
-    A session keeps the subject's responses in order: the other outputs of a
-    turn, then its answer on ``action_channel``.
-    """
-    turn, pending = 0, {}
-    for event in session.emitted:
-        if event.channel == action_channel:
-            entries[turn].update(pending)
-            turn, pending = turn + 1, {}
-        else:
-            pending[event.channel] = event.payload
+def _check_turns(identifier: str, seat: _Seat, n_turns: int, outputs: Sequence[str]) -> None:
+    """Every turn holds each requested output once."""
+    if seat.duplicate is not None:
+        turn, channel = seat.duplicate
+        where = 'before its first turn' if turn < 0 else f'twice in turn {turn}'
+        raise ValueError(f'Subject {identifier!r} answered on {channel!r} {where}.')
+    for turn in range(n_turns):
+        given = seat.turns[turn] if turn < len(seat.turns) else {}
+        for channel in outputs:
+            if channel not in given:
+                raise ValueError(f'Subject {identifier!r} sent no {channel!r} in turn {turn}.')
 
 
 class EchoAgent(Subject):

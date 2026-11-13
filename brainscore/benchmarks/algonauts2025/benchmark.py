@@ -1,13 +1,13 @@
 """Algonauts 2025 challenge benchmark classes.
 
 ``Algonauts2025(participant, split=...)`` is the one class of the family. A
-registry line sets the split and the channels:
+registry line sets the participant and the channels of the ``friends`` split:
 
 - ``split='friends'`` (default) scores a model on Friends S1-S6 and Movie10 with
   5-fold cross-validation over stimuli.
-- ``split='friends_s7'`` and ``split='ood'`` have no recorded fMRI.
-  ``generate_predictions`` writes the predicted parcel time series for
-  Codabench.
+- ``split='friends_s7'`` and ``split='ood'`` have no recorded fMRI, so they are
+  not registered. Build them directly; ``generate_predictions`` writes the
+  predicted parcel time series for Codabench.
 
 ``channels`` names what the benchmark sends for each scan (TR, 1.49 s):
 

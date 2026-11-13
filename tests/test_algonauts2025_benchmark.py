@@ -37,6 +37,18 @@ def test_held_out_splits_raise_when_scored_directly():
             b(subject=None)
 
 
+def test_held_out_splits_are_not_registered():
+    """A registered benchmark has measured data; the held-out splits have none.
+    Prediction export builds them directly (test_algonauts_prediction_uses_training_svd)."""
+    import brainscore.benchmarks  # noqa: F401  (registers the unified benchmarks)
+    registered = [name for name in brainscore.benchmark_registry if name.startswith('Algonauts2025-')]
+    for participant in (1, 2, 3, 5):
+        assert f'Algonauts2025-friends-sub{participant:02d}' in registered
+        for split in ('friends-s7', 'ood'):
+            assert f'Algonauts2025-{split}-sub{participant:02d}' not in registered
+    assert all('s7' not in name and 'ood' not in name for name in registered)
+
+
 def test_assembly_load_raises_clear_error_when_data_missing(tmp_path):
     """If the assembly hasn't been built yet, the load path should
     raise FileNotFoundError pointing the user at prepare_assembly.py."""

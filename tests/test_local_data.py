@@ -115,7 +115,7 @@ class TestFriendsLocation:
 
     @pytest.mark.parametrize('identifier', [
         'Algonauts2025-friends-sub01', 'Algonauts2025-friends-sub05',
-        'Algonauts2025-friends-s7-sub02', 'Algonauts2025-ood-sub03',
+        'Algonauts2025-friends-sub02', 'Algonauts2025-friends-sub03',
         'Algonauts2025-friends-sub01-video',
         'Algonauts2025-friends-sub01-video-audio'])
     def test_precheck_covers_friends_identifiers(self, identifier, tmp_path, monkeypatch):

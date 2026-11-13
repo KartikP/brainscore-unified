@@ -4,17 +4,24 @@ The benchmark predicts fMRI responses to multimodal naturalistic movies. The dat
 
 ## Registered benchmarks
 
-`__init__.py` registers 14 identifiers: three splits for each of four participants, one video variant and one video-and-sound variant.
+`__init__.py` registers 6 identifiers: the Friends training split for each of four participants, one video variant and one video-and-sound variant. Each has measured fMRI.
 
 | Identifier | Split | How to use it |
 |---|---|---|
 | `Algonauts2025-friends-sub{01,02,03,05}` | Friends S1-S6 and Movie10, with measured fMRI | `benchmark(model)` scores the model with cross-validation. |
-| `Algonauts2025-friends-s7-sub{...}` | Friends S7, held out | Call `generate_predictions(subject, out_dir)`. |
-| `Algonauts2025-ood-sub{...}` | Out-of-distribution movies, held out | Call `generate_predictions(subject, out_dir)`. |
 | `Algonauts2025-friends-sub01-video` | Friends S1-S6 and Movie10 for participant 1, shown as clips | `benchmark(model)` scores the model with cross-validation. |
 | `Algonauts2025-friends-sub01-video-audio` | Friends S1-S6 and Movie10 for participant 1, shown as clips with their sound | `benchmark(model)` scores the model with cross-validation. |
 
-Calling a held-out benchmark directly raises `ValueError`, because the data has no ground truth. `generate_predictions` writes one `sub-<NN>_<split>.npy` file of shape `(n_TRs, 1000)`. Zip these files in the Codabench layout and upload them. The repository ships no zip bundler.
+The held-out splits, Friends S7 (`split='friends_s7'`) and the out-of-distribution movies (`split='ood'`), have no released fMRI, so they are not in the registry: a registered benchmark has measured data. Build one directly for prediction export (see [Held-out prediction](#held-out-prediction)):
+
+```python
+from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+
+held_out = Algonauts2025(participant=1, split='friends_s7')
+result = held_out.generate_predictions(subject, out_dir)
+```
+
+Calling a held-out benchmark raises `ValueError`, because the data has no ground truth. `generate_predictions` writes one `sub-<NN>_<split>.npy` file of shape `(n_TRs, 1000)`. Zip these files in the Codabench layout and upload them. The repository ships no zip bundler.
 
 ## What the benchmark sends
 

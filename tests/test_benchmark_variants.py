@@ -17,20 +17,12 @@ FAMILIES = ('Algonauts2025-', 'CogGym.', 'EWoK-', 'GridGame-', 'Lahner2024-',
             'LeBel2023-', 'Yeatman2021-')
 
 REGISTERED = [
-    'Algonauts2025-friends-s7-sub01',
-    'Algonauts2025-friends-s7-sub02',
-    'Algonauts2025-friends-s7-sub03',
-    'Algonauts2025-friends-s7-sub05',
     'Algonauts2025-friends-sub01',
     'Algonauts2025-friends-sub01-video',
     'Algonauts2025-friends-sub01-video-audio',
     'Algonauts2025-friends-sub02',
     'Algonauts2025-friends-sub03',
     'Algonauts2025-friends-sub05',
-    'Algonauts2025-ood-sub01',
-    'Algonauts2025-ood-sub02',
-    'Algonauts2025-ood-sub03',
-    'Algonauts2025-ood-sub05',
     'CogGym.Aboody2025Inferring.exp1',
     'CogGym.Aboody2025Inferring.exp2',
     'CogGym.Bass2022Partial.exp1',
@@ -83,22 +75,6 @@ REGISTERED = [
 # Registry identifier -> (built identifier, version, trial memory, inputs, outputs). A benchmark that
 # needs local data to build is checked by its identifier alone.
 BUILT = {
-    'Algonauts2025-friends-s7-sub01': (
-        'Algonauts2025-friends_s7-sub01-test', 2, 'none',
-        ['vision:image'],
-        ['neural:IT', 'neural:V1', 'neural:V4']),
-    'Algonauts2025-friends-s7-sub02': (
-        'Algonauts2025-friends_s7-sub02-test', 2, 'none',
-        ['vision:image'],
-        ['neural:IT', 'neural:V1', 'neural:V4']),
-    'Algonauts2025-friends-s7-sub03': (
-        'Algonauts2025-friends_s7-sub03-test', 2, 'none',
-        ['vision:image'],
-        ['neural:IT', 'neural:V1', 'neural:V4']),
-    'Algonauts2025-friends-s7-sub05': (
-        'Algonauts2025-friends_s7-sub05-test', 2, 'none',
-        ['vision:image'],
-        ['neural:IT', 'neural:V1', 'neural:V4']),
     'Algonauts2025-friends-sub01': (
         'Algonauts2025-friends-sub01', 2, 'none',
         ['vision:image'],
@@ -121,22 +97,6 @@ BUILT = {
         ['neural:IT', 'neural:V1', 'neural:V4']),
     'Algonauts2025-friends-sub05': (
         'Algonauts2025-friends-sub05', 2, 'none',
-        ['vision:image'],
-        ['neural:IT', 'neural:V1', 'neural:V4']),
-    'Algonauts2025-ood-sub01': (
-        'Algonauts2025-ood-sub01-ood', 2, 'none',
-        ['vision:image'],
-        ['neural:IT', 'neural:V1', 'neural:V4']),
-    'Algonauts2025-ood-sub02': (
-        'Algonauts2025-ood-sub02-ood', 2, 'none',
-        ['vision:image'],
-        ['neural:IT', 'neural:V1', 'neural:V4']),
-    'Algonauts2025-ood-sub03': (
-        'Algonauts2025-ood-sub03-ood', 2, 'none',
-        ['vision:image'],
-        ['neural:IT', 'neural:V1', 'neural:V4']),
-    'Algonauts2025-ood-sub05': (
-        'Algonauts2025-ood-sub05-ood', 2, 'none',
         ['vision:image'],
         ['neural:IT', 'neural:V1', 'neural:V4']),
     'GridGame-reach-5x5': (
