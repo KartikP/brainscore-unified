@@ -62,14 +62,14 @@ class ToyExtractor:
         return _assembly([self.net.forward(i) for i in ids], ids, layers)
 
     @contextmanager
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         captured = []
         recording = type('Recording', (), {})()
 
         def take(_row):
             first = captured[0]
             captured.clear()
-            return _assembly([first], ['?'], layers)
+            return {layer: _assembly([first], ['?'], [layer]) for layer in layers}
         recording.take = take
         self.net.hooks.append(captured.append)
         try:

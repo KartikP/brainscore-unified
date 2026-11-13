@@ -141,7 +141,7 @@ class Incomplete(ToyExtractor):
         return super().__call__(stimuli, [l for l in layers if l != 'early'], **kwargs)
 
     @contextmanager
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         with super().record([l for l in layers if l != 'early']) as rec:
             yield rec
 
@@ -213,7 +213,7 @@ def conditional_extractor(pattern):
     """Records 'early' on no trial, every trial, or trials a and c only."""
     class Conditional(ToyExtractor):
         @contextmanager
-        def record(self, layers):
+        def record(self, layers, stimuli=None):
             captured, count = [], [0]
             recording = type('Recording', (), {})()
 
@@ -222,7 +222,8 @@ def conditional_extractor(pattern):
                 captured.clear()
                 count[0] += 1
                 keep_early = pattern == 'always' or (pattern == 'sometimes' and count[0] % 2)
-                return _assembly([row], ['?'], [l for l in layers if l != 'early' or keep_early])
+                return {layer: _assembly([row], ['?'], [layer])
+                        for layer in layers if layer != 'early' or keep_early}
             recording.take = take
             self.net.hooks.append(captured.append)
             try:

@@ -50,8 +50,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_numpy, attach_stimulus_set, cache_signature, hooked, one_dtype,
-    refuse_other_input, run_batches,
+    LiveRecording, as_numpy, attach_stimulus_set, attention_mask, cache_signature, one_dtype, run_batches,
 )
 
 
@@ -417,11 +416,13 @@ class AudioWrapper:
                      for k, v in processed.items()}
 
         self._model.eval()
-        with hooked(self._model, layers, as_numpy) as layer_results, torch.no_grad():
+        with LiveRecording(self._model, self._model, layers, as_numpy, inputs=attention_mask) as recording, \
+                torch.no_grad():
             self._model(**processed)
+            layer_results, mask = recording.take()
 
         self._measure_step(layer_results, max(len(w) for w in batch_waveforms))
-        return self._aggregate(layer_results, processed.get('attention_mask'))
+        return self._aggregate(layer_results, mask)
 
     def _measure_step(self, layer_results, input_samples):
         """Keep the duration of one output step, measured on the first pass.
@@ -466,7 +467,7 @@ class AudioWrapper:
                 # already downsampled T by the model's conv stride. If T_out
                 # differs from the mask's T_in, we fall back to unweighted
                 # mean.
-                mask_np = attention_mask.cpu().numpy()
+                mask_np = attention_mask
                 if mask_np.shape[1] == act.shape[1]:
                     mask_expanded = mask_np[:, :, None].astype(act.dtype)
                     act = (act * mask_expanded).sum(axis=1) / np.clip(
@@ -478,44 +479,46 @@ class AudioWrapper:
             out[layer_name] = act
         return out
 
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         """Record ``layers`` while another caller runs the model (an answer or a step).
 
-        Returns a context manager; its ``take()`` gives the first forward pass
-        since the previous take, packaged as ``__call__`` packages one clip: the
-        same aggregation, time axis and neuroid coordinates. The pass must show
-        one clip. The attention mask, when the caller gives one, is read from
-        that call, as ``__call__`` reads it from the processor output. The step
-        duration of ``time_series`` outputs is measured from ``input_values``
-        (a waveform) when no pass measured it before.
-
-        ``__call__`` splits a clip longer than ``max_duration_sec`` into chunks
-        and combines them; one pass cannot give that result. A pass longer than
-        ``max_duration_sec``, or a later pass of the same presentation with other
-        input (a later chunk), is refused before it runs.
+        Returns a ``LiveRecording``; its ``take(row)`` gives ``{layer: assembly}``
+        for the first forward pass since the previous take, aggregated with the
+        attention mask of that pass and packaged by the functions of ``__call__``;
+        the step of ``time_series`` outputs is measured from the clip of ``row``
+        (else ``input_values``) when no pass measured it before. ``__call__`` pads
+        the clips of ``stimuli`` to the longest and cuts a clip longer than
+        ``max_duration_sec`` into chunks, so clips of other lengths or of several
+        chunks are refused before any pass. A pass of several clips or longer than
+        ``max_duration_sec``, and a later pass of the presentation with other
+        input, are refused before they run.
         """
-        def take(first, call, _row):
-            kwargs = call[1] if call is not None else {}
-            if any(activity.shape[0] != 1 for activity in first.values()):
-                raise ValueError('Recording during a task expects one clip at a time.')
-            waveform = kwargs.get('input_values')
-            if waveform is not None:
-                self._measure_step(first, waveform.shape[-1])
-            return self._package(self._aggregate(first, kwargs.get('attention_mask')), ['?'])
+        lengths = {}
+        for path in (self._extract_paths(stimuli) if stimuli is not None else []):
+            chunks = self._chunk_waveform(self._load_waveform(path))
+            if len(chunks) > 1:
+                raise ValueError(f'{path} is longer than max_duration_sec={self._max_duration_sec} s; '
+                                 f'{self._identifier!r} records it in chunks, one pass per clip cannot.')
+            lengths[path] = len(chunks[0])
+        if len(set(lengths.values())) > 1:
+            raise ValueError(f'The clips have different lengths ({sorted(set(lengths.values()))} samples); '
+                             f'{self._identifier!r} pads each to the longest, one pass per clip cannot.')
+        longest = self._max_duration_sec and int(self._max_duration_sec * self._target_sample_rate)
 
-        def check(first_call, call):
-            refuse_other_input(first_call, call)
-            waveform = call[1].get('input_values', call[0][0] if call[0] else None)
-            if self._max_duration_sec is None or waveform is None:
-                return
-            if waveform.shape[-1] > int(self._max_duration_sec * self._target_sample_rate):
-                raise ValueError(
-                    f'A pass of {waveform.shape[-1]} samples is longer than max_duration_sec='
-                    f'{self._max_duration_sec} s; {self._identifier!r} records such a clip in '
-                    'chunks, which a recording during a task cannot. Record it in a session '
-                    'without a task, or present at most max_duration_sec per stimulus.')
+        def inputs(args, kwargs):
+            wave = kwargs.get('input_values', args[0] if args else None)
+            if wave is not None and (wave.shape[0] != 1 or (longest and wave.shape[-1] > longest)):
+                raise ValueError(f'A recording during a task keeps one clip of at most max_duration_sec='
+                                 f'{self._max_duration_sec} s per pass; this pass shows {tuple(wave.shape)}.')
+            return attention_mask(args, kwargs), None if wave is None else wave.shape[-1]
 
-        return LiveRecording(self._model, self._model, layers, take, as_numpy, check=check)
+        def package(activity, read, row):
+            path = self._extract_paths(row.to_frame().T)[0] if row is not None else '?'
+            if lengths.get(path, read[1]) is not None:
+                self._measure_step(activity, lengths.get(path, read[1]))
+            return self._layers(self._aggregate(activity, read[0]), [path])
+
+        return LiveRecording(self._model, self._model, layers, as_numpy, package, inputs, one_input=True)
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
@@ -529,23 +532,7 @@ class AudioWrapper:
         ``mean_time`` → dims = (presentation, neuroid)
         ``time_series`` → dims = (presentation, time_bin, neuroid)
         """
-        layer_assemblies = []
-        for layer_name, activations in layer_activations.items():
-            if activations.ndim == 2:
-                # (n_clips, hidden)
-                n_clips, n_features = activations.shape
-                layer_assemblies.append(self._pack_2d(
-                    activations, layer_name, paths, n_features))
-            elif activations.ndim == 3:
-                # (n_clips, T, hidden) for time_series
-                n_clips, n_time, n_features = activations.shape
-                layer_assemblies.append(self._pack_3d(
-                    activations, layer_name, paths, n_time, n_features))
-            else:
-                raise ValueError(
-                    f"Packaging expected rank-2 or -3 activations for "
-                    f"{layer_name!r}; got rank {activations.ndim}.")
-
+        layer_assemblies = list(self._layers(layer_activations, paths).values())
         if len(layer_assemblies) == 1:
             return layer_assemblies[0]
         one_dtype(layer_activations)
@@ -554,43 +541,31 @@ class AudioWrapper:
         # layers at once).
         return concat_neuroid_assemblies(layer_assemblies, strategy='xarray')
 
-    def _pack_2d(self, activations, layer_name, paths, n_features):
-        stimulus_id = list(range(len(paths)))  # provisional
-        coords = {
-            'stimulus_id': ('presentation', stimulus_id),
-            'stimulus_path': ('presentation', list(paths)),
-            **make_layer_neuroid_coords(self._identifier, layer_name, n_features),
-        }
-        return make_assembly(
-            activations,
-            coords=coords,
-            dims=['presentation', 'neuroid'],
-        )
-
-    def _pack_3d(self, activations, layer_name, paths, n_time, n_features):
-        stimulus_id = list(range(len(paths)))
-        time_bin_ids = list(range(n_time))
-        coords = {
-            'stimulus_id': ('presentation', stimulus_id),
-            'stimulus_path': ('presentation', list(paths)),
-            'time_bin_id': ('time_bin', time_bin_ids),
-            **make_layer_neuroid_coords(self._identifier, layer_name, n_features),
-        }
-        # If the wrapper knows its model's per-step duration (set during
-        # the first forward pass), expose absolute ms boundaries on the
-        # time_bin axis so naturalistic benchmarks can align directly to
-        # the brain's TR grid via temporal_bin without reconstructing
-        # the model's downsampling factor.
-        if self._step_ms is not None:
-            starts = np.arange(n_time, dtype=np.float64) * self._step_ms
-            ends = starts + self._step_ms
-            coords['time_bin_start_ms'] = ('time_bin', starts)
-            coords['time_bin_end_ms'] = ('time_bin', ends)
-        return make_assembly(
-            activations,
-            coords=coords,
-            dims=['presentation', 'time_bin', 'neuroid'],
-        )
+    def _layers(self, layer_activations, paths) -> OrderedDict:
+        """One assembly per layer, in order: ``(presentation, neuroid)`` for ``(n_clips, hidden)``,
+        ``(presentation, time_bin, neuroid)`` for ``(n_clips, T, hidden)``."""
+        layers = OrderedDict()
+        for layer_name, activations in layer_activations.items():
+            if activations.ndim not in (2, 3):
+                raise ValueError(
+                    f"Packaging expected rank-2 or -3 activations for "
+                    f"{layer_name!r}; got rank {activations.ndim}.")
+            timed = activations.ndim == 3
+            coords = {'stimulus_id': ('presentation', list(range(len(paths)))),  # provisional
+                      'stimulus_path': ('presentation', list(paths))}
+            if timed:
+                coords['time_bin_id'] = ('time_bin', list(range(activations.shape[1])))
+            coords.update(make_layer_neuroid_coords(self._identifier, layer_name, activations.shape[-1]))
+            # With the duration of one model step (measured on the first pass), the
+            # time_bin axis carries absolute ms boundaries, so a benchmark aligns it to
+            # the brain's TR grid without the model's downsampling factor.
+            if timed and self._step_ms is not None:
+                starts = np.arange(activations.shape[1], dtype=np.float64) * self._step_ms
+                coords['time_bin_start_ms'] = ('time_bin', starts)
+                coords['time_bin_end_ms'] = ('time_bin', starts + self._step_ms)
+            layers[layer_name] = make_assembly(activations, coords=coords, dims=[
+                'presentation', *(['time_bin'] if timed else []), 'neuroid'])
+        return layers
 
 
 # Recording several layers in one call gives, for each layer, exactly what a

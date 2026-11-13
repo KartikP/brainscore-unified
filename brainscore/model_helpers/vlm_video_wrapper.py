@@ -18,7 +18,7 @@ import numpy as np
 
 from brainscore_core.responses import part_columns
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-from brainscore.model_helpers._extractors import LiveRecording, as_float32, grid_thw, refuse_other_input
+from brainscore.model_helpers._extractors import LiveRecording, as_float32, value
 
 
 def read_clip(path):
@@ -48,6 +48,15 @@ def clip_metadata(frames, fps):
         return {'total_num_frames': len(frames), 'fps': fps, 'duration': len(frames) / fps}
 
 
+def _grid(args, kwargs):
+    """The ``grid_thw`` a pass was given, as values: one row, one clip."""
+    grid = kwargs.get('grid_thw', args[1] if len(args) > 1 else None)
+    if grid is None or len(grid) != 1:
+        raise ValueError('A clip is recorded from a pass given one grid_thw row (one clip); this '
+                         f'pass gives {None if grid is None else len(grid)}.')
+    return value(grid)
+
+
 class VLMVideoWrapper:
     def __init__(self, model, processor, identifier: str, *, backbone_id: str = None):
         self._model, self._processor = model, processor
@@ -68,17 +77,12 @@ class VLMVideoWrapper:
         paths = self._paths(stimuli)
         per_clip = []
         for path in paths:
-            frames, fps = read_clip(path)
-            inputs = self._processor.video_processor(
-                videos=[frames], video_metadata=[clip_metadata(frames, fps)], return_tensors='pt')
-            grid = inputs['video_grid_thw']
-            with LiveRecording(self._model, self._model, layers, lambda first, _call, _row: {
-                    layer: self._per_time(activity, grid) for layer, activity in first.items()},
-                               as_float32) as recording:
+            inputs = self._inputs(path)
+            with LiveRecording(self._model, self._model, layers, as_float32, self._steps,
+                               _grid) as recording, torch.no_grad():
                 parameter = next(self._model.parameters())
-                with torch.no_grad():
-                    self._model(inputs['pixel_values_videos'].to(parameter.device, parameter.dtype),
-                                grid_thw=grid.to(parameter.device))
+                self._model(inputs['pixel_values_videos'].to(parameter.device, parameter.dtype),
+                            grid_thw=inputs['video_grid_thw'].to(parameter.device))
                 per_clip.append(recording.take())
         steps = {len(clip[layers[0]]) for clip in per_clip}
         if len(steps) != 1:
@@ -87,26 +91,35 @@ class VLMVideoWrapper:
         return self._package({layer: np.stack([clip[layer] for clip in per_clip]) for layer in layers},
                              {column: list(stimuli[column].values) for column in stimuli.columns})
 
-    def record(self, layers: List[str]):
+    def record(self, layers: List[str], stimuli=None):
         """Record ``layers`` while another caller (e.g. generation) runs the model on a clip.
 
-        ``take()`` returns the first pass since the previous take, time-resolved
-        like ``__call__``. Stills passing through the same vision network are taken as one step.
-        A later pass of the same presentation must show the same clip (``refuse_other_input``).
+        ``take()`` gives ``{layer: assembly}`` for the first pass since the previous
+        take, time-resolved by the functions of ``__call__`` with the ``grid_thw`` of
+        that pass. Clips of ``stimuli`` with different numbers of time steps are
+        refused before any pass; a pass of several clips, and a later pass of the
+        presentation with other input, before they run.
         """
-        def take(first, call, _row):
-            grid = grid_thw(call)
-            if grid is None:
-                raise ValueError(f'No forward pass reached {list(layers)} since the last presentation.')
-            return self._package({layer: self._per_time(activity, grid)[None] for layer, activity in first.items()},
-                                 {'stimulus_id': ['?']})
+        if stimuli is not None and len({int(self._inputs(path)['video_grid_thw'][0][0])
+                                        for path in self._paths(stimuli)}) > 1:
+            raise ValueError('The clips give different numbers of time steps, so they share no time '
+                             'axis; present clips of one length together.')
+        return LiveRecording(self._model, self._model, layers, as_float32, lambda activity, grid, row: {
+            layer: self._package({layer: steps[None]}, {'stimulus_id': ['?']})
+            for layer, steps in self._steps(activity, grid, row).items()}, _grid, one_input=True)
 
-        return LiveRecording(self._model, self._model, layers, take, as_float32,
-                             check=refuse_other_input)
+    def _inputs(self, path):
+        """The processor inputs of a clip: every frame, with the clip's real frame rate."""
+        frames, fps = read_clip(path)
+        return self._processor.video_processor(
+            videos=[frames], video_metadata=[clip_metadata(frames, fps)], return_tensors='pt')
 
-    def _per_time(self, activity, grid):
-        """(patches, features) -> (time steps, features), averaging each step's positions."""
-        t, h, w = (int(v) for v in np.asarray(grid.cpu() if hasattr(grid, 'cpu') else grid)[0])
+    def _steps(self, activity, grid, _row=None):
+        """{layer: (time steps, features)} for one clip: each step's positions averaged."""
+        return {layer: self._per_time(a, int(grid[0][0])) for layer, a in activity.items()}
+
+    @staticmethod
+    def _per_time(activity, t):
         patches = activity.reshape(-1, activity.shape[-1])
         if patches.shape[0] % t:
             raise ValueError(f'{patches.shape[0]} positions do not divide into {t} time steps')

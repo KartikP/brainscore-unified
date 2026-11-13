@@ -187,7 +187,7 @@ class TestAggregate:
         import torch
         act = np.ones((2, 4, 2), dtype=np.float32)
         act[0, 2:, :] = 100  # padded-region values we want masked out
-        mask = torch.tensor([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=torch.int64)
+        mask = np.array([[1, 1, 0, 0], [1, 1, 1, 1]], dtype=np.int64)
         out = wrapper._aggregate({'l': act}, attention_mask=mask)
         # Row 0: only first 2 steps count → mean = 1
         np.testing.assert_allclose(out['l'][0], [1.0, 1.0])
@@ -200,7 +200,7 @@ class TestAggregate:
         import torch
         act = np.ones((1, 3, 2), dtype=np.float32)
         # mask has 8 steps but activations only have 3 — conv stride
-        mask = torch.ones((1, 8), dtype=torch.int64)
+        mask = np.ones((1, 8), dtype=np.int64)
         out = wrapper._aggregate({'l': act}, attention_mask=mask)
         np.testing.assert_allclose(out['l'], act.mean(axis=1))
 
@@ -445,19 +445,17 @@ class TestTemporalCoords:
     def test_step_ms_unset_before_any_forward_pass(self, wrapper):
         assert wrapper._step_ms is None
 
-    def test_pack_3d_omits_time_coords_when_step_ms_unset(self, wrapper):
+    def test_time_series_packaging_omits_time_coords_when_step_ms_unset(self, wrapper):
         # Synthetic time_series output — _step_ms left as None
         act = np.zeros((2, 5, 4), dtype=np.float32)
-        assembly = wrapper._pack_3d(
-            act, layer_name='enc', paths=['a', 'b'], n_time=5, n_features=4)
+        assembly = wrapper._layers({'enc': act}, ['a', 'b'])['enc']
         assert 'time_bin_start_ms' not in assembly.coords
         assert 'time_bin_end_ms' not in assembly.coords
 
-    def test_pack_3d_attaches_time_coords_when_step_ms_set(self, wrapper):
+    def test_time_series_packaging_attaches_time_coords_when_step_ms_set(self, wrapper):
         wrapper._step_ms = 20.0  # mimic a Wav2Vec2-style 50 Hz output
         act = np.zeros((1, 4, 3), dtype=np.float32)
-        assembly = wrapper._pack_3d(
-            act, layer_name='enc', paths=['a'], n_time=4, n_features=3)
+        assembly = wrapper._layers({'enc': act}, ['a'])['enc']
         np.testing.assert_allclose(
             assembly['time_bin_start_ms'].values, [0.0, 20.0, 40.0, 60.0])
         np.testing.assert_allclose(
@@ -506,16 +504,14 @@ class TestTemporalCoords:
         assert set(assembly['model'].values) == {'test-wrapper'}
         assert list(assembly['layer'].values) == ['enc.0'] * 3 + ['enc.1'] * 2
 
-    def test_pack_3d_time_coords_independent_of_layer_name(self, wrapper):
+    def test_time_series_packaging_time_coords_independent_of_layer_name(self, wrapper):
         """time_bin_start_ms / time_bin_end_ms only depend on _step_ms
         and n_time, not the layer name — important for multi-layer
         outputs that get concatenated along neuroid."""
         wrapper._step_ms = 25.0
         act = np.zeros((1, 3, 2), dtype=np.float32)
-        a1 = wrapper._pack_3d(
-            act, layer_name='layer.1', paths=['a'], n_time=3, n_features=2)
-        a2 = wrapper._pack_3d(
-            act, layer_name='layer.2', paths=['a'], n_time=3, n_features=2)
+        a1 = wrapper._layers({'layer.1': act}, ['a'])['layer.1']
+        a2 = wrapper._layers({'layer.2': act}, ['a'])['layer.2']
         np.testing.assert_allclose(
             a1['time_bin_start_ms'].values, a2['time_bin_start_ms'].values)
         np.testing.assert_allclose(

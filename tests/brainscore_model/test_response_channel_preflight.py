@@ -128,9 +128,9 @@ def test_plain_behavior_without_a_response_is_unchanged():
 
 
 class _RecordingExtractor(_CountingExtractor):
-    """An extractor with record(layers): it can record while a reply runs."""
+    """An extractor with record(layers, stimuli): it can record while a reply runs."""
 
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         raise AssertionError('pre-flight only; nothing runs')
 
 

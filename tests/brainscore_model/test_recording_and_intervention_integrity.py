@@ -234,8 +234,8 @@ def test_an_audio_clip_the_passive_path_splits_is_refused_during_a_task(chunked)
                                TaskContext(response=Text()))
     with pytest.raises(ValueError, match='chunk'):
         subject.participate(session)
-    # Refused before the pass that the recording could not keep.
-    assert passes == ([4, 4] if chunked else [8])
+    # Refused from the stimuli, before any pass.
+    assert passes == []
 
 
 def test_an_audio_clip_of_one_chunk_is_recorded_during_a_task_as_in_the_passive_path():

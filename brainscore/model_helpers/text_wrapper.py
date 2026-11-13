@@ -27,7 +27,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_array, attach_stimulus_set, cache_signature, hooked, layer_assembly, one_dtype,
+    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, layer_assembly, one_dtype,
     run_batches,
 )
 
@@ -396,8 +396,9 @@ class TextWrapper:
         tokens = {k: v.to(self._device) for k, v in encoding.items()}
 
         self._model.eval()
-        with hooked(self._model, layer_names, as_array) as layer_results, torch.no_grad():
+        with LiveRecording(self._model, self._model, layer_names, as_array) as recording, torch.no_grad():
             self._model(**tokens)
+            layer_results, _ = recording.take()
 
         # Trim each row to its real (non-padded) token count and
         # concatenate along the time axis.
@@ -453,53 +454,55 @@ class TextWrapper:
         tokens = {k: v.to(self._device) for k, v in tokens.items()}
 
         self._model.eval()
-        with hooked(self._model, layer_names, as_array) as layer_results, torch.no_grad():
+        with LiveRecording(self._model, self._model, layer_names, as_array, self._reduce,
+                           attention_mask) as recording, torch.no_grad():
             self._model(**tokens)
+            return recording.take()
 
-        # Aggregate over sequence dimension
+    def _reduce(self, layer_results, mask, _row=None):
+        """Reduce each ``(batch, tokens, hidden)`` output to ``(batch, hidden)`` over the
+        tokens ``mask`` (the attention mask of the pass) keeps; other outputs stay."""
         for layer_name in layer_results:
-            act = layer_results[layer_name]  # (batch, seq_len, hidden) or (batch, hidden)
+            act = layer_results[layer_name]
             if act.ndim == 3:
                 if self._layer_aggregation == 'last_token':
-                    # Use attention_mask to find the actual last token per sequence
-                    if 'attention_mask' in tokens:
-                        lengths = tokens['attention_mask'].sum(dim=1).cpu().numpy()
-                        act = np.stack([act[i, int(lengths[i]) - 1, :]
-                                       for i in range(act.shape[0])])
+                    if mask is not None:     # the last kept position, with left or right padding
+                        last = mask.shape[1] - 1 - np.argmax(mask[:, ::-1], axis=1)
+                        act = act[np.arange(act.shape[0]), last]
                     else:
                         act = act[:, -1, :]
                 elif self._layer_aggregation == 'mean_tokens':
-                    if 'attention_mask' in tokens:
-                        mask = tokens['attention_mask'].cpu().numpy()
+                    if mask is not None:
                         mask_expanded = mask[:, :, np.newaxis].astype(act.dtype)
-                        act = (act * mask_expanded).sum(axis=1) / mask.sum(
-                            axis=1, keepdims=True)
+                        act = (act * mask_expanded).sum(axis=1) / mask.sum(axis=1, keepdims=True)
                     else:
                         act = act.mean(axis=1)
             layer_results[layer_name] = act
-
         return layer_results
 
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         """Record ``layers`` while another caller runs the model (e.g. generation).
 
-        Returns a context manager; its ``take()`` gives the first forward pass
-        since the previous take, aggregated as ``__call__`` aggregates one text.
+        Returns a ``LiveRecording``; its ``take()`` gives ``{layer: assembly}`` for the
+        first forward pass since the previous take (of a generating model, the prompt
+        pass), reduced with the ``attention_mask`` of that pass and packaged by the
+        functions of ``__call__``. ``per_token`` is refused before any pass, and a
+        pass of several prompts before it runs.
         """
-        if self._layer_aggregation not in ('last_token', 'mean_tokens'):
+        if self._layer_aggregation == 'per_token':
             raise NotImplementedError(
-                f'Recording during generation supports last_token or mean_tokens, '
-                f'not {self._layer_aggregation!r}.')
-        def aggregate(activity):
-            if activity.ndim == 3:
-                if activity.shape[0] != 1:
-                    raise ValueError('Recording during generation expects one prompt at a time.')
-                activity = (activity[:, -1, :] if self._layer_aggregation == 'last_token'
-                            else activity.mean(axis=1))
-            return activity.reshape(1, -1)
+                'A recording during a task supports last_token or mean_tokens, not per_token.')
 
-        return LiveRecording(self._model, self._model, layers, lambda first, _call, _row: self._package(
-            {layer: aggregate(activity) for layer, activity in first.items()}, [None]), as_array)
+        def inputs(args, kwargs):
+            shown = kwargs.get('input_ids')
+            shown = kwargs.get('inputs_embeds', args[0] if args else None) if shown is None else shown
+            if shown is not None and shown.shape[0] != 1:
+                raise ValueError(f'A recording during a task keeps one prompt per pass; this pass '
+                                 f'shows {shown.shape[0]}.')
+            return attention_mask(args, kwargs)
+
+        return LiveRecording(self._model, self._model, layers, as_array, lambda activity, mask, _row:
+                             self._layers(self._reduce(activity, mask), [None]), inputs)
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
@@ -516,16 +519,7 @@ class TextWrapper:
             input's token_lengths[i]; an extra ``token_length``
             presentation coord is attached so callers can mask.
         """
-        token_lengths = layer_activations.pop('_token_lengths', None)
-        word_ids = layer_activations.pop('_word_ids', None)
-        layer_assemblies = []
-        for layer_name, activations in layer_activations.items():
-            if activations.ndim == 3:
-                layer_assemblies.append(self._pack_3d(
-                    activations, layer_name, len(texts), token_lengths, word_ids))
-            else:
-                layer_assemblies.append(layer_assembly(self._identifier, layer_name, activations))
-
+        layer_assemblies = list(self._layers(layer_activations, texts).values())
         if len(layer_assemblies) == 1:
             return layer_assemblies[0]
         one_dtype(layer_activations)
@@ -537,6 +531,16 @@ class TextWrapper:
             return concat_neuroid_assemblies(
                 layer_assemblies, strategy='xarray')
         return concat_neuroid_assemblies(layer_assemblies, strategy='manual')
+
+    def _layers(self, layer_activations, texts):
+        """One assembly per layer, in order: ``(presentation, neuroid)``, or
+        ``(presentation, time_bin, neuroid)`` for per_token activations."""
+        token_lengths = layer_activations.pop('_token_lengths', None)
+        word_ids = layer_activations.pop('_word_ids', None)
+        return OrderedDict(
+            (layer, self._pack_3d(activations, layer, len(texts), token_lengths, word_ids)
+             if activations.ndim == 3 else layer_assembly(self._identifier, layer, activations))
+            for layer, activations in layer_activations.items())
 
     def _pack_3d(self, activations, layer_name, n_texts, token_lengths,
                  word_ids=None):

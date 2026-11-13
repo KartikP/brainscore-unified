@@ -170,6 +170,6 @@ def test_record_reads_a_module_input_as_the_passive_call_does():
     passive = wrapper(['abc'], layers=['layer:input']).values
     with wrapper.record(['layer:input']) as recording:
         net(**_IdsTokenizer()(['abc']))
-        recorded = recording.take().values
+        recorded = recording.take()['layer:input'].values
     np.testing.assert_allclose(recorded, passive, rtol=1e-6)
     assert not net.layer._forward_pre_hooks

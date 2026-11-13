@@ -28,7 +28,7 @@ def region_modality(owner, region: str) -> Optional[str]:
 
 
 def record_part(extractor):
-    """The extractor's ``record(layers)``, or None for a callable without it.
+    """The extractor's ``record(layers, stimuli)``, or None for a callable without it.
 
     Every wrapper in ``brainscore.model_helpers`` has it (the ``Extractor``
     protocol names it); a plain function or the legacy ``PytorchWrapper`` does
@@ -47,7 +47,7 @@ def records_while_answering(owner, region: str, forms=None) -> bool:
     ``vision:image``. The run passes the form of its stimuli; pre-flight takes
     the forms of the inputs the region is answered from (``output_inputs``).
     For each form the extractor is the one the run selects
-    (``extractor_for_form``). It records when it has ``record(layers)``, or
+    (``extractor_for_form``). It records when it has ``record(layers, stimuli)``, or
     when every layer of the region is a module of the network passed as
     ``model=`` (forward hooks). An extractor for another form does not count.
     """

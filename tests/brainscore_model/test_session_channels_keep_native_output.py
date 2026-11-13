@@ -32,7 +32,7 @@ def video(n=4, clip_ms=3000.0, layer='blocks.16'):
 
 
 def audio(n=12, step=250.0, bounds=True, layer='encoder.layers.6'):
-    """AudioWrapper._pack_3d: three time levels (two without ``_step_ms``)."""
+    """AudioWrapper time_series packaging: three time levels (two without ``_step_ms``)."""
     coords = {'stimulus_id': ('presentation', IDS), 'stimulus_path': ('presentation', ['a.wav', 'b.wav']),
               'time_bin_id': ('time_bin', list(range(n))),
               **make_layer_neuroid_coords('aud', layer, 2, include=('neuroid_id', 'layer'))}

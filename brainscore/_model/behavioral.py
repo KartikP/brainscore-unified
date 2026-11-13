@@ -531,10 +531,11 @@ class BehavioralReadout:
     def _open_recordings(self, stimuli, layers):
         """One live recording per input type, before any compute.
 
-        An extractor's own ``record(layers)`` when it has one; otherwise forward
-        hooks on the model passed as ``BrainScoreModel(model=...)``, with layer
-        paths read from that model. A region that neither can record is N/A
-        (``CompatibilityError``): the task, which chose this path, is known only here.
+        An extractor's own ``record(layers, stimuli)`` when it has one (``stimuli``
+        is None for a policy step); otherwise forward hooks on the model passed as
+        ``BrainScoreModel(model=...)``, with layer paths read from that model. A
+        region that neither can record is N/A (``CompatibilityError``): the task,
+        which chose this path, is known only here.
         """
         owner = self.owner
         from brainscore_core.compatibility import CompatibilityError
@@ -545,7 +546,7 @@ class BehavioralReadout:
         if cannot:
             raise CompatibilityError(
                 f'Subject {owner.identifier!r} cannot record {cannot} while it answers or acts: '
-                'the extractor of each region needs record(layers), or every layer of the region '
+                'the extractor of each region needs record(layers, stimuli), or every layer of the region '
                 'must be a module of the network passed as BrainScoreModel(model=...).')
         by_modality: Dict[str, list] = {}
         for region, region_layers in layers.items():
@@ -554,7 +555,7 @@ class BehavioralReadout:
         for modality, modality_layers in by_modality.items():
             modality_layers = list(dict.fromkeys(modality_layers))
             record = record_part(extractor_for(owner, modality, stimuli))
-            recordings[modality] = (record(modality_layers) if record is not None else
+            recordings[modality] = (record(modality_layers, stimuli) if record is not None else
                                     _hook_recording(owner._model, modality_layers, owner.identifier))
         return recordings
 
@@ -571,13 +572,13 @@ class BehavioralReadout:
 
     def _trial_regions(self, trials, stimuli, layers):
         """Per-trial recordings -> one NeuroidAssembly per region (composite regions gathered)."""
-        import xarray as xr
         neural = {}
         for region, region_layers in layers.items():
             recorded = [trial[region_modality(self.owner, region)] for trial in trials]
             needed = region_selector(self.owner, region).required_layers
             # Only required layers: a layer whose unit subset is empty contributes no
-            # units, so it may be absent from any trial (UnitSelector.required_layers).
+            # units (UnitSelector.required_layers). Each layer is packaged on its own,
+            # so each keeps its dtype.
             per_layer = [_trials_to_assembly(recorded, stimuli, layer, region)
                          for layer in region_layers if layer in needed]
             neural[region] = self._gather(region, per_layer)
@@ -717,22 +718,14 @@ def _fitted_intact(task) -> bool:
 def _hook_recording(model, layers, identifier):
     """Forward hooks on ``model`` for extractors without ``record()``.
 
-    ``take()`` returns the first pass since the previous take, each layer's
-    output flattened per presentation, as a still-image extractor packages it.
+    ``take()`` returns ``{layer: assembly}`` for the first pass since the
+    previous take, each layer's output flattened per presentation, as a
+    still-image extractor packages it.
     """
-    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-    from brainscore.model_helpers._extractors import LiveRecording, as_float32
+    from brainscore.model_helpers._extractors import LiveRecording, as_float32, layer_assembly
 
-    def take(first, _call, _row):
-        rows = {layer: first[layer].reshape(1, -1) for layer in layers}
-        values = np.concatenate([rows[layer] for layer in layers], axis=1)
-        neuroid_layers = [layer for layer in layers for _ in range(rows[layer].shape[1])]
-        numbers = [i for layer in layers for i in range(rows[layer].shape[1])]
-        return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
-            'stimulus_id': ('presentation', ['?']),
-            'neuroid_id': ('neuroid', [f'{identifier}.{l}.{i}' for l, i in zip(neuroid_layers, numbers)]),
-            'neuroid_num': ('neuroid', numbers), 'layer': ('neuroid', neuroid_layers)})
-    return LiveRecording(model, model, layers, take, as_float32)
+    return LiveRecording(model, model, layers, as_float32, lambda activity, _read, _row: {
+        layer: layer_assembly(identifier, layer, values.reshape(1, -1)) for layer, values in activity.items()})
 
 
 def _legacy_one_hot(answers, label_set, stimuli):
@@ -897,49 +890,43 @@ def _implied(assembly, source):
 
 
 def _trials_to_assembly(trials, stimuli, layer: str, region: str):
-    """Stack one-presentation recordings into a NeuroidAssembly for ``region``."""
+    """Stack the one-presentation recordings of ``layer`` into a NeuroidAssembly for ``region``.
+
+    The neuroid and extra-axis coordinates come from the first trial, and every
+    presentation coordinate the extractor gave (a clip's path) is kept; the
+    extractor gives every trial of a session the same extra axis (a clip's clock).
+    """
     import numpy as np
     import pandas as pd
     from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 
-    rows = []
-    # A clip keeps its time steps and a multi-image trial its parts: one extra dimension.
-    extra = [dim for dim in trials[0].dims if dim not in ('presentation', 'neuroid')]
-    if len(extra) > 1:
-        raise ValueError(f'A recording during a task may have one extra dimension; got {extra}.')
-    timed = bool(extra)
-    extra = extra[0] if extra else None
+    trials = [trial.get(layer) for trial in trials]
     for index, trial in enumerate(trials):
-        selected = trial.isel(neuroid=trial['layer'].values == layer)
-        if selected.sizes['neuroid'] == 0:
+        if trial is None or not trial.sizes['neuroid']:
             raise ValueError(
                 f'No activity reached layer {layer!r} while answering stimulus '
                 f'{stimuli["stimulus_id"].iloc[index]!r}; that input may not use it.')
-        if timed:
-            if selected.sizes[extra] != trials[0].sizes[extra]:
-                raise ValueError(f'Trials gave different numbers of {extra} steps; present trials of one '
-                                 'length (clips of one duration, sequences of one length) together.')
-            rows.append(np.asarray(selected.transpose('presentation', extra, 'neuroid').values)[0])
-        else:
-            rows.append(np.asarray(selected.values).reshape(-1))
-    first = trials[0].isel(neuroid=trials[0]['layer'].values == layer)
-    index = first.indexes.get('neuroid')
-    names = list(index.names) if isinstance(index, pd.MultiIndex) else []
-    names += [name for name, coord in first.coords.items()
-              if coord.dims == ('neuroid',) and name != 'neuroid' and name not in names]
-    coords = {name: ('neuroid', np.asarray(first[name].values)) for name in names}
+    first = trials[0]
+    # A clip keeps its time steps and a multi-image trial its parts: one extra dimension.
+    extra = [dim for dim in first.dims if dim not in ('presentation', 'neuroid')]
+    if len(extra) > 1:
+        raise ValueError(f'A recording during a task may have one extra dimension; got {extra}.')
+    if any(trial.sizes != first.sizes for trial in trials):
+        raise ValueError('Trials gave different numbers of steps or parts; present trials of one '
+                         'length (clips of one duration, sequences of one length) together.')
+    dims = ['presentation', *extra, 'neuroid']
+
+    def names(dim):
+        index = first.indexes.get(dim)
+        listed = list(index.names) if isinstance(index, pd.MultiIndex) else []
+        return listed + [name for name, coord in first.coords.items()
+                         if coord.dims == (dim,) and name != dim and name not in listed]
+    coords = {name: ('neuroid', np.asarray(first[name].values)) for name in names('neuroid')}
     coords['region'] = ('neuroid', [region] * first.sizes['neuroid'])
     for column in stimuli.columns:
         coords[column] = ('presentation', list(stimuli[column].values))
-    if not timed:
-        return NeuroidAssembly(np.stack(rows), coords=coords, dims=['presentation', 'neuroid'])
-    extra_index = first.indexes.get(extra)
-    extra_names = list(extra_index.names) if isinstance(extra_index, pd.MultiIndex) else []
-    extra_names += [name for name, coord in first.coords.items()
-                    if coord.dims == (extra,) and name != extra and name not in extra_names]
-    for name in extra_names:
-        coords[name] = (extra, np.asarray(first[name].values))
-    return NeuroidAssembly(np.stack(rows), coords=coords,
-                           dims=['presentation', extra, 'neuroid'])
-
-
+    coords.update({name: ('presentation', [trial[name].values[0] for trial in trials])
+                   for name in names('presentation') if name not in stimuli.columns})
+    coords.update({name: (dim, np.asarray(first[name].values)) for dim in extra for name in names(dim)})
+    rows = [np.asarray(trial.transpose(*dims).values)[0] for trial in trials]
+    return NeuroidAssembly(np.stack(rows), coords=coords, dims=dims)

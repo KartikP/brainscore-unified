@@ -154,7 +154,7 @@ class MotorSessions(Capability):
 
     ``neural:<region>`` may be requested with the policy's outputs: the regions
     are recorded during the same forward pass that produced the action (the
-    extractor's ``record(layers)`` hooks, or hooks on ``model=``), never a second
+    extractor's ``record(layers, None)`` hooks, or hooks on ``model=``), never a second
     pass. A policy with no extractor wired declares no ``neural:*`` channel.
     """
 

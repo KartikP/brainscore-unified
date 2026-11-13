@@ -25,14 +25,13 @@ from typing import Any, Callable, Dict, List, Optional
 import numpy as np
 from PIL import Image
 
-from brainscore_core.assembly_builder import concat_neuroid_assemblies
+from brainscore_core.assembly_builder import concat_neuroid_assemblies, make_layer_neuroid_coords
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_float32, cache_signature, grid_thw, hooked, layer_assembly, refuse_other_input,
-    run_batches,
+    LiveRecording, as_float32, cache_signature, layer_assembly, run_batches,
 )
 
 
@@ -197,20 +196,20 @@ class VLMVisionWrapper:
                      for k, v in processed.items()}
 
         self._model.eval()
-        with hooked(self._model, layer_names, as_float32) as layer_results, torch.no_grad():
+        with LiveRecording(self._model, self._model, layer_names, as_float32) as recording, torch.no_grad():
             self._forward(processed)
+            layer_results, _ = recording.take()
+        return self._per_image(layer_results, len(images), self._patch_counts(processed))
 
-        # Segment patches into per-image activations and aggregate
-        n_images = len(images)
-        if self._patch_count_fn is not None:
-            patch_counts = self._patch_count_fn(processed)
-        else:
-            patch_counts = None
+    def _patch_counts(self, processed) -> Optional[List[int]]:
+        """Patches per image, read from processor outputs; None when each output row is an image."""
+        return None if self._patch_count_fn is None else self._patch_count_fn(processed)
 
+    def _per_image(self, layer_results, n_images, patch_counts):
+        """Segment each layer's patches into per-image activations and aggregate them."""
         for layer_name in layer_results:
             layer_results[layer_name] = self._aggregate_per_image(
                 layer_results[layer_name], n_images, patch_counts)
-
         return layer_results
 
     def _processor_call(self, images: List[Image.Image]) -> Dict[str, Any]:
@@ -297,47 +296,44 @@ class VLMVisionWrapper:
             return arr
         raise ValueError(f"Unknown layer_aggregation: {self._layer_aggregation}")
 
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         """Record ``layers`` while another caller runs the model (e.g. generation).
 
-        Returns a context manager; its ``take()`` gives the first forward pass
-        since the previous take, averaged over each image's patches as
-        ``__call__`` averages one image. A pass over several images (a trial
-        showing a sequence) gives one step per image: ``(presentation, part,
-        neuroid)``, in the order the images were shown. A later pass of the same
-        presentation must show the same images (``refuse_other_input``).
+        Returns a ``LiveRecording``; its ``take()`` gives ``{layer: assembly}`` for
+        the first forward pass since the previous take, segmented and aggregated
+        per image by the functions of ``__call__``: ``patch_count_fn`` reads the
+        processor outputs that the pass received through ``forward_kwargs_map``.
+        One image gives ``(presentation, neuroid)``; a pass over several images (a
+        trial showing a sequence) gives one step per image, ``(presentation, part,
+        neuroid)``, in the order shown. A pass without the inputs
+        ``patch_count_fn`` reads, and a later pass of the same presentation with
+        other images, are refused before they run.
         """
-        def take(first, call, _row):
-            grid = grid_thw(call)
-            counts = ([int(t * h * w) for t, h, w in np.asarray(grid.cpu() if hasattr(grid, 'cpu') else grid)]
-                      if grid is not None else None)
-            per_image = {}
-            for layer, activity in first.items():
-                if activity.ndim == 2:      # flattened patches, Qwen-style
-                    image_counts = counts or [activity.shape[0]]
-                    per_image[layer] = self._aggregate_per_image(
-                        activity, len(image_counts), image_counts).reshape(len(image_counts), -1)
-                else:
-                    per_image[layer] = self._aggregate_per_image(activity, 1, None).reshape(1, -1)
-            if per_image[layers[0]].shape[0] == 1:
-                return self._package(per_image, [None])
-            return self._package_parts(per_image)
+        def inputs(args, kwargs):
+            outputs = {key: kwargs[name] for name, key in self._forward_kwargs_map.items() if name in kwargs}
+            try:
+                counts = self._patch_counts(outputs)
+            except KeyError as missing:
+                raise ValueError(f'patch_count_fn reads {missing}, which this pass was not given '
+                                 f'through forward_kwargs_map={self._forward_kwargs_map}.') from None
+            if counts is not None:
+                return [int(c) for c in counts], len(counts)
+            return None, (args[0] if args else kwargs[self._image_input_key]).shape[0]
 
-        return LiveRecording(self._model, self._model, layers, take, as_float32,
-                             check=refuse_other_input)
+        def package(activity, read, _row):
+            per_image = self._per_image(activity, read[1], read[0])
+            if read[1] == 1:
+                return self._layers(per_image, [None])
+            return {layer: self._package_parts(layer, values) for layer, values in per_image.items()}
 
-    def _package_parts(self, per_image):
-        """One trial's images as ``(presentation=1, part, neuroid)``, in the order shown."""
-        layers = list(per_image)
-        values = np.concatenate([per_image[layer] for layer in layers], axis=1)[None]
-        neuroid_layers = [layer for layer in layers for _ in range(per_image[layer].shape[1])]
-        units = [unit for layer in layers for unit in range(per_image[layer].shape[1])]
-        return NeuroidAssembly(values, dims=['presentation', 'part', 'neuroid'], coords={
-            'stimulus_id': ('presentation', ['?']),
-            'part_index': ('part', list(range(values.shape[1]))),
-            'neuroid_id': ('neuroid', [f'{self._identifier}.{layer}.{unit}'
-                                       for layer, unit in zip(neuroid_layers, units)]),
-            'layer': ('neuroid', neuroid_layers)})
+        return LiveRecording(self._model, self._model, layers, as_float32, package, inputs, one_input=True)
+
+    def _package_parts(self, layer, values):
+        """One trial's images of ``layer`` as ``(presentation=1, part, neuroid)``, in the order shown."""
+        values = values.reshape(values.shape[0], -1)
+        return NeuroidAssembly(values[None], dims=['presentation', 'part', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ['?']), 'part_index': ('part', list(range(values.shape[0]))),
+            **make_layer_neuroid_coords(self._identifier, layer, values.shape[1])})
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
@@ -345,11 +341,15 @@ class VLMVisionWrapper:
 
     def _package(self, layer_activations: OrderedDict, paths: List[str]) -> NeuroidAssembly:
         """Package layer activations into NeuroidAssembly; extra feature axes are flattened."""
-        layer_assemblies = [layer_assembly(self._identifier, layer, activations.reshape(len(paths), -1))
-                            for layer, activations in layer_activations.items()]
+        layer_assemblies = list(self._layers(layer_activations, paths).values())
         if len(layer_assemblies) == 1:
             return layer_assemblies[0]
         return concat_neuroid_assemblies(layer_assemblies, strategy='manual')
+
+    def _layers(self, layer_activations, paths) -> OrderedDict:
+        """One ``(presentation, neuroid)`` assembly per layer, in order."""
+        return OrderedDict((layer, layer_assembly(self._identifier, layer, activations.reshape(len(paths), -1)))
+                           for layer, activations in layer_activations.items())
 
     def _attach_stimulus_set_meta(self, assembly, stimulus_set) -> NeuroidAssembly:
         """Attach stimulus set metadata as coordinates on the presentation dim."""

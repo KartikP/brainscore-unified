@@ -50,7 +50,7 @@ class Extractor:
         raise AssertionError('a task session presents each stimulus once, through answer')
 
     @contextmanager
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         seen = []
 
         class Recording:
@@ -58,10 +58,10 @@ class Extractor:
             def take(_row):
                 values = seen[0]
                 seen.clear()
-                return NeuroidAssembly(values[None], dims=['presentation', 'neuroid'], coords={
+                return {'early': NeuroidAssembly(values[None], dims=['presentation', 'neuroid'], coords={
                     'stimulus_id': ('presentation', ['?']),
                     'neuroid_id': ('neuroid', ['early.0', 'early.1', 'early.2']),
-                    'layer': ('neuroid', ['early'] * 3)})
+                    'layer': ('neuroid', ['early'] * 3)})}
         self.net.hooks.append(seen.append)
         try:
             yield Recording()
@@ -188,7 +188,7 @@ def test_text_wrapper_records_the_prompt_pass_not_generated_tokens():
     with wrapper.record(['layers.1']) as recording:
         expected = model(prompt)[0, -1]
         model(torch.randn(1, 1, 4, device=wrapper._device))       # a generated token
-        taken = recording.take()
+        taken = recording.take()['layers.1']
         with pytest.raises(ValueError, match='No forward pass'):
             recording.take()
     np.testing.assert_allclose(taken.values[0], expected.detach().cpu().numpy(), rtol=1e-6)
@@ -196,23 +196,21 @@ def test_text_wrapper_records_the_prompt_pass_not_generated_tokens():
     assert not model.layers[1]._forward_hooks                      # hooks removed
 
 
-class TinyVision(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.blocks = torch.nn.ModuleList([torch.nn.Linear(4, 4)])
-
-    def forward(self, patches):                  # (n_patches, hidden), Qwen-style
-        return self.blocks[0](patches)
+def _grid_wrapper(model):
+    """A Qwen-style registration: patch counts read from the grid the tower is given."""
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    return VLMVisionWrapper(model=model, processor=None, identifier='tiny-vision',
+                            forward_kwargs_map={'grid_thw': 'image_grid_thw'},
+                            patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']])
 
 
 def test_vlm_vision_wrapper_records_the_mean_over_patches():
-    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
-    model = TinyVision()
-    wrapper = VLMVisionWrapper(model=model, processor=None, identifier='tiny-vision')
+    model = TinyVisionGrid()
+    wrapper = _grid_wrapper(model)
     patches = torch.randn(6, 4, device=wrapper._device)
     with wrapper.record(['blocks.0']) as recording:
-        expected = model(patches).mean(dim=0)
-        taken = recording.take()
+        expected = model(patches, grid_thw=torch.tensor([[1, 2, 3]])).mean(dim=0)
+        taken = recording.take()['blocks.0']
     np.testing.assert_allclose(taken.values[0], expected.detach().cpu().numpy(), rtol=1e-5)
 
 
@@ -375,16 +373,15 @@ class TinyVisionGrid(torch.nn.Module):
 
 
 def test_vlm_vision_wrapper_records_each_image_of_a_trial():
-    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     model = TinyVisionGrid()
-    wrapper = VLMVisionWrapper(model=model, processor=None, identifier='tiny-vision')
+    wrapper = _grid_wrapper(model)
     grid = torch.tensor([[1, 2, 2], [1, 2, 3], [1, 1, 2]])          # 4, 6 and 2 patches
     patches = torch.randn(12, 4, device=wrapper._device)
     with wrapper.record(['blocks.0']) as recording:
         out = model(patches, grid_thw=grid)
-        several = recording.take()
+        several = recording.take()['blocks.0']
         model(patches[:4], grid_thw=grid[:1])
-        one = recording.take()
+        one = recording.take()['blocks.0']
     expected = [out[0:4].mean(0), out[4:10].mean(0), out[10:12].mean(0)]
     assert several.dims == ('presentation', 'part', 'neuroid')
     np.testing.assert_allclose(several.values[0], torch.stack(expected).detach().cpu().numpy(), rtol=1e-5)

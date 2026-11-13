@@ -23,14 +23,14 @@ class Extractor(Protocol):
     before any forward pass; a ``':input'`` site is checked by its module
     path. An extractor without ``layer_names()`` skips this early check.
 
-    ``record(layers)`` records while another part (``reply``, ``likelihood``,
-    ``answer``, ``policy``) runs the network: it returns a context manager whose
-    ``take(row)`` gives the first forward pass since the previous take, packaged
-    as ``__call__`` packages one stimulus. ``row`` is the stimulus row that
-    pass presented (None for a policy step), so an extractor can read what the
-    pass does not carry (a clip's duration for its clock). A recording is
-    complete or refused: an extractor that cannot give what ``__call__`` gives
-    for the stimulus raises, before the pass when it can. Every extractor in
+    ``record(layers, stimuli)`` records while another part (``reply``,
+    ``likelihood``, ``answer``, ``policy``) runs the network on ``stimuli`` (None
+    for a policy step): its ``take(row)`` gives ``{layer: assembly}`` for the
+    first forward pass since the previous take, packaged on its own per layer by
+    the functions of ``__call__``. ``row`` is the stimulus row of that pass (None
+    for a policy step), for what the pass does not carry (a clip's duration).
+    The recording equals what ``__call__`` gives for ``stimuli``, or is refused:
+    before any pass when ``stimuli`` decide it, else before the pass. Every extractor in
     ``brainscore.model_helpers`` has it, so a region of such a model is
     recorded during any task. A callable without it (a plain function, or the
     legacy ``PytorchWrapper``) still records plain viewing; during a task it
@@ -44,5 +44,5 @@ class Extractor(Protocol):
     def __call__(self, stimuli: Any, layers: Sequence[str]) -> Any:
         ...
 
-    def record(self, layers: Sequence[str]) -> Any:
+    def record(self, layers: Sequence[str], stimuli: Any = None) -> Any:
         ...

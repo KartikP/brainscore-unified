@@ -80,7 +80,7 @@ def test_record_takes_the_clip_another_caller_ran(tmp_path):
                                        return_tensors='pt')
     with wrapper.record(['blocks.0']) as recording:
         tower(inputs['pixel_values_videos'], grid_thw=inputs['video_grid_thw'])   # e.g. inside generate
-        taken = recording.take()
+        taken = recording.take()['blocks.0']
     passive = wrapper(StimulusSet({'stimulus_id': ['m'], 'video_path': [str(tmp_path / 'm.avi')]}),
                       layers=['blocks.0'])
     np.testing.assert_allclose(taken.values, passive.values, rtol=1e-6)

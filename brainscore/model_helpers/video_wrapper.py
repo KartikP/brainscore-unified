@@ -67,8 +67,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.temporal import window_plan
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
-from brainscore.model_helpers._extractors import (
-    LiveRecording, as_float32, cache_signature, hooked, refuse_other_input)
+from brainscore.model_helpers._extractors import LiveRecording, as_float32, cache_signature
 
 
 logger = logging.getLogger(__name__)
@@ -368,9 +367,26 @@ class VideoWrapper:
             video_batch = video_batch.to(model_dtype)
 
         self._model.eval()
-        with hooked(self._model, layers, as_float32) as layer_outputs, torch.no_grad():
+        with LiveRecording(self._model, self._model, layers, as_float32) as recording, torch.no_grad():
             self._model(video_batch, **self._forward_kwargs)
+            layer_outputs, _ = recording.take()
         return {ln: self._flatten_layer_output(arr) for ln, arr in layer_outputs.items()}
+
+    def _sample(self, path) -> List[np.ndarray]:
+        """The frames of a clip for the whole-clip path."""
+        if self._num_frames is not None:
+            return self._frame_sampler(path, num_frames=self._num_frames)
+        return self._frame_sampler(path, num_frames=0, target_fps=self._target_fps)
+
+    def _checked_duration_ms(self, path) -> float:
+        """A clip's duration for the whole-clip path, refused over ``max_clip_ms``."""
+        duration_ms, _, _ = self._clip_duration_ms(path)
+        if self._max_clip_ms is not None and duration_ms > self._max_clip_ms:
+            raise ValueError(
+                f"clip {path} is {duration_ms:.0f}ms > max_clip_ms="
+                f"{self._max_clip_ms}; set context_window_ms to chunk it "
+                f"(no silent downsampling).")
+        return duration_ms
 
     def _clip_duration_ms(self, path) -> Tuple[float, int, float]:
         import cv2
@@ -386,17 +402,8 @@ class VideoWrapper:
         per_video_frames = []
         durations_ms: List[float] = []
         for path in batch_paths:
-            if self._num_frames is not None:
-                frames = self._frame_sampler(path, num_frames=self._num_frames)
-            else:
-                frames = self._frame_sampler(path, num_frames=0,
-                                             target_fps=self._target_fps)
-            duration_ms, _, _ = self._clip_duration_ms(path)
-            if self._max_clip_ms is not None and duration_ms > self._max_clip_ms:
-                raise ValueError(
-                    f"clip {path} is {duration_ms:.0f}ms > max_clip_ms="
-                    f"{self._max_clip_ms}; set context_window_ms to chunk it "
-                    f"(no silent downsampling).")
+            frames = self._sample(path)
+            duration_ms = self._checked_duration_ms(path)
             per_video_frames.append(frames)
             durations_ms.append(duration_ms)
 
@@ -420,18 +427,30 @@ class VideoWrapper:
             frames, oob = self._sample_window(path, win, nf, total, fps)
             frames = pad_out_of_bound(frames, oob, self._out_of_bound)
             out = self._run_model([frames], layers)  # {ln: (1, T_win, F)}
-            T_win = out[layers[0]].shape[1]
-            if win.is_causal:  # one feature at window end (trailing context)
-                for ln in layers:
-                    per_layer[ln].append(out[ln][0].mean(axis=0, keepdims=True))
-                times.append(win.end_ms)
-            else:
-                for ln in layers:
-                    per_layer[ln].append(out[ln][0])
-                sub = self._t_to_time_ms_fn(T_win, win.end_ms - win.start_ms)
-                times.extend(win.start_ms + s for s in sub)
+            for ln in layers:
+                per_layer[ln].append(_window_features(out[ln][0], win))
+            times.extend(self._window_times(win, out[layers[0]].shape[1]))
         feats = {ln: np.concatenate(per_layer[ln], axis=0) for ln in layers}
         return feats, times
+
+    def _window_times(self, win, steps: int) -> List[float]:
+        """A window's clock: a causal window's one feature at its end, else its steps over its span."""
+        if win.is_causal:
+            return [win.end_ms]
+        return [win.start_ms + s for s in self._t_to_time_ms_fn(steps, win.end_ms - win.start_ms)]
+
+    def _clock(self, path, steps: int):
+        """The clock ``__call__`` gives a clip of one pass with ``steps`` steps, and the window
+        of that pass (None without ``context_window_ms``); a clip of several windows is refused."""
+        if self._context_window_ms is None:
+            return list(self._t_to_time_ms_fn(steps, self._checked_duration_ms(path))), None
+        windows = window_plan(self._clip_duration_ms(path)[0], self._context_window_ms,
+                              strategy=self._context_strategy)
+        if len(windows) > 1:
+            raise ValueError(
+                f'{path} spans {len(windows)} windows of context_window_ms={self._context_window_ms}, '
+                f'which {self._identifier!r} stitches; a recording during a task has one pass per clip.')
+        return self._window_times(windows[0], steps), windows[0]
 
     def _sample_window(self, path, win, nf: int, total: int, fps: float):
         """Sample nf frames evenly within [win.start, win.end]; frames whose
@@ -487,43 +506,42 @@ class VideoWrapper:
         """Layer paths this extractor can record, relative to the module it wraps."""
         return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
 
-    def record(self, layers):
-        """Record ``layers`` while another caller runs the model (an answer or a step).
+    def record(self, layers, stimuli=None):
+        """Record ``layers`` while another caller runs the model (an answer).
 
-        Returns a context manager; its ``take(row)`` gives the first forward pass
-        since the previous take, packaged as ``__call__`` packages one clip: the
-        same values, time steps, clock (read from the clip of ``row``, as
-        ``__call__`` reads it) and neuroid coordinates. The pass must show one
-        clip; a later pass of the same presentation must show the same clip
-        (``refuse_other_input``). With ``context_window_ms`` the passive path
-        stitches several windows, which one pass cannot give, so recording during
-        a task is refused before any compute.
+        Returns a ``LiveRecording``; its ``take(row)`` gives ``{layer: assembly}``
+        for the first forward pass since the previous take, packaged by the
+        functions of ``__call__``, with the clock ``__call__`` gives ``stimuli``:
+        the first clip's (``_clock``). Refused before any pass: no ``stimuli`` (a
+        policy step has no clip, so no clock), and what ``__call__`` would refuse
+        or stitch: a clip over ``max_clip_ms`` or of several windows, clips of
+        different clocks or numbers of frames. A pass of several clips, and a
+        later pass of the presentation with other input, are refused before they run.
         """
-        if self._context_window_ms is not None:
-            raise ValueError(
-                f'{self._identifier!r} tiles each clip into windows of {self._context_window_ms} ms '
-                'and stitches them; a recording during a task has one forward pass per clip and '
-                'cannot give that result. Record this region in a session without a task.')
+        if stimuli is None:
+            raise ValueError('A video recording during a task needs the presented clip for its '
+                             'clock; a policy step presents none.')
+        paths = self._extract_video_paths(stimuli)
+        _shared_clock([self._clock(path, 1)[0] for path in paths], paths)
+        if self._context_window_ms is None and len({len(self._sample(path)) for path in paths}) > 1:
+            raise ValueError('The clips give different numbers of frames, so they share no time axis; '
+                             'present clips of one length together.')
 
-        def take(first, _call, row):
-            per_layer = {layer: self._flatten_layer_output(activity) for layer, activity in first.items()}
-            if any(activity.shape[0] != 1 for activity in per_layer.values()):
-                raise ValueError('Recording during a task expects one clip at a time.')
-            if row is None:
-                raise ValueError('A recording during a task needs the presented clip for its clock; '
-                                 'this presentation gave none.')
-            path = self._extract_video_paths(row.to_frame().T)[0]
-            duration_ms, _, _ = self._clip_duration_ms(path)
-            if self._max_clip_ms is not None and duration_ms > self._max_clip_ms:
-                raise ValueError(
-                    f"clip {path} is {duration_ms:.0f}ms > max_clip_ms={self._max_clip_ms}; "
-                    f"set context_window_ms to chunk it (no silent downsampling).")
-            steps = per_layer[next(iter(per_layer))].shape[1]
-            return self._package(OrderedDict((layer, [activity[0]]) for layer, activity in per_layer.items()),
-                                 [list(self._t_to_time_ms_fn(steps, duration_ms))], [path])
+        def inputs(args, kwargs):
+            video = next((v for v in (*args, *kwargs.values()) if hasattr(v, 'shape')), None)
+            if video is not None and video.shape[0] != 1:
+                raise ValueError(f'A recording during a task keeps one clip per pass; this pass shows '
+                                 f'{video.shape[0]}.')
 
-        return LiveRecording(self._model, self._model, layers, take, as_float32,
-                             check=refuse_other_input)
+        def package(activity, _read, row):
+            flat = {layer: self._flatten_layer_output(a)[0] for layer, a in activity.items()}
+            steps, path = len(next(iter(flat.values()))), self._extract_video_paths(row.to_frame().T)[0]
+            clock, window = self._clock(paths[0], steps)
+            clock = _shared_clock([clock, self._clock(path, steps)[0]], [paths[0], path])
+            return {layer: self._package(OrderedDict([(layer, [_window_features(a, window)])]), [clock], [path])
+                    for layer, a in flat.items()}
+
+        return LiveRecording(self._model, self._model, layers, as_float32, package, inputs, one_input=True)
 
     def _package(
         self,
@@ -607,6 +625,11 @@ class VideoWrapper:
             assembly = assembly.assign_coords(
                 {column: ('presentation', list(stimulus_set[column].values))})
         return assembly
+
+
+def _window_features(activity: np.ndarray, win) -> np.ndarray:
+    """One pass's ``(T, F)`` features: a causal window keeps their mean."""
+    return activity.mean(axis=0, keepdims=True) if win is not None and win.is_causal else activity
 
 
 # Clips packaged together share one time_bin axis. Their own clocks may

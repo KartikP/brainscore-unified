@@ -1,15 +1,14 @@
 """Plumbing the extractors in this folder share.
 
 Each function does one job that every extractor needs: find a layer by its
-dotted path, copy a hooked output to numpy, hold hooks for one forward pass,
-record while another caller runs the model, run inputs in batches, key the
+dotted path, copy a hooked output to numpy, hold hooks on the forward pass that
+the extractor or another caller runs, run inputs in batches, key the
 activation cache, and copy stimulus columns onto an assembly.
 """
 import inspect
 import sys
 from collections import OrderedDict
-from contextlib import contextmanager
-from typing import Callable, Dict, List
+from typing import Callable, List
 
 import numpy as np
 from tqdm.auto import tqdm
@@ -92,61 +91,46 @@ def _hook(module, layer: str, keep: Callable):
     return module.register_forward_hook(on_output)
 
 
-@contextmanager
-def hooked(root, layers: List[str], convert: Callable):
-    """Hook ``layers`` until the block exits; yields ``{layer: convert(value)}``.
-
-    Entries appear in the order the forward pass reaches the layers; a module
-    that runs twice keeps its last value. Every hook is removed on exit, also
-    when a later layer is not found.
-    """
-    captured: Dict[str, np.ndarray] = OrderedDict()
-    handles = []
-    try:
-        for layer in layers:
-            handles.append(_hook(get_layer(root, layer), layer,
-                                 lambda value, layer=layer: captured.__setitem__(layer, convert(value))))
-        yield captured
-    finally:
-        for handle in handles:
-            handle.remove()
-
-
 class LiveRecording:
-    """Record ``layers`` while another caller runs ``model``, one presentation at a time.
+    """Hooks on ``layers`` of ``root`` for the forward passes of ``model``; one presentation per ``take``.
 
-    An extractor's ``record(layers)`` returns one; ``BrainScoreModel`` uses it to
-    record regions during the forward pass that produces an answer, so a
-    stimulus is shown once for both measurements. Unknown layers fail here,
-    before any compute; the hooks are on while the ``with`` block runs.
-    ``take(row)`` gives ``take(first, call, row)``: each layer's value from the
-    first forward pass since the previous take (passed through ``convert``),
-    the ``(args, kwargs)`` of that pass's call to ``model``, and the stimulus
-    row presented (None when the caller has no row). For a generating model
-    the first pass is the prompt pass.
+    The one hook lifecycle of the extractors: ``__call__`` runs the network
+    inside one, and ``record(layers, stimuli)`` returns one while another part
+    (``reply``, ``answer``, ``likelihood``, ``policy``) runs it. Unknown layers
+    fail here, before any compute. Each layer keeps its value, through
+    ``convert``, from the first pass since the previous take (the last value of
+    a module that runs twice in it); later passes (generated tokens) are not kept.
 
-    ``check(first_call, call)``, when given, runs before every pass reaches
-    ``model`` (``first_call`` is None for the first pass of a presentation). It
-    raises for a pass the extractor cannot record completely, before that pass
-    computes, so a recording is never a part of what the passive path records.
+    ``inputs(args, kwargs)`` runs in the forward pre-hook of that first pass. It
+    returns, as values, what packaging reads from the inputs (an attention mask,
+    patch counts), or raises for a pass the extractor cannot package as
+    ``__call__`` would, before the pass computes. With ``one_input``, a later
+    pass of the presentation must show the values of the first (a repeat is
+    recorded once); other input (a later chunk or window) is refused before it runs.
+
+    ``take(row)`` returns ``package(activity, inputs, row)``: ``activity`` in the
+    order the pass reached the layers, ``row`` the stimulus row presented (None
+    when there is none). Without ``package`` it returns ``(activity, inputs)``.
     """
 
-    def __init__(self, model, root, layers: List[str], take: Callable, convert: Callable,
-                 check: Callable = None):
-        self.layers, self._model, self._take, self._convert = list(layers), model, take, convert
-        self._check = check
+    def __init__(self, model, root, layers: List[str], convert: Callable, package: Callable = None,
+                 inputs: Callable = None, one_input: bool = False):
+        self.layers, self._model, self._convert = list(layers), model, convert
+        self._package = package or (lambda activity, read, _row: (activity, read))
+        self._inputs, self._one_input = inputs or (lambda args, kwargs: None), one_input
         self._modules = {layer: get_layer(root, layer) for layer in self.layers}
-        self._first: Dict[str, np.ndarray] = {}
-        self._call = None
         self._handles = []
+        self._clear()
+
+    def _clear(self):
+        self._activity, self._read, self._shown, self._passes = OrderedDict(), None, None, 0
 
     def __enter__(self):
         try:
-            self._handles.append(self._model.register_forward_pre_hook(self._watch_call,
-                                                                       with_kwargs=True))
+            self._handles.append(self._model.register_forward_pre_hook(self._before, with_kwargs=True))
+            self._handles.append(self._model.register_forward_hook(self._after))
             for layer, module in self._modules.items():
-                self._handles.append(_hook(module, layer, lambda value, layer=layer:
-                                           self._keep_first(layer, value)))
+                self._handles.append(_hook(module, layer, lambda value, layer=layer: self._keep(layer, value)))
         except BaseException:
             self.__exit__()
             raise
@@ -157,41 +141,46 @@ class LiveRecording:
             handle.remove()
         self._handles = []
 
-    def _keep_first(self, layer, value):
-        if layer not in self._first:            # a later pass (a generated token) is not kept
-            self._first[layer] = self._convert(value)
+    def _before(self, _module, args, kwargs):
+        if self._passes == 0:
+            self._read = self._inputs(args, kwargs)
+            self._shown = _copy((args, kwargs)) if self._one_input else None
+        elif self._one_input and not _same(self._shown, (args, kwargs)):
+            raise ValueError(
+                'A recording keeps one forward pass per presentation, and a later pass showed '
+                'other input than the first (for example a second chunk or window of the '
+                'stimulus). Present each stimulus in one pass, or record it in a session '
+                'without a task.')
 
-    def _watch_call(self, _module, args, kwargs):
-        if self._check is not None:
-            self._check(self._call, (args, kwargs))
-        if self._call is None:
-            self._call = (args, kwargs)
+    def _after(self, *_):
+        self._passes += 1
+
+    def _keep(self, layer, value):
+        if self._passes == 0:
+            self._activity[layer] = self._convert(value)
 
     def take(self, row=None):
         """The first forward pass since the last take, packaged by the extractor."""
-        missing = [layer for layer in self.layers if layer not in self._first]
+        missing = [layer for layer in self.layers if layer not in self._activity]
         if missing:
             raise ValueError(f'No forward pass reached {missing} since the last presentation.')
-        result = self._take({layer: self._first[layer] for layer in self.layers}, self._call, row)
-        self._first.clear()
-        self._call = None
-        return result
+        activity, read = self._activity, self._read
+        self._clear()
+        return self._package(activity, read, row)
 
 
-def refuse_other_input(first_call, call) -> None:
-    """A ``LiveRecording`` check: every pass of a presentation shows the input of the first.
-
-    A later pass with other input (a later chunk or window of the stimulus)
-    would be missing from a recording that keeps the first pass, so it is
-    refused before it runs. A repeat of the same input (a second scoring of
-    the same prompt) is recorded once.
-    """
-    if first_call is not None and not _same(first_call, call):
-        raise ValueError(
-            'A recording during a task keeps one forward pass per presentation, and a later '
-            'pass showed other input than the first (for example a second chunk or window of '
-            'the stimulus). Present each stimulus in one pass, or record it in a session '
-            'without a task.')
+def _copy(value):
+    """``value`` with every tensor and array copied: a snapshot that later in-place changes miss."""
+    import torch
+    if isinstance(value, torch.Tensor):
+        return value.detach().clone()
+    if isinstance(value, np.ndarray):
+        return value.copy()
+    if isinstance(value, (tuple, list)):
+        return type(value)(_copy(item) for item in value)
+    if isinstance(value, dict):
+        return {key: _copy(item) for key, item in value.items()}
+    return value
 
 
 def _same(a, b) -> bool:
@@ -199,6 +188,8 @@ def _same(a, b) -> bool:
     if isinstance(a, torch.Tensor) or isinstance(b, torch.Tensor):
         return (isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor)
                 and a.shape == b.shape and a.device == b.device and bool(torch.equal(a, b)))
+    if isinstance(a, np.ndarray) or isinstance(b, np.ndarray):
+        return isinstance(a, np.ndarray) and isinstance(b, np.ndarray) and np.array_equal(a, b)
     if isinstance(a, (tuple, list)) or isinstance(b, (tuple, list)):
         return (type(a) is type(b) and len(a) == len(b)
                 and all(_same(x, y) for x, y in zip(a, b)))
@@ -209,6 +200,16 @@ def _same(a, b) -> bool:
         return bool(a == b)
     except Exception:                                       # noqa: BLE001
         return a is b
+
+
+def value(tensor):
+    """A tensor as a numpy copy (None stays None): what a pre-hook keeps of an input."""
+    return None if tensor is None else np.array(tensor.detach().cpu())
+
+
+def attention_mask(args, kwargs):
+    """A ``LiveRecording`` input reader: the attention mask a pass was given, as values."""
+    return value(kwargs.get('attention_mask'))
 
 
 class LayerDtypesDiffer(ValueError):
@@ -224,14 +225,7 @@ def one_dtype(layer_activations) -> None:
         raise LayerDtypesDiffer(
             f'The layers {sorted(dtypes)} have different dtypes '
             f'({", ".join(f"{l}: {d}" for l, d in dtypes.items())}); one assembly holds one '
-            'dtype, so they need separate calls. A session records them apart under '
-            'BRAINSCORE_REGIONS_PER_PASS=one; a recording during a task cannot.')
-
-
-def grid_thw(call):
-    """The ``grid_thw`` a VLM vision network was called with (keyword or second argument), or None."""
-    args, kwargs = call if call is not None else ((), {})
-    return kwargs.get('grid_thw', args[1] if len(args) > 1 else None)
+            'dtype, so they need separate calls (a session makes them).')
 
 
 def run_batches(items, batch_size: int, run: Callable, desc: str):

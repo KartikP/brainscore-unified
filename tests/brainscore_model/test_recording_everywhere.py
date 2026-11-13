@@ -45,7 +45,7 @@ class Recordable:
         raise AssertionError('recorded during the task')
 
     @contextmanager
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         seen = []
 
         class Take:
@@ -53,13 +53,11 @@ class Recordable:
             def take(_row):
                 first = seen[0]
                 seen.clear()
-                values = np.concatenate([first[layer] for layer in layers])[None]
-                units = [(layer, i) for layer in layers for i in range(len(first[layer]))]
-                return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+                return {layer: NeuroidAssembly(first[layer][None], dims=['presentation', 'neuroid'], coords={
                     'stimulus_id': ('presentation', ['?']),
-                    'neuroid_id': ('neuroid', [f'{l}.{i}' for l, i in units]),
-                    'neuroid_num': ('neuroid', [i for _, i in units]),
-                    'layer': ('neuroid', [l for l, _ in units])})
+                    'neuroid_id': ('neuroid', [f'{layer}.{i}' for i in range(len(first[layer]))]),
+                    'neuroid_num': ('neuroid', list(range(len(first[layer])))),
+                    'layer': ('neuroid', [layer] * len(first[layer]))}) for layer in layers}
         self.net.hooks.append(seen.append)
         try:
             yield Take()

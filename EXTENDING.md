@@ -103,10 +103,12 @@ Disable result caching if that state cannot be represented. Make `.data` alias o
 NumPy weight edits between scoring runs, because they bypass within-run change
 tracking. See [activation caching](docs/archive/caching.md) for supported paths and limits.
 
-Give a custom extractor `record(layers)` as well (see `brainscore/extractor.py`): a
-region is then recorded during any task, from the forward pass that produces the
-answer or the action. Without it, the region is recorded during a task only through
-hooks on the network passed as `model=`, and otherwise the pair is N/A.
+Give a custom extractor `record(layers, stimuli)` as well (see `brainscore/extractor.py`):
+a region is then recorded during any task, from the forward pass that produces the
+answer or the action. Build it on `LiveRecording` and on the functions your `__call__`
+uses to reduce and package, so the two recordings cannot differ. Without it, the
+region is recorded during a task only through hooks on the network passed as `model=`,
+and otherwise the pair is N/A.
 
 #### A policy that keeps history
 

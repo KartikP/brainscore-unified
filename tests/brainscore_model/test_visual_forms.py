@@ -50,7 +50,7 @@ def test_models_without_an_extractor_declare_the_inputs_they_accept():
 
 
 class _Recorder:
-    """record(layers) stand-in; a clip recording has two time steps."""
+    """record(layers, stimuli) stand-in; a clip recording has two time steps."""
 
     def __init__(self, value, timed):
         self.value, self.timed, self.hooks = value, timed, []
@@ -58,7 +58,7 @@ class _Recorder:
     def __call__(self, stimuli, layers, **kwargs):
         raise AssertionError('a task presents through reply, not the extractor')
 
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         from contextlib import contextmanager
 
         @contextmanager
@@ -72,13 +72,13 @@ class _Recorder:
                               'neuroid_id': ('neuroid', ['n0', 'n1']),
                               'layer': ('neuroid', [layers[0]] * 2)}
                     if not owner.timed:
-                        return NeuroidAssembly(np.full((1, 2), owner.value), coords=coords,
-                                               dims=['presentation', 'neuroid'])
+                        return {layers[0]: NeuroidAssembly(np.full((1, 2), owner.value), coords=coords,
+                                                           dims=['presentation', 'neuroid'])}
                     coords.update(time_bin_start_ms=('time_bin', [0.0, 1000.0]),
                                   time_bin_end_ms=('time_bin', [1000.0, 2000.0]))
                     values = np.stack([np.full(2, owner.value), np.full(2, owner.value + 1)])[None]
-                    return NeuroidAssembly(values, coords=coords,
-                                           dims=['presentation', 'time_bin', 'neuroid'])
+                    return {layers[0]: NeuroidAssembly(values, coords=coords,
+                                                       dims=['presentation', 'time_bin', 'neuroid'])}
             yield Take()
         return recording()
 
@@ -110,14 +110,14 @@ def test_a_multi_image_trial_is_recorded_per_image():
             raise AssertionError('recorded during the reply')
 
         @contextmanager
-        def record(self, layers):
+        def record(self, layers, stimuli=None):
             class Take:
                 @staticmethod
                 def take(_row):
                     values = np.arange(6, dtype=float).reshape(1, 3, 2)   # 3 images, 2 units
-                    return NeuroidAssembly(values, dims=['presentation', 'part', 'neuroid'], coords={
+                    return {layers[0]: NeuroidAssembly(values, dims=['presentation', 'part', 'neuroid'], coords={
                         'stimulus_id': ('presentation', ['?']), 'part_index': ('part', [0, 1, 2]),
-                        'neuroid_id': ('neuroid', ['n0', 'n1']), 'layer': ('neuroid', [layers[0]] * 2)})
+                        'neuroid_id': ('neuroid', ['n0', 'n1']), 'layer': ('neuroid', [layers[0]] * 2)})}
             yield Take()
 
     model = BrainScoreModel('m', extractor={'vision': PerImage()},
