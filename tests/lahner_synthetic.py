@@ -7,6 +7,8 @@ end to end without network or model weights. No private name of a benchmark is
 touched.
 """
 import hashlib
+import sys
+import types
 
 import numpy as np
 import pandas as pd
@@ -124,10 +126,16 @@ def install(monkeypatch, tmp_path, runs=None, bold=None, events=None, glm=None):
              lambda: tr_events(runs) if events is None else events),
             ('Lahner2024-fMRI-timeresolved-motion', lambda: tr_motion(runs))):
         monkeypatch.setitem(brainscore.data_registry, identifier, once(identifier, build))
-    import nilearn.datasets
+    # The auditory mask reads the Destrieux atlas through nilearn, an optional
+    # dependency; a stand-in module supplies a seeded atlas without it.
     atlas = np.random.default_rng(5)
-    monkeypatch.setattr(nilearn.datasets, 'fetch_atlas_surf_destrieux', lambda: {
-        'map_left': atlas.integers(0, 76, 10242), 'map_right': atlas.integers(0, 76, 10242)})
+    datasets = types.ModuleType('nilearn.datasets')
+    datasets.fetch_atlas_surf_destrieux = lambda: {
+        'map_left': atlas.integers(0, 76, 10242), 'map_right': atlas.integers(0, 76, 10242)}
+    package = types.ModuleType('nilearn')
+    package.datasets = datasets
+    monkeypatch.setitem(sys.modules, 'nilearn', package)
+    monkeypatch.setitem(sys.modules, 'nilearn.datasets', datasets)
     frames = tmp_path / 'frames'
     frames.mkdir()
     for clip in CLIPS:
