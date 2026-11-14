@@ -123,12 +123,13 @@ def suite_arguments(repo, suite):
 
 def stage_tests(checkout: Path, destination: Path) -> None:
     """Copy test inputs without making repository packages importable."""
-    for name in ('tests', 'examples', 'notebooks', 'templates', 'install', '.github'):
+    for name in ('tests', 'examples', 'notebooks', 'templates', 'docs', 'install', '.github'):
         source = checkout / name
         if source.is_dir():
             shutil.copytree(source, destination / name,
                             ignore=shutil.ignore_patterns('__pycache__', '.pytest_cache', '*.pyc'))
-    for name in ('pyproject.toml', 'pytest.ini', 'setup.cfg'):
+    # The documentation pages are test inputs: their code blocks run as tests.
+    for name in ('pyproject.toml', 'pytest.ini', 'setup.cfg', 'README.md', 'EXTENDING.md'):
         source = checkout / name
         if source.is_file():
             shutil.copy2(source, destination / name)

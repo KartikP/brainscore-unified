@@ -112,7 +112,8 @@ def test_staging_keeps_fixtures_but_excludes_package_sources(tmp_path):
     checkout, stage = tmp_path / 'checkout', tmp_path / 'stage'
     stage.mkdir()
     for name in ('tests/fixtures/input.csv', 'examples/demo.py', 'install/config.json', '.github/workflows/tests.yml',
-                 'notebooks/demo.ipynb', 'templates/new_model/model.py',
+                 'notebooks/demo.ipynb', 'templates/new_model/model.py', 'docs/guides/guide.md',
+                 'README.md', 'EXTENDING.md',
                  'brainscore/__init__.py', 'tests/__pycache__/test_demo.pyc'):
         path = checkout / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -125,6 +126,8 @@ def test_staging_keeps_fixtures_but_excludes_package_sources(tmp_path):
     assert (stage / '.github/workflows/tests.yml').is_file()
     assert (stage / 'notebooks/demo.ipynb').is_file()
     assert (stage / 'templates/new_model/model.py').is_file()
+    for page in ('docs/guides/guide.md', 'README.md', 'EXTENDING.md'):   # their code blocks are tests
+        assert (stage / page).is_file()
     assert not (stage / 'brainscore').exists()
     assert not (stage / 'tests/__pycache__').exists()
 
