@@ -1,9 +1,10 @@
-"""A readout's reaction-time link reads the float64 probabilities and their validity.
+"""The reaction-time link keeps the values of 7bc821e on each path, with explicit validity.
 
-Through ``participate``: the link is computed from the readout's own float64
-rows (only the stored ``behavior:probabilities`` copy is float32), and a
-reaction time from an invalid probability row is invalid. The link keeps its
-source rows as evidence.
+Through ``participate``: a readout's link reads the readout's float64 rows (only
+the stored ``behavior:probabilities`` copy is float32); a likelihood link reads
+the stored float32 probabilities, as before. Both match the functions of
+``7bc821e`` bit for bit on finite rows. A reaction time from an invalid
+probability row is invalid, and the link keeps its source rows as evidence.
 """
 import numpy as np
 import pytest
@@ -46,3 +47,60 @@ def test_the_link_reads_the_float64_rows_not_the_stored_float32_copy(monkeypatch
     assert session.collect('behavior:rt').values[1] == 0.24691357800000002
     assert session.collect('behavior:probabilities').values.dtype == np.float32
     assert session.collect('behavior:rt')['raw_answer'].values[1] == '[0.123456789, 0.876543211]'
+
+
+# --- parity with 7bc821e on both paths, for finite rows, bit for bit -----------
+
+def _old_answers():
+    """The answers module of 7bc821e: its softmax, implied_array and reaction_time."""
+    import subprocess
+    from pathlib import Path
+    source = subprocess.run(['git', 'show', '7bc821e:brainscore/_model/answers.py'],
+                            capture_output=True, text=True, check=True,
+                            cwd=Path(__file__).resolve().parents[1]).stdout
+    namespace = {}
+    exec(compile(source, '7bc821e:answers.py', 'exec'), namespace)
+    return namespace
+
+
+def _likelihood_rt(scores, link):
+    model, _ = _model(scores=scores)
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], reaction_time=link))
+    return _ask(model, task, ['behavior:rt']).collect('behavior:rt').values
+
+
+def test_a_likelihood_reaction_time_keeps_its_old_value():
+    scores = {s: {'cat': -1.0, 'dog': -3.0} for s in 'abcd'}
+    assert _likelihood_rt(scores, 'evidence_margin')[0] == 0.23840583115816116
+
+
+@pytest.mark.parametrize('link', ['evidence_margin', 'surprisal'])
+@pytest.mark.parametrize('seed', [0, 1, 2])
+def test_the_likelihood_link_matches_7bc821e(link, seed):
+    old = _old_answers()
+    logp = -np.abs(np.random.default_rng(seed).normal(size=(4, 2)) * 3)
+    scores = {s: {'cat': float(row[0]), 'dog': float(row[1])} for s, row in zip('abcd', logp)}
+    stored = old['implied_array'](old['softmax'](logp), STIMULI, ['cat', 'dog'], 'likelihood')
+    expected = old['reaction_time'](stored, link, STIMULI).values
+    np.testing.assert_array_equal(_likelihood_rt(scores, link), expected)
+
+
+@pytest.mark.parametrize('link', ['evidence_margin', 'surprisal'])
+@pytest.mark.parametrize('seed', [0, 1, 2])
+def test_the_readout_link_matches_7bc821e(monkeypatch, link, seed):
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    old = _old_answers()
+    rows = np.random.default_rng(seed).dirichlet([1.0, 1.0], size=4)
+    monkeypatch.setattr(sklearn.linear_model.LogisticRegression, 'predict_proba',
+                        lambda self, features: rows[:len(features)])
+    fitting = STIMULI.copy()
+    fitting.identifier = f'rt-parity-{seed}'
+    model, _ = _model(readout=True)
+    task = TaskContext(response=Choice(['cat', 'dog'], probabilities=True, reaction_time=link),
+                       fitting_stimuli=fitting)
+    rt = _ask(model, task, ['behavior:probabilities', 'behavior:rt']).collect('behavior:rt')
+    readout = BehavioralAssembly(rows, dims=['presentation', 'choice'],
+                                 coords={'stimulus_id': ('presentation', list('abcd')),
+                                         'choice': ['cat', 'dog']})
+    expected = old['reaction_time'](old['implied'](readout, 'readout'), link, STIMULI).values
+    np.testing.assert_array_equal(rt.values, expected)

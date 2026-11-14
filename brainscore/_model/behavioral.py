@@ -37,12 +37,17 @@ def _softmax_record():
 
 def _softmax_probabilities(outputs, logp, stimuli, axis):
     """Store the softmax of likelihood scores, with the scores as source evidence;
-    return the float64 probabilities, their validity and the record, for a reaction time."""
+    return the probabilities a reaction time reads, their validity and the record.
+
+    The link reads the stored float32 probabilities, as it did before the response
+    format standard (finite rows stay bit for bit); a readout's link reads its
+    float64 rows (``_readout_probabilities``).
+    """
     probabilities, valid = softmax(logp)
     record = _softmax_record()
     outputs['behavior:probabilities'] = answers.implied_array(
         probabilities, valid, stimuli, axis, record, raw=answers.source_rows(logp))
-    return probabilities, valid, record
+    return np.asarray(outputs['behavior:probabilities'].values, dtype=float), valid, record
 
 
 class BehavioralReadout:
@@ -583,7 +588,7 @@ class BehavioralReadout:
                         self.readout_classifier.predict_proba(
                             self.extract_behavioral_features(stimuli)), labels), stimuli)
         if isinstance(response, Choice) and response.reaction_time:
-            # From the float64 probabilities and their validity, not the stored float32 copy.
+            # From the probabilities each path read before stage 1, with their validity.
             outputs['behavior:rt'] = answers.reaction_time(*rt_source, response.reaction_time,
                                                            stimuli)
         # The bare channel carries the same answer; its record names that channel.
