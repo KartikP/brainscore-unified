@@ -156,21 +156,37 @@ class Interventions:
 
         require_resolved(state_change)
         result = owner._intervention(state_change)
-        if (not isinstance(result, tuple) or len(result) != 2
-                or not isinstance(result[0], PerturbationApplied)
-                or not callable(result[1])):
-            raise TypeError(
+        # The part has already run, so a rejected return may leave the model
+        # changed: undo it with the returned cleanup, if there is one.
+        cleanup = (result[1] if isinstance(result, tuple) and len(result) == 2
+                   and callable(result[1]) else None)
+        if cleanup is None or not isinstance(result[0], PerturbationApplied):
+            self._reject(cleanup, TypeError(
                 f"Subject '{owner.identifier}' intervention must return a "
                 f"(PerturbationApplied, cleanup_callable) tuple. Got "
                 f"{type(result).__name__}."
-            )
-        applied, cleanup = result
+            ))
+        applied = result[0]
         if applied.handle_id in self.active_interventions:
-            raise ValueError(
+            self._reject(cleanup, ValueError(
                 f"Duplicate handle_id {applied.handle_id!r} from the intervention part. "
                 f"An intervention must return a new handle_id for every call."
-            )
+            ))
         self.active_interventions[applied.handle_id] = cleanup
         return applied
+
+    def _reject(self, cleanup, error: Exception) -> None:
+        """Raise ``error`` for a rejected intervention return, after undoing it if possible."""
+        reload = (f" The intervention part of subject '{self.owner.identifier}' already ran, "
+                  f"so the model may be changed; reload the subject before any further use.")
+        if cleanup is None:
+            raise type(error)(f"{error}{reload}")
+        try:
+            cleanup()
+        except Exception as cleanup_error:                   # noqa: BLE001
+            raise type(error)(
+                f"{error} Its cleanup also failed ({type(cleanup_error).__name__}: "
+                f"{cleanup_error}).{reload}") from cleanup_error
+        raise error
 
 

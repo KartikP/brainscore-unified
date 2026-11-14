@@ -402,3 +402,39 @@ class TestCleanupFailuresAreNotLost:
         with pytest.raises(RuntimeError, match="'h1'"):
             SessionProtocol('two-conditions', sessions,
                             conditions=['lesioned', 'restored']).run(model, context=None)
+
+
+class TestRejectedInterventionReturn:
+    """A return the framework rejects is undone with its cleanup, or the error says reload."""
+
+    _change = StateChange(kind='lesion', target=Selection(layer='layer1'),
+                          perturbation=Perturbation(kind='scale', scale=0.5))
+
+    def test_duplicate_handle_runs_the_new_cleanup_before_raising(self):
+        weights = {'w': 1.0}
+
+        def by_target(change):              # an honest part that names handles by target
+            weights['w'] *= change.perturbation.scale
+
+            def cleanup():
+                weights['w'] /= change.perturbation.scale
+            return (PerturbationApplied(handle_id=f'lesion-{change.target.layer}',
+                                        target=change.target,
+                                        perturbation=change.perturbation), cleanup)
+
+        model = _make_model(intervention=by_target)
+        apply_state_change(model, self._change)
+        with pytest.raises(ValueError, match='Duplicate handle_id'):
+            apply_state_change(model, self._change)
+        assert weights['w'] == 0.5          # only the tracked change remains
+        model.reset()
+        assert weights['w'] == 1.0
+
+    def test_malformed_return_without_cleanup_says_reload(self):
+        def malformed(change):
+            return 'oops'
+
+        model = _make_model(intervention=malformed)
+        with pytest.raises(TypeError, match='may be changed; reload'):
+            apply_state_change(model, self._change)
+        assert model._interventions.active_interventions == {}
