@@ -219,6 +219,7 @@ class _ReasoningReplier(Subject):
         from brainscore_core.streaming import StreamEvent
         while (event := session.next_input()) is not None:
             session.respond(StreamEvent('behavior:text', event.payload, event.t_ms, {
+                **event.meta,   # names the trial (stimulus_id)
                 'reasoning': f'thought about {event.payload}', 'token_usage': {'output': 3}}))
 
     def reset(self):
@@ -372,7 +373,7 @@ class _TwoAnswers(Subject):
         from brainscore_core.streaming import StreamEvent
         while (event := session.next_input()) is not None:
             for text in ('', event.payload):
-                session.respond(StreamEvent('behavior:text', text, event.t_ms, {}))
+                session.respond(StreamEvent('behavior:text', text, event.t_ms, dict(event.meta)))
 
     def reset(self):
         pass
@@ -385,7 +386,7 @@ def test_more_than_one_answer_per_call_is_refused_not_scored(reference, tmp_path
         Experiment(subject=_TwoAnswers(), protocol=runner.protocol(reset=lambda repetition: None),
                    output_dir=tmp_path / 'run').run()
     saved = json.loads((tmp_path / 'run/coggym/run-001.json').read_text())
-    assert 'answered twice' in saved['trials'][0]['error']
+    assert 'answered more often than the table has it' in saved['trials'][0]['error']
 
 
 class _SessionCounter(Subject):
