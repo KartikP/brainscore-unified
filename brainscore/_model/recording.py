@@ -81,10 +81,15 @@ def records_while_answering(owner, region: str, stimuli=None) -> bool:
 
 
 def open_recordings(owner, stimuli, layers):
-    """One live recording per input type, before any compute.
+    """``{regions: live recording}``, opened before any compute.
 
-    An extractor's own ``record(layers, stimuli)`` when it has one (``stimuli``
-    is None for a policy step); otherwise forward hooks on the model passed as
+    Each region is recorded by the extractor the run selects for it
+    (``dispatch.extractor_keys`` for its input and its own layers, as for a
+    passive recording), so regions on an image and a video extractor are
+    recorded by each. The regions on one extractor share one recording, keyed
+    by the tuple of their names. It is the extractor's own
+    ``record(layers, stimuli)`` when it has one (``stimuli`` is None for a
+    policy step); otherwise forward hooks on the model passed as
     ``BrainScoreModel(model=...)``, with layer paths read from that model. A
     region that neither can record is N/A (``CompatibilityError``): the task,
     which chose this path, is known only here.
@@ -98,15 +103,18 @@ def open_recordings(owner, stimuli, layers):
             f'Subject {owner.identifier!r} cannot record {cannot} while it answers or acts: '
             'the extractor of each region needs record(layers, stimuli), or every layer of the region '
             'must be a module of the network passed as BrainScoreModel(model=...).')
-    by_modality: Dict[str, list] = {}
+    groups: Dict[tuple, Tuple[object, List[str], List[str]]] = {}
     for region, region_layers in layers.items():
-        by_modality.setdefault(region_modality(owner, region), []).extend(region_layers)
+        modality = region_modality(owner, region)
+        extractor = extractor_for(owner, modality, stimuli, region_layers)
+        _, group_layers, regions = groups.setdefault((modality, id(extractor)), (extractor, [], []))
+        group_layers.extend(layer for layer in region_layers if layer not in group_layers)
+        regions.append(region)
     recordings = {}
-    for modality, modality_layers in by_modality.items():
-        modality_layers = list(dict.fromkeys(modality_layers))
-        record = record_part(extractor_for(owner, modality, stimuli, modality_layers))
-        recordings[modality] = (record(modality_layers, stimuli) if record is not None else
-                                _hook_recording(owner._model, modality_layers, owner.identifier))
+    for extractor, group_layers, regions in groups.values():
+        record = record_part(extractor)
+        recordings[tuple(regions)] = (record(group_layers, stimuli) if record is not None else
+                                      _hook_recording(owner._model, group_layers, owner.identifier))
     return recordings
 
 
@@ -135,7 +143,8 @@ def trial_regions(owner, trials, stimuli, layers):
     """Per-trial recordings -> one NeuroidAssembly per region (composite regions gathered)."""
     neural = {}
     for region, region_layers in layers.items():
-        recorded = [trial[region_modality(owner, region)] for trial in trials]
+        recorded = [next(taken for regions, taken in trial.items() if region in regions)
+                    for trial in trials]
         needed = region_selector(owner, region).required_layers
         # Only required layers: a layer whose unit subset is empty contributes no
         # units (UnitSelector.required_layers). Each layer is packaged on its own,
