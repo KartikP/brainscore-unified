@@ -509,7 +509,8 @@ class BrainScoreModel(UnifiedModel):
                     failures.append(error)
         failures.extend(self._reset_providers())
         if failures:
-            raise RuntimeError('A model provider failed to reset; the model is not clean.') from failures[0]
+            raise RuntimeError('A model provider failed to reset; the model is not clean: '
+                               + ' | '.join(str(error) for error in failures)) from failures[0]
 
     def _reset_providers(self) -> list:
         """Clear the episode state of every part once; return the failures.

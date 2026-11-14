@@ -205,8 +205,8 @@ class TestResetClearsPerturbations:
                 target=Selection(layer='blocks.10'),
                 perturbation=Perturbation(kind='zero'),
             ))
-        with pytest.warns(RuntimeWarning, match='still changed'):
-            model.reset()  # should NOT raise
+        with pytest.raises(RuntimeError, match="still changed.*'h-1'"):
+            model.reset()  # every cleanup is attempted, then the reset raises
         # h-0 and h-2 ran cleanly; h-1 raised but was still tolerated
         assert 'h-0' in cleanup_log and 'h-2' in cleanup_log
         # h-1's cleanup failed, so that perturbation is still in effect. Its
@@ -342,7 +342,7 @@ class TestCleanupFailuresAreNotLost:
             raise RuntimeError('hook already detached')
 
         model = self._model_with({'bad': boom, 'good': lambda: ran.append('good')})
-        with pytest.warns(RuntimeWarning, match='still changed'):
+        with pytest.raises(RuntimeError, match="still changed.*'bad'"):
             model.reset()
         assert ran == ['good']
         with pytest.raises(KeyError):                     # good is gone
@@ -370,7 +370,7 @@ class TestCleanupFailuresAreNotLost:
                 raise RuntimeError('transient')
 
         model = self._model_with({'flaky': flaky})
-        with pytest.warns(RuntimeWarning):
+        with pytest.raises(RuntimeError, match="'flaky'"):
             model.reset()
         with warnings.catch_warnings():
             warnings.simplefilter('error')
@@ -387,3 +387,18 @@ class TestCleanupFailuresAreNotLost:
             self._undo(model, 'h1')
         with pytest.raises(RuntimeError, match='nope'):   # still registered, so tried again
             self._undo(model, 'h1')
+
+    def test_session_protocol_stops_when_a_reset_keeps_an_intervention(self):
+        """The next condition must not run on a model that is still changed."""
+        from brainscore.experiments import SessionProtocol
+
+        def boom():
+            raise RuntimeError('device error while restoring')
+
+        def sessions(repetition):
+            raise AssertionError('no session may start on a changed model')
+
+        model = self._model_with({'h1': boom})
+        with pytest.raises(RuntimeError, match="'h1'"):
+            SessionProtocol('two-conditions', sessions,
+                            conditions=['lesioned', 'restored']).run(model, context=None)

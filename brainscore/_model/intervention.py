@@ -92,10 +92,11 @@ class Interventions:
 
         One cleanup that raises must not prevent the others from running, so
         each is attempted independently. A failed cleanup is *not* forgotten,
-        though: its handle stays registered and the failure is reported. A
-        cleanup that raised leaves the model still changed, so dropping the
-        handle silently would leave every later score computed on a damaged
-        model with nothing left to show it. Refused inside ``intact()``.
+        though: its handle stays registered, and once every cleanup was
+        attempted the reset raises ``RuntimeError`` naming the retained
+        handles. A cleanup that raised leaves the model still changed, so a
+        normal return would let every later score be computed on a damaged
+        model. Refused inside ``intact()``.
         """
         self._refuse_while_intact('reset its interventions')
         failures = []
@@ -107,17 +108,13 @@ class Interventions:
             else:
                 self.active_interventions.pop(handle_id, None)
         if failures:
-            import warnings
             detail = '; '.join(f'{handle!r}: {type(err).__name__}: {err}'
                                for handle, err in failures)
-            warnings.warn(
+            raise RuntimeError(
                 f"{len(failures)} intervention cleanup(s) failed, so this model "
                 f"is still changed and any score taken from it now is invalid. "
                 f"The handles remain registered and reset() can be retried: "
-                f"{detail}",
-                RuntimeWarning,
-                stacklevel=2,
-            )
+                f"{detail}") from failures[0][1]
 
     def process(self, state_change):
         """Apply a StateChange with the subject's ``intervention`` part, or undo one by handle.
