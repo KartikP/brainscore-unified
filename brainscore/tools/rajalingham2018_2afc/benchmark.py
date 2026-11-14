@@ -18,7 +18,6 @@ scored like a human subject; the only thing that varies across paths is *how the
 This module is model-agnostic: it turns a choices DataFrame into a score. The paths
 themselves live in ``score_2afc.py`` (they need model weights / a GPU).
 """
-import os
 import numpy as np
 import pandas as pd
 import xarray as xr
@@ -26,9 +25,7 @@ import xarray as xr
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 from brainscore_vision import load_dataset, load_metric
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-TRIALS_CSV = os.path.join(HERE, 'trials.csv')
-TOKENS_CSV = os.path.join(HERE, 'tokens.csv')
+from brainscore.data.rajalingham2018_2afc import TOKENS_CSV, TRIALS_CSV
 
 
 def load_trials():
