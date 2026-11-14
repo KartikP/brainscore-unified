@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore.selection import LayerSelector
+from brainscore.selection import CompositeSelector, LayerSelector
 from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -243,3 +243,55 @@ def test_regions_of_two_visual_forms_are_recorded_by_their_own_extractors_during
     model.participate(session)
     assert (image.recorded, video.recorded) == ([['image.block']], [['video.block']])
     assert session.collect('neural:MT').values.max() == 2.0
+
+
+
+def test_a_failed_second_recording_closes_the_first_during_a_policy_run():
+    from brainscore_core.streaming import Session
+    from brainscore_core.streaming_helpers import EnvironmentSource
+
+    class Tracked(_Form):
+        """The first form: counts its open recordings (a stand-in for installed hooks)."""
+        open = 0
+
+        def record(self, layers, stimuli=None):
+            owner = self
+
+            class Recording:
+                def __enter__(self):
+                    owner.open += 1
+                    return self
+
+                def __exit__(self, *exc):
+                    owner.open -= 1
+
+                @staticmethod
+                def take(_row):
+                    return {}
+            return Recording()
+
+    class Failing(_Form):
+        def record(self, layers, stimuli=None):
+            class Recording:
+                def __enter__(self):
+                    raise RuntimeError('cannot install the hooks')
+
+                def __exit__(self, *exc):
+                    return False
+            return Recording()
+
+    class OneStep:
+        def reset(self):
+            return {'vision:image': np.zeros((2, 2, 3), dtype=np.uint8)}
+
+        def step(self, outputs):
+            return {'vision:image': np.zeros((2, 2, 3), dtype=np.uint8)}, 'terminal'
+    image, video = Tracked('image.block', 1.0), Failing('video.block', 2.0)
+    model = BrainScoreModel('m', extractor={'vision': image, 'video': video},
+                            region_layer_map={'V1': LayerSelector('image.block', modality='vision'),
+                                              'MT': LayerSelector('video.block', modality='vision')},
+                            policy=lambda row: {'motor': 0}, policy_in_channels=('vision:image',))
+    session = Session(EnvironmentSource(OneStep()), ('motor', 'neural:V1', 'neural:MT'))
+    with pytest.raises(RuntimeError, match='cannot install the hooks'):
+        model.participate(session)
+    assert image.open == 0

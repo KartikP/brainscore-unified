@@ -201,8 +201,12 @@ class _PolicySteps:
 
     def __enter__(self) -> '_PolicySteps':
         recordings = open_recordings(self.subject, None, self.layers)
-        self.live = {modality: self._stack.enter_context(recording)
-                     for modality, recording in recordings.items()}
+        try:
+            self.live = {regions: self._stack.enter_context(recording)
+                         for regions, recording in recordings.items()}
+        except BaseException:
+            self._stack.close()
+            raise
         return self
 
     def __exit__(self, *exc) -> bool:
@@ -216,7 +220,7 @@ class _PolicySteps:
         outputs = act(self.subject, row)
         if not self.layers:
             return outputs
-        trial = {modality: recording.take(None) for modality, recording in self.live.items()}
+        trial = {regions: recording.take(None) for regions, recording in self.live.items()}
         stimuli = pd.DataFrame({'stimulus_id': [f'step_{self.step}']})
         for region, assembly in trial_regions(self.subject, [trial], stimuli, self.layers).items():
             self.session.respond(StreamEvent(
