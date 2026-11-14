@@ -11,6 +11,7 @@ from brainscore_core.compatibility import CompatibilityError, check_compatibilit
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+from brainscore.models.qwen36_27b.model import REGION_LAYER_MAP as QWEN36_MAP
 
 pytestmark = pytest.mark.unit
 
@@ -50,12 +51,14 @@ QWEN_VISION, QWEN_TEXT = ['merger', *rng('blocks', 32)], ['norm', *rng('layers',
 WAV2VEC2 = [*rng('feature_extractor.conv_layers', 7), *rng('encoder.layers', 12)]
 VJEPA1 = ['backbone', *rng('backbone.blocks', 24)]
 CLIP_VISION, CLIP_TEXT = rng('encoder.layers', 12), rng('encoder.layers', 12)
+QWEN36_VISION, QWEN36_TEXT = ['merger', *rng('blocks', 27)], ['norm', *rng('layers', 64)]
 WIRINGS = {
     'qwen2.5-vl-3b': ({'vision': QWEN_VISION, 'text': QWEN_TEXT},
                       {'V1': ('blocks.2', 'vision'), 'IT': ('blocks.28', 'vision'),
                        'language_system': ('layers.28', 'text')}),
-    'qwen3.6-27b': ({'vision': QWEN_VISION, 'video': QWEN_VISION, 'text': QWEN_TEXT},
-                    {'IT': ('blocks.23', 'vision'), 'language_system': ('layers.30', 'text')}),
+    'qwen3.6-27b': ({'vision': QWEN36_VISION, 'video': QWEN36_VISION, 'text': QWEN36_TEXT},
+                    {region: (layer, 'text' if region == 'language_system' else 'vision')
+                     for region, layer in QWEN36_MAP.items()}),
     'blip2-opt-2.7b': ({'vision': rng('encoder.layers', 39), 'text': rng('layers', 32)},
                        {'V1': ('encoder.layers.4', 'vision'), 'IT': ('encoder.layers.34', 'vision'),
                         'language_system': ('layers.28', 'text')}),
@@ -90,6 +93,27 @@ def test_a_region_without_a_named_extractor_is_declared_as_a_named_one(wiring):
         except CompatibilityError:
             got = 'na'
         assert got == expected
+
+
+def test_qwen36_image_and_video_wrappers_need_no_name_and_clips_reach_the_video_one():
+    image, video, text = Tower(QWEN36_VISION, 1.0), Tower(QWEN36_VISION, 2.0), Tower(QWEN36_TEXT, 3.0)
+    model = BrainScoreModel('qwen3.6-27b', region_layer_map=dict(QWEN36_MAP),
+                            extractor={'vision': image, 'video': video, 'text': text})
+    assert model.output_inputs['neural:IT'] == {'vision:image', 'vision:video'}
+    assert model.output_inputs['neural:language_system'] == {'text'}
+    clips = StimulusSet({'stimulus_id': ['c0', 'c1'], 'video_path': ['a.mp4', 'b.mp4']})
+    clips.identifier = 'clips'
+    session = stimulus_session(clips, ['neural:IT'])
+    model.participate(session)
+    assert np.all(session.collect('neural:IT').values == 2.0)
+    assert video.calls == [[QWEN36_MAP['IT']]] and image.calls == [] and text.calls == []
+
+
+def test_a_layer_name_in_a_vision_and_a_sound_tower_needs_a_named_extractor():
+    towers = {'vision': Tower(rng('encoder.layers', 12)), 'audio': Tower(WAV2VEC2)}
+    with pytest.raises(ValueError, match=r"\['A1'\].*names its extractor"):
+        BrainScoreModel('picture-and-sound', region_layer_map={'A1': 'encoder.layers.6'},
+                        extractor=towers)
 
 
 def test_a_layer_name_in_two_inputs_needs_a_named_extractor():
