@@ -176,12 +176,13 @@ class BrainScoreModel(UnifiedModel):
             ``'vision:image'``). Extractor mappings already declare their
             inputs; do not repeat them here.
         :param required_channels: input channels the model cannot run without.
-            Only for one part that takes several inputs together and cannot
-            run on part of them: one extractor (for example a fused one), or
-            the parts that take ``in_channels``. Every listed channel must be
-            taken by that one part. Separate parts each run on their own
-            input, so a set across them, or a set that repeats the one input
-            of a part, is refused.
+            Only for one wired part that takes several inputs together: one
+            extractor (every key it is given under, a tuple key included), the
+            ``answer``/``reply``/``likelihood`` parts with their
+            ``in_channels``, or the policy with its ``policy_in_channels``.
+            Every listed channel must be taken by that one part. A set across
+            separate parts, a set that repeats the one input of a part, and a
+            set for ``in_channels`` with no part are refused.
         :param visual_degrees: the visual field legacy vision benchmarks place
             stimuli in; ignored by other benchmarks.
         :param capability_config: settings for added capabilities, keyed by the
@@ -218,33 +219,44 @@ class BrainScoreModel(UnifiedModel):
         self._capability_state: Dict[str, Any] = {}
         self._capability_setup_done: Set[str] = set()
 
-        self._required_channels = self._joint_requirement(_channels(required_channels))
+        self._required_channels = self._joint_requirement(
+            _channels(required_channels), extractor or {}, _channels(in_channels))
 
-    def _joint_requirement(self, required: Set[str]) -> frozenset:
-        """``required`` if one part that takes several inputs together serves all of it.
+    def _joint_requirement(self, required: Set[str], extractor: Mapping,
+                           in_channels: Set[str]) -> frozenset:
+        """``required`` if one wired part takes all of it, and more inputs than one.
 
-        A part is one extractor object, or the parts that take ``in_channels``
-        without an extractor (``answer``, ``reply``, ``likelihood``). Each
-        separate part runs on its own inputs, and pre-flight already needs one
-        declared input, so a requirement is a fact only of one part with
-        several inputs.
+        The parts and their complete inputs, read from the arguments as given:
+        each extractor object takes the channels of every key it is given
+        under (a tuple key gives all its inputs, even when another extractor
+        also takes one of them); the ``answer``, ``reply`` and ``likelihood``
+        parts take ``in_channels``; a policy takes ``policy_in_channels``.
+        ``in_channels`` with no such part is no part. Each separate part runs
+        on its own inputs, and pre-flight already needs one declared input, so
+        a requirement is a fact only of one part with several inputs.
         """
         if not required:
             return frozenset()
+        channel = lambda key: MODALITY_TO_INPUT_CHANNEL.get(key, key)
         parts = {}
-        for key, extractor in self._extractors.items():
-            parts.setdefault(id(extractor), set()).add(MODALITY_TO_INPUT_CHANNEL.get(key, key))
-        no_extractor = self._input_channels(self._input_keys - set(self._extractors))
-        if no_extractor:
-            parts['in_channels'] = no_extractor
-        serving = [channels for channels in parts.values() if required <= channels]
+        for key, value in extractor.items():
+            keys = key if isinstance(key, tuple) else (key,)
+            parts.setdefault(id(value), set()).update(channel(k) for k in keys)
+        parts = list(parts.values())
+        if in_channels and any(part is not None for part in
+                               (self._answer, self._reply, self._likelihood)):
+            parts.append(set(in_channels))
+        if self._policy is not None:
+            parts.append(set(self._policy_in_channels))
+        serving = [part for part in parts if required <= part]
         if not serving:
             raise ValueError(
-                f"required_channels {sorted(required)} must all be taken by one part "
-                f"(one extractor, or the parts that take in_channels); here separate parts "
-                f"or none take them. A separate part runs on its own input, so leave "
-                f"required_channels out.")
-        if len(serving[0]) == 1:
+                f"required_channels {sorted(required)} must all be taken by one wired part: "
+                f"one extractor (all keys it is given under, a tuple key included), the "
+                f"answer/reply/likelihood parts with their in_channels, or the policy with "
+                f"its policy_in_channels. No one part here takes them all; separate parts "
+                f"each run on their own input, so leave required_channels out.")
+        if max(len(part) for part in serving) == 1:
             raise ValueError(
                 f"required_channels {sorted(required)} only repeats the one input of the part "
                 f"that takes it, which that part already declares; leave it out.")

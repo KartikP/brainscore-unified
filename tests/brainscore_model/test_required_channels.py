@@ -1,4 +1,4 @@
-"""``required_channels`` is a fact only of one part that takes several inputs.
+"""``required_channels`` is a fact only of one wired part that takes several inputs.
 
 Each separate extractor runs on its own input, and pre-flight already needs one
 declared input, so a hand-typed set over separate extractors could only block
@@ -82,3 +82,35 @@ def test_a_picture_and_sound_model_takes_part_in_a_picture_benchmark():
     assert match.kind == 'full'
     with pytest.raises(CompatibilityError, match='only from the inputs'):
         check_compatibility(model, Benchmark({'vision:image'}, {'neural:A1'}))
+
+
+def test_a_reply_that_needs_the_picture_keeps_its_requirement_beside_a_vision_extractor():
+    # The reply reads the picture and the text of each trial together; it cannot answer
+    # without the picture, so it requires it. The vision extractor, a separate part that
+    # also takes pictures, does not take that input away from the reply.
+    model = BrainScoreModel('reader', reply=lambda prompt: 'yes',
+                            in_channels={'text', 'vision:image'},
+                            extractor={'vision': Tower('blocks.2')},
+                            required_channels={'vision:image'})
+    assert model.required_channels == {'vision:image'}
+
+
+def test_a_joint_extractor_requires_all_its_inputs_beside_a_separate_sound_extractor():
+    joint, separate = Tower('fusion.3'), Tower('encoder.6')
+    model = BrainScoreModel('joint-and-sound',
+                            region_layer_map={'STS': LayerSelector('fusion.3', modality='video')},
+                            extractor={('video', 'audio', 'text'): joint, 'audio': separate},
+                            required_channels={'vision:video', 'audio', 'text'})
+    assert model.required_channels == {'vision:video', 'audio', 'text'}
+
+
+def test_in_channels_without_a_part_cannot_require_an_input():
+    with pytest.raises(ValueError, match='one wired part'):
+        BrainScoreModel('phantom', in_channels={'text', 'vision:image'},
+                        required_channels={'vision:image'})
+
+
+def test_a_policy_is_one_part_with_its_inputs():
+    model = BrainScoreModel('agent', policy=lambda row: {}, policy_in_channels=('observation', 'text'),
+                            required_channels={'observation'})
+    assert model.required_channels == {'observation'}
