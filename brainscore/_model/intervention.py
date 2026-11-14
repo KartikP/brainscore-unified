@@ -164,7 +164,7 @@ class Interventions:
             self._reject(cleanup, TypeError(
                 f"Subject '{owner.identifier}' intervention must return a "
                 f"(PerturbationApplied, cleanup_callable) tuple. Got "
-                f"{type(result).__name__}."
+                f"{self._returned(result)}."
             ))
         applied = result[0]
         if applied.handle_id in self.active_interventions:
@@ -175,8 +175,21 @@ class Interventions:
         self.active_interventions[applied.handle_id] = cleanup
         return applied
 
+    @staticmethod
+    def _returned(result) -> str:
+        """Describe a rejected return: the tuple's wrong part, or the type of anything else."""
+        if isinstance(result, tuple) and len(result) == 2:
+            if not isinstance(result[0], PerturbationApplied):
+                return f"a tuple whose first element is {type(result[0]).__name__}"
+            return f"a tuple whose second element is {type(result[1]).__name__}"
+        return type(result).__name__
+
     def _reject(self, cleanup, error: Exception) -> None:
-        """Raise ``error`` for a rejected intervention return, after undoing it if possible."""
+        """Raise ``error`` for a rejected intervention return, after undoing it if possible.
+
+        The cleanups of a part are assumed independent of each other, so undoing
+        this one call leaves the earlier tracked changes as they are.
+        """
         reload = (f" The intervention part of subject '{self.owner.identifier}' already ran, "
                   f"so the model may be changed; reload the subject before any further use.")
         if cleanup is None:
