@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore.selection import CompositeSelector, LayerSelector
@@ -45,21 +45,19 @@ class Recordable:
         raise AssertionError('recorded during the task')
 
     @contextmanager
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         seen = []
 
         class Take:
             @staticmethod
-            def take():
+            def take(_row):
                 first = seen[0]
                 seen.clear()
-                values = np.concatenate([first[layer] for layer in layers])[None]
-                units = [(layer, i) for layer in layers for i in range(len(first[layer]))]
-                return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+                return {layer: NeuroidAssembly(first[layer][None], dims=['presentation', 'neuroid'], coords={
                     'stimulus_id': ('presentation', ['?']),
-                    'neuroid_id': ('neuroid', [f'{l}.{i}' for l, i in units]),
-                    'neuroid_num': ('neuroid', [i for _, i in units]),
-                    'layer': ('neuroid', [l for l, _ in units])})
+                    'neuroid_id': ('neuroid', [f'{layer}.{i}' for i in range(len(first[layer]))]),
+                    'neuroid_num': ('neuroid', list(range(len(first[layer])))),
+                    'layer': ('neuroid', [layer] * len(first[layer]))}) for layer in layers}
         self.net.hooks.append(seen.append)
         try:
             yield Take()
@@ -67,7 +65,8 @@ class Recordable:
             self.net.hooks.remove(seen.append)
 
 
-def _model(net, region_map=None):
+def _model(net, region_map=None, replies=True):
+    """A model with reply and likelihood parts; without ``replies`` it answers by likelihood."""
     def reply(prompt):
         net.forward(prompt.text())
         return 'cat'
@@ -78,12 +77,11 @@ def _model(net, region_map=None):
                 for i, c in enumerate(candidates)}
     return BrainScoreModel('toy', extractor={'text': Recordable(net)},
                            region_layer_map=region_map or {'A': LayerSelector('early', modality='text')},
-                           reply=reply, likelihood=likelihood)
+                           reply=reply if replies else None, likelihood=likelihood)
 
 
 def _run(model, task, channels, streaming=False):
-    session = stimulus_session(STIMULI, channels, task_context=task)
-    session.streaming = streaming
+    session = stimulus_session(STIMULI, channels, task=task, streaming=streaming)
     model.participate(session)
     return session
 
@@ -94,17 +92,15 @@ def _prompt_text(stimulus_text):
 
 def test_recording_during_likelihood_scoring_is_the_prompt_pass():
     net = Net()
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
-                       prefer_path='likelihood')
-    recorded = _run(_model(net), task, ['behavior:probabilities', 'neural:A']).collect('neural:A')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
+    recorded = _run(_model(net, replies=False), task, ['behavior:probabilities', 'neural:A']).collect('neural:A')
     expected = [Net().forward(_prompt_text(s))['early'] for s in ('x', 'yy', 'zzz')]
     np.testing.assert_array_equal(recorded.values, expected)
 
 
 def test_a_reply_with_implied_probabilities_records_the_prompt_pass():
     net = Net()
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
-                       prefer_path='generation')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
     session = _run(_model(net), task, ['behavior:choice', 'behavior:probabilities', 'neural:A'])
     expected = [Net().forward(_prompt_text(s))['early'] for s in ('x', 'yy', 'zzz')]
     np.testing.assert_array_equal(session.collect('neural:A').values, expected)
@@ -149,7 +145,7 @@ def test_an_extractor_without_record_is_recorded_through_the_model():
 
 def test_a_streaming_session_answers_a_trial_before_it_reads_the_next():
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
-    session = stimulus_session(STIMULI, ['behavior:choice', 'neural:A'], task_context=task, streaming=True)
+    session = stimulus_session(STIMULI, ['behavior:choice', 'neural:A'], task=task, streaming=True)
     log = []
     read, respond = session.next_input, session.respond
 

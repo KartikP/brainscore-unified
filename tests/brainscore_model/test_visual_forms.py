@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore.selection import LayerSelector
+from brainscore.selection import CompositeSelector, LayerSelector
 from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -39,18 +39,18 @@ def test_forms_follow_the_extractor_keys(keys, forms):
 def test_a_subject_with_both_forms_takes_each_stimulus_natively():
     model = BrainScoreModel('m', extractor={'vision': _extractor(1.0), 'video': _extractor(2.0)},
                             region_layer_map={'IT': LayerSelector('blocks.1', modality='vision')})
-    assert neural_response(model, _stimuli('image_path'), record='IT').values.max() == 1.0
-    assert neural_response(model, _stimuli('video_path'), record='IT').values.max() == 2.0
+    assert neural_response(model, _stimuli('image_path'), ['neural:IT']).values.max() == 1.0
+    assert neural_response(model, _stimuli('video_path'), ['neural:IT']).values.max() == 2.0
 
 
 def test_models_without_an_extractor_declare_the_inputs_they_accept():
-    model = BrainScoreModel('judge', supported_modalities={'vision'},
+    model = BrainScoreModel('judge', in_channels={'vision:image'},
                             answer=lambda stimulus_row, instruction, label_set: label_set[0])
     assert 'vision:image' in model.in_channels
 
 
 class _Recorder:
-    """record(layers) stand-in; a clip recording has two time steps."""
+    """record(layers, stimuli) stand-in; a clip recording has two time steps."""
 
     def __init__(self, value, timed):
         self.value, self.timed, self.hooks = value, timed, []
@@ -58,7 +58,7 @@ class _Recorder:
     def __call__(self, stimuli, layers, **kwargs):
         raise AssertionError('a task presents through reply, not the extractor')
 
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         from contextlib import contextmanager
 
         @contextmanager
@@ -67,31 +67,31 @@ class _Recorder:
 
             class Take:
                 @staticmethod
-                def take():
+                def take(_row):
                     coords = {'stimulus_id': ('presentation', ['?']),
                               'neuroid_id': ('neuroid', ['n0', 'n1']),
                               'layer': ('neuroid', [layers[0]] * 2)}
                     if not owner.timed:
-                        return NeuroidAssembly(np.full((1, 2), owner.value), coords=coords,
-                                               dims=['presentation', 'neuroid'])
+                        return {layers[0]: NeuroidAssembly(np.full((1, 2), owner.value), coords=coords,
+                                                           dims=['presentation', 'neuroid'])}
                     coords.update(time_bin_start_ms=('time_bin', [0.0, 1000.0]),
                                   time_bin_end_ms=('time_bin', [1000.0, 2000.0]))
                     values = np.stack([np.full(2, owner.value), np.full(2, owner.value + 1)])[None]
-                    return NeuroidAssembly(values, coords=coords,
-                                           dims=['presentation', 'time_bin', 'neuroid'])
+                    return {layers[0]: NeuroidAssembly(values, coords=coords,
+                                                       dims=['presentation', 'time_bin', 'neuroid'])}
             yield Take()
         return recording()
 
 
 def test_a_clip_recorded_during_a_task_uses_the_clip_extractor_and_keeps_time():
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
     model = BrainScoreModel('m', extractor={'vision': _Recorder(1.0, False), 'video': _Recorder(5.0, True)},
                             region_layer_map={'IT': LayerSelector('blocks.1', modality='vision')},
                             reply=lambda prompt: 'left')
     task = TaskContext(instruction='Which way?', response=Choice(['left', 'right']))
-    session = stimulus_session(_stimuli('video_path'), ['behavior:choice', 'neural:IT'], task_context=task)
+    session = stimulus_session(_stimuli('video_path'), ['behavior:choice', 'neural:IT'], task=task)
     model.participate(session)
     recorded = session.collect('neural:IT')
     assert recorded.dims == ('presentation', 'time_bin', 'neuroid')
@@ -101,7 +101,7 @@ def test_a_clip_recorded_during_a_task_uses_the_clip_extractor_and_keeps_time():
 
 def test_a_multi_image_trial_is_recorded_per_image():
     from contextlib import contextmanager
-    from brainscore_core.model_interface import TaskContext
+    from brainscore_core.contract import TaskContext
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
 
@@ -110,14 +110,14 @@ def test_a_multi_image_trial_is_recorded_per_image():
             raise AssertionError('recorded during the reply')
 
         @contextmanager
-        def record(self, layers):
+        def record(self, layers, stimuli=None):
             class Take:
                 @staticmethod
-                def take():
+                def take(_row):
                     values = np.arange(6, dtype=float).reshape(1, 3, 2)   # 3 images, 2 units
-                    return NeuroidAssembly(values, dims=['presentation', 'part', 'neuroid'], coords={
+                    return {layers[0]: NeuroidAssembly(values, dims=['presentation', 'part', 'neuroid'], coords={
                         'stimulus_id': ('presentation', ['?']), 'part_index': ('part', [0, 1, 2]),
-                        'neuroid_id': ('neuroid', ['n0', 'n1']), 'layer': ('neuroid', [layers[0]] * 2)})
+                        'neuroid_id': ('neuroid', ['n0', 'n1']), 'layer': ('neuroid', [layers[0]] * 2)})}
             yield Take()
 
     model = BrainScoreModel('m', extractor={'vision': PerImage()},
@@ -126,7 +126,7 @@ def test_a_multi_image_trial_is_recorded_per_image():
     trials = StimulusSet({'stimulus_id': ['t1'], 'rules': ['r.png'], 'word_1': ['a.png'], 'word_2': ['b.png']})
     trials.identifier = 'sequence'
     task = TaskContext(response=Choice(['yes', 'no']), present=('image:rules', 'image:word_1', 'image:word_2'))
-    session = stimulus_session(trials, ['behavior:choice', 'neural:IT'], task_context=task)
+    session = stimulus_session(trials, ['behavior:choice', 'neural:IT'], task=task)
     model.participate(session)
     recorded = session.collect('neural:IT')
     assert recorded.dims == ('presentation', 'part', 'neuroid')
@@ -139,7 +139,7 @@ def test_a_multi_image_trial_is_recorded_per_image():
     (('vision', 'video'), {'vision:image', 'vision:video'}, set())])
 def test_declared_inputs_are_exactly_the_forms_taken(keys, forms, required):
     model = BrainScoreModel('m', extractor={key: _extractor(1.0) for key in keys},
-                            required_modalities={'video'} if required else None)
+                            required_channels={'vision:video'} if required else None)
     assert {c for c in model.in_channels if c.startswith('vision')} == forms
     assert 'vision' not in model.in_channels
     assert model.required_channels == required
@@ -151,7 +151,7 @@ def test_a_benchmark_declaring_both_forms_is_compatible_with_each(keys, compatib
     from types import SimpleNamespace
     from brainscore_core import check_compatibility
     from brainscore_core.compatibility import CompatibilityError
-    model = BrainScoreModel('m', region_layer_map={'IT': 'layer'},
+    model = BrainScoreModel('m', region_layer_map={'IT': LayerSelector('layer', modality=keys[0])},
                             extractor={key: _extractor(1.0) for key in keys})
     benchmark = SimpleNamespace(identifier='both-forms',
                                 required_input_channels={'vision:image', 'vision:video'},
@@ -172,3 +172,179 @@ def test_a_benchmark_with_a_bare_vision_channel_is_refused():
                                 requested_output_channels={'neural:IT'})
     with pytest.raises(CompatibilityError):
         check_compatibility(model, benchmark)
+
+
+class _Form:
+    """An extractor of one visual form with its own layer; ``record`` counts what it records."""
+
+    def __init__(self, layer, value):
+        self.layer, self.value, self.recorded = layer, value, []
+
+    def __call__(self, stimuli, layers, **kwargs):
+        raise AssertionError('recorded during the answering pass')
+
+    def layer_names(self):
+        return [self.layer]
+
+    def record(self, layers, stimuli=None):
+        from contextlib import contextmanager
+        self.recorded.append(list(layers))
+        value = self.value
+
+        @contextmanager
+        def recording():
+            class Take:
+                @staticmethod
+                def take(_row):
+                    return {layer: NeuroidAssembly(np.full((1, 2), value), dims=['presentation', 'neuroid'], coords={
+                        'stimulus_id': ('presentation', ['?']), 'neuroid_id': ('neuroid', ['n0', 'n1']),
+                        'layer': ('neuroid', [layer] * 2)}) for layer in layers}
+            yield Take()
+        return recording()
+
+
+def _two_forms(**parts):
+    image, video = _Form('image.block', 1.0), _Form('video.block', 2.0)
+    model = BrainScoreModel('m', extractor={'vision': image, 'video': video},
+                            region_layer_map={'V1': LayerSelector('image.block', modality='vision'),
+                                              'MT': LayerSelector('video.block', modality='vision')},
+                            **parts)
+    return model, image, video
+
+
+def test_regions_of_two_visual_forms_are_recorded_by_their_own_extractors_during_an_answer():
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    model, image, video = _two_forms(reply=lambda prompt: 'left')
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'image_path': ['a.png'], 'video_path': ['a.mp4']})
+    stimuli.identifier = 'two-forms'
+    task = TaskContext(instruction='Which way?', response=Choice(['left', 'right']),
+                       present=('image:image_path',))
+    session = stimulus_session(stimuli, ['behavior:choice', 'neural:V1', 'neural:MT'], task=task)
+    model.participate(session)
+    assert (image.recorded, video.recorded) == ([['image.block']], [['video.block']])
+    assert session.collect('neural:V1').values.max() == 1.0
+    assert session.collect('neural:MT').values.max() == 2.0
+
+
+def test_regions_of_two_visual_forms_are_recorded_by_their_own_extractors_during_a_policy_step():
+    from brainscore_core.streaming import Session
+    from brainscore_core.streaming_helpers import EnvironmentSource
+
+    class OneStep:
+        def reset(self):
+            return {'vision:image': np.zeros((2, 2, 3), dtype=np.uint8)}
+
+        def step(self, outputs):
+            return {'vision:image': np.zeros((2, 2, 3), dtype=np.uint8)}, 'terminal'
+    model, image, video = _two_forms(policy=lambda row: {'motor': 0}, policy_in_channels=('vision:image',))
+    session = Session(EnvironmentSource(OneStep()), ('motor', 'neural:V1', 'neural:MT'))
+    model.participate(session)
+    assert (image.recorded, video.recorded) == ([['image.block']], [['video.block']])
+    assert session.collect('neural:MT').values.max() == 2.0
+
+
+
+def test_a_failed_second_recording_closes_the_first_during_a_policy_run():
+    from brainscore_core.streaming import Session
+    from brainscore_core.streaming_helpers import EnvironmentSource
+
+    class Tracked(_Form):
+        """The first form: counts its open recordings (a stand-in for installed hooks)."""
+        open = 0
+
+        def record(self, layers, stimuli=None):
+            owner = self
+
+            class Recording:
+                def __enter__(self):
+                    owner.open += 1
+                    return self
+
+                def __exit__(self, *exc):
+                    owner.open -= 1
+
+                @staticmethod
+                def take(_row):
+                    return {}
+            return Recording()
+
+    class Failing(_Form):
+        def record(self, layers, stimuli=None):
+            class Recording:
+                def __enter__(self):
+                    raise RuntimeError('cannot install the hooks')
+
+                def __exit__(self, *exc):
+                    return False
+            return Recording()
+
+    class OneStep:
+        def reset(self):
+            return {'vision:image': np.zeros((2, 2, 3), dtype=np.uint8)}
+
+        def step(self, outputs):
+            return {'vision:image': np.zeros((2, 2, 3), dtype=np.uint8)}, 'terminal'
+    image, video = Tracked('image.block', 1.0), Failing('video.block', 2.0)
+    model = BrainScoreModel('m', extractor={'vision': image, 'video': video},
+                            region_layer_map={'V1': LayerSelector('image.block', modality='vision'),
+                                              'MT': LayerSelector('video.block', modality='vision')},
+                            policy=lambda row: {'motor': 0}, policy_in_channels=('vision:image',))
+    session = Session(EnvironmentSource(OneStep()), ('motor', 'neural:V1', 'neural:MT'))
+    with pytest.raises(RuntimeError, match='cannot install the hooks'):
+        model.participate(session)
+    assert image.open == 0
+
+
+class _Layered:
+    """An extractor with named layers; a passive call and a recording both carry its value."""
+
+    def __init__(self, layers, value):
+        self.layers, self.value = layers, value
+
+    def layer_names(self):
+        return list(self.layers)
+
+    def _assembly(self, ids, layers):
+        columns = [(layer, n) for layer in layers for n in ('n0', 'n1')]
+        return NeuroidAssembly(np.full((len(ids), len(columns)), self.value), dims=['presentation', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', [f'{l}.{n}' for l, n in columns]),
+            'layer': ('neuroid', [layer for layer, _ in columns])})
+
+    def __call__(self, stimuli, layers, **kwargs):
+        return self._assembly(list(stimuli['stimulus_id']), layers)
+
+    def record(self, layers, stimuli=None):
+        from contextlib import contextmanager
+        owner = self
+
+        @contextmanager
+        def recording():
+            class Take:
+                @staticmethod
+                def take(_row):
+                    return {layer: owner._assembly(['?'], [layer]) for layer in layers}
+            yield Take()
+        return recording()
+
+
+def test_a_region_whose_layers_are_in_both_forms_and_only_partly_in_the_video_one_is_recorded_alike():
+    """Same extractor in a task as in a passive recording, with clips supplied."""
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    model = BrainScoreModel(
+        'm', extractor={'vision': _Layered(['shared', 'image_only'], 1.0), 'video': _Layered(['shared'], 2.0)},
+        region_layer_map={'R': CompositeSelector((('shared', None), ('image_only', None)), modality='vision')},
+        reply=lambda prompt: 'left')
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'image_path': ['a.png'], 'video_path': ['a.mp4']})
+    stimuli.identifier = 'both-forms'
+    passive = neural_response(model, stimuli, ['neural:R'])
+    task = TaskContext(instruction='Which way?', response=Choice(['left', 'right']),
+                       present=('image:image_path',))
+    session = stimulus_session(stimuli, ['behavior:choice', 'neural:R'], task=task)
+    model.participate(session)
+    during_task = session.collect('neural:R')
+    assert set(passive.values.ravel()) == set(during_task.values.ravel()) == {1.0}
+    assert sorted(set(passive['layer'].values)) == sorted(set(during_task['layer'].values)) == ['image_only', 'shared']

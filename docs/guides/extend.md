@@ -16,7 +16,16 @@ register_channel(CatalogEntry(
 ))
 ```
 
-Experiments accept unregistered channel names with a warning; benchmark scoring requires registration. An input channel can also claim stimulus-table columns with `columns=('gaze_target',)`.
+Experiments and benchmark scoring both refuse a channel that is not registered.
+
+An input channel can also claim stimulus-table columns. Each column then feeds the channel: a table session sends it on that channel, pre-flight accepts the channel, and a subject that does not declare the channel does not get the column.
+
+```python
+register_channel(CatalogEntry('odor', 'input', 'StimulusSet column', 'an odorant name', 'my_package'),
+                 columns=('odor_name',))
+```
+
+One table says which channel each column feeds: `brainscore_core.io_catalog.stimulus_columns()`. Core's columns are there too, for example `image_path` feeds `vision:image`, `video_path` feeds `vision:video`, `sentence` feeds `text` and `audio_path` feeds `audio`. A column that already feeds a channel needs `replace=True`.
 
 ## A new tool
 
@@ -36,7 +45,7 @@ class CountOutputs(Tool):
             self.count += 1
 ```
 
-For resources or saved files, override `attach(context)` as a context manager; add `validate` and `describe` for requirements and configuration. Copy payloads before keeping them; never modify them. `register_tool(identifier, factory)` makes a tool loadable by name. A complete external package is in [examples/partner_tool](../../examples/partner_tool/README.md).
+For resources or saved files, override `attach(context)` as a context manager; add `validate` and `describe` for requirements and configuration. Copy payloads before keeping them; never modify them. `register_tool(identifier, factory)` (from `brainscore.tools`) makes a tool loadable by name with `load_tool`. A complete external package is in [examples/partner_tool](../../examples/partner_tool/README.md).
 
 ## A new instrumentation backend
 
@@ -45,3 +54,9 @@ To let `RecordActivity` and `Ablate` reach a framework other than PyTorch, imple
 ## A new capability
 
 A `Capability` adds a new kind of input handling to `BrainScoreModel` itself, with its own channels. Subclass `Capability` and register it with `register_capability`, both from `brainscore.capabilities`. Use this only when the behavior belongs inside the subject; for observing or changing runs, write a tool.
+
+A capability runs sessions. It claims the outputs a session requests (`supports_session(subject, channels)`) and runs it (`participate(subject, session)`); `subject.participate(session)` selects it.
+
+Every method takes the model first, named `subject`. Per-model state comes from `setup(subject)` and is read back with `subject.capability_state(identifier)`; settings come from `subject.capability_config`, which holds what the registration passes as `capability_config={identifier: settings}`.
+
+One registry holds every capability. For each session the model selects the claimant with the lowest `order`; two claimants at that order are an error. Added capabilities default to 1000 and the built-in ones are 10000, so an added capability runs a session that a built-in one also claims. See `templates/new_capability/`.

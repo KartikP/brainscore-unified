@@ -1,15 +1,23 @@
 """Capability extension contract for BrainScoreModel."""
 
-from abc import ABC, abstractmethod
 from typing import Any, Dict
 
 
-class Capability(ABC):
-    """Self-contained BrainScoreModel behavior.
+class Capability:
+    """One ability of a BrainScoreModel: it runs the sessions it claims.
 
-    A capability owns one dispatch path plus any per-model setup/state it
-    needs. New capabilities subclass this contract and register themselves;
-    the BrainScoreModel host and Subject ABC stay unchanged.
+    ``supports_session`` claims the outputs a session requests, before any
+    input is read; ``participate`` runs that session.
+    ``subject.participate(session)`` selects one capability for each session:
+    the claimant with the lowest ``order``; two claimants at that order are an
+    error. The built-in session parts have order 10000, so an added capability
+    (default 1000) runs a session that a built-in one also claims.
+
+    Every method takes the subject (the ``BrainScoreModel``) first. Per-subject
+    state comes from ``setup``, which runs once before the capability first
+    runs a session (again after ``subject.reset()``), and is read back with
+    ``subject.capability_state(identifier)``; settings come from
+    ``subject.capability_config``.
     """
 
     identifier: str
@@ -17,49 +25,40 @@ class Capability(ABC):
     input_channels = frozenset()
     output_channels = frozenset()
 
-    def declared_input_channels(self, model):
-        """Input channels this capability adds for ``model``."""
-        del model
-        return set(self.input_channels)
-
-    def declared_output_channels(self, model):
-        """Output channels this capability adds for ``model``."""
-        del model
-        return set(self.output_channels)
-
-    def reset(self, model, state) -> None:
-        """Release experiment state. Retain configuration needed by later calls."""
-        state.clear()
-
-    def supports_session(self, model, channels) -> bool:
-        """Opt into a complete requested output combination before execution."""
-        return False
-
-    def participate(self, model, session) -> None:
-        """Execute a session accepted by supports_session."""
-        raise NotImplementedError(self.identifier)
-
-
-    def setup(self, model) -> Dict[str, Any]:
-        """Return this capability's initial per-model state.
-
-        The registry stores it before dispatch; read it back in ``handles`` /
-        ``process`` with ``model.capability_state(self.identifier)``.
-        """
-        del model
-        return {}
-
-    def enabled_for(self, model) -> bool:
-        """Whether this capability should be considered for ``model``."""
-        del model
+    def enabled_for(self, subject) -> bool:
+        """Whether this capability is considered for ``subject``."""
+        del subject
         return True
 
-    @abstractmethod
-    def handles(self, model, event, **kwargs) -> bool:
-        """Return True when this capability should process ``event``."""
-        ...
+    def declared_input_channels(self, subject):
+        """Input channels this capability adds for ``subject``."""
+        del subject
+        return set(self.input_channels)
 
-    @abstractmethod
-    def process(self, model, event, **kwargs):
-        """Process ``event`` for ``model``."""
-        ...
+    def declared_output_channels(self, subject):
+        """Output channels this capability adds for ``subject``."""
+        del subject
+        return set(self.output_channels)
+
+    def setup(self, subject) -> Dict[str, Any]:
+        """Return this capability's initial per-subject state.
+
+        It is stored before the capability first runs a session; read it back
+        with ``subject.capability_state(self.identifier)``.
+        """
+        del subject
+        return {}
+
+    def reset(self, subject, state) -> None:
+        """Release experiment state. Retain configuration needed by later calls."""
+        del subject
+        state.clear()
+
+    def supports_session(self, subject, channels) -> bool:
+        """Claim a complete requested output combination before any input is read."""
+        del subject, channels
+        return False
+
+    def participate(self, subject, session) -> None:
+        """Run a session this capability claimed with ``supports_session``."""
+        raise NotImplementedError(self.identifier)

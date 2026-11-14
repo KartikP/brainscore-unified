@@ -13,6 +13,7 @@ from torch import nn
 
 from brainscore import BrainScoreModel
 from brainscore_core import io_catalog
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.streaming import FixedSource, Session
 from brainscore_core.streaming_helpers import EnvironmentSource, run_environment
 
@@ -23,7 +24,7 @@ pytestmark = pytest.mark.unit
 def speech_channel(monkeypatch):
     """An extension output family: a policy that answers in words, not on 'motor'."""
     monkeypatch.setattr(io_catalog, '_CATALOG', dict(io_catalog._CATALOG))
-    io_catalog.register(io_catalog.CatalogEntry(
+    io_catalog.register_channel(io_catalog.CatalogEntry(
         'speech', io_catalog.OUTPUT, 'a policy answer', 'a str the policy said',
         'the test environment', payload_type=str))
 
@@ -83,7 +84,7 @@ def _recording_model(net, forward_calls):
         return {'motor': int(scores.argmax())}
 
     return BrainScoreModel('recording-policy', model=net, region_layer_map={'V4': '0'},
-                           preprocessors={'vision': _Extractor()}, policy=policy)
+                           extractor={'vision': _Extractor()}, policy=policy)
 
 
 def test_one_session_yields_motor_and_neural_from_one_forward_pass():
@@ -102,13 +103,13 @@ def test_one_session_yields_motor_and_neural_from_one_forward_pass():
 
 def test_a_policy_without_an_extractor_is_not_applicable_to_neural_outputs():
     model = BrainScoreModel('no-extractor', policy=lambda row: {'motor': 0})
-    with pytest.raises(NotImplementedError, match='No session handler'):
+    with pytest.raises(CompatibilityError, match=r"does not produce \['neural:V4'\]"):
         model.participate(Session(EnvironmentSource(CountingEnvironment()), ('motor', 'neural:V4')))
 
 
 def test_a_policy_may_answer_on_a_non_motor_channel_with_no_new_class(speech_channel):
     model = BrainScoreModel('talker', policy=lambda row: {'speech': f"x={row['observation']['x'][0]}"},
-                            policy_outputs=('speech',))
+                            policy_out_channels=('speech',))
     env = CountingEnvironment(2)
     session = Session(EnvironmentSource(env, action_channel='speech'), ('speech',))
     model.participate(session)
@@ -116,14 +117,26 @@ def test_a_policy_may_answer_on_a_non_motor_channel_with_no_new_class(speech_cha
     assert [event.payload for event in session.collect('speech')] == env.actions
 
 
-def test_run_environment_helper_takes_the_requested_outputs(speech_channel):
-    model = BrainScoreModel('talker', policy=lambda row: {'speech': 'hi'}, policy_outputs=('speech',))
+def test_run_environment_helper_takes_the_outputs(speech_channel):
+    model = BrainScoreModel('talker', policy=lambda row: {'speech': 'hi'}, policy_out_channels=('speech',))
     assert run_environment(model, CountingEnvironment(2), action_channel='speech') == ['hi', 'hi']
 
 
 def test_a_stateful_policy_is_cleared_when_an_episode_begins():
-    from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-    model = BrainScoreModel('stateful', policy=PolicyWrapper(lambda obs, history: len(history)))
+    class Counting:
+        """Answers with the number of steps it remembers; reset() forgets them."""
+        def __init__(self):
+            self.history = []
+
+        def reset(self):
+            self.history.clear()
+
+        def __call__(self, row):
+            action = len(self.history)
+            self.history.append((row['observation'], action))
+            return {'motor': action}
+
+    model = BrainScoreModel('stateful', policy=Counting())
     first = run_environment(model, CountingEnvironment(3))
     second = run_environment(model, CountingEnvironment(3))   # no model.reset() in between
     assert first == second == [0, 1, 2]

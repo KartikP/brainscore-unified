@@ -7,14 +7,15 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import threading
 import time
 import uuid
 from typing import Iterator
 
-from brainscore.instrumentation import observe, observed
+from brainscore.instrumentation import Call, observed
 from brainscore.run_record import PayloadCodec, RunRecord
 from brainscore.experiments._storage import check_output_directory
-from brainscore_core.compatibility import CompatibilityMatch, validate_channels
+from brainscore_core.compatibility import check_channel_compatibility
 from brainscore_core.contract import Subject
 
 
@@ -96,7 +97,7 @@ class Tool:
     phase = 'observe'
     # Outputs this tool asks the subject for; a protocol that builds its own
     # sessions (TaskProtocol) requests them.
-    output_channels = frozenset()
+    requested_output_channels = frozenset()
 
     def describe(self):
         return {}
@@ -128,6 +129,22 @@ class Repetition:
     identifier: object
 
 
+def participate_observed(subject, session, context):
+    """Run ``subject`` in ``session`` inside the current record repetition.
+
+    The session's settings are published first and its input and output events
+    are recorded between the repetition's boundaries, so ``replay_sessions``
+    rebuilds exactly this session. Every protocol that runs a session uses this
+    one block: ``SessionProtocol`` and the adapters for external libraries.
+    """
+    settings = {name: getattr(session, name) for name in _SESSION_CONTEXT_FIELDS
+                if getattr(session, name, None) is not None}
+    if settings:
+        context.publish('session_context', settings)
+    with observed(session, context):
+        subject.participate(session)
+
+
 class SessionProtocol:
     """Factory creates a fresh context-managed session for each independent repetition.
 
@@ -142,7 +159,7 @@ class SessionProtocol:
 
     """
     def __init__(self, identifier, session_factory, *, conditions=None, repetitions=(0,),
-                 input_channels=(), output_channels=(), metadata=None,
+                 required_input_channels=(), requested_output_channels=(), metadata=None,
                  factory_argument='repetition', collect_outputs: bool = True):
         if not isinstance(collect_outputs, bool):
             raise TypeError('collect_outputs must be a bool')
@@ -154,21 +171,23 @@ class SessionProtocol:
         if factory_argument not in ('repetition', 'identifier'):
             raise ValueError("factory_argument must be 'repetition' or 'identifier'.")
         self.factory_argument = factory_argument
-        self.input_channels = frozenset(input_channels)
-        self.output_channels = frozenset(output_channels)
+        self.required_input_channels = frozenset(required_input_channels)
+        self.requested_output_channels = frozenset(requested_output_channels)
         self.metadata = dict(metadata or {})
         self._compatibility = None
 
     def accept_requests(self, channels):
         """Fail when attached recorders need outputs these sessions do not request."""
-        missing = set(channels) - set(self.output_channels)
+        missing = set(channels) - set(self.requested_output_channels)
         if missing:
             raise ValueError(f'Recorders need {sorted(missing)}, but this protocol requests only '
-                             f'{sorted(self.output_channels)}. Use TaskProtocol, or request them.')
+                             f'{sorted(self.requested_output_channels)}. Use TaskProtocol, or request them.')
 
     def describe(self):
-        return {'conditions': self.conditions, 'repetitions': self.repetitions, 'input_channels': sorted(self.input_channels),
-                'output_channels': sorted(self.output_channels), 'metadata': self.metadata,
+        return {'conditions': self.conditions, 'repetitions': self.repetitions,
+                'required_input_channels': sorted(self.required_input_channels),
+                'requested_output_channels': sorted(self.requested_output_channels),
+                'metadata': self.metadata,
                 'factory_argument': self.factory_argument,
                 'reset_policy': 'before and after each repetition; tools attach after initial reset',
                 **({'compatibility': self._compatibility.as_attrs()}
@@ -176,43 +195,24 @@ class SessionProtocol:
                 **({} if self.collect_outputs else {'collect_outputs': False})}
 
     def validate(self, subject):
+        """Check the subject against this protocol with the rule ``score()`` uses.
+
+        The protocol is the benchmark side: it declares the inputs it sends and
+        the outputs it requests, and core ``check_channel_compatibility``
+        decides the match (Contract Rule 5.2), so an experiment and a benchmark
+        agree on which pairs fit. An incompatible pair raises
+        ``CompatibilityError``; a channel name outside the catalog must be
+        registered with ``register_channel`` first.
+        """
         self._compatibility = None
         if not isinstance(subject, Subject):
             raise TypeError('SessionProtocol requires a Subject (participate, reset and channels)')
-        # Use scoring's channel rules; exploratory names remain usable with a warning.
-        for channels, direction, owner in (
-            (subject.in_channels, 'input', 'subject inputs'),
-            (subject.out_channels, 'output', 'subject outputs'),
-            (subject.required_channels, 'input', 'subject required inputs'),
-            (self.input_channels, 'input', 'protocol inputs'),
-            (self.output_channels, 'output', 'protocol outputs'),
-        ):
-            validate_channels(set(channels), direction, owner, allow_unregistered=True)
         if (not self.conditions or any(not isinstance(c, str) or not c for c in self.conditions)
                 or len(set(self.conditions)) != len(self.conditions)):
             raise ValueError('Use nonempty, distinct condition names')
         if not self.repetitions or len(set(self.repetitions)) != len(self.repetitions):
             raise ValueError('Use nonempty, distinct, hashable repetition IDs')
-        consumed = self.input_channels & set(subject.in_channels)
-        missing_required = set(subject.required_channels) - self.input_channels
-        missing_outputs = self.output_channels - set(subject.out_channels)
-        problems = []
-        if self.input_channels and not consumed:
-            problems.append(f'takes in none of the protocol inputs {sorted(self.input_channels)}')
-        if missing_required:
-            problems.append(f'requires inputs absent from the protocol {sorted(missing_required)}')
-        if missing_outputs:
-            problems.append(f'cannot produce requested outputs {sorted(missing_outputs)}')
-        if problems:
-            raise ValueError(f'Subject {subject.identifier!r} is incompatible with protocol '
-                             f'{self.identifier!r}: {"; ".join(problems)}. '
-                             f'Subject in_channels={sorted(subject.in_channels)}, '
-                             f'out_channels={sorted(subject.out_channels)}.')
-        self._compatibility = CompatibilityMatch(
-            subject=subject.identifier, benchmark=self.identifier,
-            consumed_inputs=frozenset(consumed),
-            dropped_inputs=frozenset(self.input_channels - set(subject.in_channels)),
-            requested_outputs=frozenset(self.output_channels))
+        self._compatibility = check_channel_compatibility(subject, self)
 
     def run(self, subject, context):
         results = []
@@ -224,15 +224,7 @@ class SessionProtocol:
                     with context.repetition(repetition, condition=condition), self.session_factory(request) as session:
                         if not isinstance(session, Session):
                             raise TypeError('Session factories must return a Session')
-                        settings = {
-                            name: getattr(session, name)
-                            for name in _SESSION_CONTEXT_FIELDS
-                            if getattr(session, name, None) is not None
-                        }
-                        if settings:
-                            context.publish('session_context', settings)
-                        with observed(session, context):
-                            subject.participate(session)
+                        participate_observed(subject, session, context)
                         if not session.complete:
                             raise RuntimeError('Environment session ended before episode completion')
                         if self.collect_outputs:
@@ -242,25 +234,101 @@ class SessionProtocol:
         return results if self.collect_outputs else None
 
 
+class _MethodCalls:
+    """Record the named method calls of an external system for a with block.
+
+    Only ``CallableProtocol(methods=[...])`` uses this, for a system that is not
+    a subject (for example a policy server's ``infer``). The caller names the
+    methods; there is no default. Nested calls on the same object count once.
+    Restores the exact prior instance attributes on exit.
+    """
+
+    def __init__(self, subject, *observers, methods):
+        self.subject = subject
+        self.observers = observers
+        self.methods = methods
+        self._saved = {}
+        self._local = threading.local()
+
+    def _notify(self, name, *args):
+        for observer in self.observers:
+            callback = getattr(observer, name, None)
+            if callback is not None:
+                callback(*args)
+
+    def _wrap(self, method, original):
+        def wrapped(*args, **kwargs):
+            if getattr(self._local, 'active', False):
+                return original(*args, **kwargs)
+            self._local.active = True
+            call = Call(method, args, kwargs)
+            start = time.perf_counter()
+            try:
+                self._notify('on_start', call)
+                try:
+                    result = original(*args, **kwargs)
+                except BaseException as error:
+                    call.duration_s = time.perf_counter() - start
+                    self._notify('on_error', call, error)
+                    raise
+                call.duration_s = time.perf_counter() - start
+                self._notify('on_result', call, result)
+                return result
+            finally:
+                self._local.active = False
+        return wrapped
+
+    def __enter__(self):
+        if self._saved:
+            raise RuntimeError('An observer context cannot be entered twice')
+        try:
+            for method in self.methods:
+                original = getattr(self.subject, method, None)
+                if not callable(original):
+                    continue
+                state = vars(self.subject)
+                self._saved[method] = (method in state, state.get(method))
+                setattr(self.subject, method, self._wrap(method, original))
+        except BaseException:
+            self.__exit__(None, None, None)
+            raise
+        return self
+
+    def __exit__(self, *exc):
+        for method, (present, previous) in reversed(list(self._saved.items())):
+            if present:
+                setattr(self.subject, method, previous)
+            else:
+                delattr(self.subject, method)
+        self._saved.clear()
+        return False
+
+
+
 class CallableProtocol:
     """Preserve an external evaluator's loop and scientific scoring.
 
-    evaluate(subject, context) owns reset/seed/repetition semantics. Its selected
-    public methods are observed, including errors caught by the evaluator.
+    evaluate(subject, context) owns reset/seed/repetition semantics.
     Instrumentation is scoped to the whole evaluator call. Use separate runs
     for baseline and intervention conditions.
 
-    An evaluator that runs the subject through ``participate`` passes
-    ``methods=()``. It then owns the repetitions too: it runs each session
-    inside ``context.repetition(identifier)`` and wraps it in
-    ``observed(session, context)``, so the record holds the input and
-    output events of each session between its own boundaries. It names
-    those identifiers in ``repetitions``, so tools can select them. With
-    observed methods the one repetition is ``'external'``.
+    The evaluator runs the subject through ``participate``. It owns the
+    repetitions too: it runs each session with
+    ``brainscore.harnesses.adapter.run_request`` (or ``participate_observed``
+    inside ``context.repetition(identifier)``), so the record holds the input
+    and output events of each session between its own boundaries. It names those
+    identifiers in ``repetitions``, so tools can select them.
+
+    For a system that is not a subject (a policy server, an external library
+    object), ``methods`` names the methods to record, for example
+    ``methods=['infer']``; the one repetition is then ``'external'``. There is
+    no default method: a subject is watched at its sessions.
     """
-    def __init__(self, identifier, evaluate, *, methods=('process',), metadata=None,
+    def __init__(self, identifier, evaluate, *, methods=(), metadata=None,
                  repetitions=None):
         self.identifier, self.evaluate = identifier, evaluate
+        if isinstance(methods, str):
+            raise TypeError('methods is a list of method names, for example methods=[\'infer\']')
         self.methods = tuple(methods)
         self.metadata = dict(metadata or {})
         if self.methods:
@@ -299,7 +367,7 @@ class CallableProtocol:
             # starts and ends: one context.repetition per session, which
             # replay_sessions turns back into one session each.
             return self.evaluate(subject, context)
-        with context.repetition('external'), observe(subject, context, methods=self.methods):
+        with context.repetition('external'), _MethodCalls(subject, context, methods=self.methods):
             return self.evaluate(subject, context)
 
 
@@ -572,7 +640,7 @@ class Experiment:
     def validate(self):
         if self.output_dir is not None:
             check_output_directory(self.output_dir)
-        requested = set().union(*(tool.output_channels for tool in self.tools))
+        requested = set().union(*(tool.requested_output_channels for tool in self.tools))
         if requested or isinstance(self.protocol, SessionProtocol):
             # Protocols from other packages need accept_requests only to take recorders.
             self.protocol.accept_requests(requested)
@@ -628,7 +696,7 @@ class Experiment:
                         stack.enter_context(tool.attach(context))
                 yield context
                 if context.failed:
-                    raise RuntimeError('Experiment encountered a caught model or tool error')
+                    raise RuntimeError('Experiment encountered a caught subject or tool error')
             manifest['status'] = 'complete'
         except BaseException as error:
             context.failed = True
@@ -651,7 +719,7 @@ class Experiment:
         with self.open() as context:
             value = self.protocol.run(self.subject, context)
             if context.failed:
-                raise RuntimeError('Experiment encountered a caught model or tool error')
+                raise RuntimeError('Experiment encountered a caught subject or tool error')
             encoded = context.codec.encode(value)
             _write(self.run_directory / 'result.json', encoded)
             context.artifact(self.run_directory / 'result.json', producer='protocol',

@@ -1,7 +1,7 @@
 """The concrete subject exposes its observation configuration."""
 # -- Public observation surface: ``extractor`` + ``detect_modalities`` --------
 # Core-only fakes (no framework). Observation tools read these instead of the
-# private ``_extractors`` / ``_detect_modalities``; neither is a Subject member.
+# private ``_extractors``; neither is a Subject member.
 
 from types import MappingProxyType
 
@@ -29,25 +29,14 @@ class _FakeExtractor:
         self.resets += 1
 
 
-def _forms():
+def _model_and_extractors():
     vision, text = _FakeExtractor('v-out'), _FakeExtractor('t-out')
-    return {
-        'extractor': (BrainScoreModel('m', extractor={'vision': vision, 'text': text}),
-                      {'vision': vision, 'text': text}),
-        'activations_model_mapping': (
-            BrainScoreModel('m', activations_model={'vision': vision, 'text': text}),
-            {'vision': vision, 'text': text}),
-        'shared_activations_model': (
-            BrainScoreModel('m', preprocessors={'vision': lambda x: x},
-                            activations_model=vision),
-            {'vision': vision}),
-    }
+    expected = {'vision': vision, 'text': text}
+    return BrainScoreModel('m', extractor=dict(expected)), expected
 
 
-@pytest.mark.parametrize('form', ['extractor', 'activations_model_mapping',
-                                  'shared_activations_model'])
-def test_extractor_is_read_only_normalized_mapping(form):
-    model, expected = _forms()[form]
+def test_extractor_is_read_only_normalized_mapping():
+    model, expected = _model_and_extractors()
     mapping = model.extractor
     assert isinstance(mapping, MappingProxyType)
     assert set(mapping) == set(expected)
@@ -61,31 +50,31 @@ def test_extractor_is_read_only_normalized_mapping(form):
     assert dict(model.extractor) == dict(mapping)  # unchanged by attempts
 
 
-def test_canonical_and_old_forms_declare_same_channels():
-    forms = _forms()
-    new, old = forms['extractor'][0], forms['activations_model_mapping'][0]
-    before = (new.in_channels, new.out_channels, new.supported_modalities)
-    new.extractor  # reading the mapping must not change declarations
-    assert (new.in_channels, new.out_channels, new.supported_modalities) == before
-    assert before == (old.in_channels, old.out_channels, old.supported_modalities)
-    assert new.supported_modalities == {'vision', 'text'}
+def test_reading_the_extractor_mapping_keeps_declarations():
+    model, _ = _model_and_extractors()
+    before = (model.in_channels, model.out_channels, model.required_channels)
+    model.extractor  # reading the mapping must not change declarations
+    assert (model.in_channels, model.out_channels, model.required_channels) == before
+    assert {'vision:image', 'text'} <= model.in_channels
 
 
-@pytest.mark.parametrize('columns', [
-    ['image_file_name'], ['image_path'], ['filename'], ['sentence'], ['text'],
-    ['video_path'], ['audio_path'], ['mystery_col'], ['image_file_name', 'sentence'],
+@pytest.mark.parametrize('extractors, columns, expected', [
+    (('vision', 'text'), ['image_file_name'], {'vision'}),
+    (('vision', 'text'), ['image_path'], {'vision'}),
+    (('vision', 'text'), ['filename'], {'vision'}),
+    (('vision', 'text'), ['sentence'], {'text'}),
+    (('vision', 'text'), ['text'], {'text'}),
+    (('vision', 'text'), ['image_file_name', 'sentence'], {'vision', 'text'}),
+    (('vision', 'text'), ['video_path'], {'vision'}),       # video folds into vision
+    (('vision', 'text'), ['audio_path'], set()),            # no audio extractor
+    (('vision', 'text'), ['mystery_col'], set()),
+    (('vision',), ['image_file_name', 'sentence'], {'vision'}),  # no text extractor
+    (('audio',), ['audio_path'], {'audio'}),
+    (('video',), ['video_path'], {'vision'}),
 ])
-@pytest.mark.parametrize('form', ['extractor', 'activations_model_mapping',
-                                  'shared_activations_model'])
-def test_detect_modalities_matches_private_alias(form, columns):
-    model = _forms()[form][0]
-    stimuli = _Columns(columns)
-    assert model.detect_modalities(stimuli) == model._detect_modalities(stimuli)
-    assert model.detect_modalities(stimuli) == model._dispatcher.detect_modalities(stimuli)
-
-
-def test_detect_modalities_private_alias_is_same_function():
-    assert BrainScoreModel._detect_modalities is BrainScoreModel.detect_modalities
+def test_detect_modalities_reads_the_columns(extractors, columns, expected):
+    model = BrainScoreModel('m', extractor={key: _FakeExtractor(key) for key in extractors})
+    assert model.detect_modalities(_Columns(columns)) == expected
 
 
 def test_extractor_mapping_survives_reset_and_reuse():

@@ -7,7 +7,7 @@ with the existing ``random-vit-b-32`` for vision so multimodal
 scoring has a complete null floor across both towers.
 
 Use case: any multimodal benchmark should score this against the same
-candidate model as a sanity check. If banded ridge can extract
+subject as a sanity check. If banded ridge can extract
 positive signal from random-init Wav2Vec2 features, that's evidence
 the framework is overfitting via α-tuning rather than detecting real
 audio contribution.
@@ -63,7 +63,6 @@ def _build_random_wav2vec2(identifier: str):
         max_duration_sec=60.0,
         batch_size=4,
         audio_loader=_wav_loader,
-        audio_input_key='input_values',
     )
     return wrapper
 
@@ -81,6 +80,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         extractor={
             'audio': audio_wrapper,
         },
-        required_modalities={'audio'},
+        required_channels={'audio'},
         visual_degrees=8,
     )

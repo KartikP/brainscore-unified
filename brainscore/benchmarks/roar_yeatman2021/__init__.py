@@ -23,9 +23,9 @@ from .benchmark import Yeatman2021LexicalDecision
 
 # Leaderboard variants — each pinned to one input format
 benchmark_registry['Yeatman2021-lexical_decision-image'] = (
-    lambda: Yeatman2021LexicalDecision(modality='vision'))
+    lambda: Yeatman2021LexicalDecision(channels=('vision:image',)))
 benchmark_registry['Yeatman2021-lexical_decision-text'] = (
-    lambda: Yeatman2021LexicalDecision(modality='text'))
+    lambda: Yeatman2021LexicalDecision(channels=('text',)))
 
 
 # Back-compat alias — defaults to image variant (the original presentation).
@@ -38,7 +38,7 @@ def _legacy_alias():
         DeprecationWarning,
         stacklevel=2,
     )
-    return Yeatman2021LexicalDecision(modality='vision')
+    return Yeatman2021LexicalDecision(channels=('vision:image',))
 
 
 benchmark_registry['Yeatman2021-lexical_decision'] = _legacy_alias

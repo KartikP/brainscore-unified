@@ -6,7 +6,6 @@ import pytest
 from brainscore.experiments import (
     CallableProtocol, Experiment, RecordInputsOutputs, RecordReasoning, SessionProtocol,
 )
-from brainscore.model_helpers.response_trace import build_trace_subject
 from brainscore.run_record import RunRecord
 from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, StreamEvent
@@ -16,15 +15,13 @@ pytestmark = pytest.mark.unit
 
 @contextmanager
 def session(trial):
-    active = Session([StreamEvent('generation_request', {'prompt': '6 * 7?'}, 10)])
-    active.requested_output_channels = ('response_trace',)
-    yield active
+    yield Session([StreamEvent('text', '6 * 7?', 10)], ['behavior:text'])
 
 
 def protocol():
     return SessionProtocol(
         'reasoning', session, conditions=['normal', 'repeat'], repetitions=[0, 1],
-        input_channels=['generation_request'], output_channels=['response_trace'],
+        required_input_channels=['text'], requested_output_channels=['behavior:text'],
     )
 
 
@@ -36,14 +33,31 @@ def run(tmp_path, subject, *, procedure=None, tool=None):
     ).run()
 
 
-def trace_subject(raw):
-    return build_trace_subject('fixture', provider=lambda request: raw, parse=int,
-                               provenance={'model': 'fixture', 'trained': False})
+class Replier(Subject):
+    """Answers on behavior:text; ``meta`` is the extra data of each answer event."""
+    identifier = 'fixture'
+    in_channels = frozenset({'text'})
+    out_channels = frozenset({'behavior:text'})
+
+    def __init__(self, text, meta):
+        self.text, self.meta = text, meta
+
+    def participate(self, session):
+        while (question := session.next_input()) is not None:
+            session.respond(StreamEvent('behavior:text', self.text, question.t_ms, self.meta))
+
+    def reset(self):
+        pass
+
+
+def answering(text='42', **meta):
+    """A subject whose answer event carries ``meta`` (for example ``reasoning``)."""
+    return Replier(text, meta)
 
 
 def test_completed_reasoning_preserves_response_and_input_links(tmp_path):
-    raw = {'text': '42', 'reasoning': {'text': '6 times 7 is 42.', 'kind': 'chain_of_thought'}}
-    result = run(tmp_path, trace_subject(raw))
+    meta = {'reasoning': {'text': '6 times 7 is 42.', 'kind': 'chain_of_thought'}}
+    result = run(tmp_path, Replier('42', meta))
     records = list(RunRecord(result.directory / 'reasoning').outputs())
     assert len(records) == 4
     assert [(r['condition'], r['repetition_id']) for r in records] == [
@@ -52,10 +66,10 @@ def test_completed_reasoning_preserves_response_and_input_links(tmp_path):
     for record in records:
         assert record['event_id'] in inputs
         assert record['payload'].t_ms == 10
-        assert record['payload'].payload['answer'] == 42
-        assert record['payload'].payload['raw'] == raw
+        assert record['payload'].payload == '42'
+        assert record['payload'].meta == meta
         assert record['reasoning'] == [{'text': '6 times 7 is 42.', 'kind': 'chain_of_thought', 'format': 'complete'}]
-    raw['reasoning']['text'] = 'changed after the run'
+    meta['reasoning']['text'] = 'changed after the run'
     assert list(RunRecord(result.directory / 'reasoning').outputs())[0]['reasoning'][0]['text'] == '6 times 7 is 42.'
     assert {a['path'] for a in result.manifest['artifacts']} >= {
         'reasoning/manifest.json', 'reasoning/events.jsonl'}
@@ -66,24 +80,24 @@ def test_completed_reasoning_preserves_response_and_input_links(tmp_path):
     ([], True, []),
 ])
 def test_absent_is_different_from_empty(tmp_path, reasoning, available, blocks):
-    result = run(tmp_path, trace_subject({'text': '42', 'reasoning': reasoning}))
+    result = run(tmp_path, answering(reasoning=reasoning))
     record = next(RunRecord(result.directory / 'reasoning').outputs())
     assert record['reasoning_available'] is available
     assert record['reasoning'] == blocks
 
 
 def test_answer_is_never_automatically_labeled_reasoning(tmp_path):
-    result = run(tmp_path, trace_subject({'text': 'First compute 6 * 7, giving 42.'}))
+    result = run(tmp_path, answering('First compute 6 * 7, giving 42.'))
     record = next(RunRecord(result.directory / 'reasoning').outputs())
     assert record['reasoning_available'] is False
-    assert record['payload'].payload['valid'] is False
-    assert record['payload'].payload['parse_error']
+    assert record['payload'].payload == 'First compute 6 * 7, giving 42.'
 
 
 class StreamingSubject(Subject):
+    """Answers in fragments: three events with reasoning in their meta, then the answer."""
     identifier = 'stream-fixture'
-    in_channels = {'generation_request'}
-    out_channels = {'response_trace'}
+    in_channels = {'text'}
+    out_channels = {'behavior:text'}
 
     def __init__(self, fail=False):
         self.fail = fail
@@ -99,10 +113,11 @@ class StreamingSubject(Subject):
                 {'text': '7 is 42.', 'format': 'delta', 'kind': 'chain_of_thought'},
                 {'text': '6 times 7 is 42.', 'format': 'snapshot', 'kind': 'summary'},
             ]):
-                session.respond(StreamEvent('response_trace', {'raw': {'reasoning': block}}, request.t_ms + offset))
+                session.respond(StreamEvent('behavior:text', '', request.t_ms + offset,
+                                            {'reasoning': block}))
                 if self.fail:
                     raise RuntimeError('provider disconnected')
-            session.respond(StreamEvent('response_trace', {'raw': {'text': '42'}, 'answer': 42}, 20))
+            session.respond(StreamEvent('behavior:text', '42', 20, {}))
 
 
 def test_stream_fragments_keep_order_and_are_not_combined(tmp_path):
@@ -113,7 +128,7 @@ def test_stream_fragments_keep_order_and_are_not_combined(tmp_path):
     assert [r['payload'].t_ms for r in records[:4]] == [10, 11, 12, 20]
     assert [r['reasoning'][0]['format'] for r in records[:3]] == ['delta', 'delta', 'snapshot']
     assert records[2]['reasoning'][0]['kind'] == 'summary'
-    assert records[3]['payload'].payload['answer'] == 42
+    assert records[3]['payload'].payload == '42'
     assert records[3]['reasoning_available'] is False
     assert [r['sequence'] for r in records] == sorted(r['sequence'] for r in records)
 
@@ -134,108 +149,81 @@ def test_partial_stream_remains_readable_and_failed(tmp_path):
 def test_custom_selector_works_with_callable_protocol(tmp_path):
     class Model:
         identifier = 'custom-format'
-        def process(self, request):
+        def infer(self, request):
             return {'answer': 42, 'thinking': 'Multiplication gives 42.'}
     subject = Model()
-    procedure = CallableProtocol('external', lambda model, context: model.process('6 * 7?'))
+    procedure = CallableProtocol('external', lambda model, context: model.infer('6 * 7?'),
+                                 methods=['infer'])
     result = run(tmp_path, subject, procedure=procedure,
                  tool=RecordReasoning(extract=lambda output: output['thinking']))
     record = next(RunRecord(result.directory / 'reasoning').outputs())
     assert record['payload']['answer'] == 42
     assert record['reasoning'][0]['text'] == 'Multiplication gives 42.'
-    assert 'process' not in vars(subject)  # The original method is restored.
+    assert 'infer' not in vars(subject)  # The original method is restored.
 
 
 @pytest.mark.parametrize('reasoning', [42, {'text': 42}, {'text': 'x', 'format': 'guess'}, {'text': 'x', 'kind': ''}])
 def test_malformed_reasoning_fails_explicitly(tmp_path, reasoning):
     with pytest.raises((TypeError, ValueError), match='Reasoning'):
-        run(tmp_path, trace_subject({'text': '42', 'reasoning': reasoning}))
+        run(tmp_path, answering(reasoning=reasoning))
     assert RunRecord(tmp_path / 'run/reasoning').manifest['status'] == 'failed'
     assert RunRecord(tmp_path / 'run/inputs_outputs').manifest['status'] == 'failed'
 
 
 def test_requires_input_recorder_before_execution(tmp_path):
-    experiment = Experiment(subject=trace_subject({'text': '42'}), protocol=protocol(),
+    experiment = Experiment(subject=answering(), protocol=protocol(),
                             tools=[RecordReasoning()], output_dir=tmp_path / 'run')
     with pytest.raises(ValueError, match='RecordInputsOutputs'):
         experiment.run()
     assert not experiment.output_dir.exists()
 
 
-def test_trace_subject_streams_before_final_answer_and_parses_once_per_trial(tmp_path):
-    calls = []
-    def provider(request):
-        yield {'text': '', 'reasoning': {'text': '6 * 7', 'format': 'delta'}, 'final': False}
-        yield {'text': '42', 'final': True}
-    subject = build_trace_subject(
-        'streaming-provider', provider=provider,
-        parse=lambda text: calls.append(text) or int(text), provenance={}, streaming=True,
-    )
-    result = run(tmp_path, subject)
-    records = list(RunRecord(result.directory / 'reasoning').outputs())
-    assert calls == ['42'] * 4
-    assert len(records) == 8
-    assert records[0]['payload'].payload['valid'] is None
-    assert records[0]['payload'].payload['answer'] is None
-    assert records[0]['payload'].meta['fragment_index'] == 0
-    assert records[1]['payload'].payload['answer'] == 42
-    assert records[1]['payload'].payload['final'] is True
+def test_reasoning_from_a_reply_part_reaches_the_reasoning_record(tmp_path):
+    """A normal reply= part returns its reasoning as extra data; the record keeps it."""
+    from brainscore import BrainScoreModel
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Text
+    from brainscore_core.streaming_helpers import stimulus_session
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
+    def reply(prompt):
+        return StreamEvent('behavior:text', '42', None,
+                           {'reasoning': '6 times 7 is 42.', 'token_usage': {'output_tokens': 3}})
 
-def test_streaming_direct_call_keeps_every_fragment_and_buffer_snapshot(tmp_path):
-    closed = []
-    def provider(request):
-        raw = {'text': '', 'reasoning': {'text': 'first', 'format': 'delta'}, 'final': False}
-        try:
-            yield raw
-            raw['reasoning']['text'] = 'second'
-            yield raw
-            yield {'text': '42', 'final': True}
-        finally:
-            closed.append(True)
-    subject = build_trace_subject('direct-stream', provider=provider, parse=int,
-                                  provenance={}, streaming=True)
-    procedure = CallableProtocol('direct', lambda model, context: model.process(
-        StreamEvent('generation_request', {'prompt': '6 * 7?'}, 0)))
+    @contextmanager
+    def task_session(trial):
+        stimuli = StimulusSet({'stimulus_id': ['q'], 'text': ['6 * 7?']})
+        stimuli.identifier = 'reply-reasoning'
+        yield stimulus_session(stimuli, ['behavior:text'], TaskContext(response=Text()))
+
+    procedure = SessionProtocol('reasoning', task_session, conditions=['normal'], repetitions=[0],
+                                required_input_channels=['text'], requested_output_channels=['behavior:text'])
+    subject = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=reply)
     result = run(tmp_path, subject, procedure=procedure)
+    record, = RunRecord(result.directory / 'reasoning').outputs()
+    assert record['reasoning_available'] is True
+    assert record['reasoning'] == [{'text': '6 times 7 is 42.', 'kind': 'unspecified',
+                                    'format': 'complete'}]
+    assert record['payload'].meta['token_usage'] == {'output_tokens': 3}
+    assert list(record['payload'].payload.values) == ['42']
+
+
+def test_multi_trial_reasoning_skips_trials_without_reasoning(tmp_path):
+    """One answer event for three trials: the trials with reasoning are recorded, None is skipped."""
+    result = run(tmp_path, answering(reasoning=['x is short', None, 'zzz is short']))
     record = next(RunRecord(result.directory / 'reasoning').outputs())
-    assert record['payload'].payload['answer'] == 42
-    assert [b['text'] for b in record['reasoning']] == ['first', 'second']
-    assert len(record['payload'].payload['stream']) == 3
-    assert closed == [True]
+    assert record['reasoning_available'] is True
+    assert [block['text'] for block in record['reasoning']] == ['x is short', 'zzz is short']
+    result = run(tmp_path / 'none', answering(reasoning=[None, None]))
+    record = next(RunRecord(result.directory / 'reasoning').outputs())
+    assert record['reasoning_available'] is False and record['reasoning'] == []
 
 
-@pytest.mark.parametrize('fragments,match', [
-    ([], 'without a final'),
-    ([{'text': '', 'reasoning': 'partial', 'final': False}], 'without a final'),
-    ([{'text': '42'}], 'boolean final'),
-    ([{'text': '42', 'final': True}, {'text': 'extra', 'final': False}], 'after the final'),
-])
-def test_invalid_provider_streams_fail_without_claiming_completion(tmp_path, fragments, match):
-    closed = []
-    def provider(request):
-        try:
-            yield from fragments
-        finally:
-            closed.append(True)
-    subject = build_trace_subject('invalid-stream', provider=provider, parse=int,
-                                  provenance={}, streaming=True)
-    with pytest.raises((ValueError, TypeError), match=match):
-        run(tmp_path, subject)
-    assert closed == [True]
-    assert RunRecord(tmp_path / 'run/reasoning').manifest['status'] == 'failed'
-
-
-def test_stream_provider_closes_when_recorder_rejects_fragment(tmp_path):
-    closed = []
-    def provider(request):
-        try:
-            yield {'text': '', 'reasoning': 42, 'final': False}
-            pytest.fail('A failing recorder must close the stream immediately')
-        finally:
-            closed.append(True)
-    subject = build_trace_subject('bad-fragment', provider=provider, parse=int,
-                                  provenance={}, streaming=True)
-    with pytest.raises(TypeError, match='Reasoning'):
-        run(tmp_path, subject)
-    assert closed == [True]
+def test_multi_trial_reasoning_accepts_a_list_of_blocks_for_a_trial(tmp_path):
+    """Two trials: the first has two blocks, the second has none. All blocks stay, in order."""
+    first = [{'text': 'step one', 'kind': 'chain_of_thought'}, 'step two']
+    result = run(tmp_path, answering(reasoning=[first, None]))
+    record = next(RunRecord(result.directory / 'reasoning').outputs())
+    assert record['reasoning_available'] is True
+    assert [block['text'] for block in record['reasoning']] == ['step one', 'step two']
+    assert record['reasoning'][0]['kind'] == 'chain_of_thought'

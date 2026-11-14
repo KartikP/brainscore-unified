@@ -1,22 +1,23 @@
-"""Helpers for building ``state_change_fn`` callables.
+"""Build the ``intervention`` part of a PyTorch subject.
 
-Lives in ``unified`` (not ``core``) because the implementations depend on
-``torch``. ``brainscore_core`` itself stays dependency-light per project
-convention.
-
-The single helper today is :func:`build_pytorch_ablation_fn`, which converts
-a torch module into a state_change_fn that installs a forward-hook to zero
-out (or scale) units at a specified layer. The hook is registered when
-``process(StateChange)`` is called and removed when ``model.reset()`` is
-called or the returned cleanup callable is invoked directly.
+Lives in ``unified`` (not ``core``) because it depends on ``torch``.
+:func:`build_pytorch_ablation_fn` turns a torch module into an intervention
+part that installs a forward hook to zero, scale or drive units at a layer.
+A parameter edit (``kind='weights'``) also takes ``'replace'``; attention
+heads take ``'zero'``, ``'scale'``, ``'drive'`` or ``'replace'``.
+The hook is installed when the subject receives the intervention and removed
+when the intervention is undone by its handle, or by ``reset()``. Each change
+also has an on/off switch, so a readout can be fitted on the intact network
+(``readout_fit='intact'``) while every change stays in place.
 
 Usage::
 
-    from brainscore.perturbation import build_pytorch_ablation_fn
     from brainscore import BrainScoreModel
-    from brainscore_core.model_interface import StateChange, Selection, Perturbation
+    from brainscore.perturbation import build_pytorch_ablation_fn
+    from brainscore_core import Perturbation, Selection, StateChange
+    from brainscore_core.streaming_helpers import apply_state_change
 
-    bs_model = BrainScoreModel(
+    subject = BrainScoreModel(
         identifier='clip-with-ablation',
         model=clip_model,
         ...,
@@ -24,35 +25,62 @@ Usage::
     )
 
     # Apply: zero units 0-99 at the last text-encoder block
-    applied = bs_model.process(StateChange(
+    applied = apply_state_change(subject, StateChange(
         kind='ablation',
         target=Selection(layer='text_model.encoder.layers.11',
                          indices=list(range(100))),
         perturbation=Perturbation(kind='zero'),
     ))
 
-    # ... run process(stim) here, observe the lesioned behavior ...
+    # ... run a session here and measure the changed subject ...
 
-    bs_model.reset()  # forward hook removed; model back to baseline
+    # Undo this intervention only; subject.reset() undoes all of them.
+    apply_state_change(subject, StateChange(kind='reset', handle_id=applied.handle_id))
 """
 
 from typing import Any, Callable, Tuple
 import dataclasses
 import uuid
+import weakref
 
 import numpy as np
 
 from brainscore.model_helpers.selection import split_site
-from brainscore_core.model_interface import (
-    Perturbation,
-    PerturbationApplied,
-    Selection,
-    StateChange,
-)
+from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
+
+
+# The on/off switch of each change made here, keyed by its cleanup: switch(False)
+# makes the network intact and switch(True) makes the change again. The change
+# stays installed, so its hook keeps its place among the other hooks of the
+# network, and its handle and cleanup stay the same.
+_SWITCHES = weakref.WeakKeyDictionary()
+
+# The kinds an activation change takes, and the kinds a head change takes.
+_ACTIVATION_KINDS = ('zero', 'scale', 'drive')
+_HEAD_KINDS = ('zero', 'scale', 'drive', 'replace')
+
+
+def _hooked(module, hook, site: str) -> Callable[[], None]:
+    """Install ``hook`` on ``module`` behind a switch; return its cleanup.
+
+    ``site == 'input'`` installs a forward pre-hook, otherwise a forward hook.
+    While the switch is off, the hook returns None and leaves the value as it is.
+    """
+    on = [True]
+
+    def gated(*args):
+        return hook(*args) if on[0] else None
+    handle = (module.register_forward_pre_hook(gated) if site == 'input'
+              else module.register_forward_hook(gated))
+
+    def cleanup() -> None:
+        handle.remove()
+    _SWITCHES[cleanup] = lambda active: on.__setitem__(0, active)
+    return cleanup
 
 
 def build_pytorch_ablation_fn(model: Any) -> Callable:
-    """Build a ``state_change_fn`` that ablates units via a torch forward-hook.
+    """Build an ``intervention`` part that changes units via a torch forward hook.
 
     The returned closure understands these perturbation kinds:
 
@@ -71,11 +99,15 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
 
     - ``kind='weights'``: edit a parameter. ``target.layer`` is its path
       (``'layers.3.mlp.down_proj.weight'``); ``indices`` pick slices along
-      ``axis``, counted from the end (-1 columns, -2 rows). Undo restores a
-      saved copy.
+      ``axis``, counted from the end (-1 columns, -2 rows). The parameter's
+      value before its first edit is kept; the active edits are applied to it
+      in the order they came, so undoing one keeps the others and ``reset()``
+      gives back that value exactly.
     - ``kind='attention_heads'``: silence or scale heads of an attention module
       (``target.layer``; ``indices`` are head numbers) by editing each head's
-      slice of the input to its output projection.
+      slice of the input to its output projection. Heads take the kinds
+      ``'zero'``, ``'scale'``, ``'drive'`` and ``'replace'``; ``'replace'``
+      needs ``perturbation.replacement``.
 
     For ``kind='ablation'`` (the canonical case), the hook is installed on
     the layer named by ``state_change.target.layer``. The layer path is
@@ -94,8 +126,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
     transformer blocks.
 
     :param model: The torch ``nn.Module`` whose layers will be ablated.
-    :returns: A ``state_change_fn`` suitable for
-        ``BrainScoreModel(intervention=...)``.
+    :returns: An intervention part for ``BrainScoreModel(intervention=...)``.
     """
     import torch  # local import: keeps this module's import-time cheap
 
@@ -162,10 +193,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     return tensor * scale
                 elif kind == 'drive':
                     return tensor + _amount_like(tensor)
-                else:
-                    raise ValueError(
-                        f"Unsupported Perturbation kind for whole-layer "
-                        f"ablation: {kind!r}. Expected 'zero', 'scale', or 'drive'.")
+                raise ValueError(f"Unknown perturbation kind {kind!r}")
             # Use the same coordinates as recording; never reinterpret indices.
             # Some devices (MPS) silently ignore out-of-range indices; fail everywhere.
             if max(indices) >= view.shape[axis]:
@@ -185,9 +213,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                 vals = modified.index_select(axis, idx) + _amount_like(tensor)
                 modified.index_copy_(axis, idx, vals)
             else:
-                raise ValueError(
-                    f"Unsupported Perturbation kind for index-ablation: "
-                    f"{kind!r}. Expected 'zero', 'scale', or 'drive'.")
+                raise ValueError(f"Unknown perturbation kind {kind!r}")
             return modified.reshape(tensor.shape)
 
         return pre_hook if split_site(selection.layer)[1] == 'input' else hook
@@ -224,36 +250,78 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         else:
             raise ValueError(f"Unknown perturbation kind {perturbation.kind!r}")
 
+    # Each edited parameter: its value before its first active edit, and its
+    # active edits in the order they were applied. The parameter is always that
+    # value with the edits that are switched on applied in order, so undoing one
+    # edit keeps the others, also where their slices overlap.
+    edited = {}     # id(parameter) -> (parameter, base, [edit, ...])
+
+    def _compose(key):
+        parameter, base, edits = edited[key]
+        with torch.no_grad():
+            parameter.data.copy_(base)
+            for edit in edits:
+                if edit['on']:
+                    edit['write'](parameter)
+
     def _change_weights(state_change):
         """Edit a parameter: ``target.layer`` is its path (``'layers.3.mlp.down_proj.weight'``),
         ``indices`` pick slices along ``axis``, counted from the end (-1: columns,
-        -2: rows of a matrix). Undo restores an exact copy."""
+        -2: rows of a matrix). Undo removes this edit and keeps the others."""
         module_path, _, name = state_change.target.layer.rpartition('.')
         module = _resolve_layer(module_path) if module_path else model
         parameter = getattr(module, name, None)
         if not isinstance(parameter, torch.nn.Parameter):
             raise ValueError(f"{state_change.target.layer!r} is not a parameter of the model.")
-        saved = parameter.detach().clone()
         indices, axis = state_change.target.indices, state_change.target.axis
-        with torch.no_grad():
+        perturbation = state_change.perturbation
+
+        def write(parameter):
             if indices is None:
-                _apply(parameter.data, state_change.perturbation)
+                _apply(parameter.data, perturbation)
             else:
                 index = torch.tensor(list(indices), device=parameter.device)
-                axis = parameter.dim() - 1 if axis in (None, -1) else axis
-                part = parameter.data.index_select(axis, index)
-                _apply(part, state_change.perturbation)
-                parameter.data.index_copy_(axis, index, part)
+                dim = parameter.dim() - 1 if axis in (None, -1) else axis
+                part = parameter.data.index_select(dim, index)
+                _apply(part, perturbation)
+                parameter.data.index_copy_(dim, index, part)
+
+        key = id(parameter)
+        if key not in edited:
+            edited[key] = (parameter, parameter.detach().clone(), [])
+        edit = {'write': write, 'on': True}
+        edited[key][2].append(edit)
+        try:
+            _compose(key)
+        except BaseException:
+            edited[key][2].remove(edit)
+            _forget_or_compose(key)
+            raise
 
         def cleanup():
-            with torch.no_grad():
-                parameter.data.copy_(saved)
+            edited[key][2].remove(edit)
+            _forget_or_compose(key)
+
+        def switch(active):
+            edit['on'] = active
+            _compose(key)
+        _SWITCHES[cleanup] = switch
         return PerturbationApplied(handle_id=str(uuid.uuid4()), target=state_change.target,
                                    perturbation=state_change.perturbation), cleanup
+
+    def _forget_or_compose(key):
+        """After an edit leaves: the base again when none is left, else the rest composed."""
+        _compose(key)
+        if not edited[key][2]:
+            del edited[key]
 
     def _change_heads(state_change):
         """Silence or scale attention heads: ``target.layer`` is the attention module,
         ``indices`` the heads. Edits each head's slice of the output projection's input."""
+        if state_change.perturbation.kind not in _HEAD_KINDS:
+            raise ValueError(
+                f"Perturbation(kind={state_change.perturbation.kind!r}) cannot change attention heads: "
+                "kind='attention_heads' takes 'zero', 'scale', 'drive' or 'replace'.")
         attention = _resolve_layer(state_change.target.layer)
         head_dim = getattr(attention, 'head_dim', None)
         projection = getattr(attention, 'o_proj', None) or getattr(attention, 'out_proj', None)
@@ -269,11 +337,10 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
             for head in heads:
                 _apply(hidden[..., head * head_dim:(head + 1) * head_dim], state_change.perturbation)
             return (hidden, *args[1:])
-        handle = projection.register_forward_pre_hook(hook)
         return PerturbationApplied(handle_id=str(uuid.uuid4()), target=state_change.target,
-                                   perturbation=state_change.perturbation), handle.remove
+                                   perturbation=state_change.perturbation), _hooked(projection, hook, 'input')
 
-    def state_change_fn(
+    def intervention(
         state_change: StateChange,
     ) -> Tuple[PerturbationApplied, Callable[[], None]]:
         if state_change.target is None or state_change.perturbation is None:
@@ -287,6 +354,11 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         if state_change.kind == 'attention_heads':
             return _change_heads(state_change)
         path, site = split_site(state_change.target.layer)
+        if state_change.perturbation.kind not in _ACTIVATION_KINDS:
+            raise ValueError(
+                f"Perturbation(kind={state_change.perturbation.kind!r}) cannot change the activity of "
+                f"{state_change.target.layer!r}: an activation change takes 'zero', 'scale' or 'drive' "
+                "('replace' edits a parameter with StateChange(kind='weights')).")
         layer = _resolve_layer(path)
         perturbation = _normalized(state_change)
         # Validate indices at apply-time, not cryptically mid-forward-pass.
@@ -322,19 +394,12 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     f"'{state_change.target.layer}' with {n_units} units "
                     f"(valid 0..{n_units - 1})."
                 )
-        hook = _make_hook(state_change.target, perturbation)
-        handle = (layer.register_forward_pre_hook(hook) if site == 'input'
-                  else layer.register_forward_hook(hook))
-
+        cleanup = _hooked(layer, _make_hook(state_change.target, perturbation), site)
         applied = PerturbationApplied(
             handle_id=str(uuid.uuid4()),
             target=state_change.target,
             perturbation=state_change.perturbation,
         )
-
-        def cleanup() -> None:
-            handle.remove()
-
         return applied, cleanup
 
-    return state_change_fn
+    return intervention

@@ -1,13 +1,15 @@
 """Whole-cortex voxelwise encoding on LeBel 2023 story-listening fMRI.
 
-One subject (UTS03) heard 25 spoken stories while BOLD was recorded every 2 s
+One participant (UTS03) heard 25 spoken stories while BOLD was recorded every 2 s
 across 20484 cortical vertices. The benchmark asks how much of that signal a
 model's language representation can predict.
 
 Protocol
 --------
-Text features are read from the candidate at one sample per TR, then delayed by
-1-4 TRs and concatenated. The delays let a linear model learn its own
+The default identifier reads text features per word (each word with its running
+32-word context) and resamples them onto the TR grid with a Lanczos filter; the
+``-contextwindow`` variant reads one context window per TR. The features are then
+delayed by 1-4 TRs and concatenated. The delays let a linear model learn its own
 hemodynamic response per vertex, which is the convention in this literature and
 avoids committing to a fixed HRF shape.
 
@@ -16,19 +18,23 @@ strongly autocorrelated, so a random split over samples would place near-copies
 of a test sample in the training set and inflate the score.
 
 The reported value is the median Pearson r across vertices, held out. It is a
-raw correlation: the stimuli are heard once each, so there are no repeats from
-which to estimate a noise ceiling, and no normalisation is applied.
+raw correlation: the assembly holds one presentation of each story, so there
+are no repeats from which to estimate a noise ceiling, and no normalisation is
+applied.
 """
+
+from functools import partial
 
 import numpy as np
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.streaming_helpers import neural_response
+from brainscore.benchmarks._score import benchmark_score
 
-from .._scoring_utils import pearson_summary, run_kfold_masks
-from ...tools.banded_ridge import (
-    _mean_pearson, dual_aware_ridge_predict, solve_and_project)
+from ...metrics.encoding import (
+    NormalEquations, cross_validated_r, grid_search, group_kfold,
+    random_group_split, ridge, summarize)
 
 BIBTEX = """@article{lebel2023natural,
   title={A natural language fMRI dataset for voxelwise encoding models},
@@ -45,15 +51,15 @@ DEFAULT_DELAYS = (1, 2, 3, 4)
 DEFAULT_ALPHA_GRID = (1e4, 1e5, 1e6, 3e6, 1e7, 3e7, 1e8)
 
 
-def _record(candidate, stimulus_set, region):
-    """The candidate's ``neural:<region>`` response to ``stimulus_set``.
+def _record(subject, stimuli, region):
+    """The subject's ``neural:<region>`` response to ``stimuli``.
 
     Runs through ``participate`` only, so any subject that declares the
     region can be scored. The old path also passed ``recording_type='fMRI'``.
     No session field is needed for it: ``BrainScoreModel`` ignores the value,
     and the language legacy adapter records with ``'fMRI'`` when none is given.
     """
-    return neural_response(candidate, stimulus_set, record=region)
+    return neural_response(subject, stimuli, [f'neural:{region}'])
 
 
 def _delay_within_stories(features, story_ids, delays):
@@ -112,133 +118,36 @@ def _zscore_per_story(values, story_ids):
     return out
 
 
-def _ridge_grouped_alpha(X_train, Y_train, X_test, stories_train, alpha_grid,
-                         random_state=0):
-    """Ridge whose penalty is chosen on held-out *stories*, then refit in full.
+def _encoding_fit(alpha_grid, per_voxel_alpha=False, random_state=0):
+    """The ridge of this benchmark, as a fit for ``cross_validated_r``.
 
-    Selecting the penalty on a random subset of rows does not work here: TRs
-    within a story are so correlated that near-duplicates of a validation row
-    sit in the selection-training set, which makes weak penalties look better
-    than they generalise. Holding out whole stories removes that shortcut. The
-    effect is large — a random inner split picks a penalty roughly an order of
-    magnitude too small.
+    Features are centred on the training rows and no intercept is fitted; the
+    targets are already standardised within each story. The solve is in
+    float32, in the dual form when features outnumber rows (a 27B model gives
+    5120 features per delay against about 7000 training rows).
 
-    Whichever Gram matrix is smaller is computed once and reused across the
-    grid, since only the diagonal penalty term changes per candidate.
-    """
-    stories = np.unique(stories_train)
-    rng = np.random.default_rng(random_state)
-    n_val = max(1, len(stories) // 4)
-    val_stories = rng.choice(stories, n_val, replace=False)
-    is_val = np.isin(stories_train, val_stories)
+    The penalty is chosen on held-out *stories*, then refitted on the whole
+    training fold. Selecting it on a random subset of rows does not work here:
+    TRs within a story are so correlated that near-duplicates of a validation
+    row sit in the selection-training set, which makes weak penalties look
+    better than they generalise. The effect is large: a random inner split
+    picks a penalty roughly an order of magnitude too small.
 
-    # Centre features on the selection-training rows only; ridge here has no
-    # intercept term, so uncentred features would be penalised for their mean.
-    inner_mean = X_train[~is_val].mean(axis=0)
-    X_inner = X_train[~is_val] - inner_mean
-    X_val = X_train[is_val] - inner_mean
-    Y_inner, Y_val = Y_train[~is_val], Y_train[is_val]
-
-    Y_val_centered = Y_val - Y_val.mean(axis=0)
-    Y_val_var = (Y_val_centered ** 2).sum(axis=0)
-
-    n_inner, n_features = X_inner.shape
-    use_dual = n_features > n_inner
-    if use_dual:
-        gram = X_inner @ X_inner.T           # (n, n)
-        cross = X_val @ X_inner.T            # maps dual weights onto the split
-        target = Y_inner
-    else:
-        gram = X_inner.T @ X_inner           # (p, p)
-        target = X_inner.T @ Y_inner
-
-    if not use_dual:
-        cross = X_val
-
-    best_alpha, best_score = None, -np.inf
-    diagonal = np.diag_indices_from(gram)
-    penalised = gram.copy()
-    for alpha in alpha_grid:
-        penalised[diagonal] = gram[diagonal] + alpha
-        predicted = solve_and_project(penalised, cross, target)
-        score = _mean_pearson(Y_val_centered, Y_val_var, predicted)
-        if score > best_score:
-            best_score, best_alpha = score, alpha
-
-    full_mean = X_train.mean(axis=0)
-    return dual_aware_ridge_predict(
-        X_train - full_mean, Y_train, X_test - full_mean, best_alpha), best_alpha
-
-
-
-def _ridge_per_voxel_alpha(X_train, Y_train, X_test, stories_train, alpha_grid,
-                           random_state=0, n_inner_folds=4):
-    """Ridge with a penalty chosen independently for every target.
-
-    One shared penalty is a compromise across targets whose signal-to-noise
-    ratios differ by orders of magnitude: whole-cortex data mixes reliable
-    language-network vertices with vertices carrying almost no stimulus-locked
-    signal. Fitting a penalty per target is what reference encoding pipelines do
+    By default one penalty is shared by all targets, chosen on one split that
+    holds out a quarter of the training stories. With ``per_voxel_alpha`` each
+    target gets its own penalty, chosen on validation scores averaged over four
+    inner folds of stories. No stored result shows that this beats one shared
+    penalty on this benchmark; the earlier notes disagree on the size of the loss
+    and on whether the nested choice recovers it, so treat it as unvalidated
     (LITcoder's ``single_alpha=False`` is its default).
-
-    The selection must be *nested*, not a single split. Choosing each target's
-    penalty on one held-out set means fitting one noisy estimate per target, and
-    with thousands of targets that selection noise dominates: measured on this
-    benchmark, single-split per-target selection scored 35% *below* a single
-    shared penalty. Averaging the validation scores over several inner folds
-    before selecting is what makes the extra freedom pay rather than cost.
-
-    Inner folds hold out whole stories, as elsewhere here — a random row split
-    leaks across autocorrelated samples.
-
-    Returns ``(predictions, chosen_alphas)`` with one alpha per target.
     """
-    from brainscore_core.metrics import per_unit_pearson
-
-    n_targets = Y_train.shape[1]
-    val_scores = np.zeros((len(alpha_grid), n_targets), dtype=np.float64)
-    folds = 0
-    for inner_train, inner_val in run_kfold_masks(
-            stories_train, n_splits=n_inner_folds, random_state=random_state):
-        if not inner_val.any() or not inner_train.any():
-            continue
-        folds += 1
-        inner_mean = X_train[inner_train].mean(axis=0)
-        X_inner = X_train[inner_train] - inner_mean
-        X_val = X_train[inner_val] - inner_mean
-        Y_inner, Y_val = Y_train[inner_train], Y_train[inner_val]
-
-        n_inner, n_features = X_inner.shape
-        use_dual = n_features > n_inner
-        if use_dual:
-            gram = X_inner @ X_inner.T
-            cross, target = X_val @ X_inner.T, Y_inner
-        else:
-            gram = X_inner.T @ X_inner
-            cross, target = X_val, X_inner.T @ Y_inner
-
-        diagonal = np.diag_indices_from(gram)
-        penalised = gram.copy()
-        for index, alpha in enumerate(alpha_grid):
-            penalised[diagonal] = gram[diagonal] + alpha
-            predicted = solve_and_project(penalised, cross, target)
-            val_scores[index] += np.nan_to_num(
-                per_unit_pearson(Y_val, predicted), nan=0.0)
-    val_scores /= max(folds, 1)
-
-    chosen = val_scores.argmax(axis=0)
-    alphas = np.asarray(alpha_grid, dtype=float)[chosen]
-
-    # Refit on the full training fold, one solve per distinct penalty.
-    full_mean = X_train.mean(axis=0)
-    X_full, X_test_centred = X_train - full_mean, X_test - full_mean
-    predictions = np.empty((X_test.shape[0], n_targets), dtype=np.float32)
-    for index, alpha in enumerate(alpha_grid):
-        columns = np.flatnonzero(chosen == index)
-        if columns.size:
-            predictions[:, columns] = dual_aware_ridge_predict(
-                X_full, Y_train[:, columns], X_test_centred, alpha)
-    return predictions, alphas
+    solver = NormalEquations(centre='features', solve_dtype=None, shape_aware=True)
+    candidates = [(alpha,) for alpha in alpha_grid]
+    if per_voxel_alpha:
+        split = partial(group_kfold, n_splits=4, random_state=random_state)
+        return ridge(grid_search(candidates, split, per_target=True), solver)
+    split = partial(random_group_split, fraction=0.25, seed=random_state)
+    return ridge(grid_search(candidates, split), solver)
 
 
 class LeBel2023Encoding(BenchmarkBase):
@@ -247,6 +156,8 @@ class LeBel2023Encoding(BenchmarkBase):
     # Sends the story words as text; each row carries its own context, so trials
     # are independent. The requested region is set from `region` in __init__.
     required_input_channels = frozenset({'text'})
+    # What the reported value is; a variant that reports another summary names it.
+    metric = 'median_per_vertex_pearson_r'
     trial_memory = 'none'
 
     def __init__(self, identifier='LeBel2023-UTS03-encoding', region='language_system',
@@ -278,20 +189,20 @@ class LeBel2023Encoding(BenchmarkBase):
                 load_dataset('LeBel2023-UTS03'))
         return self._cached
 
-    def _model_features(self, candidate, stimulus_set, assembly):
-        """Drive the candidate and return features in the assembly's row order.
+    def _model_features(self, subject, stimuli, assembly):
+        """Drive the subject and return features in the assembly's row order.
 
         Isolated from scoring so that features obtained another way — a model
         too large for the scoring environment, or a deliberately uninformative
         null — can be scored through exactly this path.
         """
-        predictions = _record(candidate, stimulus_set, self._region)
+        predictions = _record(subject, stimuli, self._region)
         return self._align_features(predictions, assembly)
 
-    def __call__(self, candidate) -> Score:
-        stimulus_set, assembly = self._data()
+    def __call__(self, subject) -> Score:
+        stimuli, assembly = self._data()
 
-        features = self._model_features(candidate, stimulus_set, assembly)
+        features = self._model_features(subject, stimuli, assembly)
         story_ids = np.asarray(assembly['story_id'].values)
 
         X, has_full_history = _delay_within_stories(
@@ -305,33 +216,27 @@ class LeBel2023Encoding(BenchmarkBase):
         # against its own full time course.
         Y, story_ids = Y[has_full_history], story_ids[has_full_history]
 
-        held_out = np.full(Y.shape, np.nan, dtype=np.float32)
-        chosen_alphas = []
-        # Whole stories are held out; `run_kfold_masks` already does exactly
-        # this grouping for run ids, and a story is the same kind of block.
-        for train_mask, test_mask in run_kfold_masks(
-                story_ids, self._n_splits, self._random_state):
-            fitter = (_ridge_per_voxel_alpha if self._per_voxel_alpha
-                      else _ridge_grouped_alpha)
-            fold_prediction, alpha = fitter(
-                X[train_mask], Y[train_mask], X[test_mask],
-                story_ids[train_mask], self._alpha_grid,
-                random_state=self._random_state)
-            held_out[test_mask] = fold_prediction
-            chosen_alphas.append(
-                np.median(alpha).item() if np.ndim(alpha) else float(alpha))
-
-        per_vertex, median_r, mean_r = pearson_summary(Y, held_out)
+        # Whole stories are held out, in the outer folds and in the inner
+        # choice of the penalty.
+        per_vertex, chosen = cross_validated_r(
+            X, Y, group_kfold(story_ids, self._n_splits, self._random_state),
+            _encoding_fit(self._alpha_grid, self._per_voxel_alpha, self._random_state),
+            groups=story_ids)
+        # One value per fold: the penalty, or the median over targets.
+        chosen_alphas = [np.median(fold.per_target()[:, 0]).item() for fold in chosen]
+        per_vertex, median_r, mean_r = summarize(per_vertex)
 
         reported, extra_attrs = self._summarize(per_vertex, median_r, mean_r)
-        score = Score(reported)
-        score.attrs.update(extra_attrs)
-        score.attrs['raw'] = per_vertex
+        # No ceiling is estimable (single presentation per story): the score is
+        # the raw correlation and the registered ceiling stays Score(1.0).
+        score = benchmark_score(self, reported, raw=reported, metric=self.metric,
+                                normalized=False, **extra_attrs)
+        # The score of each target, in target order, for a cortical surface.
+        score.attrs['per_vertex_r'] = per_vertex
         score.attrs['mean_r'] = mean_r
         score.attrs['n_targets'] = int(Y.shape[1])
         score.attrs['target_index'] = target_index
         score.attrs['alphas'] = chosen_alphas
-        score.attrs['ceiling'] = 'none — single presentation per story, raw r reported'
         score.attrs['error'] = float(np.std(per_vertex) / np.sqrt(len(per_vertex)))
         return score
 
@@ -355,7 +260,7 @@ class LeBel2023Encoding(BenchmarkBase):
         missing = [sid for sid in wanted if sid not in position]
         if missing:
             raise ValueError(
-                f"model returned no features for {len(missing)} stimuli "
+                f"subject returned no features for {len(missing)} stimuli "
                 f"(first: {missing[0]})")
         order = np.fromiter((position[sid] for sid in wanted), dtype=int,
                             count=len(wanted))
@@ -413,11 +318,11 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
         word_stimuli, assembly, _ = self._word_data()
         return word_stimuli, assembly
 
-    def _model_features(self, candidate, stimulus_set, assembly):
+    def _model_features(self, subject, stimuli, assembly):
         """Read one feature per word, then resample onto the TR grid."""
         word_stimuli, _, _ = self._word_data()
         return self._pool_predictions(
-            _record(candidate, word_stimuli, self._region), assembly)
+            _record(subject, word_stimuli, self._region), assembly)
 
     def _pool_predictions(self, predictions, assembly):
         """Resample per-word model output onto the fMRI sampling grid.
@@ -436,7 +341,7 @@ class LeBel2023EncodingWordLevel(LeBel2023Encoding):
         wanted = np.asarray(word_stimuli['stimulus_id'].values)
         missing = [s for s in wanted if s not in position]
         if missing:
-            raise ValueError(f'model returned no features for {len(missing)} '
+            raise ValueError(f'subject returned no features for {len(missing)} '
                              f'words (first: {missing[0]})')
         order = np.fromiter((position[s] for s in wanted), dtype=int,
                             count=len(wanted))
@@ -493,6 +398,8 @@ class LeBel2023EncodingLanguageMask(LeBel2023EncodingWordLevel):
     Requires the LanA atlas, which Brain-Score cannot redistribute — see
     ``python -m brainscore.data lana-atlas``.
     """
+
+    metric = 'language_mask_mean_pearson_r'
 
     def __init__(self, identifier='LeBel2023-UTS03-encoding-languagemask',
                  top_fraction=None, **kwargs):

@@ -3,7 +3,8 @@
 GridGameEnvironment declares observations/actions for an EnvironmentSource.
 The oracle reads privileged _state; visual policies use the rendered frame.
 """
-from typing import Any, Callable, Dict, List, Optional, Tuple
+import zlib
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
 
@@ -187,13 +188,14 @@ class GridGameEnvironment:
         return row, 'truncated' if (done or self._step_num >= self.max_steps) else None
 
 
-def greedy_oracle_policy(observation: Dict[str, Any], history) -> int:
+def greedy_oracle_policy(row: Mapping[str, Any]) -> Dict[str, int]:
     """Move to reduce Manhattan distance to the goal (reads privileged state).
 
+    A policy: ``row -> {'motor': action}``; it reads ``row['observation']``.
     Optimal on wall-free boards; a strong (not always optimal) baseline with
     walls. Used as the upper-reference in the closed-loop validation.
     """
-    st = observation['_state']
+    st = row['observation']['_state']
     (ar, ac), (gr, gc) = st['agent'], st['goal']
     walls = set(map(tuple, st['walls']))
     size = st['size']
@@ -202,22 +204,36 @@ def greedy_oracle_policy(observation: Dict[str, Any], history) -> int:
         nr, nc = ar + dr, ac + dc
         if 0 <= nr < size and 0 <= nc < size and (nr, nc) not in walls:
             candidates.append((abs(nr - gr) + abs(nc - gc), a))
-    if not candidates:
-        return 0
-    return min(candidates)[1]
+    return {'motor': min(candidates)[1] if candidates else 0}
 
 
 def random_action_policy(seed: int = 0) -> Callable:
-    """Return a uniform-random discrete policy — the closed-loop null floor."""
-    rng = np.random.RandomState(seed)
+    """Return a uniform-random discrete policy (``row -> {'motor': action}``), the closed-loop null floor."""
+    return _seeded_random_policy(seed, lambda row: len(ACTIONS))
 
-    def policy(observation, history) -> int:
-        return int(rng.randint(0, len(ACTIONS)))
 
+def _seeded_random_policy(seed: int, n_actions: Callable) -> Callable:
+    """A uniform-random policy whose draws depend only on the seed and the episode.
+
+    ``reset()`` runs when an episode begins. The first view of the episode then
+    seeds a new generator from ``seed`` and a checksum of that view; the
+    generator draws every action of the episode. An episode therefore gets the
+    same actions alone, after other episodes, or after a full subject reset.
+    """
+    state = {'rng': None, 'begun': True}
+
+    def policy(row) -> Dict[str, int]:
+        if state['begun']:
+            state['begun'] = False
+            view = np.ascontiguousarray(row['observation']['frame']).tobytes()
+            state['rng'] = np.random.RandomState([seed, zlib.crc32(view)])
+        return {'motor': int(state['rng'].randint(0, n_actions(row)))}
+
+    policy.reset = lambda: state.__setitem__('begun', True)
     return policy
 
 
-def play_game(model, env: GridGameEnv, max_steps: Optional[int] = None,
+def play_game(subject, env: GridGameEnv, max_steps: Optional[int] = None,
               *, seed=None) -> Dict[str, Any]:
     """Run one grid episode through an EnvironmentSource; return the usual score.
 
@@ -225,7 +241,7 @@ def play_game(model, env: GridGameEnv, max_steps: Optional[int] = None,
     using tools or comparing conditions.
     """
     wrapper = GridGameEnvironment(env, max_steps=max_steps)
-    responses = run_environment(model, wrapper, seed=seed, require_specs=True)
+    responses = run_environment(subject, wrapper, seed=seed, require_specs=True)
     actions = [int(np.asarray(action).item()) for action in responses]
     taken = len(actions)
     return {
@@ -246,7 +262,7 @@ def evaluate_policy(make_model: Callable[[Callable], Any],
                     base_seed: int = 100) -> Dict[str, float]:
     """Play ``n_episodes`` fresh games with ``policy`` and aggregate.
 
-    ``make_model(action_fn)`` builds the ``BrainScoreModel`` wrapping the policy
+    ``make_model(policy)`` builds the ``BrainScoreModel`` wrapping the policy
     (kept as a factory so the caller controls model identity/wrappers). Returns
     success rate, mean steps-to-solve, and mean efficiency.
     """

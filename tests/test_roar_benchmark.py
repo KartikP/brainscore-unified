@@ -57,7 +57,7 @@ class TestRoarYeatman2021:
 
         raw = float(score.attrs['raw'])
         ceiled = float(score)
-        ceiling = score.attrs['ceiling']
+        ceiling = float(score.attrs['ceiling'])
 
         # Accuracy is in [0, 1]
         assert 0.0 <= raw <= 1.0
@@ -76,27 +76,26 @@ class TestRoarYeatman2021:
         assert score.attrs['dyslexia_threshold'] == 0.65
 
 
-class TestParameterizedModality:
-    """Direct construction with the `modality` parameter (toolbox path).
+class TestParameterizedChannels:
+    """Direct construction with the `channels` parameter (toolbox path).
 
-    Each variant projects the stimulus set so model-side modality detection
+    Each variant projects the stimulus set so the session sends one input format
     picks unambiguously, and the train/test partition is shared across
     variants so cross-variant scientific comparisons remain valid.
     """
 
-    def test_default_modality_is_vision(self):
+    def test_default_channel_is_the_image(self):
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
         bm = Yeatman2021LexicalDecision()
-        assert bm.modality == 'vision'
         assert bm.required_input_channels == {'vision:image', 'instruction'}
 
     def test_vision_variant_columns(self):
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm = Yeatman2021LexicalDecision(modality='vision')
+        bm = Yeatman2021LexicalDecision(channels=('vision:image',))
         assert bm.required_input_channels == {'vision:image', 'instruction'}
         assert 'image_file_name' in bm._train_stimuli.columns
         assert 'sentence' not in bm._train_stimuli.columns
@@ -107,28 +106,28 @@ class TestParameterizedModality:
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm = Yeatman2021LexicalDecision(modality='text')
+        bm = Yeatman2021LexicalDecision(channels=('text',))
         assert bm.required_input_channels == {'text', 'instruction'}
         assert 'sentence' in bm._train_stimuli.columns
         assert 'image_file_name' not in bm._train_stimuli.columns
         assert 'sentence' in bm._test_stimuli.columns
         assert 'image_file_name' not in bm._test_stimuli.columns
 
-    def test_invalid_modality_raises(self):
+    def test_invalid_channels_raise(self):
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        with pytest.raises(AssertionError, match="modality must be one of"):
-            Yeatman2021LexicalDecision(modality='audio')
+        with pytest.raises(ValueError, match="channels must be one of"):
+            Yeatman2021LexicalDecision(channels=('audio',))
 
     def test_variants_share_split(self):
-        """Train/test split is consistent across modality variants — only
+        """Train/test split is consistent across the variants — only
         the presentation differs, so cross-variant comparisons remain valid."""
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm_vision = Yeatman2021LexicalDecision(modality='vision')
-        bm_text = Yeatman2021LexicalDecision(modality='text')
+        bm_vision = Yeatman2021LexicalDecision(channels=('vision:image',))
+        bm_text = Yeatman2021LexicalDecision(channels=('text',))
         assert (sorted(bm_vision._train_stimuli['stimulus_id'].values)
                 == sorted(bm_text._train_stimuli['stimulus_id'].values))
         assert (sorted(bm_vision._test_stimuli['stimulus_id'].values)
@@ -138,8 +137,8 @@ class TestParameterizedModality:
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm_vision = Yeatman2021LexicalDecision(modality='vision')
-        bm_text = Yeatman2021LexicalDecision(modality='text')
+        bm_vision = Yeatman2021LexicalDecision(channels=('vision:image',))
+        bm_text = Yeatman2021LexicalDecision(channels=('text',))
         assert bm_vision.identifier == 'Yeatman2021-lexical_decision-image'
         assert bm_text.identifier == 'Yeatman2021-lexical_decision-text'
 
@@ -149,8 +148,8 @@ class TestParameterizedModality:
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm_vision = Yeatman2021LexicalDecision(modality='vision')
-        bm_text = Yeatman2021LexicalDecision(modality='text')
+        bm_vision = Yeatman2021LexicalDecision(channels=('vision:image',))
+        bm_text = Yeatman2021LexicalDecision(channels=('text',))
         assert np.isclose(bm_vision._human_accuracy, bm_text._human_accuracy)
 
 
@@ -174,5 +173,4 @@ class TestLegacyAlias:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', DeprecationWarning)
             bm = brainscore.load_benchmark('Yeatman2021-lexical_decision')
-        assert bm.modality == 'vision'
         assert bm.identifier == 'Yeatman2021-lexical_decision-image'

@@ -18,9 +18,9 @@ import pytest
 
 from brainscore_core import io_catalog
 from brainscore.capabilities import capability_registry
-from brainscore_core.compatibility import check_compatibility
+from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import neural_response
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -86,7 +86,7 @@ def test_capability_runs_through_participate_with_state_and_reset(capability):
 def test_capability_is_opt_in_per_model(capability):
     plain = BrainScoreModel(identifier='plain')
     assert not {capability.REQUEST, capability.RESULT} & (plain.in_channels | plain.out_channels)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(CompatibilityError, match='does not produce'):
         plain.check_session_support({capability.RESULT})
     opted = capability.build_model()
     assert capability.REQUEST in opted.in_channels and capability.RESULT in opted.out_channels
@@ -103,10 +103,6 @@ def test_capability_rejects_invalid_request_fields_before_compute(capability, te
     request = capability.WordRequest(text=text)
     with pytest.raises(ValueError, match='channel catalog'):
         Session([StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0)], [capability.RESULT])
-    subject = capability.build_model()
-    with pytest.raises(ValueError, match='shape_validator'):
-        subject.process(StreamEvent(channel=capability.REQUEST, payload=request, t_ms=0.0))
-    assert capability.IDENTIFIER not in subject._capability_state   # nothing was set up or counted
 
 
 @pytest.mark.parametrize('words,words_so_far', [(-1, 0), (2, 1), (True, 1), (1.0, 1), (1, None)])
@@ -119,11 +115,10 @@ def test_capability_model_refuses_an_invalid_result(capability):
     for valid in (capability.WordCount(words=0, words_so_far=0), capability.WordCount(words=2, words_so_far=5)):
         assert not io_catalog.validate(capability.RESULT, valid, io_catalog.OUTPUT)
     subject = capability.build_model()
-    request = StreamEvent(channel=capability.REQUEST, payload=capability.WordRequest(text='a b'), t_ms=0.0)
-    subject.process(request)
+    subject.participate(Session(_requests(capability, 'a b'), [capability.RESULT]))
     subject.capability_state(capability.IDENTIFIER)['words_so_far'] = -10   # corrupt the running total
-    with pytest.raises(ValueError, match='shape_validator'):
-        subject.process(request)
+    with pytest.raises(ValueError, match='shape_validator'):   # the session checks each answer
+        subject.participate(Session(_requests(capability, 'a b'), [capability.RESULT]))
 
 
 @pytest.mark.parametrize('settings', [{'min_length': True}, {'min_length': False}, {'min_length': None},
@@ -135,8 +130,6 @@ def test_capability_checks_settings_in_setup_before_compute(capability, settings
     with pytest.raises(ValueError, match='min_length'):
         subject.participate(session)
     assert session.next_input() is not None and session.emitted == []   # nothing consumed or answered
-    with pytest.raises(ValueError, match='min_length'):
-        subject.process(_requests(capability, 'one two')[0])
 
 
 @pytest.mark.parametrize('min_length', [True, 0, None, 2.0])
@@ -162,6 +155,54 @@ def test_capability_readme_example_runs():
         exec(compile(block, 'new_capability/README.md', 'exec'), namespace)
     response = namespace['model'].process({'observation': {}})
     assert response == {'motor': 0}
+
+
+# --- every code block of the user documents ----------------------------------------
+
+DOCUMENTS = Path(__file__).parents[1]
+# Blocks that need weights, data or a GPU, by (page, index of its python block).
+NEEDS_DOWNLOADS = {
+    ('docs/guides/score_a_model.md', 1): 'CLIP weights and the MajajHong2015 data',
+    ('docs/guides/existing_models.md', 0): 'alexnet weights and the MajajHong2015 data',
+    ('docs/guides/data.md', 0): 'the hosted LeBel2023 assembly',
+    ('docs/guides/behavior.md', 4): 'a Hugging Face chat model and its processor',
+    ('docs/guides/wrap_your_model.md', 6): 'CLIP and its image and text wrappers',
+}
+
+
+def _documented_pages():
+    pages = [DOCUMENTS / 'README.md', DOCUMENTS / 'EXTENDING.md']
+    for folder in ('docs', 'docs/guides', 'docs/reference'):
+        pages += sorted((DOCUMENTS / folder).glob('*.md'))
+    pages += sorted(TEMPLATES.glob('**/README.md'))
+    return [page for page in pages
+            if re.search(r'^```python', page.read_text(encoding='utf-8'), flags=re.M)]
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize('page', _documented_pages(),
+                         ids=lambda page: str(page.relative_to(DOCUMENTS)))
+def test_documented_code_blocks_run(page, tmp_path):
+    """Each page's python blocks run in order, as written, in a fresh interpreter.
+
+    The template READMEs and EXTENDING.md import the templates by folder name, so they
+    run from templates/; every other page runs in an empty folder. Blocks that need a
+    download are left out (NEEDS_DOWNLOADS, with the reason).
+    """
+    import os
+    import subprocess
+    import sys
+    relative = str(page.relative_to(DOCUMENTS))
+    blocks = re.findall(r'^```python[^\n]*\n(.*?)^```', page.read_text(encoding='utf-8'),
+                        flags=re.S | re.M)
+    code = '\n'.join(block for index, block in enumerate(blocks)
+                     if (relative, index) not in NEEDS_DOWNLOADS)
+    in_templates = relative.startswith('templates/') or relative == 'EXTENDING.md'
+    environment = dict(os.environ, RESULTCACHING_DISABLE='1', MPLBACKEND='Agg')
+    result = subprocess.run([sys.executable, '-'], input=code, capture_output=True, text=True,
+                            cwd=TEMPLATES if in_templates else tmp_path, env=environment,
+                            timeout=600)
+    assert result.returncode == 0, result.stderr[-3000:]
 
 
 # --- new_benchmark -----------------------------------------------------------------
@@ -221,8 +262,8 @@ def test_benchmark_keeps_its_identity_and_scores_a_participate_only_subject(benc
     subject = ParticipateOnlySubject()
     assert not hasattr(subject, 'process') and not hasattr(subject, 'start_recording')
     check_compatibility(subject, benchmark)
-    responses = neural_response(subject=subject, stimulus_set=benchmark._stimulus_set,
-                                record='IT', time_bins=[(70, 170)])
+    responses = neural_response(subject=subject, stimuli=benchmark._stimulus_set,
+                                outputs=['neural:IT'], time_bins=[(70, 170)])
     assert dict(responses.sizes) == {'presentation': 32, 'neuroid': 16}
     assert list(responses['stimulus_id'].values) == list(benchmark._stimulus_set['stimulus_id'])
     score = benchmark(subject)
@@ -252,7 +293,7 @@ def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
 
 def test_benchmark_template_dummy_candidate_is_scorable(benchmark):
     template_tests = _load('new_benchmark/test_benchmark.py', 'umi_template_benchmark_tests')
-    candidate = template_tests.DummyCandidate()
-    score = benchmark(candidate)
+    subject = template_tests.DummySubject()
+    score = benchmark(subject)
     assert np.isfinite(float(score))
-    assert candidate.requested == ('neural:IT',)
+    assert subject.requested == ('neural:IT',)

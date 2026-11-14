@@ -210,6 +210,17 @@ class TestVideoWrapperBasics:
             assert ends[i] == pytest.approx(starts[i + 1])
 
 
+    def test_a_column_that_cannot_be_attached_raises(self, video_stimulus_set):
+        """The metadata step fails visibly, as in the other extractors."""
+        from brainscore.model_helpers.video_wrapper import VideoWrapper
+        wrapper = VideoWrapper(model=_make_mock_video_model(n_features=8),
+                               preprocessing=_mock_preprocess, identifier='mock-vid',
+                               num_frames=4)
+        video_stimulus_set['pair'] = [(0, 1), (2, 3), (4, 5)]
+        with pytest.raises(ValueError):
+            wrapper(video_stimulus_set, layers=['main_block'])
+
+
 class TestVideoWrapperTemporalInvariance:
     def test_different_frame_orders_give_different_activations(
             self, video_stimulus_set):

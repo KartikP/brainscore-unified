@@ -64,7 +64,8 @@ def test_selected_units_conditions_and_recording_order(tmp_path):
     subject = Model()
     result = Experiment(
         subject=subject,
-        protocol=SessionProtocol('scale', factory, conditions=['baseline', 'damped', 'restored']),
+        protocol=SessionProtocol('scale', factory, conditions=['baseline', 'damped', 'restored'],
+                                 required_input_channels=['observation'], requested_output_channels=['behavior']),
         tools=[
             RecordInputsOutputs(),
             RecordActivity(['layer'], when='before', name='before'),

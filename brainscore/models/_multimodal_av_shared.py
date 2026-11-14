@@ -1,17 +1,28 @@
-"""Shared audio-tower factory for the multimodal A+V model registrations.
+"""Parts shared by the multimodal A+V model registrations.
 
 CLIP, BLIP-2, Qwen-VL all pair with the same Wav2Vec2-base audio
-backbone. This module factors out the audio-side wrapper construction
-(plus the random-init null variant) so each VLM combo's model.py only
-has to handle the visual side.
+backbone. This module holds the audio-side wrapper construction
+(plus the random-init null variant) and the image loader of the
+CLIP and BLIP-2 vision towers, so each VLM combo's model.py only
+has to name its model and layers.
 """
-from typing import Tuple
-
 import numpy as np
+from PIL import Image
 
 
 AUDIO_HF_ID = 'facebook/wav2vec2-base'
 AUDIO_LAYER = 'encoder.layers.6'
+
+
+def _load_preprocess_images(image_filepaths, processor, image_size=224):
+    images = []
+    for path in image_filepaths:
+        with Image.open(path) as img:
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            images.append(img.copy())
+    processed = processor(images=images, return_tensors='pt')
+    return processed['pixel_values'].numpy()
 
 
 def build_audio_wrapper(combo_identifier: str, random_init: bool = False):
@@ -55,6 +66,5 @@ def build_audio_wrapper(combo_identifier: str, random_init: bool = False):
         max_duration_sec=60.0,
         batch_size=4,
         audio_loader=_wav_loader,
-        audio_input_key='input_values',
     )
     return wrapper, model

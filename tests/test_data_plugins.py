@@ -141,8 +141,8 @@ def test_lahner_runtime_benchmarks_resolve_data_via_registry(monkeypatch):
     assert benchmark.stimulus_set == 'stimulus:BOLDMoments'
 
     monkeypatch.setattr(lahner_tr, 'load_dataset', fake_load_dataset)
-    timeresolved = lahner_tr.Lahner2024BOLDMoments_timeresolved(
-        apply_motion_regression=True)
+    from brainscore.data.lahner2024 import MOTION_COLUMNS
+    timeresolved = lahner_tr.Lahner2024BOLDMoments_timeresolved(confounds=MOTION_COLUMNS)
     assert timeresolved.events == 'data:Lahner2024-fMRI-timeresolved-events'
     assert timeresolved.motion == 'data:Lahner2024-fMRI-timeresolved-motion'
 
@@ -176,8 +176,8 @@ def test_algonauts_benchmark_resolves_data_via_registry(monkeypatch, tmp_path):
     monkeypatch.setattr(algonauts, 'load_dataset', fake_load_dataset)
     monkeypatch.setattr(algonauts, 'load_stimulus_set', fake_load_stimulus_set)
 
-    benchmark = algonauts.Algonauts2025Friends(
-        subject=1, assembly_root=tmp_path)
+    benchmark = algonauts.Algonauts2025(
+        participant=1, assembly_root=tmp_path)
     assert benchmark.assembly == 'data:Algonauts2025-friends-sub01'
     assert benchmark.stimulus_set == 'stimulus:Algonauts2025-friends'
     assert calls == [
@@ -234,7 +234,7 @@ def test_roar_benchmark_resolves_data_via_registry(monkeypatch):
     monkeypatch.setattr(roar, 'load_stimulus_set', fake_load_stimulus_set)
     monkeypatch.setattr(roar, 'load_dataset', fake_load_dataset)
 
-    benchmark = roar.Yeatman2021LexicalDecision(modality='vision')
+    benchmark = roar.Yeatman2021LexicalDecision(channels=('vision:image',))
 
     assert benchmark._human_accuracy == 1.0
     assert calls == [

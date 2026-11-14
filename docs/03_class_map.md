@@ -9,7 +9,8 @@ This page connects the [core concepts](02_core_concepts.md) to the classes you w
 | Score a model on a benchmark | `brainscore.score(model, benchmark)` with objects or registered names |
 | Run your own session on a subject | `subject.participate(session)` |
 | Run a study with conditions, repetitions and tools | `Experiment(...).run()` |
-| Try something quickly in a notebook on a `BrainScoreModel` | `model.process(...)` after `start_recording(...)` or `start_task(...)` |
+| Record a region of a subject on some stimuli | `neural_response(subject, stimuli, ['neural:IT'])` |
+| Try something quickly in a notebook on a `BrainScoreModel` | `model.process(...)` after `start_recording(...)` |
 
 `participate(session)` is the only method the contract requires, and the only one benchmarks and experiments call. `process(...)` is a convenience that exists on `BrainScoreModel` and the legacy adapters; it does the same computation without a session. Use it interactively, but do not write benchmarks against it.
 
@@ -23,6 +24,7 @@ classDiagram
         in_channels
         out_channels
         required_channels
+        output_inputs
         participate(session)
         reset()
     }
@@ -31,7 +33,7 @@ classDiagram
         region_layer_map
         process(event)
         start_recording(region)
-        start_task(task_context)
+        start_task(task)
     }
     class BrainScoreModel {
         extractor
@@ -51,7 +53,7 @@ classDiagram
 | Class | Choose it when | You provide |
 | --- | --- | --- |
 | `Subject` | Your system has its own loop: a remote API, a simulator agent, a hand-written rule. | `identifier`, channels, `participate` |
-| `BrainScoreModel` | You have a network and want recording, behavior, perturbation and closed-loop parts without writing a loop. | The parts below |
+| `BrainScoreModel` | You have a network and want recording, behavior, intervention and closed-loop parts without writing a loop. | The parts below |
 | `VisionModelAdapter`, `LanguageModelAdapter` | You have a classic Brain-Score model. `brainscore.load_model` applies these automatically. | Nothing |
 | `UnifiedModel` | Rarely. It is the shared base of the classes above. | |
 
@@ -63,21 +65,23 @@ Each `BrainScoreModel` part is a slot. Fill it with the class that matches your 
 
 | Your model's input | Use | Configure with |
 | --- | --- | --- |
-| Images (CNN, ViT) | `VisionWrapper(kind='frame')` | `preprocessing=` function |
-| Images in a vision-language model with flattened patches (Qwen-VL, LLaVA) | `VisionWrapper(kind='vlm')` | `processor=`, `layer_aggregation=` |
-| Video clips (V-JEPA, VideoMAE) | `VisionWrapper(kind='temporal')`, keyed `'video'` | `preprocessing=`, `post_hook_fn=` |
+| Images (CNN, ViT) | `PytorchWrapper` | `preprocessing=` function |
+| Images in a vision-language model with flattened patches (Qwen-VL, LLaVA) | `VLMVisionWrapper` | `processor=`, `layer_aggregation=` |
+| Video clips (V-JEPA, VideoMAE) | `VideoWrapper`, keyed `'video'` | `preprocessing=`, `post_hook_fn=` |
 | Video clips through a vision-language model (Qwen-VL) | `VLMVideoWrapper`, keyed `'video'` next to the image wrapper | the model's own processor |
 | Text | `TextWrapper` | `tokenizer=`, `layer_aggregation=` (`last_token`, `mean_tokens`, `per_token`) |
 | Audio | `AudioWrapper` | `processor=`, `layer_aggregation=` (`mean_time`, `time_series`) |
 | Something else | Any callable `extractor(stimuli, layers=[...])` returning a `NeuroidAssembly` | |
 
 ```python
-from brainscore.model_helpers.vision_wrapper import VisionWrapper
+from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+from brainscore.model_helpers.video_wrapper import VideoWrapper
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore.model_helpers.audio_wrapper import AudioWrapper
 ```
 
-`kind` is inferred when omitted; check `wrapper.kind`. A model with two towers, such as CLIP, gets two entries: `extractor={'vision': image_wrapper, 'text': text_wrapper}`.
+Each wrapper is named after what it wraps; pick the one for your model. A model with two towers, such as CLIP, gets two entries: `extractor={'vision': image_wrapper, 'text': text_wrapper}`.
 
 ### `region_layer_map` values
 
@@ -91,8 +95,10 @@ from brainscore.model_helpers.audio_wrapper import AudioWrapper
 
 | Part | Signature | Ready-made builders |
 | --- | --- | --- |
-| `answer` | `(stimulus_row, instruction, label_set) -> label` | `build_api_generation_fn` (hosted APIs) |
-| `policy` | `row -> {output channel: payload}` | `PolicyWrapper` |
+| `answer` | `(stimulus_row, instruction, label_set) -> label` | `build_api_generation_fn` (hosted APIs; the name is older than the part's) |
+| `reply` | `prompt -> text` (or a `StreamEvent` with extra data) | `build_api_reply` (hosted APIs), `chat_parts` (Hugging Face chat models) |
+| `likelihood` | `(prompt, candidates) -> {candidate: log probability}` | `chat_parts` |
+| `policy` | `row -> {output channel: payload}`; keeps its own history and clears it in `reset()` | `build_api_action_fn` (hosted APIs; the name is older than the part's), `DroidPolicy` (`brainscore.harnesses.droid_policy`), `LiberoChunkPolicy` (`brainscore.harnesses.libero_policy`) |
 | `intervention` | `StateChange -> (PerturbationApplied, undo_function)` | `build_pytorch_ablation_fn(net)` |
 | `behavioral_readout_layer` | a layer path | |
 
@@ -148,7 +154,7 @@ classDiagram
     }
     class TaskProtocol {
         stimuli
-        task_context
+        task
     }
     Experiment o-- SessionProtocol
     Experiment o-- CallableProtocol
@@ -169,9 +175,11 @@ classDiagram
 
 | Names | Module |
 | --- | --- |
-| `Subject`, `BrainScoreModel`, `TaskContext`, `Benchmark`, `Score`, selections, events, `check_compatibility` | `brainscore_core` |
+| `Subject`, `TaskContext`, `Benchmark`, `Score`, `Selection`, `StateChange`, `Perturbation`, `check_compatibility` | `brainscore_core` |
 | `StreamEvent`, `Session`, `FixedSource` | `brainscore_core.streaming` |
 | `run_environment`, `neural_response`, `apply_state_change` | `brainscore_core.streaming_helpers` |
-| `score`, `load_model`, `load_benchmark` | `brainscore` |
-| Wrappers | `brainscore.model_helpers.<name>_wrapper` |
+| `score`, `load_model`, `load_benchmark`, `BrainScoreModel`, `LayerSelector`, `CompositeSelector`, `IndexSelection`, `RandomSelection`, `FunctionalSelection` | `brainscore` |
+| `PytorchWrapper` | `brainscore_vision.model_helpers.activations.pytorch` |
+| The other wrappers | `brainscore.model_helpers.<name>_wrapper` |
 | `Experiment`, protocols, tools, replay | `brainscore.experiments` |
+| `RunRecord` | `brainscore.run_record` |

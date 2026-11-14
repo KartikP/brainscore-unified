@@ -19,7 +19,7 @@ from .selection import (
     RandomSelection, UnitSelection, UnitSelector, selection_coordinates,
     selection_unit_indices,
 )
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.benchmarks import Benchmark
 from brainscore_core.metrics import Metric, Score
 
@@ -268,7 +268,7 @@ def load_stimulus_set(identifier: str, *args, **kwargs):
     except PluginNotFoundError:
         pass
     raise KeyError(
-        f"StimulusSet '{identifier}' not found in unified, vision, or language registries.")
+        f"StimulusSet '{identifier}' not found in unified or vision registries.")
 
 
 def _resolve_identifier(obj, default: str) -> str:
@@ -284,17 +284,17 @@ def _resolve_identifier(obj, default: str) -> str:
 
 def score(model_identifier, benchmark_identifier,
           check_mem: bool = True) -> Score:
-    """Score a model on a benchmark.
+    """Score a subject on a benchmark.
 
     Each argument is either an identifier ``str`` — loaded from the unified
     registry (with domain fallbacks) — or an already-constructed object (a
-    ``Subject`` / benchmark). Passing objects lets you score a model you just
+    ``Subject`` / benchmark). Passing objects lets you score a subject you just
     built without registering it first::
 
-        model = BrainScoreModel('my-vlm', ...)
-        score(model, 'MajajHong2015public.IT-pls-unified')
+        subject = BrainScoreModel('my-vlm', ...)
+        score(subject, 'MajajHong2015public.IT-pls-unified')
 
-    then runs the benchmark on the model.
+    then runs the benchmark on the subject.
     """
     from brainscore_core.compatibility import (
         check_compatibility,
@@ -310,8 +310,8 @@ def score(model_identifier, benchmark_identifier,
         from brainscore_core.score_metadata import record_measures
     except ImportError as error:
         raise ImportError(
-            'brainscore needs a brainscore_core with score_metadata.record_measures '
-            '(core ad7288a or later); install the core revision in install/peer-revisions.json'
+            'brainscore needs a brainscore_core with score_metadata.record_measures; '
+            'install the core revision named in install/peer-revisions.json'
         ) from error
 
     import time as _time
@@ -323,34 +323,35 @@ def score(model_identifier, benchmark_identifier,
         check_benchmark_assets(benchmark_identifier)
     benchmark = (load_benchmark(benchmark_identifier)
                  if isinstance(benchmark_identifier, str) else benchmark_identifier)
-    model = (load_model(model_identifier)
-             if isinstance(model_identifier, str) else model_identifier)
+    subject = (load_model(model_identifier)
+               if isinstance(model_identifier, str) else model_identifier)
     model_id = (model_identifier if isinstance(model_identifier, str)
-                else _resolve_identifier(model, 'custom-model'))
+                else _resolve_identifier(subject, 'custom-model'))
     benchmark_id = (benchmark_identifier if isinstance(benchmark_identifier, str)
                     else _resolve_identifier(benchmark, 'custom-benchmark'))
     requested_channels = requested_output_channels_for_score(benchmark)
 
-    compatibility = check_compatibility(model, benchmark)
+    compatibility = check_compatibility(subject, benchmark)
     if check_mem:
-        check_memory(model, benchmark)
+        check_memory(subject, benchmark)
 
     # A legacy domain benchmark (marked by its domain loader) receives the
     # permanent facade, which runs its calls as sessions through participate.
     from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
-    candidate = subject_for_benchmark(model, benchmark,
-                                      visual_degrees=declared_visual_degrees(model))
+    received = subject_for_benchmark(subject, benchmark,
+                                     visual_degrees=declared_visual_degrees(subject))
 
     _t0 = _time.time()
     with weight_fingerprint_scope(), record_measures() as measures:
-        result = benchmark(candidate)
-    # The run must leave the subject as it found it: every perturbation a session
-    # of the benchmark applied is undone. Perturbations the caller applied stay.
+        result = benchmark(received)
+    # The run must leave the subject as it found it: every intervention a session
+    # of the benchmark applied is undone. Interventions the caller applied stay.
     if measures.unreleased:
         raise RuntimeError(
-            f"Benchmark '{benchmark_id}' left perturbation handle(s) "
+            f"Benchmark '{benchmark_id}' left intervention handle(s) "
             f"{sorted(measures.unreleased)} active on subject '{model_id}'; a benchmark "
-            "must undo every change it applies (StateChange(kind='reset', handle_id=...)).")
+            "must undo every intervention it applies: apply_state_change(subject, "
+            "StateChange(kind='reset', handle_id=...)).")
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
     # Benchmarks can supply a qualified identity for settings or data subsets.
@@ -363,9 +364,9 @@ def score(model_identifier, benchmark_identifier,
     result.attrs.setdefault('benchmark_identifier', benchmark_id)
     stamp_score_metadata(
         result,
-        model,
+        subject,
         requested_channels=requested_channels,
-        protocol=infer_score_protocol(model, benchmark, requested_channels,
+        protocol=infer_score_protocol(subject, benchmark, requested_channels,
                                       measures=measures),
         harness_id='brainscore',
         measures=measures,

@@ -1,30 +1,268 @@
-"""Recording state and region/layer resolution for BrainScoreModel."""
+"""How a BrainScoreModel records a region.
+
+Region and layer resolution, the ``Recorder`` state that ``record`` reads,
+and the live recordings taken during the pass that answers a task or acts
+in a closed loop (``open_recordings``, ``per_stimulus``, ``trial_regions``).
+"""
 
 from typing import Dict, List, Optional, Tuple, Union
 
 from brainscore_core.io_catalog import canonical_modality
-from ..selection import CompositeSelector, LayerSelector
+from ..selection import LayerSelector, UnitSelector
 
 INPUT_SITE = ':input'
 
 
-def selector_layers(selector) -> Tuple[str, ...]:
-    return (tuple(selector.layer_paths) if isinstance(selector, CompositeSelector)
-            else (selector.layer_path,))
+def region_selector(owner, region: str) -> UnitSelector:
+    """The selector that records ``region``: its region map entry, or else the
+    raw layer of that name. The selector answers which layers and units it uses."""
+    return owner._region_layer_selectors.get(region, LayerSelector(region))
 
 
-def required_layers(selector) -> Tuple[str, ...]:
-    """The layers that must contribute neuroids to ``selector``'s region.
+def region_modality(owner, region: str) -> Optional[str]:
+    """The input ``region`` reads: the modality its map entry names, or the only
+    one the extractors take. None when the region does not say and several
+    inputs could serve it."""
+    modality = owner._region_modality_map.get(region)
+    if modality is not None:
+        return canonical_modality(modality)
+    modalities = {canonical_modality(key) for key in owner._extractors}
+    if len({id(e) for e in owner._extractors.values()}) == 1:
+        return sorted(modalities)[0]        # one (fused) extractor records every region
+    return next(iter(modalities)) if len(modalities) == 1 else None
 
-    A composite layer whose selected unit subset is empty is intentionally
-    unused: it may be absent from the extractor output and is never required.
-    This one rule serves the composite check before unit selection, the channel
-    check after it, and the expansion of ``'all'``.
+
+def record_part(extractor):
+    """The extractor's ``record(layers, stimuli)``, or None for a callable without it.
+
+    Every wrapper in ``brainscore.model_helpers`` has it (the ``Extractor``
+    protocol names it); a plain function or the legacy ``PytorchWrapper`` does
+    not, and records during a task only through hooks on ``model=``.
     """
-    if isinstance(selector, CompositeSelector):
-        return tuple(layer for layer, indices in selector.layers
-                     if indices is None or len(indices))
-    return selector_layers(selector)
+    try:
+        return extractor.record
+    except AttributeError:
+        return None
+
+
+def records_while_answering(owner, region: str, stimuli=None) -> bool:
+    """Whether ``region`` can be recorded during the pass that answers or acts.
+
+    The run passes its stimulus table (None for a policy step); pre-flight
+    passes nothing and takes each input the region is answered from
+    (``output_inputs``). For each, the extractor is the one the run selects
+    (``dispatch.extractor_keys``). It records when it has
+    ``record(layers, stimuli)``, or when every layer of the region is a module
+    of the network passed as ``model=`` (forward hooks). An extractor for
+    another input does not count.
+    """
+    from .dispatch import extractor_for, extractor_keys
+    from brainscore.model_helpers._extractors import get_layer
+    modality = region_modality(owner, region)
+    if modality is None:
+        return False
+    layers = region_selector(owner, region).layer_paths
+    hooks = owner._model is not None
+    if hooks:
+        try:
+            for layer in layers:
+                get_layer(owner._model, layer)
+        except ValueError:
+            hooks = False
+    if stimuli is not None:
+        extractors = [extractor_for(owner, modality, stimuli, layers)]
+    else:
+        listed = owner.output_inputs.get(f'neural:{region}') or (None,)
+        extractors = [owner._extractors[keys[0]] if keys else None
+                      for keys in (extractor_keys(owner, modality, layers,
+                                                  None if c is None else {c})
+                                   for c in listed)]
+    return any(e is not None and (record_part(e) is not None or hooks) for e in extractors)
+
+
+def open_recordings(owner, stimuli, layers):
+    """``{regions: live recording}``, opened before any compute.
+
+    Each region is recorded by the extractor the run selects for it
+    (``dispatch.extractor_keys`` for its input and its own layers, as for a
+    passive recording), so regions on an image and a video extractor are
+    recorded by each. The regions on one extractor share one recording, keyed
+    by the tuple of their names. It is the extractor's own
+    ``record(layers, stimuli)`` when it has one (``stimuli`` is None for a
+    policy step); otherwise forward hooks on the model passed as
+    ``BrainScoreModel(model=...)``, with layer paths read from that model. A
+    region that neither can record is N/A (``CompatibilityError``): the task,
+    which chose this path, is known only here.
+    """
+    from brainscore_core.compatibility import CompatibilityError
+    from .dispatch import extractor_for
+    cannot = [region for region in layers
+              if not records_while_answering(owner, region, stimuli)]
+    if cannot:
+        raise CompatibilityError(
+            f'Subject {owner.identifier!r} cannot record {cannot} while it answers or acts: '
+            'the extractor of each region needs record(layers, stimuli), or every layer of the region '
+            'must be a module of the network passed as BrainScoreModel(model=...).')
+    groups: Dict[tuple, Tuple[object, List[str], List[str]]] = {}
+    for region, region_layers in layers.items():
+        modality = region_modality(owner, region)
+        # The key keeps the modality: a fused extractor under two modalities stays two groups.
+        extractor = extractor_for(owner, modality, stimuli, region_layers)
+        _, group_layers, regions = groups.setdefault((modality, id(extractor)), (extractor, [], []))
+        group_layers.extend(layer for layer in region_layers if layer not in group_layers)
+        regions.append(region)
+    recordings = {}
+    for extractor, group_layers, regions in groups.values():
+        record = record_part(extractor)
+        recordings[tuple(regions)] = (record(group_layers, stimuli) if record is not None else
+                                      _hook_recording(owner._model, group_layers, owner.identifier))
+    return recordings
+
+
+def per_stimulus(owner, stimuli, layers, call, prompts=None):
+    """Call ``call(row, prompt)`` once per stimulus, recording ``layers`` on each first pass.
+
+    Each trial's recording is compared with the first trial's as soon as it is
+    taken; a difference in coordinates, which only the extractor's result
+    shows, is refused after the pass that shows it, before the next stimulus.
+    """
+    from contextlib import ExitStack
+    recordings = open_recordings(owner, stimuli, layers)
+    replies, trials = [], []
+    with ExitStack() as stack:
+        live = {regions: stack.enter_context(r) for regions, r in recordings.items()}
+        for index, (_, row) in enumerate(stimuli.iterrows()):
+            replies.append(call(row, None if prompts is None else prompts[index]))
+            trials.append({regions: recording.take(row) for regions, recording in live.items()})
+            for regions, taken in trials[-1].items():
+                for layer, trial in taken.items():
+                    _same_axes(trials[0][regions].get(layer), trial)
+    return replies, trial_regions(owner, trials, stimuli, layers)
+
+
+def trial_regions(owner, trials, stimuli, layers):
+    """Per-trial recordings -> one NeuroidAssembly per region (composite regions gathered)."""
+    neural = {}
+    for region, region_layers in layers.items():
+        recorded = [next(taken for regions, taken in trial.items() if region in regions)
+                    for trial in trials]
+        needed = region_selector(owner, region).required_layers
+        # Only required layers: a layer whose unit subset is empty contributes no
+        # units (UnitSelector.required_layers). Each layer is packaged on its own,
+        # so each keeps its dtype.
+        per_layer = [_trials_to_assembly(recorded, stimuli, layer, region)
+                     for layer in region_layers if layer in needed]
+        neural[region] = gather_region(owner, region, per_layer)
+    return neural
+
+
+def gather_region(owner, region, per_layer):
+    """A region's units: one layer as is; a composite region's units gathered from its layers.
+
+    Every layer the region requires must have contributed neuroids, as in
+    the neural session path, whichever path (readout or generation) recorded.
+    """
+    import numpy as np
+    import xarray as xr
+    selector = region_selector(owner, region)
+    needed = selector.required_layers
+    present = {str(layer) for block in per_layer if block.sizes['neuroid']
+               for layer in np.asarray(block['layer'].values)}
+    missing = [layer for layer in needed if layer not in present]
+    if missing or not present:
+        raise ValueError(
+            f'Region {region!r} needs neuroids from every selected layer '
+            f'{list(needed)}; the extractor returned no neuroids for '
+            f'{missing or "any of its layers"}.')
+    if not selector.gathers_units:
+        return per_layer[0]
+    from brainscore_core.time_axis import require_one_time_axis
+    require_one_time_axis(per_layer, sources=[f'{region}:layer{i}' for i in range(len(per_layer))])
+    combined = xr.concat([Recorder.ensure_unit_indices(a) for a in per_layer], dim='neuroid')
+    selected = selector.gather_units(combined)
+    if not selected.sizes['neuroid']:
+        raise ValueError(f'Region {region!r} selects no neuroids from its layers.')
+    return selected
+
+
+def _hook_recording(model, layers, identifier):
+    """Forward hooks on ``model`` for extractors without ``record()``.
+
+    ``take()`` returns ``{layer: assembly}`` for the first pass since the
+    previous take, each layer's output flattened per presentation, as a
+    still-image extractor packages it.
+    """
+    from brainscore.model_helpers._extractors import LiveRecording, as_float32, layer_assembly
+
+    return LiveRecording(model, model, layers, as_float32, lambda activity, _read, _row: {
+        layer: layer_assembly(identifier, layer, values.reshape(1, -1)) for layer, values in activity.items()})
+
+
+def _same_axes(first, trial) -> None:
+    """Refuse a trial whose recording differs from the first trial's in sizes, in
+    coordinate names or their dimensions, or in coordinate values off the
+    presentation axis: one assembly keeps one axis, as the passive recording does."""
+    import numpy as np
+    import pandas as pd
+    if first is None or trial is None:
+        return                                              # _trials_to_assembly names the layer
+    if trial.sizes != first.sizes:
+        raise ValueError('Trials gave different numbers of steps or parts; present trials of one '
+                         'length (clips of one duration, sequences of one length) together.')
+
+    def coordinates(assembly):                              # MultiIndex levels too
+        named = {name: coord.dims for name, coord in assembly.coords.items()}
+        for dim, index in assembly.indexes.items():
+            named.update({level: (dim,) for level in index.names if isinstance(index, pd.MultiIndex)})
+        return named
+    named, other = coordinates(first), coordinates(trial)
+    for name, dims in {**other, **named}.items():
+        if other.get(name) != named.get(name) or 'presentation' not in dims and not pd.Index(
+                np.asarray(trial[name].values).ravel()).equals(pd.Index(np.asarray(first[name].values).ravel())):
+            raise ValueError(f'Trials gave different {name!r} coordinates on {dims!r}; one assembly '
+                             'keeps one axis, as the passive recording does.')
+
+
+def _trials_to_assembly(trials, stimuli, layer: str, region: str):
+    """Stack the one-presentation recordings of ``layer`` into a NeuroidAssembly for ``region``.
+
+    The neuroid and extra-axis coordinates come from the first trial, and every
+    presentation coordinate the extractor gave (a clip's path) is kept; the
+    extractor gives every trial of a session the same extra axis (a clip's clock).
+    """
+    import numpy as np
+    import pandas as pd
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+
+    trials = [trial.get(layer) for trial in trials]
+    for index, trial in enumerate(trials):
+        if trial is None or not trial.sizes['neuroid']:
+            raise ValueError(
+                f'No activity reached layer {layer!r} while answering stimulus '
+                f'{stimuli["stimulus_id"].iloc[index]!r}; that input may not use it.')
+    first = trials[0]
+    # A clip keeps its time steps and a multi-image trial its parts: one extra dimension.
+    extra = [dim for dim in first.dims if dim not in ('presentation', 'neuroid')]
+    if len(extra) > 1:
+        raise ValueError(f'A recording during a task may have one extra dimension; got {extra}.')
+    for trial in trials[1:]:
+        _same_axes(first, trial)
+    dims = ['presentation', *extra, 'neuroid']
+
+    def names(dim):         # MultiIndex levels and ordinary coordinates, the dimension's own (time_bin) too
+        index = first.indexes.get(dim)
+        listed = list(index.names) if isinstance(index, pd.MultiIndex) else []
+        return listed + [name for name, coord in first.coords.items() if coord.dims == (dim,) and name not in listed
+                         and (name != dim or not listed and dim != 'presentation')]
+    coords = {name: ('neuroid', np.asarray(first[name].values)) for name in names('neuroid')}
+    coords['region'] = ('neuroid', [region] * first.sizes['neuroid'])
+    for column in stimuli.columns:
+        coords[column] = ('presentation', list(stimuli[column].values))
+    coords.update({name: ('presentation', [trial[name].values[0] for trial in trials])
+                   for name in names('presentation') if name not in stimuli.columns})
+    coords.update({name: (dim, np.asarray(first[name].values)) for dim in extra for name in names(dim)})
+    rows = [np.asarray(trial.transpose(*dims).values)[0] for trial in trials]
+    return NeuroidAssembly(np.stack(rows), coords=coords, dims=dims)
 
 
 def declared_layers(owner, modality: Optional[str] = None):
@@ -71,10 +309,21 @@ def unknown_layer_message(owner, path: str, modality: Optional[str] = None) -> O
 def validate_region_layers(owner, selectors) -> None:
     """Fail at registration when a region maps to a layer its extractor lacks."""
     for region, selector in selectors.items():
-        for path in selector_layers(selector):
+        for path in selector.layer_paths:
             message = unknown_layer_message(owner, path, selector.modality)
             if message:
                 raise ValueError(f'region_layer_map[{region!r}]: {message}')
+        if owner._extractors and not region_extractor_keys(owner, selector):
+            raise ValueError(f'region_layer_map[{region!r}]: no one extractor has all of '
+                             f'the layers {list(selector.layer_paths)}.')
+
+
+def region_extractor_keys(owner, selector) -> List[str]:
+    """The extractor keys a region is recorded from (``dispatch.extractor_keys``
+    for its modality and layers). ``output_inputs`` lists the input channel of
+    each, so declarations, pre-flight and the run agree on the forms of a region."""
+    from .dispatch import extractor_keys
+    return extractor_keys(owner, selector.modality, selector.layer_paths)
 
 
 class Recorder:
@@ -95,23 +344,16 @@ class Recorder:
                         recording_type: Optional[str] = None) -> None:
         """Configure the layers extracted by subsequent ``process`` calls.
 
-        A string names one region, ``'all'`` expands to every mapped region,
-        and a list records several targets in one extraction. Unknown names are
-        treated as raw layer paths with a warning, whether supplied alone or in
-        a list. ``'all'`` means all mapped regions, not all network layers.
+        A string names one region, and a list records several targets in one
+        extraction. A name that is not a region is read as a layer path: when
+        the extractor lists its layers, a name that is not one of them raises
+        ``ValueError`` (with close matches); when it lists none, the name is
+        used as given, with a warning. Strings and lists follow the same rule.
         ``recording_type`` is accepted for legacy adapter compatibility and is
         otherwise ignored by ``BrainScoreModel``.
         """
         del recording_type
         owner = self.owner
-
-        if recording_target == 'all':
-            recording_target = list(owner._region_layer_map_dict.keys())
-            if not recording_target:
-                raise ValueError(
-                    "start_recording('all') requires a non-empty "
-                    "region_layer_map."
-                )
 
         targets = ([recording_target] if isinstance(recording_target, str)
                    else list(recording_target))
@@ -132,15 +374,12 @@ class Recorder:
                     f"Recording target {target!r} is not a region in region_layer_map; "
                     "treating it as a raw layer path. If you meant a region, check the spelling.",
                     UserWarning, stacklevel=2)
-        selectors = [owner._region_layer_selectors.get(target, LayerSelector(target))
-                     for target in targets]
+        selectors = [region_selector(owner, target) for target in targets]
         self.recording_regions = targets
         self.recording_layers = list(dict.fromkeys(
-            layer for selector in selectors
-            for layer in (selector.layer_paths if isinstance(selector, CompositeSelector)
-                          else (selector.layer_path,))))
+            layer for selector in selectors for layer in selector.layer_paths))
         self.recording_layer = self.recording_layers[0] if len(self.recording_layers) == 1 else None
-        self.composite_recording = any(isinstance(s, CompositeSelector) for s in selectors)
+        self.composite_recording = any(selector.gathers_units for selector in selectors)
         self.is_multi_region = len(targets) > 1
         self.time_bins = time_bins
 
@@ -170,10 +409,6 @@ class Recorder:
                 if region not in routing
                 or canonical_modality(routing[region]) == canonical_modality(modality)]
 
-    def layers_for_region(self, region):
-        return list(selector_layers(
-            self.owner._region_layer_selectors.get(region, LayerSelector(region))))
-
     def current_layers(self) -> List[str]:
         if self.recording_layers:
             return list(self.recording_layers)
@@ -188,7 +423,7 @@ class Recorder:
         if not owner._region_modality_map or not self.recording_regions:
             return list(layers)
         allowed = {layer for region in self.regions_for_modality(modality)
-                   for layer in self.layers_for_region(region)}
+                   for layer in region_selector(owner, region).layer_paths}
         return [layer for layer in layers if layer in allowed]
 
     def tag_neuroids_with_regions(self, assembly, modality=None):
@@ -203,7 +438,7 @@ class Recorder:
         )
         layer_to_regions: Dict[str, List[str]] = {}
         for region in self.regions_for_modality(modality):
-            for layer in self.layers_for_region(region):
+            for layer in region_selector(self.owner, region).layer_paths:
                 layer_to_regions.setdefault(layer, []).append(region)
 
         neuroid_layers = assembly['layer'].values
@@ -255,21 +490,20 @@ class Recorder:
         import numpy as np
         import xarray as xr
 
+        from .dispatch import extract_for_modality
         owner = self.owner
         blocks = []
         for region in self.regions_for_modality(modality):
-            selector = owner._region_layer_selectors.get(region, LayerSelector(region))
-            layer_paths = (list(selector.layer_paths)
-                           if isinstance(selector, CompositeSelector)
-                           else [selector.layer_path])
-            assembly = owner._extract_for_modality(stimuli, modality, layer_paths)
+            selector = region_selector(owner, region)
+            layer_paths = list(selector.layer_paths)
+            assembly = extract_for_modality(owner, stimuli, modality, layer_paths)
             assembly = self.ensure_layer_provenance(
                 assembly,
                 layer_paths,
                 description=f"Composite region {region!r} output",
             )
             labels = set(np.asarray(assembly['layer'].values).astype(str))
-            needed = required_layers(selector)
+            needed = selector.required_layers
             missing = [layer for layer in needed if layer not in labels]
             if missing or labels - set(layer_paths):
                 raise ValueError(
@@ -277,7 +511,7 @@ class Recorder:
                     f"layer {list(needed)} (and none outside {layer_paths}); the "
                     f"extractor returned layers {sorted(labels)}.")
             assembly = self.ensure_unit_indices(assembly)
-            block = self.gather_composite_units(assembly, selector)
+            block = selector.gather_units(assembly)
             n = block.sizes['neuroid']
             block = block.assign_coords(
                 region=('neuroid', np.array([region] * n)))
@@ -309,21 +543,3 @@ class Recorder:
             indices.append(counts.get(layer, 0))
             counts[layer] = indices[-1] + 1
         return assembly.assign_coords(unit_index=('neuroid', np.asarray(indices)))
-
-    def gather_composite_units(self, assembly, selector):
-        """Keep the units selected from a possibly multi-layer assembly."""
-        import numpy as np
-
-        if not isinstance(selector, CompositeSelector):
-            return assembly
-        layer_coord = assembly['layer'].values
-        keep_positions: List[int] = []
-        for layer_path, indices in selector.layers:
-            layer_positions = np.where(layer_coord == layer_path)[0]
-            if indices is None:
-                keep_positions.extend(layer_positions.tolist())
-            else:
-                keep_positions.extend(layer_positions[list(indices)].tolist())
-        return assembly.isel(neuroid=keep_positions)
-
-

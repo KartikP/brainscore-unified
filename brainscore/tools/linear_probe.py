@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
 
 import numpy as np
-from ._activity_data import _activity, _canonical, _checksum
+from ._activity_data import _activity, _canonical, _checksum, _fitting_data
 
 from brainscore.experiments.runner import Tool
 from brainscore_core.events import Selection
@@ -62,13 +62,7 @@ class LinearProbe(Tool):
         from sklearn.preprocessing import StandardScaler
         import sklearn
 
-        values, units = _activity(activity, self.target)
-        labels = np.asarray(labels)
-        if activity.dims != ('presentation', 'neuroid'):
-            raise ValueError('Fit requires (presentation, neuroid); choose any pooling explicitly')
-        if (labels.ndim != 1 or len(labels) != len(values) or labels.dtype.kind not in 'US'
-                or np.any(labels == '') or len(np.unique(labels)) < 2):
-            raise ValueError('Provide one nonempty string label per example and at least two classes')
+        values, units, labels = _fitting_data(activity, labels, self.target)
         scaler = StandardScaler().fit(values)
         classifier = LogisticRegression(C=self.classifier_c, max_iter=1000)
         classifier.fit(scaler.transform(values), labels)

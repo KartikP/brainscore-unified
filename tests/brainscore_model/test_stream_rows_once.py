@@ -57,12 +57,12 @@ def text_model(calls):
                            region_layer_map={'A': LayerSelector('late', modality='text')})
 
 
-def streaming_session(kind, stimuli, record='A'):
+def streaming_session(kind, stimuli, region='A', settings=None):
     if kind == 'streaming':
-        return stimulus_session(stimuli, [f'neural:{record}'], streaming=True)
-    session = stimulus_session(stimuli, [f'neural:{record}'])
-    session.streaming = True
-    return session
+        return stimulus_session(stimuli, [f'neural:{region}'], settings=settings, streaming=True)
+    # The events of a batch table session, given as an iterator: a stream.
+    events = stimulus_session(stimuli, [f'neural:{region}']).source.next_input
+    return Session(iter(events, None), [f'neural:{region}'], stimuli=stimuli, settings=settings)
 
 
 def presented(session, channel='neural:A'):
@@ -186,8 +186,8 @@ def test_row_cut_short_is_presented_and_never_dropped():
     events = [e for e in _stimulus_events(table()) if not (e.meta['stimulus_id'] == 'a'
                                                           and e.meta['column'] == 'text')]
     calls = []
-    session = Session(events, ['neural:A'], streaming=True)
-    session.stimulus_set = table()
+    session = Session(iter(events), ['neural:A'])
+    session.stimuli = table()
     text_model(calls).participate(session)
     assert calls == [['a'], ['b']]
 
@@ -211,9 +211,9 @@ def external(meta_list, channel='text'):
 
 def run_external(events, stimuli=None):
     calls = []
-    session = Session(events, ['neural:A'], streaming=True)
+    session = Session(iter(events), ['neural:A'])
     if stimuli is not None:
-        session.stimulus_set = stimuli
+        session.stimuli = stimuli
     text_model(calls).participate(session)
     return calls
 
@@ -257,8 +257,8 @@ def test_external_marker_that_does_not_match_the_table_is_never_merged(change):
             meta['column'] = 'image_path'
     if change == 'wrong_channel':
         events = [StreamEvent('vision:image', e.payload, e.t_ms, meta=e.meta) for e in events]
-        session = Session(events, ['neural:A'], streaming=True)
-        session.stimulus_set = table()
+        session = Session(iter(events), ['neural:A'])
+        session.stimuli = table()
         assert all(_table_row_position(session, e) is None for e in events)
         return
     assert len(run_external(events, stimuli)) == 2
@@ -281,9 +281,7 @@ def test_events_of_one_row_at_different_times_are_separate():
 @pytest.mark.parametrize('kind', ['buffered', 'streaming'])
 def test_settings_installed_with_the_session_keep_one_output_per_row(kind):
     original = {'number_of_trials': 3, '_table_rows': 'user-token'}
-    session = (stimulus_session(table(), ['neural:A'], settings=original) if kind == 'buffered'
-               else stimulus_session(table(), ['neural:A'], streaming=True))
-    session.streaming = True
+    session = streaming_session(kind, table(), settings=original if kind == 'buffered' else None)
     session.settings = original
     calls = []
     text_model(calls).participate(session)
@@ -326,10 +324,9 @@ def test_nested_session_groups_its_own_rows_only():
 
 def replay(events, source_session, settings=True):
     """What brainscore.experiments.replay_sessions builds from a record."""
-    session = Session(deepcopy(events))
-    session.stimulus_set = deepcopy(source_session.stimulus_set)
-    session.streaming = True
-    session.requested_output_channels = ('neural:A',)
+    session = Session(iter(deepcopy(events)))
+    session.stimuli = deepcopy(source_session.stimuli)
+    session.outputs = ('neural:A',)
     if settings:
         session.settings = deepcopy(getattr(source_session, 'settings', None))
     return session
@@ -399,7 +396,7 @@ def test_v5_external_stream_positions_do_not_erase_distinct_presentations(positi
                           meta={'column': 'image_path', 'stimulus_id': sid, 'stimulus_position': pos,
                                 'episode_id': i, 'table_row': pos})
               for i, (sid, pos) in enumerate(zip(IDS, positions))]
-    session = Session(events, ['neural:IT'], streaming=True)
+    session = Session(iter(events), ['neural:IT'])
     model.participate(session)
     assert len(calls) == 2
     assert session.collect('neural:IT').sizes['presentation'] == 2

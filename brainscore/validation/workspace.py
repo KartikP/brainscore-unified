@@ -29,7 +29,6 @@ SUITES = {
         'tests/test_io_catalog_preflight.py',
         'tests/test_channel_registry.py',
         'tests/test_contract_drift.py',
-        'tests/test_output_event.py',
         'tests/test_native_subject.py',
         'tests/test_participate_contract.py',
         'tests/test_legacy_facade.py',
@@ -50,8 +49,6 @@ SUITES = {
         'tests/test_hf_compat.py',
         'tests/test_memory.py',
         'tests/test_metrics/test___init__.py',
-        'tests/test_multimodal.py',
-        'tests/test_nulls.py',
         'tests/test_numeric.py',
         'tests/test_plugin_management/test_benchmarks.py',
         'tests/test_plugin_management/test_parse_plugin_changes.py',
@@ -61,13 +58,13 @@ SUITES = {
         'tests/test_streaming_perception.py',
         'tests/test_streaming_windowed.py',
         'tests/test_stream_rows_once.py',
+        'tests/test_text_settings.py',
     ],
     'vision': [
         'tests/test_package_contents.py',
         'tests/test_unified_adapter.py',
         'tests/test_legacy_facade_scoring.py',
         'tests/test_preflight.py',
-        'tests/test_subject_conformance.py',
         'tests/test_hmax_runtime.py',
         'tests/test_activation_cache_key.py',
         'tests/test_activation_cache_integrity.py',
@@ -91,7 +88,6 @@ SUITES = {
     'language': [
         'tests/test_unified_adapter.py',
         'tests/test_preflight.py',
-        'tests/test_subject_conformance.py',
         'tests/test_kv_cache.py',
         'tests/test_kv_cache_slicing.py',
         'tests/test_pereira2018_registry.py',
@@ -127,12 +123,13 @@ def suite_arguments(repo, suite):
 
 def stage_tests(checkout: Path, destination: Path) -> None:
     """Copy test inputs without making repository packages importable."""
-    for name in ('tests', 'examples', 'notebooks', 'templates', 'install', '.github'):
+    for name in ('tests', 'examples', 'notebooks', 'templates', 'docs', 'install', '.github'):
         source = checkout / name
         if source.is_dir():
             shutil.copytree(source, destination / name,
                             ignore=shutil.ignore_patterns('__pycache__', '.pytest_cache', '*.pyc'))
-    for name in ('pyproject.toml', 'pytest.ini', 'setup.cfg'):
+    # The documentation pages are test inputs: their code blocks run as tests.
+    for name in ('pyproject.toml', 'pytest.ini', 'setup.cfg', 'README.md', 'EXTENDING.md'):
         source = checkout / name
         if source.is_file():
             shutil.copy2(source, destination / name)

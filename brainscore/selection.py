@@ -1,4 +1,4 @@
-"""Unit-selection helpers for recording and perturbation."""
+"""Unit-selection helpers for recording and interventions."""
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -13,14 +13,44 @@ class UnitSelector(ABC):
     Use ``LayerSelector`` for one layer or ``CompositeSelector`` for units
     across layers. A string layer path is promoted to ``LayerSelector``.
     ``Selection`` instead describes a concrete recording/intervention target.
+
+    A selector answers every question about its region itself: which layers it
+    records (``layer_paths``), which of them must contribute units
+    (``required_layers``), whether it keeps chosen units of its layers
+    (``gathers_units``, ``keeps_unit_subset``) and which units those are
+    (``gather_units``). The input it reads is ``modality``. Recording code asks
+    the selector and never checks its class. A subclass needs only
+    ``layer_path``; the defaults describe one whole layer.
     """
 
     modality: Optional[str] = None
+    # True when the region keeps chosen units of its layers. Recording then
+    # numbers each layer's units (``unit_index``) and calls ``gather_units``.
+    gathers_units: bool = False
 
     @property
     @abstractmethod
     def layer_path(self) -> str:
         ...
+
+    @property
+    def layer_paths(self) -> Tuple[str, ...]:
+        """Every layer this selector records, in order."""
+        return (self.layer_path,)
+
+    @property
+    def required_layers(self) -> Tuple[str, ...]:
+        """The layers that must contribute units to the region."""
+        return self.layer_paths
+
+    @property
+    def keeps_unit_subset(self) -> bool:
+        """True when some layer keeps only some of its units."""
+        return False
+
+    def gather_units(self, assembly):
+        """The region's units of ``assembly``, a recording of ``layer_paths``."""
+        return assembly
 
 
 @dataclass(frozen=True)
@@ -50,6 +80,7 @@ class CompositeSelector(UnitSelector):
     """
     layers: Tuple[Tuple[str, Optional[Tuple[int, ...]]], ...]
     modality: Optional[str] = None
+    gathers_units = True
 
     def __post_init__(self) -> None:
         if not self.layers:
@@ -65,6 +96,36 @@ class CompositeSelector(UnitSelector):
         """Every layer this selector draws from, in order."""
         return tuple(lp for lp, _ in self.layers)
 
+    @property
+    def required_layers(self) -> Tuple[str, ...]:
+        """The layers that must contribute units to the region.
+
+        A layer whose selected unit subset is empty is intentionally unused: it
+        may be absent from the extractor output and is never required. This one
+        rule serves the composite check before unit selection and the channel
+        check after it.
+        """
+        return tuple(layer for layer, indices in self.layers
+                     if indices is None or len(indices))
+
+    @property
+    def keeps_unit_subset(self) -> bool:
+        return any(indices is not None for _, indices in self.layers)
+
+    def gather_units(self, assembly):
+        """Keep the selected units of a possibly multi-layer assembly, layer by layer."""
+        import numpy as np
+
+        layer_coord = assembly['layer'].values
+        keep_positions: List[int] = []
+        for layer_path, indices in self.layers:
+            layer_positions = np.where(layer_coord == layer_path)[0]
+            if indices is None:
+                keep_positions.extend(layer_positions.tolist())
+            else:
+                keep_positions.extend(layer_positions[list(indices)].tolist())
+        return assembly.isel(neuroid=keep_positions)
+
 
 def _promote_to_selector(value: Union[str, UnitSelector]) -> UnitSelector:
     """Normalize a ``region_layer_map`` value to a ``UnitSelector``."""
@@ -79,28 +140,49 @@ def _promote_to_selector(value: Union[str, UnitSelector]) -> UnitSelector:
 
 
 class UnitSelection(ABC):
-    """Resolves to a concrete :class:`Selection` by inspecting a model.
+    """Resolves to a concrete :class:`Selection` for a subject.
 
-    Functional selection requires the ``start_recording`` + ``process``
-    interface; a native :class:`Subject` need not provide those methods. A
-    :class:`StateChange` ``target`` may be either an already-resolved
-    ``Selection`` or an unresolved ``UnitSelection``; ``process(StateChange)``
-    resolves the latter (snapshotting and restoring the model's recording
-    state) before handing off to ``state_change_fn``.
+    :class:`FunctionalSelection` records the subject through a session, so it
+    works for any subject that records the region. Resolve a selection before
+    the intervention: the ``target`` of a :class:`StateChange` is a resolved
+    ``Selection``::
+
+        units = FunctionalSelection('IT', localizer, contrast=(['face'], ['object'])).resolve(subject)
+        apply_state_change(subject, StateChange('ablation', target=units, perturbation=Perturbation('zero')))
+
+    The localizer is its own session, and a subject takes part in one session
+    at a time. A resolved target is also the exact set of units, so a run
+    record of the intervention replays without the localizer.
     """
 
     @abstractmethod
-    def resolve(self, model) -> 'Selection':
+    def resolve(self, subject) -> 'Selection':
         ...
+
+
+def require_resolved(state_change) -> None:
+    """Refuse a ``StateChange`` whose ``target`` is an unresolved ``UnitSelection``.
+
+    The one check for every intervention entry (``apply_state_change``, the
+    ``Intervene`` tool and a session that carries the change).
+    """
+    target = state_change.target
+    if isinstance(target, UnitSelection):
+        raise TypeError(
+            f"The intervention target is an unresolved {type(target).__name__}. Resolve "
+            f"it first, then send the change: "
+            f"change = StateChange(..., target=selection.resolve(subject)). The "
+            f"selection runs its own session, and a subject takes part in one session "
+            f"at a time.")
 
 
 @dataclass
 class IndexSelection(UnitSelection):
-    """Explicit unit indices — the trivial selection. ``resolve`` ignores the model."""
+    """Explicit unit indices — the trivial selection. ``resolve`` ignores the subject."""
     layer: str
     indices: List[int]
 
-    def resolve(self, model) -> 'Selection':
+    def resolve(self, subject) -> 'Selection':
         return Selection(layer=self.layer, indices=list(self.indices),
                          metadata={'selector': 'index'})
 
@@ -108,10 +190,11 @@ class IndexSelection(UnitSelection):
 @dataclass
 class RandomSelection(UnitSelection):
     """``n_units`` units drawn uniformly at random from ``[0, n_total)`` — the
-    causal control for any functional selection.
+    causal control for any functional selection. When ``n_units`` is larger
+    than ``n_total``, it draws all ``n_total`` units without an error.
 
     Deterministic given ``seed``; needs no forward pass (``resolve`` ignores the
-    model). Match ``layer`` / ``n_units`` / ``n_total`` to a
+    subject). Match ``layer`` / ``n_units`` / ``n_total`` to a
     :class:`FunctionalSelection` to get a same-size random lesion at the same
     layer — the standard "is the effect specific, or just damage?" control.
     ``n_total`` is the layer's unit count, available as
@@ -152,7 +235,7 @@ class RandomSelection(UnitSelection):
                    seed=seed, population=None if population is None else list(population),
                    axis=selection.axis, expected_shape=selection.expected_shape)
 
-    def resolve(self, model) -> 'Selection':
+    def resolve(self, subject) -> 'Selection':
         import numpy as np
         k = min(self.n_units, self.n_total)
         rng = np.random.RandomState(self.seed)
@@ -180,7 +263,7 @@ def _validate_unit_indices(values):
     return indices
 
 
-def selection_unit_indices(assembly, model=None, recording_target=None):
+def selection_unit_indices(assembly, subject=None, region=None):
     """Map recorded positions to original units in a single layer.
 
     Full-layer output retains the historical position convention. Subset
@@ -196,9 +279,8 @@ def selection_unit_indices(assembly, model=None, recording_target=None):
         if coord.dims != ('neuroid',):
             raise ValueError(f'{name} must have dims (neuroid,) for unit selection.')
         return _validate_unit_indices(coord.values)
-    selector = getattr(model, 'region_layer_selectors', {}).get(recording_target)
-    if isinstance(selector, CompositeSelector) and any(
-            indices is not None for _, indices in selector.layers):
+    selector = getattr(subject, 'region_layer_selectors', {}).get(region)
+    if selector is not None and selector.keeps_unit_subset:
         raise ValueError('Subset recording has no original unit_index coordinates.')
     return np.arange(assembly.sizes['neuroid'])
 
@@ -207,25 +289,30 @@ def selection_unit_indices(assembly, model=None, recording_target=None):
 class FunctionalSelection(UnitSelection):
     """Select units by a functional contrast — the fMRI-localizer analogue.
 
-    Records the model's responses to ``localizer_stimuli`` at
-    ``recording_target``, splits presentations into a positive and a negative
-    group by their ``contrast_column`` label, scores each unit by the Cohen's d
-    of positive vs negative, and keeps the top ``n_units`` (or every unit whose
+    Records the subject's responses to ``localizer_stimuli`` at ``region``
+    through a session, splits the stimuli into a positive and a negative group
+    by their ``contrast_column`` label, scores each unit by the Cohen's d of
+    positive vs negative, and keeps the top ``n_units`` (or every unit whose
     score clears ``threshold`` when ``n_units`` is ``None``). This is the
-    word-vs-non-word VWFA localizer from the induced-dyslexia experiment, lifted
-    out of the sweep scripts into a reusable, model-agnostic object.
+    word-vs-non-word VWFA localizer from the induced-dyslexia experiment, and
+    the one Cohen's d localizer in the library.
 
-    :param recording_target: region to record (a key in the model's
-        ``region_layer_map``). The resolved ``Selection.layer`` is taken from
-        the recorded neuroids' ``layer`` coord so it matches what the
-        ``state_change_fn`` will hook.
+    Units are addressed by what the subject reports: each selection's layer is
+    a value of the recording's per-neuroid ``layer`` coordinate, and a
+    recording without that coordinate is refused. Labels come from
+    ``localizer_stimuli``, matched by ``stimulus_id``, so a subject need not
+    send stimulus columns back.
+
+    :param region: the region to record (the session requests
+        ``neural:<region>``).
     :param contrast: ``(positive_labels, negative_labels)`` matched against
-        ``contrast_column`` on the assembly's presentation coords.
-    :param sign: ``'positive'`` keeps units that respond MORE to the positive
-        group (d > 0), ``'negative'`` the opposite, ``'abs'`` the most
-        discriminating either way.
+        ``contrast_column`` of ``localizer_stimuli``.
+    :param sign: ``'positive'`` ranks units by d (MORE response to the positive
+        group), ``'negative'`` by -d, ``'abs'`` by |d|. With ``threshold`` a unit
+        is kept when its ranked value is at least the threshold; with ``n_units``
+        the top ``n_units`` are kept, even when their d has the other sign.
     """
-    recording_target: str
+    region: str
     localizer_stimuli: Any
     contrast: Tuple[List[str], List[str]]
     contrast_column: str = 'label'
@@ -233,22 +320,43 @@ class FunctionalSelection(UnitSelection):
     threshold: float = 2.0
     sign: str = 'positive'
 
-    def resolve(self, model) -> 'Selection':
+    def resolve(self, subject) -> 'Selection':
+        """The selected units of a region that the subject records from one layer."""
+        selections = self.resolve_layers(subject)
+        if len(selections) > 1:
+            raise ValueError(
+                f"recording {self.region!r} spans {len(selections)} layers "
+                f"{[s.layer for s in selections]}; one Selection addresses one layer. "
+                f"Use resolve_layers() for one selection per layer.")
+        return selections[0]
+
+    def resolve_layers(self, subject) -> List['Selection']:
+        """One selection per layer the recording reports, in recording order.
+
+        Each layer's units are ranked on their own, so ``n_units`` applies per
+        layer.
+        """
         import numpy as np
+        from brainscore_core.streaming_helpers import neural_response
         if self.sign not in ('positive', 'negative', 'abs'):
             raise ValueError(
                 f"sign must be 'positive'|'negative'|'abs', got {self.sign!r}")
-        model.start_recording(self.recording_target)
-        asm = model.process(self.localizer_stimuli)
-        if 'neuroid' not in asm.dims or 'presentation' not in asm.dims:
-            raise ValueError(
-                f"FunctionalSelection needs a (presentation, neuroid) assembly "
-                f"from process(); got dims {tuple(asm.dims)}.")
+        asm = neural_response(subject, self.localizer_stimuli, [f'neural:{self.region}'])
         # collapse any extra dims (e.g. time_bin) to per-(presentation, neuroid)
         extra = [d for d in asm.dims if d not in ('presentation', 'neuroid')]
         if extra:
             asm = asm.mean(extra)
-        labels = np.asarray(asm[self.contrast_column].values)
+        asm = asm.transpose('presentation', 'neuroid')
+        try:
+            layer_coord = np.asarray(asm['layer'].values).ravel()
+        except KeyError:
+            raise ValueError(
+                f"a functional selection addresses units by the layer the recording "
+                f"reports; the {self.region!r} recording has no 'layer' coord on its "
+                f"neuroids.") from None
+        label_of = dict(zip(self.localizer_stimuli['stimulus_id'].values,
+                            self.localizer_stimuli[self.contrast_column].values))
+        labels = np.asarray([label_of[sid] for sid in asm['stimulus_id'].values])
         pos_mask = np.isin(labels, list(self.contrast[0]))
         neg_mask = np.isin(labels, list(self.contrast[1]))
         if pos_mask.sum() == 0 or neg_mask.sum() == 0:
@@ -256,47 +364,34 @@ class FunctionalSelection(UnitSelection):
                 f"contrast {self.contrast} matched {int(pos_mask.sum())} positive "
                 f"/ {int(neg_mask.sum())} negative presentations in column "
                 f"{self.contrast_column!r}; both groups must be non-empty.")
-        vals = asm.transpose('presentation', 'neuroid').values
-        pos, neg = vals[pos_mask], vals[neg_mask]
-        mp, mn = pos.mean(0), neg.mean(0)
-        sp, sn = pos.std(0, ddof=1), neg.std(0, ddof=1)
-        pooled = np.sqrt((sp ** 2 + sn ** 2) / 2.0)
-        d = np.divide(mp - mn, pooled, out=np.zeros_like(mp, dtype=float),
-                      where=pooled > 0)
-        score = {'positive': d, 'negative': -d, 'abs': np.abs(d)}[self.sign]
-        if self.n_units is not None:
-            order = np.argsort(score)[::-1][:self.n_units]
-        else:
-            order = np.where(score >= self.threshold)[0]
-        # the layer path the state_change_fn hooks — from the recorded coord
-        layer_path = getattr(model, 'region_layer_map', {}).get(
-            self.recording_target, self.recording_target)
-        try:
-            layer_values = asm['layer'].values
-        except KeyError:
-            layer_values = None
-        if layer_values is not None:
-            uniq = list(dict.fromkeys(
-                str(x) for x in np.asarray(layer_values).ravel()))
-            if len(uniq) == 1:
-                layer_path = uniq[0]
-            elif len(uniq) > 1:
-                raise ValueError(
-                    f"recording {self.recording_target!r} spans {len(uniq)} layers "
-                    f"{uniq}; functional localization across a composite region "
-                    f"isn't supported yet — record a single-layer region.")
-        if isinstance(layer_path, UnitSelector):
-            layer_path = layer_path.layer_path
-        population = selection_unit_indices(asm, model, self.recording_target)
-        axis, expected_shape = selection_coordinates(asm)
-
-        idx = sorted(int(i) for i in population[order])
-        return Selection(layer=layer_path, indices=idx, axis=axis, expected_shape=expected_shape,
-                         metadata={'selector': 'functional', 'sign': self.sign,
-                                   'contrast': self.contrast,
-                                   'n_recorded': int(vals.shape[1]),
-                                   'unit_population': population.tolist(),
-                                   'n_selected': len(idx)})
+        vals = asm.values
+        selections = []
+        for layer in dict.fromkeys(str(value) for value in layer_coord):
+            columns = np.where(layer_coord == layer)[0]
+            recorded = asm.isel(neuroid=columns)
+            units = vals[:, columns]
+            pos, neg = units[pos_mask], units[neg_mask]
+            mp, mn = pos.mean(0), neg.mean(0)
+            sp, sn = pos.std(0, ddof=1), neg.std(0, ddof=1)
+            pooled = np.sqrt((sp ** 2 + sn ** 2) / 2.0)
+            d = np.divide(mp - mn, pooled, out=np.zeros_like(mp, dtype=float),
+                          where=pooled > 0)
+            score = {'positive': d, 'negative': -d, 'abs': np.abs(d)}[self.sign]
+            if self.n_units is not None:
+                order = np.argsort(score)[::-1][:self.n_units]
+            else:
+                order = np.where(score >= self.threshold)[0]
+            population = selection_unit_indices(recorded, subject, self.region)
+            axis, expected_shape = selection_coordinates(recorded)
+            indices = sorted(int(i) for i in population[order])
+            selections.append(Selection(
+                layer=layer, indices=indices, axis=axis, expected_shape=expected_shape,
+                metadata={'selector': 'functional', 'sign': self.sign,
+                          'contrast': self.contrast,
+                          'n_recorded': int(units.shape[1]),
+                          'unit_population': population.tolist(),
+                          'n_selected': len(indices)}))
+        return selections
 
 
 def selection_coordinates(assembly: Any) -> Tuple[Optional[int], Optional[Tuple[int, ...]]]:

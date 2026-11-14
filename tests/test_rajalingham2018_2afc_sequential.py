@@ -3,7 +3,7 @@
 No model weights, no objectome download: synthetic temp images for the
 presentation helpers and a stub chooser for the model, so the presentation +
 assembly-shape contract is verified locally. The real generation run (EC2)
-runs the same SequentialTwoAFCModel through participate.
+runs the same answer part on a BrainScoreModel through participate.
 """
 import numpy as np
 import pandas as pd
@@ -13,7 +13,8 @@ from PIL import Image
 from brainscore.benchmarks.rajalingham2018_2afc.montage import render_sample, compose_choice_array
 from brainscore.benchmarks.rajalingham2018_2afc.score_2afc import run_trials
 from brainscore.benchmarks.rajalingham2018_2afc.sequential import (
-    SEQUENTIAL_INSTRUCTION, SequentialTwoAFCModel, build_sequential_random_chooser)
+    SEQUENTIAL_INSTRUCTION, build_sequential_random_chooser)
+from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
@@ -52,7 +53,7 @@ def test_sample_and_choices_are_separate_images(imgs):
     assert s.size != c.size            # distinct renders, not one montage
 
 
-# ── SequentialTwoAFCModel.process ─────────────────────────────────────
+# ── the trials through participate ───────────────────────────────────
 
 def _stim():
     return pd.DataFrame([
@@ -65,24 +66,33 @@ def _stim():
     ])
 
 
-def test_process_maps_side_to_object():
+def _subject(choose):
+    """A BrainScoreModel whose answer part is the chooser, as the driver builds it."""
+    return BrainScoreModel('stub', in_channels={'vision:image'},
+                           answer=lambda stimulus_row, instruction, label_set: choose(stimulus_row))
+
+
+def _oracle(row):
+    return 'LEFT' if row['left_obj'] == row['sample_obj'] else 'RIGHT'
+
+
+def test_the_side_maps_to_the_object_on_that_side():
     """A stub that always answers LEFT -> chosen object is each row's left_obj."""
-    model = SequentialTwoAFCModel('stub', choose_seq=lambda row: 'LEFT')
-    asm = model.process(_stim())
-    assert asm.dims == ('presentation',)
-    assert list(asm.values) == ['wrench', 'wrench']     # left_obj of both rows
-    names = set(asm.indexes['presentation'].names)
-    for c in ('stimulus_id', 'sample_obj', 'dist_obj', 'truth'):
-        assert c in names
+    choices = run_trials(_subject(lambda row: 'LEFT'), _stim(), SEQUENTIAL_INSTRUCTION)
+    assert list(choices['choice']) == ['wrench', 'wrench']
+    assert list(choices['sample_obj']) == ['wrench', 'rhino']
 
 
-def test_process_oracle_is_perfect():
+def test_the_oracle_is_perfect():
     """A chooser that picks the side whose object equals the sample is 100% correct."""
-    def oracle(row):
-        return 'LEFT' if row['left_obj'] == row['sample_obj'] else 'RIGHT'
-    asm = SequentialTwoAFCModel('oracle', oracle).process(_stim())
-    correct = (asm.values == asm['truth'].values)
-    assert correct.all()
+    choices = run_trials(_subject(_oracle), _stim(), SEQUENTIAL_INSTRUCTION)
+    assert (choices['choice'] == choices['sample_obj']).all()
+
+
+def test_the_chooser_sees_the_benchmark_row():
+    rows = []
+    run_trials(_subject(lambda row: rows.append(dict(row)) or 'LEFT'), _stim(), SEQUENTIAL_INSTRUCTION)
+    assert rows == _stim().to_dict('records')
 
 
 def test_random_chooser_deterministic_and_binary():
@@ -94,10 +104,18 @@ def test_random_chooser_deterministic_and_binary():
     assert outs == again                                # seeded -> reproducible
 
 
-# ── participate path (Contract Rule 1.1) ──────────────────────────────
+# ── any subject (Contract Rule 1.1) ───────────────────────────────────
+
+def _one_hot(stimuli, sides):
+    return BehavioralAssembly(
+        np.array([[1.0, 0.0] if side == 'LEFT' else [0.0, 1.0] for side in sides]),
+        coords={'stimulus_id': ('presentation', stimuli['stimulus_id'].values),
+                'choice': ['LEFT', 'RIGHT']},
+        dims=['presentation', 'choice'])
+
 
 class _ParticipateOnlyChooser(Subject):
-    """Declarations, participate and reset only: no process(), no private state.
+    """Declarations and participate only: no process(), no private state.
 
     It answers LEFT for every trial and returns only stimulus_id with each
     answer, so the driver must read the trial metadata from its own table.
@@ -109,11 +127,7 @@ class _ParticipateOnlyChooser(Subject):
 
     def participate(self, session):
         stimuli = session_stimuli(session, drain_session_inputs(session))
-        answers = BehavioralAssembly(
-            np.array(list(stimuli['left_obj'])),
-            coords={'stimulus_id': ('presentation', stimuli['stimulus_id'].values)},
-            dims=['presentation'])
-        session.respond(StreamEvent('behavior', answers, t_ms=None))
+        session.respond(StreamEvent('behavior', _one_hot(stimuli, ['LEFT'] * len(stimuli)), t_ms=None))
 
 
 def test_participate_only_subject_runs_the_trials():
@@ -129,11 +143,7 @@ def test_answers_are_joined_by_stimulus_id_not_by_position():
     class Reversed(_ParticipateOnlyChooser):
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session)).iloc[::-1]
-            answers = BehavioralAssembly(
-                np.array(list(stimuli['right_obj'])),
-                coords={'stimulus_id': ('presentation', stimuli['stimulus_id'].values)},
-                dims=['presentation'])
-            session.respond(StreamEvent('behavior', answers, t_ms=None))
+            session.respond(StreamEvent('behavior', _one_hot(stimuli, ['RIGHT'] * len(stimuli)), t_ms=None))
 
     choices = run_trials(Reversed(), _stim(), SEQUENTIAL_INSTRUCTION)
     assert list(choices['image_id']) == ['img1', 'img0']
@@ -141,59 +151,22 @@ def test_answers_are_joined_by_stimulus_id_not_by_position():
     assert list(choices['sample_obj']) == ['rhino', 'wrench']
 
 
-def test_sequential_model_through_participate_matches_its_process_step():
-    def oracle(row):
-        return 'LEFT' if row['left_obj'] == row['sample_obj'] else 'RIGHT'
-    model = SequentialTwoAFCModel('oracle', oracle)
-    direct = model.process(_stim())
-    choices = run_trials(model, _stim(), SEQUENTIAL_INSTRUCTION)
-    assert list(choices['choice']) == list(direct.values)
-    assert (choices['choice'] == choices['sample_obj']).all()
-
-
 def test_witness_still_observes_the_participate_run():
     from brainscore.witness import Witness
-    model = SequentialTwoAFCModel('stub', choose_seq=lambda row: 'LEFT')
+    model = _subject(lambda row: 'LEFT')
     with Witness(model, label='stub') as witness:
         run_trials(model, _stim(), SEQUENTIAL_INSTRUCTION)
     assert len(witness.events) == 1
     assert witness.events[0].n_inputs == 2
-    assert witness.events[0].mode == 'generation'
-
-
-def _old_driver_choices(model, stim):
-    """What the driver did before: process(stim), then read the assembly.
-
-    The old stub put ``image_id`` on the stimulus_id coord; it is ``image_id`` now.
-    """
-    assembly = model.process(stim)
-    return pd.DataFrame({
-        'image_id': assembly['image_id'].values, 'sample_obj': assembly['sample_obj'].values,
-        'dist_obj': assembly['dist_obj'].values, 'choice': assembly.values,
-        'left_obj': stim['left_obj'].values, 'right_obj': stim['right_obj'].values})
-
-
-@pytest.mark.parametrize('chooser', ['left', 'oracle', 'random'])
-def test_same_subject_old_process_path_and_participate_give_identical_choices(chooser):
-    def make():
-        if chooser == 'left':
-            return lambda row: 'LEFT'
-        if chooser == 'oracle':
-            return lambda row: 'LEFT' if row['left_obj'] == row['sample_obj'] else 'RIGHT'
-        return build_sequential_random_chooser(seed=3)[0]   # fresh seed for each path
-    old = _old_driver_choices(SequentialTwoAFCModel('m', make()), _stim())
-    new = run_trials(SequentialTwoAFCModel('m', make()), _stim(), SEQUENTIAL_INSTRUCTION)
-    pd.testing.assert_frame_equal(old, new)
+    assert witness.events[0].mode == 'behavior'
 
 
 def test_a_response_for_other_trials_is_refused():
     class Wrong(_ParticipateOnlyChooser):
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session))
-            answers = BehavioralAssembly(
-                np.array(list(stimuli['left_obj'])),
-                coords={'stimulus_id': ('presentation', ['trial_0', 'trial_0'])},
-                dims=['presentation'])
+            answers = _one_hot(stimuli, ['LEFT', 'LEFT']).assign_coords(
+                stimulus_id=('presentation', ['trial_0', 'trial_0']))
             session.respond(StreamEvent('behavior', answers, t_ms=None))
     with pytest.raises(ValueError, match='exactly once'):
         run_trials(Wrong(), _stim(), SEQUENTIAL_INSTRUCTION)

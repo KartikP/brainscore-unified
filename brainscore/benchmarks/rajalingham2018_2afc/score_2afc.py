@@ -1,8 +1,8 @@
 """Driver: run the faithful Rajalingham2018 2-AFC on a model and score it.
 
-Every path is a subject that takes part through ``participate``; the driver runs
-the trials with ``behavioral_response`` inside a Witness, which observes the
-subject's own ``process`` step:
+Every path is a ``BrainScoreModel`` whose ``answer`` part is the path's chooser;
+the driver runs the trials with ``behavioral_response`` inside a Witness, which
+observes the session:
 
   --path generation : a VLM reads the composed montage and answers LEFT/RIGHT
   --path similarity : nearest object token to the sample in feature space
@@ -23,11 +23,8 @@ from typing import Any, Callable, Dict
 import numpy as np
 import pandas as pd
 
-from brainscore_core.contract import Subject, TaskContext
-from brainscore_core.streaming import StreamEvent
-from brainscore_core.streaming_helpers import (
-    behavioral_response, drain_session_inputs, session_stimuli)
-from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+from brainscore_core.contract import TaskContext
+from brainscore_core.streaming_helpers import behavioral_response
 from brainscore.presentation import response_stimulus_ids
 
 from . import benchmark as B
@@ -95,73 +92,39 @@ def compose_montages(trials, n_images, out_dir, seed=0, balance_sides=False):
 
 
 # --------------------------------------------------------------------------- #
-# A 2-AFC subject that takes part through participate (Witness-recordable)
+# The subject and the trials
 # --------------------------------------------------------------------------- #
-class TrialChooser(Subject):
-    """A subject that answers one 2-AFC trial at a time with ``choose(row)``.
-
-    It takes part through ``participate`` only (Contract Rule 1.1): it reads the
-    session's trial table, answers every trial, and responds with one
-    ``behavior`` event that holds the chosen objects as a BehavioralAssembly.
-    ``process(stimuli)`` is its own typed step, kept so a Witness can observe it.
-    """
-
-    in_channels = frozenset({'vision:image'})
-    out_channels = frozenset({'behavior'})
-
-    def __init__(self, identifier, choose: Callable[[Any], str], mode: str, instruction: str):
-        self._identifier = identifier
-        self._choose = choose
-        self._witness_mode = mode      # how the Witness should label this run
-        self._task_context = TaskContext(task_type='probabilities', label_set=['LEFT', 'RIGHT'],
-                                          instruction=instruction)
-
-    @property
-    def identifier(self): return self._identifier
-
-    def participate(self, session) -> None:
-        stimuli = session_stimuli(session, drain_session_inputs(session))
-        session.respond(StreamEvent('behavior', self.process(stimuli), t_ms=None))
-
-    def process(self, stimuli) -> BehavioralAssembly:
-        chosen = []
-        for _, row in stimuli.iterrows():
-            side = self._choose(row)                       # 'LEFT' or 'RIGHT'
-            chosen.append(row['left_obj'] if side == 'LEFT' else row['right_obj'])
-        coords = {
-            'stimulus_id': ('presentation', stimuli['stimulus_id'].values),
-            'image_id': ('presentation', stimuli['image_id'].values),
-            'sample_obj': ('presentation', stimuli['sample_obj'].values),
-            'dist_obj': ('presentation', stimuli['dist_obj'].values),
-            'truth': ('presentation', stimuli['sample_obj'].values),
-        }
-        return BehavioralAssembly(np.array(chosen), coords=coords, dims=['presentation'])
+LABELS = ['LEFT', 'RIGHT']
 
 
-class TwoAFCModel(TrialChooser):
-    """Wraps a per-trial ``choose(row) -> 'LEFT'|'RIGHT'`` over a composed montage."""
-
-    COLUMN_TO_MODALITY = {'image_path': 'vision'}   # so Witness renders the montage
-
-    def __init__(self, identifier, choose: Callable[[Any], str], mode='generation', instruction=INSTRUCTION_COT):
-        super().__init__(identifier, choose, mode=mode, instruction=instruction)
+def _answering_subject(identifier, choose: Callable[[Any], str]):
+    """A subject whose ``answer`` part is a per-trial ``choose(row) -> 'LEFT'|'RIGHT'``."""
+    from brainscore import BrainScoreModel
+    return BrainScoreModel(
+        identifier, in_channels={'vision:image'},
+        answer=lambda stimulus_row, instruction, label_set: choose(stimulus_row))
 
 
 def run_trials(subject, stimuli, instruction):
     """Run the trials through ``participate`` and return one row per trial.
 
-    The subject's answers are joined to the benchmark's own trial table by
-    ``stimulus_id``; trial metadata is read from that table, not from the
-    subject's response.
+    The subject answers each trial with LEFT or RIGHT (a legacy task's one-hot
+    answer over the two labels). The answers are joined to the benchmark's own
+    trial table by ``stimulus_id``; the chosen object and the trial metadata
+    are read from that table, not from the subject's response.
     """
-    task = TaskContext(task_type='probabilities', label_set=['LEFT', 'RIGHT'],
-                       instruction=instruction, metadata={'stimulus_set': stimuli})
-    assembly = behavioral_response(subject, task)
+    task = TaskContext(task_type='probabilities', label_set=LABELS, instruction=instruction)
+    assembly = behavioral_response(subject, stimuli, task)
     answered = response_stimulus_ids(assembly, stimuli['stimulus_id'])
     table = stimuli.set_index('stimulus_id').loc[[str(s) for s in answered]]
+    labels = [str(label) for label in assembly['choice'].values]
+    sides = [labels[int(np.argmax(row))] if np.isfinite(row).all() else None
+             for row in np.asarray(assembly.transpose('presentation', 'choice').values, dtype=float)]
+    chosen = [left if side == 'LEFT' else right if side == 'RIGHT' else None
+              for side, left, right in zip(sides, table['left_obj'].values, table['right_obj'].values)]
     return pd.DataFrame({
         'image_id': table['image_id'].values, 'sample_obj': table['sample_obj'].values,
-        'dist_obj': table['dist_obj'].values, 'choice': assembly.values,
+        'dist_obj': table['dist_obj'].values, 'choice': np.array(chosen, dtype=object),
         'left_obj': table['left_obj'].values, 'right_obj': table['right_obj'].values})
 
 
@@ -320,7 +283,7 @@ def main():
         choose, stats = build_random_chooser(); instr = INSTRUCTION_DIRECT
     tag = f'{args.path}:{args.model or "null"}' + (
         f':{args.prompt_mode}:{args.n_shots}shot' if args.path == 'generation' else '')
-    model = TwoAFCModel(tag, choose, mode=args.path, instruction=instr)
+    model = _answering_subject(tag, choose)
 
     with Witness(model, label=f'{args.model or args.path} · Rajalingham 2-AFC') as w:
         choices = run_trials(model, stim, instr)

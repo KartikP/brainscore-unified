@@ -1,7 +1,7 @@
 """
 Lahner 2024 BOLDMoments fMRI naturalistic benchmark (unified interface).
 
-Subjects watched 1026 short (3s) video clips while being scanned with fMRI;
+Participants watched 1026 short (3s) video clips while being scanned with fMRI;
 responses were averaged per TR and fit with GLM to give one BOLD estimate
 per (stimulus, repetition, voxel). The assembly has shape:
 
@@ -16,72 +16,76 @@ Taken from brain-score/vision PR #1249 (YingtianDt):
     - BOLDMoments as the stimulus-set identifier
     - Citation
 
-Reframed for the unified interface:
-    - Data resolves through the unified data plugin
-    - No dependency on the vision-specific Video/Stimulus class hierarchy
-    - No dependency on TemporalInferencer (works for frame-based models)
-    - Video → frame extraction via cv2 (``cv2.VideoCapture``), wrapped in
-      ``brainscore.temporal.expand_clip_to_frames``
-    - Post-extraction aggregation via ``brainscore.temporal.temporal_bin``
-
 Scoring pipeline:
-    1. For each of 1026 videos, extract N frames at fixed timestamps
-    2. Record ``neural:IT`` through ``participate`` (``neural_response``) on
-       the expanded StimulusSet (1026 × N rows) → per-frame activations
-    3. ``temporal_bin`` with one bin spanning (0, 3000 ms) → one vector
-       per video (mean of frame features)
-    4. Average neural assembly across 10 repetitions → one BOLD vector
-       per video per voxel
-    5. Cross-validated PLS regression → Pearson per voxel → median
+    1. Record ``neural:IT`` through ``participate`` (``neural_response``): a
+       subject that declares ``vision:video`` sees whole clips; any other
+       subject sees N frames sampled from each clip, pooled per clip
+       (``temporal_bin``). With the ``audio`` channel, ``neural:A1`` is also
+       recorded for the sound track of each clip, and the two are joined
+       column-wise. A subject that takes one stream is shown that stream and
+       answers both regions from it (its ``output_inputs`` permitting).
+    2. Average the response over its time bins → one vector per video.
+    3. Average the neural assembly across the 10 repetitions → one BOLD
+       vector per video per voxel; keep the voxels of the voxel mask.
+    4. 5-fold ridge (penalty 1, ``brainscore.metrics.encoding``) → Pearson
+       per voxel → median over the voxels that count (``voxel_score``).
 
-## IMPORTANT: what this benchmark does NOT measure
+## Versions
 
-This is a **frame-aggregated** naturalistic benchmark, not a video-native one.
-For each 3-second video, the model sees N static frames (default 3: at
-0.5s / 1.5s / 2.5s), processes each as an independent image, and the
-N feature vectors are **mean-pooled** before regression. The model does
-NOT see motion, temporal ordering, optical flow, or event dynamics —
-it sees a bag of snapshots.
+- version 2 (current): the score keeps one Pearson r per scored voxel, in
+  voxel order (``per_voxel_r``, NaN where a voxel has none). A voxel counts
+  when its r is finite and, with a measured ceiling, its ceiling is finite
+  and above zero; the other voxels are left out of every median and mean and
+  counted in ``n_voxels_excluded``. The time-resolved benchmark uses the same
+  rule.
+- version 1: the NaN entries were removed first and the shorter vector was
+  then divided by the ceiling of every voxel. With one NaN voxel this failed
+  (the lengths differ) or divided one value by every ceiling, and the
+  ``per_voxel_r`` attribute lost the voxel positions. Removed: when no voxel
+  is NaN, version 2 gives the same value.
 
-Consequences:
-    - A score here measures **how well static spatial features of a video
-      predict BOLD responses**, not how well the model understands video.
-    - Image-only models (CLIP, ResNet, ViT) can produce meaningful scores
-      despite having zero video understanding.
-    - Two videos that differ only in temporal order (e.g., a clip played
-      forward vs. reversed) produce IDENTICAL model features under this
-      pipeline. If the BOLD responses differ, this benchmark cannot
-      detect that difference.
+## IMPORTANT: what the frame route does NOT measure
 
-To get a *true* video-native score, register a model with VideoWrapper
-(see ``unified/brainscore/model_helpers/video_wrapper.py``) which feeds
-the model a proper ``(T, C, H, W)`` video tensor. Video-native models
-(V-JEPA, VideoMAE, TimeSformer) internally integrate over time and can
-be meaningfully compared against this frame-aggregated baseline.
+For a stills-only subject the benchmark is **frame-aggregated**: for each
+3-second video the subject sees N static frames (default 3: at 0.5s / 1.5s /
+2.5s), each as an independent image, and the N responses are **mean-pooled**
+before regression. The subject does NOT see motion, temporal ordering or
+event dynamics; two videos that differ only in temporal order give the same
+features. A subject that declares ``vision:video`` sees the whole clip.
 
-The score attrs include ``pipeline='frame_aggregation'`` and
-``n_frames_per_video`` to make this sampling explicit on every result.
+The score attrs include ``pipeline`` (``frame_aggregation`` or
+``video_native``) and ``input_adaptation`` so the route is explicit on every
+one-stream result.
 """
 
-import os
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional, Sequence
 
 import numpy as np
-import xarray as xr
 
 from brainscore_core.benchmarks import BenchmarkBase
-from brainscore_core.metrics import Score
+from brainscore_core.metrics import Score, per_unit_pearson
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuronRecordingAssembly,
 )
-from brainscore.temporal import expand_clip_to_frames
 from brainscore import load_dataset, load_stimulus_set
-from brainscore.benchmarks._scoring_utils import (
-    kfold_ridge_predictions,
-    pearson_summary,
+from brainscore.benchmarks._score import benchmark_score
+from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge, row_kfold
+from ._util import (
+    DEFAULT_AUDIO_DIR,
+    DEFAULT_SAMPLE_TIMES_MS,
+    align,
+    channel_regions,
+    clip_table,
+    frame_table,
+    read_stimulus_ids,
+    record_clips,
+    record_visual,
+    resolve_frames_dir,
+    stream_regions,
+    taken_inputs,
+    time_mean,
 )
-from ._util import read_stimulus_ids, record_clips, record_frames_per_clip
 
 
 BIBTEX = """@article{lahner2024modeling,
@@ -96,118 +100,187 @@ BIBTEX = """@article{lahner2024modeling,
   year={2024},
 }"""
 
-# Videos are 3 seconds long
-VIDEO_DURATION_MS = 3000
-# Default: three frames per video (start/middle/end)
-DEFAULT_SAMPLE_TIMES_MS = (500, 1500, 2500)
+_VISUAL = ('vision:image', 'vision:video')
 
 
-def _extract_frame_with_cv2(video_path, time_ms: float, frames_dir: Path) -> str:
-    """Extract a single frame from a video at the given timestamp.
+def _ceiling_measured(benchmark) -> bool:
+    """Whether a Lahner2024 benchmark normalizes by a measured ceiling.
 
-    Writes the frame as a PNG next to the video under ``frames_dir``.
-    Returns the path to the extracted frame. Idempotent: if the frame
-    already exists, returns its path without re-extracting.
-
-    Kept as a module-level helper (not a class method) so it's easy to
-    swap out for ffmpeg or a different backend.
+    A benchmark built without a ceiling keeps ``Score(1.0)`` and reports the raw
+    correlation; only one given a measured ceiling normalizes.
     """
-    import cv2  # imported here to avoid making it a brainscore_core dep
+    return float(benchmark.ceiling) != 1.0
 
-    video_path = Path(video_path)
-    frames_dir.mkdir(parents=True, exist_ok=True)
-    out_path = frames_dir / f'{video_path.stem}_t{int(time_ms)}.png'
-    if out_path.exists():
-        return str(out_path)
 
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise IOError(f"cv2 could not open {video_path}")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    target_frame_idx = int(round(time_ms / 1000.0 * fps))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame_idx)
-    ok, frame = cap.read()
-    cap.release()
-    if not ok:
-        raise IOError(
-            f"cv2 failed to read frame at {time_ms}ms "
-            f"(target idx {target_frame_idx}, fps {fps}) from {video_path}")
-    # cv2 uses BGR; convert to RGB
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    # Write with PIL so path ends in .png
-    from PIL import Image
-    Image.fromarray(frame).save(out_path)
-    return str(out_path)
+def _split_half_reliability(assembly, n_splits: int = 20, random_state: int = 0) -> np.ndarray:
+    """Per-voxel split-half reliability of the GLM-beta assembly across repetitions.
+
+    For each random split of each video's repetitions into two halves, average
+    within each half to get (n_videos, n_voxels), then Pearson-correlate the
+    two halves across videos for each voxel. Average across ``n_splits``
+    random splits and apply the Spearman-Brown correction.
+
+    Returns a (n_voxels,) array. High-reliability voxels are stimulus-driven
+    (signal); low-reliability voxels are noise-dominated.
+    """
+    a = assembly.squeeze('time_bin', drop=True)
+    stim_ids = np.asarray(a['stimulus_id'].values)
+    data = a.values  # (n_voxels, n_presentations)
+    n_voxels = data.shape[0]
+    unique_stims = sorted(set(stim_ids))
+
+    # Organize: per-stim, list of (rep, data_col_idx)
+    stim_to_cols: dict = {s: [] for s in unique_stims}
+    for i in range(len(stim_ids)):
+        stim_to_cols[stim_ids[i]].append(i)
+
+    rng = np.random.default_rng(random_state)
+    reliability_sum = np.zeros(n_voxels)
+    for _ in range(n_splits):
+        half_a_cols = []
+        half_b_cols = []
+        for s in unique_stims:
+            cols = stim_to_cols[s]
+            shuffled = rng.permutation(cols)
+            mid = len(shuffled) // 2
+            half_a_cols.append(shuffled[:mid])
+            half_b_cols.append(shuffled[mid:mid * 2])
+
+        def _mean_of_cols(cols_per_stim):
+            out = np.zeros((len(unique_stims), n_voxels))
+            for si, cols in enumerate(cols_per_stim):
+                out[si] = data[:, cols].mean(axis=1)
+            return out
+        A = _mean_of_cols(half_a_cols)
+        B = _mean_of_cols(half_b_cols)
+        # Per-voxel Pearson across stimuli; a constant voxel counts as 0.
+        reliability_sum += np.nan_to_num(per_unit_pearson(A, B), nan=0.0)
+    r_half = reliability_sum / n_splits
+    # Spearman-Brown: full-set reliability from half-set reliability
+    return 2 * r_half / (1 + r_half)
+
+
+def _select_voxels(reliability_threshold: Optional[float], voxel_mask_fn: Optional[Callable],
+                   reliability: Callable[[], np.ndarray]) -> Optional[np.ndarray]:
+    """The voxels a Lahner2024 benchmark scores: every voxel (``None``), the voxels
+    whose ``reliability()`` is at least ``reliability_threshold``, or the mask
+    ``voxel_mask_fn()`` returns (for example ``build_auditory_mask``)."""
+    if voxel_mask_fn is not None:
+        return np.asarray(voxel_mask_fn(), dtype=bool)
+    if reliability_threshold is not None:
+        return reliability() >= reliability_threshold
+    return None
+
+
+def voxel_score(benchmark, per_voxel_r, ceiling_per_voxel: Optional[np.ndarray] = None) -> Score:
+    """The score of a Lahner2024 benchmark from the held-out r of each scored voxel.
+
+    ``per_voxel_r`` holds one value per voxel of ``benchmark.voxel_mask`` (every
+    voxel without a mask), in voxel order. One rule for every variant: a voxel
+    counts when its r is finite and, given ``ceiling_per_voxel``, its ceiling is
+    finite and above zero. A voxel with a constant response has no correlation;
+    a voxel with a reliability at or below zero has no ceiling. Such a voxel is
+    left out of the median and the mean and counted in ``n_voxels_excluded``,
+    as the Algonauts2025 benchmark leaves out a constant parcel. The attribute
+    ``per_voxel_r`` keeps every scored voxel (NaN where r is undefined), so
+    ``voxel_mask_indices`` places it back on the surface.
+
+    With ``ceiling_per_voxel`` the score is ``median(r_i / c_i)``, not
+    ``median(r_i) / median(c_i)``: the repository convention. Without it the
+    raw median is divided by ``benchmark.ceiling``.
+    """
+    r = np.asarray(per_voxel_r)
+    counts = np.isfinite(r)
+    if ceiling_per_voxel is not None:
+        ceiling_per_voxel = np.asarray(ceiling_per_voxel, dtype=float)
+        counts &= np.isfinite(ceiling_per_voxel) & (ceiling_per_voxel > 0)
+    kept = r[counts]
+    median_r = float(np.median(kept))
+    if ceiling_per_voxel is not None:
+        score = benchmark_score(
+            benchmark, float(np.median(np.asarray(kept, dtype=float) / ceiling_per_voxel[counts])),
+            raw=median_r, metric='median_per_voxel_pearson_r', normalized=True,
+            ceiling=Score(float(np.median(ceiling_per_voxel[counts]))),
+            ceiling_aggregation='per_voxel')
+    else:
+        score = benchmark_score(
+            benchmark, median_r / float(benchmark.ceiling), raw=median_r,
+            metric='median_per_voxel_pearson_r', normalized=_ceiling_measured(benchmark),
+            ceiling_aggregation='scalar')
+    score.attrs['mean_r'] = float(np.mean(kept))
+    score.attrs['n_voxels_scored'] = int(counts.sum())
+    score.attrs['n_voxels_excluded'] = int(r.size - counts.sum())
+    score.attrs['per_voxel_r'] = r   # exposed for bootstrap CIs and surface maps
+    mask = benchmark.voxel_mask
+    if mask is not None:
+        score.attrs['voxel_mask_n_total'] = int(mask.size)
+        score.attrs['voxel_mask_n_kept'] = int(mask.sum())
+        score.attrs['voxel_mask_indices'] = np.flatnonzero(mask)
+        if benchmark._reliability_threshold is not None:
+            score.attrs['reliability_threshold'] = float(benchmark._reliability_threshold)
+        if benchmark._voxel_mask_fn is not None:
+            score.attrs['voxel_mask_source'] = benchmark._voxel_mask_fn.__name__
+    return score
 
 
 class Lahner2024BOLDMoments(BenchmarkBase):
-    """Naturalistic fMRI benchmark: predict per-video BOLD responses.
+    """Naturalistic fMRI benchmark: predict per-video BOLD responses (GLM betas).
 
-    The fMRI data is GLM-beta-estimated per trial (one value per voxel
-    per video-repetition), so there's no time-series regression needed
-    at scoring time. We average 10 repetitions per video and correlate
-    model features against the resulting (1026, 20484) neural matrix.
-
-    The benchmark reads the subject only through ``participate`` (the core
-    helper ``neural_response``). A subject that declares ``vision:video``
-    sees whole clips; any other subject sees frames sampled from each clip.
-
-    Regression: PLS with object-level cross-validation (the default used
-    by MajajHong benchmarks). Ceiling: split-half across subjects
-    (not computed at __init__ — defaults to 1.0 unless ``ceiling`` is
-    passed in).
+    Args:
+        channels: what the benchmark sends. ``('vision:image', 'vision:video')``
+            (default) records ``neural:IT``; adding ``'audio'`` also sends the
+            sound track of each clip and records ``neural:A1``. Both regions are
+            always requested; a subject that takes one of the two streams is shown
+            that stream alone (a partial match) and answers both regions from it,
+            as its ``output_inputs`` allow. ``attrs['scored_inputs']`` names the
+            inputs shown.
+        sample_times_ms: the frames a stills-only subject sees from each clip.
+        frames_dir: where extracted frames are kept (see ``resolve_frames_dir``).
+        audio_dir: where the sound tracks are (16 kHz WAV, one per clip).
+        ceiling: a measured noise ceiling; the score is then normalized per voxel.
+        reliability_threshold: score only the voxels whose split-half
+            reliability is at least this value.
+        voxel_mask_fn: score only the voxels of this mask (for example
+            ``build_auditory_mask``). Give at most one of the two.
+        identifier_suffix: appended to ``Lahner2024-fMRI-naturalistic``.
     """
 
-    # Sends the clips on `vision:video`, or frames sampled from them on `vision:image`, by the
-    # subject's declared form, and asks for the region it records. Trials are independent clips.
-    required_input_channels = frozenset({'vision:image', 'vision:video'})
-    requested_output_channels = frozenset({'neural:IT'})
-    trial_memory = 'none'
+    trial_memory = 'none'   # each clip is an independent trial
 
     def __init__(
         self,
+        channels: Sequence[str] = _VISUAL,
         sample_times_ms: List[float] = list(DEFAULT_SAMPLE_TIMES_MS),
         frames_dir: Optional[Path] = None,
+        audio_dir: Optional[str] = None,
         ceiling: Optional[float] = None,
         reliability_threshold: Optional[float] = None,
+        voxel_mask_fn: Optional[Callable[[], np.ndarray]] = None,
         identifier_suffix: str = '',
     ):
+        if reliability_threshold is not None and voxel_mask_fn is not None:
+            raise ValueError('Give reliability_threshold or voxel_mask_fn, not both.')
+        channels, regions = channel_regions(channels)
+        self.required_input_channels = channels
+        self.requested_output_channels = frozenset(f'neural:{region}' for region in regions)
+        self._regions = regions
+        self._audio = 'audio' in channels
         self._sample_times_ms = list(sample_times_ms)
-        # Resolve from an env var rather than one machine's layout. The previous
-        # default hard-coded a single EC2 checkout path ('/home/ubuntu/...'), so the
-        # registered benchmark could not be loaded anywhere else without editing source.
-        if frames_dir:
-            self._frames_dir = Path(frames_dir)
-        else:
-            configured = os.environ.get('BRAINSCORE_LAHNER_FRAMES_DIR')
-            self._frames_dir = (Path(configured) if configured
-                                else Path.home() / 'brainscore-data' / 'lahner2024' / 'frames')
+        self._frames_dir = resolve_frames_dir(frames_dir)
+        self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
+        self._reliability_threshold = reliability_threshold
+        self._voxel_mask_fn = voxel_mask_fn
         self._assembly: Optional[NeuronRecordingAssembly] = None
         self._stimulus_set = None
-        # If set, only voxels with split-half reliability ≥ threshold will
-        # be included in the score. Used by the -visual-roi variant to
-        # focus on stimulus-driven (typically visual) cortex.
-        self._reliability_threshold = reliability_threshold
-        self._voxel_mask: Optional[np.ndarray] = None  # cached after first compute
-
+        self._reliability: Optional[np.ndarray] = None
+        self._voxel_mask: Optional[np.ndarray] = None
         super().__init__(
             identifier=f'Lahner2024-fMRI-naturalistic{identifier_suffix}',
-            version=1,
+            version=2,
             parent='naturalistic',
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),
             bibtex=BIBTEX,
         )
-    def _get_voxel_mask(self) -> Optional[np.ndarray]:
-        """Return a boolean mask over voxels if reliability filtering is on.
-
-        Computed once, cached on the instance.
-        """
-        if self._reliability_threshold is None:
-            return None
-        if self._voxel_mask is None:
-            reliability = self._split_half_reliability()
-            self._voxel_mask = reliability >= self._reliability_threshold
-        return self._voxel_mask
 
     @property
     def assembly(self) -> NeuronRecordingAssembly:
@@ -221,308 +294,137 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             self._stimulus_set = load_stimulus_set('BOLDMoments')
         return self._stimulus_set
 
-    def _expand_videos(self):
-        """Produce a StimulusSet with one row per (video, sample_time).
+    def _reliability_once(self) -> np.ndarray:
+        """``_split_half_reliability`` of this benchmark's assembly, computed once."""
+        if self._reliability is None:
+            self._reliability = _split_half_reliability(self.assembly)
+        return self._reliability
 
-        Rows carry ``clip_id`` (=stimulus_id) and ``frame_time_ms``, which
-        ``temporal_bin`` consumes later. The ``filename`` column in the
-        BOLDMoments set gives the mp4 file; we locate it inside the
-        unpacked stimuli directory.
+    @property
+    def voxel_mask(self) -> Optional[np.ndarray]:
+        """The scored voxels (``None``: all of them); computed once."""
+        if self._voxel_mask is None:
+            self._voxel_mask = _select_voxels(self._reliability_threshold, self._voxel_mask_fn,
+                                              self._reliability_once)
+        return self._voxel_mask
+
+    def _frames(self):
+        return frame_table(self.stimulus_set, self._sample_times_ms, self._frames_dir)
+
+    def _per_voxel_ceiling(self, mask):
+        """sqrt(reliability) per scored voxel; ``None`` without a measured ceiling.
+
+        Whole cortex and every variant without a measured ceiling keep
+        ``ceiling=1.0`` and take the scalar path. A ceiling of zero (reliability
+        at or below zero) leaves the voxel out (``voxel_score``).
         """
-        import pandas as pd
-        from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-
-        stim = self.stimulus_set
-        # Actual video paths live in stim.get_stimulus(...) or in stimulus_paths.
-        # The registry loader returns a StimulusSet where get_stimulus(...)
-        # gives the local unpacked video path.
-
-        if not self._frames_dir.exists():
-            try:
-                self._frames_dir.mkdir(parents=True, exist_ok=True)
-            except OSError as error:
-                raise FileNotFoundError(
-                    f"Lahner2024 frame cache directory {self._frames_dir} does not "
-                    f"exist and could not be created ({error}). Set "
-                    f"BRAINSCORE_LAHNER_FRAMES_DIR to a writable path, or pass "
-                    f"frames_dir=... when constructing the benchmark.") from error
-
-        def frame_extractor(video_path, t_ms):
-            return _extract_frame_with_cv2(
-                video_path, t_ms, frames_dir=self._frames_dir)
-
-        # Copy the stim set with the actual local video paths in a column
-        # our helper can read. We use 'video_path' as the column name.
-        rows = []
-        for _, row in stim.iterrows():
-            video_path = stim.get_stimulus(row['stimulus_id'])
-            rows.append({
-                'stimulus_id': row['stimulus_id'],
-                'video_path': str(video_path),
-            })
-        df_videos = pd.DataFrame(rows)
-        videos_set = StimulusSet(df_videos)
-        videos_set.identifier = stim.identifier
-        videos_set.stimulus_paths = dict(zip(df_videos['stimulus_id'],
-                                              df_videos['video_path']))
-
-        return expand_clip_to_frames(
-            videos_set,
-            sample_times_ms=self._sample_times_ms,
-            frame_extractor=frame_extractor,
-            clip_id_col='stimulus_id',
-            video_col='video_path',
-        )
-
-    def _videos_stimulus_set(self):
-        """Produce a StimulusSet with one row per video and a ``video_path``
-        column — the input shape that ``VideoWrapper`` expects.
-
-        Unlike ``_expand_videos()``, this does NOT pre-extract frames;
-        the VideoWrapper samples frames from the full video internally,
-        preserving temporal order.
-        """
-        import pandas as pd
-        from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-
-        stim = self.stimulus_set
-        rows = []
-        for _, row in stim.iterrows():
-            video_path = stim.get_stimulus(row['stimulus_id'])
-            rows.append({
-                'stimulus_id': row['stimulus_id'],
-                'video_path': str(video_path),
-            })
-        df = pd.DataFrame(rows)
-        videos_set = StimulusSet(df)
-        videos_set.identifier = f'{stim.identifier}-videos'
-        videos_set.stimulus_paths = dict(zip(df['stimulus_id'], df['video_path']))
-        return videos_set
-
-    def _average_repetitions(self) -> NeuronRecordingAssembly:
-        """Average the 10 repetitions per video → one BOLD vector per video."""
-        a = self.assembly.squeeze('time_bin', drop=True)  # drop the unit dim
-        # Group by stimulus_id, mean over repetitions.
-        # The assembly has dims (neuroid, presentation); we want
-        # (neuroid, stimulus_id=1026). groupby-mean is the clean way.
-        averaged = a.groupby('stimulus_id').mean('presentation')
-        return averaged
-
-    def _per_voxel_ceiling(self, mask=None):
-        """sqrt(reliability) per voxel, restricted to the scored voxels.
-
-        Returns None when this variant is not ceiling-normalized (whole cortex and
-        every non-ROI variant deliberately keep ceiling=1.0), so the caller falls back
-        to the scalar path and nothing changes for them.
-        """
-        import numpy as _np
-        if float(self.ceiling) == 1.0:
+        if not _ceiling_measured(self):
             return None
-        rel = _np.asarray(self._split_half_reliability(), dtype=float)
+        rel = np.asarray(self._reliability_once(), dtype=float)
         if mask is not None:
-            rel = rel[_np.asarray(mask, dtype=bool)]
-        ceil = _np.sqrt(_np.clip(rel, 0.0, 1.0))
-        ceil[~_np.isfinite(ceil) | (ceil <= 0)] = _np.nan   # never divide by ~0
-        return ceil
+            rel = rel[np.asarray(mask, dtype=bool)]
+        return np.sqrt(np.clip(rel, 0.0, 1.0))
 
-    def _split_half_reliability(self, n_splits: int = 20, random_state: int = 0) -> np.ndarray:
-        """Per-voxel split-half reliability across the 10 repetitions.
+    def _features(self, subject):
+        """``(features (n_videos, n_features), clip_ids, attrs)`` recorded through ``participate``.
 
-        For each random split of reps into two halves of 5, average within
-        each half to get (n_videos, n_voxels), then Pearson-correlate the
-        two halves across videos for each voxel. Average across ``n_splits``
-        random splits and apply Spearman-Brown correction.
-
-        Returns a (n_voxels,) array of reliability values. High-reliability
-        voxels are stimulus-driven (signal); low-reliability voxels are
-        noise-dominated.
+        Every region the benchmark names is requested (rule 5.1a). The streams
+        shown are the benchmark inputs the subject takes in (``taken_inputs``, the
+        rule of pre-flight), and each region is recorded from a stream the subject
+        can answer it from (``stream_regions``). ``attrs['scored_inputs']`` names
+        the inputs shown (Contract Rules 5.4, 5.5); the two-stream labels are set
+        only when both streams are shown.
         """
-        import pandas as pd
-        a = self.assembly.squeeze('time_bin', drop=True)
-        # Build a per-video table: rows per (stimulus_id, repetition, neuroid)
-        # then we can split reps into halves per video.
-        stim_ids = np.asarray(a['stimulus_id'].values)
-        reps = np.asarray(a['repetition'].values)
-        data = a.values  # (n_voxels, n_presentations)
-        n_voxels = data.shape[0]
-        unique_stims = sorted(set(stim_ids))
+        stimuli = self.stimulus_set
+        plan = stream_regions(subject, taken_inputs(subject, self.required_input_channels),
+                              self._regions)
+        scored = sorted(channel for _, channel, _ in plan)
+        if [stream for stream, _, _ in plan] == ['video']:
+            responses = record_visual(
+                subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-videos'),
+                self._frames, plan[0][2])
+            clip_ids = read_stimulus_ids(responses[0])
+            features = np.concatenate(
+                [align(time_mean(response), read_stimulus_ids(response), clip_ids)
+                 for response in responses], axis=1)
+            attrs = self._visual_attrs(subject)
+            if self._audio:
+                attrs['scored_inputs'] = scored
+            return features, clip_ids, attrs
+        # The sound, with the visual stream when the subject takes it. Differences
+        # from the one-stream route above, kept so no score moves: the clip table is
+        # named '-multimodal-video', and the time bins are averaged with xarray's
+        # NaN-skipping mean (the one-stream route and the time-resolved benchmark use
+        # numpy's mean; the two differ only when a response holds NaN).
+        # The sound tracks are checked before any stream is recorded.
+        sound = clip_table(stimuli, f'{stimuli.identifier}-multimodal-audio', audio_dir=self._audio_dir)
+        streams = []
+        for stream, _, regions in plan:
+            if stream == 'video':
+                responses = record_visual(
+                    subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-multimodal-video'),
+                    self._frames, regions)
+            else:
+                responses = record_clips(subject, sound, regions)
+            streams.append((stream, [response.mean(dim='time_bin') if 'time_bin' in response.dims
+                                     else response for response in responses]))
+        clip_ids = read_stimulus_ids(streams[0][1][0])
+        blocks = [np.concatenate([align(response.values, read_stimulus_ids(response), clip_ids)
+                                  for response in responses], axis=1)
+                  for _, responses in streams]
+        attrs = {f'n_features_{stream}': int(block.shape[1])
+                 for (stream, _), block in zip(streams, blocks)}
+        attrs['scored_inputs'] = scored
+        if len(streams) == 2:
+            attrs.update(pipeline='multimodal_av_concat', mode='concat')
+        return np.concatenate(blocks, axis=1), clip_ids, attrs
 
-        # Organize: per-stim, list of (rep, data_col_idx)
-        stim_to_cols: dict = {s: [] for s in unique_stims}
-        for i in range(len(stim_ids)):
-            stim_to_cols[stim_ids[i]].append(i)
-
-        rng = np.random.default_rng(random_state)
-        reliability_sum = np.zeros(n_voxels)
-        for _ in range(n_splits):
-            half_a_cols = []
-            half_b_cols = []
-            for s in unique_stims:
-                cols = stim_to_cols[s]
-                shuffled = rng.permutation(cols)
-                mid = len(shuffled) // 2
-                half_a_cols.append(shuffled[:mid])
-                half_b_cols.append(shuffled[mid:mid * 2])
-            # Build aligned (n_stimuli, n_voxels) for each half
-            def _mean_of_cols(cols_per_stim):
-                # Each element is array of column indices (5 per stim)
-                out = np.zeros((len(unique_stims), n_voxels))
-                for si, cols in enumerate(cols_per_stim):
-                    out[si] = data[:, cols].mean(axis=1)
-                return out
-            A = _mean_of_cols(half_a_cols)
-            B = _mean_of_cols(half_b_cols)
-            # Vectorized per-voxel Pearson across stimuli axis
-            Am = A - A.mean(axis=0, keepdims=True)
-            Bm = B - B.mean(axis=0, keepdims=True)
-            num = (Am * Bm).sum(axis=0)
-            den = np.sqrt((Am ** 2).sum(axis=0) * (Bm ** 2).sum(axis=0))
-            with np.errstate(divide='ignore', invalid='ignore'):
-                r = np.where(den > 0, num / den, 0.0)
-            reliability_sum += r
-        r_half = reliability_sum / n_splits
-        # Spearman-Brown: full-set reliability from half-set reliability
-        r_full = 2 * r_half / (1 + r_half)
-        return r_full
-
-    @staticmethod
-    def _is_native_video(candidate) -> bool:
-        """True when the subject declares that it takes clips (``vision:video``).
-
-        Subjects that take only stills (and legacy adapters, which declare no
-        form) are shown frames sampled from each clip instead; the score records
-        that adaptation in ``attrs['input_adaptation']``.
-        """
-        from brainscore.presentation import takes_clips
-        return takes_clips(candidate)
-
-    def _clip_features(self, candidate):
-        """Record ``neural:IT`` for every clip through ``participate``.
-
-        Returns ``(features (n_videos, n_features), clip_ids, pipeline_mode)``.
-        A subject that declares ``vision:video`` sees whole clips and keeps its
-        own temporal structure; any other subject sees frames sampled from each
-        clip, pooled per clip (Contract Rule 5.9).
-        """
-        time_bins = [(0, VIDEO_DURATION_MS)]
-        if self._is_native_video(candidate):
-            result = record_clips(candidate, self._videos_stimulus_set(), 'IT', time_bins)
-            # Lahner2024 has one BOLD estimate per video, so a time-resolved
-            # response (presentation, time_bin, neuroid) is averaged over time.
-            data = result.values
-            model_mat = data.mean(axis=1) if data.ndim == 3 else data
-            return model_mat, read_stimulus_ids(result), 'video_native'
-        per_video = record_frames_per_clip(
-            candidate, self._expand_videos(), 'IT', time_bins)
-        model_mat = per_video.values[:, 0, :]  # (n_videos, n_features)
-        clip_ids = list(per_video.indexes['presentation'].get_level_values('clip_id'))
-        return model_mat, clip_ids, 'frame_aggregation'
-
-    def __call__(self, candidate) -> Score:
-        model_mat, clip_ids, pipeline_mode = self._clip_features(candidate)
-
-        # 5. Average neural across repetitions; align to model order
-        neural = self._average_repetitions()
-        # neural dims: ('neuroid', 'stimulus_id') — transpose to (stim, neuroid)
-        neural_aligned = neural.sel(
-            stimulus_id=list(clip_ids)
-        ).transpose('stimulus_id', 'neuroid')
-        neural_mat = neural_aligned.values  # (n_videos, n_voxels)
-
-        # Optional voxel-level mask (e.g., reliability-thresholded visual ROI)
-        mask = self._get_voxel_mask()
-        if mask is not None:
-            neural_mat = neural_mat[:, mask]
-
-        # 6. Cross-validated Ridge regression → per-voxel Pearson
-        # (using sklearn directly keeps brainscore_core dependency-clean)
-        # Ridge auto-centers via its intercept; explicit per-feature
-        # StandardScaler over-rescales heterogeneous-variance features and
-        # costs ~0.18 raw r on Lahner2024 (see 2026-04-24 replication note).
-        # Pass raw features directly.
-        fold_preds = kfold_ridge_predictions(
-            model_mat, neural_mat, alpha=1.0, n_splits=5,
-            random_state=0, dtype=None)
-        per_voxel_r, median_r, mean_r = pearson_summary(
-            neural_mat, fold_preds)
-
-        # Ceiling normalization. The repo convention (see
-        # the repository budget-curve sweep) normalizes PER VOXEL and
-        # then summarizes -- median(r_i / c_i) -- NOT median(r_i) / median(c_i). The two
-        # are not equivalent, and mixing them makes two "ceiling-normalized" numbers on
-        # the same page incomparable. Prefer the per-voxel form whenever the reliability
-        # vector is available (it always is on the ROI variants, which already compute it
-        # to build the mask); fall back to the scalar only if it is not.
-        ceiling_vec = self._per_voxel_ceiling(mask)
-        if ceiling_vec is not None:
-            import numpy as _np
-            normalized = _np.asarray(per_voxel_r, dtype=float) / ceiling_vec
-            score = Score(float(_np.nanmedian(normalized)))
-            score.attrs['ceiling_aggregation'] = 'per_voxel'
-            score.attrs['ceiling'] = float(_np.nanmedian(ceiling_vec))
-        else:
-            score = Score(median_r / float(self.ceiling))
-            score.attrs['ceiling_aggregation'] = 'scalar'
-            score.attrs['ceiling'] = self.ceiling   # uniform score-attr contract
-        score.attrs['raw'] = Score(median_r)
-        score.attrs['mean_r'] = mean_r
-        score.attrs['n_voxels_scored'] = int(len(per_voxel_r))
-        score.attrs['per_voxel_r'] = per_voxel_r   # exposed for bootstrap CIs
-        score.attrs['n_videos'] = int(model_mat.shape[0])
-        # Make the pipeline explicit so downstream consumers know what
-        # assumption the score was computed under.
-        score.attrs['pipeline'] = pipeline_mode
-        from brainscore.presentation import frames_from_clip
-        score.attrs['input_adaptation'] = (frames_from_clip(self._sample_times_ms)
-                                           if pipeline_mode == 'frame_aggregation' else None)
-        if pipeline_mode == 'frame_aggregation':
-            score.attrs['sample_times_ms'] = self._sample_times_ms
-            score.attrs['n_frames_per_video'] = len(self._sample_times_ms)
-            score.attrs['note'] = (
-                f'{len(self._sample_times_ms)} static frames per video, '
-                f'mean-pooled before regression. Temporal dynamics discarded. '
-                f'See benchmark docstring.'
-            )
-        else:  # video_native
-            score.attrs['note'] = (
+    def _visual_attrs(self, subject) -> dict:
+        """The route of a one-stream score: whole clips, or frames sampled from them."""
+        from brainscore.presentation import frames_from_clip, takes_clips
+        if takes_clips(subject):
+            return {'pipeline': 'video_native', 'input_adaptation': None, 'note': (
                 'Video-native model: full temporal dynamics preserved '
                 'through the encoder; features mean-pooled across output '
                 'time steps for regression against the single Lahner2024 '
-                'BOLD estimate per video.'
-            )
+                'BOLD estimate per video.')}
+        return {
+            'pipeline': 'frame_aggregation',
+            'input_adaptation': frames_from_clip(self._sample_times_ms),
+            'sample_times_ms': self._sample_times_ms,
+            'n_frames_per_video': len(self._sample_times_ms),
+            'note': (f'{len(self._sample_times_ms)} static frames per video, '
+                     f'mean-pooled before regression. Temporal dynamics discarded. '
+                     f'See benchmark docstring.'),
+        }
+
+    def __call__(self, subject) -> Score:
+        features, clip_ids, route_attrs = self._features(subject)
+
+        # Average the repetitions; align to the response order; keep the scored voxels.
+        neural = self.assembly.squeeze('time_bin', drop=True).groupby('stimulus_id').mean('presentation')
+        neural_mat = neural.sel(stimulus_id=list(clip_ids)).transpose('stimulus_id', 'neuroid').values
+        mask = self.voxel_mask
         if mask is not None:
-            score.attrs['voxel_mask_n_total'] = int(mask.size)
-            score.attrs['voxel_mask_n_kept'] = int(mask.sum())
-            # WHICH vertices were scored, not just how many. Without this the
-            # per-voxel scores cannot be placed back onto a cortical surface --
-            # their order is over the kept voxels, and the mapping is lost.
-            score.attrs['voxel_mask_indices'] = np.flatnonzero(mask)
-            score.attrs['reliability_threshold'] = float(self._reliability_threshold)
+            neural_mat = neural_mat[:, mask]
+
+        # Ridge (scikit-learn, penalty 1) on the raw features: it centres through its
+        # intercept; a StandardScaler over-rescales features of unequal variance and
+        # cost about 0.18 raw r here (2026-04-24 replication note).
+        per_voxel_r, _ = cross_validated_r(
+            features, neural_mat, row_kfold(len(features), n_splits=5, random_state=0),
+            ridge(1.0, SklearnRidge()))
+        score = voxel_score(self, per_voxel_r, self._per_voxel_ceiling(mask))
+        score.attrs['n_videos'] = int(features.shape[0])
+        score.attrs.update(route_attrs)
         return score
 
 
 # Noise ceiling for the visual-ROI voxel set, measured on EC2 2026-07-31.
-# For a predictivity CORRELATION the ceiling is sqrt(reliability): the highest r a
+# For a predictivity correlation the ceiling is sqrt(reliability): the highest r a
 # perfect model could reach given measurement noise. This is the median over the 4042
-# ROI voxels of sqrt(_split_half_reliability(n_splits=20, random_state=0)), the same
-# Spearman-Brown-corrected reliability already used to SELECT those voxels.
-# Pinned rather than recomputed so scoring stays reproducible and cheap.
-# Measured 2026-07-31 as the median sqrt(split-half reliability) over the 4042
-# ROI voxels; recompute with _split_half_reliability(n_splits=20, random_state=0).
+# ROI voxels of sqrt(_split_half_reliability(assembly, n_splits=20, random_state=0)),
+# the same Spearman-Brown-corrected reliability that selects those voxels. The
+# constant only marks the variant that divides by a ceiling: the score recomputes
+# the per-voxel ceilings from the assembly and does not read this value.
 VISUAL_ROI_CEILING = 0.7304512193654528
-
-
-def Lahner2024BOLDMoments_visualROI():
-    """ROI variant: only voxels with split-half reliability ≥ 0.3.
-
-    The threshold 0.3 is moderate — in Lahner2024, it typically retains
-    ~2000–5000 voxels concentrated in visual cortex (the only region
-    where short-video stimuli reliably drive BOLD across repetitions).
-    Produces a tighter, more interpretable score than whole-cortex
-    median, which is dragged down by thousands of noise-dominated voxels.
-    """
-    return Lahner2024BOLDMoments(
-        reliability_threshold=0.3,
-        identifier_suffix='-visualROI',
-        ceiling=VISUAL_ROI_CEILING,
-    )

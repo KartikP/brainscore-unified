@@ -44,7 +44,7 @@ def _movie():
 
 def test_undeclared_modalities_never_reach_the_extractor():
     model, extractor = _model()
-    response = neural_response(model, _movie(), record='IT')
+    response = neural_response(model, _movie(), ['neural:IT'])
     assert response.sizes['presentation'] == 2
     seen, = extractor.seen
     assert sorted(seen.columns) == ['image_path', 'object_name', 'stimulus_id']
@@ -55,7 +55,7 @@ def test_stimulus_set_keeps_its_identity_when_nothing_is_dropped():
     model, extractor = _model()
     stimuli = StimulusSet(pd.DataFrame({'stimulus_id': ['a'], 'image_path': ['/tmp/a.png']}))
     stimuli.identifier = 'one-image'
-    neural_response(model, stimuli, record='IT')
+    neural_response(model, stimuli, ['neural:IT'])
     assert extractor.seen[0] is stimuli
 
 

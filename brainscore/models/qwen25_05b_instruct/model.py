@@ -15,6 +15,7 @@ IDENTIFIER = 'qwen2.5-0.5b-instruct'
 def get_model() -> 'BrainScoreModel':
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer
+    from brainscore.model_helpers._device import select_device
     from brainscore.model_helpers.causal_lm import build_causal_lm_subject
 
     checkpoint = os.environ.get('BRAINSCORE_QWEN25_05B_PATH')
@@ -25,7 +26,7 @@ def get_model() -> 'BrainScoreModel':
         from brainscore.models._downloads import hf_preflight
         source = HF_IDENTIFIER
         settings = {**hf_preflight(IDENTIFIER, HF_IDENTIFIER, 1.0), 'revision': REVISION}
-    device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu'
+    device = select_device().type
     dtype = torch.float16 if device != 'cpu' else torch.float32
     tokenizer = AutoTokenizer.from_pretrained(source, **settings)
     model = AutoModelForCausalLM.from_pretrained(source, dtype=dtype, **settings).to(device).eval()

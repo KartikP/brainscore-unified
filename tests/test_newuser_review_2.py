@@ -20,8 +20,8 @@ def _run(response, replies, directory):
     def reply(prompt, _seen=[]):
         _seen.append(prompt)
         return replies[(len(_seen) - 1) % len(replies)]
-    subject = BrainScoreModel(identifier='scripted', supported_modalities={'text'}, reply=reply)
-    task = TaskContext(instruction='Respond to the word.', response=response, prefer_path='generation')
+    subject = BrainScoreModel(identifier='scripted', in_channels={'text'}, reply=reply)
+    task = TaskContext(instruction='Respond to the word.', response=response)
     return Experiment(subject=subject,
                       protocol=TaskProtocol(STIMULI, task, conditions=['baseline'], repetitions=[0]),
                       tools=[RecordBehavior(), RecordInputsOutputs()], output_dir=directory).run()

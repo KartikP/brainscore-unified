@@ -3,19 +3,22 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.legacy_facade import LegacyBenchmarkFacade
+from brainscore_core.contract import TaskContext
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 def _look_at(replies):
     ids = [f's{i}' for i in range(len(replies))]
     lookup = dict(zip(ids, replies))
-    model = BrainScoreModel(identifier='answers', supported_modalities={'text'},
+    model = BrainScoreModel(identifier='answers', in_channels={'text'},
                             answer=lambda stimulus_row, instruction, label_set:
                             lookup[stimulus_row.stimulus_id])
-    model.start_task(TaskContext(task_type='probabilities', instruction='choose',
-                                 label_set=['cat', 'dog']))
-    return model.look_at(StimulusSet({'sentence': ['x'] * len(ids), 'stimulus_id': ids}))
+    # A legacy behavioral benchmark reaches the model through the facade.
+    facade = LegacyBenchmarkFacade(model)
+    facade.start_task(TaskContext(task_type='probabilities', instruction='choose',
+                                  label_set=['cat', 'dog']))
+    return facade.look_at(StimulusSet({'sentence': ['x'] * len(ids), 'stimulus_id': ids}))
 
 
 def test_invalid_answers_become_seeded_valid_labels():

@@ -19,18 +19,10 @@ from PIL import Image
 from transformers import CLIPConfig, CLIPModel, CLIPProcessor
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
-from brainscore import BrainScoreModel
+from brainscore import BrainScoreModel, LayerSelector
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.hf_compat import pin_image_processor
-
-
-REGION_LAYER_MAP = {
-    'V1': 'encoder.layers.1',
-    'V2': 'encoder.layers.3',
-    'V4': 'encoder.layers.6',
-    'IT': 'encoder.layers.10',
-    'language_system': 'encoder.layers.10',
-}
+from brainscore.models.clip_vit_b_32.model import REGION_LAYER_MAP
 
 
 def _load_preprocess_images(image_filepaths, processor, image_size=224):
@@ -69,12 +61,12 @@ def get_model(identifier: str) -> BrainScoreModel:
         image_size=224,
     )
 
-    activations_model = PytorchWrapper(
+    vision_wrapper = PytorchWrapper(
         identifier=identifier,
         model=clip_model.vision_model,
         preprocessing=preprocessing,
     )
-    activations_model.image_size = 224
+    vision_wrapper.image_size = 224
 
     text_wrapper = TextWrapper(
         model=clip_model.text_model,
@@ -87,9 +79,17 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=clip_model,
-        region_layer_map=REGION_LAYER_MAP,
+        # language_system is recorded from the text tower, every other region from
+        # the vision tower: the towers each layer path is relative to.
+        region_layer_map={
+            region: LayerSelector(
+                name=layer,
+                modality='text' if region == 'language_system' else 'vision',
+            )
+            for region, layer in REGION_LAYER_MAP.items()
+        },
         extractor={
-            'vision': activations_model,
+            'vision': vision_wrapper,
             'text': text_wrapper,
         },
         visual_degrees=8,

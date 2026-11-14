@@ -5,7 +5,6 @@ import math
 from typing import Any, Callable, ContextManager, Iterator, Sequence
 from brainscore.run_record import RunRecorder
 from brainscore_core.events import Selection, Perturbation, StateChange
-from brainscore.instrumentation import observe
 from .runner import Tool
 
 
@@ -212,33 +211,6 @@ def _describe_target(target):
             'axis': target.axis, 'expected_shape': target.expected_shape}
 
 
-class ObserveCalls(Tool):
-    """Attach an existing on_start/on_result/on_error observer to method calls.
-
-    Native session tools use on_event instead; a session event is not a method
-    call. This adapter preserves existing observers without inventing call data.
-    """
-    def __init__(self, observer: Any, *, methods: Sequence[str] = ('process',),
-                 name: str = 'call_observer') -> None:
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError('Tool name must be a nonempty string')
-        self.observer, self.methods, self.name = observer, tuple(methods), name
-
-    def describe(self):
-        return {'observer': type(self.observer).__module__ + '.' + type(self.observer).__qualname__,
-                'methods': self.methods}
-
-    def validate(self, experiment):
-        for method in self.methods:
-            if not callable(getattr(experiment.subject, method, None)):
-                raise ValueError(f'Subject does not expose {method}')
-
-    @contextmanager
-    def attach(self, context):
-        with observe(context.experiment.subject, self.observer, methods=self.methods):
-            yield
-
-
 class TorchInstrumentation:
     """Expose model layer paths or explicitly named modules to experiment tools.
 
@@ -277,8 +249,8 @@ class TorchInstrumentation:
                 raise ValueError(
                     f'{selection.layer!r}: TorchInstrumentation reads and changes module '
                     f"outputs only; input sites (':input') and other site suffixes are not "
-                    f'supported here. Use TextWrapper recording or a StateChange through '
-                    f'intervene() for input sites.')
+                    f'supported here. Use TextWrapper recording, or an intervention sent with '
+                    f'apply_state_change, for input sites.')
             if operation in ('attribute', 'patch') and (selection.axis != -1 or selection.expected_shape is not None):
                 raise ValueError('Attribution and patching require last-axis selections without a fixed shape.')
             if (selection.layer not in self.targets

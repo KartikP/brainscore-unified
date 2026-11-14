@@ -53,7 +53,8 @@ def _tiny_fixture(drift_after: int | None = None, *, answers: bool = False):
     model.add_module('proj', torch.nn.Linear(3, 8))
     calls = []
 
-    def policy(observation, history):
+    def policy(row):
+        observation = row['observation']
         calls.append(1)
         x = torch.from_numpy(observation['frame'].mean(axis=(0, 1)) / 255).float()
         with torch.no_grad():
@@ -63,8 +64,8 @@ def _tiny_fixture(drift_after: int | None = None, *, answers: bool = False):
         if answers:
             from native_environment_toolbox import answer_response
             unsure = any(row.startswith('P') for row in observation['ascii'].splitlines())
-            return answer_response(UNSURE_ANSWER if unsure else FIXTURE_ANSWERS[choice])
-        return choice
+            return {'motor': answer_response(UNSURE_ANSWER if unsure else FIXTURE_ANSWERS[choice])}
+        return {'motor': choice}
 
     return policy, model
 
@@ -100,13 +101,12 @@ def test_gates_raise_under_python_optimize():
 def test_direct_loop_and_session_end_on_the_same_step(max_steps):
     """Goal reached and step limit both stop the direct loop and the session alike."""
     from brainscore.harnesses.grid_game import GridGameEnv, greedy_oracle_policy, play_game
-    from brainscore.model_helpers.policy_wrapper import PolicyWrapper
     from brainscore import BrainScoreModel
     from native_environment_toolbox import direct_episode
 
     for seed in (0, 1, 5):
         direct = direct_episode(greedy_oracle_policy, seed, size=4, max_steps=max_steps)
-        subject = BrainScoreModel(identifier='oracle', policy=PolicyWrapper(greedy_oracle_policy))
+        subject = BrainScoreModel(identifier='oracle', policy=greedy_oracle_policy)
         session = play_game(subject, GridGameEnv(size=4, seed=seed, max_steps=max_steps), seed=seed)
         assert session['actions'] == direct['actions']
         assert session['total_reward'] == round(direct['total_reward'], 4)
@@ -140,8 +140,7 @@ def test_native_tiny_fixture_passes_and_restores(tmp_path):
 ])
 def test_answer_response_keeps_answer_and_fallback(answer, action, valid):
     """The applied action is unchanged; the answer and the parse result are kept."""
-    from brainscore.model_helpers.local_vlm_policy import parse_directional_action
-    from native_environment_toolbox import UNPARSED_ACTION, answer_response
+    from native_environment_toolbox import UNPARSED_ACTION, answer_response, parse_directional_action
 
     response = answer_response(answer)
     parsed = parse_directional_action(answer, prefer_last=True)
@@ -157,20 +156,21 @@ def test_with_provenance_accepts_responses_and_bare_actions():
     from native_environment_toolbox import answer_response, direct_episode, with_provenance
 
     provenance = {'model_sha256': 'f' * 64}
-    bare = with_provenance(lambda observation, history: 3, provenance=provenance)
-    answered = with_provenance(lambda observation, history: answer_response('Action: down'),
+    bare = with_provenance(lambda row: {'motor': 3}, provenance=provenance)
+    answered = with_provenance(lambda row: {'motor': answer_response('Action: down')},
                                provenance=provenance)
-    assert bare(None, ()) == StreamEvent('motor', 3, None, {'provenance': provenance})
-    response = answered(None, ())
+    assert bare({}) == {'motor': StreamEvent('motor', 3, None, {'provenance': provenance})}
+    response = answered({})['motor']
     assert response.payload == 1
     assert response.meta['provenance'] == provenance
     assert response.meta['answer'] == 'Action: down' and response.meta['valid']
     response.meta['provenance']['model_sha256'] = 'changed by a consumer'
-    assert answered(None, ()).meta['provenance'] == provenance
+    assert answered({})['motor'].meta['provenance'] == provenance
     # The direct loop applies the same actions for both policy return types.
     for seed in (0, 1):
-        plain = direct_episode(lambda o, h: 1, seed, size=4, max_steps=6)
-        wrapped = direct_episode(lambda o, h: StreamEvent('motor', 1, None), seed, size=4, max_steps=6)
+        plain = direct_episode(lambda row: {'motor': 1}, seed, size=4, max_steps=6)
+        wrapped = direct_episode(lambda row: {'motor': StreamEvent('motor', 1, None)}, seed,
+                                 size=4, max_steps=6)
         assert plain == wrapped
 
 
@@ -412,3 +412,46 @@ def test_coggym_unverified_model_fails_under_optimize(tmp_path):
     assert report['error'].startswith('RuntimeError: Qualification check failed: model file')
     assert 'model_identity' not in report['provenance']
     assert 'model_sha256' not in report['provenance'] and 'coggym_source' not in report['provenance']
+
+
+@pytest.mark.parametrize('text, prefer_last, action', [
+    ('reasoning...\nAction: up', False, 0), ('Action: DOWN', False, 1), ('action - left', False, 2),
+    ('maybe up, but actually go right', False, 0), ('maybe up, but actually go right', True, 3),
+    ('could be left or up. Action: down', False, 1), ('no direction here', False, -1), ('', False, -1),
+])
+def test_directional_parser(text, prefer_last, action):
+    from native_environment_toolbox import parse_directional_action
+    assert parse_directional_action(text, prefer_last=prefer_last) == action
+
+
+def test_visual_policy_runs_a_loaded_model_and_plays_the_fallback_for_an_unparsed_answer():
+    import numpy as np
+    import torch
+    from native_environment_toolbox import visual_policy
+
+    class Inputs(dict):
+        def to(self, device):
+            return self
+
+    class Processor:
+        answers = iter(['Action: left', 'I am not sure'])
+        def apply_chat_template(self, messages, **kwargs):
+            return 'prompt'
+        def __call__(self, text, images, return_tensors):
+            return Inputs(input_ids=torch.zeros(1, 2, dtype=torch.long))
+        def decode(self, tokens, skip_special_tokens):
+            return next(self.answers)
+
+    class Model:
+        device = 'cpu'
+        def generate(self, **kwargs):
+            return torch.zeros(1, 3, dtype=torch.long)
+
+    policy, stats = visual_policy(Model(), Processor(), fallback=lambda: 3)
+    row = {'observation': {'frame': np.zeros((8, 8, 3), np.uint8)}}
+    first, second = policy(row)['motor'], policy(row)['motor']
+    assert first.payload == 2 and first.meta['valid']
+    assert second.payload == 3 and second.meta == {
+        'answer': 'I am not sure', 'valid': False,
+        'parse_error': 'the answer names no action', 'fallback_action': 3}
+    assert stats == {'calls': 2, 'parse_miss': 1}

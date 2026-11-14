@@ -11,15 +11,20 @@ The model-builder workflow it enables:
                            preprocessing=my_preproc)  # runnable BrainScoreModel
     # then refine the layer→region map with the layer-mapping explorer:
     #   from brainscore.tools.layer_mapping import sweep_model
-    #   sweep_model(wrapper, stimuli, brain, profile.recommendations[0].block_layers)
+    #   sweep_model(wrapper, stimuli, target, target_stimulus_ids,
+    #               profile.recommendations[0].block_layers)
 
 What it removes from the builder's plate (the friction observed registering
 CLIP / Qwen-VL / BLIP-2 / VideoMAE / V-JEPA / Wav2Vec2 by hand):
 
   1. **Wrapper choice.** Picks the activations-model wrapper
-     (``VisionWrapper`` for any vision — image / VLM / video — plus
-     ``TextWrapper`` / ``AudioWrapper``) from the model's class, config, and
-     module tree.
+     (``PytorchWrapper`` for images, ``VLMVisionWrapper`` for a flattened-patch
+     VLM encoder, ``VideoWrapper`` for video, ``TextWrapper`` /
+     ``AudioWrapper``) from the model's class, config, and module tree. The
+     match is on substrings of those names, so a name that happens to contain a
+     signal word is misread (``FastViT`` contains ``ast``, an audio signal;
+     ``Sophia`` contains ``phi``, a language-model family): check the
+     recommendation before you use it.
   2. **Layer discovery.** Finds the repeated indexed block list
      (``encoder.layers.*`` / ``model.layers.*`` / ``blocks.*`` / …) — the
      natural recording targets — instead of the builder reading the source.
@@ -54,9 +59,9 @@ DEFAULT_AUDIO_REGIONS: Tuple[str, ...] = ('A1',)
 # Each modality maps to (wrapper class name, default layer_aggregation,
 # the brain regions a provisional map spaces over).
 _MODALITY_WRAPPER = {
-    'vision':       ('VisionWrapper',    None,           DEFAULT_VISION_REGIONS),
-    'vision_flat':  ('VisionWrapper',    'mean_patches', DEFAULT_VISION_REGIONS),
-    'video':        ('VisionWrapper',    None,           DEFAULT_VISION_REGIONS),
+    'vision':       ('PytorchWrapper',   None,           DEFAULT_VISION_REGIONS),
+    'vision_flat':  ('VLMVisionWrapper', 'mean_patches', DEFAULT_VISION_REGIONS),
+    'video':        ('VideoWrapper',     None,           DEFAULT_VISION_REGIONS),
     'audio':        ('AudioWrapper',     'mean_time',    DEFAULT_AUDIO_REGIONS),
     'text_causal':  ('TextWrapper',      'last_token',   DEFAULT_LANGUAGE_REGIONS),
     'text_encoder': ('TextWrapper',      'mean_tokens',  DEFAULT_LANGUAGE_REGIONS),
@@ -157,17 +162,20 @@ class ModelProfile:
             m = rec.provisional_region_layer_map()
             for region, layer in m.items():
                 key = region if region not in out else f"{region}_{rec.modality}"
-                # prefix the layer with the submodule path so it is addressable
-                # from the full model when towers are wrapped separately
+                # The layer path is relative to this sub-module, with no prefix:
+                # each sub-module gets its own wrapper, so two sub-modules can give
+                # the same path. Route such regions with LayerSelector(modality=...).
                 out[key] = layer
         return out
 
-    def required_modalities(self) -> set:
-        """Single-modality models hard-require their one modality; multimodal
-        models leave it soft (empty) so they degrade to any subset."""
+    def required_channels(self) -> set:
+        """Single-tower models require the input channel of their one tower;
+        multimodal models require none, so they run on any subset."""
         if len(self.recommendations) != 1:
             return set()
-        return {_base_modality(self.recommendations[0].modality)}
+        from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL
+        key = _base_modality(self.recommendations[0].modality)
+        return {MODALITY_TO_INPUT_CHANNEL.get(key, key)}
 
     def summary(self) -> str:
         lines = [f"Model: {self.identifier}",
@@ -250,8 +258,8 @@ def _meta_signal(meta: Dict[str, Any]) -> str:
 
 
 def _base_modality(modality: str) -> str:
-    """Collapse the wrapper-level modality to the dispatch modality used by
-    ``BrainScoreModel.activations_model`` keys and ``required_modalities``."""
+    """Collapse the wrapper-level modality to the ``BrainScoreModel``
+    extractor key."""
     return {'vision_flat': 'vision', 'text_causal': 'text',
             'text_encoder': 'text'}.get(modality, modality)
 
@@ -272,8 +280,8 @@ def _classify_global(meta: Dict[str, Any]) -> Tuple[str, str]:
         return 'text_encoder', f"text-encoder signal in {meta['model_type'] or meta['class']!r}"
     if any(s in sig for s in _VISION_SIGNALS):
         return 'vision', f"vision backbone signal in {meta['model_type'] or meta['class']!r}"
-    # default: assume a standard image model wrapped by VisionWrapper (frame)
-    return 'vision', "no decisive signal; defaulting to vision/VisionWrapper"
+    # default: assume a standard image model wrapped by PytorchWrapper
+    return 'vision', "no decisive signal; defaulting to vision/PytorchWrapper"
 
 
 def _classify_tower(top: str, submodule: Any, meta: Dict[str, Any]) -> Tuple[str, str]:
@@ -482,7 +490,7 @@ def scaffold_registration(profile: ModelProfile, hf_id: Optional[str] = None,
     for w in wrappers:
         if w == 'PytorchWrapper':
             continue
-        snake = {'VisionWrapper': 'vision_wrapper', 'TextWrapper': 'text_wrapper',
+        snake = {'TextWrapper': 'text_wrapper',
                  'VLMVisionWrapper': 'vlm_vision_wrapper', 'VideoWrapper': 'video_wrapper',
                  'AudioWrapper': 'audio_wrapper'}[w]
         imports.append(f"from brainscore.model_helpers.{snake} import {w}")
@@ -529,7 +537,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     # return BrainScoreModel(
     #     identifier=identifier,
     #     region_layer_map=REGION_LAYER_MAP,
-    #     activations_model={{{extractor_entries}}},
+    #     extractor={{{extractor_entries}}},
     # )
 
 
@@ -551,7 +559,7 @@ def auto_register(model: Any,
     """Build a runnable :class:`BrainScoreModel` from a single-tower model.
 
     Supports the two towers that need no processor-specific configuration to
-    wire automatically — **vision** (``VisionWrapper``, needs ``preprocessing``)
+    wire automatically — **vision** (``PytorchWrapper``, needs ``preprocessing``)
     and **text** (``TextWrapper``, needs ``tokenizer``). For audio / video /
     flattened-patch VLM towers, or multi-tower models, call
     :func:`inspect_model` + :func:`scaffold_registration` and fill in the
@@ -580,23 +588,21 @@ def auto_register(model: Any,
         regs = tuple(regions) if regions else rec.regions
         region_layer_map = space_layers(rec.block_layers, regs)
 
-    base_modality = _base_modality(rec.modality)
-
     if rec.modality in ('vision',):
         if preprocessing is None:
             raise ValueError(
                 "vision model needs a `preprocessing` callable "
                 "(image_filepaths -> (B,C,H,W) array/tensor).")
-        from brainscore.model_helpers.vision_wrapper import VisionWrapper
-        activations_model = VisionWrapper(
+        from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
+        vision_wrapper = PytorchWrapper(
             model=model, preprocessing=preprocessing, identifier=identifier)
         return BrainScoreModel(
             identifier=identifier,
             model=model,
             region_layer_map=region_layer_map,
-            extractor={'vision': activations_model},
+            extractor={'vision': vision_wrapper},
             visual_degrees=visual_degrees,
-            required_modalities={base_modality},
+            required_channels=profile.required_channels(),
             **brainscore_model_kwargs,
         )
 
@@ -612,7 +618,7 @@ def auto_register(model: Any,
             model=model,
             region_layer_map=region_layer_map,
             extractor={'text': text_wrapper},
-            required_modalities={base_modality},
+            required_channels=profile.required_channels(),
             **brainscore_model_kwargs,
         )
 

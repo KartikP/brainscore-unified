@@ -91,8 +91,10 @@ def test_same_configuration_hits_changed_configuration_misses(cls, monkeypatch, 
     wrapper._batch_size = 1
     np.testing.assert_array_equal(method(['a', 'b'], ['L'], 'stimuli'), expected)
     assert len(calls) == 3
-    # Separate instance with identical config and the same registered weights.
+    # Separate instance with identical config and the same registered weights,
+    # registered under another identifier with the same backbone_id: one entry.
     other = _wrapper(cls)
+    other._identifier = 'another-registration'
     other._model.load_state_dict(wrapper._model.state_dict())
     monkeypatch.setattr(other, f'_from_{inp}', lambda *a, **k: pytest.fail('cache missed'))
     np.testing.assert_array_equal(getattr(other, f'_from_{inp}_cached')(['a', 'b'], ['L'], 'stimuli'), expected)
@@ -139,7 +141,7 @@ def test_unversioned_entry_is_logged_and_left_untouched(monkeypatch, isolated_ca
 
 def test_real_text_cache_preserves_values_and_pereira_context(language_pair, isolated_cache, monkeypatch):
     native, _ = language_pair
-    wrapper = native._preprocessors['text']
+    wrapper = native.extractor['text']
     wrapper._backbone_id = 'cache-fixture'
     isolated_cache(wrapper._from_texts_stored)
     calls = []
@@ -244,7 +246,7 @@ def test_layer_pca_configuration_and_lazy_state(monkeypatch):
 
 def test_pytorch_perturbation_hooks_participate_and_reset_restores_key():
     from brainscore.perturbation import build_pytorch_ablation_fn
-    from brainscore_core.model_interface import StateChange, Selection, Perturbation
+    from brainscore_core.events import StateChange, Selection, Perturbation
     from brainscore_core.extraction_cache import model_config
     model = torch.nn.Sequential(torch.nn.Linear(2, 2))
     original = fingerprint(model_config(model))

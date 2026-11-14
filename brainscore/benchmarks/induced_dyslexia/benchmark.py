@@ -7,9 +7,9 @@ damaged". This converts an induced-dyslexia top-K ablation sweep into a
 registered Brain-Score benchmark
 built on the core ``UnitSelection`` family:
 
-  * the real-vs-pseudo Cohen's d localizer (the :class:`FunctionalSelection`
-                                   statistic, computed per reported layer)
-  * :class:`CompositeSelector`   — a multi-layer word-form region (the candidate
+  * :class:`FunctionalSelection` — the real-vs-pseudo Cohen's d localizer,
+                                   resolved per reported layer
+  * :class:`CompositeSelector`   — a multi-layer word-form region (the subject  
                                    declares it in ``region_layer_map``); localized
                                    per reported layer here
   * :class:`RandomSelection`     — the same-size random lesion at the same layer(s):
@@ -43,18 +43,15 @@ drawings / scrambled). Our ROAR corpus has only real/pseudo *words*, so the
 contrast here is real-vs-pseudo — the discriminator-unit variant documented in
 the project's K-sweep finding. Different localizer, same API.
 """
-from typing import List
-
-import numpy as np
+from typing import List, Sequence
 
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.compatibility import CompatibilityError
-from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.metrics import Score
-from brainscore.selection import selection_unit_indices, selection_coordinates
-from brainscore import RandomSelection
-from brainscore_core.model_interface import StateChange, Selection, Perturbation
-from brainscore_core.streaming_helpers import apply_state_change, neural_response
+from brainscore import FunctionalSelection, RandomSelection
+from brainscore_core.events import StateChange, Selection, Perturbation
+from brainscore_core.streaming_helpers import apply_state_change
+from brainscore.benchmarks._score import benchmark_score
 
 from ..roar_yeatman2021.benchmark import (
     Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX,
@@ -64,31 +61,38 @@ from ..roar_yeatman2021.benchmark import (
 class InducedDyslexia(BenchmarkBase):
     """Ablate word-form units → measure the reading deficit vs a random control.
 
-    :param localizer_region: the region (key in the candidate's
+    :param localizer_region: the region (key in the subject's
         ``region_layer_map``) whose units are word-form-selective. May map to a
         single layer or be a :class:`CompositeSelector` over several layers
         (localized per layer the recording reports).
     :param n_units: how many top-selective units to ablate per layer.
     :param control_seed: seed for the matched :class:`RandomSelection` control.
-    :param modality: ``'vision'`` (word images) or ``'text'`` (word strings).
+    :param channels: ``('vision:image',)`` (word images) or ``('text',)`` (word strings).
     """
 
     # One lesion experiment is one pass; the reading trials inside it are independent.
     trial_memory = 'none'
+    # Suffix of the identifier for each input channel.
+    _CHANNEL_SUFFIX = {'vision:image': 'image', 'text': 'text'}
 
     def __init__(self, localizer_region: str = 'VWFA', n_units: int = 500,
-                 control_seed: int = 0, modality: str = 'vision',
+                 control_seed: int = 0, channels: Sequence[str] = ('vision:image',),
                  reading_benchmark=None, localizer_stimuli=None):
         self.localizer_region = localizer_region
         self.n_units = n_units
         self.control_seed = control_seed
-        self.modality = modality
+        channels = tuple(channels)
+        if len(channels) != 1 or channels[0] not in self._CHANNEL_SUFFIX:
+            raise ValueError(
+                f"channels must be one of {[(c,) for c in self._CHANNEL_SUFFIX]}; "
+                f"got {channels!r}")
+        channel = channels[0]
         # Declarations decide compatibility (rule 5): the benchmark sends the
         # words, the reading question and the lesions, and needs the region's activity, the lesion
         # record and the reading answers back. A subject without any of these
         # outputs is N/A before any compute.
         self.required_input_channels = frozenset(
-            modalities_to_input_channels({modality}) | {'instruction', 'lesion'})
+            {channel, 'instruction', 'lesion'})
         self.requested_output_channels = frozenset(
             {'behavior', f'neural:{localizer_region}', 'perturbation'})
 
@@ -99,11 +103,11 @@ class InducedDyslexia(BenchmarkBase):
             self._reading = reading_benchmark
             self._localizer_stimuli = localizer_stimuli
         else:
-            self._reading = Yeatman2021LexicalDecision(modality=modality)
+            self._reading = Yeatman2021LexicalDecision(channels=channels)
             self._localizer_stimuli = self._reading._train_stimuli
 
         super().__init__(
-            identifier=f'Yeatman2021-induced_dyslexia-{modality}',
+            identifier=f'Yeatman2021-induced_dyslexia-{self._CHANNEL_SUFFIX[channel]}',
             version=1,
             parent='perturbation',
             ceiling=Score(1.0),   # ceiling is "no deficit"; the floor is the chance reader
@@ -111,71 +115,36 @@ class InducedDyslexia(BenchmarkBase):
         )
 
     # -- localization -------------------------------------------------------
-    def _localize(self, candidate) -> List[Selection]:
+    def _localize(self, subject) -> List[Selection]:
         """Return the lesion targets: one top-``n_units`` real-vs-pseudo set per layer.
 
-        Records the region once through ``participate``, localizes each layer
-        the recording reports in its ``layer`` coord (Cohen's d, highest
-        first), and addresses each lesion by that reported layer.
+        The :class:`FunctionalSelection` localizer records the region once
+        through ``participate``, localizes each layer the recording reports in
+        its ``layer`` coord (Cohen's d, highest first), and addresses each
+        lesion by that reported layer.
         """
-        asm = neural_response(candidate, self._localizer_stimuli,
-                              record=self.localizer_region)
-        extra = [d for d in asm.dims if d not in ('presentation', 'neuroid')]
-        if extra:
-            asm = asm.mean(extra)
-        asm = asm.transpose('presentation', 'neuroid')
-        try:
-            layer_coord = np.asarray(asm['layer'].values).ravel()
-        except KeyError:
-            raise ValueError(
-                f"induced-dyslexia addresses each lesion by the layer the recording "
-                f"reports; the '{self.localizer_region}' recording has no 'layer' coord "
-                f"on its neuroids.") from None
-        # Labels come from the benchmark's own stimuli, matched by stimulus_id,
-        # so a subject need not echo stimulus columns back.
-        label_of = dict(zip(self._localizer_stimuli['stimulus_id'].values,
-                            self._localizer_stimuli['image_label'].values))
-        labels = np.asarray([label_of[sid] for sid in asm['stimulus_id'].values])
-        vals = asm.values
-        pos = labels == 'real'
-        neg = labels == 'pseudo'
-        out = []
-        for L in dict.fromkeys(str(layer) for layer in layer_coord):
-            cols = np.where(layer_coord == L)[0]
-            sub = vals[:, cols]
-            mp, mn = sub[pos].mean(0), sub[neg].mean(0)
-            sp, sn = sub[pos].std(0, ddof=1), sub[neg].std(0, ddof=1)
-            pooled = np.sqrt((sp ** 2 + sn ** 2) / 2.0)
-            d = np.divide(mp - mn, pooled, out=np.zeros_like(mp, dtype=float),
-                          where=pooled > 0)
-            order = np.argsort(d)[::-1][:self.n_units]
-            population = selection_unit_indices(
-                asm.isel(neuroid=cols), candidate, self.localizer_region)
-            axis, expected_shape = selection_coordinates(asm.isel(neuroid=cols))
-            out.append(Selection(layer=L, indices=sorted(int(i) for i in population[order]),
-                                 axis=axis, expected_shape=expected_shape,
-                                 metadata={'selector': 'functional',
-                                           'n_recorded': int(sub.shape[1]),
-                                           'unit_population': population.tolist()}))
-        return out
+        return FunctionalSelection(
+            self.localizer_region, self._localizer_stimuli,
+            contrast=(['real'], ['pseudo']), contrast_column='image_label',
+            n_units=self.n_units).resolve_layers(subject)
 
     # -- scoring ------------------------------------------------------------
-    def _reading_accuracy(self, candidate) -> float:
-        return float(self._reading(candidate).attrs['raw'])
+    def _reading_accuracy(self, subject) -> float:
+        return float(self._reading(subject).attrs['raw'])
 
-    def _ablate(self, candidate, selections: List[Selection], handles: List[str]) -> None:
+    def _ablate(self, subject, selections: List[Selection], handles: List[str]) -> None:
         """Apply one zeroing lesion per selection, appending each handle as it lands.
 
         A failure part-way leaves the handles of the lesions already applied in
         ``handles``, so the caller can undo exactly those.
         """
         for sel in selections:
-            record = apply_state_change(candidate, StateChange(
+            record = apply_state_change(subject, StateChange(
                 kind='ablation', target=sel, perturbation=Perturbation(kind='zero')))
             handles.append(record.handle_id)
 
     @staticmethod
-    def _undo(candidate, handles: List[str]) -> None:
+    def _undo(subject, handles: List[str]) -> None:
         """Undo the benchmark's own lesions, newest first, by handle (rule 8.2).
 
         Changes the caller applied before scoring are not touched (rule 8.3).
@@ -187,53 +156,55 @@ class InducedDyslexia(BenchmarkBase):
         errors = []
         for handle in reversed(handles):
             try:
-                apply_state_change(candidate, StateChange(kind='reset', handle_id=handle))
+                apply_state_change(subject, StateChange(kind='reset', handle_id=handle))
             except Exception as error:                       # noqa: BLE001
                 errors.append(error)
         handles.clear()
         if errors:
             raise errors[0]
 
-    def __call__(self, candidate) -> Score:
+    def __call__(self, subject) -> Score:
         # The subject must declare `lesion` to receive the lesions.
         # If it does not, the result is N/A before any compute.
-        if 'lesion' not in set(candidate.in_channels):
+        if 'lesion' not in set(subject.in_channels):
             raise CompatibilityError(
-                f"Subject '{candidate.identifier}' does not declare the 'lesion' family, "
+                f"Subject '{subject.identifier}' does not declare the 'lesion' family, "
                 f"which benchmark '{self.identifier}' needs to apply and undo lesions; in_channels: "
-                f"{sorted(candidate.in_channels)}.")
-        return self._score(candidate)
+                f"{sorted(subject.in_channels)}.")
+        return self._score(subject)
 
-    def _score(self, candidate) -> Score:
-        baseline_acc = self._reading_accuracy(candidate)
+    def _score(self, subject) -> Score:
+        baseline_acc = self._reading_accuracy(subject)
 
         # word-form lesion
-        selections = self._localize(candidate)
+        selections = self._localize(subject)
         handles: List[str] = []
         try:
-            self._ablate(candidate, selections, handles)
-            lesioned_acc = self._reading_accuracy(candidate)
+            self._ablate(subject, selections, handles)
+            lesioned_acc = self._reading_accuracy(subject)
         finally:
-            self._undo(candidate, handles)
+            self._undo(subject, handles)
 
         # matched random-ablation control
         controls = [RandomSelection(layer=s.layer, n_units=len(s.indices),
                                     axis=s.axis, expected_shape=s.expected_shape,
                                     n_total=int(s.metadata['n_recorded']),
                                     seed=self.control_seed,
-                                    population=s.metadata.get('unit_population')).resolve(candidate)
+                                    population=s.metadata.get('unit_population')).resolve(subject)
                     for s in selections]
         try:
-            self._ablate(candidate, controls, handles)
-            random_acc = self._reading_accuracy(candidate)
+            self._ablate(subject, controls, handles)
+            random_acc = self._reading_accuracy(subject)
         finally:
-            self._undo(candidate, handles)
+            self._undo(subject, handles)
 
         specific_deficit = random_acc - lesioned_acc      # >0 ⇒ word-form-specific
         dyslexic = bool(lesioned_acc < DYSLEXIA_THRESHOLD and specific_deficit > 0)
 
-        score = Score(lesioned_acc)
-        score.attrs['raw'] = Score(lesioned_acc)
+        # The score is the lesioned reading accuracy; the ceiling (no deficit)
+        # is a reference and does not divide it.
+        score = benchmark_score(self, lesioned_acc, raw=lesioned_acc,
+                                metric='lesioned_reading_accuracy', normalized=False)
         score.attrs['baseline_accuracy'] = baseline_acc
         score.attrs['lesioned_accuracy'] = lesioned_acc
         score.attrs['random_control_accuracy'] = random_acc

@@ -10,7 +10,17 @@ Your environment needs `reset()` and `step(outputs)`, and optionally `close()`.
 - `step(outputs)` receives what the subject did, a mapping of output channel to payload such as `{'motor': action}`. It returns the next row and a reason: `None` while the episode runs, or `'terminal'`, `'truncated'` or `'failure'` when it ends.
 
 ```python
-row = {'observation': {...}, 'instruction': 'pick up the cup', 'reward': 0.0}
+class MyEnvironment:
+    """Three steps along a line; the observation is the position."""
+
+    def reset(self, seed=None):
+        self.position = 0
+        return {'observation': {'x': 0}, 'instruction': 'move right', 'reward': 0.0}
+
+    def step(self, outputs):
+        self.position += outputs['motor']
+        row = {'observation': {'x': self.position}, 'reward': 0.0}
+        return row, ('terminal' if self.position >= 3 else None)
 ```
 
 `observation` is defined by your environment. Declaring `observation_spec()` and `action_spec()` (with `ArraySpec`, `ActionSpec` and friends from `brainscore_core.environment`) lets the session validate shapes, units and bounds.
@@ -22,10 +32,15 @@ A policy maps each row to a mapping of output channel to payload. Give it to `Br
 ```python
 from brainscore import BrainScoreModel
 
+
+def choose(row):             # your policy: read the row, return an action
+    return 1
+
+
 agent = BrainScoreModel(identifier='my-agent', policy=lambda row: {'motor': choose(row)})
 ```
 
-`PolicyWrapper` (in `brainscore.model_helpers.policy_wrapper`) adapts existing policy objects. A subject with its own loop can implement `participate` directly instead.
+Declare in `policy_in_channels` every row key the policy reads (default `('observation',)`); the session sends only those. A policy that needs earlier steps keeps them itself and clears them in `reset()`, which the model calls when an episode begins ([EXTENDING](../../EXTENDING.md#a-policy-that-keeps-history) has a complete example). A subject with its own loop can implement `participate` directly instead.
 
 ## Run an episode
 
@@ -39,6 +54,7 @@ agent.reset()
 
 # or, in one call:
 actions = run_environment(agent, MyEnvironment(), seed=0)
+print(actions)   # [1, 1, 1]
 ```
 
 `run_environment` returns an empty list when the episode ends at its start.

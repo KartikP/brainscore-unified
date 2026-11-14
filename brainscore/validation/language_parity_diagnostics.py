@@ -235,17 +235,17 @@ def environment():
 
 def observe_case(case, route, *, max_length=1024, score=False, score_float64=False):
     from brainscore import load_benchmark
-    from brainscore.validation.benchmark_parity import local_candidate, _scalar
+    from brainscore.validation.benchmark_parity import local_subject, _scalar
     from brainscore_core.metrics import Score
     from brainscore_language.utils.ceiling import ceiling_normalize
 
-    candidate = local_candidate(case, route)
-    model = candidate.extractor['text']._model if route == 'native' else (
-        candidate.legacy_model.basemodel if route == 'adapter' else candidate.basemodel)
-    tokenizer = candidate.extractor['text']._tokenizer if route == 'native' else (
-        candidate.legacy_model.tokenizer if route == 'adapter' else candidate.tokenizer)
+    subject = local_subject(case, route)
+    model = subject.extractor['text']._model if route == 'native' else (
+        subject.legacy_model.basemodel if route == 'adapter' else subject.basemodel)
+    tokenizer = subject.extractor['text']._tokenizer if route == 'native' else (
+        subject.legacy_model.tokenizer if route == 'adapter' else subject.tokenizer)
     if route == 'native':
-        candidate.extractor['text']._max_length = max_length
+        subject.extractor['text']._max_length = max_length
     benchmark = load_benchmark(case.legacy if route == 'legacy' else case.unified)
     metric, captured, fits = benchmark.metric, [], []
     if score:
@@ -263,7 +263,7 @@ def observe_case(case, route, *, max_length=1024, score=False, score_float64=Fal
     benchmark.metric = capture
     try:
         with ForwardTrace(model) as trace:
-            value = benchmark(candidate)
+            value = benchmark(subject)
         if len(captured) != 1:
             raise ValueError('Diagnostic expects the fixed single-layer Pereira metric call')
         source, target = captured[0]
@@ -305,15 +305,15 @@ def observe_case(case, route, *, max_length=1024, score=False, score_float64=Fal
         benchmark.metric = metric
         if score:
             metric.regression.fit = original_fit
-        if hasattr(candidate, 'reset'):
-            candidate.reset()
-        del candidate, benchmark, model
+        if hasattr(subject, 'reset'):
+            subject.reset()
+        del subject, benchmark, model
         gc.collect()
 
 
 def ablate(case, legacy, native, worst_row):
     """Only replay the worst prefix's passage; no scoring or tolerance adjustment."""
-    from brainscore.validation.benchmark_parity import local_candidate
+    from brainscore.validation.benchmark_parity import local_subject
     from torch.nn.attention import SDPBackend, sdpa_kernel
     start = worst_row
     while start and legacy.calls[start]['past_length']:
@@ -327,7 +327,7 @@ def ablate(case, legacy, native, worst_row):
     original_tf32 = torch.backends.cuda.matmul.allow_tf32
     original_precision = torch.get_float32_matmul_precision()
     for mode in ('default', 'ieee_sdpa_math', 'ieee_eager', 'float64_eager'):
-        subject = local_candidate(case, 'legacy')
+        subject = local_subject(case, 'legacy')
         model = subject.basemodel
         context = nullcontext()
         try:

@@ -3,8 +3,8 @@ multimodal Brain-Score model.
 
 Built specifically to exercise the M12-full unified-interface APIs:
 - Two extraction wrappers (`video` + `audio`), one BrainScoreModel
-- ``region_modality_map`` routing IT to the video tower and A1 to the
-  audio tower in cross-tower extraction
+- ``LayerSelector(modality=...)`` routing IT to the video tower and A1 to
+  the audio tower in cross-tower extraction
 - Multi-modality scoring against a multimodal benchmark
   (``Lahner2024-fMRI-naturalistic-multimodal``)
 
@@ -35,8 +35,8 @@ AUDIO_HF_ID = 'facebook/wav2vec2-base'
 AUDIO_LAYER = 'encoder.layers.6'  # mid-encoder block; speech features
 
 
-# Region → layer mapping spans both towers. The region_modality_map
-# below tells BrainScoreModel which tower owns each layer for cross-
+# Region → layer mapping spans both towers. The modality of each
+# LayerSelector below tells BrainScoreModel which tower owns each layer for cross-
 # tower routing in multi-modality scoring.
 REGION_LAYER_MAP = {
     # Vision tower (V-JEPA v1 ViT-L; mid-encoder block 16 was the
@@ -148,7 +148,6 @@ def _build_audio_wrapper(identifier: str, random_init: bool = False):
         max_duration_sec=60.0,
         batch_size=4,
         audio_loader=_wav_loader,
-        audio_input_key='input_values',
     )
     return wrapper, model
 
@@ -180,6 +179,6 @@ def get_model(identifier: str) -> BrainScoreModel:
             'video': video_wrapper,
             'audio': audio_wrapper,
         },
-        required_modalities={'video', 'audio'},
+        required_channels={'vision:video', 'audio'},
         visual_degrees=8,
     )

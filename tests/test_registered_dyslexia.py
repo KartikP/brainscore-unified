@@ -5,7 +5,7 @@ import torch
 from PIL import Image
 
 import brainscore
-from brainscore_core.model_interface import StateChange, Selection, Perturbation
+from brainscore_core.events import StateChange, Selection, Perturbation
 from brainscore_core.streaming_helpers import apply_state_change, neural_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
@@ -102,13 +102,13 @@ def registered_toy(monkeypatch, tmp_path):
 
 def test_registered_model_benchmark_path_and_hook_cleanup(registered_toy):
     net, stimuli = registered_toy
-    candidate = brainscore.load_model('qwen2.5-vl-3b-vwfa')
+    subject = brainscore.load_model('qwen2.5-vl-3b-vwfa')
     benchmark = brainscore.load_benchmark('Yeatman2021-induced_dyslexia-image')
-    assert candidate.region_layer_selectors['VWFA'].layer_path == 'blocks.28'
+    assert subject.region_layer_selectors['VWFA'].layer_path == 'blocks.28'
     # The benchmark addresses each lesion by the layer the recording reports.
-    recording = neural_response(candidate, stimuli, record='VWFA')
+    recording = neural_response(subject, stimuli, ['neural:VWFA'])
     assert set(recording['layer'].values) == {'blocks.28'}
-    score = benchmark(candidate)
+    score = benchmark(subject)
     assert np.isfinite(float(score))
     assert set(('baseline_accuracy', 'lesioned_accuracy', 'random_control_accuracy')).issubset(score.attrs)
     assert len(net.generated_features) == 3 * len(stimuli)  # one reading per condition
@@ -116,22 +116,22 @@ def test_registered_model_benchmark_path_and_hook_cleanup(registered_toy):
     assert baseline.any()
     assert not lesion.any() and not control.any()  # toy has fewer than 500 units
     assert not net.model.visual.blocks[28]._forward_hooks
-    assert not candidate._perturbations.active_perturbations
+    assert not subject._interventions.active_interventions
     # Root agreement is checked explicitly: recording and generate() use the
     # same module, and a selective perturbation reaches both paths. Sessions
     # only: the reading task the benchmark configured must not change what a
     # later recording measures (rule 4.5).
-    np.testing.assert_array_equal(neural_response(candidate, stimuli, record='VWFA'), recording)
-    applied = apply_state_change(candidate, StateChange(
+    np.testing.assert_array_equal(neural_response(subject, stimuli, ['neural:VWFA']), recording)
+    applied = apply_state_change(subject, StateChange(
         'ablation', target=Selection('blocks.28', [0]), perturbation=Perturbation('zero')))
-    after = neural_response(candidate, stimuli, record='VWFA')
+    after = neural_response(subject, stimuli, ['neural:VWFA'])
     np.testing.assert_array_equal(after.values[:, 0], 0)
     np.testing.assert_array_equal(after.values[:, 1], recording.values[:, 1])
-    apply_state_change(candidate, StateChange(kind='reset', handle_id=applied.handle_id))
-    np.testing.assert_array_equal(neural_response(candidate, stimuli, record='VWFA'), recording)
+    apply_state_change(subject, StateChange(kind='reset', handle_id=applied.handle_id))
+    np.testing.assert_array_equal(neural_response(subject, stimuli, ['neural:VWFA']), recording)
 
 
 def test_original_registration_is_unchanged(registered_toy):
-    candidate = brainscore.load_model('qwen2.5-vl-3b')
-    assert 'VWFA' not in candidate.region_layer_map
-    assert candidate._state_change_fn is None
+    subject = brainscore.load_model('qwen2.5-vl-3b')
+    assert 'VWFA' not in subject.region_layer_map
+    assert subject._intervention is None

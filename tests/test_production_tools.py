@@ -5,54 +5,28 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from brainscore.instrumentation import observe, intervene
+from brainscore.experiments.runner import _MethodCalls
 from brainscore.run_record import RunRecord, RunRecorder
 from brainscore.harnesses.robotics import ActionSpec, evaluate_droid_episode
-from brainscore_core.events import StateChange
 
 pytestmark = pytest.mark.unit
 
 
-def test_nested_observers_restore_instance_override_on_error():
+def test_nested_method_recorders_restore_instance_override_on_error():
+    """The method recorder of CallableProtocol(methods=[...]) for an external system."""
     seen = [[], []]
-    subject = SimpleNamespace(process=lambda value: value * 2)
-    original = subject.process
+    system = SimpleNamespace(infer=lambda value: value * 2)
+    original = system.infer
     outer = SimpleNamespace(on_result=lambda call, result: seen[0].append(result))
     inner = SimpleNamespace(on_result=lambda call, result: seen[1].append(result))
-    with pytest.raises(RuntimeError), observe(subject, outer):
-        subject.process(1)
-        with observe(subject, inner):
-            subject.process(2)
-        subject.process(3)
+    with pytest.raises(RuntimeError), _MethodCalls(system, outer, methods=['infer']):
+        system.infer(1)
+        with _MethodCalls(system, inner, methods=['infer']):
+            system.infer(2)
+        system.infer(3)
         raise RuntimeError('experiment failed')
-    assert subject.process is original
+    assert system.infer is original
     assert seen == [[2, 4, 6], [4]]
-
-
-@pytest.mark.parametrize('method,payload', [
-    ('digest_text', ['hello', 'world']), ('look_at', ['image-reference']),
-    ('process', None)])
-def test_witness_preserves_legacy_and_non_dataframe_calls(method, payload):
-    from brainscore.witness import Witness
-    from brainscore_core.streaming import StreamEvent
-    if payload is None:
-        payload = StreamEvent('generation_request', {'prompt': 'hello'}, 0)
-    original = lambda value: {'result': 'unchanged'}
-    subject = SimpleNamespace(**{method: original})
-    with Witness(subject) as witness:
-        assert getattr(subject, method)(payload) == {'result': 'unchanged'}
-    assert len(witness.events) == 1
-    assert getattr(subject, method) is original
-
-
-def test_intervention_removes_only_owned_handle_on_error():
-    calls = []
-    def process(event):
-        calls.append(event)
-        return SimpleNamespace(handle_id='owned')
-    with pytest.raises(RuntimeError), intervene(SimpleNamespace(process=process), StateChange('ablation')):
-        raise RuntimeError('failed')
-    assert calls[-1].kind == 'reset' and calls[-1].handle_id == 'owned'
 
 
 def test_record_snapshot_replay_and_corruption(tmp_path):
@@ -60,10 +34,10 @@ def test_record_snapshot_replay_and_corruption(tmp_path):
     def process(array):
         array[:] = 2
         return array + 1
-    subject = SimpleNamespace(process=process)
+    system = SimpleNamespace(infer=process)
     with RunRecorder(tmp_path/'run', metadata={'model': 'fixture', 'seed': 0}) as recorder:
-        with observe(subject, recorder):
-            subject.process(source)
+        with _MethodCalls(system, recorder, methods=['infer']):
+            system.infer(source)
     record = RunRecord(tmp_path/'run')
     rows = list(record.events())
     np.testing.assert_array_equal(rows[0]['args'][0], np.arange(6).reshape(2, 3))
@@ -106,10 +80,10 @@ def test_assembly_and_stimulus_roundtrip(tmp_path):
 def test_caught_model_error_marks_run_failed(tmp_path):
     def fail(value):
         raise RuntimeError('inference failed')
-    subject = SimpleNamespace(process=fail)
+    system = SimpleNamespace(infer=fail)
     with RunRecorder(tmp_path/'run', metadata={}) as recorder:
-        with observe(subject, recorder), pytest.raises(RuntimeError):
-            subject.process('x')
+        with _MethodCalls(system, recorder, methods=['infer']), pytest.raises(RuntimeError):
+            system.infer('x')
     assert RunRecord(tmp_path/'run').manifest['status'] == 'failed'
     with pytest.raises(ValueError, match='completed run'):
         RunRecord(tmp_path/'run').evaluate(lambda actual, target: 0, None)
@@ -142,7 +116,8 @@ def test_droid_no_target_leakage_timing_and_begin(tmp_path):
         def reset(self):
             self.begins += 1
     policy = Policy()
-    subject = BrainScoreModel('s', None, {}, {}, None, policy=policy)
+    subject = BrainScoreModel('s', policy=policy,
+                              policy_in_channels=('vision:image', 'proprioception', 'instruction'))
     with RunRecorder(tmp_path/'run', metadata={'fixture': True}) as recorder:
         result = evaluate_droid_episode(subject, droid_fixture(), action_spec=action_spec(),
                                          action_source=lambda row: row['action'], recorder=recorder)
@@ -159,25 +134,30 @@ def test_action_validation(action):
         action_spec().validate(action)
 
 
-def test_trace_preserves_invalid_response_and_session(tmp_path):
-    from brainscore.model_helpers.response_trace import build_trace_subject
-    from brainscore_core.streaming import Session, StreamEvent
-    model = build_trace_subject('fixture', provider=lambda req: {'text': 'unparseable', 'tokens': [1]},
-                                parse=int, provenance={'provider': 'fixture'})
-    session = Session([StreamEvent('generation_request', {'prompt': 'a'}, 12)])
-    session.requested_output_channels = ('response_trace',)
+def test_unparseable_reply_is_kept_as_an_invalid_answer(tmp_path):
+    """A reply the task cannot parse is recorded as invalid, with the reply kept, never guessed."""
+    from brainscore import BrainScoreModel
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    model = BrainScoreModel('fixture', in_channels={'text'}, reply=lambda prompt: 'unparseable')
+    stimuli = StimulusSet({'stimulus_id': ['a'], 'text': ['a']})
+    session = stimulus_session(stimuli, ['behavior:choice'], TaskContext(response=Choice(['1', '2'])))
     model.participate(session)
-    result = session.emitted[0]
-    assert result.payload['answer'] is None and not result.payload['valid']
-    assert result.payload['raw']['tokens'] == [1] and result.t_ms == 12
-    assert 'response_trace' in model.out_channels
+    answer = session.collect('behavior:choice')
+    assert np.isnan(answer.values).all()
+    assert list(answer['answer_valid'].values) == [False]
+    assert list(answer['raw_answer'].values) == ['unparseable']
+    assert answer['parse_error'].values[0]
+    assert 'behavior:choice' in model.out_channels
 
 
 def test_api_episode_reset():
     from brainscore.model_helpers.api_behavioral import build_api_action_fn
     prompts = []
-    def provider(model, system, prompt, image, max_tokens):
-        prompts.append(prompt)
+    def provider(model, system, messages, settings):
+        prompts.append(messages[0]['content'][0]['text'])
         return 'Action: 0'
     act = build_api_action_fn(provider, 'fixture', obs_mode='ascii', history_window=8)
     for first in (True, False, True):

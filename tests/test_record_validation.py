@@ -612,11 +612,11 @@ def experiment_child(directory):
         from types import SimpleNamespace
         def evaluate(subject, context):
             for index in range(3):
-                subject.process(index)
+                subject.infer(index)
             ready.touch()
             time.sleep(60)
-        Experiment(subject=SimpleNamespace(process=lambda x: x * 10),
-                   protocol=CallableProtocol('fixture', evaluate),
+        Experiment(subject=SimpleNamespace(infer=lambda x: x * 10),
+                   protocol=CallableProtocol('fixture', evaluate, methods=['infer']),
                    tools=[RecordInputsOutputs()], output_dir={str(directory)!r}).run()
     '''
 
@@ -639,8 +639,9 @@ def test_running_experiment_with_complete_child_record_is_incomplete(tmp_path):
     from types import SimpleNamespace
     from brainscore.experiments import CallableProtocol, Experiment, RecordInputsOutputs
     directory = tmp_path / 'run'
-    Experiment(subject=SimpleNamespace(process=lambda x: x),
-               protocol=CallableProtocol('fixture', lambda subject, context: subject.process(1)),
+    Experiment(subject=SimpleNamespace(infer=lambda x: x),
+               protocol=CallableProtocol('fixture', lambda subject, context: subject.infer(1),
+                                         methods=['infer']),
                tools=[RecordInputsOutputs()], output_dir=directory).run()
     assert RunRecord.inspect(directory)['status'] == 'complete'
     # Death after the recorder closed but before the experiment manifest was finalized.

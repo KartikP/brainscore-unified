@@ -201,7 +201,7 @@ class TestInspectModel:
         assert rec.layer_aggregation == 'last_token'
         assert rec.submodule_path is None
         assert len(rec.block_layers) == 6
-        assert p.required_modalities() == {'text'}
+        assert p.required_channels() == {'text'}
 
     def test_vit_profile_provisional_map(self):
         p = inspect_model(make_vit(8), identifier='vit-tiny')
@@ -236,8 +236,8 @@ class TestInspectModel:
         vis = next(r for r in p.recommendations if r.modality == 'vision')
         assert vis.submodule_path == 'vision_model'
         assert vis.block_layers[0] == 'encoder.layers.0'
-        # multimodal → soft required_modalities
-        assert p.required_modalities() == set()
+        # multimodal → no required channel
+        assert p.required_channels() == set()
 
     def test_qwen_vl_two_towers_flat_vision_plus_causal_text(self):
         p = inspect_model(make_qwen_vl(4, 4), identifier='qwen-vl-tiny')
@@ -246,7 +246,7 @@ class TestInspectModel:
         assert 'vision_flat' in modalities
         assert 'text_causal' in modalities
         vis = next(r for r in p.recommendations if r.modality == 'vision_flat')
-        assert vis.wrapper == 'VisionWrapper'   # facade fronts the VLM strategy
+        assert vis.wrapper == 'VLMVisionWrapper'
         assert vis.submodule_path == 'visual'
         assert vis.block_layers[0] == 'blocks.0'
 
@@ -334,7 +334,8 @@ class TestScaffold:
         p = inspect_model(make_vit(8), identifier='vit-tiny')
         code = scaffold_registration(p, hf_id='org/vit-tiny',
                                      registry_key='vit-tiny')
-        assert 'VisionWrapper' in code
+        assert ('from brainscore_vision.model_helpers.activations.pytorch '
+                'import PytorchWrapper') in code
         assert "model_registry['vit-tiny']" in code
         assert 'REGION_LAYER_MAP' in code
         assert 'org/vit-tiny' in code
@@ -345,7 +346,7 @@ class TestScaffold:
         p = inspect_model(make_gpt(6), identifier='gpt2-tiny')
         code = scaffold_registration(p)
         assert 'from brainscore.model_helpers.text_wrapper import TextWrapper' in code
-        assert 'required_modalities' not in code or 'text' in code
+        assert 'required_channels' not in code or 'text' in code
 
     def test_scaffold_is_valid_python(self):
         p = inspect_model(make_vit(8), identifier='vit-tiny')
@@ -392,7 +393,7 @@ class TestAutoRegisterLive:
         # provisional vision map wired
         assert set(bs_model._region_layer_map_dict) == {'V1', 'V2', 'V4', 'IT'}
         assert bs_model._region_layer_map_dict['V1'] == 'encoder.layers.0'
-        assert 'vision' in bs_model._preprocessors
+        assert 'vision:image' in bs_model.in_channels
 
     def test_vision_without_preprocessing_errors(self):
         with pytest.raises(ValueError, match="preprocessing"):
@@ -425,14 +426,13 @@ def test_live_registration_uses_the_documented_extractor_mapping(modality):
         subject = auto_register(
             make_gpt(), identifier='mapping-text', tokenizer=SimpleNamespace(),
         )
-    assert isinstance(subject._activations_model, dict)
-    assert set(subject._activations_model) == {modality}
-    assert subject.supported_modalities == {modality}
+    assert set(subject.extractor) == {modality}
+    assert subject.in_channels == {{'vision': 'vision:image', 'text': 'text'}[modality], 'control'}
 
 
 def test_multimodal_scaffold_keeps_optional_towers_in_extractor_mapping():
     profile = inspect_model(make_clip(), identifier='clip-example')
-    assert profile.required_modalities() == set()
+    assert profile.required_channels() == set()
     code = scaffold_registration(profile)
     assert "'vision': vision_wrapper" in code
     assert "'text': text_wrapper" in code

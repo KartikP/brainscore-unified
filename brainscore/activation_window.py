@@ -1,20 +1,17 @@
-"""ActivationWindow — capture layer-output activations during any process() loop.
+"""ActivationWindow: the forward hook that reads layer outputs of a network.
 
-`PerceptWindow` taps a model's INPUT (a `forward_pre_hook`); `ActivationWindow`
-taps its LAYER OUTPUTS (a `forward_hook`), so you can collect hidden activations
-while the model runs — crucially, **including inside an embodied or multi-agent
-rollout**, where `process(row)` dispatches to the `policy` and never
-touches the `start_recording → NeuroidAssembly` path. It is non-invasive (hooks,
-no extra forward pass), strided/capped, and decoupled from the dispatch path:
-the hook fires whenever the layer's `forward()` runs.
+``TorchInstrumentation.record`` (and so the ``RecordActivity`` tool) reads
+layers with it; that is the way to read layers in an experiment. Used on its
+own, it captures hidden activations whenever the layer's ``forward()`` runs,
+also inside a closed-loop or multi-agent rollout. It is non-invasive (hooks, no
+extra forward pass) and strided/capped.
 
-    with ActivationWindow(agent, layers=['blocks.20']) as rec:
-        run_interaction(agent, ...)          # each process() forward fires the hooks
-    acts = rec.stack('blocks.20', reduce='mean')   # (n_calls, hidden) — one vector per tick
+    with ActivationWindow(network, layers=['blocks.20']) as rec:
+        run_interaction(...)                 # each forward pass fires the hooks
+    acts = rec.stack('blocks.20', reduce='mean')   # (n_calls, last axis) — one vector per tick
 
-`target` may be a torch Module, an activations wrapper (`._model`), or a
-BrainScoreModel (its wrapped module is resolved automatically — same logic as
-PerceptWindow). `layers` are dotted submodule paths; omit to hook the outermost
+``target`` is a torch Module, or a list or mapping of them: the network a
+subject runs. ``layers`` are dotted submodule paths; omit to hook the outermost
 module's output.
 """
 import json
@@ -155,8 +152,11 @@ class ActivationWindow:
     def stack(self, layer: str, reduce: Optional[str] = None):
         """Stack a layer's per-call activations into one array of shape
         ``(n_calls, *feature)``. ``reduce='mean'`` first mean-pools each call over
-        all but the last (feature) dim — useful when seq-length varies tick to
-        tick, and the form you want for inter-agent RSA."""
+        all but the last dim — useful when seq-length varies tick to tick, and
+        the form you want for inter-agent RSA. The last dim is the hidden size of
+        a transformer layer, but the width of a convolution output
+        ``(batch, channels, height, width)``: permute or reduce such a layer
+        yourself to keep its channels."""
         arrs = self.by_layer().get(layer)
         if not arrs:
             raise KeyError(f"no captures for layer {layer!r}")

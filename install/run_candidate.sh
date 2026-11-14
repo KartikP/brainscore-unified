@@ -32,7 +32,7 @@
 # Phases (in the order "all" runs them):
 #   prepare          Fetch or snapshot the four checkouts; record revisions.
 #   pins             Report pin agreement (install/check_pins.py).
-#   offline          verify build contents example torch install
+#   offline          verify build contents example torch ffmpeg install
 #                    installed-checks packages
 #   tutorials        verify build example torch install notebooks
 #                    (4 notebooks at a time; UMI_NOTEBOOK_JOBS changes that)
@@ -392,6 +392,22 @@ phase_torch() {
         --index-url "$TORCH_INDEX"
 }
 
+# The Friends data preparation tests cut clips and sound with ffmpeg and ffprobe;
+# without them the tests skip, and a skip that is not optional fails the run.
+phase_ffmpeg() {
+    if command -v ffmpeg > /dev/null && command -v ffprobe > /dev/null; then
+        echo "ffmpeg is present: $(command -v ffmpeg)"
+        return
+    fi
+    [ "${GITHUB_ACTIONS:-}" = true ] || die 'Install ffmpeg (with ffprobe); the packages phase needs it'
+    if [ "$(uname -s)" = Linux ]; then
+        sudo apt-get update -q
+        sudo apt-get install -y -q --no-install-recommends ffmpeg
+    else
+        brew install ffmpeg
+    fi
+}
+
 phase_install() {
     cd "$WORK"
     local unified_wheels=(wheels/brainscore-*.whl)
@@ -480,7 +496,7 @@ phase_openpi_instrumentation_test() {
         2>&1 | tee "$QUAL/openpi-instrumentation.log"
 }
 
-OFFLINE_PHASES="verify build contents example torch install installed-checks packages"
+OFFLINE_PHASES="verify build contents example torch ffmpeg install installed-checks packages"
 NOTEBOOK_PHASES="verify build example torch install notebooks"
 CLIENT_PHASES="verify-core openpi-client-install openpi-client-record openpi-client-test"
 INSTRUMENTATION_PHASES="verify-core openpi-checkout openpi-torch openpi-instrumentation-install openpi-instrumentation-record openpi-instrumentation-test"

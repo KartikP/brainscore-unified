@@ -59,12 +59,6 @@ def test_added_capability_takes_precedence_over_the_built_in_part(registry):
         identifier = 'participate-precedence-test'
         output_channels = {'neural:IT'}
 
-        def handles(self, model, event, **kwargs):
-            return False
-
-        def process(self, model, event, **kwargs):
-            raise NotImplementedError
-
         def supports_session(self, model, channels):
             return set(channels) == {'neural:IT'}
 
@@ -72,7 +66,7 @@ def test_added_capability_takes_precedence_over_the_built_in_part(registry):
             while session.next_input() is not None:
                 pass
             calls.append(model.identifier)
-            session.respond(StreamEvent('neural:IT', _neural(len(session.stimulus_set)), None))
+            session.respond(StreamEvent('neural:IT', _neural(len(session.stimuli)), None))
 
     def extractor(stimuli, layers=None, **kwargs):
         pytest.fail('built-in neural part ran instead of the added capability')
@@ -81,7 +75,7 @@ def test_added_capability_takes_precedence_over_the_built_in_part(registry):
     model = BrainScoreModel('precedence', region_layer_map={'IT': 'layer'},
                             extractor={'vision': extractor})
     assert model.check_session_support({'neural:IT'}).identifier == Custom.identifier
-    out = neural_response(model, _images(2), record='IT')
+    out = neural_response(model, _images(2), ['neural:IT'])
     assert calls == ['precedence'] and out.sizes['presentation'] == 2
 
 
@@ -102,7 +96,6 @@ def test_typed_drivers_keep_the_recorded_pre_rename_driver_labels(streaming, met
     """
     model = BrainScoreModel('labels', region_layer_map={'IT': 'layer'},
                             extractor={'vision': _features})
-    session = stimulus_session(_images(2), ['neural:IT'])
-    session.streaming = streaming
+    session = stimulus_session(_images(2), ['neural:IT'], streaming=streaming)
     model.participate(session)
     assert [event.meta for event in session.emitted] == meta

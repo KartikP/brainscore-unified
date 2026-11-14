@@ -1,61 +1,51 @@
-"""Witness — watch how Brain-Score runs *any* benchmark on a model.
+"""Witness: see what a subject received and sent in every session of a run.
 
-Every capability in the unified interface funnels through one method,
-``BrainScoreModel.process(input_event) -> DataAssembly``. That single chokepoint
-is all you need to instrument to see, for any benchmark:
+``Witness`` watches the sessions of one subject during a ``with`` block. It
+uses the one way to watch a run, ``observed(session, sink)``: every session the
+subject takes part in is wrapped in ``observed``, so the Witness sees the
+session's input events and the subject's responses. To reach those sessions,
+it replaces ``participate`` on the subject instance for the ``with`` block and
+puts the original back at the end. Apart from that method it reads only the
+subject's ``identifier``, so it works for every subject, because every subject
+takes part through ``participate``.
 
-  * **what the model saw**  — the input event, rendered per modality (a stimulus
-    image, a text+instruction card, a 2-AFC montage, an embodied frame, or a
-    state-change/lesion description);
-  * **what the model did**  — the raw output (neuroid activations, label
-    probabilities, a generated answer, or a chosen action);
-  * **in what mode**        — neural recording vs. behavioral generation vs.
-    readout vs. embodied action, inferred from model state at call time.
-
-``Witness`` is non-invasive: it wraps the model's ``process`` (and, when present,
-the behavioral generation/readout helpers) for the duration of a ``with`` block,
-records one :class:`WitnessEvent` per call, and restores the originals on exit.
-Nothing about the benchmark or the model needs to change — point it at any
-``benchmark(model)`` call and watch.
+One :class:`WitnessEvent` is kept per response: the inputs delivered since the
+previous response (what the subject saw) and the response (what it did). A
+batch session that answers all stimuli at once is one event; a closed-loop
+episode is one event per action.
 
     from brainscore.witness import Witness
-    with Witness(model, label='CLIP · MajajHong.IT') as w:
-        score = benchmark(model)
-    w.save('/tmp/run')          # trace.json + one panel PNG per recorded call
+    with Witness(subject, label='CLIP · MajajHong.IT') as w:
+        score = benchmark(subject)
+    w.save('/tmp/run')          # trace.json + up to max_panels (12) panel PNGs, evenly spaced
 
-Rendering (``w.render`` / ``w.save``) lazily imports matplotlib/PIL so the core
-recorder stays dependency-light and importable anywhere.
+Rendering (``w.save``) imports matplotlib and PIL only when it draws a panel.
 """
 import json
 import os
 import time
 from dataclasses import dataclass, field, asdict
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Dict, List, Optional
+
+from brainscore_core.streaming import CONTROL_CHANNEL, parse_channel
 
 # Event-type tags
-STIMULUS, STATE_CHANGE, ENV_STEP = 'stimulus_set', 'state_change', 'environment_step'
+STIMULUS, INTERVENTION, ENV_STEP = 'stimuli', 'intervention', 'environment_step'
 
-# Fallback column->modality map for models that don't define COLUMN_TO_MODALITY
-# (mirrors BrainScoreModel.COLUMN_TO_MODALITY so witnessing works on any model).
-_DEFAULT_COLUMN_TO_MODALITY = {
-    'image_file_name': 'vision', 'image_path': 'vision', 'filename': 'vision',
-    'montage_path': 'vision',
-    'sentence': 'text', 'text': 'text',
-    'video_path': 'video', 'audio_path': 'audio', 'audio_file_name': 'audio',
-    'audio_file': 'audio',
-}
+_INTERVENTION_FAMILIES = ('lesion', 'stimulation', 'pharmacological')
+_MEDIA_FAMILIES = {'vision': 'vision', 'audio': 'audio'}
 
 
 @dataclass
 class WitnessEvent:
-    """One recorded ``process()`` call."""
+    """One response of the subject, with the inputs it answered."""
     index: int
     event_type: str
-    mode: str                                   # 'neural' | 'readout' | 'generation' | 'action' | 'state_change'
+    mode: str                                   # 'neural' | 'behavior' | 'action' | 'intervention'
     modalities: List[str] = field(default_factory=list)
     instruction: Optional[str] = None
     recording_target: Optional[List[str]] = None
-    saw: List[Dict[str, Any]] = field(default_factory=list)   # per-stimulus "what the model saw"
+    saw: List[Dict[str, Any]] = field(default_factory=list)   # per-input "what the subject saw"
     did: Dict[str, Any] = field(default_factory=dict)          # output summary
     n_inputs: int = 0
     duration_s: float = 0.0
@@ -65,234 +55,201 @@ class WitnessEvent:
         return asdict(self)
 
 
+def _mode(channel: str) -> str:
+    family, _ = parse_channel(channel)
+    if family == 'neural':
+        return 'neural'
+    if family == 'behavior':
+        return 'behavior'
+    if family == 'perturbation':
+        return 'intervention'
+    return 'action'
+
+
+class _SessionWatch:
+    """The ``observed`` sink for one session: groups inputs by the response that follows."""
+
+    def __init__(self, witness: 'Witness', session) -> None:
+        self.witness, self.session = witness, session
+        self.inputs: List[Any] = []
+        self.started = time.perf_counter()
+        task = getattr(session, 'task', None)
+        self.instruction = None if task is None else task.instruction
+        self.regions = [parse_channel(c)[1] for c in session.outputs
+                        if parse_channel(c)[0] == 'neural'] or None
+
+    def record(self, direction: str, event) -> None:
+        if event.meta.get('action_status', 'proposed') != 'proposed':
+            return              # an execution receipt of the action already recorded
+        if direction == 'input':
+            if event.channel != CONTROL_CHANNEL:
+                if not self.inputs:
+                    self.started = time.perf_counter()
+                self.inputs.append(event)
+            return
+        self.witness._add(self._event(_mode(event.channel)), event)
+        self.inputs = []
+        self.started = time.perf_counter()
+
+    def on_error(self, call, error) -> None:
+        self.fail(error)
+
+    def fail(self, error) -> None:
+        ev = self._event('action' if self.inputs and self.inputs[-1].channel == 'observation'
+                         else 'behavior')
+        ev.error = f'{type(error).__name__}: {error}'
+        self.witness.events.append(ev)
+        self.inputs = []
+
+    def _event(self, mode: str) -> WitnessEvent:
+        families = [parse_channel(e.channel)[0] for e in self.inputs]
+        if any(f in _INTERVENTION_FAMILIES for f in families):
+            event_type = INTERVENTION
+        elif 'observation' in families:
+            event_type = ENV_STEP
+        else:
+            event_type = STIMULUS
+        ev = WitnessEvent(index=len(self.witness.events), event_type=event_type, mode=mode,
+                          instruction=self.instruction, recording_target=self.regions,
+                          duration_s=time.perf_counter() - self.started)
+        ev.saw, ev.modalities, ev.n_inputs = self.witness._views(self.inputs)
+        table = self.session.stimuli
+        if not ev.saw and table is not None:
+            # The stimuli were read from the session's table, not sent as events.
+            ev.n_inputs = len(table)
+            ev.saw = [{'modalities': [], 'stimulus_id': str(sid)}
+                      for sid in list(table['stimulus_id'])[:self.witness.max_saw]]
+        instructions = [e.payload for e in self.inputs if e.channel == 'instruction']
+        if instructions:
+            ev.instruction = str(instructions[-1])
+        return ev
+
+
 class Witness:
-    def __init__(self, model, label: Optional[str] = None, max_saw: int = 8):
-        """:param model: a ``BrainScoreModel`` (or anything with ``process``).
-        :param label: free-form label for the run (model · benchmark).
-        :param max_saw: max stimuli to record "saw" detail for, per call (cap clutter)."""
-        self.model = model
-        self.label = label or getattr(model, 'identifier', 'model')
+    def __init__(self, subject, label: Optional[str] = None, max_saw: int = 8):
+        """:param subject: any subject (it takes part through ``participate``).
+        :param label: free-form label for the run (subject · benchmark).
+        :param max_saw: the most inputs to keep "saw" detail for, per event."""
+        self.subject = subject
+        self.label = label or subject.identifier
         self.max_saw = max_saw
         self.events: List[WitnessEvent] = []
-        self._observation = None
+        self._saved = None
 
-    # -- context management: patch the instance's process() ----------------
+    # -- watch every session the subject takes part in ----------------------
     def __enter__(self):
-        from .instrumentation import observe
-        if self._observation is not None:
-            raise RuntimeError("A Witness cannot be entered twice concurrently")
-        self._pending = {}
-        observation = observe(self.model, self)
-        observation.__enter__()
-        self._observation = observation
+        if self._saved is not None:
+            raise RuntimeError('A Witness cannot be entered twice concurrently')
+        state = vars(self.subject)
+        self._saved = ('participate' in state, state.get('participate'))
+        original = self.subject.participate
+
+        def participate(session):
+            watch = _SessionWatch(self, session)
+            from .instrumentation import observed
+            try:
+                with observed(session, watch):
+                    return original(session)
+            except BaseException as error:
+                watch.fail(error)
+                raise
+
+        self.subject.participate = participate
         return self
 
-    def on_start(self, call):
-        input_event = call.args[0] if call.args else next(
-            (call.kwargs[k] for k in ('input_event', 'stimuli', 'text', 'texts')
-             if k in call.kwargs), None)
-        ev = WitnessEvent(index=len(self.events), event_type=self._event_type(input_event),
-                          mode=self._infer_mode(input_event))
-        self._record_input(ev, input_event)
-        self._pending[call.event_id] = ev
-
-    def on_result(self, call, output):
-        ev = self._pending.pop(call.event_id)
-        ev.duration_s = call.duration_s
-        self._record_output(ev, output)
-        self.events.append(ev)
-
-    def on_error(self, call, error):
-        ev = self._pending.pop(call.event_id)
-        ev.duration_s = call.duration_s
-        ev.error = f'{type(error).__name__}: {error}'
-        self.events.append(ev)
-
     def __exit__(self, *exc):
-        try:
-            return self._observation.__exit__(*exc)
-        finally:
-            self._observation = None
+        present, previous = self._saved
+        if present:
+            self.subject.participate = previous
+        else:
+            del self.subject.participate
+        self._saved = None
+        return False
 
-    # -- introspection helpers --------------------------------------------
-    def _event_type(self, input_event):
-        cls = type(input_event).__name__
-        if cls == 'StateChange':
-            return STATE_CHANGE
-        if isinstance(input_event, Mapping):
-            return ENV_STEP
-        return STIMULUS
+    # -- views of inputs and outputs -----------------------------------------
+    def _add(self, ev: WitnessEvent, output) -> None:
+        self._record_output(ev, output.payload)
+        self.events.append(ev)
 
-    def _infer_mode(self, input_event):
-        et = self._event_type(input_event)
-        if et == STATE_CHANGE:
-            return 'state_change'
-        if et == ENV_STEP:
-            return 'action'
-        m = self.model
-        # a model may declare its behavioral path explicitly (e.g. a bespoke
-        # 2-AFC driver model that isn't a BrainScoreModel)
-        hinted = getattr(m, '_witness_mode', None)
-        if hinted:
-            return hinted
-        tc = getattr(m, '_task_context', None)
-        if getattr(m, '_use_generation_for_task', False) and tc is not None:
-            return 'generation'
-        if getattr(m, '_readout_classifier', None) is not None and tc is not None:
-            return 'readout'
-        return 'neural'
+    def _views(self, inputs):
+        views, rows, modalities = [], {}, set()
+        for event in inputs:
+            family, address = parse_channel(event.channel)
+            if family in _INTERVENTION_FAMILIES:
+                change = event.payload
+                views.append({'modalities': ['intervention'], 'kind': change.kind,
+                              'target': None if change.target is None else str(change.target),
+                              'perturbation': (None if change.perturbation is None
+                                               else str(change.perturbation))})
+                modalities.add('intervention')
+                continue
+            if family in ('instruction', 'reward'):
+                continue                                    # shown in the caption, not as an input
+            if family == 'observation':
+                views.append(self._observation_view(event.payload))
+                modalities.add('embodied')
+                continue
+            modality = address if family == 'vision' and address == 'video' else _MEDIA_FAMILIES.get(family, family)
+            modalities.add(modality)
+            key = event.meta.get('table_row', len(rows))
+            view = rows.get(key)
+            if view is None:
+                view = rows[key] = {'modalities': []}
+                if 'stimulus_id' in event.meta:
+                    view['stimulus_id'] = str(event.meta['stimulus_id'])
+                views.append(view)
+            view['modalities'].append(modality)
+            if modality in ('vision', 'video', 'audio') and isinstance(event.payload, (str, os.PathLike)):
+                view[modality] = {'path': str(event.payload)}
+            elif modality in ('vision', 'video'):
+                view['_frame'] = event.payload                 # kept for rendering; stripped from json
+                view['frame_shape'] = list(getattr(event.payload, 'shape', []))
+            else:
+                view[modality] = {'text': str(event.payload)}
+        return views[:self.max_saw], sorted(modalities), len(views)
 
-    def _record_input(self, ev, input_event):
-        et = ev.event_type
-        m = self.model
-        tc = getattr(m, '_task_context', None)
-        if tc is not None:
-            ev.instruction = getattr(tc, 'instruction', None)
-        regions = getattr(m, '_recording_regions', None)
-        if regions:
-            ev.recording_target = list(regions)
-
-        if et == ENV_STEP:
-            ev.n_inputs = 1
-            ev.saw.append(self._env_step_view(input_event))
-            ev.instruction = input_event.get('instruction', ev.instruction)
-            return
-        if et == STATE_CHANGE:
-            ev.n_inputs = 1
-            ev.saw.append(self._state_change_view(input_event))
-            return
-
-        # StimulusSet
-        stimuli = input_event
-        try:
-            ev.modalities = sorted(m.detect_modalities(stimuli))
-        except Exception:
-            ev.modalities = []
-        try:
-            ev.n_inputs = len(stimuli)
-        except Exception:
-            ev.n_inputs = 0
-        ev.saw = self._stimulus_views(stimuli, ev.modalities)
-
-    def _stimulus_views(self, stimuli, modalities):
-        # Legacy language calls take raw text; generic event payloads need not
-        # be DataFrames. Observing either must preserve the original call.
-        if not hasattr(stimuli, 'iloc'):
-            values = stimuli if isinstance(stimuli, (list, tuple)) else [stimuli]
-            return [({'modalities': ['text'], 'text': {'text': value}}
-                     if isinstance(value, str) else {'type': type(value).__name__})
-                    for value in values[:self.max_saw]]
-        views = []
-        try:
-            cols = list(stimuli.columns)
-        except Exception:
-            cols = []
-        # which column carries each modality (defensive: not every Subject
-        # defines COLUMN_TO_MODALITY — fall back to a sensible default mapping)
-        col_map = getattr(self.model, 'COLUMN_TO_MODALITY', None) or _DEFAULT_COLUMN_TO_MODALITY
-        col_for = {}
-        for col in cols:
-            mod = col_map.get(col)
-            if mod:
-                col_for.setdefault(mod, col)
-        n = min(len(stimuli), self.max_saw)
-        get_stimulus = getattr(stimuli, 'get_stimulus', None)
-        sid_col = 'stimulus_id' if 'stimulus_id' in cols else ('image_id' if 'image_id' in cols else None)
-        for i in range(n):
-            row = stimuli.iloc[i]
-            view = {'modalities': modalities}
-            for mod, col in col_for.items():
-                val = row[col]
-                if mod in ('vision', 'video', 'audio'):
-                    path = None
-                    if get_stimulus is not None and sid_col is not None:
-                        try:
-                            path = str(get_stimulus(row[sid_col]))
-                        except Exception:
-                            path = None
-                    if path is None:
-                        path = str(val)
-                    view[mod] = {'path': path}
-                else:                                   # text
-                    view[mod] = {'text': str(val)}
-            if sid_col is not None:
-                view['stimulus_id'] = str(row[sid_col])
-            views.append(view)
-        return views
-
-    def _env_step_view(self, row):
+    @staticmethod
+    def _observation_view(observation):
         view = {'modalities': ['embodied']}
-        # the frame may live in observation['frame'] or on the camera streams
-        frame = None
-        obs = row.get('observation')
-        if isinstance(obs, dict) and 'frame' in obs:
-            frame = obs['frame']
-        cams = row.get('vision:image')
-        if frame is None and isinstance(cams, dict) and cams:
-            frame = next(iter(cams.values()))
+        frame = observation.get('frame') if isinstance(observation, dict) else None
         if frame is not None:
             view['frame_shape'] = list(getattr(frame, 'shape', []))
             view['_frame'] = frame                      # kept for rendering; stripped from json
         return view
 
-    def _state_change_view(self, sc):
-        target = getattr(sc, 'target', None)
-        perturbation = getattr(sc, 'perturbation', None)
-        return {'modalities': ['perturbation'],
-                'kind': getattr(sc, 'kind', None),
-                'target': str(target) if target is not None else None,
-                'perturbation': str(perturbation) if perturbation is not None else None}
-
     def _record_output(self, ev, out):
-        if isinstance(out, Mapping):
-            action = out.get('motor')
-            action = getattr(action, 'payload', action)
+        dims = getattr(out, 'dims', None)
+        if ev.mode == 'action':
             try:
                 import numpy as np
-                action = np.asarray(action).reshape(-1).tolist()
+                out = np.asarray(out).reshape(-1).tolist()
             except Exception:
                 pass
-            ev.did = {'kind': 'action', 'action': action}
+            ev.did = {'kind': 'action', 'action': out}
             return
-        # DataAssembly-like (xarray)
-        dims = getattr(out, 'dims', None)
         if dims is not None:
-            ev.did = {'kind': self._assembly_kind(out, ev.mode),
+            ev.did = {'kind': 'neural' if 'neuroid' in dims else 'behavior',
                       'dims': list(dims), 'shape': list(getattr(out, 'shape', []))}
             self._summarize_assembly(ev, out)
             return
         ev.did = {'kind': 'value', 'repr': str(out)[:200]}
 
-    def _assembly_kind(self, out, mode):
-        dims = set(getattr(out, 'dims', []))
-        coords = set(getattr(out, 'coords', {}).keys()) if hasattr(out, 'coords') else set()
-        if 'neuroid' in dims:
-            return 'neural'
-        if 'choice' in dims or 'choice' in coords or mode in ('readout', 'generation'):
-            return 'behavior'
-        return 'assembly'
-
     def _summarize_assembly(self, ev, out):
         try:
             import numpy as np
-            kind = ev.did['kind']
-            if kind == 'neural':
+            if ev.did['kind'] == 'neural':
                 for c in ('region', 'layer', 'neuroid_id'):
-                    if c in getattr(out, 'coords', {}):
-                        vals = list(map(str, np.unique(out[c].values)))[:6]
-                        ev.did[c] = vals
-                flat = np.asarray(out.values).ravel()
-                ev.did['value_sample'] = [round(float(x), 4) for x in flat[:5]]
-            elif kind == 'behavior':
-                # behavioral readout (probabilities) or generation (labels)
-                if 'choice' in getattr(out, 'coords', {}):
-                    labels = list(map(str, np.asarray(out['choice'].values).ravel()[:12]))
-                    ev.did['labels'] = labels
-                vals = np.asarray(out.values)
-                if vals.dtype.kind in 'fc':
-                    ev.did['value_sample'] = [round(float(x), 4) for x in vals.ravel()[:12]]
-                else:
-                    ev.did['prediction_sample'] = list(map(str, vals.ravel()[:8]))
+                    if c in out.coords:
+                        ev.did[c] = list(map(str, np.unique(out[c].values)))[:6]
+                ev.did['value_sample'] = [round(float(x), 4) for x in np.asarray(out.values).ravel()[:5]]
+                return
+            if 'choice' in out.coords:
+                ev.did['labels'] = list(map(str, np.asarray(out['choice'].values).ravel()[:12]))
+            vals = np.asarray(out.values)
+            if vals.dtype.kind in 'fc':
+                ev.did['value_sample'] = [round(float(x), 4) for x in vals.ravel()[:12]]
+            else:
+                ev.did['prediction_sample'] = list(map(str, vals.ravel()[:8]))
         except Exception as e:
             ev.did['summary_error'] = str(e)
 

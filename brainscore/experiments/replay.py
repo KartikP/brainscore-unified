@@ -66,20 +66,22 @@ def replay_sessions(directory):
         from copy import deepcopy
         key = (repetition.condition, repetition.identifier)
         saved = deepcopy(inputs[key])
-        session = Session(saved)
-        for name, value in deepcopy(settings[key]).items():
+        context = deepcopy(settings[key])
+        # The source decides the delivery: a recorded stream replays as one.
+        session = Session(iter(saved) if context.pop('streaming', False) else saved)
+        for name, value in context.items():
             setattr(session, name, value)
-        if 'requested_output_channels' not in settings[key] and trial_outputs[key]:
+        if 'outputs' not in settings[key] and trial_outputs[key]:
             # Older records have no request metadata. Keep the observed channel
             # names scoped to this repetition rather than mixing different repetitions.
-            session.requested_output_channels = tuple(sorted(trial_outputs[key]))
+            session.outputs = tuple(sorted(trial_outputs[key]))
         # SessionProtocol collects results after the final observation.
         session.collect = lambda: [event.payload for event in session.emitted]
         yield session
     return SessionProtocol('saved-session-inputs', factory, conditions=conditions, repetitions=repetitions,
-        input_channels={e.channel for group in inputs.values() for e in group
+        required_input_channels={e.channel for group in inputs.values() for e in group
                         if e.channel != CONTROL_CHANNEL},
-        output_channels=outputs,
+        requested_output_channels=outputs,
         metadata={**_source(directory), 'mode': 'open_loop_saved_inputs'})
 
 

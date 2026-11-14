@@ -2,9 +2,8 @@
 Qwen2.5-VL-3B registered as a BrainScoreModel -- a true VLM where the vision
 encoder feeds into a causal language model.
 
-Uses the VisionWrapper facade with kind='vlm' for the vision path (it delegates
-to VLMVisionWrapper, which handles Qwen's flattened-patch layout with
-image_grid_thw metadata) and TextWrapper for the text path
+Uses VLMVisionWrapper for the vision path (it handles Qwen's flattened-patch
+layout with image_grid_thw metadata) and TextWrapper for the text path
 (causal mode with last_token aggregation). Both are class-based, cached via
 @store_xarray, and symmetric in their calling convention.
 
@@ -26,13 +25,13 @@ from typing import List
 import torch
 from PIL import Image
 
-from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Subject
+from brainscore import BrainScoreModel, LayerSelector
+from brainscore_core.contract import Subject
 from brainscore_core.hf_compat import pin_image_processor
 
 
 REGION_LAYER_MAP = {
-    # Vision regions -- relative to model.visual (VisionWrapper/vlm root)
+    # Vision regions -- relative to model.visual (VLMVisionWrapper root)
     'V1': 'blocks.2',
     'V2': 'blocks.6',
     'V4': 'blocks.14',
@@ -85,12 +84,12 @@ def _bf16_provenance(model, processor, download):
     }
 
 
-def _make_generation_fn(qwen_model, qwen_processor, max_new_tokens: int = 8):
+def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
     """Create a generation callable for instruction-following behavioral
     tasks. Used by BrainScoreModel when TaskContext carries an
     ``instruction`` (not just fitting_stimuli).
 
-    Signature (matches BrainScoreModel._generate_predictions contract):
+    Signature (the ``answer`` part of BrainScoreModel):
         fn(stimulus_row, instruction, label_set) -> predicted_label
     """
     device = next(qwen_model.parameters()).device
@@ -150,7 +149,7 @@ def get_model(identifier: str) -> Subject:
 
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
     from brainscore.model_helpers.text_wrapper import TextWrapper
-    from brainscore.model_helpers.vision_wrapper import VisionWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
 
     qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         hf_id,
@@ -166,12 +165,10 @@ def get_model(identifier: str) -> Subject:
     qwen_processor = AutoProcessor.from_pretrained(hf_id, **download)
     qwen_processor = pin_image_processor(qwen_processor, hf_id, **download)
 
-    # Vision: VisionWrapper(kind='vlm') delegates to VLMVisionWrapper, which
-    # handles Qwen's flattened-patch layout.
+    # Vision: VLMVisionWrapper handles Qwen's flattened-patch layout.
     # image_grid_thw tells the wrapper how to segment patches back to images.
-    vision_wrapper = VisionWrapper(
+    vision_wrapper = VLMVisionWrapper(
         model=qwen_model.model.visual,
-        kind='vlm',
         processor=qwen_processor,
         identifier=f'{identifier}-vision',
         image_input_key='pixel_values',
@@ -192,32 +189,29 @@ def get_model(identifier: str) -> Subject:
     )
 
     # Qwen-VL is instruction-following, so expose its generate() as the
-    # behavioral-task generation path. Benchmarks that pass a TaskContext
+    # behavioral-task answer path. Benchmarks that pass a TaskContext
     # with an `instruction` and `label_set` (e.g., ROAR) will use this
     # path; others fall back to the logistic readout configured below.
-    generation_fn = _make_generation_fn(qwen_model, qwen_processor)
+    answer = _make_answer(qwen_model, qwen_processor)
     # Raw replies and candidate likelihoods for TaskContext(response=...) tasks:
     # ratings, reported confidence, written answers and implied probabilities.
     from brainscore.model_helpers.replies import chat_parts
     reply, likelihood = chat_parts(qwen_model, qwen_processor)
 
-    region_layer_map = dict(REGION_LAYER_MAP, language_system=language_layer)
-    # Each region says which tower records it, so a task showing images and
-    # text records the vision regions from the image tower.
-    variant_kwargs = dict(region_modality_map={
-        region: 'text' if region == 'language_system' else 'vision' for region in region_layer_map})
+    layers = dict(REGION_LAYER_MAP, language_system=language_layer)
+    variant_kwargs = {}
     if identifier in VARIANTS:
         from brainscore.perturbation import build_pytorch_ablation_fn
-        region_layer_map['VWFA'] = VWFA_LAYER
-        variant_kwargs = dict(
-            # Selection paths are relative to the extraction root. The same
-            # visual module is also used by the full model's generate().
-            intervention=build_pytorch_ablation_fn(qwen_model.model.visual),
-            region_modality_map={
-                region: 'text' if region == 'language_system' else 'vision'
-                for region in region_layer_map
-            },
-        )
+        layers['VWFA'] = VWFA_LAYER
+        # Selection paths are relative to the extraction root. The same
+        # visual module is also used by the full model's generate().
+        variant_kwargs = dict(intervention=build_pytorch_ablation_fn(qwen_model.model.visual))
+    # Each region says which tower records it, so a task showing images and
+    # text records the vision regions from the image tower.
+    region_layer_map = {
+        region: LayerSelector(name=layer,
+                              modality='text' if region == 'language_system' else 'vision')
+        for region, layer in layers.items()}
 
     subject = BrainScoreModel(
         identifier=identifier,
@@ -228,7 +222,7 @@ def get_model(identifier: str) -> Subject:
             'text': text_wrapper,
         },
         visual_degrees=8,
-        answer=generation_fn,
+        answer=answer,
         reply=reply,
         likelihood=likelihood,
         # Also enable the readout path so Qwen can be compared on the same

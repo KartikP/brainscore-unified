@@ -1,21 +1,19 @@
 """Unit tests for the Algonauts held-out prediction path + Codabench bundler.
 
 The heavy feature extraction + real ridge fit run on EC2 (need the downloaded
-stimuli/assembly). These cover the two data-free pieces: the ridge encoder math
-and the submission .zip layout.
+stimuli/assembly). These cover the data-free submission .zip layout; the ridge
+is tested in ``tests/test_encoding.py``.
 """
 import zipfile
 
 import numpy as np
 import pytest
 
-from brainscore.tools.banded_ridge import ridge_fit_predict
-
 # The Codabench submission bundler is an operational driver, not library code — it
 # deliberately does not ship (see test_data_plugins.py, which forbids it inside the
 # benchmark package). Import it INSIDE the fixture rather than at module scope: a
-# module-level importorskip raises during collection, which would take the data-free
-# ridge tests below down with it on any checkout lacking the local driver.
+# module-level importorskip raises during collection, which would take any other
+# test of this module down with it on a checkout lacking the local driver.
 _BUNDLER_NAMES = ('build_submission', 'write_submission_zip',
                   'SCHAEFER_N_PARCELS', 'SPLIT_NPY_NAME')
 
@@ -26,8 +24,8 @@ def bundler():
 
     The bundler is an operational driver that deliberately does not ship (see
     test_data_plugins.py, which forbids it inside the benchmark package). Importing it
-    at MODULE scope would raise Skipped during collection and take the data-free ridge
-    tests below down with it — silently dropping coverage on exactly the clean external
+    at MODULE scope would raise Skipped during collection and take any other test of
+    this module down with it — silently dropping coverage on exactly the clean external
     checkout we care about. Binding here keeps that blast radius to one class.
     """
     module = pytest.importorskip(
@@ -35,30 +33,6 @@ def bundler():
         reason='submission bundler is a local operational driver, not part of the package')
     globals().update({name: getattr(module, name) for name in _BUNDLER_NAMES})
     return module
-
-
-class TestFitPredictRidge:
-    def test_recovers_linear_map(self):
-        rng = np.random.RandomState(0)
-        X = rng.randn(300, 12)
-        W = rng.randn(12, 5)
-        Y = X @ W + 0.01 * rng.randn(300, 5)
-        Xp = rng.randn(50, 12)
-        preds = ridge_fit_predict(X, Y, Xp, alpha=1e-3)
-        truth = Xp @ W
-        # near-perfect recovery with low ridge + low noise
-        r = np.corrcoef(preds.ravel(), truth.ravel())[0, 1]
-        assert preds.shape == (50, 5)
-        assert preds.dtype == np.float32
-        assert r > 0.99
-
-    def test_alpha_shrinks(self):
-        rng = np.random.RandomState(1)
-        X = rng.randn(80, 6)
-        Y = rng.randn(80, 3)
-        big = ridge_fit_predict(X, Y, X, alpha=1e6)
-        # heavy ridge → predictions shrink toward the mean (near-zero variance)
-        assert np.var(big) < np.var(Y)
 
 
 @pytest.mark.usefixtures('bundler')

@@ -1,6 +1,24 @@
 # Behavior
 
-Behavioral benchmarks compare answers instead of activity. A `TaskContext` says what the subject is asked to do; its `response` says what form the answer takes:
+Behavioral benchmarks compare answers instead of activity. A `TaskContext` says what the subject is asked to do; its `response` says what form the answer takes.
+
+The code on this page runs as written with these stand-ins: a few words as stimuli, and a model whose `reply` part always answers "real". Replace them with your stimuli and your model:
+
+```python
+import pandas as pd
+from brainscore import BrainScoreModel
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+
+def word_table(words, labels):
+    return StimulusSet(pd.DataFrame({'stimulus_id': words, 'sentence': words, 'label': labels}))
+
+
+train_stimuli = word_table(['house', 'blick', 'table', 'florp'], ['real', 'pseudo', 'real', 'pseudo'])
+test_stimuli = word_table(['river', 'snarp'], ['real', 'pseudo'])
+model = BrainScoreModel(identifier='always-real', in_channels={'text'},
+                        reply=lambda prompt: 'real')   # a reply part: always answers 'real'
+```
 
 ```python
 from brainscore_core import TaskContext
@@ -21,10 +39,19 @@ task = TaskContext(
 | `Choice(labels, confidence=Scale(1, 5, 1))` | also a reported confidence, in the same reply | `+ behavior:confidence` |
 | `Scale(1, 7, 1)` | a rating | `behavior:rating` |
 | `Text()` | a written answer, kept as written | `behavior:text` |
+| `Text(max_tokens=512, temperature=1.0)` | a written answer under the task's generation settings | `behavior:text` |
 
-Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording and parsing are the benchmark's science: subclass a response to change them.
+Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording is the benchmark's science: the benchmark writes the instruction and the stimulus text. A task accepts only `Choice`, `Scale` and `Text` themselves, not a subclass, so a benchmark cannot change the directive by subclassing. To add no sentence at all, use `Choice(..., raw_text=True)`.
 
-**The order of a trial.** A model that replies receives a `Prompt`: the instruction, the stimulus, then the response's directive. When a stimulus has several parts (a sentence and a clip), say the order people saw them in with `present`; a stimulus with several parts and no order fails before any compute:
+Three fields of `Choice` serve a library that compares options by their likelihood (EWoK):
+
+| Field | Meaning |
+| --- | --- |
+| `labels='options'` | a column name in place of the options: the options differ for each row, and the column holds each row's options. The `choice` axis is then the position of each option in that cell. |
+| `raw_scores=True` | `behavior:probabilities` carries each option's score exactly as the `likelihood` part gave it (summed log probability), not normalized; `attrs['measure']['scale']` is `'log'`. Only a `likelihood` part gives it; any other model is N/A. |
+| `raw_text=True` | the stimulus text is shown exactly as given: no directive, and no instruction. A `likelihood` part scores `f"{text} {option}"` as plain text, with no chat template and no beginning-of-sequence token. A `reply` part gets no added sentence but still answers through its chat template. |
+
+**The order of a trial.** A model that replies receives a `Prompt`: the instruction, the stimulus, then the response's directive. When a stimulus has several parts (a sentence and a clip), say the order people saw them in with `present`; a stimulus with several parts and no order fails before any compute. A model that does not take in a part (a text-only model on a task with a clip) gets the task without that entry, so its trial shows only the parts it takes in. An entry that names a column no stimulus has is an error for every model:
 
 ```python
 TaskContext(instruction='Which way does the ball move?', present=('text', 'video'),
@@ -40,6 +67,7 @@ session = stimulus_session(test_stimuli, ['behavior:choice'], task)
 model.participate(session)
 choices = session.collect('behavior:choice')   # BehavioralAssembly: presentation x choice
 model.reset()
+print(choices.values.tolist())   # [[1.0, 0.0], [1.0, 0.0]]: 'real' for both words
 ```
 
 ## Reported and implied
@@ -52,23 +80,29 @@ A **reported** answer is the model's reply, parsed. An **implied** measure is re
 | **Likelihood** | the model scores each label as its reply, without generating | choice, probabilities (implied) | `likelihood` |
 | **Readout** | a classifier or ridge regression on one layer, fitted on `fitting_stimuli` | choice, probabilities, rating (implied) | `behavioral_readout_layer` and an extractor |
 
-`prefer_path` (`'generation'`, `'likelihood'`, `'readout'` or `'auto'`) picks one; `'auto'` tries them in that order. A readout asks what information a layer holds; generation asks what the model does when asked. Set the path explicitly whenever your conclusion depends on it.
+The model answers by the first path it has, in that order. Which path a model uses is a property of the model, not of the task: to compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
 
 One benchmark can take models of both kinds, as long as it fills in both the instruction and `fitting_stimuli`. Choices, ratings and implied probabilities come from either kind. Reported confidence and written answers need a model that replies; for a readout-only model those benchmarks are N/A before any compute.
 
 A reply that cannot be parsed is recorded as invalid: NaN values, `answer_valid` is `False`, the reply is kept in `raw_answer` and the reason in `parse_error`. Nothing is credited. Written answers are stored as written; scoring them (a parser, a judge, a comparison with people) is the benchmark's job.
 
-**Parts.** `reply(prompt)` returns the model's raw reply to one trial; `likelihood(prompt, candidates)` returns the log probability of each candidate answer. `chat_parts(model, processor)` in `brainscore.model_helpers.replies` builds both for a Hugging Face chat model; it shows the prompt's parts in order, images as images and clips as video:
+**Parts.** `reply(prompt)` returns the model's raw reply to one trial. It may also return extra data the way a policy does: a `StreamEvent` with the text as payload and the extra data (for example `reasoning` or `token_usage`) as meta. The meta goes into the answer event, where `RecordReasoning` reads `meta['reasoning']`. An answer event that holds several trials keeps, under each key, a list with one value per trial. `likelihood(prompt, candidates)` returns the log probability of each candidate answer. `chat_parts(model, processor)` in `brainscore.model_helpers.replies` builds both for a Hugging Face chat model; it shows the prompt's parts in order, images as images and clips as video. This example needs a chat model and its processor (`hf_model`, `processor`), so it downloads weights:
 
 ```python
 reply, likelihood = chat_parts(hf_model, processor, chat_template_kwargs={'enable_thinking': False})
 BrainScoreModel(..., reply=reply, likelihood=likelihood)
 ```
 
-**Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged.
+**Generation settings.** The settings of a written answer belong to the task, so the benchmark sets them on `Text`: `max_tokens`, `temperature` (0 or `None` is greedy), `top_p` (needs a temperature above 0) and `seed`. A `reply` part reads them from `prompt.response`. The reply that `chat_parts` builds obeys them. With no settings it is greedy and at most `max_new_tokens` (64) tokens long, as before.
+
+**A part obeys the task or stops.** A `reply` or `likelihood` part reads the task from `prompt.response`. It obeys each setting the task gives (the generation settings of `Text`, `raw_text`, `raw_scores` and the options) or stops with an error; it never ignores a setting. For example, the Claude reply part raises `ValueError` for a temperature other than 1.0, for `top_p` and for `seed`, because the Anthropic API cannot obey them.
+
+**Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged. The same chooser picks the path for them: `answer` (with `instruction` and `label_set`), then the readout (with `fitting_stimuli`). The answer keeps its older form: one-hot rows over `label_set`, where only an exact label counts (`attrs['measure']['source']` is `'answer'`), or the readout's probabilities. A behavioral answer comes only from a session (`behavioral_response`, `stimulus_session` and `participate`); `process()` does not answer a task.
 
 ## Hosted models
 
-`build_api_generation_fn` (in `brainscore.model_helpers.api_behavioral`) builds an `answer` for a hosted model API. Such a model has no layers, so it can take part in behavioral benchmarks only.
+`build_api_generation_fn` (in `brainscore.model_helpers.api_behavioral`; the name is older than the part's) builds an `answer` for a hosted model API. Such a model has no layers, so it can take part in behavioral benchmarks only.
+
+`build_api_reply` builds a `reply` part from the same clients: one table, `PROVIDERS`, with one client per provider. A custom client is a callable `(model, system, messages, settings)` that returns the text, or a `StreamEvent` with the text as payload. It shows the trial's text and images in order, sends the task's instruction as the system text, and obeys the task's generation settings. It returns the reasoning (when the provider gives it) and the token counts (`token_usage`) as extra data. A provider that refuses a setting the task gives fails before any request: the Anthropic API has no seed and refuses `top_p` and any temperature other than its default 1.0 (which is then not sent). Each registered closed model has both parts under one identifier: a task with a response (a choice, a rating, a written answer such as CogGym's) goes to the `reply` part, as for every model that has one; an older `task_type`/`label_set` task goes to the `answer` part.
 
 See [Lesson 6](../../notebooks/lessons/06_behavior.ipynb) and [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb).

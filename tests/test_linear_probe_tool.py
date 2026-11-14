@@ -66,7 +66,7 @@ def protocol():
     def factory(trial):
         yield Session([StreamEvent('observation', [[-2., 1.], [2., -1.]], None)])
     return SessionProtocol('probe-check', factory, conditions=['baseline', 'lesioned'],
-                           input_channels=['observation'], output_channels=['behavior'])
+                           required_input_channels=['observation'], requested_output_channels=['behavior'])
 
 
 @pytest.mark.parametrize('classes', [2, 3])

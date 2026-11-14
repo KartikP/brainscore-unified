@@ -137,7 +137,7 @@ class DemonstrationSubject(Subject):
                     dims=['presentation'],
                 ),
             }
-            for channel in session.requested_output_channels:
+            for channel in session.outputs:
                 session.respond(StreamEvent(
                     channel=channel,
                     payload=responses[channel],
@@ -258,8 +258,8 @@ def run_example(name: str, directory: Path) -> dict:
         identifier=f'synthetic-{name}',
         session_factory=session_factory,
         conditions=CONDITIONS,
-        input_channels=subject.in_channels,
-        output_channels=subject.out_channels,
+        required_input_channels=subject.in_channels,
+        requested_output_channels=subject.out_channels,
     )
     # This tool list is identical for every input type and subject.
     result = Experiment(

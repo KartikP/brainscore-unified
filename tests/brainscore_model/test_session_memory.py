@@ -3,11 +3,11 @@ import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.compatibility import CompatibilityError
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core._evaluation.compatibility import check_channel_compatibility
+from brainscore_core.compatibility import check_channel_compatibility
 
 pytestmark = pytest.mark.unit
 
@@ -32,30 +32,30 @@ def one_back(prompt):
 
 
 def _answers(model, task=TASK):
-    session = stimulus_session(STIMULI, ['behavior:choice'], task_context=task)
+    session = stimulus_session(STIMULI, ['behavior:choice'], task=task)
     model.participate(session)
     return list(session.collect('behavior:choice')['raw_answer'].values)
 
 
 def test_a_model_with_memory_sees_earlier_trials_in_a_conversation():
-    model = BrainScoreModel('remembers', supported_modalities={'text'}, reply=one_back, memory='trial_history')
+    model = BrainScoreModel('remembers', in_channels={'text'}, reply=one_back, memory='trial_history')
     assert model.traits == {'memory:trial_history'}
     assert _answers(model, CONVERSATION)[1:] == ONE_BACK[1:]
 
 
 def test_independent_trials_never_see_each_other_even_with_memory():
-    model = BrainScoreModel('remembers', supported_modalities={'text'}, reply=one_back, memory='trial_history')
+    model = BrainScoreModel('remembers', in_channels={'text'}, reply=one_back, memory='trial_history')
     assert _answers(model) == ['no'] * 6
 
 
 def test_without_memory_every_trial_is_alone():
-    model = BrainScoreModel('forgets', supported_modalities={'text'}, reply=one_back)
+    model = BrainScoreModel('forgets', in_channels={'text'}, reply=one_back)
     assert model.traits == set()
     assert _answers(model) == ['no'] * 6
 
 
 def test_memory_lasts_one_episode():
-    model = BrainScoreModel('remembers', supported_modalities={'text'}, reply=one_back, memory='trial_history')
+    model = BrainScoreModel('remembers', in_channels={'text'}, reply=one_back, memory='trial_history')
     _answers(model, CONVERSATION)
     assert model._behavioral.history == []                   # the session leaves no history (rule 4.5)
     assert _answers(model, CONVERSATION)[1:] == ONE_BACK[1:]  # a new session starts fresh
@@ -72,15 +72,15 @@ class _MemoryBenchmark:
 
 
 def test_a_memory_benchmark_marks_a_model_without_memory_na():
-    forgets = BrainScoreModel('forgets', supported_modalities={'text'}, reply=one_back)
+    forgets = BrainScoreModel('forgets', in_channels={'text'}, reply=one_back)
     with pytest.raises(CompatibilityError, match='memory:trial_history'):
         check_channel_compatibility(forgets, _MemoryBenchmark())
-    remembers = BrainScoreModel('remembers', supported_modalities={'text'}, reply=one_back, memory='trial_history')
+    remembers = BrainScoreModel('remembers', in_channels={'text'}, reply=one_back, memory='trial_history')
     check_channel_compatibility(remembers, _MemoryBenchmark())
 
 
 def test_memory_needs_a_part_that_can_see_history():
-    model = BrainScoreModel('answers', supported_modalities={'text'}, memory='trial_history',
+    model = BrainScoreModel('answers', in_channels={'text'}, memory='trial_history',
                             answer=lambda stimulus_row, instruction, label_set: 'no')
     with pytest.raises(ValueError, match='reply'):
         _answers(model)

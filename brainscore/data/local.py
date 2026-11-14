@@ -57,7 +57,8 @@ class LocalAsset:
     :param prepare: shell command converting it into the benchmark's format,
         if conversion is needed. Downloads that are read directly leave this
         empty.
-    :param used_by: benchmark identifiers that need it
+    :param used_by: registered benchmark identifiers that need it; empty when
+        only settings that no registered benchmark uses need it
     """
 
     name: str
@@ -164,8 +165,7 @@ LEBEL_PICKLE = register(LocalAsset(
               'hosted (brainscore/data/lebel2023/hosted.py).',
     source='https://github.com/GT-LIT-Lab/litcoder_release',
     obtain='The UTS03 assembly pickle for LeBel et al. 2023.',
-    used_by=['LeBel2023-UTS03-encoding',
-             'LeBel2023-UTS03-encoding-languagemask'],
+    used_by=[],      # every registered LeBel variant reads the hosted files
 ))
 
 LANA_ATLAS = register(LocalAsset(
@@ -181,6 +181,12 @@ LANA_ATLAS = register(LocalAsset(
     used_by=['LeBel2023-UTS03-encoding-languagemask'],
 ))
 
+# Friends benchmarks: every registered identifier that reads the prepared files.
+_ALGONAUTS_IDENTIFIERS = (
+    [f'Algonauts2025-friends-sub{participant:02d}' for participant in (1, 2, 3, 5)]
+    + ['Algonauts2025-friends-sub01-video',
+       'Algonauts2025-friends-sub01-video-audio'])
+
 ALGONAUTS_ROOT = register(LocalAsset(
     name='algonauts2025-root',
     env_var='BRAINSCORE_ALGONAUTS_ROOT',
@@ -194,7 +200,25 @@ ALGONAUTS_ROOT = register(LocalAsset(
            'current DataLad; install it from conda-forge instead.',
     prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
             '--algonauts-root <root> --subjects 1',
-    used_by=['Algonauts2025-friends-sub01'],
+    used_by=_ALGONAUTS_IDENTIFIERS,
+))
+
+ALGONAUTS_PREPARED = register(LocalAsset(
+    name='algonauts2025-prepared',
+    env_var='BRAINSCORE_ALGONAUTS_PREPARED',
+    default_path='.brainio/algonauts2025',
+    kind='neural data',
+    why_local='The converter builds these files from the provider files above; '
+              'Brain-Score does not host them.',
+    source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
+    obtain='Nothing to download. Run the converter on the dataset above; it '
+           'writes the per-TR assemblies and stimulus tables that the '
+           'benchmarks read. Then cut the films into one file per scan with '
+           'brainscore.data.algonauts2025.data_packaging.prepare_stimuli '
+           '(see brainscore/data/algonauts2025/README.md).',
+    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
+            '--algonauts-root <root> --output-root <this folder> --subjects 1',
+    used_by=_ALGONAUTS_IDENTIFIERS,
 ))
 
 
@@ -207,7 +231,16 @@ COGGYM_CHECKOUT = register(LocalAsset(
               "from an unmodified Git checkout at a pinned revision.",
     source='https://github.com/lance-ying/coggym (revision a1cd9df1118fec80eba7463de237d1497d77e041)',
     obtain='git clone https://github.com/lance-ying/coggym.git, then check out the revision above.',
-    used_by=['CogGym.* (all 23 public experiments)'],
+    used_by=[f'CogGym.{experiment}' for experiment in (
+        'Levine2020Logic.exp1', 'Levine2020Logic.exp2', 'Levine2020Logic.exp3',
+        'Levine2020Logic.exp4', 'Levine2020Logic.exp5', 'Levine2020Logic.exp6',
+        'Yoon2020Polite.exp1', 'Yoon2020Polite.exp2',
+        'Tsvilodub2025Nonliteral.exp1', 'Tsvilodub2025Nonliteral.exp3b', 'Hu2023Fine.exp1',
+        'Aboody2025Inferring.exp1', 'Aboody2025Inferring.exp2',
+        'JaraEttinger2021Quantitative.exp1', 'JaraEttinger2021Quantitative.exp2',
+        'JaraEttinger2021Quantitative.exp3', 'Chandra2024Cooperative.exp1',
+        'Bass2022Partial.exp1', 'Fu2025Hierarchical.exp1', 'Fu2025Hierarchical.exp2',
+        'sosa2021Moral.exp1', 'sosa2021Moral.exp2', 'sosa2021Moral.exp3')],
 ))
 
 

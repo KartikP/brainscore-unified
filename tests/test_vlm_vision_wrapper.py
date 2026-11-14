@@ -180,7 +180,7 @@ class TestVLMVisionWrapperIntegration:
             identifier='qwen2.5-vl-3b-test',
             model=None,
             region_layer_map={'IT': 'blocks.28'},
-            preprocessors={'vision': qwen_vision_wrapper},
+            extractor={'vision': qwen_vision_wrapper},
         )
         model.start_recording('IT')
 

@@ -1,9 +1,8 @@
-"""Tests for `process(StateChange)` dispatch on BrainScoreModel.
+"""Tests for interventions on BrainScoreModel, sent with ``apply_state_change``.
 
 Covers:
-- Dataclass shape (Selection, Perturbation, StateChange, PerturbationApplied)
-- state_change_fn dispatch routes through process()
-- Missing state_change_fn raises NotImplementedError
+- the intervention part receives the change through the intervention session
+- A subject without an intervention part is refused
 - Bad return type raises TypeError
 - handle_id collision raises ValueError
 - model.reset() runs all cleanups and clears the registry
@@ -15,69 +14,21 @@ Covers:
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange
-
-
-# ── Dataclass shape ──────────────────────────────────────────────────
-
-class TestStateChangeShape:
-
-    def test_selection_minimal(self):
-        sel = Selection(layer='blocks.10')
-        assert sel.layer == 'blocks.10'
-        assert sel.indices is None
-        assert sel.metadata == {}
-
-    def test_selection_with_indices(self):
-        sel = Selection(layer='blocks.10', indices=[1, 2, 3])
-        assert sel.indices == [1, 2, 3]
-
-    def test_perturbation_zero(self):
-        p = Perturbation(kind='zero')
-        assert p.kind == 'zero'
-        assert p.scale == 0.0
-        assert p.replacement is None
-
-    def test_perturbation_scale(self):
-        p = Perturbation(kind='scale', scale=0.5)
-        assert p.scale == 0.5
-
-    def test_state_change_apply_form(self):
-        sc = StateChange(
-            kind='ablation',
-            target=Selection(layer='blocks.10'),
-            perturbation=Perturbation(kind='zero'),
-        )
-        assert sc.kind == 'ablation'
-        assert sc.handle_id is None  # apply form has no handle_id
-
-    def test_state_change_reset_form(self):
-        sc = StateChange(kind='reset', handle_id='abc-123')
-        assert sc.kind == 'reset'
-        assert sc.handle_id == 'abc-123'
-        assert sc.target is None
-
-    def test_perturbation_applied_round_trip(self):
-        sel = Selection(layer='blocks.10', indices=[0, 1])
-        p = Perturbation(kind='zero')
-        applied = PerturbationApplied(
-            handle_id='abc-123', target=sel, perturbation=p, applied_at=42.0,
-        )
-        assert applied.handle_id == 'abc-123'
-        assert applied.target.indices == [0, 1]
-        assert applied.applied_at == 42.0
+from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
+from brainscore_core.streaming_helpers import apply_state_change
 
 
 # ── Helpers for dispatch tests ───────────────────────────────────────
 
-def _make_model(state_change_fn=None):
-    """Minimal BrainScoreModel for state-change dispatch testing."""
+def _make_model(intervention=None):
+    """Minimal BrainScoreModel for intervention testing."""
     return BrainScoreModel(
         identifier='test-state-change',
         model=None,
         region_layer_map={},
-        preprocessors={'vision': lambda x: x},
-        state_change_fn=state_change_fn,
+        in_channels={'vision:image'},
+        intervention=intervention,
     )
 
 
@@ -111,27 +62,27 @@ def _counting_state_change_fn():
 
 # ── Dispatch ─────────────────────────────────────────────────────────
 
-class TestProcessStateChangeDispatch:
+class TestInterventionDispatch:
 
-    def test_no_state_change_fn_raises(self):
-        model = _make_model(state_change_fn=None)
+    def test_subject_without_intervention_part_is_refused(self):
+        model = _make_model(intervention=None)
         sc = StateChange(
             kind='ablation',
             target=Selection(layer='blocks.10'),
             perturbation=Perturbation(kind='zero'),
         )
-        with pytest.raises(NotImplementedError, match='no state_change_fn'):
-            model.process(sc)
+        with pytest.raises(CompatibilityError, match='no intervention part'):
+            apply_state_change(model, sc)
 
     def test_apply_returns_perturbation_applied(self):
         fn, state = _counting_state_change_fn()
-        model = _make_model(state_change_fn=fn)
+        model = _make_model(intervention=fn)
         sc = StateChange(
             kind='ablation',
             target=Selection(layer='blocks.10', indices=[1, 2, 3]),
             perturbation=Perturbation(kind='zero'),
         )
-        applied = model.process(sc)
+        applied = apply_state_change(model, sc)
         assert isinstance(applied, PerturbationApplied)
         assert applied.target.indices == [1, 2, 3]
         assert applied.handle_id in state['installed']
@@ -141,26 +92,15 @@ class TestProcessStateChangeDispatch:
         registered state_change_fn receives exactly what was declared."""
         import numpy as np
         fn, _ = _counting_state_change_fn()
-        model = _make_model(state_change_fn=fn)
+        model = _make_model(intervention=fn)
         direction = np.arange(4.0)
-        applied = model.process(StateChange(
+        applied = apply_state_change(model, StateChange(
             kind='steer',
             target=Selection(layer='model.layers.14.mlp.down_proj:input'),
             perturbation=Perturbation(kind='drive', amount=direction),
         ))
         assert applied.target.layer == 'model.layers.14.mlp.down_proj:input'
         assert applied.perturbation.amount is direction
-
-    def test_apply_tracks_handle_in_active_perturbations(self):
-        fn, state = _counting_state_change_fn()
-        model = _make_model(state_change_fn=fn)
-        sc = StateChange(
-            kind='ablation',
-            target=Selection(layer='blocks.10'),
-            perturbation=Perturbation(kind='zero'),
-        )
-        applied = model.process(sc)
-        assert applied.handle_id in model._active_perturbations
 
     def test_state_change_fn_must_return_tuple(self):
         def bad_fn(state_change):
@@ -170,14 +110,14 @@ class TestProcessStateChangeDispatch:
                 perturbation=state_change.perturbation,
             )  # forgot the cleanup callable
 
-        model = _make_model(state_change_fn=bad_fn)
+        model = _make_model(intervention=bad_fn)
         sc = StateChange(
             kind='ablation',
             target=Selection(layer='blocks.10'),
             perturbation=Perturbation(kind='zero'),
         )
         with pytest.raises(TypeError, match='must return a'):
-            model.process(sc)
+            apply_state_change(model, sc)
 
     def test_state_change_fn_must_return_callable_cleanup(self):
         def bad_fn(state_change):
@@ -188,14 +128,14 @@ class TestProcessStateChangeDispatch:
             )
             return applied, 'not callable'  # second arg not callable
 
-        model = _make_model(state_change_fn=bad_fn)
+        model = _make_model(intervention=bad_fn)
         sc = StateChange(
             kind='ablation',
             target=Selection(layer='blocks.10'),
             perturbation=Perturbation(kind='zero'),
         )
         with pytest.raises(TypeError, match='must return a'):
-            model.process(sc)
+            apply_state_change(model, sc)
 
     def test_duplicate_handle_id_raises(self):
         # state_change_fn that always returns the same handle_id
@@ -207,15 +147,15 @@ class TestProcessStateChangeDispatch:
             )
             return applied, lambda: None
 
-        model = _make_model(state_change_fn=colliding_fn)
+        model = _make_model(intervention=colliding_fn)
         sc = StateChange(
             kind='ablation',
             target=Selection(layer='blocks.10'),
             perturbation=Perturbation(kind='zero'),
         )
-        model.process(sc)  # first one installs fine
+        apply_state_change(model, sc)  # first one installs fine
         with pytest.raises(ValueError, match='Duplicate handle_id'):
-            model.process(sc)
+            apply_state_change(model, sc)
 
 
 # ── Reset semantics ──────────────────────────────────────────────────
@@ -224,9 +164,9 @@ class TestResetClearsPerturbations:
 
     def test_reset_runs_all_cleanups(self):
         fn, state = _counting_state_change_fn()
-        model = _make_model(state_change_fn=fn)
+        model = _make_model(intervention=fn)
         for _ in range(3):
-            model.process(StateChange(
+            apply_state_change(model, StateChange(
                 kind='ablation',
                 target=Selection(layer='blocks.10'),
                 perturbation=Perturbation(kind='zero'),
@@ -234,7 +174,8 @@ class TestResetClearsPerturbations:
         assert len(state['installed']) == 3
         model.reset()
         assert state['installed'] == set()
-        assert model._active_perturbations == {}
+        with pytest.raises(KeyError, match='No active intervention'):   # nothing left to undo
+            apply_state_change(model, StateChange(kind='reset', handle_id='handle-0'))
 
     def test_reset_tolerates_failing_cleanup(self):
         # If one cleanup raises, the others should still run.
@@ -257,14 +198,14 @@ class TestResetClearsPerturbations:
             )
             return applied, cleanup
 
-        model = _make_model(state_change_fn=fn_raising)
+        model = _make_model(intervention=fn_raising)
         for _ in range(3):
-            model.process(StateChange(
+            apply_state_change(model, StateChange(
                 kind='ablation',
                 target=Selection(layer='blocks.10'),
                 perturbation=Perturbation(kind='zero'),
             ))
-        with pytest.warns(RuntimeWarning, match='still perturbed'):
+        with pytest.warns(RuntimeWarning, match='still changed'):
             model.reset()  # should NOT raise
         # h-0 and h-2 ran cleanly; h-1 raised but was still tolerated
         assert 'h-0' in cleanup_log and 'h-2' in cleanup_log
@@ -272,7 +213,10 @@ class TestResetClearsPerturbations:
         # handle is deliberately retained: forgetting it would leave the model
         # damaged while reporting nothing active. Only the succeeding two are
         # deregistered.
-        assert list(model._active_perturbations) == ['h-1']
+        with pytest.raises(KeyError, match='No active intervention'):
+            apply_state_change(model, StateChange(kind='reset', handle_id='h-0'))
+        with pytest.raises(RuntimeError, match='cleanup failed'):    # h-1 is still known
+            apply_state_change(model, StateChange(kind='reset', handle_id='h-1'))
 
 
 class TestSelectiveReset:
@@ -280,35 +224,37 @@ class TestSelectiveReset:
 
     def test_kind_reset_removes_one(self):
         fn, state = _counting_state_change_fn()
-        model = _make_model(state_change_fn=fn)
-        a = model.process(StateChange(
+        model = _make_model(intervention=fn)
+        a = apply_state_change(model, StateChange(
             kind='ablation',
             target=Selection(layer='blocks.10'),
             perturbation=Perturbation(kind='zero'),
         ))
-        b = model.process(StateChange(
+        b = apply_state_change(model, StateChange(
             kind='ablation',
             target=Selection(layer='blocks.20'),
             perturbation=Perturbation(kind='zero'),
         ))
         assert state['installed'] == {a.handle_id, b.handle_id}
 
-        model.process(StateChange(kind='reset', handle_id=a.handle_id))
+        apply_state_change(model, StateChange(kind='reset', handle_id=a.handle_id))
         assert state['installed'] == {b.handle_id}
-        assert a.handle_id not in model._active_perturbations
-        assert b.handle_id in model._active_perturbations
+        with pytest.raises(KeyError, match='No active intervention'):   # a is gone
+            apply_state_change(model, StateChange(kind='reset', handle_id=a.handle_id))
+        apply_state_change(model, StateChange(kind='reset', handle_id=b.handle_id))  # b stays
+        assert state['installed'] == set()
 
     def test_kind_reset_unknown_handle_raises(self):
         fn, _ = _counting_state_change_fn()
-        model = _make_model(state_change_fn=fn)
-        with pytest.raises(KeyError, match='No active perturbation'):
-            model.process(StateChange(kind='reset', handle_id='nonexistent'))
+        model = _make_model(intervention=fn)
+        with pytest.raises(KeyError, match='No active intervention'):
+            apply_state_change(model, StateChange(kind='reset', handle_id='nonexistent'))
 
     def test_kind_reset_missing_handle_id_raises(self):
         fn, _ = _counting_state_change_fn()
-        model = _make_model(state_change_fn=fn)
+        model = _make_model(intervention=fn)
         with pytest.raises(ValueError, match='requires handle_id'):
-            model.process(StateChange(kind='reset', handle_id=None))
+            apply_state_change(model, StateChange(kind='reset', handle_id=None))
 
 
 # ── Synthetic ablation lifecycle ─────────────────────────────────────
@@ -342,11 +288,11 @@ class TestSyntheticAblationLifecycle:
 
             return applied, cleanup
 
-        model = _make_model(state_change_fn=state_change_fn)
+        model = _make_model(intervention=state_change_fn)
         # Baseline
         assert model_state['output'] == 1.0
         # Apply ablation
-        applied = model.process(StateChange(
+        applied = apply_state_change(model, StateChange(
             kind='ablation',
             target=Selection(layer='blocks.10'),
             perturbation=Perturbation(kind='zero'),
@@ -357,7 +303,8 @@ class TestSyntheticAblationLifecycle:
         model.reset()
         # Side effect undone
         assert model_state['output'] == 1.0
-        assert applied.handle_id not in model._active_perturbations
+        with pytest.raises(KeyError, match='No active intervention'):
+            apply_state_change(model, StateChange(kind='reset', handle_id=applied.handle_id))
 
 
 class TestCleanupFailuresAreNotLost:
@@ -370,46 +317,51 @@ class TestCleanupFailuresAreNotLost:
 
     @staticmethod
     def _model_with(cleanups):
-        from brainscore._model.perturbation import PerturbationManager
+        """A model whose intervention part installs the given cleanups, one per change."""
+        pending = list(cleanups.items())
 
-        class _Owner:
-            identifier = 'test'
+        def intervention(state_change):
+            handle_id, cleanup = pending.pop(0)
+            return PerturbationApplied(handle_id=handle_id, target=state_change.target,
+                                       perturbation=state_change.perturbation), cleanup
 
-        manager = PerturbationManager(_Owner())
-        manager.active_perturbations.update(cleanups)
-        return manager
+        model = _make_model(intervention=intervention)
+        for _ in cleanups:
+            apply_state_change(model, StateChange(kind='ablation', target=Selection(layer='blocks.10'),
+                                                  perturbation=Perturbation(kind='zero')))
+        return model
 
-    def test_failed_cleanup_keeps_its_handle(self):
-        def boom():
-            raise RuntimeError('hook already detached')
+    @staticmethod
+    def _undo(model, handle_id):
+        apply_state_change(model, StateChange(kind='reset', handle_id=handle_id))
 
-        manager = self._model_with({'bad': boom})
-        with pytest.warns(RuntimeWarning, match='still perturbed'):
-            manager.reset()
-        assert 'bad' in manager.active_perturbations, (
-            'a handle whose cleanup failed must stay registered so reset can retry')
-
-    def test_one_failure_does_not_block_the_others(self):
+    def test_failed_cleanup_keeps_its_handle_and_others_still_run(self):
         ran = []
 
         def boom():
-            raise RuntimeError('nope')
+            raise RuntimeError('hook already detached')
 
-        manager = self._model_with({'bad': boom, 'good': lambda: ran.append('good')})
-        with pytest.warns(RuntimeWarning):
-            manager.reset()
+        model = self._model_with({'bad': boom, 'good': lambda: ran.append('good')})
+        with pytest.warns(RuntimeWarning, match='still changed'):
+            model.reset()
         assert ran == ['good']
-        assert list(manager.active_perturbations) == ['bad']
+        with pytest.raises(KeyError):                     # good is gone
+            self._undo(model, 'good')
+        with pytest.raises(RuntimeError, match='detached'):   # bad stays registered
+            self._undo(model, 'bad')
 
     def test_clean_reset_is_silent_and_empties_the_registry(self):
         import warnings
-        manager = self._model_with({'a': lambda: None, 'b': lambda: None})
+        model = self._model_with({'a': lambda: None, 'b': lambda: None})
         with warnings.catch_warnings():
             warnings.simplefilter('error')       # any warning fails the test
-            manager.reset()
-        assert manager.active_perturbations == {}
+            model.reset()
+        for handle_id in ('a', 'b'):
+            with pytest.raises(KeyError):
+                self._undo(model, handle_id)
 
     def test_retrying_reset_clears_a_handle_that_later_succeeds(self):
+        import warnings
         state = {'fail': True}
 
         def flaky():
@@ -417,20 +369,21 @@ class TestCleanupFailuresAreNotLost:
                 state['fail'] = False
                 raise RuntimeError('transient')
 
-        manager = self._model_with({'flaky': flaky})
+        model = self._model_with({'flaky': flaky})
         with pytest.warns(RuntimeWarning):
-            manager.reset()
-        manager.reset()                          # second attempt succeeds
-        assert manager.active_perturbations == {}
+            model.reset()
+        with warnings.catch_warnings():
+            warnings.simplefilter('error')
+            model.reset()                        # second attempt succeeds, silently
+        with pytest.raises(KeyError):
+            self._undo(model, 'flaky')
 
     def test_selective_reset_keeps_the_handle_when_undo_raises(self):
-        from brainscore_core.model_interface import StateChange
-
         def boom():
             raise RuntimeError('nope')
 
-        manager = self._model_with({'h1': boom})
+        model = self._model_with({'h1': boom})
         with pytest.raises(RuntimeError):
-            manager.dispatch_state_change(StateChange(kind='reset', handle_id='h1'))
-        assert 'h1' in manager.active_perturbations, (
-            'a raising undo must not deregister the perturbation')
+            self._undo(model, 'h1')
+        with pytest.raises(RuntimeError, match='nope'):   # still registered, so tried again
+            self._undo(model, 'h1')

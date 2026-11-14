@@ -6,6 +6,7 @@ on such a model raises "Cannot copy out of meta tensor", which is what blocked
 registering a 27B model through the ordinary interface.
 """
 
+import numpy as np
 import pytest
 import torch
 
@@ -99,6 +100,22 @@ def test_inputs_go_to_the_embedding_device():
     assert wrapper._device == next(model.embed_tokens.parameters()).device
 
 
+class _Embed(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.embed = torch.nn.Embedding(8, 4)
+        self.layer = torch.nn.Linear(4, 6)
+
+    def forward(self, input_ids, attention_mask=None):
+        return self.layer(self.embed(input_ids))
+
+
+class _IdsTokenizer(_Tokenizer):
+    def __call__(self, texts, **kwargs):
+        ids = torch.tensor([[len(text) % 8, 1, 2] for text in texts])
+        return {'input_ids': ids, 'attention_mask': torch.ones_like(ids)}
+
+
 def test_hook_handles_bfloat16_activations():
     """Large models load in bfloat16, which numpy cannot represent.
 
@@ -108,13 +125,51 @@ def test_hook_handles_bfloat16_activations():
     import numpy as np
     from brainscore.model_helpers.text_wrapper import TextWrapper
 
-    net = torch.nn.Sequential(torch.nn.Linear(4, 6)).to(torch.bfloat16)
-    wrapper = TextWrapper(model=net, tokenizer=_Tokenizer(), identifier='bf16')
-    store = {}
-    handle = wrapper._register_hook(wrapper._model[0], 'l0', store)
-    wrapper._model(torch.randn(2, 4, dtype=torch.bfloat16, device=wrapper._device))
-    handle.remove()
+    wrapper = TextWrapper(model=_Embed().to(torch.bfloat16), tokenizer=_IdsTokenizer(),
+                          identifier='bf16', device='cpu')
+    values = wrapper(['ab', 'abc'], layers=['layer']).values
+    assert values.dtype == np.float32
+    assert values.shape == (2, 6)
+    assert np.isfinite(values).all()
 
-    assert store['l0'].dtype == np.float32
-    assert store['l0'].shape == (2, 6)
-    assert np.isfinite(store['l0']).all()
+
+class _Waves(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.layer = torch.nn.Linear(1, 6)
+
+    def forward(self, input_values, attention_mask=None):
+        return self.layer(input_values[:, :, None])
+
+
+class _AudioProcessor:
+    sampling_rate = 10
+
+    def __call__(self, waveforms, **kwargs):
+        return {'input_values': torch.tensor(np.stack(waveforms)).to(torch.bfloat16)}
+
+
+def test_audio_hook_handles_bfloat16_activations():
+    """The audio extractor shares the hook, so a bfloat16 audio model records as float32."""
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
+
+    wrapper = AudioWrapper(_Waves().to(torch.bfloat16), _AudioProcessor(), identifier='bf16-audio',
+                           audio_loader=lambda path, rate: np.ones(5, np.float32), device='cpu')
+    values = wrapper(['a.wav', 'b.wav'], layers=['layer']).values
+    assert values.dtype == np.float32
+    assert values.shape == (2, 6)
+
+
+def test_record_reads_a_module_input_as_the_passive_call_does():
+    """An ``':input'`` layer names the same tensor in a passive call and in a recording."""
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+
+    net = _Embed()
+    wrapper = TextWrapper(model=net, tokenizer=_IdsTokenizer(), identifier='input-site',
+                          layer_aggregation='mean_tokens', device='cpu')
+    passive = wrapper(['abc'], layers=['layer:input']).values
+    with wrapper.record(['layer:input']) as recording:
+        net(**_IdsTokenizer()(['abc']))
+        recorded = recording.take()['layer:input'].values
+    np.testing.assert_allclose(recorded, passive, rtol=1e-6)
+    assert not net.layer._forward_pre_hooks

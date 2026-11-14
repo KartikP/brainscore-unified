@@ -7,7 +7,7 @@ if this gets > 0.5 for balanced binary tasks, the benchmark's scoring
 has a leak somewhere.
 
 Implemented on the UnifiedModel compatibility base.
-It has no preprocessors, no activations, and no logistic readout.
+It has no extractor, no activations, and no logistic readout.
 Benchmarks that use start_task() and process() still work.
 """
 
@@ -19,7 +19,8 @@ import pandas as pd
 from brainscore import BrainScoreModel
 from collections.abc import Mapping
 
-from brainscore_core.model_interface import StateChange, UnifiedModel, TaskContext
+from brainscore_core.contract import UnifiedModel, TaskContext
+from brainscore_core.events import StateChange
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly,
 )
@@ -34,7 +35,7 @@ class ChanceBaseline(UnifiedModel):
 
     def __init__(self, identifier: str = 'chance-baseline'):
         self._identifier = identifier
-        self._task_context = None
+        self._task = None
 
     @property
     def identifier(self) -> str:
@@ -45,41 +46,40 @@ class ChanceBaseline(UnifiedModel):
         return {}
 
     @property
-    def supported_modalities(self) -> Set[str]:
-        # Accept any modality — benchmarks that check modality will
-        # see that we support everything by design.
-        return {'vision', 'text', 'audio', 'video'}
+    def in_channels(self) -> Set[str]:
+        # Accept any input, so a benchmark that checks inputs sees that every
+        # one is taken by design.
+        return {'vision:image', 'vision:video', 'text', 'audio'}
 
     @property
     def out_channels(self) -> Set[str]:
         # It answers behavioral tasks; declared, not inferred (Contract v3 rule 2).
         return {'behavior'}
 
-    def start_task(self, task_context_or_task, fitting_stimuli=None, **kwargs) -> None:
-        if isinstance(task_context_or_task, TaskContext):
-            self._task_context = task_context_or_task
+    def start_task(self, task_or_type, fitting_stimuli=None, **kwargs) -> None:
+        if isinstance(task_or_type, TaskContext):
+            self._task = task_or_type
         else:
-            self._task_context = TaskContext(
-                task_type=task_context_or_task, fitting_stimuli=fitting_stimuli,
+            self._task = TaskContext(
+                task_type=task_or_type, fitting_stimuli=fitting_stimuli,
             )
 
     def start_recording(self, *args, **kwargs) -> None:
         pass
 
     def reset(self) -> None:
-        self._task_context = None
+        self._task = None
 
     def process(self, input_event) -> Any:
         if isinstance(input_event, (StateChange, Mapping)):
             raise NotImplementedError
         stimuli = input_event
-        if self._task_context is None or not self._task_context.label_set:
+        if self._task is None or not self._task.label_set:
             raise ValueError(
-                "ChanceBaseline requires a TaskContext with label_set. "
-                "Call start_task(TaskContext(task_type='probabilities', "
-                "label_set=[...])) first.")
+                "ChanceBaseline needs a task with label_set. Give the session "
+                "TaskContext(task_type='probabilities', label_set=[...]).")
 
-        label_set = list(self._task_context.label_set)
+        label_set = list(self._task.label_set)
         n_stimuli = len(stimuli)
         n_labels = len(label_set)
         # Uniform distribution over labels

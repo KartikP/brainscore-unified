@@ -1,5 +1,7 @@
 """An independent package: no Brain-Score source modifications."""
 from dataclasses import dataclass, field
+import time
+
 import numpy as np
 
 from brainscore.capabilities import Capability, register_capability
@@ -8,29 +10,40 @@ from brainscore_core.extensions import CatalogEntry, StreamEvent, register_chann
 
 @dataclass
 class LatencyObserver:
+    """A session sink for ``observed(session, sink)``: seconds from each input to its output."""
     seconds: list = field(default_factory=list)
+    _started: float = 0.0
 
-    def on_result(self, call, result):
-        self.seconds.append(call.duration_s)
+    def record(self, direction, event):
+        if direction == 'input':
+            self._started = time.perf_counter()
+        else:
+            self.seconds.append(time.perf_counter() - self._started)
 
 
 class Amplitude(Capability):
+    """A session capability: it answers each signal with its amplitude."""
     identifier = 'partner-amplitude'
     input_channels = {'partner_signal'}
     output_channels = {'partner_amplitude'}
 
-    def enabled_for(self, model):
-        return bool(model.capability_config.get(self.identifier))
+    def enabled_for(self, subject):
+        return bool(subject.capability_config.get(self.identifier))
 
-    def setup(self, model):
+    def setup(self, subject):
         return {'calls': 0}
 
-    def handles(self, model, event, **kwargs):
-        return isinstance(event, StreamEvent) and event.channel == 'partner_signal'
+    def supports_session(self, subject, channels):
+        return set(channels) == self.output_channels
 
-    def process(self, model, event, **kwargs):
-        model.capability_state(self.identifier)['calls'] += 1
-        return StreamEvent('partner_amplitude', float(np.linalg.norm(event.payload)), event.t_ms)
+    def participate(self, subject, session):
+        # The session checks each signal and each answer against the catalog.
+        state = subject.capability_state(self.identifier)
+        while (event := session.next_input()) is not None:
+            if event.channel == 'partner_signal':
+                state['calls'] += 1
+                session.respond(StreamEvent('partner_amplitude',
+                                            float(np.linalg.norm(event.payload)), event.t_ms))
 
 
 def register():

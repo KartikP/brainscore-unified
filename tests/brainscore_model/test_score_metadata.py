@@ -1,6 +1,8 @@
 import numpy as np
 import pytest
 
+from brainscore_core.streaming_helpers import behavioral_response
+
 from brainscore_core.contract import TaskContext
 from brainscore_core.legacy_facade import LegacyBenchmarkFacade
 from brainscore import BrainScoreModel
@@ -41,15 +43,15 @@ def _stimuli():
 def _generation_model():
     return BrainScoreModel(
         identifier='test-vlm', model=None, region_layer_map={},
-        preprocessors={'vision': lambda *a, **kw: None},
-        generation_fn=lambda stimulus_row, instruction, label_set: 'cat')
+        extractor={'vision': lambda *a, **kw: None},
+        answer=lambda stimulus_row, instruction, label_set: 'cat')
 
 
 def _readout_model():
     features = np.random.default_rng(0).normal(size=(6, 8))
     return BrainScoreModel(
         identifier='test-readout', model=None, region_layer_map={},
-        preprocessors={'vision': _fake_preprocessor_returning(features)},
+        extractor={'vision': _fake_preprocessor_returning(features)},
         behavioral_readout_layer='some_layer')
 
 
@@ -62,14 +64,13 @@ _GENERATION_TASK = dict(task_type='probabilities', label_set=['cat', 'dog'],
     (_readout_model, dict(task_type='probabilities', label_set=['cat', 'dog']),
      'behavior:readout'),
 ])
-@pytest.mark.parametrize('route', ['process', 'facade'])
+@pytest.mark.parametrize('route', ['session', 'facade'])
 def test_brainscore_model_stamps_do_not_change(model_factory, task_kwargs, expected, route):
     model = model_factory()
     task = TaskContext(fitting_stimuli=_stimuli(), **task_kwargs)
     with record_measures() as measures:
-        if route == 'process':
-            model.start_task(task)
-            model.process(_stimuli())
+        if route == 'session':
+            behavioral_response(model, _stimuli(), task)
         else:
             facade = LegacyBenchmarkFacade(model, visual_degrees=8)
             facade.start_task(task)
@@ -86,10 +87,9 @@ def test_direct_session_with_a_generation_model_is_recorded():
     """participate + collect, without behavioral_response or the facade."""
 
     model = _generation_model()
-    task = TaskContext(fitting_stimuli=_stimuli(), metadata={'stimulus_set': _stimuli()},
-                       **_GENERATION_TASK)
+    task = TaskContext(fitting_stimuli=_stimuli(), **_GENERATION_TASK)
     with record_measures() as measures:
-        session = stimulus_session(task.metadata['stimulus_set'], ['behavior'], task)
+        session = stimulus_session(_stimuli(), ['behavior'], task)
         model.participate(session)
         session.collect('behavior')
 
@@ -109,8 +109,7 @@ def test_a_decoded_saved_generation_record_does_not_change_a_readout_stamp():
         attrs={'measure': {'kind': 'reported', 'source': 'reply'}})
     with record_measures() as measures:
         StreamEvent('behavior', saved, 0.0, meta={'decoded': True})   # read, not sent
-        model.start_task(task)
-        model.process(_stimuli())
+        behavioral_response(model, _stimuli(), task)
 
     assert measures.measures == {('implied', 'readout')}
     assert _protocol(model, measures) == 'behavior:readout'

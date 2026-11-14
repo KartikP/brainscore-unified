@@ -87,8 +87,68 @@ class TestManifest:
             assert asset.source.startswith('http'), f'{name} has no source'
             assert asset.why_local.strip(), f'{name} does not say why it is local'
             assert asset.obtain.strip(), f'{name} does not say what to download'
-            assert asset.used_by, f'{name} is needed by nothing'
 
     def test_names_are_stable_identifiers(self):
         for name in local.REGISTRY:
             assert name == name.lower() and ' ' not in name
+
+
+class TestFriendsLocation:
+    """The Friends benchmarks read two folders; each has one BRAINSCORE_ variable."""
+
+    def test_two_assets_with_prefixed_variables(self):
+        assert local.ALGONAUTS_ROOT.env_var == 'BRAINSCORE_ALGONAUTS_ROOT'
+        assert local.ALGONAUTS_PREPARED.env_var == 'BRAINSCORE_ALGONAUTS_PREPARED'
+
+    def test_data_code_reads_the_prepared_asset(self, tmp_path, monkeypatch):
+        from brainscore.data.algonauts2025 import default_data_root
+        monkeypatch.delenv('BRAINSCORE_ALGONAUTS_PREPARED', raising=False)
+        assert default_data_root() == pathlib.Path.home() / '.brainio/algonauts2025'
+        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', str(tmp_path))
+        assert default_data_root() == tmp_path
+
+    def test_unprefixed_variable_is_ignored(self, tmp_path, monkeypatch):
+        from brainscore.data.algonauts2025 import default_data_root
+        monkeypatch.delenv('BRAINSCORE_ALGONAUTS_PREPARED', raising=False)
+        monkeypatch.setenv('ALGONAUTS_DATA_ROOT', str(tmp_path))
+        assert default_data_root() != tmp_path
+
+    @pytest.mark.parametrize('identifier', [
+        'Algonauts2025-friends-sub01', 'Algonauts2025-friends-sub05',
+        'Algonauts2025-friends-sub02', 'Algonauts2025-friends-sub03',
+        'Algonauts2025-friends-sub01-video',
+        'Algonauts2025-friends-sub01-video-audio'])
+    def test_precheck_covers_friends_identifiers(self, identifier, tmp_path, monkeypatch):
+        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_ROOT', str(tmp_path / 'native'))
+        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', str(tmp_path / 'prepared'))
+        with pytest.raises(local.LocalDataMissing):
+            local.check_benchmark_assets(identifier)
+        (tmp_path / 'native').mkdir()
+        with pytest.raises(local.LocalDataMissing, match='algonauts2025-prepared'):
+            local.check_benchmark_assets(identifier)
+        (tmp_path / 'prepared').mkdir()
+        local.check_benchmark_assets(identifier)
+
+
+
+def test_records_name_exactly_the_registered_benchmarks_that_read_them():
+    """The pre-check in score() reads ``used_by``; a missing identifier skips the
+    check, an extra one refuses a benchmark that does not need the asset."""
+    from brainscore import benchmark_registry
+    registered = set(benchmark_registry)
+
+    def family(prefix):
+        return {identifier for identifier in registered if identifier.startswith(prefix)}
+
+    expected = {
+        'algonauts2025-root': family('Algonauts2025-'),
+        'algonauts2025-prepared': family('Algonauts2025-'),
+        'coggym-checkout': family('CogGym.'),
+        'ewok-core-1.0': family('EWoK-core-1.0-'),
+        'lana-atlas': {'LeBel2023-UTS03-encoding-languagemask'},
+        'lebel2023-pickle': set(),       # the registered variants read the hosted files
+    }
+    assert all(identifiers for name, identifiers in expected.items() if name != 'lebel2023-pickle')
+    assert {name: set(asset.used_by) for name, asset in local.REGISTRY.items()} == expected
+    for name, asset in local.REGISTRY.items():
+        assert len(asset.used_by) == len(set(asset.used_by)), f'{name} repeats an identifier'

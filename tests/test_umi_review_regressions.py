@@ -7,8 +7,10 @@ import pytest
 import torch
 from torch import nn
 
-from brainscore import BrainScoreModel, CompositeSelector, RandomSelection
-from brainscore_core.model_interface import TaskContext, StateChange, Perturbation
+from brainscore_core.streaming_helpers import apply_state_change
+from brainscore import BrainScoreModel, CompositeSelector, LayerSelector, RandomSelection
+from brainscore_core.contract import TaskContext
+from brainscore_core.events import StateChange, Perturbation
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     NeuroidAssembly, BehavioralAssembly,
 )
@@ -46,45 +48,74 @@ class _Extractor:
 
 
 def test_algonauts_prediction_uses_training_svd(tmp_path, monkeypatch):
+    """The held-out reduction is the basis fitted on the training films.
+
+    Training features vary along the first unit only; held-out features vary
+    mostly along the second. A basis fitted on held-out rows would keep the
+    second unit and lose the signal.
+    """
     from brainscore.benchmarks.algonauts2025.benchmark import (
-        Algonauts2025Friends, Algonauts2025FriendsS7,
+        Algonauts2025,
     )
-    train_features = np.array([[4, 0], [-4, 0], [2, 0], [-2, 0]], dtype=np.float32)
+    from brainscore.benchmarks.algonauts2025 import benchmark as algonauts
+    from brainscore.tools.algonauts2025_predictions import generate_predictions
+    tables = {}
+    # Each benchmark shows its own table: one row per scan, in assembly order.
+    monkeypatch.setattr(algonauts, 'per_scan_stimuli',
+                        lambda stimulus_set, n_scans, media, split, *args: tables[split])
+    monkeypatch.setattr(algonauts, 'load_stimulus_set', lambda *args, **kwargs: None)
+    rng = np.random.default_rng(0)
+    n_runs, per_run = 8, 4
+    signal = rng.choice([-3.0, -2.0, 2.0, 3.0], size=n_runs * per_run).astype(np.float32)
+    train_features = np.stack([signal, np.zeros_like(signal)], axis=1)
     test_features = np.array([[1, 10], [-1, 10], [1, -10], [-1, -10]], dtype=np.float32)
-    train = Algonauts2025Friends(subject=1, stimulus_window=1, hrf_delay=0,
-        excluded_samples_start=0, excluded_samples_end=0)
-    test = Algonauts2025FriendsS7(subject=1, stimulus_window=1, hrf_delay=0)
-    for benchmark in (train, test):
-        benchmark.FEATURE_DIM_CAP = 1
-        stimuli = _stimuli()
+    train = Algonauts2025(participant=1, stimulus_window=1, hrf_delay=0,
+        excluded_samples_start=0, excluded_samples_end=0, assembly_root=tmp_path)
+    test = Algonauts2025(split='friends_s7', participant=1, stimulus_window=1, hrf_delay=0,
+                                  assembly_root=tmp_path)
+    for benchmark, features, runs in (
+            (train, train_features, [f'run{i // per_run}' for i in range(n_runs * per_run)]),
+            (test, test_features, ['clip'] * 4)):
+        benchmark.LAYER_DIM_CAP = 1
+        benchmark.BANDED_ALPHA_GRID = (1e-2,)
+        ids = [f'{benchmark._split}{i}' for i in range(len(features))]
+        stimuli = StimulusSet({'stimulus_id': ids, 'frame_id': ids, 'clip_id': runs,
+                               't_within_run': list(range(len(runs))),
+                               'sentence': ['x'] * len(features)})
         stimuli.identifier = benchmark._split
-        benchmark._assembly = NeuroidAssembly(train_features[:, :1],
-            dims=['presentation', 'neuroid'], coords={
-                'stimulus_id': ('presentation', ['clip'] * 4),
-                'run': ('presentation', ['run'] * 4),
-                'neuroid_id': ('neuroid', ['target']),
-            })
-        monkeypatch.setattr(benchmark, '_expand_to_per_TR_frames', lambda s=stimuli: s)
-        monkeypatch.setattr(benchmark, '_align_features_to_assembly', lambda features, *args: features)
+        tables[benchmark._split] = stimuli
+        coords = {'stimulus_id': ('presentation', runs),
+                  't_within_run': ('presentation', list(range(len(runs)))),
+                  'neuroid_id': ('neuroid', ['target'])}
+        if benchmark is train:
+            coords['run'] = ('presentation', runs)
+        benchmark._assembly = NeuroidAssembly(features[:, :1], dims=['presentation', 'neuroid'],
+                                              coords=coords)
 
     from brainscore_core.contract import Subject
     from brainscore_core.streaming import StreamEvent
     from brainscore_core.streaming_helpers import drain_session_inputs, session_stimuli
 
-    class Candidate(Subject):  # the benchmark reads it through participate only
-        identifier = 'candidate'
-        in_channels = frozenset({'text'})
-        out_channels = frozenset({'neural:IT'})
+    class FixedSubject(Subject):  # the benchmark reads it through participate only
+        identifier = 'fixed-subject'
+        in_channels = frozenset({'vision:image'})
+        out_channels = frozenset({'neural:V1', 'neural:V4', 'neural:IT'})
 
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session))
             features = train_features if stimuli.identifier == 'friends' else test_features
-            session.respond(StreamEvent(
-                'neural:IT', _Extractor(features)(stimuli, ['L']), t_ms=None))
+            for channel in session.outputs:
+                session.respond(StreamEvent(channel, NeuroidAssembly(
+                    features, dims=['presentation', 'neuroid'], coords={
+                        'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
+                        'neuroid_id': ('neuroid', ['u0', 'u1'])}), t_ms=None))
 
-    result = test.generate_predictions(Candidate(), tmp_path, train_benchmark=train, alpha=1e-6)
-    np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-4)
+    result = generate_predictions(FixedSubject(), test, tmp_path, train_benchmark=train)
+    np.testing.assert_allclose(result['predictions'].ravel(), [1, -1, 1, -1], atol=1e-3)
     np.testing.assert_array_equal(np.load(result['path']), result['predictions'])
+    assert result['bands'] == ['IT', 'V1', 'V4']
+    assert result['penalties']['tuples'] == [
+        {'penalties': {'IT': 1e-2, 'V1': 1e-2, 'V4': 1e-2}, 'n_parcels': 1}]
 
 
 def test_feature_projection_validates_basis_and_preserves_no_compression():
@@ -93,8 +124,8 @@ def test_feature_projection_validates_basis_and_preserves_no_compression():
     features = np.eye(2, dtype=np.float32)
     with pytest.raises(ValueError, match='training data'):
         projection.transform(features)
-    np.testing.assert_array_equal(projection.fit_transform(features, ['a', 'b']), features)
-    np.testing.assert_array_equal(projection.transform(features, ['a', 'b']), features)
+    np.testing.assert_array_equal(projection.fit(features, ['a', 'b']).transform(
+        features, ['a', 'b']), features)
     with pytest.raises(ValueError, match='identities/order'):
         projection.transform(features, ['b', 'a'])
     with pytest.raises(ValueError, match='width'):
@@ -125,7 +156,7 @@ def language_pair(monkeypatch):
     legacy = HuggingfaceSubject('tiny-legacy', {'language_system': 'transformer.h.0'},
                                model=net, tokenizer=tokenizer)
     native = BrainScoreModel('tiny-new', region_layer_map={'language_system': 'transformer.h.0'},
-                             preprocessors={'text': wrapper})
+                             extractor={'text': wrapper})
     adapter = LanguageModelAdapter(legacy)
     yield native, adapter
     native.reset()
@@ -161,7 +192,10 @@ def test_explicit_passage_changes_context_and_legacy_digest_is_preserved(languag
     assert not np.allclose(passage.values[1], independent.values[1])
     np.testing.assert_allclose(adapter.digest_text(list(stimuli.sentence))['neural'].values,
                                passage.values, atol=1e-6)
-    np.testing.assert_allclose(native.digest_text(list(stimuli.sentence))['neural'].values,
+    from brainscore_core.legacy_facade import LegacyBenchmarkFacade
+    facade = LegacyBenchmarkFacade(native)   # what score() gives a legacy benchmark
+    facade.start_neural_recording('language_system')
+    np.testing.assert_allclose(facade.digest_text(list(stimuli.sentence))['neural'].values,
                                passage.values, atol=1e-6)
 
 
@@ -178,12 +212,14 @@ def test_language_reset_clears_real_wrapped_measurements(language_pair):
 
 @pytest.mark.parametrize('composite', [False, True])
 def test_shared_layer_names_keep_towers_and_regions_separate(composite):
-    selector = CompositeSelector((('block', (1,)),)) if composite else 'block'
+    def selector(modality):
+        if composite:
+            return CompositeSelector((('block', (1,)),), modality=modality)
+        return LayerSelector(name='block', modality=modality)
     model = BrainScoreModel('two-towers',
-        region_layer_map={'IT': selector, 'language_system': selector},
-        region_modality_map={'IT': 'vision', 'language_system': 'text'},
-        preprocessors={'vision': _Extractor(np.ones((4, 2))),
-                       'text': _Extractor(np.full((4, 2), 9.0))})
+        region_layer_map={'IT': selector('vision'), 'language_system': selector('text')},
+        extractor={'vision': _Extractor(np.ones((4, 2))),
+                   'text': _Extractor(np.full((4, 2), 9.0))})
     stimuli = _stimuli()
     stimuli['image_path'] = ['unused.png'] * 4
     model.start_recording(['IT', 'language_system'])
@@ -218,9 +254,9 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
                       [3, 1, 3, 3, 0], [3, 2, 3, 3, 1]], dtype=torch.float32)
     model = BrainScoreModel('subset', model=net,
         region_layer_map={'VWFA': CompositeSelector(tuple((layer, (4, 1)) for layer in layers))},
-        preprocessors={'text': _Extractor(lambda: net.L(x).detach().numpy())},
-        state_change_fn=build_pytorch_ablation_fn(net))
-    localizer = InducedDyslexia(n_units=1, modality='text',
+        extractor={'text': _Extractor(lambda: net.L(x).detach().numpy())},
+        intervention=build_pytorch_ablation_fn(net))
+    localizer = InducedDyslexia(n_units=1, channels=('text',),
         reading_benchmark=object(), localizer_stimuli=_stimuli())
     selections = localizer._localize(model)
     for selected in selections:
@@ -229,7 +265,7 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
         random = RandomSelection(selected.layer, n_units=2, n_total=2,
                                  population=selected.metadata['unit_population']).resolve(model)
         assert random.indices == [1, 4]
-        model.process(StateChange('ablation', target=selected, perturbation=Perturbation('zero')))
+        apply_state_change(model, StateChange('ablation', target=selected, perturbation=Perturbation('zero')))
         after = getattr(net, selected.layer)(x).detach().numpy()
         assert np.all(after[:, 4] == 0)
         np.testing.assert_array_equal(after[:, 0], x[:, 0].numpy())
@@ -240,24 +276,45 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
 def test_reset_and_readout_clear_composite_recording():
     model = BrainScoreModel('composite-reset',
         region_layer_map={'IT': CompositeSelector((('L', (0,)),))},
-        preprocessors={'text': _Extractor(np.ones((4, 2)))}, behavioral_readout_layer='L')
+        extractor={'text': _Extractor(np.ones((4, 2)))}, behavioral_readout_layer='L')
     model.start_recording('IT', time_bins=[(0, 1)])
     # Readout extraction must also work while composite recording is configured.
-    task = TaskContext('probabilities', fitting_stimuli=_stimuli(), prefer_path='readout')
+    task = TaskContext('probabilities', fitting_stimuli=_stimuli())
     model.start_task(task)
-    assert isinstance(model.process(_stimuli()), BehavioralAssembly)
+    assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
     model.reset()
-    assert not model._composite_recording and model._time_bins is None
+    assert not model._recorder.composite_recording and model._recorder.time_bins is None
     model.start_task(task)
-    assert isinstance(model.process(_stimuli()), BehavioralAssembly)
+    assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
 
 
-@pytest.mark.parametrize('bound_method', [False, True])
-def test_model_reset_clears_policy_history(bound_method):
-    from brainscore.model_helpers.policy_wrapper import PolicyWrapper
-    wrapper = PolicyWrapper(lambda observation, history: len(history))
-    model = BrainScoreModel('policy', action_fn=wrapper.__call__ if bound_method else wrapper)
+class _CountingPolicy:
+    """Answers with the number of steps it remembers; reset() forgets them."""
+    def __init__(self):
+        self.history = []
+
+    def reset(self):
+        self.history.clear()
+
+    def __call__(self, row):
+        action = len(self.history)
+        self.history.append((row['observation'], action))
+        return {'motor': action}
+
+
+def test_model_reset_clears_policy_history():
+    model = BrainScoreModel('policy', policy=_CountingPolicy())
     assert model.process({'observation': {}}) == {'motor': 0}
+    assert model.process({'observation': {}}) == {'motor': 1}
+    model.reset()
+    assert model.process({'observation': {}}) == {'motor': 0}
+
+
+def test_the_owner_of_a_bound_method_part_is_reset():
+    """A part given as a bound method has its object reset, as a part with reset() is."""
+    policy = _CountingPolicy()
+    model = BrainScoreModel('policy', policy=policy.__call__)
+    model.process({'observation': {}})
     model.reset()
     assert model.process({'observation': {}}) == {'motor': 0}
 
@@ -333,7 +390,8 @@ def test_context_expansion_preserves_stimulus_identifier(monkeypatch):
     seen = []
     monkeypatch.setattr(wrapper, '_from_texts_cached',
                         lambda texts, layers, identifier: seen.append((texts, identifier)))
-    monkeypatch.setattr(wrapper, '_attach_stimulus_set_meta', lambda output, stimuli: output)
+    monkeypatch.setattr('brainscore.model_helpers.text_wrapper.attach_stimulus_set',
+                        lambda output, stimuli: output)
     stimuli = _stimuli()
     wrapper._from_stimulus_set(stimuli, ['L'])
     stimuli['context_id'] = 'passage'
@@ -353,13 +411,15 @@ def test_provider_reset_attempts_remaining_providers_after_failure():
     class Provider:
         def __init__(self, fail=False):
             self.fail, self.calls = fail, 0
+        def __call__(self, *args, **kwargs):
+            return None
         def reset(self):
             self.calls += 1
             if self.fail:
                 raise ValueError('reset failed')
     first, second = Provider(True), Provider()
-    model = BrainScoreModel('providers', action_fn=first, generation_fn=second,
-                            preprocessors={'text': second})
+    model = BrainScoreModel('providers', policy=first, answer=second,
+                            extractor={'text': second})
     with pytest.raises(RuntimeError, match='not clean'):
         model.reset()
     assert first.calls == second.calls == 1

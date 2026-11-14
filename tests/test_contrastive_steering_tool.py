@@ -87,7 +87,7 @@ def test_signed_protocol_conditions_and_multiple_tools_restore(tmp_path):
     result = Experiment(subject=subject,
         protocol=SessionProtocol('steering', factory,
             conditions=['baseline', 'positive', 'negative', 'restored'],
-            input_channels=['observation'], output_channels=['behavior']),
+            required_input_channels=['observation'], requested_output_channels=['behavior']),
         tools=[load_tool('record-io'),
                load_tool('contrastive-steering', artifact=path, strength=1., name='plus', conditions=['positive']),
                load_tool('contrastive-steering', artifact=path, strength=-1., name='minus', conditions=['negative']),

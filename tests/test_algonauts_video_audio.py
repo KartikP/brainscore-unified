@@ -1,0 +1,489 @@
+"""The video+audio form of the Algonauts 2025 benchmark, on tiny synthetic data.
+
+No model weights, no downloads, no real movies. The cutting of clips and sound is
+tested with the data plugin (``tests/test_algonauts_data_preparation.py``).
+"""
+from unittest.mock import patch
+
+import numpy as np
+import pandas as pd
+import pytest
+
+import brainscore
+from brainscore import BrainScoreModel, LayerSelector
+from brainscore.benchmarks.algonauts2025 import benchmark as algo
+from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+from brainscore.data.algonauts2025 import TR_SEC, scans_per_stimulus
+
+CHANNELS = {'image': ('vision:image',), 'video': ('vision:video',),
+            'video+audio': ('vision:video', 'audio')}
+
+from brainscore_core.compatibility import CompatibilityError, check_compatibility
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+from tests.benchmark_declarations import Declared, assert_declares, assert_preflight
+
+def _benchmark(tmp_path, **kwargs):
+    return Algonauts2025(participant=1, channels=('vision:video', 'audio'), assembly_root=tmp_path, **kwargs)
+
+
+# ── Declarations and pre-flight ───────────────────────────────────
+
+VIDEO_REGIONS = {'neural:V1', 'neural:V4', 'neural:IT'}
+AV_REGIONS = VIDEO_REGIONS | {'neural:A1'}
+
+
+def test_registered_identifier_loads_lazily_and_declares_its_channels(tmp_path):
+    assert 'Algonauts2025-friends-sub01-video-audio' in brainscore.benchmark_registry
+    assert 'Algonauts2025-friends-sub01-wholebrain' not in brainscore.benchmark_registry
+    with patch.object(algo, 'load_dataset', side_effect=AssertionError('loaded data')), \
+            patch.object(algo, 'load_stimulus_set', side_effect=AssertionError('loaded data')):
+        benchmark = brainscore.benchmark_registry['Algonauts2025-friends-sub01-video-audio']()
+    assert benchmark.identifier == 'Algonauts2025-friends-sub01-video-audio'
+    assert_declares(benchmark, {'vision:video', 'audio'}, AV_REGIONS)
+    assert_preflight(_benchmark(tmp_path))
+
+
+@pytest.mark.parametrize('form, inputs, outputs', [
+    ('image', {'vision:image'}, VIDEO_REGIONS),
+    ('video', {'vision:video'}, VIDEO_REGIONS),
+    ('video+audio', {'vision:video', 'audio'}, AV_REGIONS)])
+def test_each_form_requests_named_regions_and_preflight_is_na_without_them(
+        tmp_path, form, inputs, outputs):
+    benchmark = Algonauts2025(participant=1, channels=CHANNELS[form], assembly_root=tmp_path)
+    assert benchmark.requested_output_channels == frozenset(outputs)
+    model = {'image': _image_model, 'video': _video_model, 'video+audio': _av_model}[form]([])
+    assert check_compatibility(model, benchmark).kind == 'full'
+    # A subject without one requested region, or with no neural output, is N/A.
+    for declared in (outputs - {'neural:V4'}, {'behavior'}):
+        with pytest.raises(CompatibilityError, match='cannot produce output channels'):
+            check_compatibility(Declared(inputs, declared), benchmark)
+    # A subject that takes none of the inputs the benchmark sends is N/A.
+    other = {'vision:image'} if form != 'image' else {'vision:video'}
+    with pytest.raises(CompatibilityError, match='takes in none of the inputs'):
+        check_compatibility(Declared(other, outputs), benchmark)
+
+
+def _clips_and_pictures_model(calls):
+    """The vision regions read clips; a second extractor of the same input family reads pictures."""
+    return BrainScoreModel(
+        identifier='clips-and-pictures', model=None,
+        region_layer_map={region: LayerSelector(name=f'clip.{region}', modality='video')
+                          for region in ('V1', 'V4', 'IT')}
+                         | {'scene': LayerSelector(name='still.layer', modality='vision')},
+        extractor={'video': _extractor('video_path', 1.0, VIDEO_BINS, calls),
+                   'vision': _extractor('image_file_name', 3.0, 1, calls)})
+
+
+def test_a_region_is_declared_for_every_form_the_run_selects_an_extractor_for(tmp_path):
+    # The run reads pictures with the picture extractor for any region of the
+    # vision family, so the image form is applicable: the declaration says so.
+    model = _clips_and_pictures_model([])
+    assert model.output_inputs['neural:IT'] == frozenset({'vision:image', 'vision:video'})
+    image = Algonauts2025(participant=1, assembly_root=tmp_path)
+    assert check_compatibility(model, image).kind == 'full'
+
+
+def test_a_video_only_subject_runs_on_part_of_the_inputs_and_a_sound_subject_needs_sound(tmp_path):
+    benchmark = _benchmark(tmp_path)
+    match = check_compatibility(Declared({'vision:video'}, AV_REGIONS), benchmark)
+    assert match.kind == 'partial' and match.dropped_inputs == frozenset({'audio'})
+    # A model that needs sound gets N/A on the video form, which sends none.
+    video = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
+    with pytest.raises(CompatibilityError, match='hard-requires'):
+        check_compatibility(_av_model([]), video)
+    assert check_compatibility(_av_model([]), benchmark).kind == 'full'
+
+
+def test_the_constructor_has_no_mode_and_no_record_argument(tmp_path):
+    for name in ('mode', 'record'):
+        with pytest.raises(TypeError):
+            Algonauts2025(participant=1, assembly_root=tmp_path, **{name: 'banded'})
+
+
+# ── Fake towers with different time axes ──────────────────────────
+
+
+N_UNITS = 3
+VIDEO_BINS, AUDIO_BINS = 4, 7       # the two towers answer on different time axes
+
+
+def _values(paths, salt, n_bins):
+    """``(rows, n_bins, N_UNITS)``; values depend on the file, so a wrong row shows up."""
+    return np.array([[[float(sum(map(ord, p)) % 97) + salt * unit + 0.5 * step
+                       for unit in range(N_UNITS)] for step in range(n_bins)]
+                     for p in paths], dtype=np.float32)
+
+
+def _extractor(column, salt, n_bins, calls):
+    """One tower: one answer per row, with ``n_bins`` time bins over the 1.49 s."""
+    def extract(stimuli, layers):
+        calls.append((column, list(stimuli['stimulus_id']), sorted(stimuli.columns)))
+        edges = np.linspace(0, TR_SEC * 1000, n_bins + 1)
+        values = np.concatenate([_values(stimuli[column], salt, n_bins) + 10.0 * len(layer)
+                                 for layer in layers], axis=2)
+        return NeuroidAssembly(
+            values, dims=['presentation', 'time_bin', 'neuroid'], coords={
+                'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
+                'time_bin_start_ms': ('time_bin', edges[:-1]),
+                'time_bin_end_ms': ('time_bin', edges[1:]),
+                'neuroid_id': ('neuroid', [f'{layer}.{u}' for layer in layers
+                                           for u in range(N_UNITS)]),
+                'layer': ('neuroid', [layer for layer in layers for _ in range(N_UNITS)])})
+    return extract
+
+
+VIDEO_LAYERS = {'V1': 'backbone.blocks.4', 'V4': 'backbone.blocks.15',
+                'IT': 'backbone.blocks.16'}
+
+
+def _av_regions():
+    return ({region: LayerSelector(name=layer, modality='video')
+             for region, layer in VIDEO_LAYERS.items()}
+            | {'A1': LayerSelector(name='encoder.layers.6', modality='audio')})
+
+
+def _av_model(calls):
+    """Declares what vjepa1-wav2vec2 declares (three video regions, one audio), with tiny towers."""
+    return BrainScoreModel(
+        identifier='fake-av', model=None, region_layer_map=_av_regions(),
+        extractor={'video': _extractor('video_path', 1.0, VIDEO_BINS, calls),
+                   'audio': _extractor('audio_path', 2.0, AUDIO_BINS, calls)},
+        required_channels={'vision:video', 'audio'})
+
+
+def _av_model_without_requirement(calls):
+    return BrainScoreModel(
+        identifier='fake-av-free', model=None, region_layer_map=_av_regions(),
+        extractor={'video': _extractor('video_path', 1.0, VIDEO_BINS, calls),
+                   'audio': _extractor('audio_path', 2.0, AUDIO_BINS, calls)})
+
+
+def _video_model(calls):
+    return BrainScoreModel(
+        identifier='fake-video', model=None,
+        region_layer_map={region: LayerSelector(name=layer, modality='video')
+                          for region, layer in VIDEO_LAYERS.items()},
+        extractor={'video': _extractor('video_path', 1.0, VIDEO_BINS, calls)})
+
+
+IMAGE_LAYERS = {'V1': 'layer.2', 'V4': 'layer.6', 'IT': 'layer.10'}
+
+
+def _image_model(calls=None):
+    calls = [] if calls is None else calls
+    return BrainScoreModel(
+        identifier='fake-image', model=None,
+        region_layer_map={region: LayerSelector(name=layer, modality='vision')
+                          for region, layer in IMAGE_LAYERS.items()},
+        extractor={'vision': _extractor('image_file_name', 3.0, 1, calls)})
+
+
+def _vision_language_model(calls):
+    """A vision-language fake: three vision regions and one text region."""
+    def text(stimuli, layers):
+        calls.append(('text', list(stimuli['stimulus_id']), sorted(stimuli.columns)))
+        raise AssertionError('the image form asks for no text region')
+    return BrainScoreModel(
+        identifier='fake-vlm', model=None,
+        region_layer_map={region: LayerSelector(name=layer, modality='vision')
+                          for region, layer in IMAGE_LAYERS.items()}
+                         | {'language_system': LayerSelector(name='text.layer.10',
+                                                             modality='text')},
+        extractor={'vision': _extractor('image_file_name', 3.0, 1, calls), 'text': text})
+
+
+MOVIES = [f'friends_s01e0{e}{half}' for e in range(1, 5) for half in 'ab']   # 8 runs
+N_TRS = 16
+N_PARCELS = 4
+
+
+def _table(movies=MOVIES, n=N_TRS, columns=('video_path', 'audio_path')):
+    paths = {'video_path': '/clips/{m}/{t:04d}.mp4', 'audio_path': '/sound/{m}/{t:04d}.wav',
+             'image_file_name': '/frames/{m}/{t:04d}.jpg'}
+    rows = [{'stimulus_id': f'{m}_t{t:04d}', 'frame_id': f'{m}_t{t:04d}', 'clip_id': m,
+             't_within_run': t, **{c: paths[c].format(m=m, t=t) for c in columns}}
+            for m in movies for t in range(n)]
+    table = StimulusSet(pd.DataFrame(rows))
+    table.identifier = 'synthetic-' + '-'.join(columns)
+    table.stimulus_paths = {r['stimulus_id']: r[columns[0]] for r in rows}
+    return table
+
+
+def _assembly(movies, n=N_TRS):
+    stim = [m for m in movies for _ in range(n)]
+    values = np.random.default_rng(0).normal(size=(len(stim), N_PARCELS)).astype(np.float32)
+    return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+        'stimulus_id': ('presentation', stim),
+        'run': ('presentation', ['1'] * len(stim)),
+        't_within_run': ('presentation', [t for _ in movies for t in range(n)]),
+        'parcel_id': ('neuroid', list(range(N_PARCELS)))})
+
+
+# ── Every requested region is one band ───────────────────────────
+
+
+def test_every_requested_region_is_asked_for_on_its_own_channel_and_is_one_band(tmp_path):
+    calls = []
+    benchmark = _benchmark(tmp_path)
+    benchmark._assembly = _assembly(MOVIES)
+    regions = list(benchmark.CHANNEL_REGIONS[frozenset({'vision:video', 'audio'})])
+    assert regions == ['A1', 'IT', 'V1', 'V4']
+    bands = benchmark._record_bands(_av_model(calls), _table(), regions)
+    assert list(bands) == regions
+    # Each band is its own region, averaged over that region's own time bins.
+    table = _table()
+    for region, column, salt, n_bins, layer in (
+            ('A1', 'audio_path', 2.0, AUDIO_BINS, 'encoder.layers.6'),
+            *((r, 'video_path', 1.0, VIDEO_BINS, l) for r, l in VIDEO_LAYERS.items())):
+        features, ids = bands[region]
+        expected = _values(table[column], salt, n_bins).mean(axis=1) + 10.0 * len(layer)
+        np.testing.assert_allclose(features, expected, rtol=1e-6)
+        assert list(ids) == [f'{layer}.{u}' for u in range(N_UNITS)]
+    assert {column for column, *_ in calls} == {'video_path', 'audio_path'}
+
+
+def test_output_inputs_lists_the_inputs_of_each_region():
+    vlm = _vision_language_model([])
+    assert vlm.output_inputs == {
+        **{f'neural:{r}': frozenset({'vision:image'}) for r in IMAGE_LAYERS},
+        'neural:language_system': frozenset({'text'})}
+    av = _av_model([]).output_inputs
+    assert av['neural:A1'] == frozenset({'audio'}) and av['neural:IT'] == frozenset({'vision:video'})
+
+
+def test_a_region_the_benchmark_does_not_name_is_not_asked_for(tmp_path):
+    calls = []
+    model = _vision_language_model(calls)
+    benchmark = Algonauts2025(participant=1, assembly_root=tmp_path)
+    assert check_compatibility(model, benchmark).kind == 'full'   # the form sends only images
+    _, score = _score(tmp_path, False, calls, channels=('vision:image',), columns=('image_file_name',),
+                      model=model)
+    assert score.attrs['bands'] == ['IT', 'V1', 'V4'] and np.isfinite(float(score))
+    assert {column for column, *_ in calls} == {'image_file_name'}    # no text request
+
+
+def test_on_the_video_form_an_audiovisual_model_is_na_or_runs_with_the_video_regions(tmp_path):
+    video = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
+    with pytest.raises(CompatibilityError, match='hard-requires'):
+        check_compatibility(_av_model([]), video)
+    calls = []
+    model = _av_model_without_requirement(calls)
+    assert check_compatibility(model, video).kind == 'full'
+    _, score = _score(tmp_path, False, calls, channels=('vision:video',), columns=('video_path',), model=model)
+    assert score.attrs['bands'] == ['IT', 'V1', 'V4']
+    assert {column for column, *_ in calls} == {'video_path'}
+
+
+@pytest.mark.parametrize('form, columns, make', [
+    ('image', ('image_file_name',), _vision_language_model),
+    ('video', ('video_path',), _av_model_without_requirement)])
+def test_the_memory_probe_records_a_requested_region(tmp_path, form, columns, make):
+    from brainscore_core.memory import _probe_feature_dim
+    benchmark = Algonauts2025(participant=1, channels=CHANNELS[form], assembly_root=tmp_path)
+    width, region = _probe_feature_dim(make([]), benchmark, None,
+                                       probe_stimuli=_table(MOVIES[:1], n=1, columns=columns))
+    assert f'neural:{region}' in benchmark.requested_output_channels and width == N_UNITS
+
+
+# ── Stream and table ──────────────────────────────────────────────
+
+
+def _shown(table):
+    """The benchmark shows ``table`` instead of the prepared files of the data plugin."""
+    return patch.multiple(algo, per_scan_stimuli=lambda *args: table,
+                          load_stimulus_set=lambda *args, **kwargs: None)
+
+
+def _score(tmp_path, streaming, calls, channels=('vision:video', 'audio'), columns=('video_path', 'audio_path'),
+           model=None):
+    benchmark = Algonauts2025(participant=1, channels=channels, assembly_root=tmp_path,
+                              streaming=streaming)
+    benchmark._assembly = _assembly(MOVIES)
+    with _shown(_table(columns=columns)):
+        return benchmark, benchmark(model if model is not None else _av_model(calls))
+
+
+def test_stream_and_table_give_equal_bands_and_scores(tmp_path):
+    table_calls, stream_calls = [], []
+    benchmark = _benchmark(tmp_path)
+    regions = list(benchmark.CHANNEL_REGIONS[frozenset({'vision:video', 'audio'})])
+    table_bands = benchmark._record_bands(_av_model(table_calls), _table(), regions)
+    streamed = _benchmark(tmp_path, streaming=True)
+    stream_bands = streamed._record_bands(_av_model(stream_calls), _table(), regions)
+    assert list(table_bands) == list(stream_bands) == regions
+    for band in regions:
+        np.testing.assert_array_equal(stream_bands[band][0], table_bands[band][0])
+        np.testing.assert_array_equal(stream_bands[band][1], table_bands[band][1])
+    # These towers do not declare independent_layers: the table runs each region
+    # once on every row, the stream once per row and region.
+    assert len(table_calls) == 4 and len(stream_calls) == 4 * len(_table())
+
+    _, table_score = _score(tmp_path, False, [])
+    _, stream_score = _score(tmp_path, True, [])
+    assert float(table_score) == float(stream_score)
+    np.testing.assert_array_equal(table_score.attrs['per_parcel_r'],
+                                  stream_score.attrs['per_parcel_r'])
+    assert table_score.attrs['penalties_per_fold'] == stream_score.attrs['penalties_per_fold']
+    assert table_score.attrs['presentation'] == 'table'
+    assert stream_score.attrs['presentation'] == 'stream'
+    assert stream_score.attrs['bands'] == regions
+    assert stream_score.attrs['band_channels'] == {r: f'neural:{r}' for r in regions}
+    assert stream_score.attrs['input_channels'] == ['audio', 'vision:video']
+    assert stream_score.attrs['feature_projection_protocol'] == (
+        'centred_svd_and_scale_fitted_on_training_stimuli')
+    folds = stream_score.attrs['penalties_per_fold']
+    assert len(folds) == 5 and all(set(entry['penalties']) == set(regions)
+                                   for fold in folds for entry in fold['tuples'])
+    assert stream_score.attrs['normalized'] is False
+    assert stream_score.attrs['ceiling'].attrs['status'] == 'not_estimated'
+    assert stream_score.attrs['metric'] == 'median_per_parcel_pearson_r'
+    assert float(stream_score) == float(stream_score.attrs['raw'])
+    assert stream_score.attrs['components_per_band'] == {r: N_UNITS for r in regions}
+    assert stream_score.attrs['cv_groups'] == 'stimulus_id'
+    assert 'movies' not in stream_score.attrs and 'mode' not in stream_score.attrs
+
+
+class _DeclaredTower:
+    """A tower that declares independent_layers: its regions share one call."""
+
+    independent_layers = True
+
+    def __init__(self, inner):
+        self.inner = inner
+
+    def __call__(self, stimuli, layers, **kwargs):
+        return self.inner(stimuli, layers)
+
+
+@pytest.mark.parametrize('streaming', [False, True], ids=['table', 'stream'])
+def test_a_declared_tower_runs_once_for_its_regions_and_gives_the_same_bands(tmp_path, streaming):
+    regions = ['A1', 'IT', 'V1', 'V4']
+    plain_calls, shared_calls = [], []
+    plain = _benchmark(tmp_path, streaming=streaming)._record_bands(_av_model(plain_calls), _table(), regions)
+    model = BrainScoreModel(
+        identifier='fake-av-declared', model=None, region_layer_map=_av_regions(),
+        extractor={'video': _DeclaredTower(_extractor('video_path', 1.0, VIDEO_BINS, shared_calls)),
+                   'audio': _DeclaredTower(_extractor('audio_path', 2.0, AUDIO_BINS, shared_calls))})
+    shared = _benchmark(tmp_path, streaming=streaming)._record_bands(model, _table(), regions)
+    for region in regions:
+        np.testing.assert_array_equal(shared[region][0], plain[region][0])
+        np.testing.assert_array_equal(shared[region][1], plain[region][1])
+    rows = len(_table()) if streaming else 1
+    assert len(plain_calls) == 4 * rows and len(shared_calls) == 2 * rows   # one call per tower
+
+
+def test_the_score_is_the_same_with_one_region_per_pass(tmp_path, monkeypatch):
+    """BRAINSCORE_REGIONS_PER_PASS changes how many calls run, never the score."""
+    def declared(calls):
+        return BrainScoreModel(
+            identifier='fake-av-declared', model=None, region_layer_map=_av_regions(),
+            extractor={'video': _DeclaredTower(_extractor('video_path', 1.0, VIDEO_BINS, calls)),
+                       'audio': _DeclaredTower(_extractor('audio_path', 2.0, AUDIO_BINS, calls))})
+    monkeypatch.delenv('BRAINSCORE_REGIONS_PER_PASS', raising=False)
+    shared_calls, single_calls = [], []
+    _, shared = _score(tmp_path, False, [], model=declared(shared_calls))
+    monkeypatch.setenv('BRAINSCORE_REGIONS_PER_PASS', 'one')
+    _, single = _score(tmp_path, False, [], model=declared(single_calls))
+    assert len(shared_calls) == 2 and len(single_calls) == 4      # one call per tower, or per region
+    assert float(shared) == float(single)
+    np.testing.assert_array_equal(shared.attrs['per_parcel_r'], single.attrs['per_parcel_r'])
+    assert shared.attrs['penalties_per_fold'] == single.attrs['penalties_per_fold']
+
+
+def test_streaming_works_for_the_image_form_too(tmp_path):
+    _, table_score = _score(tmp_path, False, [], channels=('vision:image',), columns=('image_file_name',),
+                            model=_image_model())
+    _, stream_score = _score(tmp_path, True, [], channels=('vision:image',), columns=('image_file_name',),
+                             model=_image_model())
+    np.testing.assert_array_equal(table_score.attrs['per_parcel_r'],
+                                  stream_score.attrs['per_parcel_r'])
+    assert stream_score.attrs['bands'] == ['IT', 'V1', 'V4']
+    assert stream_score.attrs['input_channels'] == ['vision:image'] and 'clip_seconds' not in stream_score.attrs
+
+
+def test_in_the_stream_each_row_comes_once_with_both_columns(tmp_path):
+    calls = []
+    benchmark = _benchmark(tmp_path, streaming=True)
+    table = _table(MOVIES[:1], n=4)
+    benchmark._record_bands(_av_model(calls), table, ['A1', 'IT'])
+    ids = list(table['stimulus_id'])
+    # One session for both regions: row by row and in order, each row once; in a
+    # row, the extractors in the model's source order (video, then sound).
+    assert [(column, rows) for column, rows, _ in calls] == [
+        (column, [sid]) for sid in ids for column in ('video_path', 'audio_path')]
+    for _, _, columns in calls:
+        assert {'video_path', 'audio_path'} <= set(columns)
+
+
+# ── movies ────────────────────────────────────────────────────────
+
+
+def test_movies_limit_the_assembly_and_the_table(tmp_path):
+    named = MOVIES[:7]
+    benchmark = _benchmark(tmp_path, movies=named)
+    with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)):
+        assembly = benchmark.assembly
+    assert sorted(set(assembly['stimulus_id'].values)) == sorted(named)
+    assert assembly.sizes['presentation'] == len(named) * N_TRS
+    # The table holds only the named films: the others need no prepared files.
+    for movie in MOVIES:
+        (tmp_path / f'{movie}.mkv').write_bytes(b'')
+    benchmark._stimulus_set = pd.DataFrame({
+        'stimulus_id': MOVIES, 'video_path': [str(tmp_path / f'{m}.mkv') for m in MOVIES]})
+    for movie in named:
+        for folder, suffix in (('clips', '.mp4'), ('sound', '.wav')):
+            (tmp_path / folder / movie).mkdir(parents=True)
+            for t in range(N_TRS):
+                (tmp_path / folder / movie / f'{t:04d}{suffix}').write_bytes(b'')
+    table = algo.per_scan_stimuli(benchmark.stimulus_set, scans_per_stimulus(assembly),
+                                  ['clips', 'sound'], 'friends', 1, tmp_path)
+    assert sorted(set(table['clip_id'])) == sorted(named)
+    assert len(table) == len(named) * N_TRS
+
+
+def test_the_score_names_the_movies(tmp_path):
+    benchmark = _benchmark(tmp_path, movies=MOVIES[:7])
+    with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)), _shown(_table(MOVIES[:7])):
+        score = benchmark(_av_model([]))
+    assert score.attrs['movies'] == MOVIES[:7]
+    assert np.isfinite(float(score))
+
+
+@pytest.mark.parametrize('n_movies, ok', [(6, False), (7, True)])
+def test_too_few_runs_raise(tmp_path, n_movies, ok):
+    benchmark = _benchmark(tmp_path, movies=MOVIES[:n_movies])
+    with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)):
+        if ok:
+            assert benchmark.assembly.sizes['presentation'] == n_movies * N_TRS
+        else:
+            with pytest.raises(ValueError, match='Name more movies'):
+                benchmark.assembly
+
+
+def test_one_held_out_film_can_be_selected_but_the_training_split_needs_more(tmp_path):
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+    for split in ('friends_s7', 'ood'):
+        benchmark = Algonauts2025(participant=1, split=split, channels=('vision:video', 'audio'),
+                                  assembly_root=tmp_path, movies=MOVIES[:1])
+        kept = benchmark._only_movies(_assembly(MOVIES))
+        assert kept.sizes['presentation'] == N_TRS
+    with pytest.raises(ValueError, match='Name more movies'):
+        _benchmark(tmp_path, movies=MOVIES[:1])._only_movies(_assembly(MOVIES))
+
+
+def test_unknown_movies_raise(tmp_path):
+    benchmark = _benchmark(tmp_path, movies=MOVIES[:6] + ['friends_s09e99a'])
+    with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)), \
+            pytest.raises(ValueError, match='not in the assembly'):
+        benchmark.assembly
+    with pytest.raises(ValueError, match='non-empty list'):
+        _benchmark(tmp_path, movies='friends_s01e01a')
+
+
+def test_movies_apply_to_the_image_form_too(tmp_path):
+    benchmark = Algonauts2025(participant=1, movies=MOVIES[:7], assembly_root=tmp_path)
+    assert benchmark.identifier == 'Algonauts2025-friends-sub01'
+    with patch.object(algo, 'load_dataset', return_value=_assembly(MOVIES)):
+        assert sorted(set(benchmark.assembly['stimulus_id'].values)) == sorted(MOVIES[:7])

@@ -1,6 +1,6 @@
 """Unit tests for the induced-dyslexia perturbation benchmark.
 
-No ROAR data or real models needed. Every candidate here is a contract subject:
+No ROAR data or real models needed. Every subject here is a contract subject:
 it implements only ``participate(session)``, ``reset()`` and its declarations,
 with no ``process`` and no private attributes. Tests the benchmark's own logic
 (localize, ablate, measure, reset), the specific-deficit computation, the
@@ -13,7 +13,7 @@ from brainscore_core import Subject
 from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore_core.metrics import Score
 from brainscore import RandomSelection
-from brainscore_core.model_interface import PerturbationApplied, Selection
+from brainscore_core.events import PerturbationApplied, Selection
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -44,7 +44,7 @@ class _Subject(Subject):
 
     def participate(self, session):
         self.sessions += 1
-        requested = set(session.requested_output_channels)
+        requested = set(session.outputs)
         if requested == {'perturbation'}:
             change = session.next_input().payload
             if change.kind == 'reset':
@@ -72,22 +72,22 @@ class _Subject(Subject):
 
 
 class _Reader:
-    """Returns scripted reading accuracy by lesion kind on the candidate."""
+    """Returns scripted reading accuracy by lesion kind on the subject."""
     def __init__(self, accs):
         self.accs = accs
         self.seen = []
 
-    def __call__(self, candidate):
-        self.seen.append(candidate.active)
+    def __call__(self, subject):
+        self.seen.append(subject.active)
         s = Score(0.0)
-        s.attrs['raw'] = self.accs[candidate.active]
+        s.attrs['raw'] = self.accs[subject.active]
         return s
 
 
 def _make(accs, monkeypatch, canned):
     cand = _Subject()
     reader = _Reader(accs)
-    bench = InducedDyslexia(n_units=3, modality='text',
+    bench = InducedDyslexia(n_units=3, channels=('text',),
                             reading_benchmark=reader, localizer_stimuli=None)
     monkeypatch.setattr(bench, '_localize', lambda c: canned)
     return bench, cand, reader
@@ -110,10 +110,10 @@ class TestScoring:
             {'none': 0.95, 'functional': 0.55, 'random': 0.90},
             monkeypatch, self.CANNED)
         read = bench._reading_accuracy
-        def failing_read(candidate):
+        def failing_read(subject):
             if len(reader.seen) + 1 == failed_call:
                 raise RuntimeError('synthetic reading failure')
-            return read(candidate)
+            return read(subject)
         monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
         with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)
@@ -149,10 +149,10 @@ class TestScoring:
         assert reader.seen == ['caller', 'functional', 'random']
         assert score.attrs['baseline_accuracy'] == 0.80
 
-        def failing_read(candidate):
-            if candidate.active == 'functional':
+        def failing_read(subject):
+            if subject.active == 'functional':
                 raise RuntimeError('synthetic reading failure')
-            return accs[candidate.active]
+            return accs[subject.active]
         monkeypatch.setattr(bench, '_reading_accuracy', failing_read)
         with pytest.raises(RuntimeError, match='synthetic reading failure'):
             bench(cand)
@@ -199,7 +199,7 @@ class TestScoring:
 
 class TestPreflight:
     def _bench(self):
-        return InducedDyslexia(modality='text', reading_benchmark=_Reader({}),
+        return InducedDyslexia(channels=('text',), reading_benchmark=_Reader({}),
                                localizer_stimuli=None)
 
     def test_declares_what_it_sends_and_needs(self):
@@ -274,7 +274,7 @@ class TestCompositeLocalize:
 
     def test_picks_real_selective_per_layer(self):
         cand = _Subject(recording=self._assembly())
-        bench = InducedDyslexia(localizer_region='VWFA', n_units=1, modality='text',
+        bench = InducedDyslexia(localizer_region='VWFA', n_units=1, channels=('text',),
                                 reading_benchmark=_Reader({}),
                                 localizer_stimuli=self._stimuli())
         sels = bench._localize(cand)
@@ -287,7 +287,7 @@ class TestCompositeLocalize:
 
     def test_recording_without_layer_is_refused_before_any_lesion(self):
         cand = _Subject(recording=self._assembly(with_layer=False))
-        bench = InducedDyslexia(n_units=1, modality='text', reading_benchmark=_Reader({}),
+        bench = InducedDyslexia(n_units=1, channels=('text',), reading_benchmark=_Reader({}),
                                 localizer_stimuli=self._stimuli())
         with pytest.raises(ValueError, match="no 'layer' coord"):
             bench._localize(cand)
@@ -320,7 +320,7 @@ class _ReaderSubject(Subject):
         return units
 
     def participate(self, session):
-        requested = set(session.requested_output_channels)
+        requested = set(session.outputs)
         if requested == {'perturbation'}:
             change = session.next_input().payload
             if change.kind == 'reset':
@@ -374,7 +374,7 @@ def synthetic_roar(monkeypatch):
 
 def test_participate_only_subject_runs_the_benchmark(synthetic_roar):
     subject = _ReaderSubject()
-    bench = InducedDyslexia(n_units=2, modality='text')
+    bench = InducedDyslexia(n_units=2, channels=('text',))
     check_compatibility(subject, bench)
     score = bench(subject)
     assert score.attrs['baseline_accuracy'] == 1.0

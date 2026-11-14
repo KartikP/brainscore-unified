@@ -2,25 +2,28 @@
 
 Run models across compatible Brain-Score benchmarks, record their responses, and attach experiment tools. A `Subject` connects the model to the experiment; `BrainScoreModel` supplies extraction and task helpers. Use `Experiment` to combine a protocol with recording and intervention tools.
 
-**Start here:** [Lesson 1: your first subject](notebooks/lessons/01_your_first_subject.ipynb), then [Lesson 10: a whole study in one notebook](notebooks/lessons/10_run_an_experiment.ipynb) (design a task, record answers and activity, save the run, turn it into a benchmark). Reference: [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [All lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
+**Start here:** [Lesson 1: your first subject](notebooks/lessons/01_your_first_subject.ipynb), then [Lesson 10: a whole study in one notebook](notebooks/lessons/10_run_an_experiment.ipynb) (design a task, record answers and activity, save the run, turn it into a benchmark). [Score a model](docs/guides/score_a_model.md) scores a first pair with no download. Reference: [Manual](docs/README.md) | [What UMI is](docs/01_what_is_umi.md) | [Core concepts](docs/02_core_concepts.md) | [All lessons](notebooks/README.md#lessons) | [Experiments](notebooks/README.md#experiments)
 
 UMI is a v2 source candidate. See the [release policy](docs/archive/production_release.md) for remaining qualification.
 
 ## Layout
 
-- `brainscore/model_helpers/`: extraction wrappers for image, text, VLM vision, video and audio, and the stateful `PolicyWrapper` for closed-loop sessions.
-- `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, human-harness scaffold).
+- `brainscore/model_helpers/`: extraction wrappers for image, text, VLM vision, video and audio.
+- `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, human-harness scaffold), and the adapters for external experiment libraries (`adapter.py` holds what every adapter shares; `coggym.py`, `ewok.py`).
 - `brainscore/models/`: registered models (CLIP, Qwen-VL, BLIP-2, V-JEPA, null controls and others).
-- `brainscore/benchmarks/`: registered benchmarks (ROAR, MajajHong-unified, Pereira-unified, Lahner2024, Algonauts2025 and others).
+- `brainscore/benchmarks/`: registered benchmarks (ROAR, induced dyslexia, Lahner2024, LeBel2023, Algonauts2025, CogGym, EWoK, the grid game). The `-unified` regression variants of MajajHong2015 and Pereira2018 are registered in the vision and language packages.
 - `brainscore/metrics/`: scoring metrics.
+- `brainscore/data/`: data plugins (stimuli, recorded responses, and the packaging scripts that build them).
+- `brainscore/tools/`: tools to fit, apply and register (linear probe, LEACE, steering, layer mapping, auto-register, Algonauts prediction export).
 
 ## Install
 
 Requires Python 3.11, `conda` (miniforge or miniconda) and `git`.
 
 **On a new machine** (recommended): the bootstrap clones all four repositories, with core,
-vision and language at the commits this version of unified was tested with
-(`install/peer-revisions.json`), builds the pinned environment and checks it:
+vision and language at the commits named in `install/peer-revisions.json` (the last pinned
+set; a branch in work can need later peer commits), builds the pinned environment and
+checks it:
 
 ```bash
 mkdir brainscore-umi && cd brainscore-umi
@@ -74,8 +77,8 @@ interface is exercised, but the result is not a brain-alignment claim.
 | Behavioral lexical decision | ROAR / Yeatman2021 | validated | Registered image/text variants, shared split, ceiling, and CLIP-above-chance scoring are tested. |
 | Video neural encoding | Lahner2024 BOLDMoments | EC2-only | Local tests verify registration, temporal preprocessing, and V-JEPA wiring; full scoring is EC2-only. |
 | Audio wrapper | Wav2Vec2-style features | structurally-tested | Construction, stimulus columns, aggregation, truncation, and cache keys are unit-tested without weights. |
-| Audio+video fMRI | Lahner2024 multimodal | EC2-only | Registry, mode validation, null controls, and modality tagging are local; real forward/data runs are EC2-only. |
-| Movie multimodal fMRI | Algonauts2025 / CNeuroMod | EC2-only | Twelve benchmark entries and scoring kernels are guarded locally; the data assembly is about 100 GB on EC2. |
-| State-change perturbation | `apply_state_change` | structurally-tested | Hook install, indexed ablation, concurrent handles, and reset are tested on a toy torch model. |
+| Audio+video fMRI | Lahner2024 multimodal | EC2-only | Registry, channel routing, voxel masks and both streams are tested locally on synthetic data; real forward/data runs are EC2-only. |
+| Movie multimodal fMRI | Algonauts2025 / CNeuroMod | EC2-only | Six benchmark entries and the banded-ridge scoring are tested locally; the source data is about 130 GB. Each entry uses all released fMRI of one participant (Friends seasons 1 to 6 and Movie10). Three forms exist: one frame per scan (`vision:image`, participants 1, 2, 3 and 5), one 1.49 s clip per scan (`vision:video`, participant 1 only) and the clip with its sound (`vision:video` and `audio`, participant 1 only). Every form predicts all parcels from the model's layers for the regions the benchmark names. No form sends speech text. |
+| Intervention | `apply_state_change`, `Intervene` | structurally-tested | Hook install, indexed ablation, concurrent handles, and reset are tested on a toy torch model. |
 | Closed-loop action | GridGame `policy` | demo-only | Floor, ceiling, deterministic boards, and registration are tested; the game is an interface demo. |
 | Closed-weight API behavior | OpenRouter / OpenAI-compatible | structurally-tested | Provider registration, lazy model construction, parsing, image payloads, and cache behavior are mocked locally. |

@@ -25,7 +25,7 @@ from brainscore.experiments import (
     replay_sessions,
 )
 from brainscore.harnesses.coggym import CogGymRunner
-from brainscore.model_helpers.response_trace import build_trace_subject
+from brainscore import BrainScoreModel
 from brainscore_core.events import Selection
 
 from example_qualification import (
@@ -172,19 +172,21 @@ def qualify(args, model_id: str, report: dict[str, Any]) -> None:
 
     # Connect the provider to the same subject interface used by other UMI tools.
     provider = LocalTextProvider(args.model_path)
-    subject = build_trace_subject(
-        identifier=model_id,
-        provider=lambda request: provider.complete_with_metadata(**request),
-        parse=str,  # CogGym's own parser interprets answers later.
-        provenance={
-            'model_path': str(args.model_path.resolve()),
-            'model_sha256': provenance['model_sha256'],
-            'dtype': 'float32',
-            'device': 'cpu',
-            'decoding': 'greedy',
-            'max_tokens': 32,
-        },
-    )
+    def reply(prompt):
+        # A reply part over the same provider: the instruction is CogGym's system
+        # text and the trial's text is its user message, so the request equals
+        # the one CogGym's own client sends, and the task's settings are CogGym's.
+        texts = dict(zip(prompt.names, (content for _, content in prompt.parts)))
+        response = prompt.response
+        return provider.complete_with_metadata(
+            system=texts.get('instruction', ''),
+            messages=[{'role': 'user', 'content': texts['text']}],
+            model=model_id, temperature=response.temperature or 0,
+            max_tokens=response.max_tokens,
+        )['text']
+
+    # Provenance: the model path and its SHA-256 are in qualification.json.
+    subject = BrainScoreModel(model_id, in_channels={'text'}, reply=reply)
 
     # Choose half the intermediate MLP units in one layer, not half the model.
     layer = 'model.text_model.layers.0.mlp.up_proj'

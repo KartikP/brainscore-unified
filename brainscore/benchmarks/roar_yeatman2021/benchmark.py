@@ -23,8 +23,8 @@ Our implementation:
 5. `attrs['dyslexic']` flag: True if raw accuracy < 0.65 (paper's threshold).
 
 This is unified-interface-native: it uses BrainScoreModel's behavioral
-readout (TaskContext(task_type='probabilities', ...) +
-process(test_stimuli) -> BehavioralAssembly).
+readout or answer part (TaskContext(task_type='probabilities', ...) +
+behavioral_response(subject, test_stimuli, task) -> BehavioralAssembly).
 
 Data are resolved through the unified data plugin:
 `brainscore.load_stimulus_set('Yeatman2021')` and
@@ -37,16 +37,16 @@ Human assembly schema (verified April 2026):
   Accuracy is computed as (data == correct).
 """
 
-from typing import List, Tuple
+from typing import List, Sequence, Tuple
 
 import numpy as np
 
 from brainscore import load_dataset, load_stimulus_set
 from brainscore_core.benchmarks import BenchmarkBase
-from brainscore_core.io_catalog import modalities_to_input_channels
 from brainscore_core.metrics import Score
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response
+from brainscore.benchmarks._score import benchmark_score
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
@@ -131,43 +131,37 @@ def _human_accuracy_on_stimuli(ds, stimulus_ids: List[str]) -> float:
     return float(accuracy[mask].mean())
 
 
-SUPPORTED_MODALITIES = {'vision', 'text'}
+# The two input formats of the word: an image or a string. The suffix is the
+# user-facing leaderboard suffix of the identifier.
+_CHANNEL_SUFFIX = {'vision:image': 'image', 'text': 'text'}
 
-# Maps the model-side modality name to the user-facing leaderboard suffix.
-# 'vision' (model speak) → 'image' (benchmark identifier suffix). 'text'
-# stays 'text'. Keep this mapping local to ROAR so other benchmarks pick
-# their own conventions.
-_MODALITY_TO_SUFFIX = {'vision': 'image', 'text': 'text'}
-
-# Columns to retain per modality. Anything not in the retained set is
-# dropped from the projected stimulus set so model-side modality detection
-# picks unambiguously and no stimulus row carries a modality the benchmark
-# isn't presenting.
-_MODALITY_COLUMNS = {
-    'vision': {'image_file_name'},
+# Columns to retain per channel. Anything not in the retained set is dropped from
+# the projected stimulus set, so the subject sees one input format and no stimulus
+# row carries a column the benchmark isn't presenting.
+_CHANNEL_COLUMNS = {
+    'vision:image': {'image_file_name'},
     'text': {'sentence'},
 }
 
 
-def _project_to_modality(stimulus_set: StimulusSet, modality: str) -> StimulusSet:
-    """Return a view of the stimulus set restricted to one input format.
+def _project_to_channel(stimulus_set: StimulusSet, channel: str) -> StimulusSet:
+    """Return a view of the stimulus set restricted to one input channel.
 
-    Drops the columns belonging to other modalities so that model-side
-    `_detect_modalities` picks unambiguously. Preserves all metadata
-    columns (label, word, etc.) and the stimulus_paths mapping.
+    Drops the columns belonging to the other channel so that the session sends
+    one input format. Preserves all metadata columns (label, word, etc.) and
+    the stimulus_paths mapping.
     """
-    keep_modality = _MODALITY_COLUMNS[modality]
     drop = set()
-    for mod, cols in _MODALITY_COLUMNS.items():
-        if mod != modality:
+    for other, cols in _CHANNEL_COLUMNS.items():
+        if other != channel:
             drop |= cols
     keep_cols = [c for c in stimulus_set.columns if c not in drop]
     df = stimulus_set[keep_cols].copy()
 
     projected = StimulusSet(df)
-    projected.identifier = f'{stimulus_set.identifier}-{_MODALITY_TO_SUFFIX[modality]}'
-    if modality == 'vision':
-        # Vision still resolves stimulus paths via stimulus_paths.
+    projected.identifier = f'{stimulus_set.identifier}-{_CHANNEL_SUFFIX[channel]}'
+    if channel == 'vision:image':
+        # Images resolve stimulus paths via stimulus_paths.
         projected.stimulus_paths = dict(stimulus_set.stimulus_paths)
     return projected
 
@@ -176,77 +170,69 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
     """ROAR lexical decision — paper-replication (Honarmand et al. 2026).
 
     Test on 100 stimuli (50 real + 50 pseudo). Readout fits on 400 separate
-    stimuli; generation answers the instruction without fitting. The default
-    ``prefer_path='auto'`` uses generation when available and readout otherwise.
-    Explicit paths get distinct benchmark identifiers.
+    stimuli; generation answers the instruction without fitting. A subject
+    with an answering part answers through it; a subject built without one
+    answers through its readout (the path is a property of the subject).
     Metric: model accuracy on test set, ceiling-normalized by human
     mean accuracy on the same test stimuli.
 
     Per the April 30, 2026 design decision, each leaderboard benchmark
     declares exactly one input format. ROAR is parameterized over the
-    `modality` argument and registered as two pinned variants:
+    `channels` argument and registered as two pinned variants:
     `Yeatman2021-lexical_decision-image` and
     `Yeatman2021-lexical_decision-text`. Both share the same train/test
     split, ceiling, and metric — only the presentation differs.
 
-    Toolbox use: construct directly with `modality='vision'` or
-    `modality='text'` to compare across input formats.
+    Toolbox use: construct directly with `channels=('vision:image',)` or
+    `channels=('text',)` to compare across input formats.
     """
 
-    SUPPORTED_MODALITIES = SUPPORTED_MODALITIES
-
     # Asks for the word's label (`behavior`); every word is an independent trial.
-    # The input channel is the modality of the variant, set in __init__.
+    # The input channel is the one the variant sends, set in __init__.
     requested_output_channels = frozenset({'behavior'})
     trial_memory = 'none'
 
-    def __init__(self, modality: str = 'vision', *, prefer_path: str = 'auto'):
-        if prefer_path not in ('auto', 'generation', 'readout'):
-            raise ValueError("prefer_path must be 'auto', 'generation', or 'readout'.")
-        self.prefer_path = prefer_path
-        assert modality in self.SUPPORTED_MODALITIES, (
-            f"modality must be one of {self.SUPPORTED_MODALITIES}; "
-            f"got {modality!r}")
-        self.modality = modality
+    def __init__(self, channels: Sequence[str] = ('vision:image',)):
+        channels = tuple(channels)
+        if len(channels) != 1 or channels[0] not in _CHANNEL_COLUMNS:
+            raise ValueError(
+                f"channels must be one of {[(c,) for c in _CHANNEL_COLUMNS]}; "
+                f"got {channels!r}")
+        channel = channels[0]
         # The word (an image or a string) and the question put to the participant.
-        self.required_input_channels = frozenset(modalities_to_input_channels({modality}) | {'instruction'})
+        self.required_input_channels = frozenset({channel, 'instruction'})
 
         full_stimulus_set = load_stimulus_set('Yeatman2021')
         # Split first on the full set so the train/test partition is the
-        # same across modality variants. Then project each side to the
-        # chosen modality.
+        # same across the variants. Then project each side to the
+        # chosen channel.
         train_full, test_full = _split_train_test(full_stimulus_set)
-        self._train_stimuli = _project_to_modality(train_full, modality)
-        self._test_stimuli = _project_to_modality(test_full, modality)
+        self._train_stimuli = _project_to_channel(train_full, channel)
+        self._test_stimuli = _project_to_channel(test_full, channel)
         self._human_ds = load_dataset('Yeatman2021')
 
         test_ids = list(self._test_stimuli['stimulus_id'].values)
         self._human_accuracy = _human_accuracy_on_stimuli(self._human_ds, test_ids)
 
-        suffix = _MODALITY_TO_SUFFIX[modality]
-        if prefer_path != 'auto':
-            suffix += f'-{prefer_path}'
         super().__init__(
-            identifier=f'Yeatman2021-lexical_decision-{suffix}',
+            identifier=f'Yeatman2021-lexical_decision-{_CHANNEL_SUFFIX[channel]}',
             version=1,
             parent='behavioral',
             ceiling=Score(self._human_accuracy),
             bibtex=BIBTEX,
         )
 
-    def __call__(self, candidate) -> Score:
-        # The task declares how to answer; auto preserves the registered variants.
-        task_context = TaskContext(
+    def __call__(self, subject) -> Score:
+        # The subject's parts decide how it answers: an answer function, else the readout.
+        task = TaskContext(
             task_type='probabilities',
             fitting_stimuli=self._train_stimuli,
             label_set=['real', 'pseudo'],
             instruction='Is this a real word or a pseudo word?',
-            prefer_path=self.prefer_path,
-            # The 100-item test set is what gets answered; fitting stimuli only
-            # train a readout.
-            metadata={'stimulus_set': self._test_stimuli},
         )
-        predictions = behavioral_response(candidate, task_context)
+        # The 100-item test set is what gets answered; the fitting stimuli only
+        # train a readout.
+        predictions = behavioral_response(subject, self._test_stimuli, task)
         choice_values = list(predictions['choice'].values)
 
         # argmax over choices to get predicted label per stimulus
@@ -272,12 +258,10 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         ceiling_value = float(self.ceiling)
         ceiled = raw_accuracy / ceiling_value
 
-        score = Score(ceiled)
-        score.attrs['raw'] = Score(raw_accuracy)
-        score.attrs['ceiling'] = ceiling_value
+        score = benchmark_score(self, ceiled, raw=raw_accuracy, metric='accuracy',
+                                normalized=True)
         score.attrs['n_test_stimuli'] = len(stim_ids)
         score.attrs['n_invalid_answers'] = int(invalid.sum())
-        score.attrs['requested_behavioral_path'] = self.prefer_path
         score.attrs['dyslexia_threshold'] = DYSLEXIA_THRESHOLD
         score.attrs['dyslexic'] = bool(raw_accuracy < DYSLEXIA_THRESHOLD)
         # Breakdown by stimulus class

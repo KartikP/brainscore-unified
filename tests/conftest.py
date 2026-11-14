@@ -40,6 +40,7 @@ QUALIFICATION_TESTS = {
     'test_contrastive_steering_tool.py::test_documented_steering_example_runs',
     'test_leace_tool.py::test_documented_leace_example_runs',
     'test_linear_probe_tool.py::test_documented_cpu_example_runs_without_downloads',
+    'test_extension_templates.py::test_documented_code_blocks_run',
     'test_notebook_validation.py::test_execution_retains_failure_without_changing_source',
 }
 

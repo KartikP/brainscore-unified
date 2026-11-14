@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 from brainscore.harnesses.grid_game import (
     GridGameEnv, ACTIONS, greedy_oracle_policy, random_action_policy,
     play_game, evaluate_policy,
@@ -18,11 +17,10 @@ from brainscore.harnesses.grid_game import (
 
 
 def _embodied_model(policy):
-    """A model that is *only* a policy — no preprocessors, no activations."""
+    """A model that is *only* a policy — no extractors, no activations."""
     return BrainScoreModel(
         identifier='grid-player', model=None, region_layer_map={},
-        preprocessors={}, activations_model=None,
-        action_fn=PolicyWrapper(policy, max_history=4),
+        policy=policy,
     )
 
 
@@ -58,14 +56,13 @@ class TestEnvMechanics:
 
     def test_ascii_board_has_player_and_goal(self):
         env = GridGameEnv(size=4, seed=0)
-        env.agent_pos = (0, 0)
-        env.goal_pos = (3, 3)
+        observation = env.reset(seed=0)
         board = env.ascii_board()
         assert 'P' in board and 'G' in board
         assert board.count('P') == 1 and board.count('G') == 1
         assert len(board.splitlines()) == 4
         # the observation exposes it for thinking text policies
-        assert env._observe()['ascii'] == board
+        assert observation['ascii'] == board
 
 
 class TestClosedLoop:
@@ -78,18 +75,18 @@ class TestClosedLoop:
         assert res['steps'] == res['optimal_steps']
         assert res['efficiency'] == 1.0
 
-    def test_process_dispatches_to_action_fn(self):
+    def test_process_dispatches_to_policy(self):
         # The loop must go through model.process(row), not a side door.
         env = GridGameEnv(size=5, seed=3)
         calls = {'n': 0}
 
-        def counting_policy(obs, history):
+        def counting_policy(row):
             calls['n'] += 1
-            return greedy_oracle_policy(obs, history)
+            return greedy_oracle_policy(row)
 
         model = _embodied_model(counting_policy)
         res = play_game(model, env)
-        assert calls['n'] == res['steps']     # one action_fn call per tick
+        assert calls['n'] == res['steps']     # one policy call per tick
         assert res['solved']
 
     def test_actions_are_legal_indices(self):

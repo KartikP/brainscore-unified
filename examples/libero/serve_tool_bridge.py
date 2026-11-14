@@ -30,7 +30,7 @@ from brainscore.experiments.backends import socket_deadline
 from brainscore.experiments._storage import check_output_directory
 from brainscore.harnesses.libero_policy import LiberoChunkPolicy
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import UnifiedModel
+from brainscore_core.contract import UnifiedModel
 from brainscore_core.events import Selection
 
 RECEIPT_PROTOCOL = 'brainscore.libero.receipt.v1'
@@ -157,6 +157,7 @@ class Bridge:
                 subject = BrainScoreModel(
                     identifier='pi05-libero',
                     policy=LiberoChunkPolicy(client, execution_horizon=self.horizon),
+                    policy_in_channels=LiberoChunkPolicy.inputs,
                 )
                 target = Selection(layer='action_out_proj', indices=[0])
                 tools = [RecordInputsOutputs()]
@@ -174,6 +175,8 @@ class Bridge:
                     protocol=CallableProtocol(
                         identifier='libero-evaluator',
                         evaluate=lambda model, context: self.serve(socket, codec, model, context, state),
+                        # The remote evaluator drives the policy through process.
+                        methods=['process'],
                     ),
                     tools=tools,
                     instrumentation=RemoteOpenPIInstrumentation(client),

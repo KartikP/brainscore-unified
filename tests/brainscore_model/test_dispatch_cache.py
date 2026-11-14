@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from brainscore._model.dispatch import InputDispatcher
+from brainscore._model.dispatch import extract_for_modality
 
 
 @pytest.fixture(autouse=True)
@@ -32,14 +32,12 @@ class _FakeActivationsModel:
 
 class _FakeOwner:
     def __init__(self, perturbed):
-        self._activations_model = _FakeActivationsModel()
-        self._extractors = {'vision': self._activations_model}
+        self.vision_extractor = _FakeActivationsModel()
+        self._extractors = {'vision': self.vision_extractor}
+        self._shared_calls = None
         from types import SimpleNamespace
-        self._perturbations = SimpleNamespace(
-            active_perturbations={'h1': (lambda: None)} if perturbed else {})
-        self._preprocessors = {}
-        self._model = None
-        self._recording_layer = None
+        self._interventions = SimpleNamespace(
+            active_interventions={'h1': (lambda: None)} if perturbed else {})
 
 
 def _clean_env():
@@ -49,10 +47,10 @@ def _clean_env():
 def test_cache_bypassed_while_perturbed():
     _clean_env()
     owner = _FakeOwner(perturbed=True)
-    out = InputDispatcher(owner).extract_for_modality('stim', 'vision', ['layer'])
+    out = extract_for_modality(owner, 'stim', 'vision', ['layer'])
     assert out == 'features'
     # cache was disabled DURING the perturbed extraction
-    assert owner._activations_model.seen_disable == '1'
+    assert owner.vision_extractor.seen_disable == '1'
     # and restored (removed) afterwards
     assert os.environ.get('RESULTCACHING_DISABLE') is None
 
@@ -60,9 +58,9 @@ def test_cache_bypassed_while_perturbed():
 def test_cache_untouched_when_not_perturbed():
     _clean_env()
     owner = _FakeOwner(perturbed=False)
-    InputDispatcher(owner).extract_for_modality('stim', 'vision', ['layer'])
+    extract_for_modality(owner, 'stim', 'vision', ['layer'])
     # normal path: cache flag never set
-    assert owner._activations_model.seen_disable is None
+    assert owner.vision_extractor.seen_disable is None
     assert os.environ.get('RESULTCACHING_DISABLE') is None
 
 
@@ -70,8 +68,8 @@ def test_prior_disable_flag_is_restored():
     os.environ['RESULTCACHING_DISABLE'] = 'some.module'
     try:
         owner = _FakeOwner(perturbed=True)
-        InputDispatcher(owner).extract_for_modality('stim', 'vision', ['layer'])
-        assert owner._activations_model.seen_disable == '1'
+        extract_for_modality(owner, 'stim', 'vision', ['layer'])
+        assert owner.vision_extractor.seen_disable == '1'
         assert os.environ.get('RESULTCACHING_DISABLE') == 'some.module'  # restored
     finally:
         _clean_env()

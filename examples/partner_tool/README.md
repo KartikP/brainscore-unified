@@ -18,8 +18,11 @@ python -I -m umi_partner_tool --out ./channel-example
 ```
 
 [The capability](src/umi_partner_tool/__init__.py) accepts a three-value signal
-and returns its amplitude. The example registers its channels, attaches an
-observer, records the response, reads it back, and checks reset. Copy the package
+and returns its amplitude. It is a session capability: `supports_session` claims
+the output channel and `participate` answers each signal. Each capability method
+takes the model as its first argument, named `subject`. The example registers its
+channels, attaches an observer, records the response, reads it back, and checks
+reset. Copy the package
 under your own distribution/module name and replace the calculation and validators.
 
 ## Combine tools across five cases

@@ -1,10 +1,10 @@
 """TODO: one-line description of the model and what it can be scored on.
 
-A model is ONE BrainScoreModel construction. The optional slots you fill decide which
-dispatch branches process() can take (see
-https://brain-score.github.io/public/UMI/architecture.html for the full router):
-  - extractor     -> neural recording + behavioral readout
-  - answer        -> behavioral answers in words (instruction-following)
+A model is ONE BrainScoreModel construction. The optional parts you fill decide which
+channels the subject declares, and so which sessions it can take part in (see
+https://brain-score.github.io/public/UMI/architecture.html for the full map):
+  - extractor     -> neural:<region> outputs (+ behavioral readout with behavioral_readout_layer)
+  - answer, reply -> behavioral answers in words (instruction-following)
   - policy        -> closed loop (a row of channel -> payload)
   - intervention  -> lesion/perturbation (StateChange)
 Leave a slot as None if the model doesn't support that capability.
@@ -19,8 +19,7 @@ import torch.nn as nn
 
 from brainscore import BrainScoreModel
 from brainscore_vision.model_helpers.activations.pytorch import (
-    load_preprocess_images)
-from brainscore.model_helpers.vision_wrapper import VisionWrapper
+    PytorchWrapper, load_preprocess_images)
 
 IDENTIFIER = 'your-model'
 
@@ -38,11 +37,11 @@ def get_model() -> BrainScoreModel:
     ).eval()
 
     # TODO: pick the wrapper that matches your model. One of:
-    #   VisionWrapper (any vision: image / VLM / video — dispatches internally; pass kind= to force)
-    #   TextWrapper (LM) · AudioWrapper (HF audio encoder)
+    #   PytorchWrapper (images) · VLMVisionWrapper (images in a VLM with flattened patches)
+    #   VideoWrapper (video clips) · TextWrapper (LM) · AudioWrapper (HF audio encoder)
     # Configure input preparation on the wrapper; the subject routes each input
     # kind (vision, text, audio) to the extractor registered for it.
-    vision_extractor = VisionWrapper(
+    vision_extractor = PytorchWrapper(
         identifier=IDENTIFIER,
         model=backbone,
         preprocessing=lambda paths: load_preprocess_images(paths, image_size=64),
@@ -58,5 +57,4 @@ def get_model() -> BrainScoreModel:
         # policy=build_policy(...),
         # intervention=build_intervention(...),
         # behavioral_readout_layer='TODO.layer',
-        # backbone_id='shared-backbone-id',                     # share a feature cache
     )

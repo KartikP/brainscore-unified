@@ -1,5 +1,6 @@
-"""Tests for build_pytorch_ablation_fn — exercises the full state_change
-dispatch on a real torch.nn.Module via forward-hook installation/removal.
+"""Tests for build_pytorch_ablation_fn: interventions sent with
+``apply_state_change`` on a real torch.nn.Module, through forward-hook
+installation and removal.
 """
 
 import numpy as np
@@ -8,8 +9,9 @@ import pytest
 torch = pytest.importorskip('torch')
 
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import Perturbation, PerturbationApplied, Selection, StateChange
+from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore_core.streaming_helpers import apply_state_change
 
 
 class _TwoLayerNet(torch.nn.Module):
@@ -35,8 +37,8 @@ def model_with_ablation():
         identifier='two-layer-test',
         model=net,
         region_layer_map={},
-        preprocessors={'vision': lambda x: x},
-        state_change_fn=build_pytorch_ablation_fn(net),
+        extractor={'vision': lambda stimuli, layers=None: stimuli},
+        intervention=build_pytorch_ablation_fn(net),
     )
     return bs, net
 
@@ -57,7 +59,7 @@ class TestWholeLayerAblation:
         assert torch.allclose(baseline, torch.tensor([[1., 2., 3., 4., 0., 0., 0., 0.]]))
 
         # Apply ablation: zero out fc1's output entirely
-        applied = bs.process(StateChange(
+        applied = apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='fc1'),
             perturbation=Perturbation(kind='zero'),
@@ -79,7 +81,7 @@ class TestWholeLayerAblation:
         x = torch.tensor([[1., 2., 3., 4.]])
         baseline = net(x).detach().clone()
 
-        bs.process(StateChange(
+        apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='fc1'),
             perturbation=Perturbation(kind='scale', scale=0.5),
@@ -99,7 +101,7 @@ class TestIndexedAblation:
         x = torch.tensor([[1., 2., 3., 4.]])
 
         # Ablate fc1 outputs at indices 0 and 2 only
-        bs.process(StateChange(
+        apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='fc1', indices=[0, 2]),
             perturbation=Perturbation(kind='zero'),
@@ -119,7 +121,7 @@ class TestIndexedAblation:
         bs, net = model_with_ablation
         x = torch.tensor([[2., 4., 6., 8.]])
 
-        bs.process(StateChange(
+        apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='fc1', indices=[1, 3]),
             perturbation=Perturbation(kind='scale', scale=0.25),
@@ -142,26 +144,104 @@ class TestMultipleConcurrentAblations:
         x = torch.tensor([[1., 2., 3., 4.]])
 
         # Ablate fc1 unit 0 AND fc2 unit 7
-        a = bs.process(StateChange(
+        a = apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='fc1', indices=[0]),
             perturbation=Perturbation(kind='zero'),
         ))
-        b = bs.process(StateChange(
+        b = apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='fc2', indices=[7]),
             perturbation=Perturbation(kind='zero'),
         ))
         assert a.handle_id != b.handle_id
-        assert len(bs._active_perturbations) == 2
+        assert len(bs._interventions.active_interventions) == 2
+        # Both act: fc1 unit 0 and fc2 unit 7 are zero (unit 7 is zero anyway).
+        assert torch.equal(net(x).detach(), torch.tensor([[0., 2., 3., 4., 0., 0., 0., 0.]]))
 
         # Selectively undo just fc1 ablation; fc2 ablation remains
-        bs.process(StateChange(kind='reset', handle_id=a.handle_id))
-        assert len(bs._active_perturbations) == 1
-        assert b.handle_id in bs._active_perturbations
+        apply_state_change(bs, StateChange(kind='reset', handle_id=a.handle_id))
+        assert len(bs._interventions.active_interventions) == 1
+        assert b.handle_id in bs._interventions.active_interventions
+        assert torch.equal(net(x).detach(), torch.tensor([[1., 2., 3., 4., 0., 0., 0., 0.]]))
 
         bs.reset()
-        assert len(bs._active_perturbations) == 0
+        assert len(bs._interventions.active_interventions) == 0
+
+
+class TestUndoIsExact:
+
+    def test_undo_by_handle_restores_the_same_outputs(self, model_with_ablation):
+        bs, net = model_with_ablation
+        x = torch.randn(3, 4)
+        baseline = net(x).detach().clone()
+        applied = apply_state_change(bs, StateChange(
+            kind='ablation', target=Selection(layer='fc1', indices=[1, 3]),
+            perturbation=Perturbation(kind='scale', scale=0.3)))
+        assert not torch.equal(net(x).detach(), baseline)
+        apply_state_change(bs, StateChange(kind='reset', handle_id=applied.handle_id))
+        assert torch.equal(net(x).detach(), baseline)
+        assert bs._interventions.active_interventions == {}
+
+    def test_two_interventions_stack_and_undo_selectively(self, model_with_ablation):
+        bs, net = model_with_ablation
+        x = torch.tensor([[1., 2., 3., 4.]])
+        scale = apply_state_change(bs, StateChange(
+            kind='ablation', target=Selection(layer='fc1'),
+            perturbation=Perturbation(kind='scale', scale=0.5)))
+        drive = apply_state_change(bs, StateChange(
+            kind='stimulation', target=Selection(layer='fc2', indices=[5]),
+            perturbation=Perturbation(kind='drive', amount=1.0)))
+        both = torch.tensor([[0.5, 1., 1.5, 2., 0., 1., 0., 0.]])
+        assert torch.equal(net(x).detach(), both)
+        apply_state_change(bs, StateChange(kind='reset', handle_id=scale.handle_id))
+        assert torch.equal(net(x).detach(), torch.tensor([[1., 2., 3., 4., 0., 1., 0., 0.]]))
+        apply_state_change(bs, StateChange(kind='reset', handle_id=drive.handle_id))
+        assert torch.equal(net(x).detach(), torch.tensor([[1., 2., 3., 4., 0., 0., 0., 0.]]))
+
+
+class TestIntactSwitchesChangesInPlace:
+    """``intact()`` switches each change off and on where it is: hook order,
+    handles and cleanups stay, and the network inside is the intact one."""
+
+    def test_hook_order_and_handles_stay(self, model_with_ablation):
+        bs, net = model_with_ablation
+        x = torch.tensor([[1., 2., 3., 4.]])
+        intact = net(x).detach().clone()
+        handles = [apply_state_change(bs, change).handle_id for change in (
+            StateChange(kind='ablation', target=Selection(layer='fc2'),
+                        perturbation=Perturbation(kind='scale', scale=2.0)),
+            StateChange(kind='weights', target=Selection(layer='fc1.weight', indices=[0]),
+                        perturbation=Perturbation(kind='zero')))]
+        net.fc2.register_forward_hook(lambda _m, _i, out: out + 1.0)   # added after: order matters
+        changed = net(x).detach().clone()
+        cleanups = dict(bs._interventions.active_interventions)
+        with bs._interventions.intact():
+            assert torch.equal(net(x).detach(), intact + 1.0)
+        assert torch.equal(net(x).detach(), changed)
+        assert bs._interventions.active_interventions == cleanups
+        for handle in reversed(handles):
+            apply_state_change(bs, StateChange(kind='reset', handle_id=handle))
+        assert torch.equal(net(x).detach(), intact + 1.0)
+
+    def test_another_intervention_part_is_refused_before_any_change(self):
+        net = _TwoLayerNet()
+
+        def intervention(change):
+            handle = net.fc1.register_forward_hook(lambda _m, _i, out: out * 0)
+            return PerturbationApplied(handle_id='own', target=change.target,
+                                       perturbation=change.perturbation), handle.remove
+        bs = BrainScoreModel('own', model=net, region_layer_map={},
+                             extractor={'vision': lambda stimuli, layers=None: stimuli},
+                             intervention=intervention)
+        apply_state_change(bs, StateChange(kind='ablation', target=Selection(layer='fc1'),
+                                           perturbation=Perturbation(kind='zero')))
+        x = torch.ones(1, 4)
+        with pytest.raises(NotImplementedError, match='switched off in place'):
+            with bs._interventions.intact():
+                pass
+        assert torch.equal(net(x), torch.zeros(1, 8))
+        assert list(bs._interventions.active_interventions) == ['own']
 
 
 # ── Layer-resolution edge cases ──────────────────────────────────────
@@ -171,7 +251,7 @@ class TestLayerResolution:
     def test_unknown_layer_raises(self, model_with_ablation):
         bs, _ = model_with_ablation
         with pytest.raises(AttributeError, match='Cannot resolve layer path'):
-            bs.process(StateChange(
+            apply_state_change(bs, StateChange(
                 kind='ablation',
                 target=Selection(layer='nonexistent.layer'),
                 perturbation=Perturbation(kind='zero'),
@@ -188,11 +268,11 @@ class TestLayerResolution:
             identifier='seq-test',
             model=net,
             region_layer_map={},
-            preprocessors={'vision': lambda x: x},
-            state_change_fn=build_pytorch_ablation_fn(net),
+            extractor={'vision': lambda stimuli, layers=None: stimuli},
+            intervention=build_pytorch_ablation_fn(net),
         )
         # Sequential's children are accessed by integer index
-        applied = bs.process(StateChange(
+        applied = apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='0'),
             perturbation=Perturbation(kind='zero'),
@@ -212,7 +292,7 @@ class TestDrive:
         x = torch.tensor([[1., 2., 3., 4.]])
         baseline = net(x).detach().clone()
 
-        bs.process(StateChange(
+        apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='fc1'),
             perturbation=Perturbation(kind='drive', amount=2.0),
@@ -230,7 +310,7 @@ class TestDrive:
         baseline = net(x).detach().clone()
 
         # units 4 and 5 are 0 at baseline; drive them to +3, leave the rest
-        bs.process(StateChange(
+        apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='fc1', indices=[4, 5]),
             perturbation=Perturbation(kind='drive', amount=3.0),
@@ -249,7 +329,7 @@ class TestIndexValidation:
     def test_out_of_range_index_raises_at_apply(self, model_with_ablation):
         bs, net = model_with_ablation  # fc1 has 8 units
         with pytest.raises(ValueError, match="out of range"):
-            bs.process(StateChange(
+            apply_state_change(bs, StateChange(
                 kind='ablation',
                 target=Selection(layer='fc1', indices=[99]),
                 perturbation=Perturbation(kind='zero'),
@@ -258,7 +338,7 @@ class TestIndexValidation:
     def test_negative_index_raises_at_apply(self, model_with_ablation):
         bs, net = model_with_ablation
         with pytest.raises(ValueError, match="non-negative"):
-            bs.process(StateChange(
+            apply_state_change(bs, StateChange(
                 kind='ablation',
                 target=Selection(layer='fc1', indices=[-1]),
                 perturbation=Perturbation(kind='zero'),
@@ -267,7 +347,7 @@ class TestIndexValidation:
     def test_numpy_int_index_accepted(self, model_with_ablation):
         import numpy as np
         bs, net = model_with_ablation  # fc1 has 8 units
-        bs.process(StateChange(  # np.int64 within range must NOT be rejected
+        apply_state_change(bs, StateChange(  # np.int64 within range must NOT be rejected
             kind='ablation',
             target=Selection(layer='fc1', indices=[np.int64(2)]),
             perturbation=Perturbation(kind='zero'),
@@ -278,11 +358,11 @@ class TestIndexValidation:
         # Index perturbation acts on axis -1 (spatial for conv), so index 5 is
         # VALID even though out_channels=4; it must APPLY (not be rejected) and
         # zero spatial column 5. This would fail against c5879b1.
-        from brainscore_core.model_interface import PerturbationApplied
+        from brainscore_core.events import PerturbationApplied
         net = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3))  # output (N, 4, H-2, W-2)
-        bs = BrainScoreModel('conv', net, {}, {'vision': lambda x: x},
-                             state_change_fn=build_pytorch_ablation_fn(net))
-        applied = bs.process(StateChange(
+        bs = BrainScoreModel('conv', net, {}, extractor={'vision': lambda stimuli, layers=None: stimuli},
+                             intervention=build_pytorch_ablation_fn(net))
+        applied = apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='0', indices=[5]),  # > out_channels, < width
             perturbation=Perturbation(kind='zero'),
@@ -292,6 +372,55 @@ class TestIndexValidation:
         assert torch.allclose(out[..., 5], torch.zeros_like(out[..., 5]))  # spatial col 5 zeroed
         assert not torch.allclose(out[..., 0], torch.zeros_like(out[..., 0]))  # col 0 untouched
         bs.reset()
+
+
+# ── Kind validation (fail at apply, not mid-forward) ─────────────────
+
+class TestKindValidation:
+
+    @pytest.mark.parametrize('kind', ['replace', 'noise'])
+    def test_an_activation_change_of_an_unknown_kind_raises_at_apply(self, model_with_ablation, kind):
+        bs, net = model_with_ablation
+        x = torch.ones(1, 4)
+        baseline = net(x).detach().clone()
+        with pytest.raises(ValueError, match="'zero', 'scale' or 'drive'"):
+            apply_state_change(bs, StateChange(
+                kind='ablation', target=Selection(layer='fc1'),
+                perturbation=Perturbation(kind=kind, replacement=torch.zeros(1, 8))))
+        assert torch.equal(net(x).detach(), baseline)
+
+    def test_a_head_change_of_an_unknown_kind_raises_at_apply(self):
+        class Attention(torch.nn.Module):
+            head_dim = 2
+
+            def __init__(self):
+                super().__init__()
+                self.o_proj = torch.nn.Linear(4, 4)
+
+            def forward(self, x):
+                return self.o_proj(x)
+        net = torch.nn.Sequential(Attention())
+        bs = BrainScoreModel(identifier='heads-test', model=net, region_layer_map={},
+                             intervention=build_pytorch_ablation_fn(net))
+        x = torch.ones(1, 4)
+        baseline = net(x).detach().clone()
+        with pytest.raises(ValueError, match="'zero', 'scale', 'drive' or 'replace'"):
+            apply_state_change(bs, StateChange(kind='attention_heads', target=Selection(layer='0', indices=[0]),
+                                               perturbation=Perturbation(kind='noise')))
+        assert torch.equal(net(x).detach(), baseline)
+
+    @pytest.mark.parametrize('indices', [None, [0]])
+    def test_a_weights_change_of_an_unknown_kind_raises_at_apply(self, model_with_ablation, indices):
+        bs, net = model_with_ablation
+        x = torch.ones(1, 4)
+        baseline = net(x).detach().clone()
+        weights = net.fc1.weight.detach().clone()
+        with pytest.raises(ValueError, match='Unknown perturbation kind'):
+            apply_state_change(bs, StateChange(
+                kind='weights', target=Selection(layer='fc1.weight', indices=indices),
+                perturbation=Perturbation(kind='noise')))
+        assert torch.equal(net.fc1.weight.detach(), weights)
+        assert torch.equal(net(x).detach(), baseline)
 
 
 def test_perturbation_positional_api_preserved():
@@ -323,10 +452,10 @@ class TestInputSite:
 
     def _bs(self, net):
         return BrainScoreModel(identifier='gated-mlp-test', model=net, region_layer_map={},
-                               preprocessors={}, state_change_fn=build_pytorch_ablation_fn(net))
+                               intervention=build_pytorch_ablation_fn(net))
 
     def _steer(self, bs, layer, perturbation, indices=None):
-        return bs.process(StateChange(kind='steer', perturbation=perturbation,
+        return apply_state_change(bs, StateChange(kind='steer', perturbation=perturbation,
                                       target=Selection(layer=layer, indices=indices)))
 
     def test_drive_down_proj_input_adds_weight_column(self):

@@ -2,18 +2,20 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
+from brainscore_core.streaming_helpers import behavioral_response
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 def _answers(*replies):
     lookup = dict(zip(['a', 'b'], replies))
-    model = BrainScoreModel(identifier='answer', supported_modalities={'text'},
+    model = BrainScoreModel(identifier='answer', in_channels={'text'},
                             answer=lambda stimulus_row, instruction, label_set:
                             lookup[stimulus_row.stimulus_id])
-    model.start_task(TaskContext(task_type='probabilities', instruction='choose',
-                                 label_set=['cat', 'dog']))
-    return model.process(StimulusSet({'sentence': ['x', 'y'], 'stimulus_id': ['a', 'b']}))
+    task = TaskContext(task_type='probabilities', instruction='choose', label_set=['cat', 'dog'])
+    stimuli = StimulusSet({'sentence': ['x', 'y'], 'stimulus_id': ['a', 'b']})
+    stimuli.identifier = 'invalid-answers'
+    return behavioral_response(model, stimuli, task)
 
 
 def test_invalid_answer_credits_no_label():

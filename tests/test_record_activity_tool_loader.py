@@ -11,7 +11,7 @@ from brainscore.experiments import (
     Experiment, RecordActivity, SessionProtocol, TorchInstrumentation, compare_outputs,
 )
 from brainscore.run_record import RunRecord
-from brainscore.tools import attach_tools, list_tools, load_tool
+from brainscore.tools import attach_tools, load_tool
 from brainscore_core.contract import Subject
 from brainscore_core.events import Selection
 from brainscore_core.streaming import Session, StreamEvent
@@ -37,16 +37,7 @@ def protocol() -> SessionProtocol:
     def factory(trial):
         yield Session([StreamEvent('observation', [[1., 2., 3.]], None)])
     return SessionProtocol('record-activity-check', factory, conditions=['baseline', 'lesioned'],
-                           input_channels=['observation'], output_channels=['behavior'])
-
-
-def test_loader_returns_existing_recorder_with_names_and_positions():
-    loaded = load_tool('record-activity', targets=['population'], name='before', when='before')
-    assert type(loaded) is RecordActivity
-    assert loaded.name == 'before' and loaded.phase == 'before_intervention'
-    assert loaded.describe() == RecordActivity(['population'], name='before', when='before').describe()
-    assert loaded is not load_tool('record-activity', targets=['population'])
-    assert 'record-activity' in list_tools()
+                           required_input_channels=['observation'], requested_output_channels=['behavior'])
 
 
 def test_two_loaded_recorders_match_existing_tools_around_loaded_ablation(tmp_path):
@@ -144,7 +135,6 @@ def test_loading_all_tools_does_not_import_model_or_fitting_dependencies():
         'load_tool("ablate", targets=["population"]); '
         'load_tool("scale-activity", targets=["population"], factor=0.5); '
         'load_tool("patch-activity", targets=["population"], reference={}); '
-        'load_tool("observe-calls", observer=object(), methods=["participate"]); '
         'load_tool("record-reasoning"); '
         'load_tool("record-io"); '
         'load_tool("record-activity", targets=["population"]); '

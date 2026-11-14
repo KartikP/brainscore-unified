@@ -2,7 +2,7 @@
 
     experiment = Experiment(
         subject=model,
-        protocol=TaskProtocol(stimuli, task_context, conditions=['baseline', 'lesioned']),
+        protocol=TaskProtocol(stimuli, task, conditions=['baseline', 'lesioned']),
         tools=[RecordNeural(['IT']), RecordBehavior(), Intervene(change, conditions=['lesioned'])],
         output_dir='runs/study')
     result = experiment.run()
@@ -18,6 +18,9 @@ from brainscore_core.contract import required_traits_for
 from brainscore_core.events import StateChange
 from brainscore_core.streaming import CONTROL_CHANNEL
 from brainscore_core.streaming_helpers import apply_state_change, stimulus_session
+
+from brainscore._model.intervention import INTERVENTION_CHANNELS
+from brainscore.selection import require_resolved
 
 from .runner import SessionProtocol, Tool
 from .tools import RecordInputsOutputs
@@ -50,7 +53,7 @@ class TaskProtocol(SessionProtocol):
         self.task = task
         self.required_traits = frozenset(required_traits_for(required_traits, task.trial_memory))
         super().__init__(identifier, self._session, conditions=conditions, repetitions=repetitions,
-                         input_channels=inputs, output_channels=(), metadata=metadata)
+                         required_input_channels=inputs, requested_output_channels=(), metadata=metadata)
 
     def accept_requests(self, channels):
         if not channels:
@@ -64,13 +67,10 @@ class TaskProtocol(SessionProtocol):
             if self.task.response is not None:
                 # Every kind of answer the response asks for: e.g. choice and confidence.
                 channels = (channels - {'behavior'}) | set(self.task.response.channels)
-        self.output_channels = frozenset(channels)
+        self.requested_output_channels = frozenset(channels)
 
     def validate(self, subject):
-        missing = self.required_traits - set(subject.traits)
-        if missing:
-            raise ValueError(f'This task needs subject traits {sorted(missing)}; '
-                             f'{subject.identifier!r} declares {sorted(subject.traits) or "none"}.')
+        # The required traits are checked with the channels by the one compatibility rule.
         if self.task.response is not None:
             missing = set(self.task.response.channels) - set(subject.out_channels)
             if missing:
@@ -87,19 +87,19 @@ class TaskProtocol(SessionProtocol):
 
     @contextmanager
     def _session(self, repetition):
-        yield stimulus_session(self.stimuli, sorted(self.output_channels), task_context=self.task)
+        yield stimulus_session(self.stimuli, sorted(self.requested_output_channels), task=self.task)
 
 
 class _ChannelRecorder(RecordInputsOutputs):
     """Save only this recorder's output channels, under its own folder."""
 
     def validate(self, experiment):
-        missing = set(self.output_channels) - set(experiment.subject.out_channels)
+        missing = set(self.requested_output_channels) - set(experiment.subject.out_channels)
         if missing:
             raise ValueError(f'{experiment.subject.identifier!r} does not declare {sorted(missing)}')
 
     def _keeps(self, event):
-        return event['kind'] == 'output' and event['payload'].channel in self.output_channels
+        return event['kind'] == 'output' and event['payload'].channel in self.requested_output_channels
 
 
 class RecordNeural(_ChannelRecorder):
@@ -120,7 +120,7 @@ class RecordNeural(_ChannelRecorder):
             raise ValueError("during='prompt' is the only option: the forward pass that "
                              'reads the stimulus and instruction, before any generated token.')
         self.regions, self.during = list(regions), during
-        self.output_channels = frozenset(f'neural:{region}' for region in self.regions)
+        self.requested_output_channels = frozenset(f'neural:{region}' for region in self.regions)
 
     def describe(self):
         return {**super().describe(), 'regions': self.regions, 'during': self.during}
@@ -132,7 +132,7 @@ class RecordBehavior(_ChannelRecorder):
     Read back with ``result.behavior()``, or ``result.behavior(measure='confidence')``.
     """
     name = 'behavior'
-    output_channels = frozenset({'behavior'})
+    requested_output_channels = frozenset({'behavior'})
 
     def _keeps(self, event):
         channel = event['payload'].channel if event['kind'] == 'output' else ''
@@ -140,10 +140,13 @@ class RecordBehavior(_ChannelRecorder):
 
 
 class Intervene(Tool):
-    """Apply one undoable change through the subject's own ``intervention``.
+    """Apply one intervention through the subject's own ``intervention`` part.
 
-    The change is applied at the start of each matching repetition and undone at
-    its end. Targets use the subject's layer paths, as in ``region_layer_map``.
+    The change is sent with ``apply_state_change`` on its declared channel
+    (``lesion``, ``stimulation`` or ``pharmacological``) at the start of each
+    matching repetition, and undone by its handle at the end. Targets use the
+    subject's layer paths, as in ``region_layer_map``; resolve a
+    ``FunctionalSelection`` or ``RandomSelection`` before you build the change.
     """
     name = 'intervention'
     phase = 'intervene'
@@ -159,9 +162,13 @@ class Intervene(Tool):
                 'perturbation': self.change.perturbation.kind, 'conditions': self.conditions}
 
     def validate(self, experiment):
-        if 'lesion' not in experiment.subject.in_channels and \
-                'stimulation' not in experiment.subject.in_channels:
-            raise ValueError(f'{experiment.subject.identifier!r} declares no intervention')
+        require_resolved(self.change)
+        subject = experiment.subject
+        if not set(INTERVENTION_CHANNELS) & set(subject.in_channels) \
+                or 'perturbation' not in subject.out_channels:
+            raise ValueError(f'{subject.identifier!r} declares no intervention: it needs one of '
+                             f'{list(INTERVENTION_CHANNELS)} in in_channels and perturbation in '
+                             f'out_channels, as BrainScoreModel(intervention=...) declares.')
 
     @contextmanager
     def attach(self, context):

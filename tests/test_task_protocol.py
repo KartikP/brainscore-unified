@@ -10,8 +10,9 @@ import pytest
 import torch
 
 from brainscore.brainscore_model import BrainScoreModel
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore.selection import LayerSelector
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -24,7 +25,7 @@ pytestmark = pytest.mark.unit
 STIMULI = StimulusSet({'stimulus_id': ['a', 'b', 'c'], 'sentence': ['x', 'yy', 'zzz']})
 STIMULI.identifier = 'task-protocol-toy'
 TASK = TaskContext(task_type='label', label_set=['short', 'long'],
-                   instruction='Is it long?', prefer_path='generation')
+                   instruction='Is it long?')
 
 
 class Net:
@@ -49,18 +50,18 @@ class Extractor:
         raise AssertionError('a task session presents each stimulus once, through answer')
 
     @contextmanager
-    def record(self, layers):
+    def record(self, layers, stimuli=None):
         seen = []
 
         class Recording:
             @staticmethod
-            def take():
+            def take(_row):
                 values = seen[0]
                 seen.clear()
-                return NeuroidAssembly(values[None], dims=['presentation', 'neuroid'], coords={
+                return {'early': NeuroidAssembly(values[None], dims=['presentation', 'neuroid'], coords={
                     'stimulus_id': ('presentation', ['?']),
                     'neuroid_id': ('neuroid', ['early.0', 'early.1', 'early.2']),
-                    'layer': ('neuroid', ['early'] * 3)})
+                    'layer': ('neuroid', ['early'] * 3)})}
         self.net.hooks.append(seen.append)
         try:
             yield Recording()
@@ -105,6 +106,31 @@ def test_one_presentation_gives_behavior_and_activity_per_condition(tmp_path):
     assert not net.silenced                            # the change was undone
 
 
+def test_a_run_with_an_intervention_is_recorded_and_replayed(tmp_path):
+    """Replay sends the saved inputs again; the intervention tool is attached again."""
+    from brainscore.experiments import RecordInputsOutputs, compare_outputs, replay_sessions
+    net = Net()
+    subject = _subject(net)
+    silence = StateChange(kind='ablation', target=Selection(layer='early'),
+                          perturbation=Perturbation(kind='zero'))
+    conditions = ['baseline', 'silenced']
+    original = Experiment(
+        subject=subject, protocol=TaskProtocol(STIMULI, TASK, conditions=conditions),
+        tools=[RecordInputsOutputs(), RecordBehavior(), Intervene(silence, conditions=['silenced'])],
+        output_dir=tmp_path / 'run').run()
+    events = list(original.record.events())
+    assert [e['payload'] for e in events if e['kind'] == 'intervention'] == [{'handle_id': 'h'}]
+    replay = Experiment(
+        subject=subject, protocol=replay_sessions(original.directory),
+        tools=[RecordInputsOutputs(), Intervene(silence, conditions=['silenced'])],
+        output_dir=tmp_path / 'replay').run()
+    assert compare_outputs(original.directory, replay.directory)['equal']
+    unchanged = Experiment(subject=subject, protocol=replay_sessions(original.directory),
+                           tools=[RecordInputsOutputs()], output_dir=tmp_path / 'no-intervention').run()
+    assert not compare_outputs(original.directory, unchanged.directory)['equal']
+    assert not net.silenced and subject._interventions.active_interventions == {}
+
+
 def test_passive_task_records_viewing_and_refuses_behavior(tmp_path):
     net = Net()
     passive = TaskContext(task_type='passive')
@@ -120,7 +146,7 @@ def test_recorders_on_a_protocol_that_will_not_request_them_fail(tmp_path):
     @contextmanager
     def sessions(trial):
         raise AssertionError('not reached')
-    protocol = SessionProtocol('own', sessions, output_channels=['behavior'])
+    protocol = SessionProtocol('own', sessions, requested_output_channels=['behavior'])
     with pytest.raises(ValueError, match="Recorders need \\['neural:A'\\]"):
         Experiment(subject=_subject(Net()), protocol=protocol, tools=[RecordNeural(['A'])],
                    output_dir=tmp_path / 'x').validate()
@@ -139,7 +165,7 @@ def test_recorder_for_an_undeclared_region_fails_before_running(tmp_path):
     net = Net()
     experiment = Experiment(subject=_subject(net), protocol=TaskProtocol(STIMULI, TASK),
                             tools=[RecordNeural(['IT'])], output_dir=tmp_path / 'run')
-    with pytest.raises(ValueError, match='neural:IT'):
+    with pytest.raises(CompatibilityError, match='neural:IT'):
         experiment.run()
     assert net.passes == 0
 
@@ -162,7 +188,7 @@ def test_text_wrapper_records_the_prompt_pass_not_generated_tokens():
     with wrapper.record(['layers.1']) as recording:
         expected = model(prompt)[0, -1]
         model(torch.randn(1, 1, 4, device=wrapper._device))       # a generated token
-        taken = recording.take()
+        taken = recording.take()['layers.1']
         with pytest.raises(ValueError, match='No forward pass'):
             recording.take()
     np.testing.assert_allclose(taken.values[0], expected.detach().cpu().numpy(), rtol=1e-6)
@@ -170,23 +196,21 @@ def test_text_wrapper_records_the_prompt_pass_not_generated_tokens():
     assert not model.layers[1]._forward_hooks                      # hooks removed
 
 
-class TinyVision(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.blocks = torch.nn.ModuleList([torch.nn.Linear(4, 4)])
-
-    def forward(self, patches):                  # (n_patches, hidden), Qwen-style
-        return self.blocks[0](patches)
+def _grid_wrapper(model):
+    """A Qwen-style registration: patch counts read from the grid the tower is given."""
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    return VLMVisionWrapper(model=model, processor=None, identifier='tiny-vision',
+                            forward_kwargs_map={'grid_thw': 'image_grid_thw'},
+                            patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']])
 
 
 def test_vlm_vision_wrapper_records_the_mean_over_patches():
-    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
-    model = TinyVision()
-    wrapper = VLMVisionWrapper(model=model, processor=None, identifier='tiny-vision')
+    model = TinyVisionGrid()
+    wrapper = _grid_wrapper(model)
     patches = torch.randn(6, 4, device=wrapper._device)
     with wrapper.record(['blocks.0']) as recording:
-        expected = model(patches).mean(dim=0)
-        taken = recording.take()
+        expected = model(patches, grid_thw=torch.tensor([[1, 2, 3]])).mean(dim=0)
+        taken = recording.take()['blocks.0']
     np.testing.assert_allclose(taken.values[0], expected.detach().cpu().numpy(), rtol=1e-5)
 
 
@@ -252,6 +276,38 @@ def test_chat_parts_reply_and_likelihood():
     assert set(scores) == {'cat', 'dog'}
 
 
+def test_chat_parts_reply_obeys_the_task_generation_settings():
+    """The Text response's settings decide the generate call; without them it is unchanged."""
+    from brainscore_core.responses import Choice, Prompt, Text
+    from brainscore.model_helpers.replies import chat_parts
+    calls = []
+
+    class Recorder(TinyLM2):
+        def generate(self, input_ids, attention_mask, token_type_ids, **kwargs):
+            calls.append((kwargs, float(torch.rand(1))))
+            return torch.cat([input_ids, torch.tensor([[4, 15, 7]])], dim=1)
+
+    reply, _ = chat_parts(Recorder(), CharProcessor())
+    shown = (('text', 'which'),)
+    # No settings (no response, a Choice, an empty Text): greedy, 64 tokens, as before.
+    for response in (None, Choice(['cat', 'dog']), Text()):
+        assert reply(Prompt(shown, response=response)) == 'dog'
+    assert [kwargs for kwargs, _ in calls] == [{'max_new_tokens': 64, 'do_sample': False}] * 3
+    calls.clear()
+    reply(Prompt(shown, response=Text(max_tokens=512)))
+    reply(Prompt(shown, response=Text(max_tokens=8, temperature=0.0)))
+    reply(Prompt(shown, response=Text(max_tokens=8, temperature=0.7, top_p=0.9, seed=3)))
+    reply(Prompt(shown, response=Text(max_tokens=8, temperature=0.7, top_p=0.9, seed=3)))
+    assert [kwargs for kwargs, _ in calls] == [
+        {'max_new_tokens': 512, 'do_sample': False},
+        {'max_new_tokens': 8, 'do_sample': False},
+        {'max_new_tokens': 8, 'do_sample': True, 'temperature': 0.7, 'top_p': 0.9},
+        {'max_new_tokens': 8, 'do_sample': True, 'temperature': 0.7, 'top_p': 0.9},
+    ]
+    # The seed is set before generation, so the same seed draws the same numbers.
+    assert calls[2][1] == calls[3][1]
+
+
 def test_experiment_saves_every_kind_of_answer(tmp_path):
     from brainscore_core.responses import Choice, Scale, Text
 
@@ -261,7 +317,7 @@ def test_experiment_saves_every_kind_of_answer(tmp_path):
             return 'long\n4' if len(sentence) > 1 else 'short\n5'
         return f"It reads {sentence}."
 
-    model = BrainScoreModel(identifier='replier', supported_modalities={'text'}, reply=reply)
+    model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=reply)
     choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long'], confidence=Scale(1, 5, 1)))
     result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, choice),
                         tools=[RecordBehavior()], output_dir=tmp_path / 'choice').run()
@@ -272,6 +328,27 @@ def test_experiment_saves_every_kind_of_answer(tmp_path):
     result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, written),
                         tools=[RecordBehavior()], output_dir=tmp_path / 'text').run()
     assert list(result.behavior(measure='text').values) == ['It reads x.', 'It reads yy.', 'It reads zzz.']
+
+
+def test_extra_data_of_a_reply_goes_into_the_meta_of_the_answer_event():
+    """One answer event for several trials: each key holds one value per trial."""
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.streaming_helpers import stimulus_session
+
+    def reply(prompt):
+        sentence = [content for kind, content in prompt.parts if kind == 'text'][0]
+        if sentence == 'yy':
+            return 'long'   # the text alone: no extra data for this trial
+        return StreamEvent('behavior:choice', 'short', None, {'reasoning': f'{sentence} is short'})
+
+    model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=reply)
+    session = stimulus_session(STIMULI, ['behavior:choice'], TaskContext(response=Choice(['short', 'long'])))
+    model.participate(session)
+    event, = [e for e in session.emitted if e.channel == 'behavior:choice']
+    assert event.meta['reasoning'] == ['x is short', None, 'zzz is short']
+    assert event.meta['driver'] == 'interact'
+    assert list(event.payload['raw_answer'].values) == ['short', 'long', 'short']
 
 
 def test_a_model_that_cannot_write_fails_at_validation(tmp_path):
@@ -296,16 +373,15 @@ class TinyVisionGrid(torch.nn.Module):
 
 
 def test_vlm_vision_wrapper_records_each_image_of_a_trial():
-    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     model = TinyVisionGrid()
-    wrapper = VLMVisionWrapper(model=model, processor=None, identifier='tiny-vision')
+    wrapper = _grid_wrapper(model)
     grid = torch.tensor([[1, 2, 2], [1, 2, 3], [1, 1, 2]])          # 4, 6 and 2 patches
     patches = torch.randn(12, 4, device=wrapper._device)
     with wrapper.record(['blocks.0']) as recording:
         out = model(patches, grid_thw=grid)
-        several = recording.take()
+        several = recording.take()['blocks.0']
         model(patches[:4], grid_thw=grid[:1])
-        one = recording.take()
+        one = recording.take()['blocks.0']
     expected = [out[0:4].mean(0), out[4:10].mean(0), out[10:12].mean(0)]
     assert several.dims == ('presentation', 'part', 'neuroid')
     np.testing.assert_allclose(several.values[0], torch.stack(expected).detach().cpu().numpy(), rtol=1e-5)
@@ -331,10 +407,10 @@ def test_chat_parts_replays_earlier_trials_as_turns():
 
 def test_a_memory_task_rejects_a_subject_without_memory(tmp_path):
     from brainscore_core.responses import Choice
-    forgets = BrainScoreModel(identifier='forgets', supported_modalities={'text'}, reply=lambda p: 'no')
+    forgets = BrainScoreModel(identifier='forgets', in_channels={'text'}, reply=lambda p: 'no')
     protocol = TaskProtocol(STIMULI, TaskContext(response=Choice(['yes', 'no'])),
                             required_traits={'memory:trial_history'})
-    with pytest.raises(ValueError, match='memory:trial_history'):
+    with pytest.raises(CompatibilityError, match='memory:trial_history'):
         Experiment(subject=forgets, protocol=protocol, tools=[RecordBehavior()],
                    output_dir=tmp_path / 'x').validate()
 
@@ -382,6 +458,40 @@ def test_fused_chat_extractor_splits_one_pass_by_input(tmp_path):
     np.testing.assert_allclose(recorded.values[0], [hidden[:3].mean(0), hidden[3:].mean(0), hidden[-1]], rtol=1e-5)
 
 
+class TwoLayerVLM(TinyVLM):
+    """``lm.layers.0`` runs before ``lm.layers.1``."""
+    def __init__(self):
+        super().__init__()
+        self.lm.layers.append(torch.nn.Linear(4, 4))
+
+    def forward(self, input_ids, attention_mask=None, **kwargs):
+        return self.lm.layers[1](self.lm.layers[0](self.embed(input_ids)))
+
+
+def test_fused_chat_extractor_gives_the_layers_in_the_order_of_the_request(tmp_path):
+    """The order of the passive output since the fused extractor was added: the request's,
+    whatever order the pass runs the layers in."""
+    from brainscore.model_helpers.fused import fused_chat_extractor
+    from brainscore.selection import CompositeSelector
+    from brainscore_core.streaming_helpers import stimulus_session
+    model = TwoLayerVLM()
+    fused = fused_chat_extractor(model, ImageTokenProcessor(), root=model.lm, identifier='tiny-fused')
+    stimuli = StimulusSet({'stimulus_id': ['s', 't'], 'sentence': ['ab', 'ba']})
+    stimuli.identifier = 'fused-order'
+    forward = fused(stimuli, layers=['layers.0', 'layers.1'])
+    reverse = fused(stimuli, layers=['layers.1', 'layers.0'])
+    assert list(dict.fromkeys(reverse['layer'].values)) == ['layers.1', 'layers.0']
+    np.testing.assert_array_equal(reverse.values, np.concatenate([forward.values[..., 4:], forward.values[..., :4]], 2))
+    assert list(reverse['neuroid_id'].values) == [f'tiny-fused.layers.{layer}.{i}' for layer in (1, 0) for i in range(4)]
+    subject = BrainScoreModel('fused-order', extractor={('vision', 'text'): fused}, region_layer_map={
+        'R': CompositeSelector(layers=(('layers.1', None), ('layers.0', (0, 2))), modality='text')})
+    session = stimulus_session(stimuli, ['neural:R'])
+    subject.participate(session)
+    recorded = session.collect('neural:R')
+    assert list(recorded['neuroid_id'].values) == (
+        [f'tiny-fused.layers.1.{i}' for i in range(4)] + ['tiny-fused.layers.0.0', 'tiny-fused.layers.0.2'])
+
+
 def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
     from types import SimpleNamespace
     from brainscore_core import check_compatibility
@@ -395,8 +505,8 @@ def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
                             output_dir=tmp_path / 'partial')
     plan = experiment.validate()
     benchmark = SimpleNamespace(identifier='same-task',
-                                required_input_channels=protocol.input_channels,
-                                requested_output_channels=protocol.output_channels)
+                                required_input_channels=protocol.required_input_channels,
+                                requested_output_channels=protocol.requested_output_channels)
     expected = check_compatibility(subject, benchmark).as_attrs()
     assert expected['match'] == 'partial'
     assert expected['consumed_inputs'] == ['text']
@@ -414,15 +524,15 @@ def test_partial_inputs_match_scoring_and_preserve_responses(tmp_path):
 
 
 @pytest.mark.parametrize('mistake, expected', [
-    ('output', "cannot produce requested outputs ['neural:IT']"),
-    ('input', "takes in none of the protocol inputs ['vision:image']"),
-    ('required', "requires inputs absent from the protocol ['vision:image']"),
+    ('output', "cannot produce output channels requested by benchmark 'task': {'neural:IT'}"),
+    ('input', "takes in none of the inputs benchmark 'task' sends: {'vision:image'}"),
+    ('required', "hard-requires input channels {'vision:image'}"),
 ])
 def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, expected):
     calls = []
-    subject = BrainScoreModel(identifier='reader', supported_modalities={'text', 'vision'}
+    subject = BrainScoreModel(identifier='reader', in_channels={'text', 'vision:image'}
                              if mistake == 'required' else {'text'},
-                             required_modalities={'vision'} if mistake == 'required' else set(),
+                             required_channels={'vision:image'} if mistake == 'required' else set(),
                              reply=lambda prompt: calls.append('inference') or 'yes')
     subject.reset = lambda: calls.append('reset')
     stimuli = (StimulusSet({'stimulus_id': ['x'], 'image_path': ['unused.png']})
@@ -431,12 +541,12 @@ def test_channel_errors_explain_declarations_before_resets(tmp_path, mistake, ex
     experiment = Experiment(subject=subject, protocol=TaskProtocol(stimuli, task),
                             tools=[RecordNeural(['IT'])] if mistake == 'output' else [RecordBehavior()],
                             output_dir=tmp_path / 'bad')
-    with pytest.raises(ValueError) as caught:
+    # The experiment uses the rule score() uses (core check_channel_compatibility).
+    with pytest.raises(CompatibilityError) as caught:
         experiment.run()
     message = str(caught.value)
     assert expected in message
     assert "Subject 'reader'" in message
-    assert 'in_channels=' in message and 'out_channels=' in message
     assert calls == []
     assert not experiment.output_dir.exists()
 
@@ -523,3 +633,143 @@ def test_trials_gives_one_row_per_trial(tmp_path):
     assert list(baseline['stimulus_id']) == ['a', 'b', 'c']
     assert list(baseline['choice']) == ['short', 'long', 'long']
     assert list(trials[trials['condition'] == 'silenced']['choice']) == ['short'] * 3
+
+
+def _options_stimuli():
+    stimuli = StimulusSet({'stimulus_id': ['a', 'b'], 'text': ['the cat', 'the dog'],
+                           'options': [('sat', 'ran'), ('kind', 'mean')]})
+    stimuli.identifier = 'task-protocol-options'
+    return stimuli
+
+
+def test_options_that_differ_for_each_row_reach_each_part():
+    """labels names a column: each row's options reach likelihood, reply and answer; the axis is positions."""
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    seen = []
+
+    def likelihood(prompt, candidates):
+        seen.append(('likelihood', prompt.parts, tuple(candidates)))
+        return {c: (0.5 if c in ('ran', 'kind') else -0.25) for c in candidates}
+
+    def reply(prompt):
+        seen.append(('reply', prompt.parts, prompt.response.labels))
+        return prompt.response.labels[1]
+
+    def answer(stimulus_row, instruction, label_set):
+        seen.append(('answer', stimulus_row['text'], tuple(label_set)))
+        return label_set[0]
+
+    raw = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
+    scorer = BrainScoreModel(identifier='scorer', in_channels={'text'}, likelihood=likelihood)
+    session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:probabilities'], raw)
+    scorer.participate(session)
+    scores = session.collect('behavior:probabilities')
+    # Raw scores, as the part gave them, in the order of each row's options.
+    np.testing.assert_array_equal(scores.values, [[-0.25, 0.5], [0.5, -0.25]])
+    assert list(scores['choice'].values) == [0, 1]
+    assert scores.attrs['measure'] == {'kind': 'implied', 'source': 'likelihood', 'scale': 'log'}
+    np.testing.assert_array_equal(session.collect('behavior:choice').values, [[0, 1], [1, 0]])
+    assert seen == [('likelihood', (('text', 'the cat'),), ('sat', 'ran')),
+                    ('likelihood', (('text', 'the dog'),), ('kind', 'mean'))]
+    seen.clear()
+    phrased = TaskContext(response=Choice(labels='options'))
+    for part in ({'reply': reply}, {'answer': answer}):
+        model = BrainScoreModel(identifier='other', in_channels={'text'}, **part)
+        session = stimulus_session(_options_stimuli(), ['behavior:choice'], phrased)
+        model.participate(session)
+        chosen = session.collect('behavior:choice')
+        assert list(chosen['raw_answer'].values) == (['ran', 'mean'] if 'reply' in part else ['sat', 'kind'])
+    assert seen[0] == ('reply', (('text', 'the cat'), ('text', 'Answer with exactly one of: sat, ran.')),
+                       ('sat', 'ran'))
+    assert seen[2] == ('answer', 'the cat', ('sat', 'ran'))
+
+
+def test_raw_scores_need_a_likelihood_part():
+    """A model that would have to guess or normalize is N/A, never scored."""
+    from brainscore_core.compatibility import CompatibilityError
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=lambda p: 'sat')
+    task = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
+    with pytest.raises(CompatibilityError, match='likelihood'):
+        model.start_task(task)
+
+
+def test_chat_parts_scores_plain_text_under_raw_text():
+    """No template, no BOS: the option's tokens after the text's own tokens."""
+    from brainscore_core.responses import Choice, Prompt
+    from brainscore.model_helpers.replies import chat_parts
+    model, processor = TinyLM2(), CharProcessor()
+    _, likelihood = chat_parts(model, processor)
+    seen = {}
+
+    def forward(input_ids, attention_mask, token_type_ids=None):
+        seen.setdefault('ids', []).append(input_ids)
+        return TinyLM2.forward(model, input_ids, attention_mask, torch.zeros_like(input_ids))
+    model.forward = forward
+    prompt = Prompt((('text', 'ab'),), response=Choice(['c', 'dd'], raw_text=True))
+    scores = likelihood(prompt, ['c', 'dd'])
+    tok = processor.tokenizer
+    for option in ('c', 'dd'):
+        ids = tok(f'ab {option}')['input_ids']
+        logp = model.head(model.embed(torch.tensor([ids])))[0].log_softmax(-1)
+        expected = sum(float(logp[i - 1, ids[i]]) for i in range(len(tok('ab')['input_ids']), len(ids)))
+        assert scores[option] == pytest.approx(expected, abs=1e-5)
+    # The text alone first (the pass a recording keeps), then the options; never a template.
+    assert seen['ids'][0].tolist() == [tok('ab')['input_ids']]
+    assert not hasattr(processor, 'kwargs')
+
+
+def test_an_answer_part_cannot_serve_a_raw_text_choice():
+    """answer= takes no response settings and adds its own directive, so it is refused."""
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    calls = []
+
+    def answer(stimulus_row, instruction, label_set):
+        calls.append(1)
+        return label_set[0]
+    model = BrainScoreModel(identifier='answerer', in_channels={'text'}, answer=answer)
+    task = TaskContext(response=Choice(labels='options', raw_text=True))
+    session = stimulus_session(_options_stimuli(), ['behavior:choice'], task)
+    with pytest.raises(CompatibilityError, match='cannot give a Choice answer'):
+        model.participate(session)
+    assert calls == []
+
+
+@pytest.mark.parametrize('declares_control', [False, True])
+def test_an_experiment_and_a_benchmark_agree_on_which_pairs_fit(declares_control):
+    """A protocol is checked with the rule score() uses, including trial history and control."""
+    from types import SimpleNamespace
+    from brainscore_core.compatibility import check_compatibility
+    from brainscore_core.contract import Subject
+
+    class Remembers(Subject):
+        identifier = 'remembers'
+        in_channels = frozenset({'text', 'control'} if declares_control else {'text'})
+        out_channels = frozenset({'behavior'})
+        traits = frozenset({'memory:trial_history'})
+
+        def participate(self, session):
+            pass
+
+        def reset(self):
+            pass
+
+    from brainscore.experiments import SessionProtocol
+    protocol = SessionProtocol('memory-check', lambda repetition: None,
+                               required_input_channels=['text'],
+                               requested_output_channels=['behavior'])
+    benchmark = SimpleNamespace(identifier='memory-check', required_input_channels={'text'},
+                                requested_output_channels={'behavior'})
+    if declares_control:
+        protocol.validate(Remembers())
+        assert protocol.describe()['compatibility'] == \
+            check_compatibility(Remembers(), benchmark).as_attrs()
+    else:
+        # Trial history without control fails both ways (the old protocol rule let it pass).
+        with pytest.raises(CompatibilityError, match='control'):
+            check_compatibility(Remembers(), benchmark)
+        with pytest.raises(CompatibilityError, match='control'):
+            protocol.validate(Remembers())

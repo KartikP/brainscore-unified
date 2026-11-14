@@ -44,11 +44,20 @@ class TestPureHelpers:
         assert _find_column(row, IMAGE_COLUMNS) is None  # NaN is not a usable path
 
 
+def _turn(messages):
+    """The text and the image (or None) of the one user turn an answer or policy part sends."""
+    (turn,) = messages
+    text = next(part['text'] for part in turn['content'] if part['type'] == 'text')
+    images = [(part['media_type'], part['data']) for part in turn['content'] if part['type'] == 'image']
+    return text, images[0] if images else None
+
+
 class TestGenerationClosure:
     def _mock(self, responses=None, counter=None):
-        """A provider adapter that records calls and returns canned responses."""
+        """A provider client that records calls and returns canned responses."""
         responses = responses or {}
-        def call(model, system, user_text, image, max_tokens):
+        def call(model, system, messages, settings):
+            user_text, image = _turn(messages)
             if counter is not None:
                 counter.append((model, user_text, image))
             # default: echo a label found in the prompt, else 'real'
@@ -135,7 +144,8 @@ class TestGameActionFn:
         return {'observation': obs, 'instruction': 'reach the goal'}
 
     def _mock(self, response='Action: 2', counter=None):
-        def call(model, system, user_text, image, max_tokens):
+        def call(model, system, messages, settings):
+            user_text, image = _turn(messages)
             if counter is not None:
                 counter.append((user_text, image))
             return response
@@ -269,20 +279,13 @@ class TestGameActionFn:
 
 
 class TestRegistration:
-    def test_models_registered(self):
-        import brainscore
-        for ident in ('claude-opus-behavioral', 'claude-haiku-behavioral',
-                      'gpt-4o-behavioral', 'deepseek-chat-behavioral',
-                      'deepseek-r1-behavioral'):
-            assert ident in brainscore.model_registry
-
     def test_deepseek_is_text_only(self):
         # DeepSeek's API has no vision; it must declare text only so a vision
         # benchmark doesn't route to it at the compatibility check.
         from brainscore.models.api_closed.model import get_model
         m = get_model('deepseek-r1-behavioral')
-        assert m.supported_modalities == {'text'}
-        assert callable(m._generation_fn)
+        assert 'text' in m.in_channels and 'vision:image' not in m.in_channels
+        assert callable(m._answer)
 
     def test_deepseek_provider_is_openai_compatible(self):
         # The DeepSeek provider is the OpenAI-compatible adapter pointed at a
@@ -314,7 +317,9 @@ class TestRegistration:
         call = ab._make_openai_compatible(
             base_url='https://api.deepseek.com', label='deepseek')
         with pytest.raises(RuntimeError, match="has no image-input endpoint"):
-            call('deepseek-chat', None, 'hi', ('image/png', 'Zm9v'), 16)
+            call('deepseek-chat', None, [{'role': 'user', 'content': [
+                {'type': 'text', 'text': 'hi'},
+                {'type': 'image', 'media_type': 'image/png', 'data': 'Zm9v'}]}], {'max_tokens': 16})
 
     def test_openrouter_provider_and_registration(self):
         # OpenRouter is the same OpenAI-compatible gateway, pointed at hundreds
@@ -326,17 +331,17 @@ class TestRegistration:
         assert 'llama-3.3-70b-behavioral' in brainscore.model_registry
         # an OpenRouter model that IS multimodal can declare vision
         m = get_model('or-claude-sonnet-behavioral')
-        assert m.supported_modalities == {'vision', 'text'}
+        assert {'vision:image', 'text'} <= m.in_channels
         # a text-only OpenRouter model declares text only
-        assert get_model('llama-3.3-70b-behavioral').supported_modalities == {'text'}
+        assert 'vision:image' not in get_model('llama-3.3-70b-behavioral').in_channels
 
     def test_get_model_wiring_no_api_call(self):
         # Building the model must NOT require an API key — the closure is lazy.
         from brainscore.models.api_closed.model import get_model
         m = get_model('claude-opus-behavioral')
-        assert m.supported_modalities == {'vision', 'text'}
-        assert callable(m._generation_fn)
-        assert m._activations_model is None
+        assert {'vision:image', 'text'} <= m.in_channels
+        assert callable(m._answer)
+        assert dict(m.extractor) == {}
 
     def test_neural_extraction_raises_clear_error(self):
         from brainscore.models.api_closed.model import get_model
@@ -350,3 +355,239 @@ class TestRegistration:
         from brainscore.models.api_closed.model import get_model
         with pytest.raises(ValueError, match='unknown closed-API model'):
             get_model('claude-not-a-real-model')
+
+
+# ── reply part: written answers under the task's settings ──────────────
+
+PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg=='
+
+
+def _recording_provider(answer='42'):
+    calls = []
+
+    def provider(model, system, messages, settings):
+        calls.append(dict(model=model, system=system, messages=messages, settings=settings))
+        return answer
+    return provider, calls
+
+
+class TestApiReply:
+    def test_parts_in_order_instruction_as_system_and_settings(self, tmp_path):
+        import base64
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt, Text
+        image = tmp_path / 'p.png'
+        image.write_bytes(base64.b64decode(PIXEL))
+        provider, calls = _recording_provider()
+        reply = build_api_reply(provider, 'm-1')
+        prompt = Prompt((('text', 'Rate it.'), ('text', 'first'), ('image', str(image)), ('text', 'second')),
+                        names=('instruction', 'text', 'image_path', 'text_2'),
+                        response=Text(max_tokens=512, temperature=1.0, seed=3))
+        assert reply(prompt) == '42'
+        call = calls[0]
+        assert call['system'] == 'Rate it.'
+        assert call['messages'] == [{'role': 'user', 'content': [
+            {'type': 'text', 'text': 'first'},
+            {'type': 'image', 'media_type': 'image/png', 'data': PIXEL},
+            {'type': 'text', 'text': 'second'}]}]
+        assert call['settings'] == {'max_tokens': 512, 'temperature': 1.0, 'seed': 3}
+
+    def test_no_settings_uses_its_own_length_only(self):
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Choice, Prompt
+        provider, calls = _recording_provider()
+        reply = build_api_reply(provider, 'm-1', max_tokens=64)
+        reply(Prompt((('text', 'x'),), response=Choice(['a', 'b'])))
+        assert calls[0]['settings'] == {'max_tokens': 64}
+
+    def test_history_becomes_earlier_turns(self):
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt
+        provider, calls = _recording_provider()
+        reply = build_api_reply(provider, 'm-1')
+        earlier = Prompt((('text', 'one'),))
+        reply(Prompt((('text', 'two'),), history=((earlier, 'yes'),)))
+        assert [m['role'] for m in calls[0]['messages']] == ['user', 'assistant', 'user']
+
+    def test_cache_is_keyed_on_the_settings(self, tmp_path):
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt, Text
+        provider, calls = _recording_provider()
+        reply = build_api_reply(provider, 'm-1', cache_dir=tmp_path)
+        shown = (('text', 'x'),)
+        for response in (Text(temperature=1.0, seed=1), Text(temperature=1.0, seed=1),
+                         Text(temperature=0.5, seed=1), Text(temperature=1.0, seed=1, max_tokens=8)):
+            reply(Prompt(shown, response=response))
+        # The repeated request is served from the cache; each new setting is a new request.
+        assert len(calls) == 3
+
+    def test_a_sampled_call_without_a_seed_is_not_cached(self, tmp_path):
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt, Text
+        calls = []
+
+        def provider(model, system, messages, settings):
+            calls.append(1)
+            return f'answer {len(calls)}'
+        reply = build_api_reply(provider, 'm-1', cache_dir=tmp_path)
+        shown = (('text', 'x'),)
+        sampled = [reply(Prompt(shown, response=Text(temperature=1.0))) for _ in range(5)]
+        assert len(calls) == 5 and len(set(sampled)) == 5
+        for response in (Text(temperature=1.0, seed=2), Text(temperature=0.0), Text()):
+            first = reply(Prompt(shown, response=response))
+            assert reply(Prompt(shown, response=response)) == first
+        assert len(calls) == 8
+
+    @pytest.mark.parametrize('settings', [{'temperature': 0.5}, {'temperature': 1.0, 'top_p': 0.9},
+                                          {'seed': 1}])
+    def test_anthropic_refuses_unsupported_settings_before_any_request(self, settings, monkeypatch):
+        import sys
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt, Text
+        monkeypatch.setitem(sys.modules, 'anthropic', None)   # a request would fail differently
+        reply = build_api_reply('anthropic', 'claude-x')
+        with pytest.raises(ValueError, match='Anthropic API refuses'):
+            reply(Prompt((('text', 'x'),), response=Text(**settings)))
+
+    def test_anthropic_default_temperature_is_not_sent(self, monkeypatch):
+        import sys
+        import types
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt, Text
+        sent = {}
+
+        class Messages:
+            def create(self, **kwargs):
+                sent.update(kwargs)
+                return types.SimpleNamespace(content=[types.SimpleNamespace(type='text', text=' ok ')])
+        fake = types.SimpleNamespace(Anthropic=lambda: types.SimpleNamespace(messages=Messages()))
+        monkeypatch.setitem(sys.modules, 'anthropic', fake)
+        reply = build_api_reply('anthropic', 'claude-x')
+        assert reply(Prompt((('text', 'Do it.'), ('text', 'x')), names=('instruction', 'text'),
+                            response=Text(max_tokens=512, temperature=1.0))) == 'ok'
+        assert sent == {'model': 'claude-x', 'max_tokens': 512, 'system': 'Do it.',
+                        'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'x'}]}]}
+
+    def test_anthropic_reply_returns_reasoning_and_token_usage_as_extra_data(self, monkeypatch, tmp_path):
+        import sys
+        import types
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt, Text
+        from brainscore_core.streaming import StreamEvent
+        requests = []
+
+        class Messages:
+            def create(self, **kwargs):
+                requests.append(kwargs)
+                return types.SimpleNamespace(
+                    content=[types.SimpleNamespace(type='thinking', thinking='Add them.'),
+                             types.SimpleNamespace(type='text', text=' 4 ')],
+                    usage=types.SimpleNamespace(input_tokens=7, output_tokens=2))
+        fake = types.SimpleNamespace(Anthropic=lambda: types.SimpleNamespace(messages=Messages()))
+        monkeypatch.setitem(sys.modules, 'anthropic', fake)
+        reply = build_api_reply('anthropic', 'claude-x', cache_dir=tmp_path)
+        prompt = Prompt((('text', '2 + 2?'),), response=Text())
+        for _ in range(2):   # the second reply comes from the cache, with its extra data
+            answer = reply(prompt)
+            assert isinstance(answer, StreamEvent) and answer.payload == '4'
+            assert answer.meta == {'reasoning': 'Add them.',
+                                   'token_usage': {'input_tokens': 7, 'output_tokens': 2}}
+        assert len(requests) == 1
+
+    def test_openai_reply_returns_reasoning_and_token_usage_as_extra_data(self, monkeypatch):
+        import sys
+        import types
+        from brainscore.model_helpers.api_behavioral import _make_openai_compatible
+        from brainscore_core.responses import Prompt, Text
+        message = types.SimpleNamespace(content=' 4 ', reasoning_content='Add them.')
+        response = types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=message)],
+            usage=types.SimpleNamespace(prompt_tokens=7, completion_tokens=2))
+        client = types.SimpleNamespace(chat=types.SimpleNamespace(
+            completions=types.SimpleNamespace(create=lambda **kwargs: response)))
+        monkeypatch.setitem(sys.modules, 'openai', types.SimpleNamespace(OpenAI=lambda **kwargs: client))
+        answer = _make_openai_compatible()('m', None, [{'role': 'user', 'content': []}], {'max_tokens': 8})
+        assert answer.payload == '4'
+        assert answer.meta == {'reasoning': 'Add them.',
+                               'token_usage': {'input_tokens': 7, 'output_tokens': 2}}
+
+    def test_video_parts_are_refused(self):
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore_core.responses import Prompt
+        provider, calls = _recording_provider()
+        with pytest.raises(NotImplementedError, match='video'):
+            build_api_reply(provider, 'm-1')(Prompt((('video', '/clip.mp4'),)))
+        assert calls == []
+
+    def test_each_api_model_has_one_identifier_with_both_parts(self):
+        import brainscore
+        from brainscore.models.api_closed.model import REGISTRY, get_model
+        assert set(REGISTRY) <= set(brainscore.model_registry)
+        assert not any(identifier.endswith('-reply') for identifier in brainscore.model_registry)
+        model = get_model('claude-opus-behavioral')
+        assert callable(model._answer) and callable(model._reply)
+        assert 'behavior:text' in model.out_channels
+        assert {'vision:image', 'text'} <= model.in_channels
+
+    def test_an_api_model_answers_text_and_plain_choice_tasks_through_its_reply_part(
+            self, tmp_path, monkeypatch):
+        """No network: a fake adapter stands in for the provider."""
+        from brainscore.model_helpers import api_behavioral
+        from brainscore.models.api_closed import model as api_closed
+        from brainscore_core.contract import TaskContext
+        from brainscore_core.responses import Choice, Text
+        from brainscore_core.streaming_helpers import stimulus_session
+        from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+        provider, calls = _recording_provider('long')
+
+        monkeypatch.setitem(api_behavioral.PROVIDERS, 'openai', provider)
+        monkeypatch.setattr(api_closed, '_CACHE_ROOT', str(tmp_path))
+        model = api_closed.get_model('gpt-4o-behavioral')
+        stimuli = StimulusSet({'stimulus_id': ['a'], 'sentence': ['xyz']})
+        stimuli.identifier = 'api-one-identifier'
+        for response, channel in ((Text(max_tokens=8), 'behavior:text'),
+                                  (Choice(['short', 'long']), 'behavior:choice')):
+            session = stimulus_session(stimuli, [channel], TaskContext(response=response))
+            model.participate(session)
+            answer = session.collect(channel)
+            assert list(answer['raw_answer'].values if channel == 'behavior:choice'
+                        else answer.values) == ['long']
+        assert [call['model'] for call in calls] == ['gpt-4o-2024-08-06'] * 2
+        assert calls[0]['settings'] == {'max_tokens': 8}
+        assert calls[1]['messages'][0]['content'][-1] == {
+            'type': 'text', 'text': 'Answer with exactly one of: short, long.'}
+
+    def test_an_api_reply_model_runs_coggym(self, tmp_path, monkeypatch):
+        """API models run CogGym: the settings reach the provider call."""
+        from brainscore import BrainScoreModel
+        from brainscore.harnesses import coggym
+        from brainscore.model_helpers.api_behavioral import build_api_reply
+        from brainscore.experiments import Experiment
+        from types import SimpleNamespace
+        import json
+        (tmp_path / 'evaluation').mkdir()
+        (tmp_path / 'evaluation/public_manifest.json').write_text(json.dumps(
+            {'experiments': [{'path': 'Hu2023Fine/exp1'}]}))
+        trials = [SimpleNamespace(id='trial-0', queries=[])]
+
+        def execute(experiment, selected, provider, model, temperature, max_tokens):
+            raw = provider.complete_with_metadata('system', [{'role': 'user', 'content': 'q'}],
+                                                  model, temperature, max_tokens)
+            return [{'trial_id': 'trial-0', 'response': raw['text'], 'scores': {'a': {'scorable': True}}}]
+        cli = SimpleNamespace(load_experiment=lambda path: None, _load_selection_map=lambda path: {},
+                              _selected_trials=lambda *a: trials,
+                              build_messages=lambda trial, exp: ('system', [{'role': 'user', 'content': 'q'}]),
+                              _run_experiment=execute, aggregate_experiment=lambda rows: {})
+        monkeypatch.setattr(coggym, '_load_reference', lambda checkout: (cli, SimpleNamespace(
+            analyze=lambda *a, **k: ([], [], []))))
+        monkeypatch.setattr(coggym, '_check_checkout', lambda checkout: None)
+        provider, calls = _recording_provider('{"answer": 3}')
+        model = BrainScoreModel('api-fixture', in_channels={'text'},
+                                reply=build_api_reply(provider, 'm-1'))
+        runner = coggym.CogGymRunner(tmp_path, model='m-1')
+        Experiment(subject=model, protocol=runner.protocol(reset=lambda repetition: None),
+                   output_dir=tmp_path / 'run').run()
+        assert calls[0]['system'] == 'system'
+        assert calls[0]['settings'] == {'max_tokens': 512, 'temperature': 1.0}
+        saved = json.loads((tmp_path / 'run/coggym/run-001.json').read_text())
+        assert saved['trials'][0]['response'] == '{"answer": 3}'

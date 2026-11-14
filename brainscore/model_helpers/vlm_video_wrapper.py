@@ -3,7 +3,7 @@
 Register it under the ``video`` key next to the still-image extractor, so the
 subject declares that it takes clips natively (``vision:video``):
 
-    extractor={'vision': VisionWrapper(..., kind='vlm'),
+    extractor={'vision': VLMVisionWrapper(model.model.visual, processor, ...),
                'video': VLMVideoWrapper(model.model.visual, processor, identifier=...)}
 
 Every frame of the clip is decoded and handed to the processor with the clip's
@@ -12,12 +12,13 @@ frame pairs into temporal patches. Each temporal patch becomes one time bin,
 spanning ``temporal_patch_size / fps`` seconds, with activity averaged over
 the patch's spatial positions. Output: ``(presentation, time_bin, neuroid)``.
 """
-from contextlib import contextmanager
 from typing import List
 
 import numpy as np
 
+from brainscore_core.responses import part_columns
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore.model_helpers._extractors import LiveRecording, as_float32, value
 
 
 def read_clip(path):
@@ -47,7 +48,13 @@ def clip_metadata(frames, fps):
         return {'total_num_frames': len(frames), 'fps': fps, 'duration': len(frames) / fps}
 
 
-CLIP_COLUMNS = ('video_path', 'video_file_name')
+def _grid(args, kwargs):
+    """The ``grid_thw`` a pass was given, as values: one row, one clip."""
+    grid = kwargs.get('grid_thw', args[1] if len(args) > 1 else None)
+    if grid is None or len(grid) != 1:
+        raise ValueError('A clip is recorded from a pass given one grid_thw row (one clip); this '
+                         f'pass gives {None if grid is None else len(grid)}.')
+    return value(grid)
 
 
 class VLMVideoWrapper:
@@ -70,22 +77,13 @@ class VLMVideoWrapper:
         paths = self._paths(stimuli)
         per_clip = []
         for path in paths:
-            frames, fps = read_clip(path)
-            inputs = self._processor.video_processor(
-                videos=[frames], video_metadata=[clip_metadata(frames, fps)], return_tensors='pt')
-            grid = inputs['video_grid_thw']
-            captured = {}
-            handles = [self._get_layer(layer).register_forward_hook(self._keep(layer, captured))
-                       for layer in layers]
-            try:
+            inputs = self._inputs(path)
+            with LiveRecording(self._model, self._model, layers, as_float32, self._steps,
+                               _grid) as recording, torch.no_grad():
                 parameter = next(self._model.parameters())
-                with torch.no_grad():
-                    self._model(inputs['pixel_values_videos'].to(parameter.device, parameter.dtype),
-                                grid_thw=grid.to(parameter.device))
-            finally:
-                for handle in handles:
-                    handle.remove()
-            per_clip.append({layer: self._per_time(captured[layer], grid) for layer in layers})
+                self._model(inputs['pixel_values_videos'].to(parameter.device, parameter.dtype),
+                            grid_thw=inputs['video_grid_thw'].to(parameter.device))
+                per_clip.append(recording.take())
         steps = {len(clip[layers[0]]) for clip in per_clip}
         if len(steps) != 1:
             raise ValueError(f'Clips gave different numbers of time steps {sorted(steps)}; '
@@ -93,54 +91,35 @@ class VLMVideoWrapper:
         return self._package({layer: np.stack([clip[layer] for clip in per_clip]) for layer in layers},
                              {column: list(stimuli[column].values) for column in stimuli.columns})
 
-    @contextmanager
-    def record(self, layers: List[str]):
+    def record(self, layers: List[str], stimuli=None):
         """Record ``layers`` while another caller (e.g. generation) runs the model on a clip.
 
-        ``take()`` returns the first pass since the previous take, time-resolved
-        like ``__call__``. Stills passing through the same tower are taken as one step.
+        ``take()`` gives ``{layer: assembly}`` for the first pass since the previous
+        take, time-resolved by the functions of ``__call__`` with the ``grid_thw`` of
+        that pass. Clips of ``stimuli`` with different numbers of time steps are
+        refused before any pass; a pass of several clips, and a later pass of the
+        presentation with other input, before they run.
         """
-        for layer in layers:
-            self._get_layer(layer)          # unknown layers fail before any compute
-        state = {'grid': None, 'captured': {}}
+        if stimuli is not None and len({int(self._inputs(path)['video_grid_thw'][0][0])
+                                        for path in self._paths(stimuli)}) > 1:
+            raise ValueError('The clips give different numbers of time steps, so they share no time '
+                             'axis; present clips of one length together.')
+        return LiveRecording(self._model, self._model, layers, as_float32, lambda activity, grid, row: {
+            layer: self._package({layer: steps[None]}, {'stimulus_id': ['?']})
+            for layer, steps in self._steps(activity, grid, row).items()}, _grid, one_input=True)
 
-        def grid_hook(_module, args, kwargs):
-            if state['grid'] is None:
-                state['grid'] = kwargs.get('grid_thw', args[1] if len(args) > 1 else None)
+    def _inputs(self, path):
+        """The processor inputs of a clip: every frame, with the clip's real frame rate."""
+        frames, fps = read_clip(path)
+        return self._processor.video_processor(
+            videos=[frames], video_metadata=[clip_metadata(frames, fps)], return_tensors='pt')
 
-        handles = [self._model.register_forward_pre_hook(grid_hook, with_kwargs=True)]
-        handles += [self._get_layer(layer).register_forward_hook(self._keep(layer, state['captured']))
-                    for layer in layers]
+    def _steps(self, activity, grid, _row=None):
+        """{layer: (time steps, features)} for one clip: each step's positions averaged."""
+        return {layer: self._per_time(a, int(grid[0][0])) for layer, a in activity.items()}
 
-        class Recording:
-            @staticmethod
-            def take():
-                missing = [layer for layer in layers if layer not in state['captured']]
-                if missing or state['grid'] is None:
-                    raise ValueError(f'No forward pass reached {missing or layers} since the last presentation.')
-                activity = {layer: self._per_time(state['captured'][layer], state['grid'])[None]
-                            for layer in layers}
-                state['captured'].clear()
-                state['grid'] = None
-                return self._package(activity, {'stimulus_id': ['?']})
-        try:
-            yield Recording()
-        finally:
-            for handle in handles:
-                handle.remove()
-
-    def _keep(self, layer, captured):
-        def hook(_module, _inputs, output):
-            if layer in captured:
-                return              # a later pass: keep the first
-            if isinstance(output, (tuple, list)):
-                output = output[0]
-            captured[layer] = output.detach().float().cpu().numpy()
-        return hook
-
-    def _per_time(self, activity, grid):
-        """(patches, features) -> (time steps, features), averaging each step's positions."""
-        t, h, w = (int(v) for v in np.asarray(grid.cpu() if hasattr(grid, 'cpu') else grid)[0])
+    @staticmethod
+    def _per_time(activity, t):
         patches = activity.reshape(-1, activity.shape[-1])
         if patches.shape[0] % t:
             raise ValueError(f'{patches.shape[0]} positions do not divide into {t} time steps')
@@ -162,20 +141,20 @@ class VLMVideoWrapper:
         """Layer paths this extractor can record, relative to the module it wraps."""
         return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
 
-    def _get_layer(self, layer: str):
-        module = self._model
-        for part in layer.split('.'):
-            module = module[int(part)] if part.isdigit() else getattr(module, part, None)
-            if module is None:
-                raise ValueError(f"Layer '{layer}' not found at part '{part}'")
-        return module
-
     @staticmethod
     def _paths(stimuli):
-        for column in CLIP_COLUMNS:
+        clip_columns = part_columns('video')
+        for column in clip_columns:
             if column in stimuli.columns:
                 return [str(p) for p in stimuli[column].values]
         paths = getattr(stimuli, 'stimulus_paths', None)
         if paths:
             return [str(paths[sid]) for sid in stimuli['stimulus_id']]
-        raise ValueError(f'No clip column {CLIP_COLUMNS} in {list(stimuli.columns)}')
+        raise ValueError(f'No clip column {clip_columns} in {list(stimuli.columns)}')
+
+
+# Recording several layers in one call gives, for each layer, exactly what a
+# call for that layer alone gives, so the regions of one session share one call
+# (brainscore._model.channels). Set outside the class body: the class source is
+# part of the activation cache key, and this line must not change that key.
+VLMVideoWrapper.independent_layers = True

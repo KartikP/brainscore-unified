@@ -66,7 +66,8 @@ class _Policy:
 
 def _subject(policy):
     from brainscore import BrainScoreModel
-    return BrainScoreModel('s', None, {}, {}, None, policy=policy)
+    return BrainScoreModel('s', policy=policy,
+                           policy_in_channels=('vision:image', 'proprioception', 'instruction'))
 
 
 @pytest.mark.parametrize('field,value,message', [
@@ -77,13 +78,14 @@ def _subject(policy):
     ('exterior_image_1_left', np.zeros((2, 3, 4), dtype=np.uint8), 'uint8 image'),
     ('exterior_image_2_left', np.zeros((2, 3, 3)), 'uint8 image'),
 ])
-def test_invalid_first_observation_never_reaches_policy_and_begins_once(episode, spec, field, value, message):
+def test_invalid_first_observation_never_reaches_policy(episode, spec, field, value, message):
+    """The first row is checked before the episode begins; the policy sees nothing."""
     episode['steps'][0]['observation'][field] = value
     calls = []
     policy = _Policy(lambda row: calls.append(row))
     with pytest.raises(ValueError, match=message):
         evaluate_droid_episode(_subject(policy), episode, action_spec=spec, action_source=lambda row: row['action'])
-    assert calls == [] and policy.begins == 1
+    assert calls == [] and policy.begins == 0
 
 
 @pytest.mark.parametrize('times', [(0., 0.), (1., 0.), (0., np.nan), (0., np.inf)])
@@ -125,7 +127,7 @@ def test_named_timestamps_and_snapshots_preserve_source_semantics(episode, spec)
 
 
 @pytest.mark.parametrize('response,error', [
-    ({'action': [0.]}, TypeError),
+    ({'action': [0.]}, ValueError),   # a channel that was not requested
     ({'motor': np.array([np.nan])}, ValueError),
     ({'motor': np.array([2.])}, ValueError),
 ])

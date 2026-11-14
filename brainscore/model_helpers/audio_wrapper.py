@@ -1,5 +1,5 @@
 """
-AudioWrapper — fifth activations_model wrapper, symmetric with TextWrapper
+AudioWrapper — fifth extractor wrapper, symmetric with TextWrapper
 and VideoWrapper for audio waveform inputs.
 
 Wraps an audio backbone (Wav2Vec2, HuBERT, Wav2Vec-Bert, SeamlessM4T, Whisper,
@@ -34,14 +34,11 @@ Long clips are split into consecutive, non-overlapping chunks of at most
 to mono before the processor.
 """
 
-import functools
 import logging
-import warnings
 from collections import OrderedDict
-from typing import Callable, List, Optional, Tuple, Union
+from typing import Callable, List, Optional
 
 import numpy as np
-from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import (
     concat_neuroid_assemblies,
@@ -50,8 +47,10 @@ from brainscore_core.assembly_builder import (
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core.extraction_cache import (
-    store_xarray, extraction_fingerprint, wrapper_config, file_inputs,
+from brainscore_core.extraction_cache import store_xarray, file_inputs
+from brainscore.model_helpers import _extractors
+from brainscore.model_helpers._extractors import (
+    LiveRecording, as_numpy, attach_stimulus_set, attention_mask, cache_signature, one_dtype, run_batches,
 )
 
 
@@ -121,9 +120,6 @@ class AudioWrapper:
             models are memory-hungry at long T.
         audio_loader: Optional callable ``(path, target_sr) -> 1-D float32
             waveform``. Defaults to torchaudio → librosa fallback.
-        audio_input_key: Reserved compatibility parameter. The current
-            implementation forwards the processor output dictionary unchanged
-            and does not remap a tensor with this value.
     """
 
     VALID_AGGREGATIONS = ('mean_time', 'time_series')
@@ -139,7 +135,6 @@ class AudioWrapper:
         max_duration_sec: Optional[float] = 60.0,
         batch_size: int = 4,
         audio_loader: Optional[Callable[[str, int], np.ndarray]] = None,
-        audio_input_key: str = 'input_values',
         device: Optional[str] = None,
     ):
         import torch
@@ -156,7 +151,6 @@ class AudioWrapper:
         self._max_duration_sec = max_duration_sec
         self._batch_size = batch_size
         self._audio_loader = audio_loader or _default_audio_loader
-        self._audio_input_key = audio_input_key
 
         from brainscore.model_helpers._device import select_device
         self._device = select_device(device)
@@ -190,10 +184,6 @@ class AudioWrapper:
     def identifier(self) -> str:
         return self._identifier
 
-    @identifier.setter
-    def identifier(self, value: str) -> None:
-        self._identifier = value
-
     @property
     def backbone_id(self) -> str:
         return self._backbone_id
@@ -226,8 +216,7 @@ class AudioWrapper:
             stimuli_identifier = stimulus_set.identifier
         paths = self._extract_paths(stimulus_set)
         activations = self._from_paths_cached(paths, layers, stimuli_identifier)
-        activations = self._attach_stimulus_set_meta(activations, stimulus_set)
-        return activations
+        return attach_stimulus_set(activations, stimulus_set)
 
     @staticmethod
     def _extract_paths(stimulus_set) -> List[str]:
@@ -248,30 +237,18 @@ class AudioWrapper:
         '_max_duration_sec',
         '_batch_size',
         '_audio_loader',
-        '_audio_input_key',
         '_target_sample_rate',
     )
 
     def cache_config(self):
-        return wrapper_config(self, self.CACHE_FIELDS)
+        return _extractors.cache_config(self, self.CACHE_FIELDS)
 
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
-        if self._backbone_id and stimuli_identifier:
-            signature = extraction_fingerprint(
-                {"configuration": self.cache_config(), "inputs": file_inputs(paths)},
-                cache_identifier=(f'{type(self).__module__}.{type(self).__name__}'
-                                  f'._from_paths_stored/identifier={self._backbone_id}'),
-            )
-            if signature is None:
-                return self._from_paths(paths, layers, stimuli_identifier)
-            return self._from_paths_stored(
-                identifier=self._backbone_id,
-                stimuli_identifier=stimuli_identifier,
-                layers=layers,
-                paths=paths,
-                extraction_fingerprint=signature,
-            )
-        return self._from_paths(paths, layers, stimuli_identifier)
+        signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
+        if signature is None:
+            return self._from_paths(paths, layers, stimuli_identifier)
+        return self._from_paths_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
+                                       layers=layers, paths=paths, extraction_fingerprint=signature)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
@@ -414,34 +391,15 @@ class AudioWrapper:
         pads internally anyway; we just lift that to a global pad so the
         per-batch shape is fixed.
         """
-        total = len(waveforms)
-        if total > 0:
+        if waveforms:
             max_len = max(len(w) for w in waveforms)
             waveforms = [
                 w if len(w) == max_len
                 else np.pad(w, (0, max_len - len(w)), mode='constant')
                 for w in waveforms
             ]
-
-        layer_outputs: Optional[OrderedDict] = None
-        for batch_start in tqdm(range(0, total, self._batch_size),
-                                unit_scale=self._batch_size,
-                                desc="audio activations"):
-            batch_end = min(batch_start + self._batch_size, total)
-            batch_waveforms = waveforms[batch_start:batch_end]
-
-            batch_activations = self._run_one_batch(batch_waveforms, layers)
-
-            if layer_outputs is None:
-                layer_outputs = OrderedDict()
-                for layer_name, layer_output in batch_activations.items():
-                    final_shape = (total,) + layer_output.shape[1:]
-                    layer_outputs[layer_name] = np.empty(
-                        final_shape, dtype=layer_output.dtype)
-            for layer_name, layer_output in batch_activations.items():
-                layer_outputs[layer_name][batch_start:batch_end] = layer_output
-
-        return layer_outputs
+        return run_batches(waveforms, self._batch_size, lambda batch: self._run_one_batch(batch, layers),
+                           'audio activations')
 
     def _run_one_batch(self, batch_waveforms, layers):
         import torch
@@ -457,38 +415,31 @@ class AudioWrapper:
         processed = {k: (v.to(self._device) if torch.is_tensor(v) else v)
                      for k, v in processed.items()}
 
-        layer_results: OrderedDict = OrderedDict()
-        hooks = []
-        for layer_name in layers:
-            layer = self._get_layer(layer_name)
-            hooks.append(self._register_hook(layer, layer_name, layer_results))
-
         self._model.eval()
-        try:
-            with torch.no_grad():
-                self._model(**processed)
-        finally:
-            for h in hooks:
-                h.remove()
+        with LiveRecording(self._model, self._model, layers, as_numpy, inputs=attention_mask) as recording, \
+                torch.no_grad():
+            self._model(**processed)
+            layer_results, mask = recording.take()
 
-        attention_mask = processed.get('attention_mask')
+        self._measure_step(layer_results, max(len(w) for w in batch_waveforms))
+        return self._aggregate(layer_results, mask)
 
-        # Capture per-step duration for downstream temporal coord
-        # attachment. Compute from the longest input in the batch (the
-        # padded length the model actually saw) and the hook output's
-        # time axis. Stable across batches when the model has uniform
-        # conv stride (Wav2Vec2, Wav2Vec-Bert, HuBERT, etc.); we cache
-        # the first non-None measurement.
-        if self._step_ms is None:
-            input_samples = max(len(w) for w in batch_waveforms)
-            for layer_name, act in layer_results.items():
-                if act.ndim == 3 and act.shape[1] > 0:
-                    duration_ms = (input_samples
-                                   / self._target_sample_rate * 1000.0)
-                    self._step_ms = duration_ms / act.shape[1]
-                    break
+    def _measure_step(self, layer_results, input_samples):
+        """Keep the duration of one output step, measured on the first pass.
 
-        return self._aggregate(layer_results, attention_mask)
+        The step is the length of the input the model saw (``input_samples``,
+        after padding) over the length of the first time-resolved layer output.
+        It is stable across passes when the model has a uniform convolution
+        stride (Wav2Vec2, Wav2Vec-Bert, HuBERT), so the first measurement is
+        kept. It gives ``time_bin_start_ms`` and ``time_bin_end_ms`` of
+        ``time_series`` outputs.
+        """
+        if self._step_ms is not None:
+            return
+        for act in layer_results.values():
+            if act.ndim == 3 and act.shape[1] > 0:
+                self._step_ms = input_samples / self._target_sample_rate * 1000.0 / act.shape[1]
+                return
 
     def _aggregate(self, layer_results, attention_mask):
         """Apply ``layer_aggregation`` to raw hook outputs.
@@ -516,7 +467,7 @@ class AudioWrapper:
                 # already downsampled T by the model's conv stride. If T_out
                 # differs from the mask's T_in, we fall back to unweighted
                 # mean.
-                mask_np = attention_mask.cpu().numpy()
+                mask_np = attention_mask
                 if mask_np.shape[1] == act.shape[1]:
                     mask_expanded = mask_np[:, :, None].astype(act.dtype)
                     act = (act * mask_expanded).sum(axis=1) / np.clip(
@@ -528,31 +479,52 @@ class AudioWrapper:
             out[layer_name] = act
         return out
 
-    # ── Hook plumbing ───────────────────────────────────────────────
+    def record(self, layers, stimuli=None):
+        """Record ``layers`` while another caller runs the model (an answer or a step).
+
+        Returns a ``LiveRecording``; its ``take(row)`` gives ``{layer: assembly}``
+        for the first forward pass since the previous take, aggregated with the
+        attention mask of that pass and packaged by the functions of ``__call__``;
+        the step of ``time_series`` outputs is measured from the clip of ``row``
+        (else ``input_values``) when no pass measured it before. ``__call__`` pads
+        the clips of ``stimuli`` to the longest and cuts a clip longer than
+        ``max_duration_sec`` into chunks, so clips of other lengths or of several
+        chunks are refused before any pass. A pass of several clips or longer than
+        ``max_duration_sec``, and a later pass of the presentation with other
+        input, are refused before they run.
+        """
+        lengths = {}
+        for path in (self._extract_paths(stimuli) if stimuli is not None else []):
+            chunks = self._chunk_waveform(self._load_waveform(path))
+            if len(chunks) > 1:
+                raise ValueError(f'{path} is longer than max_duration_sec={self._max_duration_sec} s; '
+                                 f'{self._identifier!r} records it in chunks, one pass per clip cannot.')
+            lengths[path] = len(chunks[0])
+        if len(set(lengths.values())) > 1:
+            raise ValueError(f'The clips have different lengths ({sorted(set(lengths.values()))} samples); '
+                             f'{self._identifier!r} pads each to the longest, one pass per clip cannot.')
+        longest = self._max_duration_sec and int(self._max_duration_sec * self._target_sample_rate)
+
+        def inputs(args, kwargs):
+            given = [kwargs[key] for key in ('input_values', 'input_features') if kwargs.get(key) is not None]
+            wave = kwargs.get('input_values')
+            if len(given) != 1 or given[0].shape[0] != 1 or (wave is not None and longest and wave.shape[-1] > longest):
+                raise ValueError(f'A recording during a task keeps one clip of at most max_duration_sec='
+                                 f'{self._max_duration_sec} s per pass, as input_values or input_features; this '
+                                 f'pass shows {({k: tuple(v.shape) for k, v in kwargs.items() if hasattr(v, "shape")})}.')
+            return attention_mask(args, kwargs), None if wave is None else wave.shape[-1]
+
+        def package(activity, read, row):
+            path = self._extract_paths(row.to_frame().T)[0] if row is not None else '?'
+            if lengths.get(path, read[1]) is not None:
+                self._measure_step(activity, lengths.get(path, read[1]))
+            return self._layers(self._aggregate(activity, read[0]), [path])
+
+        return LiveRecording(self._model, self._model, layers, as_numpy, package, inputs, one_input=True)
 
     def layer_names(self):
         """Layer paths this extractor can record, relative to the module it wraps."""
         return [name for name, _ in self._model.named_modules(remove_duplicate=False) if name]
-
-    def _get_layer(self, layer_name: str):
-        module = self._model
-        for part in layer_name.split('.'):
-            if part.isdigit() and hasattr(module, '__getitem__'):
-                module = module[int(part)]
-            else:
-                module = getattr(module, part, None)
-                if module is None:
-                    raise ValueError(
-                        f"Layer path {layer_name!r} broke at part "
-                        f"{part!r} while walking {self._identifier}.")
-        return module
-
-    def _register_hook(self, layer, layer_name, target_dict):
-        def hook_fn(_module, _input, output, name=layer_name):
-            if isinstance(output, (tuple, list)):
-                output = output[0]
-            target_dict[name] = output.detach().cpu().numpy()
-        return layer.register_forward_hook(hook_fn)
 
     # ── Packaging ───────────────────────────────────────────────────
 
@@ -562,101 +534,44 @@ class AudioWrapper:
         ``mean_time`` → dims = (presentation, neuroid)
         ``time_series`` → dims = (presentation, time_bin, neuroid)
         """
-        layer_assemblies = []
-        for layer_name, activations in layer_activations.items():
-            if activations.ndim == 2:
-                # (n_clips, hidden)
-                n_clips, n_features = activations.shape
-                layer_assemblies.append(self._pack_2d(
-                    activations, layer_name, paths, n_features))
-            elif activations.ndim == 3:
-                # (n_clips, T, hidden) for time_series
-                n_clips, n_time, n_features = activations.shape
-                layer_assemblies.append(self._pack_3d(
-                    activations, layer_name, paths, n_time, n_features))
-            else:
-                raise ValueError(
-                    f"Packaging expected rank-2 or -3 activations for "
-                    f"{layer_name!r}; got rank {activations.ndim}.")
-
+        layer_assemblies = list(self._layers(layer_activations, paths).values())
         if len(layer_assemblies) == 1:
             return layer_assemblies[0]
+        one_dtype(layer_activations)
         # Multi-layer: concatenate along the neuroid axis (matches
         # TextWrapper / VideoWrapper convention when callers pass multiple
         # layers at once).
         return concat_neuroid_assemblies(layer_assemblies, strategy='xarray')
 
-    def _pack_2d(self, activations, layer_name, paths, n_features):
-        stimulus_id = list(range(len(paths)))  # provisional
-        coords = {
-            'stimulus_id': ('presentation', stimulus_id),
-            'stimulus_path': ('presentation', list(paths)),
-            **make_layer_neuroid_coords(
-                self._identifier, layer_name, n_features,
-                include=('neuroid_id', 'layer')),
-        }
-        return make_assembly(
-            activations,
-            coords=coords,
-            dims=['presentation', 'neuroid'],
-        )
+    def _layers(self, layer_activations, paths) -> OrderedDict:
+        """One assembly per layer, in order: ``(presentation, neuroid)`` for ``(n_clips, hidden)``,
+        ``(presentation, time_bin, neuroid)`` for ``(n_clips, T, hidden)``."""
+        layers = OrderedDict()
+        for layer_name, activations in layer_activations.items():
+            if activations.ndim not in (2, 3):
+                raise ValueError(
+                    f"Packaging expected rank-2 or -3 activations for "
+                    f"{layer_name!r}; got rank {activations.ndim}.")
+            timed = activations.ndim == 3
+            coords = {'stimulus_id': ('presentation', list(range(len(paths)))),  # provisional
+                      'stimulus_path': ('presentation', list(paths))}
+            if timed:
+                coords['time_bin_id'] = ('time_bin', list(range(activations.shape[1])))
+            coords.update(make_layer_neuroid_coords(self._identifier, layer_name, activations.shape[-1]))
+            # With the duration of one model step (measured on the first pass), the
+            # time_bin axis carries absolute ms boundaries, so a benchmark aligns it to
+            # the brain's TR grid without the model's downsampling factor.
+            if timed and self._step_ms is not None:
+                starts = np.arange(activations.shape[1], dtype=np.float64) * self._step_ms
+                coords['time_bin_start_ms'] = ('time_bin', starts)
+                coords['time_bin_end_ms'] = ('time_bin', starts + self._step_ms)
+            layers[layer_name] = make_assembly(activations, coords=coords, dims=[
+                'presentation', *(['time_bin'] if timed else []), 'neuroid'])
+        return layers
 
-    def _pack_3d(self, activations, layer_name, paths, n_time, n_features):
-        stimulus_id = list(range(len(paths)))
-        time_bin_ids = list(range(n_time))
-        coords = {
-            'stimulus_id': ('presentation', stimulus_id),
-            'stimulus_path': ('presentation', list(paths)),
-            'time_bin_id': ('time_bin', time_bin_ids),
-            **make_layer_neuroid_coords(
-                self._identifier, layer_name, n_features,
-                include=('neuroid_id', 'layer')),
-        }
-        # If the wrapper knows its model's per-step duration (set during
-        # the first forward pass), expose absolute ms boundaries on the
-        # time_bin axis so naturalistic benchmarks can align directly to
-        # the brain's TR grid via temporal_bin without reconstructing
-        # the model's downsampling factor.
-        if self._step_ms is not None:
-            starts = np.arange(n_time, dtype=np.float64) * self._step_ms
-            ends = starts + self._step_ms
-            coords['time_bin_start_ms'] = ('time_bin', starts)
-            coords['time_bin_end_ms'] = ('time_bin', ends)
-        return make_assembly(
-            activations,
-            coords=coords,
-            dims=['presentation', 'time_bin', 'neuroid'],
-        )
 
-    def _attach_stimulus_set_meta(self, activations, stimulus_set):
-        """Copy stimulus-set columns into the presentation axis.
-
-        Resets any existing presentation MultiIndex first so re-assigning
-        ``stimulus_id`` doesn't collide with a pre-built MultiIndex level
-        (which gather_indexes builds during NeuroidAssembly construction
-        whenever there are multiple presentation coords). Same fix as
-        TextWrapper. The reset is a no-op when presentation has only the
-        single stimulus_id coord.
-        """
-        stimulus_ids = list(stimulus_set['stimulus_id'].values)
-        n = len(stimulus_ids)
-        if activations.sizes['presentation'] != n:
-            raise ValueError(
-                f"Mismatch between activations ({activations.sizes['presentation']}) "
-                f"and stimulus set ({n}) on the presentation axis."
-            )
-        if 'presentation' in activations.indexes:
-            try:
-                activations = activations.reset_index('presentation')
-            except (ValueError, KeyError):
-                pass
-        activations = activations.assign_coords({
-            'stimulus_id': ('presentation', stimulus_ids),
-        })
-        for column in stimulus_set.columns:
-            if column == 'stimulus_id':
-                continue
-            activations = activations.assign_coords({
-                column: ('presentation', list(stimulus_set[column].values)),
-            })
-        return activations
+# Recording several layers in one call gives, for each layer, exactly what a
+# call for that layer alone gives, so the regions of one session share one call
+# (brainscore._model.channels). Set outside the class body: the class source is
+# part of the activation cache key, and this line must not change that key.
+AudioWrapper.independent_layers = True

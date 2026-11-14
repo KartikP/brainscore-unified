@@ -3,7 +3,8 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -47,7 +48,7 @@ def _likelihood_model():
 
 
 def _ask(model, task, channels):
-    session = stimulus_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task=task)
     model.participate(session)
     return session
 
@@ -98,7 +99,7 @@ def test_driver_refuses_addressed_channels_without_a_response_before_task_setup(
     setup = []
     model = SimpleNamespace(start_task=lambda _: setup.append('start_task'),
                             _behavioral=SimpleNamespace(history=[]))
-    session = stimulus_session(STIMULI, ['behavior:probabilities'], task_context=TaskContext(task_type='probabilities'))
+    session = stimulus_session(STIMULI, ['behavior:probabilities'], task=TaskContext(task_type='probabilities'))
     with pytest.raises(ValueError, match='TaskContext'):
         drive_behavior_and_neural_session(model, session)
     assert setup == []
@@ -121,8 +122,97 @@ def test_plain_behavior_without_a_response_is_unchanged():
         return label_set[0]
 
     model = BrainScoreModel(identifier='toy-answer', answer=answer)
-    task = TaskContext(task_type='probabilities', instruction='Pick.', label_set=['cat', 'dog'],
-                       prefer_path='generation')
+    task = TaskContext(task_type='probabilities', instruction='Pick.', label_set=['cat', 'dog'])
     session = _ask(model, task, ['behavior'])
     assert session.collect('behavior').sizes['presentation'] == 4
     assert len(calls) == 4
+
+
+class _RecordingExtractor(_CountingExtractor):
+    """An extractor with record(layers, stimuli): it can record while a reply runs."""
+
+    def record(self, layers, stimuli=None):
+        raise AssertionError('pre-flight only; nothing runs')
+
+
+@pytest.mark.parametrize('records, network_layers, supported', [
+    (False, None, False),          # plain extractor, no network
+    (True, None, True),            # the extractor records
+    (False, ('late',), True),      # hooks on model= reach the region's layer
+    (False, ('early',), False),    # model= lacks the region's layer
+])
+def test_recording_during_a_reply_is_decided_in_pre_flight(records, network_layers, supported):
+    import torch
+    network = None
+    if network_layers is not None:
+        network = torch.nn.Module()
+        for name in network_layers:
+            network.add_module(name, torch.nn.Linear(2, 2))
+    extractor = _RecordingExtractor() if records else _CountingExtractor()
+    model = BrainScoreModel(identifier='toy-reply', extractor={'text': extractor}, model=network,
+                            region_layer_map={'IT': 'late'}, reply=lambda prompt: 'cat')
+    channels = {'behavior:choice', 'neural:IT'}
+    if supported:
+        assert model.check_session_support(channels).identifier == 'behavior-sessions'
+    else:
+        with pytest.raises(CompatibilityError, match='no one part of it answers'):
+            model.check_session_support(channels)
+    assert extractor.calls == 0
+
+
+def test_a_policy_records_a_region_only_where_the_wiring_can():
+    import torch
+    network = torch.nn.Sequential(torch.nn.Linear(2, 2))
+    model = BrainScoreModel(identifier='toy-policy', model=network, extractor={'vision': _CountingExtractor()},
+                            region_layer_map={'V4': '0', 'IT': 'head'}, policy=lambda row: {'motor': 0})
+    assert model.check_session_support({'motor', 'neural:V4'}).identifier == 'motor-sessions'
+    with pytest.raises(CompatibilityError, match='no one part of it answers'):
+        model.check_session_support({'motor', 'neural:IT'})
+
+
+# ── A subject that cannot serve a session is N/A, by every path ──────────────
+
+def _audio_model(policy=None):
+    """A sound model with a region and no answering part, as ``random-wav2vec2-base``."""
+    return BrainScoreModel(identifier='toy-audio', region_layer_map={'A1': 'layer'},
+                           extractor={'audio': lambda stimuli, layers=None, **kwargs: None},
+                           policy=policy)
+
+
+@pytest.mark.parametrize('policy, outputs, missing', [
+    (None, ('behavior:choice', 'neural:A1'), 'behavior:choice'),                  # no part at all
+    (lambda row: {'motor': 0}, ('behavior:choice', 'neural:A1'), 'behavior:choice'),  # a part for another output
+    (None, ('neural:V9',), 'neural:V9'),                                          # a region it does not map
+], ids=['no-part', 'part-for-another-output', 'unmapped-region'])
+def test_a_subject_that_cannot_serve_a_session_is_not_applicable_before_compute(policy, outputs, missing):
+    import re
+    from types import SimpleNamespace
+    import brainscore
+    model = _audio_model(policy)
+    named = re.escape(f"does not produce ['{missing}']")
+    with pytest.raises(CompatibilityError, match=named):
+        model.check_session_support(outputs)
+    stimuli = StimulusSet({'stimulus_id': ['a'], 'audio_path': ['/no/such/file.wav']})
+    stimuli.identifier = 'toy-audio-stimuli'
+    task = (TaskContext(instruction='Is it loud?', response=Choice(['yes', 'no']))
+            if 'behavior:choice' in outputs else None)
+    with pytest.raises(CompatibilityError, match=named):
+        model.participate(stimulus_session(stimuli, list(outputs), task))
+    # Through score(), pre-flight refuses the same pair from the declarations.
+    benchmark = SimpleNamespace(identifier='toy-audio-benchmark', version=1,
+                                required_input_channels=frozenset({'audio'}),
+                                requested_output_channels=frozenset(outputs))
+    with pytest.raises(CompatibilityError, match=re.escape(f"'{missing}'")):
+        brainscore.score(model, benchmark, check_mem=False)
+
+
+def test_an_unknown_channel_is_not_applicable():
+    from types import SimpleNamespace
+    from brainscore_core.compatibility import check_compatibility
+    model = _audio_model()
+    with pytest.raises(CompatibilityError, match=r"does not produce \['telepathy'\]"):
+        model.check_session_support({'telepathy'})
+    benchmark = SimpleNamespace(identifier='toy', required_input_channels=frozenset({'audio'}),
+                                requested_output_channels=frozenset({'telepathy'}))
+    with pytest.raises(CompatibilityError, match="unknown channel 'telepathy'"):
+        check_compatibility(model, benchmark)

@@ -8,7 +8,7 @@ import torch
 import xarray as xr
 from brainscore.experiments import SessionProtocol, Repetition, TorchInstrumentation
 from brainscore import FunctionalSelection
-from brainscore_core.model_interface import Selection
+from brainscore_core.events import Selection
 from brainscore_core.streaming import Session
 
 
@@ -35,14 +35,33 @@ def test_localizer_selection_reuses_spatial_units_in_tools():
     values = np.tile(np.arange(24.), (8, 1))
     values[:4, 1] += 10
     values[::2] += 0.1
-    assembly = xr.DataArray(values, dims=('presentation', 'neuroid'), coords={
-        'label': ('presentation', ['positive'] * 4 + ['negative'] * 4),
+    from brainscore_core.contract import Subject
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    ids = [f's{i}' for i in range(8)]
+    assembly = NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+        'stimulus_id': ('presentation', ids),
+        'stimulus_index': ('presentation', list(range(8))),
         'layer': ('neuroid', ['layer'] * 24),
         **{name: ('neuroid', pos) for name, pos in zip(('channel', 'channel_x', 'channel_y'), positions)},
     })
-    subject = SimpleNamespace(start_recording=lambda target: None, process=lambda stimuli: assembly)
-    selection = FunctionalSelection(recording_target='layer', localizer_stimuli=None,
-                                    contrast=(['positive'], ['negative']), n_units=1).resolve(subject)
+    stimuli = StimulusSet({'stimulus_id': ids, 'sentence': ids,
+                           'label': ['positive'] * 4 + ['negative'] * 4})
+    stimuli.identifier = 'spatial-units'
+
+    class Recorded(Subject):
+        identifier = 'recorded'
+        in_channels = {'text'}
+        out_channels = {'neural:layer'}
+
+        def participate(self, session):
+            while session.next_input() is not None:
+                pass
+            session.respond(StreamEvent('neural:layer', assembly, 0.0, {}))
+
+    selection = FunctionalSelection(region='layer', localizer_stimuli=stimuli,
+                                    contrast=(['positive'], ['negative']), n_units=1).resolve(Recorded())
     assert selection.indices == [1] and selection.axis is None and selection.expected_shape == shape
     module = torch.nn.Identity()
     provider = TorchInstrumentation({'layer': module})
@@ -154,11 +173,11 @@ def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_pat
     )
     subject = BrainScoreModel(
         identifier='spatial-cnn',
-        activations_model={'vision': wrapper},
+        extractor={'vision': wrapper},
         region_layer_map={'IT': '0'},
     )
     selected = FunctionalSelection(
-        recording_target='IT',
+        region='IT',
         localizer_stimuli=stimuli,
         contrast=(['positive'], ['negative']),
         n_units=1,
@@ -177,8 +196,9 @@ def test_real_vision_extraction_localizer_and_ablation_share_one_feature(tmp_pat
     assert not network[0]._forward_hooks
 
 
-def test_experiment_warns_about_unregistered_channels_before_running():
-    from brainscore_core.compatibility import CompatibilityWarning, CompatibilityError
+def test_experiment_refuses_unregistered_channels_as_scoring_does():
+    """An experiment uses the compatibility rule of score(): a channel must be registered."""
+    from brainscore_core.compatibility import CompatibilityError
     from brainscore_core.contract import Subject
 
     class Exploratory(Subject):
@@ -192,9 +212,9 @@ def test_experiment_warns_about_unregistered_channels_before_running():
     subject = Exploratory()
     protocol = SessionProtocol(
         identifier='exploratory', session_factory=lambda repetition: None,
-        input_channels=['unregistered_input'], output_channels=['behavior'],
+        required_input_channels=['unregistered_input'], requested_output_channels=['behavior'],
     )
-    with pytest.warns(CompatibilityWarning, match='benchmark scoring requires'):
+    with pytest.raises(CompatibilityError, match="unknown channel 'unregistered_input'"):
         protocol.validate(subject)
     subject.in_channels = {'behavior'}
     with pytest.raises(CompatibilityError, match='registry marks'):
@@ -235,9 +255,9 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
         uses_session = True
         required_input_channels = {'vision:image'}
         requested_output_channels = {'behavior'}
-        def __call__(self, candidate):
+        def __call__(self, subject):
             run = session()
-            candidate.participate(run)
+            subject.participate(run)
             return Score(float(run.collect(channel='behavior').sum()))
     result = score(subject, SessionBenchmark(), check_mem=False)
     assert float(result) == pytest.approx(1)
@@ -245,15 +265,15 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
         subject=subject,
         protocol=SessionProtocol(
             identifier='notebook-channels', session_factory=lambda repetition: nullcontext(session()),
-            input_channels=['vision:image'], output_channels=['behavior'],
+            required_input_channels=['vision:image'], requested_output_channels=['behavior'],
         ),
         output_dir=tmp_path / 'experiment',
     )
     assert experiment.run().manifest['status'] == 'complete'
 
 
-@pytest.mark.parametrize('prefer_path', ['auto', 'generation', 'readout'])
-def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefer_path):
+def test_roar_task_carries_no_answer_path_and_splits_train_from_test(monkeypatch):
+    """How a subject answers is its own property: the ROAR task names no path."""
     from brainscore.benchmarks.roar_yeatman2021 import benchmark as module
     from brainscore_core import Subject
     from brainscore_core.streaming import StreamEvent
@@ -270,9 +290,8 @@ def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefe
     })
     monkeypatch.setattr(module, 'load_stimulus_set', lambda identifier: stimuli)
     monkeypatch.setattr(module, 'load_dataset', lambda identifier: human)
-    benchmark = module.Yeatman2021LexicalDecision(modality='text', prefer_path=prefer_path)
-    suffix = '' if prefer_path == 'auto' else f'-{prefer_path}'
-    assert benchmark.identifier == f'Yeatman2021-lexical_decision-text{suffix}'
+    benchmark = module.Yeatman2021LexicalDecision(channels=('text',))
+    assert benchmark.identifier == 'Yeatman2021-lexical_decision-text'
     tasks = []
     truth = dict(zip(stimuli.stimulus_id, stimuli.image_label))
 
@@ -283,7 +302,7 @@ def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefe
         out_channels = {'behavior'}
 
         def participate(self, session):
-            tasks.append(session.task_context)
+            tasks.append(session.task)
             while (event := session.next_input()) is not None:
                 if event.channel != 'text':
                     continue
@@ -294,10 +313,10 @@ def test_roar_declares_requested_path_and_distinct_score_name(monkeypatch, prefe
                                  'label_set': ['real', 'pseudo']}))
 
     result = benchmark(Reader())
-    assert tasks[0].prefer_path == prefer_path
+    assert not hasattr(tasks[0], 'prefer_path')
     assert result.attrs['n_test_stimuli'] == len(benchmark._test_stimuli)
     assert float(result) == 1
-    assert result.attrs['requested_behavioral_path'] == prefer_path
+    assert 'requested_behavioral_path' not in result.attrs
     assert not set(benchmark._train_stimuli.stimulus_id) & set(benchmark._test_stimuli.stimulus_id)
 
 
@@ -316,7 +335,7 @@ def test_new_model_template_supports_public_recording_workflow(tmp_path):
     stimuli = StimulusSet({'stimulus_id': ['s0'], 'image_path': [str(image)]})
     stimuli.identifier = 'template-smoke'
     stimuli.stimulus_paths = {'s0': image}
-    assert subject.supported_modalities == {'vision'}
+    assert subject.in_channels == {'vision:image', 'control'}
     subject.start_recording('IT')
     result = subject.process(stimuli)
     assert result.sizes['presentation'] == 1 and result.sizes['neuroid'] > 0

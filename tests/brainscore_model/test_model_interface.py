@@ -1,29 +1,31 @@
 import pytest
 import warnings
-from unittest.mock import MagicMock
-from typing import Any, Dict, Optional, Set
 
 from brainscore import BrainScoreModel, UnitSelector, LayerSelector
-from brainscore_core.model_interface import TaskContext, UnifiedModel
+from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.contract import TaskContext
 
 
 # -- Helpers ------------------------------------------------------------------
 
-def make_stub_preprocessor(return_value='default_output'):
-    """Create a stub preprocessor callable that records its call args."""
-    def preprocessor(model, stimuli, *, recording_layer=None, **kwargs):
-        preprocessor.call_args = {
-            'model': model,
+def make_stub_extractor(return_value='default_output'):
+    """Create a stub extractor callable that records its call args."""
+    def extractor(stimuli, layers=None, **kwargs):
+        extractor.call_args = {
             'stimuli': stimuli,
-            'recording_layer': recording_layer,
+            'layers': layers,
         }
         return return_value
-    preprocessor.call_args = None
-    return preprocessor
+    extractor.call_args = None
+    return extractor
+
+
+def _noop_extractor(stimuli, layers=None, **kwargs):
+    return None
 
 
 class StubActivationsModel:
-    """Stub activations_model that records calls and returns a fixed value."""
+    """Stub extractor that records calls and returns a fixed value."""
 
     def __init__(self, return_value='activations_output'):
         self._return_value = return_value
@@ -48,97 +50,18 @@ class StubStimulusSet:
 
 class TestTaskContext:
 
-    def test_required_field(self):
-        ctx = TaskContext(task_type='classification')
-        assert ctx.task_type == 'classification'
-
     def test_defaults(self):
         ctx = TaskContext(task_type='odd_one_out')
         assert ctx.label_set is None
         assert ctx.fitting_stimuli is None
         assert ctx.instruction is None
-        assert ctx.prefer_path is None
         assert ctx.metadata == {}
-
-    def test_prefer_path_field(self):
-        ctx = TaskContext(task_type='probabilities', prefer_path='readout')
-        assert ctx.prefer_path == 'readout'
-
-    def test_all_fields(self):
-        fitting = [1, 2, 3]
-        ctx = TaskContext(
-            task_type='classification',
-            label_set=['cat', 'dog'],
-            fitting_stimuli=fitting,
-            instruction='Pick the animal',
-            metadata={'difficulty': 'hard'},
-        )
-        assert ctx.task_type == 'classification'
-        assert ctx.label_set == ['cat', 'dog']
-        assert ctx.fitting_stimuli is fitting
-        assert ctx.instruction == 'Pick the animal'
-        assert ctx.metadata == {'difficulty': 'hard'}
 
     def test_metadata_default_is_independent(self):
         ctx1 = TaskContext(task_type='a')
         ctx2 = TaskContext(task_type='b')
         ctx1.metadata['key'] = 'value'
         assert 'key' not in ctx2.metadata
-
-
-# -- UnifiedModel tests ------------------------------------------------------
-
-class ConcreteModel(UnifiedModel):
-    """Minimal concrete subclass for testing the ABC."""
-
-    def __init__(self):
-        self._task_context = None
-
-    @property
-    def identifier(self) -> str:
-        return 'test-model'
-
-    @property
-    def region_layer_map(self) -> Dict[str, str]:
-        return {'V1': 'layer1'}
-
-    @property
-    def supported_modalities(self) -> Set[str]:
-        return {'vision'}
-
-    def process(self, stimuli):
-        return 'processed'
-
-
-class TestUnifiedModel:
-
-    def test_cannot_instantiate_abc(self):
-        with pytest.raises(TypeError):
-            UnifiedModel()
-
-    def test_concrete_identity(self):
-        m = ConcreteModel()
-        assert m.identifier == 'test-model'
-        assert m.region_layer_map == {'V1': 'layer1'}
-        assert m.supported_modalities == {'vision'}
-
-    def test_process(self):
-        m = ConcreteModel()
-        assert m.process('anything') == 'processed'
-
-    def test_start_task_stores_context(self):
-        m = ConcreteModel()
-        ctx = TaskContext(task_type='classification')
-        m.start_task(ctx)
-        assert m._task_context is ctx
-
-    def test_start_recording_is_noop(self):
-        m = ConcreteModel()
-        m.start_recording('V1')  # should not raise
-
-    def test_reset_is_noop(self):
-        m = ConcreteModel()
-        m.reset()  # should not raise
 
 
 # -- BrainScoreModel construction tests ---------------------------------------
@@ -150,11 +73,11 @@ class TestBrainScoreModelConstruction:
             identifier='resnet-50',
             model='fake_model',
             region_layer_map={'V1': 'layer1', 'IT': 'layer4'},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
         )
         assert m.identifier == 'resnet-50'
         assert m.region_layer_map == {'V1': 'layer1', 'IT': 'layer4'}
-        assert m.supported_modalities == {'vision'}
+        assert m.in_channels == {'vision:image', 'control'}
 
     @staticmethod
     def _model(region_layer_map=None):
@@ -162,7 +85,7 @@ class TestBrainScoreModelConstruction:
             identifier='test',
             model=None,
             region_layer_map=region_layer_map or {'V1': 'layer1'},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
         )
 
     def test_region_layer_map_rejects_mutation(self):
@@ -190,69 +113,53 @@ class TestBrainScoreModelConstruction:
         m.region_layer_map = {'IT': 'layer4'}
         assert dict(m.region_layer_map) == {'IT': 'layer4'}
 
-    def test_set_region_layer_updates_one_region(self):
-        m = self._model({'V1': 'layer1', 'IT': 'layer4'})
-        m.set_region_layer('IT', 'layer8')
-        assert m.region_layer_map == {'V1': 'layer1', 'IT': 'layer8'}
-
     def test_setter_keeps_selectors_and_layer_paths_in_step(self):
         """The two derived views must not drift — the reason direct edits are
         refused in the first place."""
         m = self._model()
-        m.set_region_layer('IT', 'layer4')
+        m.region_layer_map = {'IT': 'layer4'}
         assert m.region_layer_map['IT'] == 'layer4'
         assert m.region_layer_selectors['IT'].layer_path == 'layer4'
         assert set(m.region_layer_map) == set(m.region_layer_selectors)
 
     def test_recording_follows_a_reassigned_layer(self):
         """The end the wart broke: changing the map must change what is read."""
-        m = self._model({'IT': 'layer1'})
-        m.set_region_layer('IT', 'layer9')
+        extractor = StubActivationsModel()
+        m = BrainScoreModel('test', region_layer_map={'IT': 'layer1'},
+                            extractor={'vision': extractor})
+        m.region_layer_map = {'IT': 'layer9'}
         m.start_recording('IT')
-        assert m._recording_layers == ['layer9']
+        m.process(StubStimulusSet(['image_file_name']))
+        assert extractor.call_args['layers'] == ['layer9']
 
     def test_multiple_modalities(self):
         m = BrainScoreModel(
             identifier='vlm',
             model=None,
             region_layer_map={},
-            preprocessors={
-                'vision': lambda m, s, **kw: None,
-                'text': lambda m, s, **kw: None,
+            extractor={
+                'vision': _noop_extractor,
+                'text': lambda stimuli, layers=None, **kw: None,
             },
         )
-        assert m.supported_modalities == {'vision', 'text'}
+        assert m.in_channels == {'vision:image', 'text', 'control'}
 
-    def test_input_modalities_preserves_raw_video_key(self):
-        # channel unification canonicalizes video->vision in supported_modalities,
-        # but input_modalities keeps the raw declared key so a benchmark can tell a
-        # native-video model (VideoWrapper) from a still-image one.
-        m = BrainScoreModel(
-            identifier='vjepa',
-            model=None,
-            region_layer_map={'IT': 'blocks.16'},
-            preprocessors={'video': lambda m, s, **kw: None},
-        )
-        assert m.supported_modalities == {'vision'}   # canonicalized
-        assert m.input_modalities == {'video'}        # raw, un-canonicalized
-
-    def test_with_activations_model(self):
+    def test_with_extractor(self):
         act_model = StubActivationsModel()
         m = BrainScoreModel(
             identifier='resnet',
             model=None,
             region_layer_map={'IT': 'layer4'},
-            preprocessors={'vision': lambda m, s, **kw: None},
-            activations_model=act_model,
+            extractor={'vision': act_model},
         )
-        assert m._activations_model is act_model
+        assert m.extractor['vision'] is act_model
 
     def test_visual_degrees_default(self):
         m = BrainScoreModel(
             identifier='test',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
         )
         assert m.visual_degrees() == 8
 
@@ -261,7 +168,7 @@ class TestBrainScoreModelConstruction:
             identifier='test',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
             visual_degrees=12,
         )
         assert m.visual_degrees() == 12
@@ -279,7 +186,7 @@ class TestRegionLayerMapSelectors:
         m = BrainScoreModel(
             identifier='m', model=None,
             region_layer_map={'IT': 'encoder.layers.10'},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
         )
         sel = m.region_layer_selectors['IT']
         assert isinstance(sel, LayerSelector)
@@ -290,7 +197,7 @@ class TestRegionLayerMapSelectors:
         m = BrainScoreModel(
             identifier='m', model=None,
             region_layer_map={'IT': LayerSelector(name='encoder.layers.10')},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
         )
         assert m.region_layer_map == {'IT': 'encoder.layers.10'}
         assert m.region_layer_selectors['IT'] == LayerSelector('encoder.layers.10')
@@ -299,12 +206,12 @@ class TestRegionLayerMapSelectors:
         a = BrainScoreModel(
             identifier='a', model=None,
             region_layer_map={'IT': 'x.y.z'},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
         )
         b = BrainScoreModel(
             identifier='b', model=None,
             region_layer_map={'IT': LayerSelector('x.y.z')},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
         )
         assert a.region_layer_map == b.region_layer_map
         assert a.region_layer_selectors == b.region_layer_selectors
@@ -314,14 +221,14 @@ class TestRegionLayerMapSelectors:
             BrainScoreModel(
                 identifier='m', model=None,
                 region_layer_map={'IT': 123},  # noqa
-                preprocessors={'vision': lambda m, s, **kw: None},
+                extractor={'vision': _noop_extractor},
             )
 
     def test_region_layer_selectors_returns_copy(self):
         m = BrainScoreModel(
             identifier='m', model=None,
             region_layer_map={'IT': 'layer.10'},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
         )
         view = m.region_layer_selectors
         view['IT'] = LayerSelector('hacked')
@@ -343,7 +250,7 @@ class TestRegionLayerMapSelectors:
         m = BrainScoreModel(
             identifier='m', model=None,
             region_layer_map={'V1': sel},
-            preprocessors={'vision': lambda m, s, **kw: None},
+            extractor={'vision': _noop_extractor},
         )
         assert m.region_layer_map['V1'] is sel
         assert m.region_layer_selectors['V1'] is sel
@@ -353,15 +260,14 @@ class TestRegionLayerMapSelectors:
 
 class TestBrainScoreModelDispatch:
 
-    def test_vision_with_activations_model(self):
-        """Vision stimuli route through activations_model when available."""
+    def test_vision_routes_to_vision_extractor(self):
+        """Vision stimuli route through the vision extractor."""
         act_model = StubActivationsModel(return_value='vision_assembly')
         m = BrainScoreModel(
             identifier='resnet',
             model='torch_model',
             region_layer_map={'IT': 'layer4'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=act_model,
+            extractor={'vision': act_model},
         )
         m.start_recording('IT')
         stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
@@ -371,16 +277,15 @@ class TestBrainScoreModelDispatch:
         assert act_model.call_args['layers'] == ['layer4']
 
     def test_process_without_start_recording_raises(self):
-        """Forgetting start_recording must fail loudly, not return 0 neuroids."""
+        """A run that records no region must fail loudly, not return 0 neuroids."""
         m = BrainScoreModel(
             identifier='resnet',
             model='torch_model',
             region_layer_map={'IT': 'layer4'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=StubActivationsModel(),
+            extractor={'vision': StubActivationsModel()},
         )
         stimuli = StubStimulusSet(columns=['image_file_name', 'stimulus_id'])
-        with pytest.raises(ValueError, match="start_recording"):
+        with pytest.raises(ValueError, match="records no region"):
             m.process(stimuli)  # no start_recording called
 
     def test_start_recording_unknown_region_warns(self):
@@ -389,8 +294,7 @@ class TestBrainScoreModelDispatch:
             identifier='resnet',
             model='torch_model',
             region_layer_map={'IT': 'layer4'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=StubActivationsModel(),
+            extractor={'vision': StubActivationsModel()},
         )
         with pytest.warns(UserWarning, match="not a region"):
             m.start_recording('ITT')  # typo of 'IT'
@@ -400,18 +304,18 @@ class TestBrainScoreModelDispatch:
         m = BrainScoreModel(
             identifier='vlm',
             model='torch_model',
-            region_layer_map={'IT': 'layer4'},  # regions defined
-            preprocessors={'vision': make_stub_preprocessor(),
-                           'text': make_stub_preprocessor()},
-            activations_model=StubActivationsModel(),
+            region_layer_map={'IT': LayerSelector('layer4', modality='vision')},  # regions defined
+            extractor={'vision': StubActivationsModel(),
+                       'text': make_stub_extractor()},
         )
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
-        with pytest.raises(ValueError, match="start_recording"):
+        with pytest.raises(ValueError, match="records no region"):
             m.process(stimuli, multi_modality=True)
 
     def test_selected_plain_modality_not_false_positived(self):
         """The guard must check the SELECTED modality, not ANY detected one: a
-        layer-aware non-selected tower must not block a plain selected path."""
+        layer-aware non-selected tower must not turn a selected input with no
+        extractor into a 'records no region' error."""
         class _LayerAwareAudio:
             identifier = 'audio-wrapper'
 
@@ -421,49 +325,35 @@ class TestBrainScoreModelDispatch:
         m = BrainScoreModel(
             identifier='mm',
             model='torch_model',
-            region_layer_map={'A1': 'layer'},                 # regions defined, none active
-            preprocessors={'text': make_stub_preprocessor(),  # plain -> no extraction
-                           'audio': _LayerAwareAudio()},       # layer-aware -> extraction
+            region_layer_map={'A1': LayerSelector('layer', modality='audio')},  # none active
+            in_channels={'text'},          # declared input, no extractor
+            extractor={'audio': _LayerAwareAudio()},  # layer-aware -> extraction
         )
         stimuli = StubStimulusSet(columns=['sentence', 'audio_file_name'])
-        # text wins MODALITY_PRIORITY; must NOT raise despite audio supporting extraction
-        assert m.process(stimuli) == 'default_output'
+        # text wins MODALITY_PRIORITY; the error names the missing text
+        # extractor, not the audio tower's missing recording
+        with pytest.raises(NotImplementedError, match='no activation extractor'):
+            m.process(stimuli)
 
-    def test_vision_without_activations_model_falls_to_preprocessor(self):
-        """Vision stimuli fall through to preprocessor if no activations_model."""
-        proc = make_stub_preprocessor(return_value='vision_via_preprocessor')
-        m = BrainScoreModel(
-            identifier='test',
-            model='torch_model',
-            region_layer_map={'IT': 'layer4'},
-            preprocessors={'vision': proc},
-        )
-        m.start_recording('IT')
-        stimuli = StubStimulusSet(columns=['image_file_name'])
-        result = m.process(stimuli)
-        assert result == 'vision_via_preprocessor'
-        assert proc.call_args['model'] == 'torch_model'
-        assert proc.call_args['recording_layer'] == 'layer4'
-
-    def test_text_routes_to_preprocessor(self):
-        """Text stimuli always route to the text preprocessor callable."""
-        text_proc = make_stub_preprocessor(return_value='text_assembly')
+    def test_text_routes_to_text_extractor(self):
+        """Text stimuli route to the text extractor."""
+        text_proc = make_stub_extractor(return_value='text_assembly')
         m = BrainScoreModel(
             identifier='clip',
             model='clip_model',
-            region_layer_map={'language_system': 'text_model.encoder.layers.10'},
-            preprocessors={
-                'vision': make_stub_preprocessor(),
+            region_layer_map={'language_system': LayerSelector(
+                'text_model.encoder.layers.10', modality='text')},
+            extractor={
+                'vision': StubActivationsModel(),
                 'text': text_proc,
             },
-            activations_model=StubActivationsModel(),
         )
         m.start_recording('language_system')
         stimuli = StubStimulusSet(columns=['sentence', 'stimulus_id'])
         result = m.process(stimuli)
         assert result == 'text_assembly'
-        assert text_proc.call_args['model'] == 'clip_model'
-        assert text_proc.call_args['recording_layer'] == 'text_model.encoder.layers.10'
+        assert text_proc.call_args['stimuli'] is stimuli
+        assert text_proc.call_args['layers'] == ['text_model.encoder.layers.10']
 
     def test_recording_layer_resolved_from_region_map(self):
         """start_recording resolves brain region to model layer."""
@@ -472,8 +362,7 @@ class TestBrainScoreModelDispatch:
             identifier='resnet',
             model='m',
             region_layer_map={'IT': 'layer4'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=act_model,
+            extractor={'vision': act_model},
         )
         m.start_recording('IT')
         stimuli = StubStimulusSet(columns=['image_file_name'])
@@ -485,7 +374,7 @@ class TestBrainScoreModelDispatch:
             identifier='test',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': make_stub_preprocessor()},
+            extractor={'vision': make_stub_extractor()},
         )
         stimuli = StubStimulusSet(columns=['unknown_column'])
         with pytest.raises(ValueError, match="No column in this stimulus set"):
@@ -500,19 +389,18 @@ class TestBrainScoreModelDispatch:
         with pytest.raises(ValueError, match=r"No column.*image_path.*stimulus_paths dict alone"):
             m.process(stimuli)
 
-    def test_single_modality_detected_from_multi_preprocessor_model(self):
+    def test_single_modality_detected_from_multi_extractor_model(self):
         """If only one modality is in the stimuli, route to that modality."""
         act_model = StubActivationsModel(return_value='vis_only')
-        text_proc = make_stub_preprocessor()
+        text_proc = make_stub_extractor()
         m = BrainScoreModel(
             identifier='vlm',
             model=None,
             region_layer_map={},
-            preprocessors={
-                'vision': make_stub_preprocessor(),
+            extractor={
+                'vision': act_model,
                 'text': text_proc,
             },
-            activations_model=act_model,
         )
         stimuli = StubStimulusSet(columns=['image_file_name'])
         result = m.process(stimuli)
@@ -520,25 +408,24 @@ class TestBrainScoreModelDispatch:
         assert text_proc.call_args is None
 
 
-# -- TaskContext.prefer_path dispatch tests ----------------------------------
+# -- Behavioral path dispatch tests ------------------------------------------
 
-class TestPreferPathDispatch:
-    """Verify that TaskContext.prefer_path correctly forces the dispatch path
-    even when multiple paths are viable, and emits clear errors when the
-    forced path is not viable."""
+class TestBehavioralPathDispatch:
+    """The parts a model is built with decide its behavioral path; a path
+    that cannot run errors clearly."""
 
     def _make_dual_path_model(self, has_generation=True, has_readout=True):
-        """A model with both behavioral_readout_layer AND generation_fn set,
-        so that auto-dispatch would have a real choice to make."""
-        gen_fn = (lambda stim_row, instruction, label_set: label_set[0]
-                  if has_generation else None)
+        """A model with both behavioral_readout_layer AND answer set,
+        so that dispatch has a real choice to make."""
+        answer = ({'answer': lambda stim_row, instruction, label_set: label_set[0]}
+                  if has_generation else {})
         return BrainScoreModel(
             identifier='dual-path-model',
             model=None,
             region_layer_map={'IT': 'layer4'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            generation_fn=gen_fn,
+            extractor={'vision': make_stub_extractor()},
             behavioral_readout_layer='layer4' if has_readout else None,
+            **answer,
         )
 
     def _fitting_stub(self):
@@ -546,108 +433,17 @@ class TestPreferPathDispatch:
         readout fitting code can pretend to fit."""
         return StubStimulusSet(columns=['image_file_name', 'stimulus_id', 'label'])
 
-    def test_auto_picks_generation_when_both_viable(self):
-        """Default behavior: 'auto' (or unset) prefers generation."""
-        m = self._make_dual_path_model()
+    def test_readout_only_model_without_fitting_stimuli_raises(self):
+        """A model built without answer= reads out; without fitting_stimuli it errors clearly."""
+        m = self._make_dual_path_model(has_generation=False)
         ctx = TaskContext(
             task_type='probabilities',
             label_set=['real', 'pseudo'],
             instruction="Is this real?",
-            fitting_stimuli=self._fitting_stub(),
-            # prefer_path unset (None) — should behave like 'auto'
+            fitting_stimuli=None,           # missing
         )
-        m.start_task(ctx)
-        assert m._use_generation_for_task is True
-        assert m._readout_classifier is None
-
-    def test_force_readout_when_generation_is_default(self):
-        """prefer_path='readout' overrides the default generation preference."""
-        m = self._make_dual_path_model()
-        # Skip the actual fit by pre-populating fitting_stimuli with
-        # something that won't trip _fit_behavioral_readout's path.
-        # We do this by monkey-patching the fit method to a no-op.
-        m._fit_behavioral_readout = lambda fitting: None
-        ctx = TaskContext(
-            task_type='probabilities',
-            label_set=['real', 'pseudo'],
-            instruction="Is this real?",
-            fitting_stimuli=self._fitting_stub(),
-            prefer_path='readout',
-        )
-        m.start_task(ctx)
-        assert m._use_generation_for_task is False
-
-    def test_force_generation_when_readout_is_default(self):
-        """prefer_path='generation' selects generation even when fitting_stimuli is set."""
-        m = self._make_dual_path_model()
-        ctx = TaskContext(
-            task_type='probabilities',
-            label_set=['real', 'pseudo'],
-            instruction="Is this real?",
-            fitting_stimuli=self._fitting_stub(),
-            prefer_path='generation',
-        )
-        m.start_task(ctx)
-        assert m._use_generation_for_task is True
-
-    def test_force_generation_without_generation_fn_raises(self):
-        """prefer_path='generation' on a model without generation_fn errors clearly."""
-        m = BrainScoreModel(
-            identifier='readout-only',
-            model=None,
-            region_layer_map={'IT': 'layer4'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            behavioral_readout_layer='layer4',
-            # no generation_fn
-        )
-        ctx = TaskContext(
-            task_type='probabilities',
-            label_set=['real', 'pseudo'],
-            instruction="Is this real?",
-            fitting_stimuli=self._fitting_stub(),
-            prefer_path='generation',
-        )
-        with pytest.raises(ValueError, match="generation"):
+        with pytest.raises(CompatibilityError, match="readout needs TaskContext.fitting_stimuli"):
             m.start_task(ctx)
-
-    def test_force_readout_without_fitting_stimuli_raises(self):
-        """prefer_path='readout' on a TaskContext without fitting_stimuli errors clearly."""
-        m = self._make_dual_path_model()
-        ctx = TaskContext(
-            task_type='probabilities',
-            label_set=['real', 'pseudo'],
-            instruction="Is this real?",
-            fitting_stimuli=None,           # ← missing
-            prefer_path='readout',
-        )
-        with pytest.raises(ValueError, match="readout"):
-            m.start_task(ctx)
-
-    def test_invalid_prefer_path_value_raises(self):
-        """A typo in prefer_path is caught at start_task with a clear message."""
-        m = self._make_dual_path_model()
-        ctx = TaskContext(
-            task_type='probabilities',
-            label_set=['real', 'pseudo'],
-            instruction="Is this real?",
-            fitting_stimuli=self._fitting_stub(),
-            prefer_path='auto-readout',     # ← typo
-        )
-        with pytest.raises(ValueError, match="must be one of"):
-            m.start_task(ctx)
-
-    def test_explicit_auto_matches_default(self):
-        """prefer_path='auto' is identical to prefer_path=None."""
-        m = self._make_dual_path_model()
-        ctx = TaskContext(
-            task_type='probabilities',
-            label_set=['real', 'pseudo'],
-            instruction="Is this real?",
-            fitting_stimuli=self._fitting_stub(),
-            prefer_path='auto',
-        )
-        m.start_task(ctx)
-        assert m._use_generation_for_task is True
 
     def test_unknown_task_type_raises(self):
         """A typo such as 'choice' must not silently run as a passive task."""
@@ -659,8 +455,7 @@ class TestPreferPathDispatch:
 
     def test_passive_task_type_still_accepted(self):
         m = self._make_dual_path_model()
-        m.start_task(TaskContext(task_type='passive'))
-        assert m._use_generation_for_task is False
+        m.start_task(TaskContext(task_type='passive'))  # no error
 
     def test_no_dual_path_warning_without_readout_layer(self):
         """An answer-only model given fitting stimuli has one path, not two."""
@@ -671,7 +466,6 @@ class TestPreferPathDispatch:
         with warnings.catch_warnings():
             warnings.simplefilter('error', UserWarning)
             m.start_task(ctx)
-        assert m._use_generation_for_task is True
 
     def test_dual_path_warning_with_readout_layer(self):
         m = self._make_dual_path_model()
@@ -687,42 +481,47 @@ class TestPreferPathDispatch:
 class TestBrainScoreModelState:
 
     def test_start_recording_resolves_region(self):
+        extractor = StubActivationsModel()
         m = BrainScoreModel(
             identifier='test',
             model=None,
             region_layer_map={'V1': 'layer1', 'IT': 'layer4'},
-            preprocessors={'vision': make_stub_preprocessor()},
+            extractor={'vision': extractor},
         )
         m.start_recording('IT')
-        assert m._recording_layer == 'layer4'
+        m.process(StubStimulusSet(['image_file_name']))
+        assert extractor.call_args['layers'] == ['layer4']
 
     def test_start_recording_passes_through_unknown_region(self):
+        extractor = StubActivationsModel()
         m = BrainScoreModel(
             identifier='test',
             model=None,
             region_layer_map={'V1': 'layer1'},
-            preprocessors={'vision': make_stub_preprocessor()},
+            extractor={'vision': extractor},
         )
         m.start_recording('layer3.2')
-        assert m._recording_layer == 'layer3.2'
+        m.process(StubStimulusSet(['image_file_name']))
+        assert extractor.call_args['layers'] == ['layer3.2']
 
     def test_reset_clears_state(self):
         m = BrainScoreModel(
             identifier='test',
             model=None,
             region_layer_map={'IT': 'layer4'},
-            preprocessors={'vision': make_stub_preprocessor()},
+            extractor={'vision': make_stub_extractor()},
         )
         m.start_recording('IT')
         # Use a non-behavioral task_type so start_task doesn't require
         # a viable behavioral path. Goal here is to verify reset() — not
         # the dispatch logic. (Behavioral task_types like 'classification'
-        # require fitting_stimuli or instruction+generation_fn — see
+        # require fitting_stimuli or instruction+answer — see
         # TestPreferPathDispatch for that coverage.)
         m.start_task(TaskContext(task_type='passive'))
         m.reset()
-        assert m._recording_layer is None
-        assert m._task_context is None
+        with pytest.raises(ValueError, match='records no region'):
+            m.process(StubStimulusSet(['image_file_name']))
+        assert m._behavioral.task is None
 
 
 # -- Multi-region start_recording tests (#36) --------------------------------
@@ -808,8 +607,7 @@ class TestMultiRegionStartRecording:
                 'early': 'early_layer',
                 'late': 'late_layer',
             },
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=act,
+            extractor={'vision': act},
         )
         m.start_recording(['early', 'late'])
 
@@ -830,8 +628,7 @@ class TestMultiRegionStartRecording:
                 'early': 'early_layer',
                 'late': 'late_layer',
             },
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=_UnattributedActivationsModel(),
+            extractor={'vision': _UnattributedActivationsModel()},
         )
         m.start_recording(['early', 'late'])
 
@@ -845,12 +642,9 @@ class TestMultiRegionStartRecording:
             identifier='test',
             model=None,
             region_layer_map={'V4': 'layer.8', 'IT': 'layer.10'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=act,
+            extractor={'vision': act},
         )
         m.start_recording('IT')
-        assert m._recording_layer == 'layer.10'
-        assert m._is_multi_region is False
         stimuli = StubStimulusSet(columns=['image_file_name'])
         assembly = m.process(stimuli)
         assert 'region' not in assembly.coords
@@ -863,13 +657,9 @@ class TestMultiRegionStartRecording:
             identifier='test',
             model=None,
             region_layer_map={'V4': 'layer.8', 'IT': 'layer.10'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=act,
+            extractor={'vision': act},
         )
         m.start_recording(['V4', 'IT'])
-        assert m._is_multi_region is True
-        assert m._recording_regions == ['V4', 'IT']
-        assert m._recording_layers == ['layer.8', 'layer.10']
         stimuli = StubStimulusSet(columns=['image_file_name'])
         assembly = m.process(stimuli)
         assert 'region' in assembly.coords
@@ -884,12 +674,9 @@ class TestMultiRegionStartRecording:
             identifier='test',
             model=None,
             region_layer_map={'V4': 'layer.8', 'IT': 'layer.8'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=act,
+            extractor={'vision': act},
         )
         m.start_recording(['V4', 'IT'])
-        # Deduplicated layer extraction
-        assert m._recording_layers == ['layer.8']
         stimuli = StubStimulusSet(columns=['image_file_name'])
         assembly = m.process(stimuli)
         # Single layer present once; region coord joins both regions
@@ -898,16 +685,17 @@ class TestMultiRegionStartRecording:
 
     def test_unknown_name_in_list_records_raw_layer(self):
         """Wrapping a layer name in a list keeps its meaning."""
+        act = _XArrayActivationsModel()
         m = BrainScoreModel(
             identifier='test',
             model=None,
             region_layer_map={'V4': 'layer.8'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=_XArrayActivationsModel(),
+            extractor={'vision': act},
         )
         with pytest.warns(UserWarning, match="raw layer"):
             m.start_recording(['V4', 'NotARegion'])
-        assert m._recording_layers == ['layer.8', 'NotARegion']
+        m.process(StubStimulusSet(columns=['image_file_name']))
+        assert act.call_args['layers'] == ['layer.8', 'NotARegion']
 
     def test_reset_clears_multi_region_state(self):
         """reset() clears the multi-region attributes alongside the singular one."""
@@ -915,23 +703,15 @@ class TestMultiRegionStartRecording:
             identifier='test',
             model=None,
             region_layer_map={'V4': 'layer.8', 'IT': 'layer.10'},
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=_XArrayActivationsModel(),
+            extractor={'vision': _XArrayActivationsModel()},
         )
         m.start_recording(['V4', 'IT'])
         m.reset()
-        assert m._recording_layer is None
-        assert m._recording_layers == []
-        assert m._recording_regions == []
-        assert m._is_multi_region is False
+        with pytest.raises(ValueError, match='records no region'):
+            m.process(StubStimulusSet(columns=['image_file_name']))
 
-    def test_start_recording_all_expands_to_every_region(self):
-        """'all' is sugar for list(region_layer_map.keys()).
-
-        Underlying mechanism is the existing multi-region list path —
-        same extraction, same neuroid-region tagging, no new code path.
-        This is the documented entry point for whole-brain / layer-banded
-        scoring (per Martin's 'predict the entire brain' framing)."""
+    def test_start_recording_a_list_of_every_region(self):
+        """A list of every mapped region records them all in one extraction."""
         act = _XArrayActivationsModel()
         m = BrainScoreModel(
             identifier='test', model=None,
@@ -939,27 +719,13 @@ class TestMultiRegionStartRecording:
                 'V1': 'layer.2', 'V4': 'layer.8',
                 'IT': 'layer.10', 'language_network': 'layer.20',
             },
-            preprocessors={'vision': make_stub_preprocessor()},
-            activations_model=act,
+            extractor={'vision': act},
         )
-        m.start_recording('all')
-        assert m._is_multi_region is True
-        assert m._recording_regions == ['V1', 'V4', 'IT', 'language_network']
-        assert m._recording_layers == [
-            'layer.2', 'layer.8', 'layer.10', 'layer.20',
-        ]
+        m.start_recording(['V1', 'V4', 'IT', 'language_network'])
         stimuli = StubStimulusSet(columns=['image_file_name'])
         assembly = m.process(stimuli)
-        assert 'region' in assembly.coords
-
-    def test_start_recording_all_on_empty_map_raises(self):
-        m = BrainScoreModel(
-            identifier='test', model=None,
-            region_layer_map={},
-            preprocessors={'vision': make_stub_preprocessor()},
-        )
-        with pytest.raises(ValueError, match='non-empty region_layer_map'):
-            m.start_recording('all')
+        assert act.call_args['layers'] == ['layer.2', 'layer.8', 'layer.10', 'layer.20']
+        assert assembly['region'].values.tolist() == ['V1', 'V4', 'IT', 'language_network']
 
 
 # -- Multi-modality dispatch tests -------------------------------------------
@@ -1101,9 +867,8 @@ class TestMultiModalityDispatch:
         m = BrainScoreModel(
             identifier='test',
             model=None,
-            region_layer_map={'IT': 'layer.10'},
-            preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
-            activations_model=act,
+            region_layer_map={'IT': LayerSelector('layer.10', modality='vision')},
+            extractor={'vision': act, 'text': text_proc},
         )
         m.start_recording('IT')
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
@@ -1120,9 +885,8 @@ class TestMultiModalityDispatch:
         m = BrainScoreModel(
             identifier='test',
             model=None,
-            region_layer_map={'IT': 'layer.10'},
-            preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
-            activations_model=act,
+            region_layer_map={'IT': LayerSelector('layer.10', modality='vision')},
+            extractor={'vision': act, 'text': text_proc},
         )
         m.start_recording('IT')
         stimuli = StubStimulusSet(columns=['image_file_name'])
@@ -1145,8 +909,7 @@ class TestMultiModalityDispatch:
             identifier='test',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
-            activations_model=act,
+            extractor={'vision': act, 'text': text_proc},
         )
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
         assembly = m.process(stimuli, multi_modality=True)
@@ -1165,8 +928,7 @@ class TestMultiModalityDispatch:
             identifier='test',
             model=None,
             region_layer_map={},
-            preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
-            activations_model=act,
+            extractor={'vision': act, 'text': text_proc},
         )
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
         with warnings.catch_warnings(record=True) as caught:
@@ -1186,9 +948,8 @@ class TestMultiModalityDispatch:
         m = BrainScoreModel(
             identifier='test',
             model=None,
-            region_layer_map={'IT': 'layer.10'},
-            preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
-            activations_model=act,
+            region_layer_map={'IT': LayerSelector('layer.10', modality='vision')},
+            extractor={'vision': act, 'text': text_proc},
         )
         m.start_recording('IT')
         # Only image column — text wrapper should NOT fire even with multi_modality
@@ -1198,7 +959,7 @@ class TestMultiModalityDispatch:
         assert 'modality' not in assembly.coords
 
     def test_multi_modality_skips_unsupported_modalities(self):
-        """When stim has a modality the model has no preprocessor for, the
+        """When stim has a modality the model has no extractor for, the
         single-modality detector already filters it. multi_modality fans
         out only over supported-and-detected modalities."""
         act = _XArrayActivationsModel()
@@ -1207,11 +968,10 @@ class TestMultiModalityDispatch:
             identifier='test',
             model=None,
             region_layer_map={},
-            # Model has no audio preprocessor
-            preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
-            activations_model=act,
+            # Model has no audio extractor
+            extractor={'vision': act, 'text': text_proc},
         )
-        # audio_path is in COLUMN_TO_MODALITY → 'audio' but unsupported here
+        # audio_path feeds the audio channel, but this model has no audio extractor
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence', 'audio_path'])
         assembly = m.process(stimuli, multi_modality=True)
         modalities = set(assembly['modality'].values.tolist())
@@ -1224,17 +984,18 @@ class TestMultiModalityDispatch:
         m = BrainScoreModel(
             identifier='test',
             model=None,
-            region_layer_map={'IT': 'layer.10'},
-            preprocessors={'vision': make_stub_preprocessor(), 'text': text_proc},
-            activations_model=act,
+            region_layer_map={'IT': LayerSelector('layer.10', modality='vision')},
+            extractor={'vision': act, 'text': text_proc},
         )
         m.start_recording('IT')
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
         single = m.process(stimuli)  # vision only — 1 neuroid (1 layer)
-        multi = m.process(stimuli, multi_modality=True)
-        # vision_assembly has 1 neuroid (1 layer in start_recording),
-        # text_assembly has 1 neuroid (default layer). Multi = 1 + 1 = 2.
         assert single.sizes['neuroid'] == 1
+        # A text region adds the text tower: one neuroid per tower.
+        m.region_layer_map = {'IT': LayerSelector('layer.10', modality='vision'),
+                              'language': LayerSelector('layer.20', modality='text')}
+        m.start_recording(['IT', 'language'])
+        multi = m.process(stimuli, multi_modality=True)
         assert multi.sizes['neuroid'] == 2
 
     def _make_rich_presentation_model(self, vision_mode, text_mode):
@@ -1250,11 +1011,10 @@ class TestMultiModalityDispatch:
             identifier='test',
             model=None,
             region_layer_map={},
-            preprocessors={
-                'vision': make_stub_preprocessor(),
+            extractor={
+                'vision': vision_act,
                 'text': text_extractor,
             },
-            activations_model=vision_act,
         )
         return model, vision_act, text_extractor
 
@@ -1292,54 +1052,47 @@ class TestMultiModalityDispatch:
 
 
 class TestCrossTowerRouting:
-    """region_modality_map filters layers per wrapper so each tower
-    extracts only its own regions' layers in multi-modality dispatch."""
+    """The modality on each region's LayerSelector filters layers per wrapper,
+    so each tower extracts only its own regions' layers in multi-modality
+    dispatch."""
 
-    def _make_cross_tower_model(self, region_modality_map=None):
+    def _make_cross_tower_model(self, routed=True):
         """Two wrappers + region_layer_map across both towers."""
         act = _XArrayActivationsModel()
         text_proc = _XArrayPreprocessor(label='text')
+        if routed:
+            region_layer_map = {
+                'IT': LayerSelector('vision_model.layer.10', modality='vision'),
+                'language_network': LayerSelector('text_model.layer.20', modality='text'),
+            }
+        else:
+            region_layer_map = {
+                'IT': 'vision_model.layer.10',
+                'language_network': 'text_model.layer.20',
+            }
         return BrainScoreModel(
             identifier='cross-tower',
             model=None,
-            region_layer_map={
-                'IT': 'vision_model.layer.10',
-                'language_network': 'text_model.layer.20',
-            },
-            preprocessors={
-                'vision': make_stub_preprocessor(),
+            region_layer_map=region_layer_map,
+            extractor={
+                'vision': act,
                 'text': text_proc,
             },
-            activations_model=act,
-            region_modality_map=region_modality_map,
         ), act, text_proc
 
-    def test_unknown_region_in_modality_map_raises(self):
-        with pytest.raises(ValueError, match="not in region_layer_map"):
+    def test_unknown_modality_in_selector_raises(self):
+        with pytest.raises(ValueError, match="no extractor"):
             BrainScoreModel(
                 identifier='test',
                 model=None,
-                region_layer_map={'IT': 'layer.10'},
-                preprocessors={'vision': make_stub_preprocessor()},
-                region_modality_map={'IT': 'vision', 'NotAReg': 'vision'},
-            )
-
-    def test_unknown_modality_in_modality_map_raises(self):
-        with pytest.raises(ValueError, match="no preprocessor"):
-            BrainScoreModel(
-                identifier='test',
-                model=None,
-                region_layer_map={'IT': 'layer.10'},
-                preprocessors={'vision': make_stub_preprocessor()},
-                region_modality_map={'IT': 'no_such_modality'},
+                region_layer_map={'IT': LayerSelector('layer.10', modality='no_such_modality')},
+                extractor={'vision': make_stub_extractor()},
             )
 
     def test_cross_tower_routing_filters_per_wrapper(self):
-        """With region_modality_map set, each wrapper gets only its own
-        modality's layer."""
-        m, act, text_proc = self._make_cross_tower_model(
-            region_modality_map={'IT': 'vision',
-                                 'language_network': 'text'})
+        """With each region routed to a modality, each wrapper gets only its
+        own modality's layer."""
+        m, act, text_proc = self._make_cross_tower_model()
         m.start_recording(['IT', 'language_network'])
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
         m.process(stimuli, multi_modality=True)
@@ -1349,36 +1102,25 @@ class TestCrossTowerRouting:
         assert text_proc.call_args['layers'] == ['text_model.layer.20']
 
     def test_cross_tower_assembly_carries_modality_coord(self):
-        m, act, text_proc = self._make_cross_tower_model(
-            region_modality_map={'IT': 'vision',
-                                 'language_network': 'text'})
+        m, act, text_proc = self._make_cross_tower_model()
         m.start_recording(['IT', 'language_network'])
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
         assembly = m.process(stimuli, multi_modality=True)
         modalities = set(assembly['modality'].values.tolist())
         assert modalities == {'vision', 'text'}
 
-    def test_without_region_modality_map_legacy_behavior(self):
-        """No region_modality_map → every wrapper sees every layer
-        (legacy behavior, fine when both towers can resolve the path)."""
-        m, act, text_proc = self._make_cross_tower_model(
-            region_modality_map=None)
-        m.start_recording(['IT', 'language_network'])
-        stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
-        m.process(stimuli, multi_modality=True)
-        # Both layers go to both wrappers
-        assert act.call_args['layers'] == [
-            'vision_model.layer.10', 'text_model.layer.20']
-        assert text_proc.call_args['layers'] == [
-            'vision_model.layer.10', 'text_model.layer.20']
+    def test_without_region_modalities_the_model_is_refused(self):
+        """A model with two extractors names the one each region is recorded
+        from. Without it, a region would be recorded from whichever tower gets
+        input, and pre-flight could not check it."""
+        with pytest.raises(ValueError, match='several extractors'):
+            self._make_cross_tower_model(routed=False)
 
     def test_cross_tower_skips_wrapper_with_no_layers(self):
         """If recording is single-region but multi_modality=True, the
         non-matching wrapper should be skipped entirely (filtered
         layers = empty)."""
-        m, act, text_proc = self._make_cross_tower_model(
-            region_modality_map={'IT': 'vision',
-                                 'language_network': 'text'})
+        m, act, text_proc = self._make_cross_tower_model()
         m.start_recording('IT')  # only vision tower
         stimuli = StubStimulusSet(columns=['image_file_name', 'sentence'])
         assembly = m.process(stimuli, multi_modality=True)
@@ -1389,11 +1131,9 @@ class TestCrossTowerRouting:
         assert modalities == {'vision'}
 
     def test_cross_tower_single_modality_path_unchanged(self):
-        """Single-modality dispatch ignores region_modality_map (used
+        """Single-modality dispatch ignores the region modalities (used
         only by multi_modality fan-out)."""
-        m, act, text_proc = self._make_cross_tower_model(
-            region_modality_map={'IT': 'vision',
-                                 'language_network': 'text'})
+        m, act, text_proc = self._make_cross_tower_model()
         m.start_recording('IT')
         stimuli = StubStimulusSet(columns=['image_file_name'])
         assembly = m.process(stimuli)
@@ -1408,53 +1148,24 @@ class TestCrossTowerRouting:
 class TestBrainScoreModelColumnDetection:
 
     def _make_model(self, *modalities):
-        preprocessors = {m: make_stub_preprocessor(f'{m}_out') for m in modalities}
+        extractors = {m: make_stub_extractor(f'{m}_out') for m in modalities}
         return BrainScoreModel(
             identifier='test',
             model=None,
             region_layer_map={},
-            preprocessors=preprocessors,
+            extractor=extractors,
         )
 
-    def test_image_file_name(self):
-        m = self._make_model('vision')
-        assert m._detect_modalities(StubStimulusSet(['image_file_name'])) == {'vision'}
-
-    def test_image_path(self):
-        m = self._make_model('vision')
-        assert m._detect_modalities(StubStimulusSet(['image_path'])) == {'vision'}
-
-    def test_filename(self):
-        m = self._make_model('vision')
-        assert m._detect_modalities(StubStimulusSet(['filename'])) == {'vision'}
-
-    def test_sentence(self):
-        m = self._make_model('text')
-        assert m._detect_modalities(StubStimulusSet(['sentence'])) == {'text'}
-
-    def test_text_column(self):
-        m = self._make_model('text')
-        assert m._detect_modalities(StubStimulusSet(['text'])) == {'text'}
-
-    def test_audio_path(self):
-        m = self._make_model('audio')
-        assert m._detect_modalities(StubStimulusSet(['audio_path'])) == {'audio'}
-
-    def test_video_path(self):
+    def test_video_model_declares_the_video_channel(self):
         m = self._make_model('video')
-        # video is temporal vision -> it folds into the unified 'vision' channel
-        assert m._detect_modalities(StubStimulusSet(['video_path'])) == {'vision'}
+        assert m.in_channels == {'vision:video', 'control'}
 
-    def test_video_model_reports_the_unified_vision_modality(self):
-        m = self._make_model('video')
-        assert m.supported_modalities == {'vision'}
-        assert m.available_modalities == {'vision'}
-
-    def test_video_preprocessor_resolves_under_canonical_vision(self):
-        # a legacy video-keyed preprocessor is found when extraction asks for 'vision'
-        m = self._make_model('video')
-        out = m._extract_for_modality(StubStimulusSet(['video_path']), 'vision', [])
-        assert out == 'video_out'
+    def test_video_extractor_resolves_under_canonical_vision(self):
+        # a video-keyed extractor records a video column, detected as 'vision'
+        m = BrainScoreModel('test', extractor={'video': make_stub_extractor('video_out')},
+                            region_layer_map={'IT': 'layer'})
+        m.start_recording('IT')
+        assert m.process(StubStimulusSet(['video_path'])) == 'video_out'
 
     def test_canonical_modality_folds_video_into_vision(self):
         from brainscore_core.io_catalog import canonical_modality
@@ -1462,24 +1173,13 @@ class TestBrainScoreModelColumnDetection:
         assert canonical_modality('vision') == 'vision'
         assert canonical_modality('audio') == 'audio'
 
-    def test_video_preprocessor_with_vision_region_map_constructs(self):
-        # a legacy 'video' preprocessor with region_modality_map/required saying
-        # 'vision' must construct (video canonicalizes to vision)
+    def test_video_extractor_with_vision_region_map_constructs(self):
+        # a 'video' extractor with a region selector saying 'vision' and a
+        # required video channel must construct (video canonicalizes to vision)
         m = BrainScoreModel(
             identifier='v', model=None,
-            region_layer_map={'IT': 'layer4'},
-            preprocessors={'video': make_stub_preprocessor('out')},
-            region_modality_map={'IT': 'vision'},
-            required_modalities={'video'},
+            region_layer_map={'IT': LayerSelector('layer4', modality='vision')},
+            extractor={'video': make_stub_extractor('out')},
+            required_channels={'vision:video'},
         )
-        assert m.available_modalities == {'vision'}
-
-    def test_ignores_columns_without_matching_preprocessor(self):
-        m = self._make_model('vision')
-        detected = m._detect_modalities(StubStimulusSet(['image_file_name', 'sentence']))
-        assert detected == {'vision'}
-
-    def test_unknown_columns_ignored(self):
-        m = self._make_model('vision')
-        detected = m._detect_modalities(StubStimulusSet(['mystery_col']))
-        assert detected == set()
+        assert m.required_channels == {'vision:video'}

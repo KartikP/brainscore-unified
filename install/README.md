@@ -22,8 +22,9 @@ already exists.
 ## With the four repositories already present
 
 `setup.sh` and the environment file are for a machine with no checkout. If `core/`,
-`vision/`, `language/` and `unified/` already sit side by side, skip both. The pins live
-in the packages, so pip alone is enough:
+`vision/`, `language/` and `unified/` already sit side by side, skip both. The packages
+declare only broad bounds; `v2-constraints.txt` holds the tested versions, so keep the
+`-c` option:
 
 ~~~bash
 cd <workspace-root>
@@ -77,8 +78,9 @@ repositories in one pip operation, as above, or build all four wheels before
 installing them together. An isolated install of unified alone cannot resolve
 these candidate dependencies from PyPI.
 
-`peer-revisions.json` records the exact core, vision, and language commits used
-by integration CI for this unified revision. For a fresh workspace, first clone
+`peer-revisions.json` records the core, vision, and language commits that integration
+CI uses for this unified revision. It names the last pinned set: a branch in work can
+need later peer commits than the ones it names. For a fresh workspace, first clone
 unified at the revision you want to evaluate, then run from the workspace root:
 
 ```bash

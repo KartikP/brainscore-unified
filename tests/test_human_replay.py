@@ -4,14 +4,12 @@ import pytest
 from brainscore import BrainScoreModel
 from brainscore.harnesses.human_replay import (
     HumanAgreementBenchmark, human_agreement, replay_actions)
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
 
 pytestmark = pytest.mark.unit
 
 
 def subject(policy):
-    return BrainScoreModel('s', None, {}, {}, None,
-                           policy=PolicyWrapper(policy, max_history=8))
+    return BrainScoreModel('s', policy=policy)
 
 
 def steps(n):
@@ -35,11 +33,20 @@ def test_no_scorable_state_is_an_error():
 def test_replay_shows_every_state_in_order_and_ignores_actions():
     seen = []
 
-    def policy(observation, history):
-        seen.append((observation['state'], len(history)))
-        return 1
+    class Policy:
+        """Remembers the states it saw in this episode."""
+        def __init__(self):
+            self.history = []
 
-    assert replay_actions(subject(policy), steps(3), n_actions=2) == [1, 1, 1]
+        def reset(self):
+            self.history.clear()
+
+        def __call__(self, row):
+            seen.append((row['observation']['state'], len(self.history)))
+            self.history.append(row['observation'])
+            return {'motor': 1}
+
+    assert replay_actions(subject(Policy()), steps(3), n_actions=2) == [1, 1, 1]
     assert seen == [(0, 0), (1, 1), (2, 2)]  # Same sequence and history a person had.
 
 
@@ -56,8 +63,8 @@ def test_benchmark_separates_human_like_from_random_and_contrary():
         episodes.append(episode)
     benchmark = HumanAgreementBenchmark('synthetic-human_agreement', episodes, n_actions=3)
 
-    human_like = benchmark(subject(lambda obs, history: obs['state'] % 3))
-    contrary = benchmark(subject(lambda obs, history: (obs['state'] + 1) % 3))
+    human_like = benchmark(subject(lambda row: {'motor': row['observation']['state'] % 3}))
+    contrary = benchmark(subject(lambda row: {'motor': (row['observation']['state'] + 1) % 3}))
 
     assert human_like.attrs['above_floor'] and not contrary.attrs['above_floor']
     assert float(human_like) > 1.0 > float(contrary)  # Modal choice beats human-human.

@@ -36,6 +36,25 @@ def _pairwise_upper(n: int) -> Tuple[np.ndarray, np.ndarray]:
     return iu[0], iu[1]
 
 
+def _pair_correlations(responses, positions, max_pairs: int, seed: int):
+    """Response correlation and distance of each unit pair (at most ``max_pairs``,
+    drawn with ``seed``)."""
+    responses = np.asarray(responses, dtype=float)
+    positions = np.asarray(positions, dtype=float)
+    # per-unit z-score across stimuli so correlation == normalized dot product
+    r = responses - responses.mean(axis=0, keepdims=True)
+    std = r.std(axis=0, keepdims=True)
+    std[std < 1e-9] = 1e-9
+    rz = r / std
+    i, j = _pairwise_upper(responses.shape[1])
+    if i.size > max_pairs:
+        rng = np.random.RandomState(seed)
+        sel = rng.choice(i.size, size=max_pairs, replace=False)
+        i, j = i[sel], j[sel]
+    corr = (rz[:, i] * rz[:, j]).mean(axis=0)               # (n_pairs,)
+    return corr, np.linalg.norm(positions[i] - positions[j], axis=1)
+
+
 def correlation_distance_profile(responses: np.ndarray, positions: np.ndarray, *,
                                  n_bins: int = 15, normalize_distance: bool = True,
                                  max_pairs: int = 2_000_000, seed: int = 0):
@@ -49,23 +68,7 @@ def correlation_distance_profile(responses: np.ndarray, positions: np.ndarray, *
     :param max_pairs: cap the number of unit pairs (subsample for large layers).
     :returns: ``(bin_centers, mean_corr, counts)``; empty bins are ``nan``.
     """
-    responses = np.asarray(responses, dtype=float)
-    positions = np.asarray(positions, dtype=float)
-    n_units = responses.shape[1]
-    # per-unit z-score across stimuli so correlation == normalized dot product
-    r = responses - responses.mean(axis=0, keepdims=True)
-    std = r.std(axis=0, keepdims=True)
-    std[std < 1e-9] = 1e-9
-    rz = r / std
-
-    i, j = _pairwise_upper(n_units)
-    if i.size > max_pairs:
-        rng = np.random.RandomState(seed)
-        sel = rng.choice(i.size, size=max_pairs, replace=False)
-        i, j = i[sel], j[sel]
-
-    corr = (rz[:, i] * rz[:, j]).mean(axis=0)               # (n_pairs,)
-    dist = np.linalg.norm(positions[i] - positions[j], axis=1)
+    corr, dist = _pair_correlations(responses, positions, max_pairs, seed)
     if normalize_distance and dist.max() > 0:
         dist = dist / dist.max()
 
@@ -92,19 +95,7 @@ def spatial_smoothness(responses: np.ndarray, positions: np.ndarray, *,
     ~0 for arbitrary positions, negative for anti-topographic layouts.
     """
     from scipy.stats import spearmanr
-    responses = np.asarray(responses, dtype=float)
-    positions = np.asarray(positions, dtype=float)
-    n_units = responses.shape[1]
-    r = responses - responses.mean(axis=0, keepdims=True)
-    std = r.std(axis=0, keepdims=True); std[std < 1e-9] = 1e-9
-    rz = r / std
-    i, j = _pairwise_upper(n_units)
-    if i.size > max_pairs:
-        rng = np.random.RandomState(seed)
-        sel = rng.choice(i.size, size=max_pairs, replace=False)
-        i, j = i[sel], j[sel]
-    corr = (rz[:, i] * rz[:, j]).mean(axis=0)
-    dist = np.linalg.norm(positions[i] - positions[j], axis=1)
+    corr, dist = _pair_correlations(responses, positions, max_pairs, seed)
     rho, _ = spearmanr(dist, corr)
     return float(-rho) if np.isfinite(rho) else 0.0
 

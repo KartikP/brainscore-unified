@@ -1,7 +1,9 @@
 """Fidelity tests for the legacy-benchmark facade (Contract Rules v3, rule 11.2).
 
 Each legacy method a vision or language benchmark calls on a candidate is
-checked against the legacy behavior it stands in for.
+checked against the legacy behavior it stands in for. A legacy benchmark
+reaches a BrainScoreModel only through the facade, which ``score()`` applies;
+the model has no legacy methods of its own.
 """
 import numpy as np
 import pandas as pd
@@ -45,6 +47,11 @@ def _model(modality='vision'):
     return model, extractor
 
 
+def _facade(model):
+    """What score() gives a legacy benchmark for ``model``."""
+    return LegacyBenchmarkFacade(model, visual_degrees=model.visual_degrees())
+
+
 def _images(n=2):
     stimuli = StimulusSet(pd.DataFrame({
         'stimulus_id': [f's{i}' for i in range(n)],
@@ -56,8 +63,10 @@ def _images(n=2):
 
 def test_look_at_matches_process():
     model, _ = _model()
+    facade = _facade(model)
+    facade.start_recording('IT', time_bins=[(70, 170)])
+    via_legacy = facade.look_at(_images())
     model.start_recording('IT', time_bins=[(70, 170)])
-    via_legacy = model.look_at(_images())
     via_process = model.process(_images())
     np.testing.assert_array_equal(via_legacy.values, via_process.values)
     assert 'time_bin' not in via_legacy.dims  # one bin: unchanged, as in legacy
@@ -66,8 +75,9 @@ def test_look_at_matches_process():
 def test_several_time_bins_repeat_a_static_response():
     model, _ = _model()
     bins = [(70, 170), (170, 270)]
-    model.start_recording('IT', time_bins=bins)
-    responses = model.look_at(_images())
+    facade = _facade(model)
+    facade.start_recording('IT', time_bins=bins)
+    responses = facade.look_at(_images())
     assert responses.sizes['time_bin'] == 2
     assert list(responses['time_bin_start'].values) == [70, 170]
     assert list(responses['time_bin_end'].values) == [170, 270]
@@ -77,17 +87,19 @@ def test_several_time_bins_repeat_a_static_response():
 
 def test_number_of_trials_alone_does_not_change_deterministic_responses():
     model, _ = _model()
-    model.start_recording('IT', time_bins=[(70, 170)])
-    once = model.look_at(_images(), number_of_trials=1)
-    many = model.look_at(_images(), number_of_trials=5)
+    facade = _facade(model)
+    facade.start_recording('IT', time_bins=[(70, 170)])
+    once = facade.look_at(_images(), number_of_trials=1)
+    many = facade.look_at(_images(), number_of_trials=5)
     np.testing.assert_array_equal(once.values, many.values)
 
 
 def test_variance_request_fails_instead_of_returning_identical_trials():
     model, extractor = _model()
-    model.start_recording('IT', time_bins=[(70, 170)])
+    facade = _facade(model)
+    facade.start_recording('IT', time_bins=[(70, 170)])
     with pytest.raises(NotImplementedError, match='trial-to-trial variance'):
-        model.look_at(_images(), number_of_trials=3, require_variance=True)
+        facade.look_at(_images(), number_of_trials=3, require_variance=True)
     assert extractor.calls == []
 
 
@@ -99,13 +111,14 @@ def test_visual_degrees_reported():
 def test_start_behavioral_task_fails_clearly():
     model, _ = _model('text')
     with pytest.raises(NotImplementedError, match="'reading_times'"):
-        model.start_behavioral_task('reading_times')
+        _facade(model).start_behavioral_task('reading_times')
 
 
 def test_digest_text_returns_neural_part_for_a_passage():
     model, extractor = _model('text')
-    model.start_neural_recording('IT', 'fMRI')
-    result = model.digest_text(['the quick brown', 'fox jumps'])
+    facade = _facade(model)
+    facade.start_neural_recording('IT', 'fMRI')
+    result = facade.digest_text(['the quick brown', 'fox jumps'])
     assert set(result) == {'neural'}
     assert result['neural'].sizes['presentation'] == 2
     assert extractor.calls == [[0, 1]]
@@ -140,31 +153,9 @@ def test_single_time_bin_in_any_benchmark_form_leaves_response_unchanged(time_bi
     assert 'time_bin' not in model.process(_images()).dims
 
 
-@pytest.mark.parametrize('kwargs', [
-    {'activations_model': {'vision': _Extractor()}},
-    {'extractor': {'vision': _Extractor()}, 'generation_fn': lambda *a: None},
-    {'extractor': {'vision': _Extractor()}, 'action_fn': lambda step: None},
-    {'extractor': {'vision': _Extractor()}, 'state_change_fn': lambda c: (None, lambda: None)},
-])
-def test_older_constructor_names_warn_and_keep_working(kwargs):
-    with pytest.warns(DeprecationWarning, match='is deprecated; use'):
-        model = BrainScoreModel('old-names', region_layer_map={'IT': 'layer'}, **kwargs)
-    assert 'neural:IT' in model.out_channels
-
-
-def test_preferred_names_do_not_warn():
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter('error', DeprecationWarning)
-        BrainScoreModel('new-names', region_layer_map={'IT': 'layer'},
-                        extractor={'vision': _Extractor()},
-                        answer=lambda *a: None, policy=lambda step: None,
-                        intervention=lambda c: (None, lambda: None))
-
-
 # --- the facade runs any subject through participate ------------------------
 
-from brainscore_core.model_interface import Subject
+from brainscore_core.contract import Subject
 from brainscore_core.streaming import StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
 
@@ -185,8 +176,8 @@ class _Recorder(Subject):
         self.sessions.append(session)
         while session.next_input() is not None:
             pass
-        n = len(session.stimulus_set)
-        for channel in session.requested_output_channels:
+        n = len(session.stimuli)
+        for channel in session.outputs:
             neural = channel.startswith('neural:')
             cls = NeuroidAssembly if neural else BehavioralAssembly
             payload = cls(np.arange(n)[:, None],
@@ -202,14 +193,16 @@ def test_typed_look_at_runs_through_participate():
     sessions = []
     original = model.participate
     model.participate = lambda session: (sessions.append(session), original(session))[1]
-    model.start_recording('IT', time_bins=[(70, 170)])
-    via_legacy = model.look_at(_images())
+    facade = _facade(model)
+    facade.start_recording('IT', time_bins=[(70, 170)])
+    via_legacy = facade.look_at(_images())
     assert len(sessions) == 1
-    assert sessions[0].requested_output_channels == ('neural:IT',)
+    assert sessions[0].outputs == ('neural:IT',)
+    model.start_recording('IT', time_bins=[(70, 170)])
     np.testing.assert_array_equal(via_legacy.values, model.process(_images()).values)
 
 
-def test_typed_behavioral_look_at_matches_process():
+def test_typed_behavioral_look_at_matches_a_behavior_session():
     extractor = _Extractor()
     model = BrainScoreModel('facade-behavior', region_layer_map={'IT': 'layer'},
                             extractor={'vision': extractor},
@@ -220,11 +213,14 @@ def test_typed_behavioral_look_at_matches_process():
         'image_label': ['cat', 'dog', 'cat', 'dog'],
     }))
     fitting.identifier = 'fitting'
-    model.start_task('probabilities', fitting_stimuli=fitting)
-    via_legacy = model.look_at(_images())
-    via_process = model.process(_images())
+    facade = _facade(model)
+    facade.start_task('probabilities', fitting_stimuli=fitting)
+    via_legacy = facade.look_at(_images())
+    from brainscore_core.streaming_helpers import behavioral_response
+    via_session = behavioral_response(
+        model, _images(), TaskContext(task_type='probabilities', fitting_stimuli=fitting))
     assert isinstance(via_legacy, BehavioralAssembly)
-    np.testing.assert_array_equal(via_legacy.values, via_process.values)
+    np.testing.assert_array_equal(via_legacy.values, via_session.values)
 
 
 # --- applying the facade at the scoring boundary --------------------------
@@ -239,7 +235,7 @@ def test_declared_visual_degrees_reads_the_legacy_vision_setting_or_none():
 
 # --- setup once, measure many times (review findings 1 to 4) ---------------
 
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 
 def _labelled_images(n=4, with_text=False):
     frame = {'stimulus_id': [f'f{i}' for i in range(n)],
@@ -265,15 +261,6 @@ def _fits(extractor):
     return sum(1 for ids in extractor.calls if ids and str(ids[0]).startswith('f'))
 
 
-def test_typed_behavioral_look_at_fits_the_readout_once():
-    model, extractor = _readout_model()
-    model.start_task('probabilities', fitting_stimuli=_labelled_images())
-    assert _fits(extractor) == 1
-    model.look_at(_images())
-    model.look_at(_images())
-    assert _fits(extractor) == 1
-
-
 def test_scored_facade_fits_the_readout_once_across_measurements():
     model, extractor = _readout_model()
     facade = LegacyBenchmarkFacade(model, visual_degrees=8)
@@ -297,14 +284,13 @@ def test_repeated_task_refits_after_a_state_change():
             PerturbationApplied(handle_id='h', target=change.target,
                                 perturbation=change.perturbation),
             lambda: None))
-    task = TaskContext(task_type='probabilities', fitting_stimuli=_labelled_images(),
-                       metadata={'stimulus_set': _images()})
-    behavioral_response(model, task)
-    behavioral_response(model, task)
+    task = TaskContext(task_type='probabilities', fitting_stimuli=_labelled_images())
+    behavioral_response(model, _images(), task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 1
     apply_state_change(model, StateChange(kind='lesion', target=Selection(layer='layer'),
                                           perturbation=Perturbation(kind='zero')))
-    behavioral_response(model, task)
+    behavioral_response(model, _images(), task)
     assert _fits(extractor) == 2  # the model changed under the readout
 
 
@@ -321,10 +307,11 @@ def test_fitting_stimuli_reach_the_readout_with_declared_inputs_only():
 
 def test_typed_behavioral_variance_request_fails_before_compute():
     model, extractor = _readout_model()
-    model.start_task('probabilities', fitting_stimuli=_labelled_images())
+    facade = _facade(model)
+    facade.start_task('probabilities', fitting_stimuli=_labelled_images())
     calls = len(extractor.calls)
     with pytest.raises(NotImplementedError, match='trial-to-trial variance'):
-        model.look_at(_images(), number_of_trials=3, require_variance=True)
+        facade.look_at(_images(), number_of_trials=3, require_variance=True)
     assert len(extractor.calls) == calls
 
 
@@ -342,5 +329,6 @@ def test_changed_fitting_data_in_the_same_task_object_refits():
     task.fitting_stimuli['image_label'] = ['cat', 'cat', 'dog', 'dog']  # relabelled in place
     model.start_task(task)
     assert _fits(extractor) == 3
-    model.look_at(_images())  # a measurement on the unchanged task: no refit
+    from brainscore_core.streaming_helpers import behavioral_response
+    behavioral_response(model, _images(), task)  # a measurement on the unchanged task: no refit
     assert _fits(extractor) == 3

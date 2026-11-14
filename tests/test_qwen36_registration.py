@@ -18,7 +18,7 @@ from brainscore_core.streaming_helpers import apply_state_change
 
 import brainscore.models._downloads as downloads
 import brainscore.model_helpers.text_wrapper as text_wrapper
-import brainscore.model_helpers.vision_wrapper as vision_wrapper
+import brainscore.model_helpers.vlm_vision_wrapper as vlm_vision_wrapper
 import brainscore_core.hf_compat as hf_compat
 from brainscore.models.qwen36_27b import model as registration
 
@@ -87,7 +87,7 @@ def built(monkeypatch):
         AutoProcessor=types.SimpleNamespace(from_pretrained=lambda *a, **k: processor)))
     monkeypatch.setattr(hf_compat, 'pin_image_processor', lambda p, *a, **k: p)
     monkeypatch.setattr(downloads, 'hf_preflight', lambda *a, **k: {})
-    monkeypatch.setattr(vision_wrapper, 'VisionWrapper', FakeWrapper)
+    monkeypatch.setattr(vlm_vision_wrapper, 'VLMVisionWrapper', FakeWrapper)
     monkeypatch.setattr(text_wrapper, 'TextWrapper', FakeWrapper)
     import brainscore.model_helpers.vlm_video_wrapper as vlm_video_wrapper
     monkeypatch.setattr(vlm_video_wrapper, 'VLMVideoWrapper',
@@ -98,13 +98,13 @@ def built(monkeypatch):
 def test_both_towers_are_wired(built):
     model, _ = built
     vision, text = model.extractor['vision'], model.extractor['text']
-    assert vision.kwargs['kind'] == 'vlm'
+    assert vision.kwargs['processor'] is not None
     assert vision.kwargs['forward_kwargs_map'] == {'grid_thw': 'image_grid_thw'}
     assert isinstance(vision.kwargs['model'].blocks, torch.nn.ModuleList)
     assert len(text.kwargs['model'].layers) == 64
     # Same identifier and cache key as the earlier text-only registration.
     assert (text.identifier, text.kwargs['backbone_id']) == ('qwen3.6-27b-text', 'qwen3.6-27b')
-    assert {'vision', 'text'} <= set(model.available_modalities)
+    assert 'text' in model.in_channels
     # Stills as images, clips as video, from the same vision tower.
     assert {'vision:image', 'vision:video'} <= model.in_channels
     assert model.extractor['video'].kwargs['model'] is vision.kwargs['model']
@@ -142,9 +142,32 @@ def test_answer_sends_the_image_without_thinking(built, tmp_path):
     stimuli = StimulusSet([{'stimulus_id': 'w0', 'image_file_name': str(path)}])
     stimuli.identifier = 'qwen36-answer-wiring'
     task = TaskContext(task_type='label', label_set=['real', 'pseudo'],
-                       instruction='Is this a real word?', prefer_path='generation')
-    session = stimulus_session(stimuli, ['behavior'], task_context=task)
+                       instruction='Is this a real word?')
+    session = stimulus_session(stimuli, ['behavior'], task=task)
     model.participate(session)
     assert list(session.collect('behavior').values.ravel()) == [0.0, 1.0]   # one-hot over (real, pseudo)
     assert processor.template_kwargs['enable_thinking'] is False
     assert len(processor.images) == 1
+
+
+def test_vision_extractor_keeps_its_identifier_and_cache_key(monkeypatch):
+    """The registration builds VLMVisionWrapper itself; identifier and cache settings are unchanged."""
+    processor = FakeProcessor()
+    monkeypatch.setitem(sys.modules, 'transformers', types.SimpleNamespace(
+        Qwen3_5ForConditionalGeneration=FakeVLM,
+        AutoProcessor=types.SimpleNamespace(from_pretrained=lambda *a, **k: processor)))
+    monkeypatch.setattr(hf_compat, 'pin_image_processor', lambda p, *a, **k: p)
+    monkeypatch.setattr(downloads, 'hf_preflight', lambda *a, **k: {})
+    monkeypatch.setattr(text_wrapper, 'TextWrapper', FakeWrapper)
+    import brainscore.model_helpers.vlm_video_wrapper as vlm_video_wrapper
+    monkeypatch.setattr(vlm_video_wrapper, 'VLMVideoWrapper',
+                        lambda model, processor, identifier: FakeWrapper(model=model, identifier=identifier))
+    vision = registration.get_model('qwen3.6-27b').extractor['vision']
+    assert type(vision) is vlm_vision_wrapper.VLMVisionWrapper
+    assert (vision.identifier, vision.backbone_id) == ('qwen3.6-27b-vision', 'qwen3.6-27b-vision')
+    settings = vision.cache_config()['settings']
+    assert {key: settings[key] for key in ('_image_input_key', '_forward_kwargs_map',
+                                           '_layer_aggregation', '_batch_size')} == {
+        '_image_input_key': 'pixel_values', '_forward_kwargs_map': {'grid_thw': 'image_grid_thw'},
+        '_layer_aggregation': 'mean_patches', '_batch_size': 4}
+    assert settings['_processor'] is processor

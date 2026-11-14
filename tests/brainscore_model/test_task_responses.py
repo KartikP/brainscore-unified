@@ -6,8 +6,10 @@ measures come from a likelihood part or a readout. Each result says which.
 import numpy as np
 import pytest
 
+from brainscore_core.compatibility import CompatibilityError
+
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -46,7 +48,7 @@ def _model(replies=None, scores=None, readout=False):
 
 
 def _ask(model, task, channels):
-    session = stimulus_session(STIMULI, channels, task_context=task)
+    session = stimulus_session(STIMULI, channels, task=task)
     model.participate(session)
     return session
 
@@ -133,7 +135,7 @@ def test_readout_probabilities_follow_the_task_label_order(labels):
 def test_reported_answers_from_a_readout_only_model_are_not_supported(response, channel):
     model, _ = _model(readout=True)
     assert channel not in model.out_channels
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(CompatibilityError, match=f"does not produce \\['{channel}'\\]"):
         _ask(model, TaskContext(response=response, fitting_stimuli=STIMULI), [channel])
 
 
@@ -166,11 +168,11 @@ def test_a_trial_is_shown_in_the_declared_order():
 
 def test_an_unordered_multi_part_stimulus_fails_before_any_reply():
     calls = []
-    model = BrainScoreModel(identifier='m', supported_modalities={'text', 'video'},
+    model = BrainScoreModel(identifier='m', in_channels={'text', 'vision:video'},
                             reply=lambda prompt: calls.append(prompt) or 'left')
     both = StimulusSet({'stimulus_id': ['a'], 'sentence': ['x'], 'video_path': ['v.mp4']})
     both.identifier = 'both-parts'
-    session = stimulus_session(both, ['behavior:choice'], task_context=TaskContext(
+    session = stimulus_session(both, ['behavior:choice'], task=TaskContext(
         instruction='Which way?', response=Choice(['left', 'right'])))
     with pytest.raises(ValueError, match='present'):
         model.participate(session)

@@ -29,7 +29,8 @@ def run_calls(policy, source, output_dir, *, report):
     saved = RunRecord(source)
     evidence = replay.verify_capture(saved, report)
     calls = list(replay.pairs(saved, evidence['calls']))
-    subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy))
+    subject = BrainScoreModel('pi05-libero', policy=LiberoChunkPolicy(policy),
+                              policy_in_channels=LiberoChunkPolicy.inputs)
     def evaluate(model, context):
         differences = []
         for i, (request, output) in enumerate(calls):
@@ -43,7 +44,8 @@ def run_calls(policy, source, output_dir, *, report):
                 'exact': all(value == 0 for value in differences),
                 'scope': 'saved inputs; no simulator or task success assessment'}
     result = Experiment(subject=subject,
-        protocol=CallableProtocol('openpi-saved-requests', evaluate,
+        # The evaluator calls the policy through process, so that method is named.
+        protocol=CallableProtocol('openpi-saved-requests', evaluate, methods=['process'],
             metadata={'reset_policy': 'caller must initialize a fresh server'}),
         tools=[RecordInputsOutputs()], output_dir=output_dir,
         metadata={'source': evidence, 'source_path': str(Path(source).resolve())}).run()

@@ -77,4 +77,36 @@ the authors' distribution terms. A successful build does not establish paper
 replication; the paper archive currently yields 4,372 items, versus 4,374 stated
 in the paper.
 
-For model setup, scoring, and tools, see [the EWoK guide](../../../docs/archive/ewok.md).
+## 4. Run the benchmarks with your model
+
+Both benchmarks run on the common channels; each question is one stimulus row.
+
+`EWoK-core-1.0-logprobs` shows each context as `text`, exactly as given, with
+both targets as the options of that row. A model with a `likelihood` part
+returns the raw score of each target on `behavior:probabilities`: the summed log
+probability of the target's tokens in `f"{context} {target}"`, raw text, no
+template, as EWoK's `score` does. A model without a `likelihood` part is N/A.
+`chat_parts` and `build_causal_lm_subject` give such a part; so does
+`EWoKProvider(native_model)` from `brainscore.harnesses.ewok`, which calls the
+authors' own `score`.
+
+Log-probability scores can differ slightly from EWoK's own evaluator, for two
+reasons. EWoK sets the logit of the padding or end-of-sequence token to minus
+infinity before it normalizes; `chat_parts` and `build_causal_lm_subject` do
+not. EWoK tokenizes with `add_special_tokens=True`, so some tokenizers add a
+start token before the context; these parts add none. The score says so in
+`score.attrs['input_adaptation']`.
+
+`EWoK-core-1.0-choice` shows EWoK's own choice prompt as `text`, with no
+sentence added, and asks for `behavior:choice` between 1 and 2. A model with a
+`reply`, `likelihood` or `answer` part runs it.
+
+```python
+benchmark = brainscore.load_benchmark("EWoK-core-1.0-logprobs")
+score = benchmark(model)
+```
+
+Choice scores can differ from EWoK's own evaluator. A chat model answers
+through its own chat template and the model decodes by its own rule, where EWoK
+sends the raw prompt and limits greedy decoding to 1 or 2. The score says so in
+`score.attrs['input_adaptation']`.

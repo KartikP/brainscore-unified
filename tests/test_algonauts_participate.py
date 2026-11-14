@@ -14,10 +14,10 @@ from brainscore_core.streaming_helpers import drain_session_inputs, session_stim
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
-from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025Friends
+from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
 
 FRAMES = [f'clip_t{index:04d}' for index in range(6)]
-UNITS = {'V4': ['a', 'b', 'shared'], 'IT': ['shared', 'c']}
+UNITS = {'V1': ['v', 'shared'], 'V4': ['a', 'b', 'shared'], 'IT': ['shared', 'c']}
 
 
 def _value(frame: str, unit: str) -> float:
@@ -40,7 +40,7 @@ class Recorder(Subject):
         ids = [str(stimulus_id) for stimulus_id in stimuli['stimulus_id']]
         if self.reverse:
             ids = ids[::-1]
-        channels = list(session.requested_output_channels)
+        channels = list(session.outputs)
         self.requests.append(channels)
         for channel in channels:
             units = UNITS[channel.split(':', 1)[1]]
@@ -62,22 +62,23 @@ def _frames():
 
 @pytest.fixture
 def benchmark(tmp_path):
-    return Algonauts2025Friends(subject=1, assembly_root=tmp_path)
+    return Algonauts2025(participant=1, assembly_root=tmp_path)
 
 
-def test_one_region_is_recorded_through_participate(benchmark):
+def test_every_region_is_recorded_through_participate_on_its_own_channel_in_one_session(benchmark):
     subject = Recorder()
-    features, frame_ids = benchmark._extract_per_TR_features(subject, _frames())
-    assert subject.requests == [['neural:IT']]
-    assert frame_ids == FRAMES
-    expected = [[_value(frame, unit) for unit in UNITS['IT']] for frame in FRAMES]
-    np.testing.assert_array_equal(features, np.asarray(expected, dtype=np.float32))
+    regions = ['IT', 'V4']
+    bands = benchmark._record_bands(subject, _frames(), regions)
+    assert subject.requests == [['neural:IT', 'neural:V4']]     # one session, one channel per region
+    for region in regions:
+        expected = [[_value(frame, unit) for unit in UNITS[region]] for frame in FRAMES]
+        np.testing.assert_array_equal(bands[region][0], np.asarray(expected, dtype=np.float32))
 
 
 def test_answers_are_put_in_frame_order_by_stimulus_id(benchmark):
-    features, _ = benchmark._extract_per_TR_features(Recorder(reverse=True), _frames())
+    bands = benchmark._record_bands(Recorder(reverse=True), _frames(), ['IT'])
     expected = [[_value(frame, unit) for unit in UNITS['IT']] for frame in FRAMES]
-    np.testing.assert_array_equal(features, np.asarray(expected, dtype=np.float32))
+    np.testing.assert_array_equal(bands['IT'][0], np.asarray(expected, dtype=np.float32))
 
 
 # ── Old path vs participate on the SAME subject (Contract Rule 10.1) ──────
@@ -102,7 +103,7 @@ class _Extractor:
             })
 
 
-def _old_record_features(subject, stimuli, region, *, time_bins):
+def _old_features(subject, stimuli, region, *, time_bins):
     """What the benchmark did before it ran through participate."""
     subject.start_recording(region, time_bins=time_bins)
     return algonauts_module._as_features(subject.process(stimuli))
@@ -118,17 +119,18 @@ REGION_MAPS = {
 
 
 @pytest.mark.parametrize('region_map', REGION_MAPS.values(), ids=REGION_MAPS.keys())
-@pytest.mark.parametrize('target', ['IT', 'all'])
-def test_old_and_new_path_give_identical_features(benchmark, monkeypatch, region_map, target):
+def test_old_path_and_participate_give_identical_bands(benchmark, region_map):
     model = BrainScoreModel('synthetic', region_layer_map=region_map,
-                            preprocessors={'vision': _Extractor(), 'text': _Extractor()})
-    new, new_ids = benchmark._extract_per_TR_features(model, _frames(), recording_target=target)
-    with monkeypatch.context() as patch:
-        patch.setattr(algonauts_module, '_record_features', _old_record_features)
-        old, old_ids = benchmark._extract_per_TR_features(model, _frames(), recording_target=target)
-    assert new.dtype == old.dtype and new.shape == old.shape
-    np.testing.assert_array_equal(new, old)
-    assert new_ids == old_ids
+                            extractor={'vision': _Extractor()})
+    regions = sorted(region_map)
+    bands = benchmark._record_bands(model, _frames(), regions)
+    for region in regions:
+        old, old_ids = _old_features(model, _frames(), region,
+                                     time_bins=[(0, int(algonauts_module.TR_SEC * 1000))])
+        new, new_ids = bands[region]
+        assert new.dtype == old.dtype and new.shape == old.shape
+        np.testing.assert_array_equal(new, old)
+        np.testing.assert_array_equal(new_ids, old_ids)
 
 
 class _WrongIds(Recorder):
@@ -137,7 +139,7 @@ class _WrongIds(Recorder):
     def participate(self, session):
         stimuli = session_stimuli(session, drain_session_inputs(session))
         ids = [str(s) for s in stimuli['stimulus_id']][:-1] + ['not_a_frame']
-        for channel in session.requested_output_channels:
+        for channel in session.outputs:
             session.respond(StreamEvent(channel, NeuroidAssembly(
                 np.zeros((len(ids), 2)),
                 coords={'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', ['a', 'b'])},
@@ -146,7 +148,7 @@ class _WrongIds(Recorder):
 
 def test_a_response_for_other_frames_is_refused(benchmark):
     with pytest.raises(ValueError, match='exactly once'):
-        benchmark._extract_per_TR_features(_WrongIds(), _frames())
+        benchmark._record_bands(_WrongIds(), _frames(), ['IT'])
 
 
 # ── Declarations and a whole score through participate ────────────
@@ -155,22 +157,32 @@ import xarray as xr
 
 from tests.benchmark_declarations import assert_declares, assert_preflight
 from brainscore.benchmarks.algonauts2025.benchmark import (
-    Algonauts2025Friends, Algonauts2025FriendsS7, Algonauts2025OOD)
+    Algonauts2025)
 
-CLIPS = [f'clip{index}' for index in range(6)]
+def _show(monkeypatch, table):
+    """The benchmark shows ``table`` instead of the prepared files of the data plugin."""
+    monkeypatch.setattr(algonauts_module, 'per_scan_stimuli', lambda *args: table)
+    monkeypatch.setattr(algonauts_module, 'load_stimulus_set', lambda *args, **kwargs: None)
+
+
+CLIPS = [f'clip{index}' for index in range(8)]   # 8 runs: 5 outer folds, 5 inner
 TRS = 10
 
+CHANNELS = {'image': ('vision:image',), 'video': ('vision:video',),
+            'video+audio': ('vision:video', 'audio')}
 
-@pytest.mark.parametrize('factory', [Algonauts2025Friends, Algonauts2025FriendsS7, Algonauts2025OOD])
-def test_every_split_declares_vision_in_and_it_out(factory, tmp_path):
-    benchmark = factory(subject=1, assembly_root=tmp_path)
-    assert_declares(benchmark, {'vision:image'}, {'neural:IT'})
+
+
+@pytest.mark.parametrize('split', ['friends', 'friends_s7', 'ood'])
+def test_every_split_declares_vision_in_and_the_named_regions_out(split, tmp_path):
+    benchmark = Algonauts2025(participant=1, split=split, assembly_root=tmp_path)
+    assert_declares(benchmark, {'vision:image'}, {'neural:V1', 'neural:V4', 'neural:IT'})
     assert_preflight(benchmark)
 
 
 def test_a_whole_score_comes_from_a_participate_only_subject(tmp_path, monkeypatch):
-    benchmark = Algonauts2025Friends(subject=1, assembly_root=tmp_path, stimulus_window=2,
-                                     hrf_delay=1, excluded_samples_start=0, excluded_samples_end=0)
+    benchmark = Algonauts2025(participant=1, assembly_root=tmp_path, stimulus_window=2,
+                                     hrf_delay=1, excluded_samples_start=2, excluded_samples_end=0)
     stimulus = [clip for clip in CLIPS for _ in range(TRS)]
     steps = list(range(TRS)) * len(CLIPS)
     values = np.random.default_rng(0).normal(size=(len(stimulus), 4))
@@ -184,22 +196,129 @@ def test_a_whole_score_comes_from_a_participate_only_subject(tmp_path, monkeypat
     frames = StimulusSet(pd.DataFrame(rows))
     frames.identifier = 'synthetic-algonauts-frames'
     frames.stimulus_paths = {row['stimulus_id']: row['image_file_name'] for row in rows}
-    monkeypatch.setattr(benchmark, '_expand_to_per_TR_frames', lambda: frames)
+    _show(monkeypatch, frames)
 
     class Frames(Recorder):
         def participate(self, session):
             stimuli = session_stimuli(session, drain_session_inputs(session))
             ids = [str(stimulus_id) for stimulus_id in stimuli['stimulus_id']]
-            self.requests.append(list(session.requested_output_channels))
+            self.requests.append(list(session.outputs))
             rng = np.random.default_rng(1)
-            session.respond(StreamEvent('neural:IT', NeuroidAssembly(
+            for channel in session.outputs:
+                session.respond(StreamEvent(channel, NeuroidAssembly(
+                    rng.normal(size=(len(ids), 3)),
+                    coords={'stimulus_id': ('presentation', ids),
+                            'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
+                    dims=['presentation', 'neuroid']), t_ms=None))
+
+    subject = Frames()
+    score = benchmark(subject)
+    assert np.isfinite(float(score))
+    assert subject.requests == [['neural:IT', 'neural:V1', 'neural:V4']]
+    assert score.attrs['bands'] == ['IT', 'V1', 'V4'] and 'mode' not in score.attrs
+
+
+# ── The video form ───────────────────────────────────────────────
+
+from brainscore_core.compatibility import CompatibilityError, check_compatibility
+
+
+def _clip_table(clips, trs):
+    rows = [{'stimulus_id': f'{clip}_t{step:04d}', 'frame_id': f'{clip}_t{step:04d}',
+             'clip_id': clip, 't_within_run': step,
+             'video_path': f'/clips/{clip}/{step:04d}.mp4'}
+            for clip in clips for step in range(trs)]
+    table = StimulusSet(pd.DataFrame(rows))
+    table.identifier = 'synthetic-algonauts-clips'
+    table.stimulus_paths = {row['stimulus_id']: row['video_path'] for row in rows}
+    return table
+
+
+class _VideoOnly(Subject):
+    """Declares only vision:video; answers one row per clip it receives."""
+
+    identifier = 'video-only'
+    in_channels = frozenset({'vision:video'})
+    out_channels = frozenset({'neural:V1', 'neural:V4', 'neural:IT'})
+
+    def __init__(self):
+        self.paths = []
+
+    def participate(self, session):
+        events = drain_session_inputs(session)
+        assert {event.channel for event in events} == {'vision:video'}
+        stimuli = session_stimuli(session, events)
+        ids = [str(s) for s in stimuli['stimulus_id']]
+        self.paths += list(stimuli['video_path'])
+        rng = np.random.default_rng(1)
+        for channel in session.outputs:
+            session.respond(StreamEvent(channel, NeuroidAssembly(
                 rng.normal(size=(len(ids), 3)),
                 coords={'stimulus_id': ('presentation', ids),
                         'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
                 dims=['presentation', 'neuroid']), t_ms=None))
 
-    subject = Frames()
+
+def _score_benchmark(tmp_path, monkeypatch, form, table):
+    benchmark = Algonauts2025(participant=1, channels=CHANNELS[form], assembly_root=tmp_path,
+                              stimulus_window=2, hrf_delay=1,
+                              excluded_samples_start=2, excluded_samples_end=0)
+    stimulus = [clip for clip in CLIPS for _ in range(TRS)]
+    steps = list(range(TRS)) * len(CLIPS)
+    values = np.random.default_rng(0).normal(size=(len(stimulus), 4))
+    benchmark._assembly = xr.DataArray(
+        values, dims=('presentation', 'neuroid'),
+        coords={'stimulus_id': ('presentation', stimulus), 'run': ('presentation', stimulus),
+                't_within_run': ('presentation', steps)})
+    _show(monkeypatch, table)
+    return benchmark
+
+
+def test_a_video_only_subject_gets_one_answer_per_tr_and_a_score(tmp_path, monkeypatch):
+    table = _clip_table(CLIPS, TRS)
+    benchmark = _score_benchmark(tmp_path, monkeypatch, 'video', table)
+    subject = _VideoOnly()
     score = benchmark(subject)
     assert np.isfinite(float(score))
-    assert subject.requests == [['neural:IT']]
-    assert score.attrs['mode'] == 'video_only'
+    # One clip per TR, once: one session asks for V1, V4 and IT.
+    assert subject.paths == list(table['video_path'])
+    assert score.attrs['bands'] == ['IT', 'V1', 'V4']
+    assert score.attrs['input_channels'] == ['vision:video']
+    assert score.attrs['frames_per_clip'] == 30
+
+
+def test_an_image_only_subject_is_not_applicable_to_video_and_scores_on_frames(tmp_path, monkeypatch):
+    video = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
+    frame = Algonauts2025(participant=1, assembly_root=tmp_path)
+    image_only = Recorder()
+    assert image_only.in_channels == frozenset({'vision:image'})
+    with pytest.raises(CompatibilityError, match='takes in none of the inputs'):
+        check_compatibility(image_only, video)
+    assert check_compatibility(image_only, frame).kind == 'full'
+    # A video-only subject is not applicable to the frame form either.
+    with pytest.raises(CompatibilityError, match='takes in none of the inputs'):
+        check_compatibility(_VideoOnly(), frame)
+
+    rows = [{'stimulus_id': f'{clip}_t{step:04d}', 'frame_id': f'{clip}_t{step:04d}',
+             'clip_id': clip, 't_within_run': step, 'image_file_name': f'/frames/{clip}/{step}.jpg'}
+            for clip in CLIPS for step in range(TRS)]
+    frames = StimulusSet(pd.DataFrame(rows))
+    frames.identifier = 'synthetic-algonauts-frames'
+    frames.stimulus_paths = {r['stimulus_id']: r['image_file_name'] for r in rows}
+    benchmark = _score_benchmark(tmp_path, monkeypatch, 'image', frames)
+
+    class Image(Recorder):
+        def participate(self, session):
+            stimuli = session_stimuli(session, drain_session_inputs(session))
+            ids = [str(s) for s in stimuli['stimulus_id']]
+            for channel in session.outputs:
+                session.respond(StreamEvent(channel, NeuroidAssembly(
+                    np.random.default_rng(1).normal(size=(len(ids), 3)),
+                    coords={'stimulus_id': ('presentation', ids),
+                            'neuroid_id': ('neuroid', ['u0', 'u1', 'u2'])},
+                    dims=['presentation', 'neuroid']), t_ms=None))
+
+    score = benchmark(Image())
+    assert np.isfinite(float(score))
+    assert score.attrs['input_channels'] == ['vision:image'] and score.attrs['bands'] == ['IT', 'V1', 'V4']
+    assert 'frames_per_clip' not in score.attrs

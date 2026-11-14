@@ -27,7 +27,7 @@ started = time.time()
 model = brainscore.load_model('gpt2')
 benchmark = brainscore.load_benchmark('LeBel2023-UTS03-encoding')
 score = benchmark(model)
-per_vertex = np.asarray(score.attrs['raw'])
+per_vertex = np.asarray(score.attrs['per_vertex_r'])
 # The full benchmark uses None to mean every target in assembly order.
 selected = score.attrs['target_index']
 indices = np.arange(len(per_vertex)) if selected is None else np.asarray(selected)

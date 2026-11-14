@@ -1,16 +1,16 @@
 """Closed-loop grid game as a registered Brain-Score benchmark.
 
 Wraps the closed-loop ``GridGameEnv`` (``brainscore.harnesses.grid_game``) as a
-proper ``Benchmark``: ``__call__(candidate)`` runs N reach-the-goal episodes
-through ``run_environment(candidate, ...)`` (the candidate's ``participate``) and
+proper ``Benchmark``: ``__call__(subject)`` runs N reach-the-goal episodes
+through ``run_environment(subject, ...)`` (the subject's ``participate``) and
 returns the success rate,
 ceiled by the greedy oracle, with the random-action floor in ``attrs``.
 
 This is the closed-loop capability as a *registered benchmark*, not just a script —
 the same closed loop that drives the scaling-curve demo. The environment IS the
 data source (a deterministic simulator seeded per episode), so there is no
-dataset to download. The candidate must declare an ``action_fn`` (it emits
-the ``motor`` channel); a feature/behavioral model with no ``action_fn`` is
+dataset to download. The subject must have a ``policy`` part (it emits
+the ``motor`` channel); a feature/behavioral model with no ``policy`` part is
 correctly incompatible.
 """
 import numpy as np
@@ -21,15 +21,15 @@ from brainscore import BrainScoreModel
 from brainscore.harnesses.grid_game import (
     GridGameEnv, play_game, greedy_oracle_policy, random_action_policy,
 )
-from brainscore.model_helpers.policy_wrapper import PolicyWrapper
+from brainscore.benchmarks._score import benchmark_score
 
 
-def _run(model, n_episodes, size, max_steps, base_seed):
+def _run(subject, n_episodes, size, max_steps, base_seed):
     """Run ``n_episodes`` seeded episodes; return (success_rate, mean_efficiency)."""
     solves, effs = [], []
     for i in range(n_episodes):
         env = GridGameEnv(size=size, seed=base_seed + i, max_steps=max_steps)
-        res = play_game(model, env)
+        res = play_game(subject, env)
         solves.append(1.0 if res['solved'] else 0.0)
         if res['solved']:
             effs.append(res.get('efficiency', 0.0))
@@ -37,13 +37,10 @@ def _run(model, n_episodes, size, max_steps, base_seed):
 
 
 def policy_model(policy, identifier):
-    """Wrap a bare ``(observation, history) -> action`` policy as a scorable
-    candidate (the same shape a real model takes: ``action_fn`` on a
-    ``BrainScoreModel``). Used for the oracle ceiling + random floor."""
-    return BrainScoreModel(
-        identifier=identifier,
-        policy=PolicyWrapper(policy, max_history=4),
-    )
+    """A ``row -> {'motor': action}`` policy as a scorable subject (the same
+    shape a real model takes: a ``policy`` part on a ``BrainScoreModel``). Used
+    for the oracle ceiling + random floor; both read ``observation``."""
+    return BrainScoreModel(identifier=identifier, policy=policy)
 
 
 class GridGameBenchmark(BenchmarkBase):
@@ -55,7 +52,7 @@ class GridGameBenchmark(BenchmarkBase):
 
     :param size: grid side length. :param n_episodes: episodes to average.
     :param max_steps: per-episode step budget. :param base_seed: episode seeds
-        are ``base_seed + i`` so every candidate sees the identical boards.
+        are ``base_seed + i`` so every subject sees the identical boards.
     """
 
     # Each episode is one trial that starts with an empty history.
@@ -83,13 +80,11 @@ class GridGameBenchmark(BenchmarkBase):
             version=1, parent='closed_loop',
             ceiling=Score(max(oracle_rate, 1e-6)), bibtex='')
 
-    def __call__(self, candidate) -> Score:
-        rate, eff = _run(candidate, n_episodes=self.n_episodes, size=self.size,
+    def __call__(self, subject) -> Score:
+        rate, eff = _run(subject, n_episodes=self.n_episodes, size=self.size,
                          max_steps=self.max_steps, base_seed=self.base_seed)
-        ceiling = float(self.ceiling)
-        score = Score(rate / ceiling)
-        score.attrs['raw'] = Score(rate)
-        score.attrs['ceiling'] = ceiling
+        score = benchmark_score(self, rate / float(self.ceiling), raw=rate,
+                                metric='success_rate', normalized=True)
         score.attrs['success_rate'] = rate
         score.attrs['mean_efficiency'] = eff
         score.attrs['random_floor'] = self._random_floor

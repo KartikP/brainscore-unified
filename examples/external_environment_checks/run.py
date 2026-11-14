@@ -98,7 +98,7 @@ def _run(directory: Path, steps: int, report: dict) -> dict:
             subject=subject,
             protocol=SessionProtocol(
                 identifier='counter-episode', session_factory=factory,
-                input_channels=('observation',), output_channels=('motor',),
+                required_input_channels=('observation',), requested_output_channels=('motor',),
                 collect_outputs=False,
             ),
             tools=tools,
@@ -165,8 +165,8 @@ def check_repeated_failure(subject, layer, directory: Path, steps: int) -> dict:
             subject=subject,
             protocol=SessionProtocol(
                 identifier='repeated-episodes', session_factory=factory,
-                repetitions=(0, 1, 2), input_channels=('observation',),
-                output_channels=('motor',), collect_outputs=False,
+                repetitions=(0, 1, 2), required_input_channels=('observation',),
+                requested_output_channels=('motor',), collect_outputs=False,
             ),
             tools=tools,
             instrumentation=TorchInstrumentation({'policy': layer}),

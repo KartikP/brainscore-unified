@@ -1,34 +1,54 @@
 """Run the pinned CogGym evaluator with existing UMI experiment tools.
 
 CogGym owns prompts, trial selection, parsing, and scientific scoring. This
-adapter supplies a model provider and saves its unmodified trial results.
+adapter turns each provider call into a session on the common channels and
+saves CogGym's unmodified trial results.
+
+Each call becomes one stimulus row: its text, image and video parts in
+CogGym's order (``TaskContext.present``). The system text is the task's
+instruction, the temperature and length are settings on the ``Text``
+response, and the subject answers on ``behavior:text``. The subject builds its
+own prompt from these, so a chat model can place the instruction in the user
+turn where CogGym's own client sends a separate system text. Scores can
+therefore differ a little from scores made with CogGym's own client.
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import importlib
 import importlib.util
 import json
 import math
+import mimetypes
 from pathlib import Path
 import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from typing import Any
 
+import numpy as np
+import pandas as pd
+
 from brainscore.experiments import CallableProtocol
+from brainscore.harnesses.adapter import run_request
 from brainscore.harnesses.coggym_validation import SLIDER_VALIDATION_POLICY, validate_slider_responses
-from brainscore_core.compatibility import check_channel_compatibility
-from brainscore_core.streaming import Session, StreamEvent
-from brainscore.instrumentation import observed
+from brainscore_core.contract import TaskContext
+from brainscore_core.responses import Text
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 REFERENCE_REVISION = 'a1cd9df1118fec80eba7463de237d1497d77e041'
 DEFAULT_EXPERIMENT = 'Hu2023Fine/exp1'
-GENERATION_CHANNELS = {
-    'text': 'generation_request',
-    'image': 'image_generation_request',
-    'video': 'video_generation_request',
+# The input channel and the stimulus column of each kind of message part.
+_PART_CHANNELS = {'text': 'text', 'image': 'vision:image', 'video': 'vision:video'}
+_PART_COLUMNS = {'text': 'text', 'image': 'image_path', 'video': 'video_path'}
+# Why a score can differ from one made with CogGym's own client (Contract Rule 3.9).
+_PROMPT_NOTE = {
+    'kind': 'subject_prompt',
+    'reason': ('The subject builds its own prompt from the instruction and the parts. '
+               'A chat model can place the instruction in the user turn, where '
+               "CogGym's own client sends a separate system text."),
 }
 
 
@@ -78,59 +98,117 @@ def _load_reference(checkout):
     return importlib.import_module(f'{name}.cli'), importlib.import_module(f'{name}.analyze')
 
 
-class _SubjectProvider:
-    """Translate CogGym provider calls into response-trace sessions.
+def _check_image(part) -> bytes:
+    """The bytes of a base64 image part, or an error before any compute."""
+    source = part.get('source') or {}
+    if source.get('type') != 'base64' or not isinstance(source.get('data'), str):
+        raise ValueError('A CogGym image part must carry base64 data')
+    return base64.b64decode(source['data'], validate=True)
 
-    Each provider call is one session with one request event. The subject
-    answers through ``participate`` only (Contract Rule 1.1). Each session is
-    one repetition of the run record (``<CogGym repetition>.<call>``) and is
-    observed with ``observed``, so tools record the request and the answer
-    between that session's own boundaries, and ``replay_sessions`` rebuilds
-    one session per call. The subject is not reset between calls, as before;
-    the provider's reset(repetition) runs only between CogGym repetitions.
+
+def _media_file(part, directory: Path) -> str:
+    """Write a base64 image part to a file named by its content; return the path."""
+    data = _check_image(part)
+    media_type = (part.get('source') or {}).get('media_type') or ''
+    suffix = '.jpg' if media_type == 'image/jpeg' else mimetypes.guess_extension(media_type) or '.png'
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f'{hashlib.sha256(data).hexdigest()}{suffix}'
+    if not path.exists():
+        path.write_bytes(data)
+    return str(path)
+
+
+def _trial_row(messages, media_directory: Path) -> tuple[dict, tuple[str, ...]]:
+    """One stimulus row from CogGym's user message, and the order of its parts.
+
+    The first part of each kind goes in the usual column (``text``,
+    ``image_path``, ``video_path``); later parts of the same kind go in
+    ``<column>_2``, ``<column>_3`` and so on. The order is CogGym's.
+    """
+    if len(messages) != 1 or messages[0].get('role') != 'user':
+        raise ValueError('A CogGym request must hold exactly one user message')
+    content = messages[0]['content']
+    parts = [{'type': 'text', 'text': content}] if isinstance(content, str) else content
+    row, present, counts = {}, [], {}
+    for part in parts:
+        kind = part.get('type')
+        if kind == 'text':
+            value = part['text']
+        elif kind == 'image':
+            value = _media_file(part, media_directory)
+        elif kind == 'video':
+            value = str(part['path'])
+        else:
+            raise ValueError(f'Unsupported CogGym content type: {kind}')
+        counts[kind] = counts.get(kind, 0) + 1
+        column = _PART_COLUMNS[kind] + ('' if counts[kind] == 1 else f'_{counts[kind]}')
+        row[column] = value
+        present.append(f'{kind}:{column}')
+    return row, tuple(present)
+
+
+def _written_answer(event) -> str:
+    """The one written answer in a ``behavior:text`` event."""
+    payload = event.payload
+    if not isinstance(payload, str):
+        valid = getattr(payload, 'coords', {}).get('answer_valid')
+        if valid is not None and not bool(np.all(valid.values)):
+            raise TypeError('The subject gave no written answer on behavior:text')
+        values = np.asarray(getattr(payload, 'values', payload), dtype=object).reshape(-1)
+        if values.size != 1:
+            raise ValueError(f'A CogGym call needs one written answer, not {values.size}')
+        payload = values[0]
+    if not isinstance(payload, str):
+        raise TypeError('CogGym needs the answer on behavior:text as text (str)')
+    return payload
+
+
+class _SubjectProvider:
+    """Translate CogGym provider calls into sessions on the common channels.
+
+    CogGym calls the object that answers its requests a provider; this one
+    answers through the subject. Each provider call is one ``run_request``
+    session: one stimulus row (the
+    message parts in order), a ``TaskContext`` (the system text as the
+    instruction, a ``Text`` response with the call's temperature and length,
+    the order of the parts, ``trial_memory='none'``) and the output
+    ``behavior:text``. The subject answers through ``participate`` only
+    (Contract Rule 1.1). Each session is one repetition of the run record
+    (``<CogGym repetition>.<call>``), so tools record the request and the
+    answer between that session's own boundaries, and ``replay_sessions``
+    rebuilds one session per call. The
+    subject is not reset between calls; the provider's reset(repetition)
+    runs only between CogGym repetitions.
+
+    CogGym stores ``reasoning`` and ``token_usage`` with each trial and never
+    scores them. They come from the extra data (``meta``) of the answer event
+    when the subject gives them; otherwise they are ``None``.
     """
 
-    def __init__(self, subject, context, repetition, experiment, prompt_trials, input_channel):
+    def __init__(self, subject, context, repetition, prompt_trials):
         self.subject = subject
         self.context = context
-        self.experiment = experiment
         self.repetition = repetition
         self.call_index = 0
         self.prompt_trials = prompt_trials
-        self.input_channel = input_channel
+        self.media_directory = context.directory / 'coggym-media'
 
     def complete_with_metadata(self, system, messages, model, temperature, max_tokens):
-        request = dict(system=system, messages=messages, model=model,
-                       temperature=temperature, max_tokens=max_tokens)
         trial_ids = self.prompt_trials[_prompt_key(system, messages)]
-        event = StreamEvent(
-            self.input_channel, request, t_ms=None,
-            meta={'experiment': self.experiment, 'repetition': self.repetition,
-                  'provider_call': self.call_index, 'matching_trial_ids': trial_ids},
-        )
+        row, present = _trial_row(messages, self.media_directory)
+        stimuli = StimulusSet(pd.DataFrame([{'stimulus_id': trial_ids[0], **row}]))
+        task = TaskContext(instruction=system, present=present, trial_memory='none',
+                           response=Text(max_tokens=max_tokens, temperature=float(temperature)))
         record_repetition = f'{self.repetition}.{self.call_index}'
         self.call_index += 1
-        session = Session([event], ('response_trace',))
-        with self.context.repetition(record_repetition):
-            self.context.publish('session_context',
-                                 {'requested_output_channels': session.requested_output_channels})
-            with observed(session, self.context):
-                self.subject.participate(session)
-        responses = [response for response in session.emitted
-                     if isinstance(response, StreamEvent) and response.channel == 'response_trace']
-        if not responses:
-            raise TypeError('CogGym needs a response_trace subject; use build_trace_subject')
-        # A streaming subject answers in fragments; the last one holds the complete
-        # answer. The old process path returned only a final response.
-        if responses[-1].payload.get('final', True) is not True:
-            raise ValueError('CogGym provider ended without a final response')
-        raw = responses[-1].payload['raw']
-        if not isinstance(raw.get('text'), str):
-            raise TypeError('CogGym provider output must contain text: str')
-        # These fields are part of CogGym's provider contract. Do not invent them.
-        if 'reasoning' not in raw or 'token_usage' not in raw:
-            raise ValueError('Provider output needs reasoning and token_usage (None is allowed)')
-        return raw
+        session = run_request(self.subject, self.context, record_repetition,
+                              stimuli, ['behavior:text'], task)
+        answers = [event for event in session.emitted if event.channel == 'behavior:text']
+        if len(answers) != 1:
+            raise TypeError(f'CogGym needs one behavior:text answer for each call; got {len(answers)}')
+        meta = answers[0].meta if isinstance(answers[0].meta, dict) else {}
+        return {'text': _written_answer(answers[0]),
+                'reasoning': meta.get('reasoning'), 'token_usage': meta.get('token_usage')}
 
 
 class CogGymRunner:
@@ -147,6 +225,15 @@ class CogGymRunner:
     Defaults match the pinned CLI: one repetition, 512 tokens, temperature 1.
     CogGymBenchmark instead uses the README example's five repetitions.
     Set these values explicitly when comparing direct and registered runs.
+
+    A subject runs the protocol when it takes in at least one of the inputs
+    the selected trials send (``instruction``, ``text``, ``vision:image``,
+    ``vision:video``: ``required_input_channels``) and answers on
+    ``behavior:text``. An input it cannot take is dropped (a partial match). A
+    ``BrainScoreModel`` with a ``reply`` part does both. The protocol checks no
+    compatibility itself: ``score()`` does it for the benchmark, and
+    ``check_compatibility(subject, runner)`` says before an ``Experiment``
+    whether a subject fits.
     """
 
     def __init__(
@@ -181,10 +268,6 @@ class CogGymRunner:
             raise ValueError('Declare supported modalities: text, image, video')
         self.experiment = experiment
         self.modalities = tuple(sorted(set(modalities)))
-        content = 'video' if 'video' in modalities else 'image' if 'image' in modalities else 'text'
-        self.input_channel = GENERATION_CHANNELS[content]
-        self.required_input_channels = frozenset({self.input_channel})
-        self.requested_output_channels = frozenset({'response_trace'})
         self._experiment = self._cli.load_experiment(self.checkout / 'EML' / experiment)
         selection = self._cli._load_selection_map(
             self.checkout / 'evaluation' / 'trial_selection_map.json',
@@ -204,6 +287,7 @@ class CogGymRunner:
             raise ValueError('The reference trial selection is empty')
         self.canonical_trial_count = len(canonical)
         self._prompt_trials = {}
+        shown = {'text'}
         # Preflight the reference prompts, including media loading, before inference.
         for trial in self._trials:
             system, messages = self._cli.build_messages(trial, self._experiment)
@@ -213,14 +297,23 @@ class CogGymRunner:
                 if isinstance(content, list):
                     for part in content:
                         kind = part.get('type')
-                        if kind not in {'text', 'image', 'image_url', 'video'}:
+                        if kind not in _PART_CHANNELS:
                             raise ValueError(f'Unsupported CogGym content type: {kind}')
-                        required.add('image' if kind == 'image_url' else kind)
+                        if kind == 'image':
+                            _check_image(part)
+                        required.add(kind)
                 elif not isinstance(content, str):
                     raise TypeError('CogGym message content must be text or a list of parts')
             if not isinstance(system, str) or required - set(self.modalities):
                 raise ValueError(f'Provider must support these modalities: {sorted(required)}')
+            shown |= required
             self._prompt_trials.setdefault(_prompt_key(system, messages), []).append(trial.id)
+        # The inputs the experiment sends: the system text is the instruction, and
+        # every kind of part the selected trials show. A subject that cannot take
+        # one runs with it dropped (Contract Rules 5.2, 5.5, 5.6).
+        self.required_input_channels = frozenset(
+            {'instruction'} | {_PART_CHANNELS[kind] for kind in shown})
+        self.requested_output_channels = frozenset({'behavior:text'})
 
     @property
     def trial_ids(self) -> tuple[str, ...]:
@@ -256,19 +349,16 @@ class CogGymRunner:
             raise TypeError('Supply a reset(repetition) callback for your provider')
 
         def evaluate(subject, context):
-            # Reject missing media support before the first provider call.
-            check_channel_compatibility(subject, self)
             def register(path):
                 context.artifact(
                     path, producer='CogGym evaluator via UMI adapter',
                     description='Reference trial results, summary, and explicit run coverage',
                 )
-            # Translate CogGym provider calls into response-trace sessions.
+            # Translate CogGym provider calls into sessions on the common channels.
             # This is where the external evaluator connects to UMI tools.
             return self._run(
                 lambda repetition: _SubjectProvider(
-                    subject, context, repetition, self.experiment, self._prompt_trials,
-                    self.input_channel,
+                    subject, context, repetition, self._prompt_trials,
                 ),
                 context.directory / 'coggym', reset, register,
             )

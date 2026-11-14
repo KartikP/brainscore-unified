@@ -11,7 +11,7 @@ from brainscore.experiments import (
 )
 from brainscore.experiments.replay import _equal, read_events
 from brainscore import BrainScoreModel
-from brainscore_core.model_interface import TaskContext
+from brainscore_core.contract import TaskContext
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import (
     stimulus_session,
@@ -54,8 +54,8 @@ def run(subject, factory, directory, outputs):
         protocol=SessionProtocol(
             identifier='native-session',
             session_factory=factory,
-            input_channels=['text'],
-            output_channels=outputs,
+            required_input_channels=['text'],
+            requested_output_channels=outputs,
         ),
         tools=[RecordInputsOutputs()],
         output_dir=directory,
@@ -68,7 +68,7 @@ def test_neural_session_collection_and_replay_preserve_metadata(tmp_path, stream
     subject = BrainScoreModel(
         identifier='length',
         model=None,
-        preprocessors={'text': extract},
+        extractor={'text': extract},
         region_layer_map={'IT': 'length', 'V4': 'early_length'},
     )
 
@@ -92,7 +92,7 @@ def test_neural_session_collection_and_replay_preserve_metadata(tmp_path, stream
     context = next(e['payload'] for e in read_events(replay.directory)
                    if e['kind'] == 'session_context')
     assert context['time_bins'] == [(70, 170)]
-    assert context['requested_output_channels'] == channels
+    assert context['outputs'] == channels
 
 
 def test_behavior_session_collection_and_replay_preserve_task(tmp_path):
@@ -105,9 +105,9 @@ def test_behavior_session_collection_and_replay_preserve_task(tmp_path):
     subject = BrainScoreModel(
         identifier='answers',
         model=None,
-        preprocessors={'text': lambda inputs: inputs},
+        in_channels={'text'},
         region_layer_map={},
-        generation_fn=generate,
+        answer=generate,
     )
 
     @contextmanager
@@ -147,7 +147,7 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
     subject = BrainScoreModel(
         identifier='length',
         model=None,
-        preprocessors={'text': extract},
+        extractor={'text': extract},
         region_layer_map={'IT': 'length', 'V4': 'early_length'},
     )
 
@@ -159,9 +159,9 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
             StreamEvent(channel='text', payload=row['sentence'], t_ms=index)
             for index, row in table.iterrows()
         ])
-        session.stimulus_set = table
+        session.stimuli = table
         session.time_bins = [(70, 170)]
-        session.requested_output_channels = (f'neural:{region}',)
+        session.outputs = (f'neural:{region}',)
         yield session
 
     baseline = Experiment(
@@ -170,8 +170,8 @@ def test_neural_replay_with_generic_collector_restores_each_trials_request(tmp_p
             identifier='different-region-per-trial',
             session_factory=factory,
             repetitions=['V4', 'IT'],
-            input_channels=['text'],
-            output_channels=['neural:V4', 'neural:IT'],
+            required_input_channels=['text'],
+            requested_output_channels=['neural:V4', 'neural:IT'],
         ),
         tools=[RecordInputsOutputs()],
         output_dir=tmp_path / 'baseline',

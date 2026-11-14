@@ -13,6 +13,7 @@ from brainscore_core.responses import Text
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.models.qwen25_vl_3b import model as registration
+from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
 
 
 @pytest.fixture
@@ -27,7 +28,9 @@ def build(monkeypatch, tmp_path):
         def __init__(self, dtype):
             super().__init__()
             self.weight = torch.nn.Parameter(torch.zeros(1, dtype=dtype))
-            self.model = SimpleNamespace(visual=torch.nn.Identity(), language_model=torch.nn.Identity())
+            visual = torch.nn.Module()                 # model.visual.blocks.{0-31}
+            visual.blocks = torch.nn.ModuleList([torch.nn.Identity() for _ in range(32)])
+            self.model = SimpleNamespace(visual=visual, language_model=torch.nn.Identity())
             self.generation_config = SimpleNamespace(to_dict=lambda: {'max_length': 20})
         @property
         def device(self):
@@ -64,7 +67,7 @@ def build(monkeypatch, tmp_path):
     monkeypatch.setattr(registration, 'pin_image_processor', lambda value, *a, **k: value)
     monkeypatch.setattr('brainscore.models._downloads.hf_preflight', lambda *a, **k: {'local_files_only': True, **k})
     monkeypatch.setattr('brainscore.model_helpers._device.select_device', lambda: torch.device('cpu'))
-    monkeypatch.setattr('brainscore.model_helpers.vision_wrapper.VisionWrapper', Wrapper)
+    monkeypatch.setattr('brainscore.model_helpers.vlm_vision_wrapper.VLMVisionWrapper', Wrapper)
     monkeypatch.setattr('brainscore.model_helpers.text_wrapper.TextWrapper', Wrapper)
     return calls, wrappers
 
@@ -79,7 +82,7 @@ def test_bf16_is_a_separate_lazy_registration_and_uses_pinned_precision(build):
     assert [entry['identifier'] for entry in wrappers] == ['qwen2.5-vl-3b-bf16-vision', 'qwen2.5-vl-3b-bf16-text']
     assert {'behavior:text', 'neural:IT', 'neural:language_system'} <= subject.out_channels
     assert 'lesion' not in subject.in_channels
-    session = stimulus_session(StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}]), ['behavior:text'], task_context=TaskContext(response=Text()))
+    session = stimulus_session(StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}]), ['behavior:text'], task=TaskContext(response=Text()))
     subject.participate(session)
     response = session.collect('behavior:text')
     assert response.values.tolist() == ['Yes']
@@ -98,3 +101,29 @@ def test_existing_registrations_keep_float16_without_new_revision_or_cache_keys(
     assert calls[0][1] == {'torch_dtype': torch.float16, 'local_files_only': True}
     assert subject.identifier == identifier
     assert [entry['identifier'] for entry in wrappers] == [f'{identifier}-vision', f'{identifier}-text']
+
+
+@pytest.mark.parametrize('identifier', ['qwen2.5-vl-3b', 'qwen2.5-vl-7b', 'qwen2.5-vl-3b-vwfa',
+                                        'qwen2.5-vl-7b-vwfa', registration.BF16_IDENTIFIER])
+def test_vision_extractor_keeps_its_identifier_and_cache_key(build, monkeypatch, identifier):
+    """The registration builds VLMVisionWrapper itself; identifier and cache settings are unchanged."""
+    built = []
+
+    def construct(**kwargs):                     # the real wrapper, kept for inspection
+        built.append(VLMVisionWrapper(**kwargs))
+        return built[-1]
+    monkeypatch.setattr('brainscore.model_helpers.vlm_vision_wrapper.VLMVisionWrapper', construct)
+    monkeypatch.setattr('brainscore.model_helpers._device.select_device',
+                        lambda device=None: torch.device('cpu'))
+    load_model(identifier)
+    (vision,) = built
+    assert (vision.identifier, vision.backbone_id) == (f'{identifier}-vision', f'{identifier}-vision')
+    settings = vision.cache_config()['settings']
+    assert {key: settings[key] for key in ('_image_input_key', '_forward_kwargs_map',
+                                           '_layer_aggregation', '_batch_size')} == {
+        '_image_input_key': 'pixel_values', '_forward_kwargs_map': {'grid_thw': 'image_grid_thw'},
+        '_layer_aggregation': 'mean_patches', '_batch_size': 4}
+    assert settings['_patch_count_fn']({'image_grid_thw': [(1, 2, 3)]}) == [6]
+    # The cache key names the wrapper class and the backbone identifier.
+    assert f'{type(vision).__module__}.{type(vision).__name__}' == \
+        'brainscore.model_helpers.vlm_vision_wrapper.VLMVisionWrapper'

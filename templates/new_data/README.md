@@ -23,16 +23,20 @@ Neither scores anything. A benchmark loads both and compares a model against the
 Copy this folder to `brainscore/data/<your_name>/`, then add one line to
 `brainscore/data/__init__.py`:
 
-```python
+```
 from . import your_name
 ```
 
-Then, typically from inside a benchmark:
+Then, typically from inside a benchmark (here from the `templates/` folder, where
+importing the template registers it):
 
 ```python
+import new_data
 from brainscore import load_stimulus_set, load_dataset
+
 stimuli  = load_stimulus_set('your-stimuli')
 measured = load_dataset('your-measurements')
+print(len(stimuli), dict(measured.sizes))   # 32 {'presentation': 32, 'neuroid': 16}
 ```
 
 ## Replace in this order

@@ -55,3 +55,18 @@ def test_vlm_vision_wrapper_package_uses_shared_builder():
         'vlm-vision.blocks.1.5',
     ]
     assert set(assembly['layer'].values) == {'blocks.1'}
+
+
+def test_stimulus_columns_replace_the_position_index():
+    """A plain presentation index holds positions; ``stimulus_id`` replaces it,
+    so no ``presentation_`` coordinate is left behind."""
+    from brainscore.model_helpers._extractors import attach_stimulus_set, layer_assembly
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+    assembly = layer_assembly('text-model', 'encoder.layers.1', np.zeros((2, 3), np.float32))
+    stimuli = StimulusSet({'stimulus_id': ['s0', 's1'], 'sentence': ['a', 'b']})
+    attached = attach_stimulus_set(assembly, stimuli)
+
+    assert 'presentation_' not in attached.coords
+    assert list(attached['stimulus_id'].values) == ['s0', 's1']
+    assert list(attached['sentence'].values) == ['a', 'b']

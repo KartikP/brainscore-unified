@@ -29,12 +29,15 @@ import os
 
 import numpy as np
 import pytest
+
+from brainscore_core.compatibility import CompatibilityError
 import torch
 
 from brainscore.experiments import (
     Ablate, CallableProtocol, Experiment, RecordActivity, RecordInputsOutputs,
-    SessionProtocol, TorchInstrumentation,
+    Repetition, SessionProtocol, TorchInstrumentation,
 )
+from brainscore.instrumentation import observed
 from brainscore_core.environment import ArraySpec, DiscreteSpec, MappingSpec
 from brainscore_core.events import Selection
 from brainscore import BrainScoreModel
@@ -104,20 +107,20 @@ class Partner:
 
     def native(self, **kwargs):
         return SessionProtocol(identifier='partner-episode', session_factory=self.session, repetitions=(7,),
-                               input_channels={'observation'}, output_channels={'motor'},
+                               required_input_channels={'observation'}, requested_output_channels={'motor'},
                                **kwargs)
 
-    def external(self, methods=('process',)):
+    def external(self):
         def partner_evaluator(subject, context):
-            # The external evaluator owns its loop, resets and scoring.
-            env = self.environment
-            row, total, reason = env.reset(seed=7), 0, None
-            while reason is None:
-                total += int(subject.process(row)['motor'])
-                row, reason = env.step({'motor': 0})
-            return {'score': total}
+            # The external evaluator owns its loop, resets and scoring. It runs
+            # the episode as one session and records it with observed.
+            with context.repetition('partner-episode'), self.session(Repetition('default', 7)) as session:
+                with observed(session, context):
+                    subject.participate(session)
+            return {'score': sum(int(event.payload) for event in session.emitted
+                                 if event.channel == 'motor')}
         return CallableProtocol(identifier='partner-evaluator', evaluate=partner_evaluator,
-                                methods=methods)
+                                repetitions=('partner-episode',))
 
     def untouched(self):
         return self.environment.resets == self.environment.steps == self.calls == 0
@@ -143,11 +146,10 @@ def test_valid_declarations_run(tmp_path, protocol):
 
 
 @pytest.mark.parametrize('case, error', [
-    ('missing channel', ValueError),
+    ('missing channel', CompatibilityError),
     ('missing tool provider', ValueError),
     ('unknown target', ValueError),
     ('wrong tool order', ValueError),
-    ('missing method', ValueError),
     ('existing output', FileExistsError),
 ])
 def test_bad_declarations_fail_before_any_work(tmp_path, case, error):
@@ -161,7 +163,6 @@ def test_bad_declarations_fail_before_any_work(tmp_path, case, error):
         'unknown target': lambda: experiment(partner, output, tools=[record, RecordActivity(['nope'])]),
         'wrong tool order': lambda: experiment(partner, output, tools=[
             record, Ablate([Selection(layer='proj')]), RecordActivity(['proj'], when='before', name='before')]),
-        'missing method': lambda: experiment(partner, output, protocol=partner.external(methods=('infer',))),
         'existing output': lambda: experiment(partner, output),
     }[case]()
     if case == 'existing output':

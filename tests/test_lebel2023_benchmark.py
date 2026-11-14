@@ -9,13 +9,19 @@ import numpy as np
 import pytest
 
 from brainscore_core.contract import Subject
-from brainscore.benchmarks._scoring_utils import run_kfold_masks
 from brainscore.benchmarks.lebel2023.benchmark import (
     DEFAULT_DELAYS,
     _delay_within_stories,
-    _ridge_grouped_alpha,
+    _encoding_fit,
     _zscore_per_story,
 )
+from brainscore.metrics.encoding import group_kfold
+
+
+def _shared_penalty_fit(X_train, Y_train, X_test, stories_train, alpha_grid):
+    """The benchmark's fit with a shared penalty: ``(predictions, penalty)``."""
+    predictions, chosen = _encoding_fit(alpha_grid)(X_train, Y_train, X_test, stories_train)
+    return predictions, chosen.shared[0]
 
 pytestmark = pytest.mark.unit
 
@@ -135,7 +141,7 @@ class TestZScore:
 class TestStoryFolds:
     def test_no_story_appears_in_both_train_and_test(self):
         stories = np.repeat([f's{i}' for i in range(10)], 7)
-        for train_mask, test_mask in run_kfold_masks(stories, n_splits=5):
+        for train_mask, test_mask in group_kfold(stories, n_splits=5):
             assert not (train_mask & test_mask).any()
             overlap = set(stories[train_mask]) & set(stories[test_mask])
             assert not overlap
@@ -143,7 +149,7 @@ class TestStoryFolds:
     def test_every_sample_is_tested_exactly_once(self):
         stories = np.repeat([f's{i}' for i in range(10)], 7)
         counts = np.zeros(len(stories), dtype=int)
-        for _, test_mask in run_kfold_masks(stories, n_splits=5):
+        for _, test_mask in group_kfold(stories, n_splits=5):
             counts += test_mask
         assert (counts == 1).all()
 
@@ -155,7 +161,7 @@ class TestGroupedAlphaRidge:
         X = rng.normal(size=(len(stories), 5))
         W_true = rng.normal(size=(5, 3))
         Y = X @ W_true
-        pred, alpha = _ridge_grouped_alpha(
+        pred, alpha = _shared_penalty_fit(
             X, Y, X, stories, alpha_grid=(1e-6, 1e3))
         assert alpha == 1e-6
         assert np.corrcoef(pred[:, 0], Y[:, 0])[0, 1] > 0.99
@@ -167,7 +173,7 @@ class TestGroupedAlphaRidge:
         X = rng.normal(size=(len(stories), 5))
         Y = rng.normal(size=(len(stories), 3))
         grid = (1e-3, 1.0, 1e3)
-        _, alpha = _ridge_grouped_alpha(X, Y, X, stories, alpha_grid=grid)
+        _, alpha = _shared_penalty_fit(X, Y, X, stories, alpha_grid=grid)
         assert alpha in grid
 
 
@@ -177,7 +183,7 @@ class TestScoringEndToEnd:
     The benchmark's __call__ is where the delays, per-story standardisation,
     story-held-out folds and ridge fit are wired together; unit-testing the
     pieces separately leaves that wiring unchecked. A small synthetic assembly
-    and a stub candidate exercise it without the source pickle or model weights.
+    and a stub subject exercise it without the source pickle or model weights.
     """
 
     @staticmethod
@@ -212,32 +218,35 @@ class TestScoringEndToEnd:
             def _data(self):
                 return stim, assembly
 
-            def _model_features(self, candidate, stimulus_set, assembly_):
+            def _model_features(self, subject, stimuli, assembly_):
                 return features
 
         return _Synthetic(identifier='synthetic', n_splits=3, **kwargs)
 
     def test_scores_above_zero_when_bold_is_driven_by_the_features(self):
-        score = self._benchmark(signal=True)(candidate=None)
+        score = self._benchmark(signal=True)(subject=None)
         assert float(score) > 0.1
 
     def test_scores_near_zero_when_bold_is_unrelated(self):
-        score = self._benchmark(signal=False, seed=3)(candidate=None)
+        score = self._benchmark(signal=False, seed=3)(subject=None)
         assert abs(float(score)) < 0.15
 
     def test_score_carries_the_documented_attrs(self):
-        score = self._benchmark()(candidate=None)
-        for key in ('raw', 'mean_r', 'n_targets', 'alphas', 'ceiling', 'error'):
+        score = self._benchmark()(subject=None)
+        for key in ('raw', 'per_vertex_r', 'mean_r', 'n_targets', 'alphas', 'ceiling',
+                    'normalized', 'metric', 'benchmark_version', 'error'):
             assert key in score.attrs, key
         assert len(score.attrs['alphas']) == 3          # one per fold
         assert score.attrs['n_targets'] == 8
 
     def test_reported_value_is_the_median_of_the_per_vertex_correlations(self):
-        score = self._benchmark()(candidate=None)
-        assert np.isclose(float(score), np.median(np.asarray(score.attrs['raw'])))
+        score = self._benchmark()(subject=None)
+        assert np.isclose(float(score), np.median(np.asarray(score.attrs['per_vertex_r'])))
+        assert float(score.attrs['raw']) == float(score)
+        assert score.attrs['normalized'] is False and float(score.attrs['ceiling']) == 1.0
 
     def test_max_targets_subsamples_and_records_the_index(self):
-        score = self._benchmark(n_vertices=8, max_targets=4)(candidate=None)
+        score = self._benchmark(n_vertices=8, max_targets=4)(subject=None)
         assert score.attrs['n_targets'] == 4
         assert len(score.attrs['target_index']) == 4
 
@@ -281,7 +290,7 @@ class TestWideFeaturePath:
     """The dual branch is what large models take; it must be exercised too.
 
     A 27B model contributes 5120 features per delay, far more than there are
-    training rows, so ``_ridge_grouped_alpha`` takes its dual branch. The other
+    training rows, so ``_shared_penalty_fit`` takes its dual branch. The other
     scoring tests use narrow features and never reach it.
     """
 
@@ -292,7 +301,7 @@ class TestWideFeaturePath:
         # p > n after delays, forcing the dual form
         X = rng.normal(size=(n, 200))
         Y = X[:, :4] @ rng.normal(size=(4, 3)) + rng.normal(scale=0.01, size=(n, 3))
-        pred, alpha = _ridge_grouped_alpha(X, Y, X, stories, alpha_grid=(1e-3, 1.0, 1e3))
+        pred, alpha = _shared_penalty_fit(X, Y, X, stories, alpha_grid=(1e-3, 1.0, 1e3))
         assert X.shape[1] > (~np.isin(stories, np.unique(stories)[:1])).sum() // 2
         assert alpha in (1e-3, 1.0, 1e3)
         assert np.corrcoef(pred[:, 0], Y[:, 0])[0, 1] > 0.5
@@ -324,7 +333,7 @@ class _ParticipateOnlyListener(Subject):
         from brainscore_core.streaming import StreamEvent
         from brainscore_core.supported_data_standards.brainio.assemblies import (
             NeuroidAssembly)
-        self.sessions.append(tuple(session.requested_output_channels))
+        self.sessions.append(tuple(session.outputs))
         ids = []
         while (event := session.next_input()) is not None:
             self.seen.append(event.payload)
@@ -352,14 +361,14 @@ class TestModelFeaturesSeam:
                 assert key == 'stimulus_id'
                 return type('C', (), {'values': np.array(ids)})()
 
-        candidate = _ParticipateOnlyListener()
-        assert not hasattr(candidate, 'process')
-        assert not hasattr(candidate, 'start_recording')
+        subject = _ParticipateOnlyListener()
+        assert not hasattr(subject, 'process')
+        assert not hasattr(subject, 'start_recording')
         benchmark = LeBel2023Encoding(identifier='seam')
-        out = benchmark._model_features(candidate, _text_stimuli(ids), _Assembly())
+        out = benchmark._model_features(subject, _text_stimuli(ids), _Assembly())
 
-        assert candidate.sessions == [('neural:language_system',)]
-        assert candidate.seen == [f'words {i}' for i in ids]
+        assert subject.sessions == [('neural:language_system',)]
+        assert subject.seen == [f'words {i}' for i in ids]
         expected = np.repeat(np.arange(4, dtype=np.float32)[:, None], 3, axis=1)
         assert np.array_equal(out, expected)
 
@@ -473,10 +482,10 @@ class TestPoolPredictionsSeam:
         words = _text_stimuli(list(words['stimulus_id']))
         benchmark._word_cached = (words,) + benchmark._word_cached[1:]
 
-        candidate = _ParticipateOnlyListener()
-        assert benchmark._model_features(candidate, 'STIM', assembly) == 'pooled'
+        subject = _ParticipateOnlyListener()
+        assert benchmark._model_features(subject, 'STIM', assembly) == 'pooled'
         # The word rows, not the per-TR set passed in, reach the subject.
-        assert candidate.seen == [f'words {i}' for i in words['stimulus_id']]
+        assert subject.seen == [f'words {i}' for i in words['stimulus_id']]
 
 
 class TestDeclarations:
@@ -516,7 +525,7 @@ class TestDeclarations:
 
         class Listener(_ParticipateOnlyListener):
             def participate(self, session):
-                self.sessions.append(tuple(session.requested_output_channels))
+                self.sessions.append(tuple(session.outputs))
                 sent = []
                 while (event := session.next_input()) is not None:
                     sent.append(event.meta['stimulus_id'])
