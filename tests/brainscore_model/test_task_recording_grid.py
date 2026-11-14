@@ -76,12 +76,17 @@ def _sessions(model, stimuli, regions, monkeypatch, plan, task=TASK):
 
 # ── The common grid: five wrappers, one or two presentations, passive batch 1 or 3,
 #    one or two regions, both region plans, a one-pass answer or a generated one ──
+#
+# A task shows one stimulus per forward pass. The claim is exact equality for the same
+# batch composition, so each passive pass also holds one stimulus: batch 3 runs with one
+# presentation. Two stimuli in one passive pass can differ from two single passes in the
+# last float32 bit, because a BLAS library may choose another kernel for another batch
+# shape (measured on Linux CI: text and vlm_vision, at most 1.2e-7).
 
 @pytest.mark.parametrize('answer', ['one pass', 'generated'])
 @pytest.mark.parametrize('plan', ['all', 'one'])
 @pytest.mark.parametrize('regions', [('V4',), ('V1', 'IT')])
-@pytest.mark.parametrize('batch', [1, 3])
-@pytest.mark.parametrize('count', [1, 2])
+@pytest.mark.parametrize('count, batch', [(1, 1), (2, 1), (1, 3)])
 @pytest.mark.parametrize('kind', tiny_wrappers.KINDS)
 def test_a_task_recording_of_the_same_input_equals_the_passive_recording(tmp_path, monkeypatch, kind, count, batch, regions,
                                                         plan, answer):
