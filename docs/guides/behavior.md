@@ -80,7 +80,37 @@ A **reported** answer is the model's reply, parsed. An **implied** measure is re
 | **Likelihood** | the model scores each label as its reply, without generating | choice, probabilities (implied) | `likelihood` |
 | **Readout** | a classifier or ridge regression on one layer, fitted on `fitting_stimuli` | choice, probabilities, rating (implied) | `behavioral_readout_layer` and an extractor |
 
-Which path answers is a property of the model, not of the task. When only one of its paths can give an answer, that path gives it. When several can give the same answer (for example a reply and a likelihood both give a choice), the registration states which one owns it, per answer channel: `capability_config={'behavior-sessions': {'behavior:choice': 'generation', 'behavior:probabilities': 'likelihood'}}`. A model with several paths for one answer and no stated owner is refused when it is built. When the owner cannot serve a task setting (for example raw scores, which only the likelihood gives) and one other path can, that path answers. To compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
+Which path answers is a property of the model, not of the task. When only one of its paths can give an answer, that path gives it. When several can give the same answer (for example a reply and a likelihood both give a choice), the registration states which one owns it, per answer channel:
+
+```python
+def answer(stimulus_row, instruction, label_set):   # answers a legacy task
+    return 'real'
+
+
+def likelihood(prompt, candidates):                 # the log probability of each option
+    return {candidate: 0.0 if candidate == 'real' else -2.0 for candidate in candidates}
+
+
+owned = BrainScoreModel(
+    identifier='owned-parts', in_channels={'text'},
+    answer=answer, reply=lambda prompt: 'real', likelihood=likelihood,
+    capability_config={'behavior-sessions': {
+        'behavior': 'generation',                # bare behavior: the answer to a legacy task
+        'behavior:choice': 'generation',         # the choice of a Choice response: another channel
+        'behavior:probabilities': 'likelihood'}})
+
+legacy = stimulus_session(test_stimuli, ['behavior'], TaskContext(
+    task_type='probabilities', instruction='Is this a real word?', label_set=['real', 'pseudo']))
+owned.participate(legacy)
+choice = stimulus_session(test_stimuli, ['behavior:choice', 'behavior:probabilities'], TaskContext(
+    instruction='Is this a real word?', response=Choice(['real', 'pseudo'], probabilities=True)))
+owned.participate(choice)
+print(legacy.collect('behavior').attrs['measure']['source'],          # answer
+      choice.collect('behavior:choice').attrs['measure']['source'],   # reply
+      choice.collect('behavior:probabilities').attrs['measure']['source'])   # likelihood
+```
+
+Bare `behavior` is the answer channel of a legacy task; `behavior:choice` is the choice of a `Choice` response. They are different channels, and neither is shorthand for the other: a model whose answer and readout parts can both answer a legacy task states an owner for `behavior` as well. A model with several paths for one answer and no stated owner is refused when it is built. The owner answers its channel. When a task form excludes the owner (for example raw scores, which only the likelihood gives, or a legacy task without an instruction, which only the readout can answer) and exactly one other path can serve it, that path answers; when two or more paths that do not own the channel could serve it, the session is refused before any compute. A choice from the likelihood with probabilities from the readout (or the reverse) cannot come from one session and is refused; the choice alone still runs. To compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
 
 One benchmark can take models of both kinds, as long as it fills in both the instruction and `fitting_stimuli`. Choices, ratings and implied probabilities come from either kind. Reported confidence and written answers need a model that replies; a readout-only model refuses those sessions before any compute (`ExecutionNotFeasibleError`, an error of `score`).
 

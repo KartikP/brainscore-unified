@@ -180,11 +180,19 @@ class BrainScoreModel(UnifiedModel):
         :param capability_config: settings for capabilities, keyed by the
             capability identifier; a capability reads it as
             ``subject.capability_config``. Under ``'behavior-sessions'``: the
-            part that owns each answer output several parts can give, for
-            example ``{'behavior:choice': 'generation', 'behavior:probabilities':
-            'likelihood'}`` (parts: ``generation`` is ``answer``/``reply``,
-            ``likelihood``, ``readout``). An output only one part can give needs
-            no owner; one several parts can give and no owner is refused here.
+            part that owns each answer channel several parts can give, for
+            example ``{'behavior': 'generation', 'behavior:choice': 'generation',
+            'behavior:probabilities': 'likelihood'}`` (parts: ``generation`` is
+            ``answer``/``reply``, ``likelihood``, ``readout``). Bare
+            ``behavior`` is the answer to a legacy task (``task_type`` with
+            ``label_set``); ``behavior:choice`` is the choice of a
+            ``Choice`` response. They are different channels: neither is
+            shorthand for the other. A channel only one part can give needs no
+            owner; one several parts can give and no owner is refused here.
+            The owner answers its channel. When a task form excludes it (for
+            example raw scores, which only a likelihood gives) and exactly one
+            other part can serve that form, that part answers; when two or more
+            can, the session is refused before any compute.
         """
         if memory not in (None, 'trial_history'):
             raise ValueError("memory must be None or 'trial_history'")
