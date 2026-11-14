@@ -374,6 +374,42 @@ class TestIndexValidation:
         bs.reset()
 
 
+# ── Kind validation (fail at apply, not mid-forward) ─────────────────
+
+class TestKindValidation:
+
+    @pytest.mark.parametrize('kind', ['replace', 'noise'])
+    def test_an_activation_change_of_an_unknown_kind_raises_at_apply(self, model_with_ablation, kind):
+        bs, net = model_with_ablation
+        x = torch.ones(1, 4)
+        baseline = net(x).detach().clone()
+        with pytest.raises(ValueError, match="'zero', 'scale' or 'drive'"):
+            apply_state_change(bs, StateChange(
+                kind='ablation', target=Selection(layer='fc1'),
+                perturbation=Perturbation(kind=kind, replacement=torch.zeros(1, 8))))
+        assert torch.equal(net(x).detach(), baseline)
+
+    def test_a_head_change_of_an_unknown_kind_raises_at_apply(self):
+        class Attention(torch.nn.Module):
+            head_dim = 2
+
+            def __init__(self):
+                super().__init__()
+                self.o_proj = torch.nn.Linear(4, 4)
+
+            def forward(self, x):
+                return self.o_proj(x)
+        net = torch.nn.Sequential(Attention())
+        bs = BrainScoreModel(identifier='heads-test', model=net, region_layer_map={},
+                             intervention=build_pytorch_ablation_fn(net))
+        x = torch.ones(1, 4)
+        baseline = net(x).detach().clone()
+        with pytest.raises(ValueError, match="'zero', 'scale', 'drive' or 'replace'"):
+            apply_state_change(bs, StateChange(kind='attention_heads', target=Selection(layer='0', indices=[0]),
+                                               perturbation=Perturbation(kind='noise')))
+        assert torch.equal(net(x).detach(), baseline)
+
+
 def test_perturbation_positional_api_preserved():
     # 'amount' (added for kind='drive') must not shift the (kind, scale,
     # replacement) positional order of the public dataclass.

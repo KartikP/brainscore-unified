@@ -2,7 +2,7 @@
 
 Lives in ``unified`` (not ``core``) because it depends on ``torch``.
 :func:`build_pytorch_ablation_fn` turns a torch module into an intervention
-part that installs a forward hook to zero, scale or replace units at a layer.
+part that installs a forward hook to zero, scale or drive units at a layer.
 The hook is installed when the subject receives the intervention and removed
 when the intervention is undone by its handle, or by ``reset()``. Each change
 also has an on/off switch, so a readout can be fitted on the intact network
@@ -183,12 +183,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     return torch.zeros_like(tensor)
                 elif kind == 'scale':
                     return tensor * scale
-                elif kind == 'drive':
-                    return tensor + _amount_like(tensor)
-                else:
-                    raise ValueError(
-                        f"Unsupported Perturbation kind for whole-layer "
-                        f"ablation: {kind!r}. Expected 'zero', 'scale', or 'drive'.")
+                return tensor + _amount_like(tensor)   # 'drive': the kind is checked at apply
             # Use the same coordinates as recording; never reinterpret indices.
             # Some devices (MPS) silently ignore out-of-range indices; fail everywhere.
             if max(indices) >= view.shape[axis]:
@@ -204,13 +199,9 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                 vals = modified.index_select(axis, idx) * scale
                 # in-place scatter back
                 modified.index_copy_(axis, idx, vals)
-            elif kind == 'drive':
+            else:   # 'drive': the kind is checked at apply
                 vals = modified.index_select(axis, idx) + _amount_like(tensor)
                 modified.index_copy_(axis, idx, vals)
-            else:
-                raise ValueError(
-                    f"Unsupported Perturbation kind for index-ablation: "
-                    f"{kind!r}. Expected 'zero', 'scale', or 'drive'.")
             return modified.reshape(tensor.shape)
 
         return pre_hook if split_site(selection.layer)[1] == 'input' else hook
@@ -315,6 +306,10 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
     def _change_heads(state_change):
         """Silence or scale attention heads: ``target.layer`` is the attention module,
         ``indices`` the heads. Edits each head's slice of the output projection's input."""
+        if state_change.perturbation.kind not in ('zero', 'scale', 'drive', 'replace'):
+            raise ValueError(
+                f"Perturbation(kind={state_change.perturbation.kind!r}) cannot change attention heads: "
+                "kind='attention_heads' takes 'zero', 'scale', 'drive' or 'replace'.")
         attention = _resolve_layer(state_change.target.layer)
         head_dim = getattr(attention, 'head_dim', None)
         projection = getattr(attention, 'o_proj', None) or getattr(attention, 'out_proj', None)
@@ -347,6 +342,11 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         if state_change.kind == 'attention_heads':
             return _change_heads(state_change)
         path, site = split_site(state_change.target.layer)
+        if state_change.perturbation.kind not in ('zero', 'scale', 'drive'):
+            raise ValueError(
+                f"Perturbation(kind={state_change.perturbation.kind!r}) cannot change the activity of "
+                f"{state_change.target.layer!r}: an activation change takes 'zero', 'scale' or 'drive' "
+                "('replace' edits a parameter with StateChange(kind='weights')).")
         layer = _resolve_layer(path)
         perturbation = _normalized(state_change)
         # Validate indices at apply-time, not cryptically mid-forward-pass.
