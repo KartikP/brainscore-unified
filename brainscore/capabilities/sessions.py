@@ -17,7 +17,7 @@ import pandas as pd
 from .base import Capability
 from .._model.dispatch import act
 from .._model.intervention import INTERVENTION_CHANNELS
-from .._model.recording import records_while_answering, region_selector
+from .._model.recording import open_recordings, records_while_answering, region_selector, trial_regions
 from .registry import register_capability
 from brainscore_core import streaming_helpers as _drivers
 from brainscore_core.streaming import StreamEvent, parse_channel
@@ -200,7 +200,7 @@ class _PolicySteps:
         self._stack = ExitStack()
 
     def __enter__(self) -> '_PolicySteps':
-        recordings = self.subject._behavioral._open_recordings(None, self.layers)
+        recordings = open_recordings(self.subject, None, self.layers)
         self.live = {modality: self._stack.enter_context(recording)
                      for modality, recording in recordings.items()}
         return self
@@ -218,8 +218,7 @@ class _PolicySteps:
             return outputs
         trial = {modality: recording.take(None) for modality, recording in self.live.items()}
         stimuli = pd.DataFrame({'stimulus_id': [f'step_{self.step}']})
-        for region, assembly in self.subject._behavioral._trial_regions(
-                [trial], stimuli, self.layers).items():
+        for region, assembly in trial_regions(self.subject, [trial], stimuli, self.layers).items():
             self.session.respond(StreamEvent(
                 channel=f'neural:{region}', payload=assembly, t_ms=float(self.step),
                 meta={'driver': 'interact', 'record': region, 'during': 'policy'}))

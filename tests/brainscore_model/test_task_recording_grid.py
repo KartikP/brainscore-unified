@@ -642,7 +642,7 @@ def test_a_task_recording_keeps_the_axis_coordinates_of_a_custom_extractor(monke
 @pytest.mark.parametrize('added', [('time_bin', [1, 2]), ('presentation', [1])])
 @pytest.mark.parametrize('later', [True, False])
 def test_a_coordinate_of_one_trial_only_is_refused(added, later):
-    from brainscore._model.behavioral import _trials_to_assembly
+    from brainscore._model.recording import _trials_to_assembly
     stimuli = StimulusSet({'stimulus_id': ['a', 'b']})
     plain = _Clocked._one(['?'], [10.0, 20.0])
     marked = plain.assign_coords(phase=added)
