@@ -284,3 +284,34 @@ def test_a_defect_hidden_behind_a_mismatch_still_raises():
     with pytest.raises(ValueError, match='output_inputs'):
         brainscore.score(subject, _Benchmark(), check_mem=False)
     assert subject.calls == []
+
+
+# ── An unknown channel never hides a malformed one ───────────────────────────
+
+class _DeclaredBenchmark(_Benchmark):
+    def __init__(self, inputs=('vision:image',), outputs=('neural:IT',)):
+        super().__init__()
+        self.required_input_channels = frozenset(inputs)
+        self.requested_output_channels = frozenset(outputs)
+
+
+@pytest.mark.parametrize('subject_in, subject_out, benchmark_in, benchmark_out', [
+    ({'aardvark', 'vision'}, {'neural:IT'}, {'vision:image'}, {'neural:IT'}),
+    ({'vision:image'}, {'aardvark', 'text'}, {'vision:image'}, {'neural:IT'}),
+    ({'vision:image'}, {'neural:IT'}, {'aardvark', 'vision'}, {'neural:IT'}),
+    ({'vision:image'}, {'neural:IT'}, {'vision:image'}, {'aardvark', 'text'}),
+], ids=['subject-inputs', 'subject-outputs', 'benchmark-inputs', 'benchmark-outputs'])
+def test_a_malformed_channel_after_an_unknown_one_raises(subject_in, subject_out,
+                                                         benchmark_in, benchmark_out):
+    subject = _Recorder(subject_in, subject_out)
+    benchmark = _DeclaredBenchmark(benchmark_in, benchmark_out)
+    with pytest.raises(ValueError):
+        brainscore.score(subject, benchmark, check_mem=False)
+    assert subject.calls == [] and benchmark.runs == 0
+
+
+def test_an_unknown_channel_alone_is_na():
+    result = brainscore.score(_Recorder({'aardvark', 'vision:image'}, {'neural:IT'}),
+                              _DeclaredBenchmark(), check_mem=False)
+    assert result.attrs['status'] == 'N/A'
+    assert 'aardvark' in result.attrs['reason']
