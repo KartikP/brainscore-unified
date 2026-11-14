@@ -49,7 +49,8 @@ class NeuralSessions(Capability):
             # The session's task decides what the subject does (rules 4.1, 4.5):
             # record during the task; the answers are not sent. A subject with
             # no part for this task cannot take part: the part choice in
-            # ``start_task`` raises CompatibilityError before any compute (N/A).
+            # ``start_task`` raises CompatibilityError before any compute. During
+            # a run of ``score()`` this is an error, not an N/A result.
             drive_behavior_and_neural_session(subject, session)
             return
         # A passive session records activity even after a task was configured.

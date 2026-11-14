@@ -324,8 +324,10 @@ class BehavioralReadout:
         ``answer=`` (with an instruction and labels) or by the readout (with
         fitting stimuli).
 
-        A task that no part of the model can answer raises ``CompatibilityError``:
-        the pair is not applicable. Sessions decide applicability with this choice.
+        A task that no part of the model can answer raises ``CompatibilityError``
+        before any compute. Sessions refuse with this choice; during a run of
+        ``score()`` the refusal is an error, not an N/A result (only the
+        declaration check before the run gives N/A).
         """
         from brainscore_core.compatibility import CompatibilityError
         from brainscore_core.responses import Choice, Scale
