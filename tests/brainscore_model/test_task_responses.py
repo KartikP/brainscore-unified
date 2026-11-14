@@ -205,7 +205,7 @@ def test_implied_reaction_times_rise_for_close_calls(link):
     rt = _ask(model, task, ['behavior:rt']).collect('behavior:rt')
     assert rt.attrs['response'] == response_record(
         'behavior:rt', 'link', source_format='behavior:probabilities',
-        parameters={'link': link, 'source_method': 'likelihood'})
+        parameters={'link': link, 'source_method': 'likelihood', 'units': 'monotone'})
     fast, slow = rt.values[0], rt.values[3]                   # a clear call, a near tie
     assert slow > fast
 

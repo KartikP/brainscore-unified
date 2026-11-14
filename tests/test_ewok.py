@@ -411,13 +411,16 @@ class _ParticipateOnlyReader(Subject):
         while (event := session.next_input()) is not None:
             options = list(session.stimuli.loc[event.meta['stimulus_index'], 'options'])
             scores = self.provider(Prompt((('text', event.payload),)), options)
+            log = self.scale == 'log'
             session.respond(StreamEvent('behavior:probabilities', BehavioralAssembly(
-                [[scores[option] for option in options]],
+                np.array([[scores[option] for option in options]],
+                         dtype=np.float64 if log else np.float32),
                 coords={'stimulus_id': ('presentation', [event.meta['stimulus_id']]),
                         'choice': [0, 1]}, dims=['presentation', 'choice'],
                 attrs={'response': response_record(
-                    'behavior:probabilities', 'likelihood', parameters={'scale': self.scale},
-                    category='model-derived' if self.scale == 'log' else 'behavioral')}),
+                    'behavior:probabilities', 'likelihood',
+                    parameters={'scale': 'log'} if log else {},
+                    category='model-derived' if log else 'behavioral')}),
                 event.t_ms, dict(event.meta)))
 
     def reset(self):
@@ -443,10 +446,12 @@ class _ParticipateOnlyChooser(Subject):
         labels = list(session.task.response.labels)
         while (event := session.next_input()) is not None:
             chosen = native_choice(Prompt((('text', event.payload),)))
-            values = [[1.0 if label == chosen else 0.0 for label in labels]]
+            values = np.array([[1.0 if label == chosen else 0.0 for label in labels]],
+                              dtype=np.float32)
             session.respond(StreamEvent('behavior:choice', BehavioralAssembly(
                 values, coords={'stimulus_id': ('presentation', [event.meta['stimulus_id']]),
-                                'choice': labels}, dims=['presentation', 'choice']),
+                                'choice': labels}, dims=['presentation', 'choice'],
+                attrs={'response': response_record('behavior:choice', 'external')}),
                 event.t_ms, dict(event.meta)))
 
     def reset(self):

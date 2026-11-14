@@ -4,9 +4,10 @@
    replace, bit for bit. The old ``softmax`` is read from the base commit
    (``git show 7bc821e:brainscore/_model/answers.py``); the old choice was
    ``probabilities.argmax(1)`` (likelihood) and ``values.argmax(1)``
-   (readout). Finite rows (with ties and impossible options) match exactly.
-   A row with a non-finite probability had a choice before (the position of
-   its first NaN) and has none now (invalid): the documented change.
+   (readout). Finite rows (with ties) match exactly, as values and dtypes.
+   A source row with a non-finite value (NaN, +inf, -inf) had a choice
+   before and is invalid now, as is every conversion of it: the one stated
+   change (decision D3).
 2. A derived answer of a BrainScoreModel always carries a record that names
    its conversion, parameters and source format.
 The core version (the functions alone) is core
@@ -47,25 +48,28 @@ def _inputs():
     ties = np.repeat(rng.normal(size=(50, 1)), 3, axis=1)
     ties[::2, 2] -= 1.0                           # ties between the first two options only
     ties[1::4, 0] -= 1.0                          # ties between the last two options only
-    impossible = rng.normal(size=(50, 4))
-    impossible[:, 1] = -np.inf                    # an option with probability 0
-    return finite + [ties, impossible]
+    return finite + [ties]
 
 
-NON_FINITE = np.array([[np.nan, -1.0], [-1.0, np.nan], [np.inf, 0.0], [-np.inf, -np.inf]])
+# Rows with a non-finite value: NaN, +inf, -inf (an option of probability 0 before).
+NON_FINITE = np.array([[np.nan, -1.0], [-1.0, np.nan], [np.inf, 0.0], [-np.inf, -np.inf],
+                       [-np.inf, -1.0], [-1.0, -np.inf]])
 
 
-@pytest.mark.parametrize('index', range(8))
+@pytest.mark.parametrize('index', range(7))
 def test_likelihood_conversions_match_the_replaced_code_bit_for_bit(index):
     logp = _inputs()[index]
     old_probabilities = _old_softmax()(logp)
-    np.testing.assert_array_equal(softmax(logp), old_probabilities)
+    probabilities, valid = softmax(logp)
+    np.testing.assert_array_equal(probabilities, old_probabilities)
+    assert probabilities.dtype == old_probabilities.dtype
+    assert valid.all()
     indices, valid = softmax_argmax(logp)
     assert valid.all()
     np.testing.assert_array_equal(indices, old_probabilities.argmax(1))
 
 
-@pytest.mark.parametrize('index', range(8))
+@pytest.mark.parametrize('index', range(7))
 def test_readout_argmax_matches_the_replaced_code_bit_for_bit(index):
     values = _old_softmax()(_inputs()[index])     # probability rows, as a readout gives
     indices, valid = argmax(values)
@@ -73,12 +77,17 @@ def test_readout_argmax_matches_the_replaced_code_bit_for_bit(index):
     np.testing.assert_array_equal(indices, np.asarray(values).argmax(1))
 
 
-def test_non_finite_rows_have_no_choice_now_and_had_one_before():
+def test_stated_change_a_non_finite_source_row_is_now_invalid():
+    """The one stated change against 7bc821e (decision D3): a source row with a NaN,
+    +inf or -inf value is invalid, and so is every conversion of it. Before, it got a
+    choice (the first NaN position, or the most probable finite option)."""
     old = _old_softmax()(NON_FINITE)
-    np.testing.assert_array_equal(softmax(NON_FINITE), old)   # same probabilities, NaN rows
-    assert old.argmax(1).tolist() == [0, 0, 0, 0]            # old: a choice at the first NaN
+    probabilities, valid = softmax(NON_FINITE)
+    np.testing.assert_array_equal(probabilities, old)        # the values are computed as before
+    assert old.argmax(1).tolist() == [0, 0, 0, 0, 1, 0]      # old: every row had a choice
+    assert not valid.any()
     indices, valid = softmax_argmax(NON_FINITE)
-    assert indices.tolist() == [-1, -1, -1, -1] and not valid.any()   # new: invalid
+    assert indices.tolist() == [-1] * 6 and not valid.any()  # new: no choice, invalid
 
 
 def test_a_likelihood_choice_is_the_same_choice_as_before():
@@ -94,6 +103,7 @@ def test_a_likelihood_choice_is_the_same_choice_as_before():
     np.testing.assert_array_equal(choice.values.argmax(1), old.argmax(1))   # ties: the first
     np.testing.assert_array_equal(session.collect('behavior:probabilities').values,
                                   old.astype(np.float32))
+    np.testing.assert_array_equal(choice.values, np.eye(2, dtype=np.float32)[old.argmax(1)])
 
 
 def test_every_derived_answer_names_its_conversion():

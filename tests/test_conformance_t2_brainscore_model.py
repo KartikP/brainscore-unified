@@ -45,7 +45,7 @@ def test_a_missing_reply_is_missing_for_every_reply_format(response, channel):
 
 def test_a_conversion_of_a_non_finite_likelihood_row_stays_invalid():
     scores = {'a': {'cat': -1.0, 'dog': -2.0}, 'b': {'cat': np.nan, 'dog': -1.0},
-              'c': {'cat': -np.inf, 'dog': -np.inf}, 'd': {'cat': -3.0, 'dog': -1.0}}
+              'c': {'cat': -np.inf, 'dog': -1.0}, 'd': {'cat': -3.0, 'dog': -1.0}}   # c: -inf
     model, _ = _model(scores=scores)
     session = _ask(model, TaskContext(instruction='Which?',
                                       response=Choice(['cat', 'dog'], probabilities=True)),

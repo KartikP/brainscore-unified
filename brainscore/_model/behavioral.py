@@ -479,18 +479,20 @@ class BehavioralReadout:
                     values, stimuli, response_record('behavior:rating', 'readout'))
             else:
                 # The readout's own column order, as before: ties go to its first column.
-                indices, chose = argmax(np.asarray(values.values))
+                source = np.asarray(values.values)
+                indices, chose = argmax(source)
                 options = values['choice'].values
                 outputs['behavior:choice'] = answers.one_hot(
                     [str(options[i]) if ok else None for i, ok in zip(indices, chose)],
                     list(chose), stimuli, row_labels, axis, response_record(
                         'behavior:choice', 'readout', conversion='argmax',
                         source_format='behavior:probabilities',
-                        parameters={'tie': 'first', 'option_order': 'readout'}))
+                        parameters={'tie': 'first', 'option_order': 'readout'}),
+                    raw=answers.source_rows(source),
+                    errors=answers.conversion_errors(chose))
                 if self.probability_source == 'readout':
-                    outputs['behavior:probabilities'] = answers.with_record(
-                        answers.in_order(values, labels),
-                        response_record('behavior:probabilities', 'readout'))
+                    outputs['behavior:probabilities'] = answers.readout_probabilities(
+                        answers.in_order(values, labels), stimuli)
         else:
             score_first = path == 'generation' and self.probability_source == 'likelihood'
             remember = owner._memory == 'trial_history'
@@ -533,15 +535,16 @@ class BehavioralReadout:
                 outputs['behavior:choice'] = answers.one_hot(
                     chosen, list(chose), stimuli, row_labels, axis, response_record(
                         'behavior:choice', 'likelihood', conversion='softmax_argmax',
-                        source_format=LOG_PROBABILITIES))
+                        source_format=LOG_PROBABILITIES),
+                    raw=answers.source_rows(logp), errors=answers.conversion_errors(chose))
                 if response.raw_scores:
                     outputs['behavior:probabilities'] = answers.implied_array(
-                        logp, stimuli, axis, response_record(
+                        logp, None, stimuli, axis, response_record(
                             'behavior:probabilities', 'likelihood', category='model-derived',
                             parameters={'scale': 'log'}))
                 elif self.probability_source == 'likelihood':
                     outputs['behavior:probabilities'] = answers.implied_array(
-                        softmax(logp), stimuli, axis, _softmax_record())
+                        *softmax(logp), stimuli, axis, _softmax_record())
             elif isinstance(response, Text):
                 parsed = [response.parse(reply) for reply in replies]
                 outputs['behavior:text'] = answers.texts(parsed, replies, stimuli)
@@ -564,12 +567,12 @@ class BehavioralReadout:
                         raw=replies)
                 if score_first:
                     outputs['behavior:probabilities'] = answers.implied_array(
-                        softmax(answers.score_rows(scores, row_labels)), stimuli, axis,
+                        *softmax(answers.score_rows(scores, row_labels)), stimuli, axis,
                         _softmax_record())
                 elif self.probability_source == 'readout':
-                    outputs['behavior:probabilities'] = answers.with_record(answers.in_order(
-                        self.readout_classifier.predict_proba(self.extract_behavioral_features(stimuli)),
-                        labels), response_record('behavior:probabilities', 'readout'))
+                    outputs['behavior:probabilities'] = answers.readout_probabilities(
+                        answers.in_order(self.readout_classifier.predict_proba(
+                            self.extract_behavioral_features(stimuli)), labels), stimuli)
         if isinstance(response, Choice) and response.reaction_time:
             outputs['behavior:rt'] = answers.reaction_time(outputs['behavior:probabilities'],
                                                            response.reaction_time, stimuli)
