@@ -3,6 +3,7 @@
 GridGameEnvironment declares observations/actions for an EnvironmentSource.
 The oracle reads privileged _state; visual policies use the rendered frame.
 """
+import zlib
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import numpy as np
@@ -212,26 +213,23 @@ def random_action_policy(seed: int = 0) -> Callable:
 
 
 def _seeded_random_policy(seed: int, n_actions: Callable) -> Callable:
-    """A uniform-random policy whose draws repeat from run to run.
+    """A uniform-random policy whose draws depend only on the seed and the episode.
 
-    One generator, seeded once, draws the actions of every step and episode.
-    ``reset()`` runs when an episode begins; the first view of the episode then
-    sets the generator to the state it had when that view first began an
-    episode. The first run over a set of episodes draws one continuous stream;
-    a later run over the same episodes, by the same subject or by a new one
-    with the same seed, draws the same actions.
+    ``reset()`` runs when an episode begins. The first view of the episode then
+    seeds a new generator from ``seed`` and a checksum of that view; the
+    generator draws every action of the episode. An episode therefore gets the
+    same actions alone, after other episodes, or after a full subject reset.
     """
-    rng = np.random.RandomState(seed)
-    starts, begun = {}, [False]
+    state = {'rng': None, 'begun': True}
 
     def policy(row) -> Dict[str, int]:
-        if begun[0]:
-            begun[0] = False
-            view = np.asarray(row['observation']['frame']).tobytes()
-            rng.set_state(starts.setdefault(view, rng.get_state()))
-        return {'motor': int(rng.randint(0, n_actions(row)))}
+        if state['begun']:
+            state['begun'] = False
+            view = np.ascontiguousarray(row['observation']['frame']).tobytes()
+            state['rng'] = np.random.RandomState([seed, zlib.crc32(view)])
+        return {'motor': int(state['rng'].randint(0, n_actions(row)))}
 
-    policy.reset = lambda: begun.__setitem__(0, True)
+    policy.reset = lambda: state.__setitem__('begun', True)
     return policy
 
 

@@ -56,7 +56,29 @@ def test_a_seeded_null_gives_one_score_each_time():
     scores = [float(bench(subject)) for _ in range(2)]
     scores.append(float(bench(policy_model(random_action_policy(0), 'random-again'))))
     assert scores == [scores[0]] * 3
-    assert scores[0] * float(bench.ceiling) == bench._random_floor == 0.2
+    assert scores[0] * float(bench.ceiling) == bench._random_floor == pytest.approx(8 / 15)
+
+
+def test_a_seeded_null_gives_an_episode_the_same_actions_after_any_other_episode():
+    from brainscore.harnesses.grid_game import GridGameEnv, play_game
+
+    def episode(seed):
+        return GridGameEnv(size=5, seed=seed, max_steps=20)
+
+    def actions(subject, seed):
+        return play_game(subject, episode(seed))['actions']
+
+    alone = actions(policy_model(random_action_policy(0), 'b-alone'), 501)
+    subject = policy_model(random_action_policy(0), 'a-then-b')
+    actions(subject, 500)
+    a_then_b = actions(subject, 501)
+    subject = policy_model(random_action_policy(0), 'b-then-a')
+    b_then_a = actions(subject, 501)
+    actions(subject, 500)
+    subject.reset()
+    after_reset = actions(subject, 501)
+    assert alone == a_then_b == b_then_a == after_reset
+    assert actions(policy_model(random_action_policy(1), 'other-seed'), 501) != alone
 
 
 def test_a_seeded_null_still_draws_new_actions_across_steps_and_episodes():
