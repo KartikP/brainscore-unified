@@ -33,6 +33,8 @@ import warnings
 from pathlib import Path
 from typing import Callable, Optional, Sequence, Tuple, Union
 
+from brainscore_core.compatibility import ExecutionNotFeasibleError
+
 # Stimulus-set columns we know how to read, in priority order. Mirrors the
 # column conventions the wrappers use elsewhere; vision wins over text.
 IMAGE_COLUMNS = ('image_file_name', 'image_path', 'image_file', 'filepath',
@@ -110,7 +112,7 @@ def _anthropic_settings(settings) -> dict:
     if temperature is not None and float(temperature) != _ANTHROPIC_DEFAULT_TEMPERATURE:
         refused.append('temperature')
     if refused:
-        raise ValueError(
+        raise ExecutionNotFeasibleError(
             f'The Anthropic API refuses the task settings {refused}: it has no seed, and '
             'current Claude models reject temperature and top_p. Only a temperature of 1.0, '
             "the API's default, can run, and it is not sent.")
@@ -359,7 +361,7 @@ def _reply_messages(prompt) -> Tuple[Optional[str], list]:
                 media, data = _encode_image(value)
                 content.append({'type': 'image', 'media_type': media, 'data': data})
             else:
-                raise NotImplementedError(f'hosted models here cannot be shown a {kind!r} part')
+                raise ExecutionNotFeasibleError(f'hosted models here cannot be shown a {kind!r} part')
         return system, content
 
     messages = []

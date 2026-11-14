@@ -7,6 +7,7 @@ ever hitting a live API.
 import pandas as pd
 import pytest
 
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
     build_api_generation_fn, _parse_label, _find_column, _build_instruction,
     IMAGE_COLUMNS, TEXT_COLUMNS,
@@ -446,7 +447,7 @@ class TestApiReply:
         from brainscore_core.responses import Prompt, Text
         monkeypatch.setitem(sys.modules, 'anthropic', None)   # a request would fail differently
         reply = build_api_reply('anthropic', 'claude-x')
-        with pytest.raises(ValueError, match='Anthropic API refuses'):
+        with pytest.raises(ExecutionNotFeasibleError, match='Anthropic API refuses'):
             reply(Prompt((('text', 'x'),), response=Text(**settings)))
 
     def test_anthropic_default_temperature_is_not_sent(self, monkeypatch):
@@ -515,7 +516,7 @@ class TestApiReply:
         from brainscore.model_helpers.api_behavioral import build_api_reply
         from brainscore_core.responses import Prompt
         provider, calls = _recording_provider()
-        with pytest.raises(NotImplementedError, match='video'):
+        with pytest.raises(ExecutionNotFeasibleError, match='video'):
             build_api_reply(provider, 'm-1')(Prompt((('video', '/clip.mp4'),)))
         assert calls == []
 

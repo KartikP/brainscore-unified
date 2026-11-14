@@ -20,6 +20,7 @@ scoring is the prompt pass, as it is for a reply.
 """
 from typing import Mapping, Optional, Sequence
 
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.responses import Choice, Text
 
 
@@ -88,10 +89,11 @@ def _plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> d
     import torch
     texts = [content for kind, content in prompt.parts if kind == 'text']
     if len(texts) != len(prompt.parts) or len(texts) != 1:
-        raise ValueError('Plain-text scoring takes exactly one text part; got '
-                         f'{[kind for kind, _ in prompt.parts]}')
+        raise ExecutionNotFeasibleError('Plain-text scoring takes exactly one text part; got '
+                                        f'{[kind for kind, _ in prompt.parts]}')
     if prompt.history:
-        raise ValueError('Plain-text scoring scores the text alone; it cannot show earlier trials')
+        raise ExecutionNotFeasibleError(
+            'Plain-text scoring scores the text alone; it cannot show earlier trials')
     text = texts[0]
     device = next(model.parameters()).device
     context = tokenizer(text, add_special_tokens=False)['input_ids']
@@ -162,7 +164,7 @@ def chat_inputs(model, processor, prompt, template=None):
                 metadata.append(clip_metadata(frames, fps))
                 content.append({'type': 'video'})
             else:
-                raise NotImplementedError(f'chat models here cannot be shown a {kind!r} part')
+                raise ExecutionNotFeasibleError(f'chat models here cannot be shown a {kind!r} part')
         return content
 
     # The task's instruction is the system turn, as a library's own client sends it.

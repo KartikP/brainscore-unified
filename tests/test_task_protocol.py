@@ -802,3 +802,23 @@ def test_intervention_is_undone_when_its_publish_raises(tmp_path):
             pass
     assert undone == ['h-publish']
     assert subject._interventions.active_interventions == {}
+
+
+def test_chat_parts_refuses_a_part_it_cannot_show_at_the_call():
+    from brainscore_core.responses import Prompt
+    from brainscore.model_helpers.replies import chat_parts
+    reply, _ = chat_parts(TinyLM2(), CharProcessor())
+    with pytest.raises(ExecutionNotFeasibleError, match="cannot be shown a 'audio' part"):
+        reply(Prompt((('audio', '/clip.wav'),)))
+
+
+def test_plain_text_scoring_refuses_several_parts_and_trial_history():
+    from brainscore_core.responses import Choice, Prompt
+    from brainscore.model_helpers.replies import chat_parts
+    _, likelihood = chat_parts(TinyLM2(), CharProcessor())
+    response = Choice(['c', 'dd'], raw_text=True)
+    with pytest.raises(ExecutionNotFeasibleError, match='exactly one text part'):
+        likelihood(Prompt((('text', 'a'), ('text', 'b')), response=response), ['c', 'dd'])
+    earlier = Prompt((('text', 'a'),), response=response)
+    with pytest.raises(ExecutionNotFeasibleError, match='earlier trials'):
+        likelihood(Prompt((('text', 'ab'),), response=response, history=((earlier, 'c'),)), ['c', 'dd'])
