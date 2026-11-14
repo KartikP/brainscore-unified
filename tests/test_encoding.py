@@ -13,6 +13,7 @@ Three kinds of test:
 from functools import partial
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from tests import _encoding_reference as old
@@ -193,7 +194,13 @@ class TestSplits:
     @pytest.mark.parametrize('dtype', [float, object])
     def test_group_kfold_refuses_a_nan_group_label(self, dtype):
         groups = np.array([np.nan, 1.0, 1.0, 2.0, 2.0, 3.0], dtype=dtype)
-        with pytest.raises(ValueError, match='group label is NaN'):
+        with pytest.raises(ValueError, match='group label is missing'):
+            next(group_kfold(groups, n_splits=2))
+
+    @pytest.mark.parametrize('missing', [None, pd.NA])
+    def test_group_kfold_refuses_a_none_group_label(self, missing):
+        groups = np.array([missing, 'a', 'a', 'b', 'b', 'c'], dtype=object)
+        with pytest.raises(ValueError, match='group label is missing'):
             next(group_kfold(groups, n_splits=2))
 
     def test_row_kfold_is_sklearn(self):

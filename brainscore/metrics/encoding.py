@@ -32,6 +32,7 @@ from numbers import Real
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
+import pandas as pd
 
 from brainscore_core.metrics import per_unit_pearson
 
@@ -84,8 +85,8 @@ def group_kfold(groups, n_splits: int = 5, random_state: int = 0,
     the first fold alone.
     """
     groups = np.asarray(groups)
-    if np.any(groups != groups):          # NaN is the only label not equal to itself
-        raise ValueError('A group label is NaN: its rows would be on neither the training nor '
+    if pd.isna(groups).any():             # NaN, None and pd.NA all leave a row without a fold
+        raise ValueError('A group label is missing (NaN or None): its rows would be on neither the training nor '
                          'the test side. Give every row a group label.')
     distinct = np.unique(groups)
     folds = row_kfold(len(distinct), n_splits=n_splits, random_state=random_state)
