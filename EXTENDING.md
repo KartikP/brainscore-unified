@@ -197,7 +197,6 @@ class YourBenchmark(BenchmarkBase):
     # Checked before any compute, so a mismatched model is N/A instead of failing mid-run.
     required_input_channels = {'vision:image'}
     requested_output_channels = {'neural:IT'}
-    uses_session = True
 
     def __init__(self):
         super().__init__(identifier='your-benchmark', ceiling=Score(1.0),  # or your estimate

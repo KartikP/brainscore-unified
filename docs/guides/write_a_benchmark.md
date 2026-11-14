@@ -11,7 +11,6 @@ from brainscore.benchmarks import benchmark_score
 
 
 class MyITBenchmark(BenchmarkBase):
-    uses_session = True
     required_input_channels = {'vision:image'}    # what the benchmark provides
     requested_output_channels = {'neural:IT'}     # what it needs back
 

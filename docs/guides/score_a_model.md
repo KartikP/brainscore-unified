@@ -48,9 +48,9 @@ score = brainscore.score(subject, benchmark)
 
 What happens:
 
-1. **Compatibility check.** The subject's declared channels are compared with what the benchmark provides and requests. An incompatible pair raises `CompatibilityError` and is reported as N/A, not zero. See [Core concepts, section 6](../02_core_concepts.md#6-compatibility).
+1. **Compatibility check.** The subject's declared channels are compared with what the benchmark provides and requests. For an incompatible pair, `score` returns the N/A result and runs nothing: the value is NaN (never zero), `attrs['status']` is `'N/A'`, `attrs['reason']` says why and `attrs['missing_channels']` names the channels. See [Core concepts, section 6](../02_core_concepts.md#6-compatibility).
 2. **Memory check.** One stimulus is run to estimate the memory the full benchmark needs. Pass `check_mem=False` to skip it.
-3. **The benchmark runs** the subject through sessions and returns a `Score`. If the benchmark leaves an intervention active on the subject, `score` fails.
+3. **The benchmark runs** the subject through sessions and returns a `Score`. A subject that cannot answer the requested outputs together refuses at the start of its first session, before any compute; `score` then returns the same N/A result. If the benchmark leaves an intervention active on the subject, `score` fails.
 
 Every unified benchmark score carries the same attributes: `raw` (the metric value before any ceiling normalization), `ceiling` (the reference, a `Score`), `normalized` (whether the score is `raw` divided by a measured ceiling; when it is `False` the score is the raw value, and the ceiling is NaN with `attrs['status'] == 'not_estimated'`, or `Score(1.0)` for LeBel2023, the induced-dyslexia benchmarks and every Lahner2024 variant except `Lahner2024-fMRI-naturalistic-visualROI`), `metric`, `benchmark_version`, `benchmark_identifier` and `compatibility`. A raw score and a normalized score are not on one scale.
 

@@ -106,7 +106,6 @@ class YourBenchmark(BenchmarkBase):
     requested_output_channels = frozenset({'neural:IT'})   # TODO: your region
     # 'none': every trial starts empty. 'history' needs memory:trial_history.
     trial_memory = 'none'
-    uses_session = True
 
     def __init__(self):
         super().__init__(identifier='your-benchmark',
