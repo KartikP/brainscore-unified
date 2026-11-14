@@ -90,10 +90,12 @@ def test_common_session_collects_neural_output_without_helper_class():
     assert session.collect().shape == (1, 4)
 
 
-def test_common_session_keeps_custom_events():
+def test_common_session_keeps_catalog_events_and_refuses_unknown_channels():
     session = Session([StreamEvent('text', 'hello', 0)])
-    session.respond(StreamEvent('custom', 7, 0))
+    session.respond(StreamEvent('motor', 7, 0))          # a harness-defined payload
     assert session.collect()[0].payload == 7
+    with pytest.raises(ValueError, match='failed the channel catalog'):
+        session.respond(StreamEvent('custom', 7, 0))     # not in the catalog
 
 
 def test_explicit_source_is_independent_of_behavioral_task_configuration():

@@ -232,7 +232,7 @@ def test_patch_tool_records_reference_conditions_and_restoration(tmp_path):
         def participate(self, session):
             event = session.next_input()
             value = self.model(torch.tensor(event.payload)).item()
-            session.respond(StreamEvent('behavior', value, None))
+            session.respond(StreamEvent('behavior', np.array(value), None))
     @contextmanager
     def session(trial):
         yield Session([StreamEvent('observation', [1., 2., 4.], None)])
@@ -248,7 +248,7 @@ def test_patch_tool_records_reference_conditions_and_restoration(tmp_path):
         instrumentation=TorchInstrumentation(subject.model), output_dir=tmp_path / 'run',
     ).run()
     events = list(result.record.events())
-    assert [e['payload'].payload for e in events if e['kind'] == 'output'] == [0, 4, 0]
+    assert [float(e['payload'].payload) for e in events if e['kind'] == 'output'] == [0, 4, 0]
     saved = next(e['payload'] for e in events if e['kind'] == 'patch_reference')
     assert saved['values']['units'][0] == 3
     assert result.manifest['status'] == 'complete'

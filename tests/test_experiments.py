@@ -312,13 +312,13 @@ def test_snapshot_before_mutation_and_multiple_outputs(tmp_path):
         def participate(self, session):
             event = session.next_input()
             event.payload[:] = [9, 9]
-            session.respond(StreamEvent('behavior', event.payload, 12))
+            session.respond(StreamEvent('behavior', str(list(event.payload)), 12))
             event.payload[:] = [8, 8]
     result = Experiment(subject=Mutating(), protocol=protocol(),
         tools=[RecordInputsOutputs()], output_dir=tmp_path/'run').run()
     events = rows(result.directory)
     assert next(e['payload'].payload for e in events if e['kind'] == 'input') == [1, 2]
-    assert next(e['payload'].payload for e in events if e['kind'] == 'output') == [9, 9]
+    assert next(e['payload'].payload for e in events if e['kind'] == 'output') == '[9, 9]'
 
 
 def test_partial_provider_attachment_cleanup(tmp_path):
@@ -515,7 +515,7 @@ def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
         def participate(self, session):
             while (event := session.next_input()) is not None:
                 self.state += 1
-                session.respond(StreamEvent(channel='behavior', payload=self.state, t_ms=event.t_ms))
+                session.respond(StreamEvent(channel='behavior', payload=str(self.state), t_ms=event.t_ms))
 
     sessions = []
     @contextmanager
@@ -537,9 +537,9 @@ def test_respond_records_each_response_and_keeps_state_within_trial(tmp_path):
         output_dir=tmp_path / 'respond',
     ).run()
     assert len(sessions) == 2 and sessions[0] is not sessions[1]
-    assert [[event.payload for event in session.collect()] for session in sessions] == [[1, 2], [1, 2]]
+    assert [[event.payload for event in session.collect()] for session in sessions] == [['1', '2'], ['1', '2']]
     outputs = [event for event in rows(result.directory) if event['kind'] == 'output']
-    assert [event['payload'].payload for event in outputs] == [1, 2, 1, 2]
+    assert [event['payload'].payload for event in outputs] == ['1', '2', '1', '2']
     assert [event['repetition_id'] for event in outputs] == [0, 0, 1, 1]
     assert subject.resets == 4 and subject.state == 0
 

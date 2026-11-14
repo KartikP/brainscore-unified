@@ -22,11 +22,13 @@ from brainscore_core.streaming import StreamEvent
 class WordLengthReader(Subject):
     identifier = 'word-length-reader'
     in_channels = {'text'}
-    out_channels = {'behavior'}
+    out_channels = {'behavior:rt'}
 
     def participate(self, session):
         while (event := session.next_input()) is not None:
-            session.respond(StreamEvent('behavior', 200 + 30 * len(event.payload), t_ms=event.t_ms))
+            # A reading time in ms for each word: one number per trial.
+            session.respond(StreamEvent('behavior:rt', 200 + 30 * len(event.payload),
+                                        t_ms=event.t_ms, meta={'units': 'ms'}))
 ```
 
 The experiment only sees this interface, so a CNN, a language model, a robot policy and a remote API are all handled the same way.
@@ -89,14 +91,15 @@ class ToyReadingTimes(Benchmark):
     identifier = 'toy-reading-times'
     version = 1
     required_input_channels = {'text'}
-    requested_output_channels = {'behavior'}
+    requested_output_channels = {'behavior:rt'}
     words = ['cat', 'elephant', 'dog', 'hippopotamus']
     measured_ms = [310, 390, 330, 520]       # made-up reading times, one per word
 
     def __call__(self, subject):
-        session = Session([StreamEvent('text', word, t_ms=i * 500) for i, word in enumerate(self.words)])
+        session = Session([StreamEvent('text', word, t_ms=i * 500) for i, word in enumerate(self.words)],
+                          ['behavior:rt'])
         subject.participate(session)
-        predicted = [event.payload for event in session.collect()]
+        predicted = list(session.collect('behavior:rt').values)   # one stored row per answer
         return Score(np.corrcoef(predicted, self.measured_ms)[0, 1])   # the metric
 ```
 

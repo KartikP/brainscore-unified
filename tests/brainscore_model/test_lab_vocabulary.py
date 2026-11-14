@@ -14,9 +14,10 @@ def test_session_delivers_inputs_and_collects_responses():
     session = Session([event])
     assert session.next_input() is event
     assert session.next_input() is None
-    session.respond(event)
-    session.respond(event)
-    assert session.collect() == [event, event]
+    answer = StreamEvent(channel='behavior', payload='hello', t_ms=0)
+    session.respond(answer)
+    session.respond(answer)
+    assert session.collect() == [answer, answer]
 
 
 def test_a_source_receives_the_response_its_session_collects():
