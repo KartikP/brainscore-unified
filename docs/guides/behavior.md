@@ -80,7 +80,7 @@ A **reported** answer is the model's reply, parsed. An **implied** measure is re
 | **Likelihood** | the model scores each label as its reply, without generating | choice, probabilities (implied) | `likelihood` |
 | **Readout** | a classifier or ridge regression on one layer, fitted on `fitting_stimuli` | choice, probabilities, rating (implied) | `behavioral_readout_layer` and an extractor |
 
-The model answers by the first path it has, in that order. Which path a model uses is a property of the model, not of the task: to compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
+Which path answers is a property of the model, not of the task. When only one of its paths can give an answer, that path gives it. When several can give the same answer (for example a reply and a likelihood both give a choice), the registration states which one owns it, per answer channel: `capability_config={'behavior-sessions': {'behavior:choice': 'generation', 'behavior:probabilities': 'likelihood'}}`. A model with several paths for one answer and no stated owner is refused when it is built. When the owner cannot serve a task setting (for example raw scores, which only the likelihood gives) and one other path can, that path answers. To compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
 
 One benchmark can take models of both kinds, as long as it fills in both the instruction and `fitting_stimuli`. Choices, ratings and implied probabilities come from either kind. Reported confidence and written answers need a model that replies; a readout-only model refuses those sessions before any compute (`ExecutionNotFeasibleError`, an error of `score`).
 
@@ -90,7 +90,8 @@ A reply that cannot be parsed is recorded as invalid: NaN values, `answer_valid`
 
 ```python
 reply, likelihood = chat_parts(hf_model, processor, chat_template_kwargs={'enable_thinking': False})
-BrainScoreModel(..., reply=reply, likelihood=likelihood)
+BrainScoreModel(..., reply=reply, likelihood=likelihood,
+                capability_config={'behavior-sessions': {'behavior:choice': 'generation'}})
 ```
 
 **Generation settings.** The settings of a written answer belong to the task, so the benchmark sets them on `Text`: `max_tokens`, `temperature` (0 or `None` is greedy), `top_p` (needs a temperature above 0) and `seed`. A `reply` part reads them from `prompt.response`. The reply that `chat_parts` builds obeys them. With no settings it is greedy and at most `max_new_tokens` (64) tokens long, as before.
