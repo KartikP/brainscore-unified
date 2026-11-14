@@ -11,7 +11,7 @@ own comparison and keep the tests green as you go.
 """
 import numpy as np
 
-from brainscore_core.metrics import Metric, Score
+from brainscore_core.metrics import Metric, Score, per_unit_pearson
 
 
 class YourMetric(Metric):
@@ -43,14 +43,12 @@ class YourMetric(Metric):
 
         # ---- BEGIN: replace this block with your own comparison ----------------
         # Correlate each unit's profile across presentations, then average.
-        a_c = a - a.mean(axis=0, keepdims=True)
-        b_c = b - b.mean(axis=0, keepdims=True)
-        denom = np.linalg.norm(a_c, axis=0) * np.linalg.norm(b_c, axis=0)
-        # A unit with no variance carries no information; drop it rather than emit NaN.
-        usable = denom > 0
+        per_unit = per_unit_pearson(a, b)
+        # A unit with no variance carries no information (NaN); drop it.
+        usable = ~np.isnan(per_unit)
         if not usable.any():
             raise ValueError('no units with non-zero variance in both assemblies')
-        per_unit = (a_c[:, usable] * b_c[:, usable]).sum(axis=0) / denom[usable]
+        per_unit = per_unit[usable]
         value = float(np.mean(per_unit))
         # ---- END ---------------------------------------------------------------
 

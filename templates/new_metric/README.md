@@ -28,7 +28,7 @@ In a benchmark, the first argument is the model's response and the second the me
 
 ## Worked reference
 
-`brainscore/metrics/topographic.py` (`load_metric('topographic-alignment')`) is a complete,
+`brainscore/metrics/topographic/` (`load_metric('topographic-alignment')`) is a complete,
 non-trivial example: it scores a model's spatial unit layout against cortical topography via the
 correlation-vs-distance profile. Read it alongside this template.
 

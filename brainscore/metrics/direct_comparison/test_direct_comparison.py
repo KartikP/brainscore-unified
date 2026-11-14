@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-from brainscore.metrics.direct_comparison import DirectComparisonMetric
+from brainscore.metrics.direct_comparison.metric import DirectComparisonMetric
 
 
 def _assembly(data, stimulus_ids):

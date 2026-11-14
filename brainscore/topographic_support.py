@@ -1,6 +1,6 @@
 """Model-side unit-coordinate support for the topographic-alignment axis.
 
-The topographic metric (``metrics/topographic.py``) reads per-unit positions from
+The topographic metric (``metrics/topographic/``) reads per-unit positions from
 ``tissue_x``/``tissue_y`` (or ``x``/``y``/``z``) neuroid coords. This module is the bridge:
 it lets a model or benchmark ATTACH those coords, derive a neutral grid fallback for models
 that don't supply their own, and build the shuffle-coordinate NULL the axis is validated

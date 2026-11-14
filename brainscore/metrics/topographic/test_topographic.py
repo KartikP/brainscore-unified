@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-from brainscore.metrics.topographic import (
+from brainscore.metrics.topographic.metric import (
     correlation_distance_profile, spatial_smoothness, topographic_alignment,
     TopographicMetric,
 )
@@ -113,7 +113,7 @@ class TestMetric:
 
 
 # ---- selectivity-topography (second axis) ----
-from brainscore.metrics.topographic import (  # noqa: E402
+from brainscore.metrics.topographic.metric import (  # noqa: E402
     selectivity_maps, selectivity_topographic_alignment, SelectivityTopographicMetric,
 )
 

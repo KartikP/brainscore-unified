@@ -210,9 +210,9 @@ ALLOWED = {
     ('R14 encoding regression', 'unified:tools/linear_probe.py'):
         'the linear probe tool fits its own sklearn model',
     ('R14 encoding regression', 'vision:model_helpers/brain_transformation/behavior.py'): _LEGACY,
-    ('R15 score construction', 'unified:metrics/direct_comparison.py'):
+    ('R15 score construction', 'unified:metrics/direct_comparison/metric.py'):
         'registered metric builds Score directly (second score builder)',
-    ('R15 score construction', 'unified:metrics/topographic.py'):
+    ('R15 score construction', 'unified:metrics/topographic/metric.py'):
         'registered metric builds Score directly (second score builder)',
     ('R15 score construction', 'unified:benchmarks/grid_game/benchmark.py'): _NO_CEILING,
     ('R15 score construction', 'unified:benchmarks/induced_dyslexia/benchmark.py'): _NO_CEILING,
