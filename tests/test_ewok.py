@@ -360,7 +360,8 @@ def test_data_source_choice_required(tmp_path):
 def test_feature_only_subject_rejected(prepared):
     from brainscore_core.compatibility import CompatibilityError
     benchmark=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared)
-    with pytest.raises(CompatibilityError):brainscore.score(brainscore.load_model('chance-baseline'),benchmark,check_mem=False)
+    result = brainscore.score(brainscore.load_model('chance-baseline'),benchmark,check_mem=False)
+    assert result.attrs['status'] == 'N/A'
 
 
 def test_real_hooks_change_score_and_restore(prepared, tmp_path):
@@ -601,14 +602,12 @@ def test_an_empty_context_is_refused_as_ewok_cannot_score_it(tiny_lm):
 def test_a_subject_without_a_likelihood_part_is_na(prepared):
     """Raw scores come only from a likelihood part; no softmax and no guess."""
     from brainscore_core.compatibility import CompatibilityError
-    from brainscore_core.score_status import score_or_na
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
     for subject in (chooser(), BrainScoreModel('answers', in_channels={'text'},
                                                  answer=lambda stimulus_row, instruction, label_set: '1')):
         # score() runs the one pre-flight; the benchmark checks nothing itself.
-        with pytest.raises(CompatibilityError):
-            brainscore.score(subject, benchmark, check_mem=False)
-        assert score_or_na(brainscore.score, subject, benchmark, check_mem=False).attrs['status'] == 'N/A'
+        result = brainscore.score(subject, benchmark, check_mem=False)
+        assert result.attrs['status'] == 'N/A'
 
 
 def test_replay_rebuilds_one_session_per_request(prepared, tmp_path):

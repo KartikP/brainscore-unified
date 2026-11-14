@@ -1,5 +1,6 @@
 """The minimal core contract passes through each package's scoring entry point."""
 
+import re
 import importlib
 
 import numpy as np
@@ -30,7 +31,6 @@ class NativeBenchmark(Benchmark):
     parent = "neural"
     required_input_channels = {"text"}
     requested_output_channels = {"neural:language_network"}
-    uses_session = True
 
     def __call__(self, subject):
         responses = neural_response(subject, pd.DataFrame({
@@ -67,7 +67,6 @@ def test_a_benchmark_with_one_visual_form_is_na_for_a_subject_with_the_other(
     """Contract Rule 5.9: a benchmark that sends only one form does not run a
     subject that takes only the other form; score() stops before any compute."""
     import brainscore
-    from brainscore_core.compatibility import CompatibilityError
 
     ran = []
 
@@ -91,6 +90,7 @@ def test_a_benchmark_with_one_visual_form_is_na_for_a_subject_with_the_other(
 
     monkeypatch.setitem(brainscore.model_registry, FormSubject.identifier, FormSubject)
     monkeypatch.setitem(brainscore.benchmark_registry, FormBenchmark.identifier, FormBenchmark)
-    with pytest.raises(CompatibilityError, match="takes in none of the inputs"):
-        brainscore.score(FormSubject.identifier, FormBenchmark.identifier, check_mem=False)
+    result = brainscore.score(FormSubject.identifier, FormBenchmark.identifier, check_mem=False)
+    assert result.attrs['status'] == 'N/A'
+    assert re.search("takes in none of the inputs", result.attrs['reason'])
     assert ran == []

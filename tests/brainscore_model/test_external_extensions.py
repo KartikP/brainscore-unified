@@ -78,13 +78,29 @@ def test_external_modality_routes_without_host_modification():
                          columns=['image_path'])
 
 
-def test_session_benchmark_checks_execution_support_before_compute():
-    from types import SimpleNamespace
+def test_a_support_refusal_at_session_start_is_not_applicable_before_compute():
+    import math
+    import brainscore
     from brainscore_core.compatibility import check_channel_compatibility, CompatibilityError
-    model = BrainScoreModel('motor-only', policy=lambda step: None)
-    benchmark = SimpleNamespace(identifier='session', uses_session=True,
-        required_input_channels={'observation'}, requested_output_channels={'motor'})
-    check_channel_compatibility(model, benchmark)
-    model.check_session_support = lambda channels: (_ for _ in ()).throw(NotImplementedError('no driver'))
-    with pytest.raises(CompatibilityError, match='no driver'):
-        check_channel_compatibility(model, benchmark)
+    from brainscore_core.streaming import Session
+    steps = []
+    model = BrainScoreModel('motor-only', policy=lambda step: steps.append(step) or {'motor': 0})
+
+    class _Benchmark:
+        identifier = 'session'
+        required_input_channels = {'observation'}
+        requested_output_channels = {'motor'}
+
+        def __call__(self, subject):
+            subject.participate(Session([], ['motor']))
+            raise AssertionError('the session must not run')
+
+    check_channel_compatibility(model, _Benchmark())     # declarations pass
+    def refuse(channels):
+        raise CompatibilityError('no driver', channels=channels)
+    model.check_session_support = refuse
+    result = brainscore.score(model, _Benchmark(), check_mem=False)
+    assert math.isnan(float(result)) and result.attrs['status'] == 'N/A'
+    assert result.attrs['reason'] == 'no driver'
+    assert result.attrs['missing_channels'] == ['motor']
+    assert steps == []

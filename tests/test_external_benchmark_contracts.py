@@ -10,7 +10,6 @@ import pytest
 import brainscore
 from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
 from brainscore_core.contract import Subject
-from brainscore_core.score_status import score_or_na
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore.data.preparation import prepare_dataset
 from brainscore.experiments import Experiment, RecordInputsOutputs
@@ -143,14 +142,12 @@ def test_subject_with_no_shared_input_or_no_text_answer_is_still_na(
     # Takes none of the inputs the experiment sends (instruction, text, pictures).
     # score() runs the one pre-flight; the benchmark checks nothing itself.
     no_input = _Recorder([], in_channels=frozenset({'audio'}))
-    with pytest.raises(CompatibilityError):
-        brainscore.score(no_input, benchmark, check_mem=False)
-    assert score_or_na(brainscore.score, no_input, benchmark,
-                       check_mem=False).attrs['status'] == 'N/A'
+    result = brainscore.score(no_input, benchmark, check_mem=False)
+    assert result.attrs['status'] == 'N/A'
     # Cannot answer on behavior:text.
     no_text = brainscore.load_model('chance-baseline')
-    with pytest.raises(CompatibilityError):
-        brainscore.score(no_text, benchmark, check_mem=False)
+    result = brainscore.score(no_text, benchmark, check_mem=False)
+    assert result.attrs['status'] == 'N/A'
     assert prompts == [] and no_input.channels == []
 
 
@@ -260,8 +257,8 @@ def test_ewok_subject_without_the_text_input_rejected_without_calls(prepared, mo
                                 reply=lambda prompt: calls.append(prompt) or '1',
                                 likelihood=lambda prompt, options: calls.append(prompt) or {})
     benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
-    with pytest.raises(CompatibilityError):
-        brainscore.score(subject, benchmark, check_mem=False)
+    result = brainscore.score(subject, benchmark, check_mem=False)
+    assert result.attrs['status'] == 'N/A'
     assert calls == []
 
 

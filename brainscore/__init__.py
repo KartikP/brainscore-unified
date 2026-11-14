@@ -295,12 +295,17 @@ def score(model_identifier, benchmark_identifier,
         score(subject, 'MajajHong2015public.IT-pls-unified')
 
     then runs the benchmark on the subject.
+
+    A pair that is not applicable returns the N/A result
+    (``brainscore_core.score_status.na_score``: NaN, ``attrs['status'] == 'N/A'``,
+    ``reason``, ``missing_channels``) before any model compute: pre-flight refuses
+    it from the declarations, or the subject refuses it at the start of a
+    session. A memory-check failure raises.
     """
-    from brainscore_core.compatibility import (
-        check_compatibility,
-    )
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
     from brainscore_core.extraction_cache import weight_fingerprint_scope
     from brainscore_core.memory import check_memory
+    from brainscore_core.score_status import na_score
     from brainscore_core.score_metadata import (
         infer_score_protocol,
         requested_output_channels_for_score,
@@ -331,19 +336,26 @@ def score(model_identifier, benchmark_identifier,
                     else _resolve_identifier(benchmark, 'custom-benchmark'))
     requested_channels = requested_output_channels_for_score(benchmark)
 
-    compatibility = check_compatibility(subject, benchmark)
-    if check_mem:
-        check_memory(subject, benchmark)
+    # One conversion: a pair that pre-flight refuses, or that the subject
+    # refuses at the start of a session, is N/A (rules 5.6, 5.7).
+    try:
+        compatibility = check_compatibility(subject, benchmark)
+        if check_mem:
+            check_memory(subject, benchmark)
 
-    # A legacy domain benchmark (marked by its domain loader) receives the
-    # permanent facade, which runs its calls as sessions through participate.
-    from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
-    received = subject_for_benchmark(subject, benchmark,
-                                     visual_degrees=declared_visual_degrees(subject))
+        # A legacy domain benchmark (marked by its domain loader) receives the
+        # permanent facade, which runs its calls as sessions through participate.
+        from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
+        received = subject_for_benchmark(subject, benchmark,
+                                         visual_degrees=declared_visual_degrees(subject))
 
-    _t0 = _time.time()
-    with weight_fingerprint_scope(), record_measures() as measures:
-        result = benchmark(received)
+        _t0 = _time.time()
+        with weight_fingerprint_scope(), record_measures() as measures:
+            result = benchmark(received)
+    except CompatibilityError as error:
+        result = na_score(error)
+        result.attrs.update(model_identifier=model_id, benchmark_identifier=benchmark_id)
+        return result
     # The run must leave the subject as it found it: every intervention a session
     # of the benchmark applied is undone. Interventions the caller applied stay.
     if measures.unreleased:

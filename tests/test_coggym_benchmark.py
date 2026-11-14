@@ -171,8 +171,8 @@ def test_feature_only_model_rejected_before_requests(scored_reference):
     benchmark = brainscore.load_benchmark('CogGym.Hu2023Fine.exp1', checkout=root,
         reset=lambda repetition: None)
     # score() runs the one pre-flight; the benchmark checks nothing itself.
-    with pytest.raises(CompatibilityError):
-        brainscore.score(brainscore.load_model('chance-baseline'), benchmark, check_mem=False)
+    result = brainscore.score(brainscore.load_model('chance-baseline'), benchmark, check_mem=False)
+    assert result.attrs['status'] == 'N/A'
 
 
 def test_configuration_is_not_discarded_on_domain_fallback():

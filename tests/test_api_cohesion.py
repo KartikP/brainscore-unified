@@ -252,7 +252,6 @@ def test_resnet_notebook_subject_works_in_experiments_and_scoring(tmp_path):
     class SessionBenchmark(Benchmark):
         identifier = 'notebook-channel-transfer'
         parent = 'behavioral'
-        uses_session = True
         required_input_channels = {'vision:image'}
         requested_output_channels = {'behavior'}
         def __call__(self, subject):

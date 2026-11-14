@@ -1,5 +1,6 @@
 """Tests for pre-flight checks wired into the unified scoring pipeline."""
 
+import re
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -59,8 +60,9 @@ class TestPreflightInScore:
         mock_load_model.return_value = model
         mock_load_benchmark.return_value = benchmark
 
-        with pytest.raises(CompatibilityError, match="takes in none of the inputs"):
-            brainscore.score('test-model', 'test-bench', check_mem=False)
+        result = brainscore.score('test-model', 'test-bench', check_mem=False)
+        assert result.attrs['status'] == 'N/A'
+        assert re.search("takes in none of the inputs", result.attrs['reason'])
 
     @patch('brainscore.load_benchmark')
     @patch('brainscore.load_model')
@@ -156,8 +158,9 @@ class TestPreflightInScore:
         mock_load_model.return_value = model
         mock_load_benchmark.return_value = benchmark
 
-        with pytest.raises(CompatibilityError, match="text"):
-            brainscore.score('test-model', 'test-bench', check_mem=False)
+        result = brainscore.score('test-model', 'test-bench', check_mem=False)
+        assert result.attrs['status'] == 'N/A'
+        assert re.search("text", result.attrs['reason'])
 
         benchmark.assert_not_called()
 

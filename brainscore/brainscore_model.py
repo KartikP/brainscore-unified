@@ -293,9 +293,11 @@ class BrainScoreModel(UnifiedModel):
     def check_session_support(self, channels):
         """The one capability that runs a session requesting ``channels``.
 
-        Raises before any input is consumed: ``CompatibilityError`` (the pair is
-        N/A) when no capability claims the combination, naming the outputs the
-        subject does not produce; ``ValueError`` when more than one claims it at
+        This is the support step of scoring (rule 5.7); ``participate`` runs it
+        when a session starts. Raises before any input is consumed:
+        ``CompatibilityError`` (the pair is N/A; ``score()`` returns the N/A
+        result) when no capability claims the combination, naming the outputs
+        the subject does not produce; ``ValueError`` when more than one claims it at
         the same priority.
         """
         from brainscore_core.compatibility import CompatibilityError
@@ -314,7 +316,8 @@ class BrainScoreModel(UnifiedModel):
                 f"Subject {self.identifier!r} cannot answer {sorted(channels)} in one session: "
                 + (f"it does not produce {missing}" if missing
                    else 'no one part of it answers these outputs together')
-                + f"; out_channels: {sorted(self.out_channels)}.{hint}")
+                + f"; out_channels: {sorted(self.out_channels)}.{hint}",
+                channels=missing or channels)
         first = min(c.order for c in claims)
         winners = [c for c in claims if c.order == first]
         if len(winners) > 1:

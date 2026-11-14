@@ -26,7 +26,6 @@ def Answers(channel):
 class AskForIT(Benchmark):
     identifier = 'ask-for-it'
     parent = 'neural'
-    uses_session = True
     required_input_channels = {'text'}
     requested_output_channels = {'neural:IT'}
 
