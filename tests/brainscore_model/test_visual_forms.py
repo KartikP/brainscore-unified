@@ -295,3 +295,56 @@ def test_a_failed_second_recording_closes_the_first_during_a_policy_run():
     with pytest.raises(RuntimeError, match='cannot install the hooks'):
         model.participate(session)
     assert image.open == 0
+
+
+class _Layered:
+    """An extractor with named layers; a passive call and a recording both carry its value."""
+
+    def __init__(self, layers, value):
+        self.layers, self.value = layers, value
+
+    def layer_names(self):
+        return list(self.layers)
+
+    def _assembly(self, ids, layers):
+        columns = [(layer, n) for layer in layers for n in ('n0', 'n1')]
+        return NeuroidAssembly(np.full((len(ids), len(columns)), self.value), dims=['presentation', 'neuroid'], coords={
+            'stimulus_id': ('presentation', ids), 'neuroid_id': ('neuroid', [f'{l}.{n}' for l, n in columns]),
+            'layer': ('neuroid', [layer for layer, _ in columns])})
+
+    def __call__(self, stimuli, layers, **kwargs):
+        return self._assembly(list(stimuli['stimulus_id']), layers)
+
+    def record(self, layers, stimuli=None):
+        from contextlib import contextmanager
+        owner = self
+
+        @contextmanager
+        def recording():
+            class Take:
+                @staticmethod
+                def take(_row):
+                    return {layer: owner._assembly(['?'], [layer]) for layer in layers}
+            yield Take()
+        return recording()
+
+
+def test_a_region_whose_layers_are_in_both_forms_and_only_partly_in_the_video_one_is_recorded_alike():
+    """Same extractor in a task as in a passive recording, with clips supplied."""
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    model = BrainScoreModel(
+        'm', extractor={'vision': _Layered(['shared', 'image_only'], 1.0), 'video': _Layered(['shared'], 2.0)},
+        region_layer_map={'R': CompositeSelector((('shared', None), ('image_only', None)), modality='vision')},
+        reply=lambda prompt: 'left')
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'image_path': ['a.png'], 'video_path': ['a.mp4']})
+    stimuli.identifier = 'both-forms'
+    passive = neural_response(model, stimuli, ['neural:R'])
+    task = TaskContext(instruction='Which way?', response=Choice(['left', 'right']),
+                       present=('image:image_path',))
+    session = stimulus_session(stimuli, ['behavior:choice', 'neural:R'], task=task)
+    model.participate(session)
+    during_task = session.collect('neural:R')
+    assert set(passive.values.ravel()) == set(during_task.values.ravel()) == {1.0}
+    assert sorted(set(passive['layer'].values)) == sorted(set(during_task['layer'].values)) == ['image_only', 'shared']
