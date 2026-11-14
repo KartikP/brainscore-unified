@@ -31,7 +31,7 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **Layer path** | A module's name in the network, such as `layer3.0.conv1`; list them with `named_modules()`. |
 | **`in_channels`, `out_channels`** | What a subject declares: the inputs it can take and the outputs it can give. |
 | **`required_channels`** | The inputs a subject cannot run without; a subset of `in_channels`. A benchmark that does not provide all of them is N/A. A `BrainScoreModel` takes it only for one wired part that takes several inputs together: one extractor (a tuple key gives all its inputs), the `answer`/`reply`/`likelihood` parts with their `in_channels`, or the policy with its `policy_in_channels`. Separate parts each run on their own input. |
-| **`LayerSelector`** | One layer as a region; `modality=` picks the extractor when the layer name alone does not (the name is in extractors of two inputs, or in one that cannot list its layers). |
+| **`LayerSelector`** | One layer as a region; `modality=` picks the extractor when the layer name alone does not: in a model with several extractor objects, the name is found in extractors of two input families (an extractor that cannot list its layers counts as having every layer). |
 | **`likelihood`** | A `BrainScoreModel` part: `(prompt, candidates) -> {candidate: log probability}`. Scores each option as the reply, without generating; gives choices and implied probabilities. |
 | **Metric** | The calculation that compares model outputs with measured data. |
 | **Modality** | A kind of sensory input: `vision` (pictures), `video`, `text`, `audio`. A modality is not a channel. Pictures arrive on `vision:image` and video on `vision:video`. |

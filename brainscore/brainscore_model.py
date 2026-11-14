@@ -115,10 +115,15 @@ class BrainScoreModel(UnifiedModel):
             run against (e.g. the torch module); may be ``None`` for a
             feature-extraction model whose extractors hold their own modules.
         :param region_layer_map: brain region -> layer path (or a ``UnitSelector``).
-            A region is recorded from the extractor that has its layer. A region
-            names its extractor with ``LayerSelector(name=..., modality=...)``
-            only when the layer name is in extractors of two inputs, or in an
-            extractor that cannot list its layers (no ``layer_names()``).
+            With several extractor objects, a region that names none is
+            recorded from the input family (pictures and clips are one family)
+            whose extractors have its layer. A region names its extractor with
+            ``LayerSelector(name=..., modality=...)`` only when its layer name
+            is found in extractors of two input families; an extractor that
+            cannot list its layers (no ``layer_names()``) counts as having
+            every layer, so it can cause that. Two extractors of one family
+            with the same layers (an image and a video wrapper of one tower)
+            need no name, and neither does a model with one extractor object.
         :param extractor: a modality -> extractor mapping. Each extractor is
             called as ``extractor(stimuli, layers=...)`` and prepares its own
             inputs. Image, text, audio and video wrappers all use this slot; the
@@ -401,8 +406,9 @@ class BrainScoreModel(UnifiedModel):
             if unclear:
                 raise ValueError(
                     f"Subject {self._identifier_str!r}: the layers of regions {sorted(unclear)} "
-                    f"are in extractors of more than one input, or in an extractor that cannot "
-                    f"list its layers, so each of these regions names its extractor. "
+                    f"are found in extractors of more than one input family (an extractor that "
+                    f"cannot list its layers counts as having every layer), so each of these "
+                    f"regions names its extractor. "
                     f"Use LayerSelector(name=..., modality=...).")
         self._region_layer_selectors = selectors
         self._region_layer_map_dict = {r: sel.layer_path for r, sel in selectors.items()}
