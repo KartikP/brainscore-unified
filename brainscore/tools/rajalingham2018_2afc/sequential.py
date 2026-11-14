@@ -23,7 +23,7 @@ The per-trial choice -> chosen object -> benchmark.score_all (i1/i2n), identical
 to the simultaneous path, so the two are directly comparable. Run generation on
 EC2 (GPU); the random null runs anywhere.
 
-    python -m brainscore.benchmarks.rajalingham2018_2afc.sequential \
+    python -m brainscore.tools.rajalingham2018_2afc.sequential \
         --path generation --model Qwen/Qwen2.5-VL-7B-Instruct \
         --seq_mode describe --prompt_mode direct --n_images 120 --out /tmp/raj2afc_seq_qwen7b
 """

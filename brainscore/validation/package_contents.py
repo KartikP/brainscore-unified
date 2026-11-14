@@ -19,7 +19,7 @@ REQUIRED = {
         'brainscore_language/benchmarks/pereira2018/ceiling_packaging.py'],
     'brainscore': ['brainscore/models/vjepa_v1/backbone/LICENSE',
         'brainscore/models/vjepa_v1/backbone/NOTICE.md',
-        'brainscore/benchmarks/rajalingham2018_2afc/*.csv'],
+        'brainscore/data/rajalingham2018_2afc/*.csv'],
 }
 PERSONAL_PATH = re.compile(r'/(?:Users|home|Volumes|braintree)/')
 

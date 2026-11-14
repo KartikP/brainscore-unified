@@ -242,7 +242,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             reliability is at least this value.
         voxel_mask_fn: score only the voxels of this mask (for example
             ``build_auditory_mask``). Give at most one of the two.
-        identifier_suffix: appended to ``Lahner2024-fMRI-naturalistic``.
+        identifier: the benchmark identifier (required; the registry key of the variant).
     """
 
     trial_memory = 'none'   # each clip is an independent trial
@@ -256,7 +256,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         ceiling: Optional[float] = None,
         reliability_threshold: Optional[float] = None,
         voxel_mask_fn: Optional[Callable[[], np.ndarray]] = None,
-        identifier_suffix: str = '',
+        *,
+        identifier: str,
     ):
         if reliability_threshold is not None and voxel_mask_fn is not None:
             raise ValueError('Give reliability_threshold or voxel_mask_fn, not both.')
@@ -275,7 +276,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         self._reliability: Optional[np.ndarray] = None
         self._voxel_mask: Optional[np.ndarray] = None
         super().__init__(
-            identifier=f'Lahner2024-fMRI-naturalistic{identifier_suffix}',
+            identifier=identifier,
             version=2,
             parent='naturalistic',
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),

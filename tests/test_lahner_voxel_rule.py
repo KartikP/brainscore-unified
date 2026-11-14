@@ -66,7 +66,7 @@ def test_a_constant_voxel_in_the_region_is_left_out_and_counted(monkeypatch, tmp
     values[:, constant] = 3.0
     mask = mask_of(range(10000, 10040))
     install(monkeypatch, tmp_path, glm=values)
-    score = Lahner2024BOLDMoments(voxel_mask_fn=lambda: mask)(Recorder({'vision:video'}))
+    score = Lahner2024BOLDMoments(voxel_mask_fn=lambda: mask, identifier='Lahner2024-fMRI-naturalistic')(Recorder({'vision:video'}))
 
     expected = glm_expected_r(values, mask)
     position = int(np.flatnonzero(np.flatnonzero(mask) == constant)[0])
@@ -93,7 +93,7 @@ def test_with_a_measured_ceiling_a_voxel_without_r_or_ceiling_is_left_out(monkey
     unreliable = int(np.flatnonzero((reliability <= 0) & (np.arange(N_VOXELS) < 1000))[0])
     mask = mask_of(reliable + [constant, unreliable])
     install(monkeypatch, tmp_path, glm=values)
-    score = Lahner2024BOLDMoments(ceiling=VISUAL_ROI_CEILING, voxel_mask_fn=lambda: mask)(
+    score = Lahner2024BOLDMoments(ceiling=VISUAL_ROI_CEILING, voxel_mask_fn=lambda: mask, identifier='Lahner2024-fMRI-naturalistic')(
         Recorder({'vision:video'}))
 
     expected = glm_expected_r(values, mask)
@@ -146,7 +146,7 @@ def test_the_region_is_selected_before_the_fit(monkeypatch, tmp_path):
     constant = 9 * 100
     bold = tr_bold(runs, events, ~region, constant)
     install(monkeypatch, tmp_path, runs=runs, bold=bold)
-    benchmark = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), voxel_mask_fn=lambda: region)
+    benchmark = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), voxel_mask_fn=lambda: region, identifier='Lahner2024-fMRI-naturalistic-timeresolved')
     score = benchmark(Recorder({'vision:video'}))
 
     # Expected: ridge on the region's voxels only, BOLD z-scored per run and voxel,
@@ -174,7 +174,7 @@ def test_the_region_is_selected_before_the_fit(monkeypatch, tmp_path):
     calm = bold.copy()
     calm[:, :, ~region] = 0.0
     install(monkeypatch, tmp_path / 'other', runs=runs, bold=calm)
-    again = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), voxel_mask_fn=lambda: region)(
+    again = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), voxel_mask_fn=lambda: region, identifier='Lahner2024-fMRI-naturalistic-timeresolved')(
         Recorder({'vision:video'}))
     np.testing.assert_array_equal(again.attrs['per_voxel_r'], r)
     assert repr(float(again)) == repr(float(score))
@@ -192,7 +192,7 @@ def test_a_voxel_is_preprocessed_alike_in_any_selection(monkeypatch, tmp_path, c
     bold[:, :, 5] = 10000.0
     bold[:, :, 6] = 10000.0 + 0.001 * (np.arange(N_TR) % 2)
     install(monkeypatch, tmp_path, runs=runs, bold=bold)
-    benchmark = Lahner2024BOLDMoments_timeresolved(confounds=confounds)
+    benchmark = Lahner2024BOLDMoments_timeresolved(confounds=confounds, identifier='Lahner2024-fMRI-naturalistic-timeresolved')
     design = np.zeros((len(runs), N_TR, 2), dtype=np.float32)
     every = benchmark._concatenate_with_mask(design, benchmark.assembly)[1]
     assert every.dtype == np.float32

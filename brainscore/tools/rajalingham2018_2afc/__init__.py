@@ -12,10 +12,10 @@ Public surface:
   - ``benchmark.load_trials`` / ``benchmark.load_tokens`` / ``benchmark.human_trials_subset``
   - ``montage.compose_montage`` — render one trial (what the model sees)
 
-NOTE: this is intentionally a scoring *library*, not a ``load_benchmark`` target.
+NOTE: this is a scoring *library* (a tool), not a ``load_benchmark`` target.
 The model makes its own per-trial choices (it isn't driven by a single
-``benchmark(subject)`` call), so this subpackage deliberately registers
-nothing in ``benchmark_registry`` and is not imported by ``benchmarks/__init__``.
-Score via the functions above.
+``benchmark(subject)`` call), so this subpackage registers nothing and is not
+imported by ``brainscore.tools``. Its two CSV files are in the data plugin
+``brainscore/data/rajalingham2018_2afc``. Score via the functions above.
 """
 from . import benchmark, montage  # noqa: F401

@@ -56,14 +56,14 @@ def test_each_task_sees_only_its_own_events(monkeypatch, tmp_path):
     runs = tr_runs()
     events = tr_events(runs)
     install(monkeypatch, tmp_path, runs=runs, bold=bold_of(runs, events))
-    own = float(Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(
+    own = float(Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), identifier='Lahner2024-fMRI-naturalistic-timeresolved')(
         Recorder({'vision:video'})).attrs['raw'])
     assert own > 0.9
     mixed_events = events.assign(task='train')   # every run gets both tasks' events
     mixed = bold_of([dict(run, task='train') for run in runs], mixed_events)
     (tmp_path / 'mixed').mkdir()
     install(monkeypatch, tmp_path / 'mixed', runs=runs, bold=mixed, events=events)
-    assert float(Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(
+    assert float(Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), identifier='Lahner2024-fMRI-naturalistic-timeresolved')(
         Recorder({'vision:video'})).attrs['raw']) < own - 0.05
 
 
@@ -72,14 +72,14 @@ def test_run_without_events_raises(monkeypatch, tmp_path):
     events = tr_events(runs)
     install(monkeypatch, tmp_path, runs=runs, events=events[events['task'] == 'train'])
     with pytest.raises(ValueError, match='No events for run'):
-        Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(Recorder({'vision:video'}))
+        Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), identifier='Lahner2024-fMRI-naturalistic-timeresolved')(Recorder({'vision:video'}))
 
 
 def test_events_without_task_column_raise(monkeypatch, tmp_path):
     runs = tr_runs()
     install(monkeypatch, tmp_path, runs=runs, events=tr_events(runs).drop(columns='task'))
     with pytest.raises(ValueError, match='lacks'):
-        Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(Recorder({'vision:video'}))
+        Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), identifier='Lahner2024-fMRI-naturalistic-timeresolved')(Recorder({'vision:video'}))
 
 
 # ── Version ───────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ def test_scores_carry_method_labels(monkeypatch, tmp_path, name):
     install(monkeypatch, tmp_path)
     configuration = CONFIGURATIONS[name]
     subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'))
-    score = Lahner2024BOLDMoments_timeresolved(**configuration)(subject)
+    score = Lahner2024BOLDMoments_timeresolved(**configuration, identifier='Lahner2024-fMRI-naturalistic-timeresolved')(subject)
     attrs = score.attrs
     assert attrs['encoding_model'] == 'clip_mean_onset_impulse_hrf'
     assert attrs['onset_rounding'] == 'floor_to_TR'
@@ -143,7 +143,7 @@ def test_scores_carry_method_labels(monkeypatch, tmp_path, name):
 def test_participant_out_label_reports_whether_blocks_are_whole_participants(
         monkeypatch, tmp_path):
     install(monkeypatch, tmp_path, runs=tr_runs(('a', 'a', 'b', 'b')))
-    score = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(Recorder({'vision:video'}))
+    score = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), identifier='Lahner2024-fMRI-naturalistic-timeresolved')(Recorder({'vision:video'}))
     assert score.attrs['cv_policy'] == 'contiguous_run_blocks_in_assembly_order'
     assert score.attrs['cv_blocks_hold_out_whole_participants'] is True
     assert 'cv_blocks_hold_out_whole_subjects' not in score.attrs
@@ -151,7 +151,7 @@ def test_participant_out_label_reports_whether_blocks_are_whole_participants(
 
 def test_interleaved_participants_are_reported(monkeypatch, tmp_path):
     install(monkeypatch, tmp_path, runs=tr_runs(('a', 'b', 'a', 'b')))
-    score = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2))(Recorder({'vision:video'}))
+    score = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), identifier='Lahner2024-fMRI-naturalistic-timeresolved')(Recorder({'vision:video'}))
     assert score.attrs['cv_blocks_hold_out_whole_participants'] is False
 
 
@@ -163,6 +163,6 @@ def test_transductive_projection_is_labelled(monkeypatch, tmp_path, channels, la
     """Feature widths above the cap are projected with an SVD fit on all stimuli."""
     install(monkeypatch, tmp_path)
     subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'), width=FEATURE_DIM_CAP + 1)
-    score = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), channels=channels)(subject)
+    score = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), channels=channels, identifier='Lahner2024-fMRI-naturalistic-timeresolved')(subject)
     assert score.attrs['feature_projection_protocol'] == label
     assert len(CLIPS) <= FEATURE_DIM_CAP   # the projection keeps at most one column per clip

@@ -291,8 +291,9 @@ class YourMetric(Metric):
 metric_registry['my-metric'] = lambda: YourMetric()
 ```
 
-Then register it in `brainscore/metrics/__init__.py`. A reference lives at
-`brainscore/metrics/topographic.py` — `load_metric('topographic-alignment')` — which scores a model's
+Put it in its own folder, `brainscore/metrics/<name>/`, with the registry line in the folder's
+`__init__.py` and its test in `tests/`; `brainscore/metrics/__init__.py` imports the folder. A reference lives at
+`brainscore/metrics/topographic/` — `load_metric('topographic-alignment')` — which scores a model's
 spatial unit layout against cortical topography (the correlation-vs-distance profile). Copy
 `templates/new_metric/` to start. Keep predictivity, RSA, topographic, and SCA-style metrics
 separate.

@@ -272,7 +272,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         ceiling, reliability_threshold, voxel_mask_fn, audio_dir: as for
             ``Lahner2024BOLDMoments``. The reliability is the GLM-beta one: both
             assemblies share the fsaverage5 voxels.
-        identifier_suffix: appended to ``Lahner2024-fMRI-naturalistic``.
+        identifier: the benchmark identifier (required; the registry key of the variant).
     """
 
     trial_memory = 'none'   # each clip is an independent trial
@@ -286,7 +286,8 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         reliability_threshold: Optional[float] = None,
         voxel_mask_fn=None,
         audio_dir: Optional[str] = None,
-        identifier_suffix: str = '-timeresolved',
+        *,
+        identifier: str,
     ):
         if reliability_threshold is not None and voxel_mask_fn is not None:
             raise ValueError('Give reliability_threshold or voxel_mask_fn, not both.')
@@ -307,7 +308,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         self._motion = None
         self._stimulus_set = None
         super().__init__(
-            identifier=f'Lahner2024-fMRI-naturalistic{identifier_suffix}',
+            identifier=identifier,
             version=2,
             parent='naturalistic',
             ceiling=Score(1.0 if ceiling is None else float(ceiling)),

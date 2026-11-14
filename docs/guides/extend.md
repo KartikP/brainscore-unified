@@ -45,7 +45,20 @@ class CountOutputs(Tool):
             self.count += 1
 ```
 
-For resources or saved files, override `attach(context)` as a context manager; add `validate` and `describe` for requirements and configuration. Copy payloads before keeping them; never modify them. `register_tool(identifier, factory)` (from `brainscore.tools`) makes a tool loadable by name with `load_tool`. A complete external package is in [examples/partner_tool](../../examples/partner_tool/README.md).
+For resources or saved files, override `attach(context)` as a context manager; add `validate` and `describe` for requirements and configuration. Copy payloads before keeping them; never modify them. A tool you write outside Brain-Score is registered with `register_tool(identifier, factory)` (from `brainscore.tools`); `load_tool(identifier, **configuration)` then calls the factory:
+
+```python
+from brainscore.tools import register_tool
+register_tool('count-outputs', CountOutputs)          # a class or any function that returns a tool
+```
+
+A tool that ships in Brain-Score is one line in the table in `brainscore/tools/_registry.py`: the module, the class, and whether `artifact=` loads a saved tool. The module is imported only when `load_tool` asks for it, so importing the package imports no tool:
+
+```text
+'linear-probe': ('brainscore.tools.linear_probe', 'LinearProbe', True),
+```
+
+A complete external package is in [examples/partner_tool](../../examples/partner_tool/README.md).
 
 ## A new instrumentation backend
 

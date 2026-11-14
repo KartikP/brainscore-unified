@@ -10,9 +10,9 @@ import pandas as pd
 import pytest
 from PIL import Image
 
-from brainscore.benchmarks.rajalingham2018_2afc.montage import render_sample, compose_choice_array
-from brainscore.benchmarks.rajalingham2018_2afc.score_2afc import run_trials
-from brainscore.benchmarks.rajalingham2018_2afc.sequential import (
+from brainscore.tools.rajalingham2018_2afc.montage import render_sample, compose_choice_array
+from brainscore.tools.rajalingham2018_2afc.score_2afc import run_trials
+from brainscore.tools.rajalingham2018_2afc.sequential import (
     SEQUENTIAL_INSTRUCTION, build_sequential_random_chooser)
 from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject

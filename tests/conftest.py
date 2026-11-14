@@ -18,6 +18,17 @@ Run tiers:
   pytest -m "unit or integration" # CI tier (offline, no big models)
   pytest -m slow                  # on demand (AWS creds + model downloads)
 """
+import os
+
+# Cap the math-library threads before numpy loads: on a shared machine, one thread per core in every
+# test process slows small matrix tests by orders of magnitude. A value you set yourself stays.
+# Covered: a plain `pytest` run (this file) and the workspace launcher (`brainscore/validation/workspace.py`,
+# which sets the same defaults in the environment of its pytest subprocess). Not covered when started on their own:
+# `install/run_candidate.sh`, `brainscore/validation/installed.py` and CI; export the variables there.
+for _variable in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',
+                  'VECLIB_MAXIMUM_THREADS', 'NUMEXPR_NUM_THREADS'):
+    os.environ.setdefault(_variable, '4')
+
 import pytest
 
 pytest_plugins = ['brainscore.validation.cpu_profile']
