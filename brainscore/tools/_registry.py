@@ -1,11 +1,17 @@
-"""One table of lazy import paths and one loader for experiment and interpretation tools."""
+"""One table of lazy import paths and one loader for experiment and interpretation tools.
+
+A tool that ships in Brain-Score is one line in ``_TOOLS``: module, class, and whether
+``artifact=`` loads a saved tool. The module is imported when ``load_tool`` asks for it.
+A tool written outside Brain-Score is added with ``register_tool(identifier, factory)``;
+``load_tool`` calls the factory. The two cases are the two branches of ``load_tool``.
+"""
 from importlib import import_module
 from typing import Any, Callable
 
 
 # One line per built-in tool: (module, class, whether `artifact=` loads a fitted tool).
 # The module is imported when the tool is loaded, not before.
-_TOOLS: dict[str, tuple[str, str, bool]] = {
+_TOOLS: dict[str, Any] = {      # a path tuple here; a callable for a registered tool
     'ablate': ('brainscore.experiments', 'Ablate', False),
     'contrastive-steering': ('brainscore.tools.contrastive_steering', 'ContrastiveSteering', True),
     'linear-probe': ('brainscore.tools.linear_probe', 'LinearProbe', True),
