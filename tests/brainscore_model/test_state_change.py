@@ -137,6 +137,13 @@ class TestInterventionDispatch:
         with pytest.raises(TypeError, match='must return a'):
             apply_state_change(model, sc)
 
+    def test_the_error_names_the_wrong_first_element_of_a_tuple(self):
+        model = _make_model(intervention=lambda state_change: ('not an applied record', lambda: None))
+        sc = StateChange(kind='ablation', target=Selection(layer='blocks.10'),
+                         perturbation=Perturbation(kind='zero'))
+        with pytest.raises(TypeError, match='first element is str'):
+            apply_state_change(model, sc)
+
     def test_duplicate_handle_id_raises(self):
         # state_change_fn that always returns the same handle_id
         def colliding_fn(state_change):
@@ -402,6 +409,29 @@ class TestCleanupFailuresAreNotLost:
         with pytest.raises(RuntimeError, match="'h1'"):
             SessionProtocol('two-conditions', sessions,
                             conditions=['lesioned', 'restored']).run(model, context=None)
+
+    def test_session_protocol_keeps_the_body_error_when_the_reset_also_fails(self):
+        from brainscore.experiments import SessionProtocol
+
+        def sessions(repetition):
+            raise ValueError('the session body failed')
+
+        class _Context:
+            def repetition(self, *args, **kwargs):
+                import contextlib
+                return contextlib.nullcontext()
+
+        model = self._model_with({})
+        resets = []
+
+        def reset():
+            resets.append(1)
+            if len(resets) > 1:
+                raise RuntimeError('device error while restoring')
+        model.reset = reset
+        with pytest.raises(ValueError, match='the session body failed') as raised:
+            SessionProtocol('one-condition', sessions, conditions=['only']).run(model, context=_Context())
+        assert any('device error while restoring' in note for note in raised.value.__notes__)
 
 
 class TestRejectedInterventionReturn:

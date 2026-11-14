@@ -579,6 +579,15 @@ def test_cleanup_failure_keeps_original_failure_on_disk(tmp_path, cleanup):
     tools = [RecordInputsOutputs()] + ([] if cleanup == 'reset' else [Failing()])
     p = protocol()
     p.repetitions = ('only',)
+    if cleanup == 'reset':                    # the body error stays; the reset failure is a note
+        with pytest.raises(ValueError, match='repetition failed') as raised:
+            Experiment(subject=subject, protocol=p, tools=tools, output_dir=tmp_path/'run').run()
+        assert any('cleanup failed' in note for note in raised.value.__notes__)
+        assert subject.resets == 2
+        assert RunRecord(tmp_path/'run/inputs_outputs').manifest['status'] == 'failed'
+        error, _ = _saved_chain(tmp_path/'run')
+        assert error == {'type': 'ValueError', 'message': 'repetition failed'}
+        return
     with pytest.raises(RuntimeError, match='cleanup failed') as raised:
         Experiment(subject=subject, protocol=p, tools=tools, output_dir=tmp_path/'run').run()
     assert isinstance(raised.value.__context__, ValueError)  # Python's own chain is unchanged.

@@ -229,7 +229,13 @@ class SessionProtocol:
                             raise RuntimeError('Environment session ended before episode completion')
                         if self.collect_outputs:
                             results.append(session.collect())
-                finally:
+                except BaseException as error:
+                    try:
+                        subject.reset()
+                    except Exception as reset_error:      # the first error stays the one raised
+                        error.add_note(f'The reset of the subject also failed: {reset_error!r}')
+                    raise
+                else:
                     subject.reset()
         return results if self.collect_outputs else None
 
