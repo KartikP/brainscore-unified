@@ -4,15 +4,21 @@
 readout values); the functions here package them: one-hot choices, ratings,
 texts, implied probabilities and reaction times, and a legacy task's one-hot
 rows over ``label_set``. An answer that cannot be read is kept with
-``answer_valid=False`` (a NaN row for a choice or a number, rule 6.2). Every
-answer carries its response record in ``attrs['response']``
-(``brainscore_core.response_formats``).
+``answer_valid=False`` (a NaN row for a choice or a number, rule 6.2); a trial
+with no reply keeps ``raw_answer`` None. Every answer carries its response
+record in ``attrs['response']`` (``brainscore_core.response_formats``); the
+session then gives each trial its state.
 """
 
 import numpy as np
 
 from brainscore_core.response_formats import response_record
 from brainscore_core.streaming import StreamEvent
+
+
+def _raw(values):
+    """Raw responses as text; None stays None (no reply: a missing trial)."""
+    return [None if value is None else str(value) for value in values]
 
 
 def legacy_one_hot(answers, label_set, stimuli):
@@ -81,7 +87,7 @@ def one_hot(chosen, valid, stimuli, row_labels, axis, record, raw=None, errors=N
             values[i] = np.nan
     coords = {**_presentation(stimuli), 'choice': list(axis),
               'answer_valid': ('presentation', list(valid)),
-              'raw_answer': ('presentation', [str(r) for r in raw] if raw is not None
+              'raw_answer': ('presentation', _raw(raw) if raw is not None
                              else ['' if c is None else str(c) for c in chosen])}
     if errors is not None:
         coords['parse_error'] = ('presentation', [e or '' for e in errors])
@@ -97,7 +103,7 @@ def numbers(parsed, stimuli, record, raw=None):
               'answer_valid': ('presentation', [v is not None for v, _ in parsed]),
               'parse_error': ('presentation', [e or '' for _, e in parsed])}
     if raw is not None:
-        coords['raw_answer'] = ('presentation', [str(r) for r in raw])
+        coords['raw_answer'] = ('presentation', _raw(raw))
     return BehavioralAssembly(values, coords=coords, dims=['presentation'],
                               attrs={'response': record})
 
@@ -126,7 +132,8 @@ def texts(parsed, replies, stimuli):
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     values = np.array([v if v is not None else '' for v, _ in parsed], dtype=object)
     coords = {**_presentation(stimuli),
-              'answer_valid': ('presentation', [v is not None for v, _ in parsed])}
+              'answer_valid': ('presentation', [v is not None for v, _ in parsed]),
+              'raw_answer': ('presentation', _raw(replies))}
     return BehavioralAssembly(values, coords=coords, dims=['presentation'],
                               attrs={'response': response_record('behavior:text', 'generation')})
 
