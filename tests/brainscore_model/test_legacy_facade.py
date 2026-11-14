@@ -100,7 +100,7 @@ def test_variance_request_fails_instead_of_returning_identical_trials():
     model, extractor = _model()
     facade = _facade(model)
     facade.start_recording('IT', time_bins=[(70, 170)])
-    with pytest.raises(NotImplementedError, match='trial-to-trial variance'):
+    with pytest.raises(ExecutionNotFeasibleError, match='trial-to-trial variance'):
         facade.look_at(_images(), number_of_trials=3, require_variance=True)
     assert extractor.calls == []
 
@@ -313,7 +313,7 @@ def test_typed_behavioral_variance_request_fails_before_compute():
     facade = _facade(model)
     facade.start_task('probabilities', fitting_stimuli=_labelled_images())
     calls = len(extractor.calls)
-    with pytest.raises(NotImplementedError, match='trial-to-trial variance'):
+    with pytest.raises(ExecutionNotFeasibleError, match='trial-to-trial variance'):
         facade.look_at(_images(), number_of_trials=3, require_variance=True)
     assert len(extractor.calls) == calls
 
