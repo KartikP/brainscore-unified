@@ -10,6 +10,7 @@ from contextlib import nullcontext
 import gc
 import json
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -305,10 +306,17 @@ def observe_case(case, route, *, max_length=1024, score=False, score_float64=Fal
         benchmark.metric = metric
         if score:
             metric.regression.fit = original_fit
-        if hasattr(subject, 'reset'):
-            subject.reset()
-        del subject, benchmark, model
-        gc.collect()
+        pending = sys.exc_info()[1]
+        try:
+            if hasattr(subject, 'reset'):
+                subject.reset()
+        except Exception as reset_error:
+            if pending is None:
+                raise
+            pending.add_note(f'The reset of the subject also failed: {reset_error!r}')
+        finally:
+            del subject, benchmark, model
+            gc.collect()
 
 
 def ablate(case, legacy, native, worst_row):

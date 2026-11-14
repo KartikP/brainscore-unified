@@ -5,6 +5,7 @@ local checkpoints; benchmark assemblies/ceilings/stimuli must already be staged.
 """
 import gc
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -390,10 +391,17 @@ def _validate_case(case, subject_factory, benchmark_loader, *,
                 for _, values, _ in captured:
                     values.path.unlink(missing_ok=True)
             setattr(benchmark, attr, metric)
-            if hasattr(subject, 'reset'):
-                subject.reset()
-            del subject, benchmark
-            gc.collect()
+            pending = sys.exc_info()[1]
+            try:
+                if hasattr(subject, 'reset'):
+                    subject.reset()
+            except Exception as reset_error:
+                if pending is None:
+                    raise
+                pending.add_note(f'The reset of the subject also failed: {reset_error!r}')
+            finally:
+                del subject, benchmark
+                gc.collect()
     return report()
 
 
