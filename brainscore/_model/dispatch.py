@@ -3,7 +3,9 @@
 ``record`` records the regions that ``start_recording`` set from a stimulus
 table; ``act`` asks the policy for one closed-loop step. A session part calls
 them directly, and so does ``BrainScoreModel.process``; nothing here selects a
-part. The extractor for an input is chosen by ``extractor_keys``.
+part. The extractor for an input is chosen by ``extractor_keys``, except
+that a table bringing every input of a fused (tuple-key) extractor goes to
+that extractor, chosen by ``fused_for``.
 """
 
 import os
@@ -75,7 +77,9 @@ def extractor_for(owner, modality: str, stimuli, layers=()):
 def extractor_keys(owner, modality, layers=(), channels=None) -> List[str]:
     """The extractor keys that can record ``layers`` of ``modality``, best first.
 
-    The one resolver of declarations, pre-flight and the run. A key serves
+    The resolver of declarations, pre-flight and the run, except for a fused
+    extractor: when a table brings every input it takes, ``fused_for`` picks
+    it and it records every requested layer. A key serves
     ``modality`` when it is of its input family (``vision`` and ``video`` both
     serve ``vision``; every key when ``modality`` is None), and it can record
     when its extractor has all of ``layers`` (an extractor without
