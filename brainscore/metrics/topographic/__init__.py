@@ -7,6 +7,8 @@ from .metric import (
     spatial_smoothness,
     topographic_alignment,
     selectivity_topographic_alignment,
+    selectivity_maps,           # importable from this path as before; not in __all__
+    selectivity_centroids,
 )
 
 __all__ = [

@@ -11,7 +11,7 @@ topographic, behavioral, causal). See `EXTENDING.md` (Seam 3) for the full contr
    each assembly must carry, and fail loudly on a mismatch.
 3. Edit `__init__.py`. Pick your identifier in `metric_registry['<your-id>']`.
 4. Add `from . import <your_name>` to `brainscore/metrics/__init__.py`.
-5. Adapt `test_metric.py` and run it (`pytest brainscore/metrics/<your_name>/test_metric.py`).
+5. Move `test_metric.py` to `tests/test_<your_name>.py`, adapt it and run it (`pytest tests/test_<your_name>.py`).
 
 From the `templates/` folder, with the data template for an assembly:
 
