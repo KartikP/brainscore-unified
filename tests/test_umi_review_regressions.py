@@ -356,7 +356,7 @@ def test_vision_adapter_reset_reaches_real_commitment():
 
 
 def test_pereira_declares_passages_before_extraction():
-    from brainscore_language.benchmarks.pereira2018.unified import _Pereira2018ExperimentUnified
+    from brainscore.benchmarks.pereira2018.benchmark import _Pereira2018ExperimentUnified
     from brainscore_core.text import contextualized_texts
     benchmark = _Pereira2018ExperimentUnified.__new__(_Pereira2018ExperimentUnified)
     benchmark.data = NeuroidAssembly(np.zeros((4, 1)), dims=['presentation', 'neuroid'], coords={

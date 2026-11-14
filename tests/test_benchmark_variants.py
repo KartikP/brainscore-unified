@@ -17,7 +17,7 @@ import brainscore.benchmarks  # noqa: F401  (registers the unified benchmarks)
 from tests.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
 
 FAMILIES = ('Algonauts2025-', 'CogGym.', 'EWoK-', 'GridGame-', 'Lahner2024-',
-            'LeBel2023-', 'Yeatman2021-')
+            'LeBel2023-', 'MajajHong2015', 'Pereira2018.', 'Yeatman2021-')
 
 REGISTERED = [
     'Algonauts2025-friends-sub01',
@@ -68,6 +68,16 @@ REGISTERED = [
     'LeBel2023-UTS03-encoding-contextwindow',
     'LeBel2023-UTS03-encoding-languagemask',
     'LeBel2023-UTS03-encoding-smoke',
+    'MajajHong2015.IT-pls-unified',
+    'MajajHong2015.V4-pls-unified',
+    'MajajHong2015public.IT-pls-unified',
+    'MajajHong2015public.V4-pls-unified',
+    'Pereira2018.243sentences-linear',
+    'Pereira2018.243sentences-linear-unified',
+    'Pereira2018.243sentences-ridge-unified',
+    'Pereira2018.384sentences-linear',
+    'Pereira2018.384sentences-linear-unified',
+    'Pereira2018.384sentences-ridge-unified',
     'Yeatman2021-induced_dyslexia-image',
     'Yeatman2021-induced_dyslexia-text',
     'Yeatman2021-lexical_decision',

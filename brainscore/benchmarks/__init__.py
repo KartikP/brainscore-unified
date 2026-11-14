@@ -23,3 +23,5 @@ from . import lebel2023         # noqa: F401  whole-cortex story-listening fMRI
 from . import coggym            # noqa: F401  pinned external cognitive experiments
 
 from . import ewok  # noqa: F401
+from . import majajhong2015     # noqa: F401  legacy vision data, process() route
+from . import pereira2018       # noqa: F401  legacy language data, process() route

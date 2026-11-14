@@ -56,7 +56,7 @@ def constant_metric(monkeypatch):
 @pytest.fixture
 def synthetic_benchmarks(monkeypatch, tmp_path):
     from brainscore_vision.benchmarks.majajhong2015 import benchmark as vision_legacy
-    from brainscore_vision.benchmarks.majajhong2015 import unified as vision_unified
+    from brainscore.benchmarks.majajhong2015 import benchmark as vision_unified
     from brainscore_language.benchmarks.pereira2018.benchmark import _Pereira2018Experiment
     import brainscore_language.benchmarks.pereira2018.benchmark as language_benchmark
     stimuli = _stimuli()

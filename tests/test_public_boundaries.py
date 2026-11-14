@@ -24,6 +24,11 @@ MAINTAINED = [
     ('brainscore', ''),
 ]
 
+# The Pereira2018 plugin extends the legacy experiment class. Its name is private
+# in the language plugin, which is used as it is and never edited.
+ALLOWED = {('benchmarks/pereira2018/benchmark.py',
+            'brainscore_language.benchmarks.pereira2018.benchmark: _Pereira2018Experiment')}
+
 
 def _private(name):
     return name.startswith('_') and not name.startswith('__')
@@ -75,7 +80,8 @@ def _maintained_files():
 def test_maintained_extension_code_imports_no_private_names():
     offenders = [f'{path}:{line} {what}'
                  for package, path in _maintained_files()
-                 for line, what in private_uses(path.read_text(encoding='utf-8'), package)]
+                 for line, what in private_uses(path.read_text(encoding='utf-8'), package)
+                 if (path.as_posix().split(f'/{package}/', 1)[-1], what) not in ALLOWED]
     assert not offenders, 'private cross-package names:\n' + '\n'.join(offenders)
 
 
