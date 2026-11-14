@@ -115,7 +115,7 @@ Before a benchmark runs, Brain-Score compares declarations only:
 
 `BrainScoreModel` fills `output_inputs` for each `neural:<region>` from the extractor its selector names (`LayerSelector(name=..., modality=...)`). In a model with two or more extractors, give every region its tower: a region without one is not listed, so pre-flight cannot check it.
 
-A pair that fails is **not applicable** (N/A). It is not run and never scored as zero: `brainscore.score` returns a score with the value NaN, `attrs['status'] == 'N/A'`, the `reason` and the `missing_channels`. Pre-flight decides from the declarations; a `BrainScoreModel` also refuses, at the start of a session and before any compute, a set of outputs that no one part of it answers together. Both give the same N/A result. A subject that reads only some of the provided inputs still runs; the other inputs never reach it.
+A pair that fails is **not applicable** (N/A). It is not run and never scored as zero: `brainscore.score` returns a score with the value NaN, `attrs['status'] == 'N/A'`, the `reason` and the `missing_channels`. N/A is decided only from the declarations, before any compute. A pair that passes this check and is then refused during the run (for example a `BrainScoreModel` with no one part that answers the requested outputs together, or with no part for the benchmark's task) is an error, not N/A: the declarations do not yet express that limit. A malformed declaration (`ValueError`) is an error too. A subject that reads only some of the provided inputs still runs; the other inputs never reach it.
 
 A subject declares what it can take and give; a benchmark, a protocol and a tool declare what they need. A session requests its `outputs`:
 

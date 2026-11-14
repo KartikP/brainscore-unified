@@ -120,7 +120,7 @@ packaging as the passive recording, and the two are equal when the network recei
 the same input. A model whose answering part prepares the stimulus in its own way (a
 chat processor) records what the network received during the task. Without it, the
 region is recorded during a task only through hooks on the network passed as `model=`,
-and otherwise the pair is N/A.
+and otherwise the session is refused before any compute (an error of `score`, not N/A).
 
 #### A policy that keeps history
 
