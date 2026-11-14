@@ -298,9 +298,12 @@ def score(model_identifier, benchmark_identifier,
 
     A pair that is not applicable returns the N/A result
     (``brainscore_core.score_status.na_score``: NaN, ``attrs['status'] == 'N/A'``,
-    ``reason``, ``missing_channels``) before any model compute: pre-flight refuses
-    it from the declarations, or the subject refuses it at the start of a
-    session. A memory-check failure raises.
+    ``reason``, ``missing_channels``): pre-flight refuses it from the
+    declarations, or the subject refuses it before any session of the run
+    delivered an input or accepted a response. A refusal after that raises
+    ``RuntimeError``; so do a malformed declaration (``ValueError``) and a
+    memory-check failure. With ``check_mem=True`` the memory probe may run one
+    stimulus before a refusal that depends on the benchmark's task.
     """
     from brainscore_core.compatibility import CompatibilityError, check_compatibility
     from brainscore_core.extraction_cache import weight_fingerprint_scope
@@ -336,8 +339,10 @@ def score(model_identifier, benchmark_identifier,
                     else _resolve_identifier(benchmark, 'custom-benchmark'))
     requested_channels = requested_output_channels_for_score(benchmark)
 
-    # One conversion: a pair that pre-flight refuses, or that the subject
-    # refuses at the start of a session, is N/A (rules 5.6, 5.7).
+    # One conversion: a pair that pre-flight refuses, or that the subject refuses
+    # before the run computed, is N/A (rules 5.6, 5.7); na_score raises for a
+    # refusal after compute. ``measures`` stays None until the benchmark starts.
+    measures = None
     try:
         compatibility = check_compatibility(subject, benchmark)
         if check_mem:
@@ -353,7 +358,7 @@ def score(model_identifier, benchmark_identifier,
         with weight_fingerprint_scope(), record_measures() as measures:
             result = benchmark(received)
     except CompatibilityError as error:
-        result = na_score(error)
+        result = na_score(error, measures)
         result.attrs.update(model_identifier=model_id, benchmark_identifier=benchmark_id)
         return result
     # The run must leave the subject as it found it: every intervention a session

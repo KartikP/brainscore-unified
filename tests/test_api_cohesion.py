@@ -217,7 +217,7 @@ def test_experiment_refuses_unregistered_channels_as_scoring_does():
     with pytest.raises(CompatibilityError, match="unknown channel 'unregistered_input'"):
         protocol.validate(subject)
     subject.in_channels = {'behavior'}
-    with pytest.raises(CompatibilityError, match='registry marks'):
+    with pytest.raises(ValueError, match='registry marks'):
         protocol.validate(subject)
 
 

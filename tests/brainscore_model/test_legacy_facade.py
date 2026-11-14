@@ -109,8 +109,9 @@ def test_visual_degrees_reported():
 
 
 def test_start_behavioral_task_fails_clearly():
+    from brainscore_core.compatibility import CompatibilityError
     model, _ = _model('text')
-    with pytest.raises(NotImplementedError, match="'reading_times'"):
+    with pytest.raises(CompatibilityError, match="'reading_times'"):
         _facade(model).start_behavioral_task('reading_times')
 
 

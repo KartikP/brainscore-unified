@@ -236,7 +236,7 @@ class TestPreflight:
         # The lesion channel has no address: the target is in the StateChange.
         subject = _Subject()
         subject.in_channels = {'text', 'lesion:other'}
-        with pytest.raises(CompatibilityError, match='not addressable'):
+        with pytest.raises(ValueError, match='not addressable'):
             check_compatibility(subject, self._bench())
         assert subject.sessions == 0
 

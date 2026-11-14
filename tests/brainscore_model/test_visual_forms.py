@@ -170,7 +170,7 @@ def test_a_benchmark_with_a_bare_vision_channel_is_refused():
     model = BrainScoreModel('m', region_layer_map={'IT': 'layer'}, extractor={'vision': _extractor(1.0)})
     benchmark = SimpleNamespace(identifier='bare', required_input_channels={'vision'},
                                 requested_output_channels={'neural:IT'})
-    with pytest.raises(CompatibilityError):
+    with pytest.raises(ValueError):
         check_compatibility(model, benchmark)
 
 
