@@ -317,3 +317,39 @@ def test_an_unknown_channel_alone_is_na():
                               _DeclaredBenchmark(), check_mem=False)
     assert result.attrs['status'] == 'N/A'
     assert 'aardvark' in result.attrs['reason']
+
+
+# ── The score records how its sessions ran ──────────────────────────────────
+
+class _Answering(_Recorder):
+    """Answers every input with one response on the first requested output."""
+
+    def participate(self, session):
+        self.calls.append(session)
+        while (event := session.next_input()) is not None:
+            session.respond(StreamEvent(session.outputs[0], NeuroidAssembly(
+                np.ones((1, 1)), dims=['presentation', 'neuroid'],
+                coords={'stimulus_id': ('presentation', ['a']), 'neuroid_id': ('neuroid', ['n'])}),
+                event.t_ms))
+
+
+@pytest.mark.parametrize('listed, plan, delivery', [
+    (True, None, 'listed'), (False, 'one', 'stream')], ids=['listed', 'streamed'])
+def test_the_score_records_the_execution_configuration(monkeypatch, listed, plan, delivery):
+    if plan is None:
+        monkeypatch.delenv('BRAINSCORE_REGIONS_PER_PASS', raising=False)
+    else:
+        monkeypatch.setenv('BRAINSCORE_REGIONS_PER_PASS', plan)
+
+    class _Run(_Benchmark):
+        def __call__(self, subject):
+            events = [StreamEvent('vision:image', 'a.png', 0.0)]
+            subject.participate(Session(events if listed else iter(events), ['neural:IT']))
+            return Score(0.25)
+    result = brainscore.score(_Answering({'vision:image'}, {'neural:IT'}), _Run(), check_mem=False)
+    assert float(result) == 0.25                       # attributes only; the value is unchanged
+    assert result.attrs['delivery'] == delivery
+    assert result.attrs['regions_per_pass'] == (plan or 'all')
+    assert result.attrs['software']['python']
+    assert result.attrs['code_commits']['brainscore'] is None or len(
+        result.attrs['code_commits']['brainscore']) == 40

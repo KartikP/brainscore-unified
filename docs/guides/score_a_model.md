@@ -54,6 +54,8 @@ What happens:
 
 Every unified benchmark score carries the same attributes: `raw` (the metric value before any ceiling normalization), `ceiling` (the reference, a `Score`), `normalized` (whether the score is `raw` divided by a measured ceiling; when it is `False` the score is the raw value, and the ceiling is NaN with `attrs['status'] == 'not_estimated'`, or `Score(1.0)` for LeBel2023, the induced-dyslexia benchmarks and every Lahner2024 variant except `Lahner2024-fMRI-naturalistic-visualROI`), `metric`, `benchmark_version`, `benchmark_identifier` and `compatibility`. A raw score and a normalized score are not on one scale.
 
+Every score from `score` also records how it was produced: `delivery` (`'listed'` when the sessions sent a list known up front, `'stream'` when they sent one event at a time, both as a tuple, or None when no session answered), `regions_per_pass` (the `BRAINSCORE_REGIONS_PER_PASS` setting the sessions ran under), `software` (the versions of python, numpy, torch, transformers, scikit-learn, xarray and the four Brain-Score packages) and `code_commits` (the commit of each imported Brain-Score package's checkout, or None outside a git checkout). These settings can change the last digits of a score.
+
 ## Find models and benchmarks
 
 ```python
