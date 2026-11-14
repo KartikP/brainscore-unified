@@ -3,8 +3,8 @@ multimodal Brain-Score model.
 
 Built specifically to exercise the M12-full unified-interface APIs:
 - Two extraction wrappers (`video` + `audio`), one BrainScoreModel
-- ``LayerSelector(modality=...)`` routing IT to the video tower and A1 to
-  the audio tower in cross-tower extraction
+- Each region recorded from the tower whose layers include it: IT from
+  the video tower, A1 from the audio tower
 - Multi-modality scoring against a multimodal benchmark
   (``Lahner2024-fMRI-naturalistic-multimodal``)
 
@@ -22,7 +22,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from brainscore import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel
 
 
 # ── Audio tower config ─────────────────────────────────────────────
@@ -35,9 +35,8 @@ AUDIO_HF_ID = 'facebook/wav2vec2-base'
 AUDIO_LAYER = 'encoder.layers.6'  # mid-encoder block; speech features
 
 
-# Region → layer mapping spans both towers. The modality of each
-# LayerSelector below tells BrainScoreModel which tower owns each layer for cross-
-# tower routing in multi-modality scoring.
+# Region → layer mapping spans both towers. Each layer name is in one tower,
+# so BrainScoreModel records each region from the tower that has it.
 REGION_LAYER_MAP = {
     # Vision tower (V-JEPA v1 ViT-L; mid-encoder block 16 was the
     # per-voxel layer-sweep peak on Lahner2024 — see CLAUDE.md notes).
@@ -46,13 +45,6 @@ REGION_LAYER_MAP = {
     'IT': 'backbone.blocks.16',
     # Audio tower (Wav2Vec2-base; mid encoder block).
     'A1': AUDIO_LAYER,
-}
-
-REGION_MODALITY_MAP = {
-    'V1': 'video',
-    'V4': 'video',
-    'IT': 'video',
-    'A1': 'audio',
 }
 
 
@@ -171,10 +163,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=None,
-        region_layer_map={
-            region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
-            for region, layer in REGION_LAYER_MAP.items()
-        },
+        region_layer_map=REGION_LAYER_MAP,
         extractor={
             'video': video_wrapper,
             'audio': audio_wrapper,

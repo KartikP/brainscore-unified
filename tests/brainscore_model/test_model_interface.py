@@ -1113,7 +1113,7 @@ class TestCrossTowerRouting:
         """A model with two extractors names the one each region is recorded
         from. Without it, a region would be recorded from whichever tower gets
         input, and pre-flight could not check it."""
-        with pytest.raises(ValueError, match='several extractors'):
+        with pytest.raises(ValueError, match='names its extractor'):
             self._make_cross_tower_model(routed=False)
 
     def test_cross_tower_skips_wrapper_with_no_layers(self):

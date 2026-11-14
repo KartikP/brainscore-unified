@@ -88,7 +88,7 @@ Each wrapper is named after what it wraps; pick the one for your model. A model 
 | Value | Means |
 | --- | --- |
 | `'layer4'` | Every unit of one layer (shorthand for `LayerSelector(name='layer4')`). |
-| `LayerSelector(name=..., modality='text')` | One layer in a specific tower of a multi-tower model. |
+| `LayerSelector(name=..., modality='text')` | One layer in a specific tower, when two towers have a layer of that name. |
 | `CompositeSelector(layers=(('layer3', (0, 1)), ('layer4', None)))` | Units drawn from several layers. |
 
 ### Behavior, action and intervention parts

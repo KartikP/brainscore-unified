@@ -17,7 +17,6 @@ bf16; weights are placed automatically across the available devices.
 """
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore import LayerSelector
 
 HF_IDENTIFIER = 'Qwen/Qwen3.6-27B'
 
@@ -32,7 +31,6 @@ REGION_LAYER_MAP = {
     'IT': 'blocks.23',
     'language_system': 'layers.40',
 }
-TEXT_REGIONS = ('language_system',)
 
 # Share of each accelerator given over to weights; the rest holds activations.
 WEIGHT_FRACTION = 0.78
@@ -155,11 +153,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=full,
-        region_layer_map={
-            region: LayerSelector(name=layer,
-                                  modality='text' if region in TEXT_REGIONS else 'vision')
-            for region, layer in REGION_LAYER_MAP.items()
-        },
+        region_layer_map=REGION_LAYER_MAP,
         extractor={'vision': vision, 'video': video, 'text': text},
         visual_degrees=8,
         answer=_make_answer(full, processor),

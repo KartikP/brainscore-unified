@@ -30,6 +30,9 @@ class FakeWrapper:
         self.kwargs = kwargs
         self.identifier = kwargs['identifier']
 
+    def layer_names(self):
+        return [name for name, _ in self.kwargs['model'].named_modules() if name]
+
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
         raise AssertionError('not called in wiring tests')
 
@@ -114,9 +117,10 @@ def test_both_towers_are_wired(built):
 def test_regions_route_to_their_tower(built):
     model, _ = built
     selectors = model.region_layer_selectors
-    assert (selectors['language_system'].name, selectors['language_system'].modality) == ('layers.40', 'text')
+    assert selectors['language_system'].name == 'layers.40'
+    assert model.output_inputs['neural:language_system'] == {'text'}
     for region in ('V1', 'V2', 'V4', 'IT'):
-        assert selectors[region].modality == 'vision'
+        assert model.output_inputs[f'neural:{region}'] == {'vision:image', 'vision:video'}
         assert int(selectors[region].name.split('.')[1]) < 27
 
 

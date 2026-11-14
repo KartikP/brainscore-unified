@@ -16,14 +16,13 @@ audio contribution.
 import numpy as np
 import torch
 
-from brainscore import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel
 
 
 AUDIO_HF_ID = 'facebook/wav2vec2-base'
 AUDIO_LAYER = 'encoder.layers.6'
 
 REGION_LAYER_MAP = {'A1': AUDIO_LAYER}
-REGION_MODALITY_MAP = {'A1': 'audio'}
 
 
 def _build_random_wav2vec2(identifier: str):
@@ -73,10 +72,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=None,
-        region_layer_map={
-            region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
-            for region, layer in REGION_LAYER_MAP.items()
-        },
+        region_layer_map=REGION_LAYER_MAP,
         extractor={
             'audio': audio_wrapper,
         },

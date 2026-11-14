@@ -25,7 +25,7 @@ from typing import List
 import torch
 from PIL import Image
 
-from brainscore import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject
 from brainscore_core.hf_compat import pin_image_processor
 
@@ -206,17 +206,10 @@ def get_model(identifier: str) -> Subject:
         # Selection paths are relative to the extraction root. The same
         # visual module is also used by the full model's generate().
         variant_kwargs = dict(intervention=build_pytorch_ablation_fn(qwen_model.model.visual))
-    # Each region says which tower records it, so a task showing images and
-    # text records the vision regions from the image tower.
-    region_layer_map = {
-        region: LayerSelector(name=layer,
-                              modality='text' if region == 'language_system' else 'vision')
-        for region, layer in layers.items()}
-
     subject = BrainScoreModel(
         identifier=identifier,
         model=qwen_model,
-        region_layer_map=region_layer_map,
+        region_layer_map=layers,
         extractor={
             'vision': vision_wrapper,
             'text': text_wrapper,
