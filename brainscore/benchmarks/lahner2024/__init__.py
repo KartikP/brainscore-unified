@@ -10,7 +10,8 @@ from .benchmark_timeresolved import (
     RunBlocks,
 )
 
-# One registry line per variant: the class and the parts that make the variant.
+# One registry line per variant: the class, the full identifier (the registry key) and the parts
+# that make the variant.
 # Two classes, one per neural target: GLM betas (one estimate per clip) and TR
 # time series. The parts:
 # - `channels`: the visual stream only (records neural:IT), or the visual stream
@@ -29,18 +30,19 @@ from .benchmark_timeresolved import (
 _AUDIOVISUAL = ('vision:image', 'vision:video', 'audio')
 
 # GLM betas: one beta per voxel per stimulus per repetition.
-benchmark_registry['Lahner2024-fMRI-naturalistic'] = Lahner2024BOLDMoments
+benchmark_registry['Lahner2024-fMRI-naturalistic'] = partial(
+    Lahner2024BOLDMoments, identifier='Lahner2024-fMRI-naturalistic')
 benchmark_registry['Lahner2024-fMRI-naturalistic-visualROI'] = partial(
-    Lahner2024BOLDMoments, reliability_threshold=0.3, identifier_suffix='-visualROI',
+    Lahner2024BOLDMoments, reliability_threshold=0.3, identifier='Lahner2024-fMRI-naturalistic-visualROI',
     ceiling=VISUAL_ROI_CEILING)
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal'] = partial(
-    Lahner2024BOLDMoments, channels=_AUDIOVISUAL, identifier_suffix='-multimodal')
+    Lahner2024BOLDMoments, channels=_AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic-multimodal')
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-visualROI'] = partial(
     Lahner2024BOLDMoments, channels=_AUDIOVISUAL, reliability_threshold=0.3,
-    identifier_suffix='-multimodal-visualROI')
+    identifier='Lahner2024-fMRI-naturalistic-multimodal-visualROI')
 benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = partial(
     Lahner2024BOLDMoments, channels=_AUDIOVISUAL, voxel_mask_fn=build_auditory_mask,
-    identifier_suffix='-multimodal-auditoryROI')
+    identifier='Lahner2024-fMRI-naturalistic-multimodal-auditoryROI')
 
 # TR time series: clip-mean onset-impulse HRF model, per-voxel ridge, whole runs
 # held out (blocks of 52 runs by default); events selected by (subject, session,
@@ -49,24 +51,24 @@ benchmark_registry['Lahner2024-fMRI-naturalistic-multimodal-auditoryROI'] = part
 # BOLD before the z-score) and blocks of 10 runs held out inside each participant,
 # per-voxel r averaged across participants. No stored result measures the effect
 # of these changes on the score.
-benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved'] = (
-    Lahner2024BOLDMoments_timeresolved)
+benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved'] = partial(
+    Lahner2024BOLDMoments_timeresolved, identifier='Lahner2024-fMRI-naturalistic-timeresolved')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-visualROI'] = partial(
     Lahner2024BOLDMoments_timeresolved, reliability_threshold=0.3,
-    identifier_suffix='-timeresolved-visualROI')
+    identifier='Lahner2024-fMRI-naturalistic-timeresolved-visualROI')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-improved'] = partial(
     Lahner2024BOLDMoments_timeresolved, folds=ParticipantRunBlocks(10),
-    confounds=MOTION_COLUMNS, identifier_suffix='-timeresolved-improved')
+    confounds=MOTION_COLUMNS, identifier='Lahner2024-fMRI-naturalistic-timeresolved-improved')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI'] = partial(
     Lahner2024BOLDMoments_timeresolved, folds=ParticipantRunBlocks(10),
     confounds=MOTION_COLUMNS, reliability_threshold=0.3,
-    identifier_suffix='-timeresolved-improved-visualROI')
+    identifier='Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal'] = partial(
     Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL,
-    identifier_suffix='-timeresolved-multimodal')
+    identifier='Lahner2024-fMRI-naturalistic-timeresolved-multimodal')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI'] = partial(
     Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL, reliability_threshold=0.3,
-    identifier_suffix='-timeresolved-multimodal-visualROI')
+    identifier='Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI')
 benchmark_registry['Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI'] = partial(
     Lahner2024BOLDMoments_timeresolved, channels=_AUDIOVISUAL, voxel_mask_fn=build_auditory_mask,
-    identifier_suffix='-timeresolved-multimodal-auditoryROI')
+    identifier='Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI')

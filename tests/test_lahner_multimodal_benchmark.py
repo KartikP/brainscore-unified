@@ -15,7 +15,7 @@ from tests.lahner_synthetic import N_VOXELS, Recorder, install
 def _tr_multimodal():
     from brainscore.benchmarks.lahner2024 import Lahner2024BOLDMoments_timeresolved, RunBlocks
     return Lahner2024BOLDMoments_timeresolved(
-        channels=('vision:image', 'vision:video', 'audio'), folds=RunBlocks(2))
+        channels=('vision:image', 'vision:video', 'audio'), folds=RunBlocks(2), identifier='Lahner2024-fMRI-naturalistic-timeresolved')
 
 
 @pytest.mark.parametrize('build', [
@@ -60,7 +60,7 @@ def test_roi_registry_lines_score_their_voxels(monkeypatch, tmp_path, identifier
 def test_one_voxel_mask_part_at_a_time():
     from brainscore.benchmarks.lahner2024 import Lahner2024BOLDMoments, build_auditory_mask
     with pytest.raises(ValueError, match='not both'):
-        Lahner2024BOLDMoments(reliability_threshold=0.3, voxel_mask_fn=build_auditory_mask)
+        Lahner2024BOLDMoments(reliability_threshold=0.3, voxel_mask_fn=build_auditory_mask, identifier='Lahner2024-fMRI-naturalistic')
 
 
 def test_read_stimulus_ids_from_multiindex():

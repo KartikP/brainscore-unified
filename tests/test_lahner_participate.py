@@ -39,7 +39,7 @@ def _frames():
 
 
 def _tr(**kwargs):
-    return Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), **kwargs)
+    return Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), **kwargs, identifier='Lahner2024-fMRI-naturalistic-timeresolved')
 
 
 # ── shared helpers ────────────────────────────────────────────────
@@ -73,7 +73,7 @@ def test_glm_scores_a_participate_only_subject(monkeypatch, tmp_path, in_channel
                                                rows, channel):
     install(monkeypatch, tmp_path)
     subject = Recorder(in_channels, time_bins=3 if 'vision:video' in in_channels else None)
-    score = Lahner2024BOLDMoments()(subject)
+    score = Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic')(subject)
     assert np.isfinite(float(score))
     assert score.attrs['pipeline'] == pipeline
     assert score.attrs['n_videos'] == len(CLIPS)
@@ -84,7 +84,7 @@ def test_glm_scores_a_participate_only_subject(monkeypatch, tmp_path, in_channel
 def test_audiovisual_glm_records_both_streams(monkeypatch, tmp_path):
     install(monkeypatch, tmp_path)
     subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'))
-    score = Lahner2024BOLDMoments(channels=AUDIOVISUAL)(subject)
+    score = Lahner2024BOLDMoments(channels=AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic')(subject)
     assert np.isfinite(float(score))
     assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [
         (['vision:video'], ['neural:IT']), (['audio'], ['neural:A1'])]
@@ -96,7 +96,7 @@ def test_audiovisual_glm_records_both_streams(monkeypatch, tmp_path):
 BOTH = ['neural:IT', 'neural:A1']
 
 
-@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic'),
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
 def test_audiovisual_requests_both_regions_from_the_visual_stream_alone(monkeypatch, tmp_path, build):
     """A partial match runs (rule 5.5) on the stream the subject takes, and the
@@ -112,7 +112,7 @@ def test_audiovisual_requests_both_regions_from_the_visual_stream_alone(monkeypa
     assert score.attrs['pipeline'] in ('video_native', 'continuous_time_encoding')
 
 
-@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic'),
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
 def test_audiovisual_requests_both_regions_from_the_sound_alone(monkeypatch, tmp_path, build):
     install(monkeypatch, tmp_path)
@@ -137,7 +137,7 @@ class _Answers(Recorder):
         return self._answers
 
 
-@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic'),
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
 def test_audiovisual_records_each_region_from_an_input_the_subject_answers_it_from(
         monkeypatch, tmp_path, build):
@@ -151,7 +151,7 @@ def test_audiovisual_records_each_region_from_an_input_the_subject_answers_it_fr
     assert 'mode' not in score.attrs
 
 
-@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic'),
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
 def test_a_region_no_shown_stream_answers_is_refused_before_any_compute(monkeypatch, tmp_path, build):
     from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError, check_compatibility
@@ -165,7 +165,7 @@ def test_a_region_no_shown_stream_answers_is_refused_before_any_compute(monkeypa
     assert subject.seen == []
 
 
-@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic'),
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
 def test_a_missing_sound_track_is_refused_before_the_visual_stream_is_recorded(monkeypatch, tmp_path, build):
     install(monkeypatch, tmp_path)
@@ -178,7 +178,7 @@ def test_a_missing_sound_track_is_refused_before_the_visual_stream_is_recorded(m
 
 def test_unknown_channels_are_refused():
     with pytest.raises(ValueError, match='channels must be one of'):
-        Lahner2024BOLDMoments(channels=('vision:image',))
+        Lahner2024BOLDMoments(channels=('vision:image',), identifier='Lahner2024-fMRI-naturalistic')
 
 
 # ── TR time series ────────────────────────────────────────────────
@@ -281,8 +281,8 @@ def _same_score(old, new):
 
 @pytest.mark.parametrize('visual_key', ['vision', 'video'])
 @pytest.mark.parametrize('build', [
-    lambda: Lahner2024BOLDMoments(),
-    lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+    lambda: Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic'),
+    lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL, identifier='Lahner2024-fMRI-naturalistic'),
     lambda: _tr(),
     lambda: _tr(channels=AUDIOVISUAL),
 ], ids=['glm', 'glm-audiovisual', 'tr', 'tr-audiovisual'])
@@ -322,7 +322,7 @@ class _WrongIds(Recorder):
 def test_a_response_for_other_stimuli_is_refused(monkeypatch, tmp_path, in_channels):
     install(monkeypatch, tmp_path)
     with pytest.raises(ValueError, match='exactly once'):
-        Lahner2024BOLDMoments()(_WrongIds(in_channels))
+        Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic')(_WrongIds(in_channels))
 
 
 # ── Declarations (Contract Rules 5.1, 5.2, 5.12) ──────────────────

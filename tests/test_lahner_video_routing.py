@@ -15,6 +15,6 @@ from tests.lahner_synthetic import Recorder, install
 def test_the_declared_form_decides_what_is_shown(monkeypatch, tmp_path, in_channels, shown, pipeline):
     install(monkeypatch, tmp_path)
     subject = Recorder(in_channels)
-    score = Lahner2024BOLDMoments()(subject)
+    score = Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic')(subject)
     assert [inputs for inputs, _, _, _ in subject.seen] == [[shown]]
     assert score.attrs['pipeline'] == pipeline
