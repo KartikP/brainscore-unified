@@ -220,7 +220,7 @@ def test_the_record_tracks_handles_applied_and_undone_across_sessions():
         apply_state_change(model, StateChange(kind='reset', handle_id=first.handle_id))
         apply_state_change(model, StateChange(
             kind='ablation', target=Selection(layer='x'), perturbation=Perturbation(kind='zero')))
-    assert record.applied == {'h0', 'h1'} and record.unreleased == {'h1'}
+    assert record.applied == {'h0': 1, 'h1': 1} and record.unreleased == {'h1'}
 
 
 def test_the_experiment_plan_records_traits_and_trial_memory(tmp_path):
