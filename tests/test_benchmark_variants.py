@@ -3,7 +3,9 @@
 A variant of a benchmark is a registry line (`lambda` or `partial` of a class with
 arguments). This file pins every identifier, and for each benchmark that builds
 without local data: the identifier it builds, its version, its trial memory, and
-the channels it sends and requests. A change to a registry line that moves one of
+the channels it sends and requests. The Yeatman2021 benchmarks load hosted data
+when they are built; here a synthetic ROAR set stands behind their loaders, so
+the test needs no network. A change to a registry line that moves one of
 these fails here (Contract Rules 10: identifiers are stable and scores do not move).
 """
 import warnings
@@ -12,6 +14,7 @@ import pytest
 
 import brainscore
 import brainscore.benchmarks  # noqa: F401  (registers the unified benchmarks)
+from tests.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)
 
 FAMILIES = ('Algonauts2025-', 'CogGym.', 'EWoK-', 'GridGame-', 'Lahner2024-',
             'LeBel2023-', 'Yeatman2021-')
@@ -195,7 +198,9 @@ def test_the_registered_identifiers_are_the_pinned_list():
 
 
 @pytest.mark.parametrize('identifier', sorted(BUILT))
-def test_a_registry_line_builds_the_pinned_benchmark(identifier):
+def test_a_registry_line_builds_the_pinned_benchmark(identifier, request):
+    if identifier.startswith('Yeatman2021-'):
+        request.getfixturevalue('synthetic_roar')
     try:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore', DeprecationWarning)
