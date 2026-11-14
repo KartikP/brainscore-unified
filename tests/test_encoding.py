@@ -190,6 +190,12 @@ class TestSplits:
         assert (counts == 1).all()
         assert len(list(group_kfold(groups, n_splits=5, n_used=1))) == 1
 
+    @pytest.mark.parametrize('dtype', [float, object])
+    def test_group_kfold_refuses_a_nan_group_label(self, dtype):
+        groups = np.array([np.nan, 1.0, 1.0, 2.0, 2.0, 3.0], dtype=dtype)
+        with pytest.raises(ValueError, match='group label is NaN'):
+            next(group_kfold(groups, n_splits=2))
+
     def test_row_kfold_is_sklearn(self):
         from sklearn.model_selection import KFold
         expected = KFold(4, shuffle=True, random_state=7).split(np.arange(12))

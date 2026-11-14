@@ -84,6 +84,9 @@ def group_kfold(groups, n_splits: int = 5, random_state: int = 0,
     the first fold alone.
     """
     groups = np.asarray(groups)
+    if np.any(groups != groups):          # NaN is the only label not equal to itself
+        raise ValueError('A group label is NaN: its rows would be on neither the training nor '
+                         'the test side. Give every row a group label.')
     distinct = np.unique(groups)
     folds = row_kfold(len(distinct), n_splits=n_splits, random_state=random_state)
     for train_pos, test_pos in islice(folds, n_used):
