@@ -359,7 +359,7 @@ def _counting_subject():
 
 @pytest.mark.parametrize('task', [TaskContext(response=Text()),
                                   TaskContext(response=Choice(['a', 'b']))])
-def test_a_task_the_subject_has_no_part_for_is_not_applicable_with_zero_passes(task):
+def test_a_task_the_subject_has_no_part_for_is_refused_with_zero_passes(task):
     subject, stimuli, calls = _counting_subject()
     with pytest.raises(ExecutionNotFeasibleError, match='cannot give a'):
         subject.participate(stimulus_session(stimuli, ['neural:IT'], task))
@@ -702,7 +702,7 @@ _INSUFFICIENT = [
 @pytest.mark.parametrize('task_kind, parts, outputs', [
     (task_kind, parts, outputs) for task_kind, parts in _INSUFFICIENT
     for outputs in (['neural:IT'], ['behavior']) if not (parts == 'none' and outputs == ['behavior'])])
-def test_a_task_no_part_can_answer_is_not_applicable_before_any_pass(task_kind, parts, outputs):
+def test_a_task_no_part_can_answer_is_refused_before_any_pass(task_kind, parts, outputs):
     calls = []
 
     def extract(stimuli, layers, **kwargs):

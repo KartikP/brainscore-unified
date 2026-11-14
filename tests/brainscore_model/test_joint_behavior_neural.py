@@ -150,7 +150,7 @@ def test_readout_records_in_the_same_extraction():
                                   [ToyNet().forward(s)['early'] for s in 'abc'])
 
 
-def test_extractor_that_cannot_record_is_not_applicable_before_any_answer():
+def test_extractor_that_cannot_record_is_refused_before_any_answer():
     net = ToyNet()
     model = _model(net, extractor_type=NoRecordExtractor)
     with pytest.raises(ExecutionNotFeasibleError, match='no one part of it answers'):
@@ -169,7 +169,8 @@ def _form_stimuli(column):
 def test_the_extractor_for_the_form_decides_recording(image_records, form, column):
     """The region is declared for both forms (the run serves each); during a task
     the run records with the extractor for the form of the stimuli, and an
-    extractor that cannot record makes the pair N/A before any compute."""
+    extractor that cannot record is refused (ExecutionNotFeasibleError) when the session
+    starts, before any compute."""
     net = ToyNet()
     image, video = ((ToyExtractor, NoRecordExtractor) if image_records
                     else (NoRecordExtractor, ToyExtractor))
@@ -191,7 +192,7 @@ def test_the_extractor_for_the_form_decides_recording(image_records, form, colum
         assert net.passes == 0
 
 
-def test_undeclared_region_is_not_supported():
+def test_undeclared_region_is_refused():
     with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['neural:IT'\]"):
         _run(_model(ToyNet()), GENERATE, ['behavior', 'neural:IT'])
 

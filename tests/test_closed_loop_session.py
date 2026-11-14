@@ -101,7 +101,7 @@ def test_one_session_yields_motor_and_neural_from_one_forward_pass():
     np.testing.assert_allclose(np.asarray(neural.values).reshape(4, -1), expected, atol=1e-6)
 
 
-def test_a_policy_without_an_extractor_is_not_applicable_to_neural_outputs():
+def test_a_policy_without_an_extractor_is_refused_for_neural_outputs():
     model = BrainScoreModel('no-extractor', policy=lambda row: {'motor': 0})
     with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['neural:V4'\]"):
         model.participate(Session(EnvironmentSource(CountingEnvironment()), ('motor', 'neural:V4')))

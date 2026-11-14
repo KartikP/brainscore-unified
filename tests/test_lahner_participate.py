@@ -153,7 +153,7 @@ def test_audiovisual_records_each_region_from_an_input_the_subject_answers_it_fr
 
 @pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
-def test_a_region_no_shown_stream_answers_is_na_before_any_compute(monkeypatch, tmp_path, build):
+def test_a_region_no_shown_stream_answers_is_refused_before_any_compute(monkeypatch, tmp_path, build):
     from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError, check_compatibility
     install(monkeypatch, tmp_path)
     subject = _Answers({'vision:video', 'text'}, {'neural:A1': {'text'}})

@@ -184,7 +184,7 @@ def _audio_model(policy=None):
     (lambda row: {'motor': 0}, ('behavior:choice', 'neural:A1'), 'behavior:choice'),  # a part for another output
     (None, ('neural:V9',), 'neural:V9'),                                          # a region it does not map
 ], ids=['no-part', 'part-for-another-output', 'unmapped-region'])
-def test_a_subject_that_cannot_serve_a_session_is_not_applicable_before_compute(policy, outputs, missing):
+def test_a_subject_that_cannot_serve_a_session_is_refused_before_compute(policy, outputs, missing):
     import re
     from types import SimpleNamespace
     import brainscore
@@ -207,7 +207,7 @@ def test_a_subject_that_cannot_serve_a_session_is_not_applicable_before_compute(
     assert re.search(re.escape(f"'{missing}'"), result.attrs['reason'])
 
 
-def test_an_unknown_channel_is_not_applicable():
+def test_an_unknown_channel_is_refused_by_the_session_and_incompatible_in_pre_flight():
     from types import SimpleNamespace
     from brainscore_core.compatibility import check_compatibility
     model = _audio_model()

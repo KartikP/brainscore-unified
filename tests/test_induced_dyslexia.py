@@ -221,7 +221,7 @@ class TestPreflight:
         assert subject.sessions == 0
 
     @pytest.mark.parametrize('in_channels', [{'text', 'stimulation'}, {'text'}])
-    def test_subject_without_lesion_input_is_na_before_compute(self, in_channels):
+    def test_subject_without_lesion_input_is_refused_before_compute(self, in_channels):
         # Declares every requested output, but not the lesion input. Pre-flight
         # passes (inputs need only overlap, rule 5.2), so the benchmark refuses
         # it from the declaration before any session.

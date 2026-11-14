@@ -132,7 +132,7 @@ def test_readout_probabilities_follow_the_task_label_order(labels):
 @pytest.mark.parametrize('response, channel', [(Text(), 'behavior:text'),
                                                (Choice(['cat', 'dog'], confidence=Scale(1, 5)),
                                                 'behavior:confidence')])
-def test_reported_answers_from_a_readout_only_model_are_not_supported(response, channel):
+def test_reported_answers_from_a_readout_only_model_are_refused(response, channel):
     model, _ = _model(readout=True)
     assert channel not in model.out_channels
     with pytest.raises(ExecutionNotFeasibleError, match=f"does not produce \\['{channel}'\\]"):

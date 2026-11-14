@@ -148,7 +148,7 @@ def test_a_neural_only_session_under_a_task_records_during_the_task(tmp_path):
     assert_recorded_as_passive(recorded, _passive('video', tmp_path), 'video')
 
 
-def test_a_subject_with_no_task_part_is_not_applicable_under_a_task(tmp_path):
+def test_a_subject_with_no_task_part_is_refused_under_a_task(tmp_path):
     """The task decides what the subject does; nothing in this subject does it."""
     wrapper, stimuli, regions, network = tiny_wrappers.audio(tmp_path)
     passes = []
@@ -174,7 +174,7 @@ class _Plain:
 
 @pytest.mark.parametrize('channels', [['behavior:choice', f'neural:{REGION}'], [f'neural:{REGION}']],
                          ids=['joint', 'neural-only'])
-def test_a_region_that_cannot_record_during_the_answer_is_not_applicable_before_compute(tmp_path, channels):
+def test_a_region_that_cannot_record_during_the_answer_is_refused_before_compute(tmp_path, channels):
     wrapper, stimuli, regions, network = tiny_wrappers.audio(tmp_path)
     passes = []
     network.register_forward_pre_hook(lambda module, args: passes.append(1))
