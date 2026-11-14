@@ -539,10 +539,9 @@ class BehavioralReadout:
         """
         owner = self.owner
         from brainscore_core.compatibility import CompatibilityError
-        from .dispatch import _is_clip
         from .recording import record_part, records_while_answering
-        form = (_is_clip(stimuli),)
-        cannot = [region for region in layers if not records_while_answering(owner, region, form)]
+        cannot = [region for region in layers
+                  if not records_while_answering(owner, region, stimuli)]
         if cannot:
             raise CompatibilityError(
                 f'Subject {owner.identifier!r} cannot record {cannot} while it answers or acts: '
@@ -554,7 +553,7 @@ class BehavioralReadout:
         recordings = {}
         for modality, modality_layers in by_modality.items():
             modality_layers = list(dict.fromkeys(modality_layers))
-            record = record_part(extractor_for(owner, modality, stimuli))
+            record = record_part(extractor_for(owner, modality, stimuli, modality_layers))
             recordings[modality] = (record(modality_layers, stimuli) if record is not None else
                                     _hook_recording(owner._model, modality_layers, owner.identifier))
         return recordings

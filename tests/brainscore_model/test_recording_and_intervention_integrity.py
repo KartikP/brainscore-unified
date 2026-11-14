@@ -485,8 +485,8 @@ def test_a_region_lists_only_the_forms_whose_extractor_has_its_layer(layer, moda
     for form, stimuli, value in (('vision:image', stills, 1.0), ('vision:video', clips, 2.0)):
         if form in forms:              # a listed form runs
             assert neural_response(model, stimuli, ['neural:IT']).values.max() == value
-        else:                          # an unlisted form is refused
-            with pytest.raises(ValueError, match='unknown layers'):
+        else:                          # an unlisted form is refused before the extractor runs
+            with pytest.raises(ValueError, match='has all of the layers'):
                 neural_response(model, stimuli, ['neural:IT'])
     if 'vision:video' in forms:
         assert check_compatibility(model, _clip_benchmark()).kind == 'full'
@@ -500,6 +500,45 @@ def test_a_region_lists_both_forms_when_both_extractors_have_its_layer():
                             region_layer_map={'IT': LayerSelector('x', modality='vision')})
     assert model.output_inputs == {'neural:IT': frozenset({'vision:image', 'vision:video'})}
     assert check_compatibility(model, _clip_benchmark()).kind == 'full'
+
+
+class _Counted(_Layers):
+    """A layer-listing extractor that counts its calls."""
+
+    def __init__(self, names, value):
+        super().__init__(names, value)
+        self.calls = 0
+
+    def __call__(self, stimuli, layers, **kwargs):
+        self.calls += 1
+        return super().__call__(stimuli, layers)
+
+
+@pytest.mark.parametrize('plan', ['all', 'one'])
+@pytest.mark.parametrize('modality', ['vision', 'video'])
+def test_a_table_with_stills_and_clips_runs_the_extractor_that_has_the_region_layer(
+        plan, modality, monkeypatch):
+    """Declarations, pre-flight and the run choose the same extractor: with an
+    image column and a video column, a region whose layer only the image
+    extractor has is recorded by the image extractor."""
+    image, video = _Counted(['x'], 1.0), _Counted(['y'], 2.0)
+    model = BrainScoreModel('m', extractor={'vision': image, 'video': video},
+                            region_layer_map={'IT': LayerSelector('x', modality=modality),
+                                              'MT': LayerSelector('y', modality=modality)})
+    assert model.output_inputs == {'neural:IT': frozenset({'vision:image'}),
+                                   'neural:MT': frozenset({'vision:video'})}
+    benchmark = SimpleNamespace(identifier='both', required_input_channels={'vision:image', 'vision:video'},
+                                requested_output_channels={'neural:IT', 'neural:MT'})
+    assert check_compatibility(model, benchmark).kind == 'full'
+    both = StimulusSet({'stimulus_id': ['s', 't'], 'image_path': ['s.png', 't.png'],
+                        'video_path': ['s.mp4', 't.mp4']})
+    both.identifier = 'stills-and-clips'
+    monkeypatch.setenv(PLAN, plan)
+    session = stimulus_session(both, ['neural:IT', 'neural:MT'])
+    model.participate(session)
+    assert set(session.collect('neural:IT').values.ravel()) == {1.0}
+    assert set(session.collect('neural:MT').values.ravel()) == {2.0}
+    assert (image.calls, video.calls) == (1, 1)
 
 
 def test_a_fused_extractor_lists_each_input_it_takes():

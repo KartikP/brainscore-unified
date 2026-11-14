@@ -3,7 +3,7 @@
 ``record`` records the regions that ``start_recording`` set from a stimulus
 table; ``act`` asks the policy for one closed-loop step. A session part calls
 them directly, and so does ``BrainScoreModel.process``; nothing here selects a
-part. The extractor for an input is chosen by ``extractor_for_form``.
+part. The extractor for an input is chosen by ``extractor_keys``.
 """
 
 import os
@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from typing import List, Set
 
 from brainscore_core.io_catalog import canonical_modality
+from .recording import INPUT_SITE
 
 
 _cache_disable_depth = 0
@@ -47,13 +48,6 @@ def _activation_cache_disabled():
                     os.environ['RESULTCACHING_DISABLE'] = _cache_disable_prev
 
 
-def _is_clip(stimuli) -> bool:
-    """Whether a stimulus table has a column that feeds ``vision:video``."""
-    from brainscore_core.io_catalog import column_channel
-    return any(column_channel(column) == 'vision:video'
-               for column in getattr(stimuli, 'columns', ()))
-
-
 def fused_for(owner, detected):
     """The fused extractor taking every detected input type, if one is registered."""
     if len(detected) < 2:
@@ -64,29 +58,57 @@ def fused_for(owner, detected):
     return None
 
 
-def extractor_for(owner, modality: str, stimuli):
-    """The extractor for ``modality`` that reads ``stimuli`` (see ``extractor_for_form``)."""
-    return extractor_for_form(owner, modality, video=_is_clip(stimuli))
+def extractor_for(owner, modality: str, stimuli, layers=()):
+    """The extractor that records ``layers`` of ``modality`` from ``stimuli``, or None.
+
+    ``stimuli`` is a stimulus table, or None for a policy step (no columns). The choice is
+    the first of ``extractor_keys`` for the input channels of its columns.
+    """
+    from brainscore_core.io_catalog import column_channel
+    columns = getattr(stimuli, 'columns', None)
+    channels = (None if columns is None else
+                {column_channel(column) for column in columns} - {None})
+    keys = extractor_keys(owner, modality, layers, channels)
+    return owner._extractors[keys[0]] if keys else None
 
 
-def extractor_for_form(owner, modality: str, video: bool):
-    """The extractor for ``modality``; with an image and a video extractor, the one
-    for the form: ``vision:video`` when ``video``, else ``vision:image``. None when
-    the model has no such extractor."""
-    modality = canonical_modality(modality)
-    matching = extractor_keys(owner, modality)
-    if len(matching) > 1 and modality == 'vision':
-        wanted = 'video' if video else 'vision'
-        matching = [key for key in matching if key == wanted] or matching
-    return owner._extractors[matching[0]] if matching else None
+def extractor_keys(owner, modality, layers=(), channels=None) -> List[str]:
+    """The extractor keys that can record ``layers`` of ``modality``, best first.
 
+    The one resolver of declarations, pre-flight and the run. A key serves
+    ``modality`` when it is of its input family (``vision`` and ``video`` both
+    serve ``vision``; every key when ``modality`` is None), and it can record
+    when its extractor has all of ``layers`` (an extractor without
+    ``layer_names()`` cannot list its layers, so it is taken to have them).
+    With an image and a video extractor, ``channels`` are the input channels
+    supplied: only the extractors for them remain, the video one first when
+    clips are supplied, else the image one first. ``channels`` None (no
+    table) keeps both, the image one first.
+    """
+    from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL
+    family = [key for key in owner._extractors if modality is None
+              or canonical_modality(key) == canonical_modality(modality)]
+    bases = {path[:-len(INPUT_SITE)] if path.endswith(INPUT_SITE) else path
+             for path in layers}
 
-def extractor_keys(owner, modality: str) -> List[str]:
-    """The extractor keys that serve ``modality``: every key of its input family
-    (``vision`` and ``video`` both serve ``vision``). ``extractor_for_form`` picks
-    one of them by the form of the stimuli, so each of their forms is accepted."""
-    modality = canonical_modality(modality)
-    return [key for key in owner._extractors if canonical_modality(key) == modality]
+    def has_layers(extractor):
+        try:
+            layer_names = extractor.layer_names
+        except AttributeError:
+            return True
+        return bases <= set(layer_names())
+
+    keys = [key for key in family if has_layers(owner._extractors[key])]
+    channel = lambda key: MODALITY_TO_INPUT_CHANNEL.get(key, key)
+    forms = {channel(key) for key in family
+             if canonical_modality(key) == 'vision'}
+    if len(forms) > 1:
+        if channels is not None:
+            keys = [key for key in keys
+                    if canonical_modality(key) != 'vision' or channel(key) in channels]
+        first = 'vision:video' if channels is not None and 'vision:video' in channels else 'vision:image'
+        keys.sort(key=lambda key: channel(key) != first)
+    return keys
 
 
 def normalize_extractors(owner, extractor):
@@ -302,7 +324,7 @@ def extract_for_modality(model, stimuli, modality: str, layers: List[str]):
 
 
 def _extract(model, stimuli, modality: str, layers: List[str]):
-    extractor = extractor_for(model, modality, stimuli)
+    extractor = extractor_for(model, modality, stimuli, layers)
     if extractor is not None:
         shared = model._shared_calls
         call = (shared[1].get(id(extractor))
@@ -311,6 +333,10 @@ def _extract(model, stimuli, modality: str, layers: List[str]):
             return call(stimuli, layers)
         return extractor(stimuli, layers=layers)
     modality = canonical_modality(modality)
+    if extractor_keys(model, modality):
+        raise ValueError(
+            f"Subject '{model.identifier}' has no {modality!r} extractor for the inputs "
+            f"in this stimulus set that has all of the layers {list(layers)}.")
     raise NotImplementedError(
         f"Subject '{model.identifier}' declares {modality!r} input but has no "
         'activation extractor for it. Pass extractor={modality: extractor} to '

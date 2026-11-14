@@ -127,7 +127,8 @@ def _shared_layers(model, stimuli, regions: List[str]) -> List[Tuple[object, Lis
     groups: Dict[int, Tuple[object, List[str], int]] = {}
     for region in regions:
         modality = region_modality(model, region)
-        extractor = None if modality is None else extractor_for(model, modality, stimuli)
+        extractor = None if modality is None else extractor_for(
+            model, modality, stimuli, region_selector(model, region).layer_paths)
         if extractor is None or not _declares_independent_layers(extractor):
             continue
         _, layers, count = groups.get(id(extractor), (extractor, [], 0))

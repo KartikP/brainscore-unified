@@ -273,8 +273,8 @@ class BrainScoreModel(UnifiedModel):
         """The inputs each ``neural:<region>`` can be answered from.
 
         A region lists the input channel of every extractor the run can select
-        for it (``dispatch.extractor_keys``, the keys ``extractor_for_form``
-        chooses from) that has the region's layers (``region_extractor_keys``):
+        for it: every extractor of its input family that has the region's layers
+        (``region_extractor_keys``, the resolver the run uses too):
         a region of ``'vision'`` or ``'video'`` input, in a model with an image
         and a video extractor that both have its layers, is answered from stills
         (``vision:image``) and from clips (``vision:video``). In a model with one

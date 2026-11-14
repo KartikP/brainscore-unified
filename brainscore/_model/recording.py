@@ -40,33 +40,38 @@ def record_part(extractor):
         return None
 
 
-def records_while_answering(owner, region: str, forms=None) -> bool:
+def records_while_answering(owner, region: str, stimuli=None) -> bool:
     """Whether ``region`` can be recorded during the pass that answers or acts.
 
-    ``forms`` are input forms: True for ``vision:video``, False for
-    ``vision:image``. The run passes the form of its stimuli; pre-flight takes
-    the forms of the inputs the region is answered from (``output_inputs``).
-    For each form the extractor is the one the run selects
-    (``extractor_for_form``). It records when it has ``record(layers, stimuli)``, or
-    when every layer of the region is a module of the network passed as
-    ``model=`` (forward hooks). An extractor for another form does not count.
+    The run passes its stimulus table (None for a policy step); pre-flight
+    passes nothing and takes each input the region is answered from
+    (``output_inputs``). For each, the extractor is the one the run selects
+    (``dispatch.extractor_keys``). It records when it has
+    ``record(layers, stimuli)``, or when every layer of the region is a module
+    of the network passed as ``model=`` (forward hooks). An extractor for
+    another input does not count.
     """
-    from .dispatch import extractor_for_form
+    from .dispatch import extractor_for, extractor_keys
     from brainscore.model_helpers._extractors import get_layer
     modality = region_modality(owner, region)
     if modality is None:
         return False
-    if forms is None:
-        listed = owner.output_inputs.get(f'neural:{region}', ())
-        forms = tuple({channel == 'vision:video' for channel in listed}) or (False, True)
+    layers = region_selector(owner, region).layer_paths
     hooks = owner._model is not None
     if hooks:
         try:
-            for layer in region_selector(owner, region).layer_paths:
+            for layer in layers:
                 get_layer(owner._model, layer)
         except ValueError:
             hooks = False
-    extractors = [extractor_for_form(owner, modality, video) for video in forms]
+    if stimuli is not None:
+        extractors = [extractor_for(owner, modality, stimuli, layers)]
+    else:
+        listed = owner.output_inputs.get(f'neural:{region}') or (None,)
+        extractors = [owner._extractors[keys[0]] if keys else None
+                      for keys in (extractor_keys(owner, modality, layers,
+                                                  None if c is None else {c})
+                                   for c in listed)]
     return any(e is not None and (record_part(e) is not None or hooks) for e in extractors)
 
 
@@ -124,26 +129,11 @@ def validate_region_layers(owner, selectors) -> None:
 
 
 def region_extractor_keys(owner, selector) -> List[str]:
-    """The extractor keys a region is recorded from: the keys its modality selects
-    (every key when it names none) whose extractor has all of the region's layers.
-
-    ``output_inputs`` lists the input channel of each, so declarations, pre-flight
-    and the run agree on the forms of a region. An extractor without
-    ``layer_names()`` cannot list its layers, so it is taken to have them.
-    """
+    """The extractor keys a region is recorded from (``dispatch.extractor_keys``
+    for its modality and layers). ``output_inputs`` lists the input channel of
+    each, so declarations, pre-flight and the run agree on the forms of a region."""
     from .dispatch import extractor_keys
-    keys = (list(owner._extractors) if selector.modality is None
-            else extractor_keys(owner, selector.modality))
-    bases = {path[:-len(INPUT_SITE)] if path.endswith(INPUT_SITE) else path
-             for path in selector.layer_paths}
-
-    def has_layers(extractor):
-        try:
-            layer_names = extractor.layer_names
-        except AttributeError:
-            return True
-        return bases <= set(layer_names())
-    return [key for key in keys if has_layers(owner._extractors[key])]
+    return extractor_keys(owner, selector.modality, selector.layer_paths)
 
 
 class Recorder:
