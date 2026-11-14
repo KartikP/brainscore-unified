@@ -180,14 +180,12 @@ class BrainScoreModel(UnifiedModel):
             example by a closed-weight ``answer`` function (``'text'``,
             ``'vision:image'``). Extractor mappings already declare their
             inputs; do not repeat them here.
-        :param required_channels: input channels the model cannot run without.
-            Only for one wired part that takes several inputs together: one
-            extractor (every key it is given under, a tuple key included), the
-            ``answer``/``reply``/``likelihood`` parts with their
-            ``in_channels``, or the policy with its ``policy_in_channels``.
-            Every listed channel must be taken by that one part. A set across
-            separate parts, a set that repeats the one input of a part, and a
-            set for ``in_channels`` with no part are refused.
+        :param required_channels: leave it out. State it only for one network
+            that cannot run unless it gets all of the listed inputs together
+            (for example a joint extractor); a model made of separate
+            extractors requires nothing, because each one runs alone. The
+            constructor checks only that each listed channel is declared, not
+            this claim.
         :param visual_degrees: the visual field legacy vision benchmarks place
             stimuli in; ignored by other benchmarks.
         :param capability_config: settings for added capabilities, keyed by the
@@ -224,48 +222,15 @@ class BrainScoreModel(UnifiedModel):
         self._capability_state: Dict[str, Any] = {}
         self._capability_setup_done: Set[str] = set()
 
-        self._required_channels = self._joint_requirement(
-            _channels(required_channels), extractor or {}, _channels(in_channels))
-
-    def _joint_requirement(self, required: Set[str], extractor: Mapping,
-                           in_channels: Set[str]) -> frozenset:
-        """``required`` if one wired part takes all of it, and more inputs than one.
-
-        The parts and their complete inputs, read from the arguments as given:
-        each extractor object takes the channels of every key it is given
-        under (a tuple key gives all its inputs, even when another extractor
-        also takes one of them); the ``answer``, ``reply`` and ``likelihood``
-        parts take ``in_channels``; a policy takes ``policy_in_channels``.
-        ``in_channels`` with no such part is no part. Each separate part runs
-        on its own inputs, and pre-flight already needs one declared input, so
-        a requirement is a fact only of one part with several inputs.
-        """
-        if not required:
-            return frozenset()
-        channel = lambda key: MODALITY_TO_INPUT_CHANNEL.get(key, key)
-        parts = {}
-        for key, value in extractor.items():
-            keys = key if isinstance(key, tuple) else (key,)
-            parts.setdefault(id(value), set()).update(channel(k) for k in keys)
-        parts = list(parts.values())
-        if in_channels and any(part is not None for part in
-                               (self._answer, self._reply, self._likelihood)):
-            parts.append(set(in_channels))
-        if self._policy is not None:
-            parts.append(set(self._policy_in_channels))
-        serving = [part for part in parts if required <= part]
-        if not serving:
+        required = _channels(required_channels)
+        declared_channels = self._input_channels(self._input_keys)
+        if not required <= declared_channels:
             raise ValueError(
-                f"required_channels {sorted(required)} must all be taken by one wired part: "
-                f"one extractor (all keys it is given under, a tuple key included), the "
-                f"answer/reply/likelihood parts with their in_channels, or the policy with "
-                f"its policy_in_channels. No one part here takes them all; separate parts "
-                f"each run on their own input, so leave required_channels out.")
-        if max(len(part) for part in serving) == 1:
-            raise ValueError(
-                f"required_channels {sorted(required)} only repeats the one input of the part "
-                f"that takes it, which that part already declares; leave it out.")
-        return frozenset(required)
+                f"required_channels {sorted(required)} are not all declared: the subject "
+                f"declares {sorted(declared_channels)}. A subject cannot require an input "
+                f"it does not declare."
+            )
+        self._required_channels = frozenset(required)
 
     @property
     def capability_config(self):
@@ -321,7 +286,8 @@ class BrainScoreModel(UnifiedModel):
 
         A region lists the input channel of every extractor the run can select
         for it: every extractor of its input family that has the region's layers
-        (``region_extractor_keys``, the resolver the run uses too):
+        (``region_extractor_keys``, the resolver the run uses too, except on the
+        fused path of ``dispatch.fused_for``):
         a region of ``'vision'`` or ``'video'`` input, in a model with an image
         and a video extractor that both have its layers, is answered from stills
         (``vision:image``) and from clips (``vision:video``). In a model with one

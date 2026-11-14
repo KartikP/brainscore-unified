@@ -1174,11 +1174,12 @@ class TestBrainScoreModelColumnDetection:
         assert canonical_modality('audio') == 'audio'
 
     def test_video_extractor_with_vision_region_map_constructs(self):
-        # a 'video' extractor with a region selector saying 'vision' must
-        # construct (video canonicalizes to vision)
+        # a 'video' extractor with a region selector saying 'vision' and a
+        # required video channel must construct (video canonicalizes to vision)
         m = BrainScoreModel(
             identifier='v', model=None,
             region_layer_map={'IT': LayerSelector('layer4', modality='vision')},
             extractor={'video': make_stub_extractor('out')},
+            required_channels={'vision:video'},
         )
-        assert m.output_inputs == {'neural:IT': frozenset({'vision:video'})}
+        assert m.required_channels == {'vision:video'}
