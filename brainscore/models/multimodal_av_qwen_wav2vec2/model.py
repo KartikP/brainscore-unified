@@ -11,7 +11,7 @@ already cover the four signal/null permutations).
 """
 import torch
 
-from brainscore import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel
 from brainscore_core.hf_compat import pin_image_processor
 
 
@@ -21,14 +21,6 @@ REGION_LAYER_MAP = {
     'V4': 'blocks.14',
     'IT': 'blocks.28',
     'A1': 'encoder.layers.6',
-}
-
-REGION_MODALITY_MAP = {
-    'V1': 'vision',
-    'V2': 'vision',
-    'V4': 'vision',
-    'IT': 'vision',
-    'A1': 'audio',
 }
 
 
@@ -60,26 +52,18 @@ def get_model(identifier: str) -> BrainScoreModel:
         # Share the standalone Qwen vision-cache key: same backbone, same
         # forward pass for the visual side.
         backbone_id='qwen2.5-vl-3b-vision',
-        image_input_key='pixel_values',
         forward_kwargs_map={'grid_thw': 'image_grid_thw'},
         patch_count_fn=lambda out: [
             int(t * h * w) for t, h, w in out['image_grid_thw']],
-        layer_aggregation='mean_patches',
-        batch_size=4,
     )
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)
 
     return BrainScoreModel(
         identifier=identifier,
         model=qwen_model,
-        region_layer_map={
-            region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
-            for region, layer in REGION_LAYER_MAP.items()
-        },
+        region_layer_map=REGION_LAYER_MAP,
         extractor={
             'vision': vision_wrapper,
             'audio': audio_wrapper,
         },
-        required_channels={'vision:image', 'audio'},
-        visual_degrees=8,
     )

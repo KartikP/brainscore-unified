@@ -168,15 +168,6 @@ class ModelProfile:
                 out[key] = layer
         return out
 
-    def required_channels(self) -> set:
-        """Single-tower models require the input channel of their one tower;
-        multimodal models require none, so they run on any subset."""
-        if len(self.recommendations) != 1:
-            return set()
-        from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL
-        key = _base_modality(self.recommendations[0].modality)
-        return {MODALITY_TO_INPUT_CHANNEL.get(key, key)}
-
     def summary(self) -> str:
         lines = [f"Model: {self.identifier}",
                  f"  parameters: {self.n_parameters:,}"
@@ -602,7 +593,6 @@ def auto_register(model: Any,
             region_layer_map=region_layer_map,
             extractor={'vision': vision_wrapper},
             visual_degrees=visual_degrees,
-            required_channels=profile.required_channels(),
             **brainscore_model_kwargs,
         )
 
@@ -618,7 +608,6 @@ def auto_register(model: Any,
             model=model,
             region_layer_map=region_layer_map,
             extractor={'text': text_wrapper},
-            required_channels=profile.required_channels(),
             **brainscore_model_kwargs,
         )
 

@@ -115,8 +115,15 @@ class BrainScoreModel(UnifiedModel):
             run against (e.g. the torch module); may be ``None`` for a
             feature-extraction model whose extractors hold their own modules.
         :param region_layer_map: brain region -> layer path (or a ``UnitSelector``).
-            With several extractors, each region names its extractor with
-            ``LayerSelector(name=..., modality=...)``.
+            With several extractor objects, a region that names none is
+            recorded from the input family (pictures and clips are one family)
+            whose extractors have its layer. A region names its extractor with
+            ``LayerSelector(name=..., modality=...)`` only when its layer name
+            is found in extractors of two input families; an extractor that
+            cannot list its layers (no ``layer_names()``) counts as having
+            every layer, so it can cause that. Two extractors of one family
+            with the same layers (an image and a video wrapper of one tower)
+            need no name, and neither does a model with one extractor object.
         :param extractor: a modality -> extractor mapping. Each extractor is
             called as ``extractor(stimuli, layers=...)`` and prepares its own
             inputs. Image, text, audio and video wrappers all use this slot; the
@@ -173,8 +180,12 @@ class BrainScoreModel(UnifiedModel):
             example by a closed-weight ``answer`` function (``'text'``,
             ``'vision:image'``). Extractor mappings already declare their
             inputs; do not repeat them here.
-        :param required_channels: input channels the model cannot run without;
-            each one is declared by an extractor or by ``in_channels``.
+        :param required_channels: leave it out. State it only for one network
+            that cannot run unless it gets all of the listed inputs together
+            (for example a joint extractor); a model made of separate
+            extractors requires nothing, because each one runs alone. The
+            constructor checks only that each listed channel is declared, not
+            this claim.
         :param visual_degrees: the visual field legacy vision benchmarks place
             stimuli in; ignored by other benchmarks.
         :param capability_config: settings for capabilities, keyed by the
@@ -290,7 +301,8 @@ class BrainScoreModel(UnifiedModel):
 
         A region lists the input channel of every extractor the run can select
         for it: every extractor of its input family that has the region's layers
-        (``region_extractor_keys``, the resolver the run uses too):
+        (``region_extractor_keys``, the resolver the run uses too, except on the
+        fused path of ``dispatch.fused_for``):
         a region of ``'vision'`` or ``'video'`` input, in a model with an image
         and a video extractor that both have its layers, is answered from stills
         (``vision:image``) and from clips (``vision:video``). In a model with one
@@ -354,22 +366,34 @@ class BrainScoreModel(UnifiedModel):
             if (modality is not None and canonical_modality(modality)
                     not in {canonical_modality(key) for key in self._input_keys}):
                 raise ValueError(f"Region {region!r} references modalities with no extractor: {modality!r}")
-        if len({id(extractor) for extractor in self._extractors.values()}) > 1:
-            unrouted = sorted(r for r, sel in selectors.items() if sel.modality is None)
-            if unrouted:
-                # Without a named extractor the region would be recorded from
-                # whichever tower gets input, and pre-flight could not check it.
-                raise ValueError(
-                    f"Subject {self._identifier_str!r} has several extractors, so each region must "
-                    f"name the one it is recorded from. Regions with no modality: {unrouted}. "
-                    f"Use LayerSelector(name=..., modality=...).")
-        from ._model.recording import validate_region_layers
+        from ._model.recording import region_extractor_keys, validate_region_layers
         validate_region_layers(self, selectors)
+        routing = {r: sel.modality for r, sel in selectors.items() if sel.modality is not None}
+        if len({id(extractor) for extractor in self._extractors.values()}) > 1:
+            # With several extractors, a region that names none is recorded from
+            # the input family whose extractors have its layers. A layer name
+            # found in two families, or in an extractor that cannot list its
+            # layers, does not say which: such a region names its extractor.
+            unclear = []
+            for region, selector in selectors.items():
+                if selector.modality is not None:
+                    continue
+                keys = region_extractor_keys(self, selector)
+                families = {canonical_modality(key) for key in keys}
+                if len(families) == 1:
+                    routing[region] = keys[0] if len(keys) == 1 else families.pop()
+                else:
+                    unclear.append(region)
+            if unclear:
+                raise ValueError(
+                    f"Subject {self._identifier_str!r}: the layers of regions {sorted(unclear)} "
+                    f"are found in extractors of more than one input family (an extractor that "
+                    f"cannot list its layers counts as having every layer), so each of these "
+                    f"regions names its extractor. "
+                    f"Use LayerSelector(name=..., modality=...).")
         self._region_layer_selectors = selectors
         self._region_layer_map_dict = {r: sel.layer_path for r, sel in selectors.items()}
-        self._region_modality_map = {
-            r: sel.modality for r, sel in selectors.items()
-            if sel.modality is not None}
+        self._region_modality_map = routing
 
     @property
     def region_layer_map(self) -> Mapping[str, Union[str, UnitSelector]]:

@@ -1,8 +1,9 @@
 """The CLIP and Qwen2.5-VL registrations wire their parts through the public slots.
 
 ``clip_vit_b_32`` and ``qwen25_vl_3b`` (in brainscore.models)
-pass ``extractor=`` and ``answer=`` and name each region's tower with
-``LayerSelector(modality=...)``. These checks build each registration with
+pass ``extractor=`` and ``answer=``. CLIP names each region's tower with
+``LayerSelector(modality=...)`` (both towers have ``encoder.layers.N``); Qwen's
+tower names differ, so each region is recorded from the tower that has its layer. These checks build each registration with
 deterministic stand-ins and check that each input kind reaches the right
 wrapper and layer, and that readouts and generated answers are as expected.
 
@@ -13,6 +14,7 @@ checkpoint qualification. Real CLIP/Qwen score parity is a separate remote run.
 import ast
 import contextlib
 import importlib.util
+import inspect
 import sys
 import types
 import warnings
@@ -37,6 +39,10 @@ REMOVED = {'preprocessors', 'activations_model', 'generation_fn', 'action_fn', '
            'region_modality_map', 'backbone_id'}
 PUBLIC_SLOTS = {'extractor', 'answer', 'policy', 'intervention'}
 RESPONSES = {4: ' Real ', 5: 'it looks pseudo to me', 6: 'unsure'}  # keyed by image width
+LAYERS = {'vision_model': [f'encoder.layers.{i}' for i in range(12)],
+          'text_model': [f'encoder.layers.{i}' for i in range(12)],
+          'visual': [f'blocks.{i}' for i in range(32)],
+          'language_model': [f'layers.{i}' for i in range(36)]}
 
 
 # --- deterministic stand-ins -------------------------------------------------
@@ -73,6 +79,10 @@ class FakeExtractor:
 
     def reset(self):
         self.resets += 1
+
+    def layer_names(self):
+        """The layer names of the part it wraps, as the real wrappers list them."""
+        return LAYERS[self.kwargs['model'].name]
 
 
 class FakePytorchWrapper(FakeExtractor):
@@ -205,7 +215,7 @@ def _registration_path(folder):
 
 
 def _TOWERS(module):
-    """The tower each region is recorded from, as the registrations name it."""
+    """The tower each region is recorded from."""
     return {region: 'text' if region == 'language_system' else 'vision'
             for region in module.REGION_LAYER_MAP}
 
@@ -283,12 +293,12 @@ def test_constructor_wiring(registration):
     identifier, module, model = registration
     vision, text = FakeExtractor.instances
     assert list(model.extractor.items()) == [('vision', vision), ('text', text)]
-    # The same layer of each region, and each region names its tower (a model
-    # with two extractors must).
-    assert {region: selector.layer_path for region, selector in model.region_layer_map.items()} \
-        == module.REGION_LAYER_MAP
-    assert {region: selector.modality for region, selector in model.region_layer_map.items()} \
-        == _TOWERS(module)
+    # The same layer of each region, and each region is recorded from its tower.
+    assert {region: selector.layer_path
+            for region, selector in model.region_layer_selectors.items()} == module.REGION_LAYER_MAP
+    assert model.output_inputs == {
+        f'neural:{region}': frozenset({'text' if tower == 'text' else 'vision:image'})
+        for region, tower in _TOWERS(module).items()}
     assert model.in_channels == {'vision:image', 'text', 'control', 'instruction'} - (
         set() if identifier == 'qwen2.5-vl-3b' else {'instruction'})
     assert model.visual_degrees() == 8
@@ -391,6 +401,13 @@ def test_clip_keeps_its_wrappers_and_preprocessing(build, tmp_path):
     assert model._answer is None
 
 
+def _effective(wrapper, kwargs):
+    """Every constructor argument, the defaults included."""
+    bound = inspect.signature(wrapper).bind(**kwargs)
+    bound.apply_defaults()
+    return dict(bound.arguments)
+
+
 def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
     module, model = build('qwen2.5-vl-3b')
     torch = module.torch   # the stub bound at import
@@ -405,14 +422,17 @@ def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
     vision, text = FakeExtractor.instances
     assert type(vision) is FakeVLMVisionWrapper and type(text) is FakeTextWrapper
     patch_count_fn = vision.kwargs['patch_count_fn']
-    assert vision.kwargs == {'model': qwen.model.visual, 'processor': processor,
-                             'identifier': 'qwen2.5-vl-3b-vision', 'image_input_key': 'pixel_values',
-                             'forward_kwargs_map': {'grid_thw': 'image_grid_thw'},
-                             'patch_count_fn': patch_count_fn,
-                             'layer_aggregation': 'mean_patches', 'batch_size': 4}
+    # The settings each wrapper is built with, defaults included, are unchanged.
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    assert _effective(VLMVisionWrapper, vision.kwargs) == _effective(VLMVisionWrapper, {
+        'model': qwen.model.visual, 'processor': processor,
+        'identifier': 'qwen2.5-vl-3b-vision', 'image_input_key': 'pixel_values',
+        'forward_kwargs_map': {'grid_thw': 'image_grid_thw'}, 'patch_count_fn': patch_count_fn,
+        'layer_aggregation': 'mean_patches', 'batch_size': 4})
     assert patch_count_fn({'image_grid_thw': [(1, 2, 3), (2, 2, 2)]}) == [6, 8]
-    assert text.kwargs == {'model': qwen.model.language_model, 'tokenizer': processor.tokenizer,
-                           'identifier': 'qwen2.5-vl-3b-text',
-                           'layer_aggregation': 'last_token', 'max_length': 512}
+    assert _effective(TextWrapper, text.kwargs) == _effective(TextWrapper, {
+        'model': qwen.model.language_model, 'tokenizer': processor.tokenizer,
+        'identifier': 'qwen2.5-vl-3b-text', 'layer_aggregation': 'last_token', 'max_length': 512})
     assert model._behavioral_readout_layer == 'blocks.28'
     assert model._answer is not None

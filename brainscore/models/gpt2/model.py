@@ -42,11 +42,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=gpt2,
         tokenizer=tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='last_token',
-        # Long enough for a whole Pereira passage in context (193 tokens);
-        # inputs shorter than this are unaffected, so other benchmarks do
-        # not move. GPT-2's own window is 1024.
-        max_length=512,
     )
 
     return BrainScoreModel(
@@ -56,7 +51,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         extractor={
             'text': text_wrapper,
         },
-        required_channels={'text'},
         # GPT-2 is not instruction-tuned; no answer part.
         # Behavioral tasks route through the readout path (logistic on features).
         # Left at the last block while the recording site moved to h.9: this

@@ -63,8 +63,6 @@ def build_audio_wrapper(combo_identifier: str, random_init: bool = False):
         identifier=f'{combo_identifier}-audio',
         backbone_id=backbone_id,
         layer_aggregation='time_series',
-        max_duration_sec=60.0,
-        batch_size=4,
         audio_loader=_wav_loader,
     )
     return wrapper, model

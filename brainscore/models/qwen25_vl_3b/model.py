@@ -25,7 +25,7 @@ from typing import List
 import torch
 from PIL import Image
 
-from brainscore import BrainScoreModel, LayerSelector
+from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject
 from brainscore_core.hf_compat import pin_image_processor
 
@@ -171,11 +171,8 @@ def get_model(identifier: str) -> Subject:
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier=f'{identifier}-vision',
-        image_input_key='pixel_values',
         forward_kwargs_map={'grid_thw': 'image_grid_thw'},
         patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']],
-        layer_aggregation='mean_patches',
-        batch_size=4,
     )
 
     # Text: TextWrapper wraps model.language_model (causal decoder).
@@ -184,8 +181,6 @@ def get_model(identifier: str) -> Subject:
         model=qwen_model.model.language_model,
         tokenizer=qwen_processor.tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='last_token',
-        max_length=512,
     )
 
     # Qwen-VL is instruction-following, so expose its generate() as the
@@ -206,22 +201,14 @@ def get_model(identifier: str) -> Subject:
         # Selection paths are relative to the extraction root. The same
         # visual module is also used by the full model's generate().
         variant_kwargs = dict(intervention=build_pytorch_ablation_fn(qwen_model.model.visual))
-    # Each region says which tower records it, so a task showing images and
-    # text records the vision regions from the image tower.
-    region_layer_map = {
-        region: LayerSelector(name=layer,
-                              modality='text' if region == 'language_system' else 'vision')
-        for region, layer in layers.items()}
-
     subject = BrainScoreModel(
         identifier=identifier,
         model=qwen_model,
-        region_layer_map=region_layer_map,
+        region_layer_map=layers,
         extractor={
             'vision': vision_wrapper,
             'text': text_wrapper,
         },
-        visual_degrees=8,
         answer=answer,
         reply=reply,
         likelihood=likelihood,

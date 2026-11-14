@@ -17,7 +17,6 @@ bf16; weights are placed automatically across the available devices.
 """
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore import LayerSelector
 
 HF_IDENTIFIER = 'Qwen/Qwen3.6-27B'
 
@@ -32,7 +31,6 @@ REGION_LAYER_MAP = {
     'IT': 'blocks.23',
     'language_system': 'layers.40',
 }
-TEXT_REGIONS = ('language_system',)
 
 # Share of each accelerator given over to weights; the rest holds activations.
 WEIGHT_FRACTION = 0.78
@@ -130,18 +128,14 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=visual,
         processor=processor,
         identifier=f'{identifier}-vision',
-        image_input_key='pixel_values',
         forward_kwargs_map={'grid_thw': 'image_grid_thw'},
         patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']],
-        layer_aggregation='mean_patches',
-        batch_size=4,
     )
     text = TextWrapper(
         model=language_model,
         tokenizer=tokenizer,
         identifier=f'{identifier}-text',
         backbone_id='qwen3.6-27b',               # shareable across registrations
-        layer_aggregation='last_token',
         max_length=128,
     )
 
@@ -155,13 +149,8 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=full,
-        region_layer_map={
-            region: LayerSelector(name=layer,
-                                  modality='text' if region in TEXT_REGIONS else 'vision')
-            for region, layer in REGION_LAYER_MAP.items()
-        },
+        region_layer_map=REGION_LAYER_MAP,
         extractor={'vision': vision, 'video': video, 'text': text},
-        visual_degrees=8,
         answer=_make_answer(full, processor),
         reply=reply,
         likelihood=likelihood,

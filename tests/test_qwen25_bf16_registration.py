@@ -30,7 +30,9 @@ def build(monkeypatch, tmp_path):
             self.weight = torch.nn.Parameter(torch.zeros(1, dtype=dtype))
             visual = torch.nn.Module()                 # model.visual.blocks.{0-31}
             visual.blocks = torch.nn.ModuleList([torch.nn.Identity() for _ in range(32)])
-            self.model = SimpleNamespace(visual=visual, language_model=torch.nn.Identity())
+            language_model = torch.nn.Module()         # model.language_model.layers.{0-35}
+            language_model.layers = torch.nn.ModuleList([torch.nn.Identity() for _ in range(36)])
+            self.model = SimpleNamespace(visual=visual, language_model=language_model)
             self.generation_config = SimpleNamespace(to_dict=lambda: {'max_length': 20})
         @property
         def device(self):
@@ -57,7 +59,10 @@ def build(monkeypatch, tmp_path):
     class Wrapper:
         def __init__(self, **kwargs):
             self.identifier = kwargs['identifier']
+            self.model = kwargs['model']
             wrappers.append(kwargs)
+        def layer_names(self):
+            return [name for name, _ in self.model.named_modules() if name]
         def __call__(self, stimuli, layers):
             raise AssertionError('This fixture must not extract activations')
     monkeypatch.setitem(sys.modules, 'transformers', SimpleNamespace(__version__='fixture',

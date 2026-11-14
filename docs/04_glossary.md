@@ -30,8 +30,8 @@ One line per term, alphabetical. For how the terms fit together, read [Core conc
 | **`intervention`** | A change to a subject while it runs (a lesion, a stimulation, a drug), and the `BrainScoreModel` part that applies it: `StateChange -> (PerturbationApplied, undo_function)`. The channel name (`lesion`, `stimulation`, `pharmacological`) says the kind. |
 | **Layer path** | A module's name in the network, such as `layer3.0.conv1`; list them with `named_modules()`. |
 | **`in_channels`, `out_channels`** | What a subject declares: the inputs it can take and the outputs it can give. |
-| **`required_channels`** | The inputs a subject cannot run without; a subset of `in_channels`. A benchmark that does not provide all of them is N/A. |
-| **`LayerSelector`** | One layer as a region; `modality=` picks the extractor in a model with more than one. |
+| **`required_channels`** | The inputs a subject cannot run without; a subset of `in_channels`. A benchmark that does not provide all of them is N/A. On a `BrainScoreModel`, leave it out; state it only for one network that cannot run unless it gets all of the listed inputs together (for example a joint extractor). A model made of separate extractors requires nothing, because each one runs alone. The constructor checks only that the channels are declared, not this claim. |
+| **`LayerSelector`** | One layer as a region; `modality=` picks the extractor when the layer name alone does not: in a model with several extractor objects, the name is found in extractors of two input families (an extractor that cannot list its layers counts as having every layer). |
 | **`likelihood`** | A `BrainScoreModel` part: `(prompt, candidates) -> {candidate: log probability}`. Scores each option as the reply, without generating; gives choices and implied probabilities. |
 | **Metric** | The calculation that compares model outputs with measured data. |
 | **Modality** | A kind of sensory input: `vision` (pictures), `video`, `text`, `audio`. A modality is not a channel. Pictures arrive on `vision:image` and video on `vision:video`. |
