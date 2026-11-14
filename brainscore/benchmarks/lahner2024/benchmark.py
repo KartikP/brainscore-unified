@@ -356,6 +356,8 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         # named '-multimodal-video', and the time bins are averaged with xarray's
         # NaN-skipping mean (the one-stream route and the time-resolved benchmark use
         # numpy's mean; the two differ only when a response holds NaN).
+        # The sound tracks are checked before any stream is recorded.
+        sound = clip_table(stimuli, f'{stimuli.identifier}-multimodal-audio', audio_dir=self._audio_dir)
         streams = []
         for stream, _, regions in plan:
             if stream == 'video':
@@ -363,9 +365,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
                     subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-multimodal-video'),
                     self._frames, regions)
             else:
-                responses = record_clips(subject, clip_table(
-                    stimuli, f'{stimuli.identifier}-multimodal-audio', audio_dir=self._audio_dir),
-                    regions)
+                responses = record_clips(subject, sound, regions)
             streams.append((stream, [response.mean(dim='time_bin') if 'time_bin' in response.dims
                                      else response for response in responses]))
         clip_ids = read_stimulus_ids(streams[0][1][0])

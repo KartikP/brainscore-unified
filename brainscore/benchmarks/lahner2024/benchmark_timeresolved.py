@@ -434,6 +434,9 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         # built in sorted stimulus order and named '-timeresolved-multimodal-video'
         # (the one-stream table keeps the table order), each stream is projected on
         # its own, and the joined features are cast to float32.
+        # The sound tracks are checked before any stream is recorded.
+        sound = clip_table(stimuli, f'{stimuli.identifier}-timeresolved-multimodal-audio', ids=unique_ids,
+                           audio_dir=self._audio_dir)
         streams = []
         for stream, _, regions in plan:
             if stream == 'video':
@@ -441,9 +444,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                     stimuli, f'{stimuli.identifier}-timeresolved-multimodal-video', ids=unique_ids),
                     frames, regions)
             else:
-                responses = record_clips(subject, clip_table(
-                    stimuli, f'{stimuli.identifier}-timeresolved-multimodal-audio', ids=unique_ids,
-                    audio_dir=self._audio_dir), regions)
+                responses = record_clips(subject, sound, regions)
             streams.append((stream, responses))
         stimulus_ids = read_stimulus_ids(streams[0][1][0])
         capped = [(stream, *_cap(np.concatenate(
