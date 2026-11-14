@@ -54,7 +54,7 @@ register_tool('count-outputs', CountOutputs)          # a class or any function 
 
 A tool that ships in Brain-Score is one line in the table in `brainscore/tools/_registry.py`: the module, the class, and whether `artifact=` loads a saved tool. The module is imported only when `load_tool` asks for it, so importing the package imports no tool:
 
-```python
+```text
 'linear-probe': ('brainscore.tools.linear_probe', 'LinearProbe', True),
 ```
 
