@@ -438,5 +438,5 @@ def cross_validated_r(features, Y, folds, fit, *, groups=None,
 
 def summarize(r) -> Tuple[np.ndarray, float, float]:
     """The finite values of ``r``, their median and their mean."""
-    finite = r[~np.isnan(r)]
+    finite = r[np.isfinite(r)]
     return finite, float(np.median(finite)), float(np.mean(finite))

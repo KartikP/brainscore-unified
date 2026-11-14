@@ -263,6 +263,16 @@ class TestScores:
         _same(finite, [1.0, 0.5])
         assert (median, mean) == (0.75, 0.75)
 
+    def test_summarize_drops_infinite_values_and_keeps_every_finite_one(self):
+        finite, median, mean = summarize(np.array([np.inf, 1.0, np.nan, -np.inf, 0.5]))
+        _same(finite, [1.0, 0.5])
+        assert (median, mean) == (0.75, 0.75)
+        r = np.random.default_rng(0).uniform(-1, 1, 1000)
+        r[::7] = np.nan
+        finite, median, mean = summarize(r)
+        _same(finite, r[~np.isnan(r)])
+        assert (median, mean) == (float(np.median(r[~np.isnan(r)])), float(np.mean(r[~np.isnan(r)])))
+
 
 # -- Identity with the replaced code -----------------------------------------
 
