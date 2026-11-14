@@ -1,6 +1,6 @@
-"""The two UMI vision registrations wire their parts through the public slots.
+"""The CLIP and Qwen2.5-VL registrations wire their parts through the public slots.
 
-``clip_vit_b_32_unified`` and ``qwen25_vl_3b_unified`` (in brainscore_vision)
+``clip_vit_b_32`` and ``qwen25_vl_3b`` (in brainscore.models)
 pass ``extractor=`` and ``answer=`` and name each region's tower with
 ``LayerSelector(modality=...)``. These checks build each registration with
 deterministic stand-ins and check that each input kind reaches the right
@@ -32,7 +32,7 @@ from brainscore_core.streaming_helpers import behavioral_response, neural_respon
 
 pytestmark = pytest.mark.unit
 
-FOLDERS = {'clip-vit-b-32': 'clip_vit_b_32_unified', 'qwen2.5-vl-3b': 'qwen25_vl_3b_unified'}
+FOLDERS = {'clip-vit-b-32': 'clip_vit_b_32', 'qwen2.5-vl-3b': 'qwen25_vl_3b'}
 REMOVED = {'preprocessors', 'activations_model', 'generation_fn', 'action_fn', 'state_change_fn',
            'region_modality_map', 'backbone_id'}
 PUBLIC_SLOTS = {'extractor', 'answer', 'policy', 'intervention'}
@@ -134,6 +134,10 @@ class FakeQwen:
     def parameters(self):
         yield types.SimpleNamespace(device='fake-device')
 
+    def to(self, device):
+        self.device = device
+        return self
+
     def generate(self, **inputs):
         self.generate_calls.append({k: v for k, v in inputs.items() if k != 'input_ids'})
         ids = inputs['input_ids']
@@ -158,6 +162,7 @@ def build(monkeypatch):
 
     torch = types.ModuleType('torch')
     torch.float16 = _Part('torch.float16')
+    torch.bfloat16 = _Part('torch.bfloat16')
     torch.no_grad = contextlib.nullcontext
     transformers = types.ModuleType('transformers')
     transformers.CLIPModel = loader('CLIPModel', FakeCLIP)
@@ -179,6 +184,9 @@ def build(monkeypatch):
         spec = importlib.util.spec_from_file_location(f'umi_registration_{FOLDERS[identifier]}', path)
         module = importlib.util.module_from_spec(spec)
         with monkeypatch.context() as patch, warnings.catch_warnings(record=True) as caught:
+            # No weight cache check and no device choice: both are outside the wiring.
+            patch.setattr('brainscore.models._downloads.hf_preflight', lambda *args, **kwargs: {})
+            patch.setattr('brainscore.model_helpers._device.select_device', lambda: 'fake-device')
             for name, stub in modules.items():
                 patch.setitem(sys.modules, name, stub)
             warnings.simplefilter('always')
@@ -192,7 +200,7 @@ def build(monkeypatch):
 
 
 def _registration_path(folder):
-    spec = find_spec('brainscore_vision')  # a top-level lookup does not import the package
+    spec = find_spec('brainscore')  # a top-level lookup does not import the package
     return Path(list(spec.submodule_search_locations)[0]) / 'models' / folder / 'model.py'
 
 

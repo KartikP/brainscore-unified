@@ -20,8 +20,6 @@ PACKAGES = ('brainscore_core', 'brainscore_vision', 'brainscore_language', 'brai
 MAINTAINED = [
     ('brainscore_vision', 'compat'),
     ('brainscore_vision', 'benchmark_helpers/test_db_contract.py'),
-    ('brainscore_vision', 'models/clip_vit_b_32_unified/model.py'),
-    ('brainscore_vision', 'models/qwen25_vl_3b_unified/model.py'),
     ('brainscore_language', 'compat'),
     ('brainscore', ''),
 ]
