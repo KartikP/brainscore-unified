@@ -208,12 +208,14 @@ def test_documented_code_blocks_run(page, tmp_path):
 # --- new_benchmark -----------------------------------------------------------------
 
 @pytest.fixture
-def benchmark(monkeypatch):
+def benchmark():
     import brainscore
-    # Restores the registry afterwards; the template registers 'your-benchmark' on import.
-    monkeypatch.setitem(brainscore.benchmark_registry, 'your-benchmark', None)
+    # The template registers 'your-benchmark' on import; remove it afterwards.
     _load('new_benchmark/benchmark.py', 'umi_template_benchmark')
-    return brainscore.benchmark_registry['your-benchmark']()
+    try:
+        yield brainscore.benchmark_registry['your-benchmark']()
+    finally:
+        del brainscore.benchmark_registry['your-benchmark']
 
 
 class ParticipateOnlySubject(Subject):

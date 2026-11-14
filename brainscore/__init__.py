@@ -25,11 +25,40 @@ from brainscore_core.metrics import Metric, Score
 
 _logger = logging.getLogger(__name__)
 
-model_registry: Dict[str, Callable[[], Subject]] = {}
-benchmark_registry: Dict[str, Callable[[], Benchmark]] = {}
-metric_registry: Dict[str, Callable[[], Metric]] = {}
-data_registry: Dict[str, Callable[..., Any]] = {}
-stimulus_set_registry: Dict[str, Callable[..., Any]] = {}
+class _Registry(dict):
+    """A registry that refuses a second registration under a key it holds.
+
+    A replaced factory would silently change what is scored under that name,
+    so the second assignment raises and names both sources. Remove the entry
+    first (``del registry[key]``) to replace it on purpose, as a test does.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._sources: Dict[str, str] = {}
+
+    def __setitem__(self, key, value) -> None:
+        import sys
+        caller = sys._getframe(1)
+        source = f'{caller.f_code.co_filename}:{caller.f_lineno}'
+        if key in self:
+            raise ValueError(
+                f'{key!r} is already registered (by {self._sources.get(key, "unknown")}); '
+                f'a second registration (by {source}) would silently replace it. '
+                f'Use a new identifier.')
+        super().__setitem__(key, value)
+        self._sources[key] = source
+
+    def __delitem__(self, key) -> None:
+        super().__delitem__(key)
+        self._sources.pop(key, None)
+
+
+model_registry: Dict[str, Callable[[], Subject]] = _Registry()
+benchmark_registry: Dict[str, Callable[[], Benchmark]] = _Registry()
+metric_registry: Dict[str, Callable[[], Metric]] = _Registry()
+data_registry: Dict[str, Callable[..., Any]] = _Registry()
+stimulus_set_registry: Dict[str, Callable[..., Any]] = _Registry()
 
 
 def _populate_unified_registries() -> None:

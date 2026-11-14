@@ -87,7 +87,7 @@ from brainscore import model_registry
 
 def get_model():
     return BrainScoreModel(
-        identifier='your-model',
+        identifier='my-model',
         model=backbone,                       # nn.Module, or None for output-only
         region_layer_map={'IT': 'blocks.16'}, # brain region -> layer path
         extractor={'vision': wrapper},        # wrapper owns input preparation and recording
@@ -96,7 +96,7 @@ def get_model():
         # behavioral_readout_layer=..., memory=...,
     )
 
-model_registry['your-model'] = get_model
+model_registry['my-model'] = get_model
 ```
 
 Then add `from . import your_name` to `brainscore/models/__init__.py`. Run `auto_register` to
@@ -199,7 +199,7 @@ class YourBenchmark(BenchmarkBase):
     requested_output_channels = {'neural:IT'}
 
     def __init__(self):
-        super().__init__(identifier='your-benchmark', ceiling=Score(1.0),  # or your estimate
+        super().__init__(identifier='my-benchmark', ceiling=Score(1.0),  # or your estimate
                          version=1, parent='neural', bibtex=BIBTEX)
         self._assembly = load_dataset('your-measurements')      # target measurements
         self._stimulus_set = load_stimulus_set('your-stimuli')
@@ -218,7 +218,7 @@ class YourBenchmark(BenchmarkBase):
                                metric='your-metric', normalized=True)
 
 
-benchmark_registry['your-benchmark'] = lambda: YourBenchmark()
+benchmark_registry['my-benchmark'] = lambda: YourBenchmark()
 ```
 
 `benchmark_score` writes the attributes every unified score carries (`raw`, `ceiling`,
@@ -288,7 +288,7 @@ class YourMetric(Metric):
         score.attrs['raw'] = ...                 # optional: per-unit / per-fold detail
         return score
 
-metric_registry['your-metric'] = lambda: YourMetric()
+metric_registry['my-metric'] = lambda: YourMetric()
 ```
 
 Then register it in `brainscore/metrics/__init__.py`. A reference lives at

@@ -118,6 +118,8 @@ def install(monkeypatch, tmp_path, runs=None, bold=None, events=None, glm=None):
             return cache[name]
         return load
 
+    # A registry refuses a second registration: remove the real entry first.
+    monkeypatch.delitem(brainscore.stimulus_set_registry, 'BOLDMoments', raising=False)
     monkeypatch.setitem(brainscore.stimulus_set_registry, 'BOLDMoments', once('s', stimulus_set))
     for identifier, build in (
             ('Lahner2024-fMRI', lambda: glm_assembly(glm)),
@@ -125,6 +127,7 @@ def install(monkeypatch, tmp_path, runs=None, bold=None, events=None, glm=None):
             ('Lahner2024-fMRI-timeresolved-events',
              lambda: tr_events(runs) if events is None else events),
             ('Lahner2024-fMRI-timeresolved-motion', lambda: tr_motion(runs))):
+        monkeypatch.delitem(brainscore.data_registry, identifier, raising=False)
         monkeypatch.setitem(brainscore.data_registry, identifier, once(identifier, build))
     # The auditory mask reads the Destrieux atlas through nilearn, an optional
     # dependency; a stand-in module supplies a seeded atlas without it.
