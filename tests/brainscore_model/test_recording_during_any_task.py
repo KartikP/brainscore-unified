@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Text
 from brainscore_core.streaming import Session
@@ -156,7 +156,7 @@ def test_a_subject_with_no_task_part_is_not_applicable_under_a_task(tmp_path):
     model = BrainScoreModel('tiny-audio', extractor={'audio': wrapper},
                             region_layer_map={REGION: regions[REGION]})
     session = stimulus_session(stimuli, [f'neural:{REGION}'], task=ANSWERS['choice'][0])
-    with pytest.raises(CompatibilityError, match='cannot give a Choice answer'):
+    with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice answer'):
         model.participate(session)
     assert passes == []
 
@@ -182,6 +182,6 @@ def test_a_region_that_cannot_record_during_the_answer_is_not_applicable_before_
                             region_layer_map={REGION: regions[REGION]}, behavioral_readout_layer='head',
                             reply=lambda prompt: 'yes')
     task = TaskContext(instruction='Is it there?', response=Choice(['yes', 'no']))
-    with pytest.raises(CompatibilityError, match='cannot record'):
+    with pytest.raises(ExecutionNotFeasibleError, match='cannot record'):
         model.participate(stimulus_session(stimuli, channels, task=task))
     assert passes == []

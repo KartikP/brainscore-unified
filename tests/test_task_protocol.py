@@ -10,7 +10,7 @@ import pytest
 import torch
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.contract import TaskContext
 from brainscore.selection import LayerSelector
@@ -687,12 +687,12 @@ def test_options_that_differ_for_each_row_reach_each_part():
 
 def test_raw_scores_need_a_likelihood_part():
     """A model that would have to guess or normalize is N/A, never scored."""
-    from brainscore_core.compatibility import CompatibilityError
+    from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
     model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=lambda p: 'sat')
     task = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
-    with pytest.raises(CompatibilityError, match='likelihood'):
+    with pytest.raises(ExecutionNotFeasibleError, match='likelihood'):
         model.start_task(task)
 
 
@@ -733,7 +733,7 @@ def test_an_answer_part_cannot_serve_a_raw_text_choice():
     model = BrainScoreModel(identifier='answerer', in_channels={'text'}, answer=answer)
     task = TaskContext(response=Choice(labels='options', raw_text=True))
     session = stimulus_session(_options_stimuli(), ['behavior:choice'], task)
-    with pytest.raises(CompatibilityError, match='cannot give a Choice answer'):
+    with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice answer'):
         model.participate(session)
     assert calls == []
 

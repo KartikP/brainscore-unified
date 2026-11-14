@@ -91,18 +91,20 @@ def open_recordings(owner, stimuli, layers):
     ``record(layers, stimuli)`` when it has one (``stimuli`` is None for a
     policy step); otherwise forward hooks on the model passed as
     ``BrainScoreModel(model=...)``, with layer paths read from that model. A
-    region that neither can record is N/A (``CompatibilityError``): the task,
-    which chose this path, is known only here.
+    region that neither can record is refused before any compute
+    (``ExecutionNotFeasibleError``): the task, which chose this path, is known
+    only here.
     """
-    from brainscore_core.compatibility import CompatibilityError
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
     from .dispatch import extractor_for
     cannot = [region for region in layers
               if not records_while_answering(owner, region, stimuli)]
     if cannot:
-        raise CompatibilityError(
+        raise ExecutionNotFeasibleError(
             f'Subject {owner.identifier!r} cannot record {cannot} while it answers or acts: '
             'the extractor of each region needs record(layers, stimuli), or every layer of the region '
-            'must be a module of the network passed as BrainScoreModel(model=...).')
+            'must be a module of the network passed as BrainScoreModel(model=...).',
+            channels={f'neural:{region}' for region in cannot})
     groups: Dict[tuple, Tuple[object, List[str], List[str]]] = {}
     for region, region_layers in layers.items():
         modality = region_modality(owner, region)

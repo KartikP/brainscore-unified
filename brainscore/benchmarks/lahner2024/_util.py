@@ -83,9 +83,10 @@ def stream_regions(subject, taken, regions) -> List[Tuple[str, str, List[str]]]:
     from the visual one, A1 from the sound) when the subject can answer it from
     there (``output_inputs``, rule 2.5), else from the other stream it can
     answer it from. A region that no shown stream can answer raises
-    ``CompatibilityError`` before any compute; pre-flight gives N/A for it.
+    ``ExecutionNotFeasibleError`` before any compute: pre-flight accepts a
+    region answered from ``vision:image`` while only the clips are shown.
     """
-    from brainscore_core.compatibility import CompatibilityError
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
     visual = next((c for c in ('vision:video', 'vision:image') if c in taken), None)
     channels = {'video': visual, 'audio': 'audio' if 'audio' in taken else None}
     plan = {'video': [], 'audio': []}
@@ -94,9 +95,10 @@ def stream_regions(subject, taken, regions) -> List[Tuple[str, str, List[str]]]:
         usable = [stream for stream, channel in channels.items()
                   if channel is not None and (listed is None or channel in listed)]
         if not usable:
-            raise CompatibilityError(
+            raise ExecutionNotFeasibleError(
                 f'{subject.identifier!r} answers neural:{region} only from {sorted(listed or ())}, '
-                f'and takes none of the streams shown ({sorted(c for c in channels.values() if c)}).')
+                f'and takes none of the streams shown ({sorted(c for c in channels.values() if c)}).',
+                channels={f'neural:{region}'})
         own = _OWN_STREAM[region]
         plan[own if own in usable else usable[0]].append(region)
     return [(stream, channels[stream], requested) for stream, requested in plan.items() if requested]

@@ -1,6 +1,6 @@
 import pytest
 from brainscore_core import io_catalog
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.capabilities import Capability, capability_registry, register_capability
 from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
 from brainscore import BrainScoreModel
@@ -55,7 +55,7 @@ def test_external_input_output_state_reset_and_session():
     assert len(setups) == 2 and 'test_result' in model.out_channels
     with pytest.raises(ValueError):
         Session([StreamEvent('test_request', 'bad', 5)], ('test_result',))
-    with pytest.raises(CompatibilityError, match='cannot answer'):
+    with pytest.raises(ExecutionNotFeasibleError, match='cannot answer'):
         model.check_session_support({'test_result', 'motor'})
 
 
@@ -80,7 +80,7 @@ def test_external_modality_routes_without_host_modification():
 
 def test_a_support_refusal_at_session_start_is_an_error_of_the_run():
     import brainscore
-    from brainscore_core.compatibility import check_channel_compatibility, CompatibilityError
+    from brainscore_core.compatibility import check_channel_compatibility
     from brainscore_core.streaming import Session
     steps = []
     model = BrainScoreModel('motor-only', policy=lambda step: steps.append(step) or {'motor': 0})
@@ -96,9 +96,9 @@ def test_a_support_refusal_at_session_start_is_an_error_of_the_run():
 
     check_channel_compatibility(model, _Benchmark())     # declarations pass
     def refuse(channels):
-        raise CompatibilityError('no driver', channels=channels)
+        raise ExecutionNotFeasibleError('no driver', channels=channels)
     model.check_session_support = refuse
-    with pytest.raises(CompatibilityError, match=r"Session refused \(task type 'none'\): no driver") as caught:
+    with pytest.raises(ExecutionNotFeasibleError, match=r"Session refused \(task type 'none'\): no driver") as caught:
         brainscore.score(model, _Benchmark(), check_mem=False)
     assert caught.value.channels == {'motor'}
     assert steps == []

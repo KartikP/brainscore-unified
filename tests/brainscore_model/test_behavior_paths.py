@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Text
 from brainscore_core.streaming import StreamEvent
@@ -116,8 +116,7 @@ def test_a_legacy_task_with_a_region_records_the_answer_pass():
     calls = []
     model = _model(calls, answer=True)
     model.region_layer_map = {'IT': 'late'}
-    from brainscore_core.compatibility import CompatibilityError
-    with pytest.raises(CompatibilityError, match='record'):
+    with pytest.raises(ExecutionNotFeasibleError, match='record'):
         # The plain extractor has no record(layers) and no model= to hook: N/A.
         _run(model, ['behavior', 'neural:IT'], TaskContext(**LEGACY))
     assert calls == []                               # before any answer
@@ -170,9 +169,9 @@ def test_text_settings_reach_the_reply_part_and_extra_data_reaches_the_event():
 
 def test_the_one_chooser_names_every_path_it_tried():
     model = BrainScoreModel('none', in_channels={'text'})
-    with pytest.raises(CompatibilityError, match='Paths tried: generation needs answer=.*readout needs'):
+    with pytest.raises(ExecutionNotFeasibleError, match='Paths tried: generation needs answer=.*readout needs'):
         model.start_task(TaskContext(**LEGACY))
-    with pytest.raises(CompatibilityError, match='cannot give a Choice answer. Paths tried'):
+    with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice answer. Paths tried'):
         model.start_task(TaskContext(response=Choice(['cat', 'dog'])))
 
 

@@ -38,8 +38,9 @@ class Extractor(Protocol):
     recorded during any task. A callable without it (a plain function, or the
     legacy ``PytorchWrapper``) still records plain viewing; during a task it
     records through hooks on ``BrainScoreModel(model=...)`` when every layer of
-    the region is a module of that network, and otherwise the pair is N/A
-    before any compute (``brainscore._model.recording.records_while_answering``).
+    the region is a module of that network, and otherwise the session is
+    refused before any compute with ``ExecutionNotFeasibleError``
+    (``brainscore._model.recording.records_while_answering``).
     """
 
     identifier: str

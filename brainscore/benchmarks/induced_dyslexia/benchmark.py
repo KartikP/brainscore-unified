@@ -22,8 +22,8 @@ benchmark runs any subject through ``participate`` only (Contract Rules 1.1,
 2.1): it records ``neural:<region>`` for the localizer, sends the lesions as
 ``lesion`` events and reads through ``behavior``. It requests those outputs, so
 a subject that cannot record the region or report a lesion (no ``perturbation``
-output) is N/A in pre-flight; one that does not take ``lesion`` input is N/A at
-the start of the call, before any compute. Reading is cleanest on the
+output) is N/A in pre-flight; one that does not take ``lesion`` input is refused
+at the start of the call, before any compute (``ExecutionNotFeasibleError``). Reading is cleanest on the
 generation path (instruction-following), matching the paper; a readout-path
 model re-fits its linear readout each call (a valid but different measure).
 
@@ -46,7 +46,7 @@ the project's K-sweep finding. Different localizer, same API.
 from typing import List, Sequence
 
 from brainscore_core.benchmarks import BenchmarkBase
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.metrics import Score
 from brainscore import FunctionalSelection, RandomSelection
 from brainscore_core.events import StateChange, Selection, Perturbation
@@ -164,13 +164,13 @@ class InducedDyslexia(BenchmarkBase):
             raise errors[0]
 
     def __call__(self, subject) -> Score:
-        # The subject must declare `lesion` to receive the lesions.
-        # If it does not, the result is N/A before any compute.
+        # The subject must declare `lesion` to receive the lesions. Pre-flight
+        # needs only one benchmark input, so this run is refused before any compute.
         if 'lesion' not in set(subject.in_channels):
-            raise CompatibilityError(
+            raise ExecutionNotFeasibleError(
                 f"Subject '{subject.identifier}' does not declare the 'lesion' family, "
                 f"which benchmark '{self.identifier}' needs to apply and undo lesions; in_channels: "
-                f"{sorted(subject.in_channels)}.")
+                f"{sorted(subject.in_channels)}.", channels={'lesion'})
         return self._score(subject)
 
     def _score(self, subject) -> Score:

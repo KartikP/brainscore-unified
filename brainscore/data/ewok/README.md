@@ -85,7 +85,9 @@ Both benchmarks run on the common channels; each question is one stimulus row.
 both targets as the options of that row. A model with a `likelihood` part
 returns the raw score of each target on `behavior:probabilities`: the summed log
 probability of the target's tokens in `f"{context} {target}"`, raw text, no
-template, as EWoK's `score` does. A model without a `likelihood` part is N/A.
+template, as EWoK's `score` does. A model without a `likelihood` part is N/A
+when it does not declare `behavior:probabilities`; otherwise it refuses the
+session (`ExecutionNotFeasibleError`, an error).
 `chat_parts` and `build_causal_lm_subject` give such a part; so does
 `EWoKProvider(native_model)` from `brainscore.harnesses.ewok`, which calls the
 authors' own `score`.

@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from ._model.behavioral import BehavioralReadout
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import UnifiedModel, TaskContext
 from ._model import dispatch
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
@@ -295,11 +295,10 @@ class BrainScoreModel(UnifiedModel):
         """The one capability that runs a session requesting ``channels``.
 
         ``participate`` runs it when a session starts. Raises before any input
-        is consumed: ``CompatibilityError`` when no capability claims the
-        combination, naming the outputs the subject does not produce (inside
-        ``score()`` this is an error of the run, not N/A: the declarations did
-        not express the limit); ``ValueError when more than one claims it at
-        the same priority.
+        is consumed: ``ExecutionNotFeasibleError`` when no capability claims the
+        combination, naming the outputs the subject does not produce (an error
+        of the run: the declarations did not express the limit); ``ValueError``
+        when more than one claims it at the same priority.
         """
         channels = frozenset(channels)
         if not channels:
@@ -312,7 +311,7 @@ class BrainScoreModel(UnifiedModel):
                     'intervention=...), a callable intervention(state_change) -> '
                     '(PerturbationApplied, undo_function).'
                     if 'perturbation' in missing else '')
-            raise CompatibilityError(
+            raise ExecutionNotFeasibleError(
                 f"Subject {self.identifier!r} cannot answer {sorted(channels)} in one session: "
                 + (f"it does not produce {missing}" if missing
                    else 'no one part of it answers these outputs together')
@@ -418,12 +417,13 @@ class BrainScoreModel(UnifiedModel):
             self._regions_per_pass = plan
             try:
                 handler = self.check_session_support(session_outputs(session))
-            except CompatibilityError as error:
+            except ExecutionNotFeasibleError as error:
                 task = getattr(session, 'task', None)
-                raise CompatibilityError(
+                task_type = getattr(task, 'task_type', None) if task is not None else None
+                raise ExecutionNotFeasibleError(
                     f"Session refused (task type "
-                    f"{getattr(task, 'task_type', None) if task is not None else 'none'!r}): {error}",
-                    channels=error.channels) from error
+                    f"{task_type if task is not None else 'none'!r}): {error}",
+                    channels=error.channels, task_type=task_type) from error
             from .capabilities.registry import _setup_once
             _setup_once(self, handler)
             # A task the session configures ends with the session (rule 4.5).

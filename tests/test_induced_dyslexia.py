@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from brainscore_core import Subject
-from brainscore_core.compatibility import CompatibilityError, check_compatibility
+from brainscore_core.compatibility import CompatibilityError, check_compatibility, ExecutionNotFeasibleError
 from brainscore_core.metrics import Score
 from brainscore import RandomSelection
 from brainscore_core.events import PerturbationApplied, Selection
@@ -228,7 +228,7 @@ class TestPreflight:
         subject = _Subject()
         subject.in_channels = in_channels
         check_compatibility(subject, self._bench())
-        with pytest.raises(CompatibilityError, match='lesion'):
+        with pytest.raises(ExecutionNotFeasibleError, match='lesion'):
             self._bench()(subject)
         assert subject.sessions == 0
 

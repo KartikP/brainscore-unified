@@ -324,12 +324,11 @@ class BehavioralReadout:
         ``answer=`` (with an instruction and labels) or by the readout (with
         fitting stimuli).
 
-        A task that no part of the model can answer raises ``CompatibilityError``
-        before any compute. Sessions refuse with this choice; during a run of
-        ``score()`` the refusal is an error, not an N/A result (only the
-        declaration check before the run gives N/A).
+        A task that no part of the model can answer raises
+        ``ExecutionNotFeasibleError`` before any compute. Sessions refuse with
+        this choice; the refusal is an error of the run.
         """
-        from brainscore_core.compatibility import CompatibilityError
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
         from brainscore_core.responses import Choice, Scale
         owner, response = self.owner, task.response
         readout_wired = (owner._behavioral_readout_layer is not None
@@ -344,10 +343,11 @@ class BehavioralReadout:
                      'readout': 'TaskContext.fitting_stimuli (and behavioral_readout_layer=)'}
             path = next((p for p in order if can[p]), None)
             if path is None:
-                raise CompatibilityError(
+                raise ExecutionNotFeasibleError(
                     f"Subject '{owner.identifier}' cannot run the behavioral task "
                     f"task_type={task.task_type!r}. Paths tried: "
-                    + '; '.join(f'{p} needs {needs[p]}' for p in order))
+                    + '; '.join(f'{p} needs {needs[p]}' for p in order),
+                    task_type=task.task_type)
             if path == 'generation' and can['readout']:
                 import warnings
                 warnings.warn(
@@ -362,9 +362,9 @@ class BehavioralReadout:
         raw_scores = isinstance(response, Choice) and response.raw_scores
         if raw_scores and owner._likelihood is None:
             # Raw scores come only from a likelihood part: no softmax of a readout, no guess.
-            raise CompatibilityError(
+            raise ExecutionNotFeasibleError(
                 f"Subject '{owner.identifier}' cannot give raw scores of the options: "
-                'they come only from a likelihood= part.')
+                'they come only from a likelihood= part.', task_type=task.task_type)
         per_row = isinstance(response, Choice) and isinstance(response.labels, str)
         raw_text = isinstance(response, Choice) and response.raw_text
         can = {
@@ -381,10 +381,11 @@ class BehavioralReadout:
             needs = {'generation': 'reply= (or answer= for a plain Choice)',
                      'likelihood': 'likelihood= and a Choice without reported confidence',
                      'readout': 'behavioral_readout_layer=, an extractor and fitting_stimuli'}
-            raise CompatibilityError(
+            raise ExecutionNotFeasibleError(
                 f"Subject '{owner.identifier}' cannot give a {type(response).__name__} answer"
                 + (' with reported confidence (needs reply=)' if reported_confidence else '')
-                + '. Paths tried: ' + '; '.join(f'{p} needs {needs[p]}' for p in order))
+                + '. Paths tried: ' + '; '.join(f'{p} needs {needs[p]}' for p in order),
+                task_type=task.task_type)
         source = None
         if isinstance(response, Choice) and (response.probabilities or response.reaction_time
                                              or response.raw_scores):
@@ -393,9 +394,10 @@ class BehavioralReadout:
             elif readout_wired and not per_row:
                 source = 'readout'
             else:
-                raise CompatibilityError(f"Subject '{owner.identifier}' cannot give implied probabilities: "
-                                 'it needs likelihood= or a readout (behavioral_readout_layer=, '
-                                 'fitting_stimuli).')
+                raise ExecutionNotFeasibleError(
+                    f"Subject '{owner.identifier}' cannot give implied probabilities: "
+                    'it needs likelihood= or a readout (behavioral_readout_layer=, '
+                    'fitting_stimuli).', task_type=task.task_type)
         return path, source
 
     def respond(self, stimuli, channels, regions=()):

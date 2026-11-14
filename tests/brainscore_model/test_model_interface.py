@@ -2,7 +2,7 @@ import pytest
 import warnings
 
 from brainscore import BrainScoreModel, UnitSelector, LayerSelector
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 
 
@@ -442,7 +442,7 @@ class TestBehavioralPathDispatch:
             instruction="Is this real?",
             fitting_stimuli=None,           # missing
         )
-        with pytest.raises(CompatibilityError, match="readout needs TaskContext.fitting_stimuli"):
+        with pytest.raises(ExecutionNotFeasibleError, match="readout needs TaskContext.fitting_stimuli"):
             m.start_task(ctx)
 
     def test_unknown_task_type_raises(self):

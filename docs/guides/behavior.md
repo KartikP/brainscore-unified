@@ -48,7 +48,7 @@ Three fields of `Choice` serve a library that compares options by their likeliho
 | Field | Meaning |
 | --- | --- |
 | `labels='options'` | a column name in place of the options: the options differ for each row, and the column holds each row's options. The `choice` axis is then the position of each option in that cell. |
-| `raw_scores=True` | `behavior:probabilities` carries each option's score exactly as the `likelihood` part gave it (summed log probability), not normalized; `attrs['measure']['scale']` is `'log'`. Only a `likelihood` part gives it; any other model is N/A. |
+| `raw_scores=True` | `behavior:probabilities` carries each option's score exactly as the `likelihood` part gave it (summed log probability), not normalized; `attrs['measure']['scale']` is `'log'`. Only a `likelihood` part gives it; any other model refuses the session (`ExecutionNotFeasibleError`). |
 | `raw_text=True` | the stimulus text is shown exactly as given: no directive, and no instruction. A `likelihood` part scores `f"{text} {option}"` as plain text, with no chat template and no beginning-of-sequence token. A `reply` part gets no added sentence but still answers through its chat template. |
 
 **The order of a trial.** A model that replies receives a `Prompt`: the instruction, the stimulus, then the response's directive. When a stimulus has several parts (a sentence and a clip), say the order people saw them in with `present`; a stimulus with several parts and no order fails before any compute. A model that does not take in a part (a text-only model on a task with a clip) gets the task without that entry, so its trial shows only the parts it takes in. An entry that names a column no stimulus has is an error for every model:
@@ -82,7 +82,7 @@ A **reported** answer is the model's reply, parsed. An **implied** measure is re
 
 The model answers by the first path it has, in that order. Which path a model uses is a property of the model, not of the task: to compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
 
-One benchmark can take models of both kinds, as long as it fills in both the instruction and `fitting_stimuli`. Choices, ratings and implied probabilities come from either kind. Reported confidence and written answers need a model that replies; for a readout-only model those benchmarks are N/A before any compute.
+One benchmark can take models of both kinds, as long as it fills in both the instruction and `fitting_stimuli`. Choices, ratings and implied probabilities come from either kind. Reported confidence and written answers need a model that replies; a readout-only model refuses those sessions before any compute (`ExecutionNotFeasibleError`, an error of `score`).
 
 A reply that cannot be parsed is recorded as invalid: NaN values, `answer_valid` is `False`, the reply is kept in `raw_answer` and the reason in `parse_error`. Nothing is credited. Written answers are stored as written; scoring them (a parser, a judge, a comparison with people) is the benchmark's job.
 

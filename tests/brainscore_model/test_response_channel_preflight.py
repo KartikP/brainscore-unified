@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
@@ -155,7 +155,7 @@ def test_recording_during_a_reply_is_decided_in_pre_flight(records, network_laye
     if supported:
         assert model.check_session_support(channels).identifier == 'behavior-sessions'
     else:
-        with pytest.raises(CompatibilityError, match='no one part of it answers'):
+        with pytest.raises(ExecutionNotFeasibleError, match='no one part of it answers'):
             model.check_session_support(channels)
     assert extractor.calls == 0
 
@@ -166,7 +166,7 @@ def test_a_policy_records_a_region_only_where_the_wiring_can():
     model = BrainScoreModel(identifier='toy-policy', model=network, extractor={'vision': _CountingExtractor()},
                             region_layer_map={'V4': '0', 'IT': 'head'}, policy=lambda row: {'motor': 0})
     assert model.check_session_support({'motor', 'neural:V4'}).identifier == 'motor-sessions'
-    with pytest.raises(CompatibilityError, match='no one part of it answers'):
+    with pytest.raises(ExecutionNotFeasibleError, match='no one part of it answers'):
         model.check_session_support({'motor', 'neural:IT'})
 
 
@@ -190,13 +190,13 @@ def test_a_subject_that_cannot_serve_a_session_is_not_applicable_before_compute(
     import brainscore
     model = _audio_model(policy)
     named = re.escape(f"does not produce ['{missing}']")
-    with pytest.raises(CompatibilityError, match=named):
+    with pytest.raises(ExecutionNotFeasibleError, match=named):
         model.check_session_support(outputs)
     stimuli = StimulusSet({'stimulus_id': ['a'], 'audio_path': ['/no/such/file.wav']})
     stimuli.identifier = 'toy-audio-stimuli'
     task = (TaskContext(instruction='Is it loud?', response=Choice(['yes', 'no']))
             if 'behavior:choice' in outputs else None)
-    with pytest.raises(CompatibilityError, match=named):
+    with pytest.raises(ExecutionNotFeasibleError, match=named):
         model.participate(stimulus_session(stimuli, list(outputs), task))
     # Through score(), pre-flight refuses the same pair from the declarations.
     benchmark = SimpleNamespace(identifier='toy-audio-benchmark', version=1,
@@ -211,7 +211,7 @@ def test_an_unknown_channel_is_not_applicable():
     from types import SimpleNamespace
     from brainscore_core.compatibility import check_compatibility
     model = _audio_model()
-    with pytest.raises(CompatibilityError, match=r"does not produce \['telepathy'\]"):
+    with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['telepathy'\]"):
         model.check_session_support({'telepathy'})
     benchmark = SimpleNamespace(identifier='toy', required_input_channels=frozenset({'audio'}),
                                 requested_output_channels=frozenset({'telepathy'}))
@@ -238,7 +238,7 @@ def test_score_raises_when_no_part_answers_the_outputs_together():
             subject.participate(stimulus_session(STIMULI, sorted(self.requested_output_channels), task))
             raise AssertionError('the session must not run')
 
-    with pytest.raises(CompatibilityError, match="task type 'choice'.*no one part of it answers"
+    with pytest.raises(ExecutionNotFeasibleError, match="task type 'choice'.*no one part of it answers"
                        ".*passed the declared compatibility check") as caught:
         brainscore.score(model, _Benchmark(), check_mem=False)
     assert caught.value.channels == {'behavior:choice', 'neural:IT'}

@@ -7,9 +7,11 @@ targets are the options of that row (``Choice(labels='options',
 raw_scores=True, raw_text=True)``), and the subject returns the raw score of
 each target on ``behavior:probabilities``: the summed log probability of the
 target's tokens in ``f"{context} {target}"``, raw text, no template, as EWoK's
-``score`` does. A subject needs a ``likelihood`` part; without one the
-benchmark is N/A. The scoring compares log p(T1 | C1) with log p(T1 | C2) and
-log p(T2 | C2) with log p(T2 | C1).
+``score`` does. A subject needs a ``likelihood`` part: one that does not
+declare ``behavior:probabilities`` is N/A, and one that declares it without a
+``likelihood`` part refuses the session (``ExecutionNotFeasibleError``). The
+scoring compares log p(T1 | C1) with log p(T1 | C2) and log p(T2 | C2) with
+log p(T2 | C1).
 Log-probability scores can differ slightly from EWoK's own evaluator, for two
 reasons. EWoK sets the logit of the padding or end-of-sequence token to minus
 infinity before it normalizes; the subject here does not. EWoK tokenizes with

@@ -13,7 +13,7 @@ from brainscore.brainscore_model import BrainScoreModel
 from dataclasses import replace
 
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.selection import LayerSelector
@@ -153,7 +153,7 @@ def test_readout_records_in_the_same_extraction():
 def test_extractor_that_cannot_record_is_not_applicable_before_any_answer():
     net = ToyNet()
     model = _model(net, extractor_type=NoRecordExtractor)
-    with pytest.raises(CompatibilityError, match='no one part of it answers'):
+    with pytest.raises(ExecutionNotFeasibleError, match='no one part of it answers'):
         _run(model, GENERATE, ['behavior', 'neural:A'])
     assert net.passes == 0
 
@@ -186,13 +186,13 @@ def test_the_extractor_for_the_form_decides_recording(image_records, form, colum
         model.participate(session)
         assert session.collect('neural:A').sizes['presentation'] == 3
     else:
-        with pytest.raises(CompatibilityError, match='cannot record'):
+        with pytest.raises(ExecutionNotFeasibleError, match='cannot record'):
             model.participate(session)
         assert net.passes == 0
 
 
 def test_undeclared_region_is_not_supported():
-    with pytest.raises(CompatibilityError, match=r"does not produce \['neural:IT'\]"):
+    with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['neural:IT'\]"):
         _run(_model(ToyNet()), GENERATE, ['behavior', 'neural:IT'])
 
 

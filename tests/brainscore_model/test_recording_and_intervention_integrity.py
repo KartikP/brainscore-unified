@@ -15,7 +15,7 @@ import torch
 
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore.perturbation import build_pytorch_ablation_fn
-from brainscore_core.compatibility import CompatibilityError, check_compatibility
+from brainscore_core.compatibility import CompatibilityError, check_compatibility, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.responses import Choice, Scale, Text
@@ -361,7 +361,7 @@ def _counting_subject():
                                   TaskContext(response=Choice(['a', 'b']))])
 def test_a_task_the_subject_has_no_part_for_is_not_applicable_with_zero_passes(task):
     subject, stimuli, calls = _counting_subject()
-    with pytest.raises(CompatibilityError, match='cannot give a'):
+    with pytest.raises(ExecutionNotFeasibleError, match='cannot give a'):
         subject.participate(stimulus_session(stimuli, ['neural:IT'], task))
     assert calls == []
 
@@ -714,6 +714,6 @@ def test_a_task_no_part_can_answer_is_not_applicable_before_any_pass(task_kind, 
     subject = BrainScoreModel('m', extractor={'vision': extract}, region_layer_map={'IT': 'x'},
                               **_PARTS[parts])
     task = _TASKS[task_kind]()
-    with pytest.raises(CompatibilityError, match='cannot'):
+    with pytest.raises(ExecutionNotFeasibleError, match='cannot'):
         subject.participate(stimulus_session(stimuli, outputs, task))
     assert calls == [] and subject._behavioral.task is None

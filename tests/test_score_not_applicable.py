@@ -89,7 +89,7 @@ def test_compatible_pair_score_is_unchanged():
 import numpy as np
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming import Session, StreamEvent
@@ -140,8 +140,10 @@ def test_a_refusal_at_session_start_is_an_error_not_na(check_mem):
     # is no result, and the error says the declarations do not express the limit.
     model, extractor = _recording_model()
     benchmark = _TextBenchmark(lambda s: s.participate(stimulus_session(STIMULI, ['neural:IT'], CHOICE)))
-    with pytest.raises(CompatibilityError, match='Choice'):
+    with pytest.raises(ExecutionNotFeasibleError, match='Choice') as caught:
         brainscore.score(model, benchmark, check_mem=check_mem)
+    assert not isinstance(caught.value, CompatibilityError)   # an error, never N/A
+    assert caught.value.task_type == CHOICE.task_type
     if not check_mem:
         assert extractor.calls == 0
 
@@ -152,7 +154,7 @@ def test_a_later_session_that_refuses_is_an_error():
     def run(subject):
         subject.participate(stimulus_session(STIMULI, ['neural:IT']))
         subject.participate(stimulus_session(STIMULI, ['neural:IT'], CHOICE))
-    with pytest.raises(CompatibilityError):
+    with pytest.raises(ExecutionNotFeasibleError):
         brainscore.score(model, _TextBenchmark(run), check_mem=False)
     assert extractor.calls == 1
 
@@ -196,8 +198,8 @@ def test_a_refusal_after_an_intervention_is_an_error():
             change = StateChange(kind='lesion', target=Selection(layer='late'),
                                  perturbation=Perturbation(kind='zero'))
             subject.participate(Session([StreamEvent('lesion', change, 0.0)], ['perturbation']))
-            raise CompatibilityError('cannot answer the next session')
-    with pytest.raises(CompatibilityError, match='cannot answer the next session'):
+            raise ExecutionNotFeasibleError('cannot answer the next session')
+    with pytest.raises(ExecutionNotFeasibleError, match='cannot answer the next session'):
         brainscore.score(_Lesionable(), _Benchmark(), check_mem=False)
 
 
@@ -248,7 +250,7 @@ def test_a_neural_only_subject_on_a_legacy_behavioral_task_is_an_error():
         def __call__(self, candidate):
             candidate.start_behavioral_task('reading_times')
             candidate.digest_text(['the', 'cat'])
-    with pytest.raises(CompatibilityError, match="declares no 'behavior' output") as caught:
+    with pytest.raises(ExecutionNotFeasibleError, match="declares no 'behavior' output") as caught:
         brainscore.score(subject, mark_legacy_benchmark(_Legacy()), check_mem=False)
     assert caught.value.channels == {'behavior'}
     assert subject.calls == []
@@ -271,7 +273,7 @@ def test_a_legacy_vision_model_asked_for_behavior_and_a_region_together_is_an_er
 
         def __call__(self, subject):
             subject.participate(stimulus_session(images, ['behavior', 'neural:IT']))
-    with pytest.raises(CompatibilityError, match='passed the declared compatibility check') as caught:
+    with pytest.raises(ExecutionNotFeasibleError, match='passed the declared compatibility check') as caught:
         brainscore.score(VisionModelAdapter(legacy), _Joint(), check_mem=False)
     assert caught.value.channels == {'behavior', 'neural:IT'}
     legacy.look_at.assert_not_called()

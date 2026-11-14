@@ -359,9 +359,9 @@ def score(model_identifier, benchmark_identifier,
     An incompatible pair, known from the declarations, returns the N/A result
     before any compute (``brainscore_core.score_status.na_score``: NaN,
     ``attrs['status'] == 'N/A'``, ``reason``, ``missing_channels``). A refusal
-    during the run (a subject that refuses a session, a benchmark's own check)
-    raises; so do a malformed declaration (``ValueError``) and a memory-check
-    failure.
+    when the run starts (a subject that refuses a session, a benchmark's own
+    check) raises ``ExecutionNotFeasibleError``; a malformed declaration
+    (``ValueError``) and a memory-check failure raise too.
     """
     from brainscore_core.compatibility import CompatibilityError, check_compatibility
     from brainscore_core.extraction_cache import weight_fingerprint_scope
