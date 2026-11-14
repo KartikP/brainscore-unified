@@ -29,7 +29,8 @@ class _Registry(dict):
     """A registry that refuses a second registration under a key it holds.
 
     A replaced factory would silently change what is scored under that name,
-    so the second assignment raises and names both sources. Remove the entry
+    so a second assignment from another source raises and names both sources.
+    The same source again (a module imported a second time) replaces quietly. Remove the entry
     first (``del registry[key]``) to replace it on purpose, as a test does.
     """
 
@@ -37,17 +38,47 @@ class _Registry(dict):
         super().__init__()
         self._sources: Dict[str, str] = {}
 
-    def __setitem__(self, key, value) -> None:
-        import sys
-        caller = sys._getframe(1)
-        source = f'{caller.f_code.co_filename}:{caller.f_lineno}'
-        if key in self:
+    @staticmethod
+    def _source_of(value, frame) -> str:
+        """Name the source of a registration: the factory's module and qualified
+        name, or the registering statement (file and line) for a lambda."""
+        name = getattr(value, '__qualname__', None)
+        if name and '<lambda>' not in name and getattr(value, '__module__', None):
+            return f'{value.__module__}.{name}'
+        return f'{frame.f_code.co_filename}:{frame.f_lineno}'
+
+    def _register(self, key, value, frame) -> None:
+        source = self._source_of(value, frame)
+        if key in self and self._sources.get(key) != source:
             raise ValueError(
                 f'{key!r} is already registered (by {self._sources.get(key, "unknown")}); '
                 f'a second registration (by {source}) would silently replace it. '
                 f'Use a new identifier.')
-        super().__setitem__(key, value)
+        super().__setitem__(key, value)       # the same source again (a re-import) replaces quietly
         self._sources[key] = source
+
+    def __setitem__(self, key, value) -> None:
+        import sys
+        self._register(key, value, sys._getframe(1))
+
+    def update(self, *args, **kwargs) -> None:
+        import sys
+        frame = sys._getframe(1)
+        for key, value in dict(*args, **kwargs).items():
+            self._register(key, value, frame)
+
+    def setdefault(self, key, default=None):
+        import sys
+        if key not in self:
+            self._register(key, default, sys._getframe(1))
+        return self[key]
+
+    def __ior__(self, other):
+        import sys
+        frame = sys._getframe(1)
+        for key, value in dict(other).items():
+            self._register(key, value, frame)
+        return self
 
     def __delitem__(self, key) -> None:
         super().__delitem__(key)
