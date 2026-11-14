@@ -7,7 +7,7 @@ subject's declared channels (Contract Rules 1.1, 2.1, 2.2, 5.9).
 """
 import os
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import List, Optional, Sequence, Tuple
 
 # The channels a Lahner2024 benchmark sends, and the regions it then asks for.
 # The visual stream goes as clips on `vision:video`, or as frames sampled from the
@@ -66,6 +66,40 @@ def taken_inputs(subject, channels) -> set:
     pre-flight matches them (``channel_declared``, rule 5.2)."""
     from brainscore_core.streaming import channel_declared
     return {channel for channel in channels if channel_declared(channel, subject.in_channels)}
+
+
+# The stream that records each region when the subject can answer it from there.
+_OWN_STREAM = {'IT': 'video', 'A1': 'audio'}
+
+
+def stream_regions(subject, taken, regions) -> List[Tuple[str, str, List[str]]]:
+    """``[(stream, input channel, regions), ...]``: the streams shown to ``subject``
+    and the regions the session of each requests, visual stream first.
+
+    Every region in ``regions`` is requested once (rule 5.1a). The visual stream
+    is the clips when the subject takes ``vision:video``, else the frames on
+    ``vision:image``; the sound is ``audio``. A stream is shown only when the
+    subject takes it (``taken``). A region is recorded from its own stream (IT
+    from the visual one, A1 from the sound) when the subject can answer it from
+    there (``output_inputs``, rule 2.5), else from the other stream it can
+    answer it from. A region that no shown stream can answer raises
+    ``CompatibilityError`` before any compute; pre-flight gives N/A for it.
+    """
+    from brainscore_core.compatibility import CompatibilityError
+    visual = next((c for c in ('vision:video', 'vision:image') if c in taken), None)
+    channels = {'video': visual, 'audio': 'audio' if 'audio' in taken else None}
+    plan = {'video': [], 'audio': []}
+    for region in regions:
+        listed = subject.output_inputs.get(f'neural:{region}')
+        usable = [stream for stream, channel in channels.items()
+                  if channel is not None and (listed is None or channel in listed)]
+        if not usable:
+            raise CompatibilityError(
+                f'{subject.identifier!r} answers neural:{region} only from {sorted(listed or ())}, '
+                f'and takes none of the streams shown ({sorted(c for c in channels.values() if c)}).')
+        own = _OWN_STREAM[region]
+        plan[own if own in usable else usable[0]].append(region)
+    return [(stream, channels[stream], requested) for stream, requested in plan.items() if requested]
 
 
 # ── Stimulus tables ───────────────────────────────────────────────────────
@@ -174,48 +208,59 @@ def _extract_frame_with_cv2(video_path, time_ms: float, frames_dir: Path) -> str
 # ── Recording ─────────────────────────────────────────────────────────────
 
 
-def record_visual(subject, clips, frames):
-    """``neural:IT`` for every clip: whole clips (``clips()``) when the subject
-    declares ``vision:video``, else frames (``frames()``) pooled per clip.
+def record_visual(subject, clips, frames, regions=('IT',)):
+    """The responses for ``regions`` (one session) to every clip: whole clips
+    (``clips()``) when the subject declares ``vision:video``, else frames
+    (``frames()``) pooled per clip. A list in the order of ``regions``.
 
     The tables are built only for the route taken.
     """
     from brainscore.presentation import takes_clips
     if takes_clips(subject):
-        return record_clips(subject, clips(), 'IT')
-    return record_frames_per_clip(subject, frames(), 'IT')
+        return record_clips(subject, clips(), regions)
+    return record_frames_per_clip(subject, frames(), regions)
 
 
-def record_clips(subject, clips, region: str):
-    """Show whole clips; return the subject's response for ``region``.
+def _record(subject, stimuli, regions):
+    """One session on ``stimuli`` requesting ``neural:<region>`` for every region."""
+    from brainscore_core.streaming_helpers import stimulus_session
+    outputs = [f'neural:{region}' for region in regions]
+    session = stimulus_session(stimuli, outputs, time_bins=TIME_BINS)
+    subject.participate(session)
+    return [session.collect(output) for output in outputs]
 
-    The response must answer each clip exactly once (``response_stimulus_ids``).
+
+def record_clips(subject, clips, regions):
+    """Show whole clips in one session; return the responses for ``regions``.
+
+    Each response must answer each clip exactly once (``response_stimulus_ids``).
     A response whose only presentation coordinate is ``stimulus_id`` gets that
     coordinate back under its name.
     """
-    from brainscore_core.streaming_helpers import neural_response
     from brainscore.presentation import response_stimulus_ids
-    result = neural_response(subject, clips, [f'neural:{region}'], time_bins=TIME_BINS)
-    ids = response_stimulus_ids(result, clips['stimulus_id'])
-    try:
-        result['stimulus_id']
-    except KeyError:
-        result = result.assign_coords(stimulus_id=('presentation', ids))
-    return result
+    results = []
+    for result in _record(subject, clips, regions):
+        ids = response_stimulus_ids(result, clips['stimulus_id'])
+        try:
+            result['stimulus_id']
+        except KeyError:
+            result = result.assign_coords(stimulus_id=('presentation', ids))
+        results.append(result)
+    return results
 
 
-def record_frames_per_clip(subject, frames, region: str):
-    """Show frames sampled from each clip; pool them per clip and time bin.
+def record_frames_per_clip(subject, frames, regions):
+    """Show frames sampled from each clip in one session; pool each response for
+    ``regions`` per clip and time bin.
 
     ``frames`` is the benchmark's own frame table (``stimulus_id``,
     ``clip_id``, ``frame_time_ms``). The subject may return only
     ``stimulus_id`` on the presentation axis, so the clip and the frame time
     of each response row are joined from that table by ``stimulus_id``.
     """
-    from brainscore_core.streaming_helpers import neural_response
     from brainscore.temporal import temporal_bin
-    per_frame = neural_response(subject, frames, [f'neural:{region}'], time_bins=TIME_BINS)
-    return temporal_bin(with_frame_columns(per_frame, frames), time_bins=TIME_BINS)
+    return [temporal_bin(with_frame_columns(per_frame, frames), time_bins=TIME_BINS)
+            for per_frame in _record(subject, frames, regions)]
 
 
 def with_frame_columns(per_frame, frames):

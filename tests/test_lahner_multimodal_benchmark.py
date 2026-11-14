@@ -25,8 +25,9 @@ def _tr_multimodal():
 def test_both_classes_give_one_answer_for_a_subject_that_takes_one_stream(
         monkeypatch, tmp_path, build):
     """Pre-flight alone decides: a subject without ``neural:A1`` is N/A, and a
-    subject that takes the clips but no sound runs as a partial match. Its score
-    names the inputs scored and carries no two-stream label."""
+    subject that takes the clips but no sound runs as a partial match; its one
+    session requests both regions. Its score names the inputs scored and carries
+    no two-stream label."""
     from brainscore_core.compatibility import CompatibilityError, check_compatibility
     install(monkeypatch, tmp_path)
     benchmark = build()
@@ -39,7 +40,7 @@ def test_both_classes_give_one_answer_for_a_subject_that_takes_one_stream(
     assert score.attrs['scored_inputs'] == ['vision:video']
     assert 'mode' not in score.attrs and 'n_features_audio' not in score.attrs
     assert 'multimodal' not in score.attrs['pipeline']
-    assert [outputs for _, outputs, _, _ in subject.seen] == [['neural:IT']]
+    assert [outputs for _, outputs, _, _ in subject.seen] == [['neural:IT', 'neural:A1']]
 
 
 @pytest.mark.parametrize('identifier, source', [

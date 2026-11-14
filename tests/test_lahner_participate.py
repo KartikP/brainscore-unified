@@ -45,7 +45,7 @@ def _tr(**kwargs):
 
 def test_frames_are_pooled_per_clip_from_the_benchmark_table():
     subject = Recorder({'vision:image'})
-    pooled = _util.record_frames_per_clip(subject, _frames(), 'IT')
+    [pooled] = _util.record_frames_per_clip(subject, _frames(), ['IT'])
     assert list(pooled.indexes['presentation'].get_level_values('clip_id')) == CLIPS
     frames = [unit_values(f'{CLIPS[0]}_t{t}', 'neural:IT')[0] for t in SAMPLE_TIMES]
     np.testing.assert_array_equal(pooled.values[0, 0, :], np.stack(frames).mean(axis=0))
@@ -91,17 +91,20 @@ def test_audiovisual_glm_records_both_streams(monkeypatch, tmp_path):
     assert (score.attrs['mode'], score.attrs['pipeline']) == ('concat', 'multimodal_av_concat')
 
 
+BOTH = ['neural:IT', 'neural:A1']
+
+
 @pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
-def test_audiovisual_scores_the_visual_stream_alone_with_a_true_label(monkeypatch, tmp_path, build):
-    """A partial match runs (rule 5.5) on the stream the subject takes; the score
-    names it and carries no two-stream label. Both classes give the same answer."""
+def test_audiovisual_requests_both_regions_from_the_visual_stream_alone(monkeypatch, tmp_path, build):
+    """A partial match runs (rule 5.5) on the stream the subject takes, and the
+    session requests every region the benchmark names (rule 5.1a). The score
+    names the input shown and carries no two-stream label."""
     install(monkeypatch, tmp_path)
     subject = Recorder({'vision:video'}, regions=('IT', 'A1'), time_bins=3)
     score = build()(subject)
     assert np.isfinite(float(score))
-    assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [
-        (['vision:video'], ['neural:IT'])]
+    assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [(['vision:video'], BOTH)]
     assert score.attrs['scored_inputs'] == ['vision:video']
     assert 'mode' not in score.attrs and 'n_features_audio' not in score.attrs
     assert score.attrs['pipeline'] in ('video_native', 'continuous_time_encoding')
@@ -109,16 +112,55 @@ def test_audiovisual_scores_the_visual_stream_alone_with_a_true_label(monkeypatc
 
 @pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
                                    lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
-def test_audiovisual_scores_the_sound_alone_for_a_subject_without_a_visual_form(
-        monkeypatch, tmp_path, build):
+def test_audiovisual_requests_both_regions_from_the_sound_alone(monkeypatch, tmp_path, build):
     install(monkeypatch, tmp_path)
     subject = Recorder({'audio'}, regions=('IT', 'A1'))
     score = build()(subject)
     assert np.isfinite(float(score))
-    assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [(['audio'], ['neural:A1'])]
-    assert score.attrs['scored_inputs'] == ['audio'] and score.attrs['n_features_audio'] == 4
+    assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [(['audio'], BOTH)]
+    assert score.attrs['scored_inputs'] == ['audio'] and score.attrs['n_features_audio'] == 8
     assert 'mode' not in score.attrs and 'n_features_video' not in score.attrs
     assert 'multimodal' not in score.attrs.get('pipeline', '')
+
+
+class _Answers(Recorder):
+    """A recorder that says from which inputs it answers each region."""
+
+    def __init__(self, in_channels, answers, **kwargs):
+        super().__init__(in_channels, regions=('IT', 'A1'), **kwargs)
+        self._answers = {channel: frozenset(inputs) for channel, inputs in answers.items()}
+
+    @property
+    def output_inputs(self):
+        return self._answers
+
+
+@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+                                   lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
+def test_audiovisual_records_each_region_from_an_input_the_subject_answers_it_from(
+        monkeypatch, tmp_path, build):
+    """The subject takes both streams but answers A1 from the clips: one session on
+    the clips requests both regions, and the sound is not shown."""
+    install(monkeypatch, tmp_path)
+    subject = _Answers({'vision:video', 'audio'}, {'neural:A1': {'vision:video'}})
+    score = build()(subject)
+    assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [(['vision:video'], BOTH)]
+    assert score.attrs['scored_inputs'] == ['vision:video']
+    assert 'mode' not in score.attrs
+
+
+@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+                                   lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
+def test_a_region_no_shown_stream_answers_is_na_before_any_compute(monkeypatch, tmp_path, build):
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    install(monkeypatch, tmp_path)
+    subject = _Answers({'vision:video', 'text'}, {'neural:A1': {'text'}})
+    benchmark = build()
+    with pytest.raises(CompatibilityError):
+        check_compatibility(subject, benchmark)
+    with pytest.raises(CompatibilityError, match='neural:A1'):
+        benchmark(subject)
+    assert subject.seen == []
 
 
 def test_unknown_channels_are_refused():
@@ -194,14 +236,16 @@ def _model(visual_key):
                            extractor=extractors)
 
 
-def _old_record_clips(subject, clips, region):
+def _old_record_clips(subject, clips, regions):
+    [region] = regions
     subject.start_recording(region, time_bins=_util.TIME_BINS)
-    return subject.process(clips)
+    return [subject.process(clips)]
 
 
-def _old_record_frames_per_clip(subject, frames, region):
+def _old_record_frames_per_clip(subject, frames, regions):
+    [region] = regions
     subject.start_recording(region, time_bins=_util.TIME_BINS)
-    return temporal_bin(subject.process(frames), time_bins=_util.TIME_BINS)
+    return [temporal_bin(subject.process(frames), time_bins=_util.TIME_BINS)]
 
 
 def _both(monkeypatch, run):
@@ -238,8 +282,8 @@ def test_old_and_new_path_give_the_same_score(monkeypatch, tmp_path, visual_key,
 
 def test_frame_pooling_is_identical_to_the_old_temporal_bin():
     model = _model('vision')
-    old = _old_record_frames_per_clip(model, _frames(), 'IT')
-    new = _util.record_frames_per_clip(model, _frames(), 'IT')
+    [old] = _old_record_frames_per_clip(model, _frames(), ['IT'])
+    [new] = _util.record_frames_per_clip(model, _frames(), ['IT'])
     np.testing.assert_array_equal(old.values, new.values)
     assert list(old['clip_id'].values) == list(new['clip_id'].values)
 

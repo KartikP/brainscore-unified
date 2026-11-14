@@ -22,7 +22,8 @@ Scoring pipeline:
        subject sees N frames sampled from each clip, pooled per clip
        (``temporal_bin``). With the ``audio`` channel, ``neural:A1`` is also
        recorded for the sound track of each clip, and the two are joined
-       column-wise; a subject that takes one stream is scored on that stream.
+       column-wise. A subject that takes one stream is shown that stream and
+       answers both regions from it (its ``output_inputs`` permitting).
     2. Average the response over its time bins → one vector per video.
     3. Average the neural assembly across the 10 repetitions → one BOLD
        vector per video per voxel; keep the voxels of the voxel mask.
@@ -81,6 +82,7 @@ from ._util import (
     record_clips,
     record_visual,
     resolve_frames_dir,
+    stream_regions,
     taken_inputs,
     time_mean,
 )
@@ -227,9 +229,11 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     Args:
         channels: what the benchmark sends. ``('vision:image', 'vision:video')``
             (default) records ``neural:IT``; adding ``'audio'`` also sends the
-            sound track of each clip and records ``neural:A1``. A subject that
-            takes one of the two streams is scored on it alone (a partial match);
-            ``attrs['scored_inputs']`` names the inputs scored.
+            sound track of each clip and records ``neural:A1``. Both regions are
+            always requested; a subject that takes one of the two streams is shown
+            that stream alone (a partial match) and answers both regions from it,
+            as its ``output_inputs`` allow. ``attrs['scored_inputs']`` names the
+            inputs shown.
         sample_times_ms: the frames a stills-only subject sees from each clip.
         frames_dir: where extracted frames are kept (see ``resolve_frames_dir``).
         audio_dir: where the sound tracks are (16 kHz WAV, one per clip).
@@ -259,6 +263,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         channels, regions = channel_regions(channels)
         self.required_input_channels = channels
         self.requested_output_channels = frozenset(f'neural:{region}' for region in regions)
+        self._regions = regions
         self._audio = 'audio' in channels
         self._sample_times_ms = list(sample_times_ms)
         self._frames_dir = resolve_frames_dir(frames_dir)
@@ -323,40 +328,53 @@ class Lahner2024BOLDMoments(BenchmarkBase):
     def _features(self, subject):
         """``(features (n_videos, n_features), clip_ids, attrs)`` recorded through ``participate``.
 
-        The streams are the benchmark inputs the subject takes in (``taken_inputs``,
-        the rule of pre-flight). A subject that takes one stream of the sound
-        variant is scored on that stream alone, and ``attrs['scored_inputs']``
-        names it (Contract Rules 5.4, 5.5).
+        Every region the benchmark names is requested (rule 5.1a). The streams
+        shown are the benchmark inputs the subject takes in (``taken_inputs``, the
+        rule of pre-flight), and each region is recorded from a stream the subject
+        can answer it from (``stream_regions``). ``attrs['scored_inputs']`` names
+        the inputs shown (Contract Rules 5.4, 5.5); the two-stream labels are set
+        only when both streams are shown.
         """
         stimuli = self.stimulus_set
-        taken = taken_inputs(subject, self.required_input_channels)
-        if 'audio' not in taken:
-            visual = record_visual(subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-videos'),
-                                   self._frames)
+        plan = stream_regions(subject, taken_inputs(subject, self.required_input_channels),
+                              self._regions)
+        scored = sorted(channel for _, channel, _ in plan)
+        if [stream for stream, _, _ in plan] == ['video']:
+            responses = record_visual(
+                subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-videos'),
+                self._frames, plan[0][2])
+            clip_ids = read_stimulus_ids(responses[0])
+            features = np.concatenate(
+                [align(time_mean(response), read_stimulus_ids(response), clip_ids)
+                 for response in responses], axis=1)
             attrs = self._visual_attrs(subject)
             if self._audio:
-                attrs['scored_inputs'] = sorted(taken)
-            return time_mean(visual), read_stimulus_ids(visual), attrs
+                attrs['scored_inputs'] = scored
+            return features, clip_ids, attrs
         # The sound, with the visual stream when the subject takes it. Differences
         # from the one-stream route above, kept so no score moves: the clip table is
         # named '-multimodal-video', and the time bins are averaged with xarray's
         # NaN-skipping mean (the one-stream route and the time-resolved benchmark use
         # numpy's mean; the two differ only when a response holds NaN).
         streams = []
-        if taken & set(_VISUAL):
-            streams.append(('video', record_visual(
-                subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-multimodal-video'),
-                self._frames)))
-        streams.append(('audio', record_clips(subject, clip_table(
-            stimuli, f'{stimuli.identifier}-multimodal-audio', audio_dir=self._audio_dir), 'A1')))
-        streams = [(name, response.mean(dim='time_bin') if 'time_bin' in response.dims else response)
-                   for name, response in streams]
-        clip_ids = read_stimulus_ids(streams[0][1])
-        blocks = [align(response.values, read_stimulus_ids(response), clip_ids)
-                  for _, response in streams]
-        attrs = {f'n_features_{name}': int(block.shape[1])
-                 for (name, _), block in zip(streams, blocks)}
-        attrs['scored_inputs'] = sorted(taken)
+        for stream, _, regions in plan:
+            if stream == 'video':
+                responses = record_visual(
+                    subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-multimodal-video'),
+                    self._frames, regions)
+            else:
+                responses = record_clips(subject, clip_table(
+                    stimuli, f'{stimuli.identifier}-multimodal-audio', audio_dir=self._audio_dir),
+                    regions)
+            streams.append((stream, [response.mean(dim='time_bin') if 'time_bin' in response.dims
+                                     else response for response in responses]))
+        clip_ids = read_stimulus_ids(streams[0][1][0])
+        blocks = [np.concatenate([align(response.values, read_stimulus_ids(response), clip_ids)
+                                  for response in responses], axis=1)
+                  for _, responses in streams]
+        attrs = {f'n_features_{stream}': int(block.shape[1])
+                 for (stream, _), block in zip(streams, blocks)}
+        attrs['scored_inputs'] = scored
         if len(streams) == 2:
             attrs.update(pipeline='multimodal_av_concat', mode='concat')
         return np.concatenate(blocks, axis=1), clip_ids, attrs
