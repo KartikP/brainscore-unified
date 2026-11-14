@@ -349,7 +349,8 @@ def test_the_score_records_the_execution_configuration(monkeypatch, listed, plan
     result = brainscore.score(_Answering({'vision:image'}, {'neural:IT'}), _Run(), check_mem=False)
     assert float(result) == 0.25                       # attributes only; the value is unchanged
     assert result.attrs['delivery'] == delivery
-    assert result.attrs['regions_per_pass'] == (plan or 'all')
+    # This fake subject does not read the setting, so no plan is stamped.
+    assert result.attrs['regions_per_pass'] is None
     assert result.attrs['software']['python']
     assert result.attrs['code_commits']['brainscore'] is None or len(
         result.attrs['code_commits']['brainscore']) == 40

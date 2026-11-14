@@ -123,3 +123,17 @@ def test_an_unknown_value_is_refused_before_any_pass(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match=VARIABLE):
         _session(model, stimuli)
     assert passes == []
+
+
+@pytest.mark.parametrize('value, plan', [(None, 'all'), ('all', 'all'), ('one', 'one')])
+def test_a_run_record_gets_the_plan_the_model_used(tmp_path, monkeypatch, value, plan):
+    from brainscore_core._evaluation.measures import execution_attrs
+    from brainscore_core.score_metadata import record_measures
+    if value is None:
+        monkeypatch.delenv(VARIABLE, raising=False)
+    else:
+        monkeypatch.setenv(VARIABLE, value)
+    model, stimuli, _, _ = _counted('video', tmp_path)
+    with record_measures() as record:
+        _session(model, stimuli)
+    assert execution_attrs(record)['regions_per_pass'] == plan

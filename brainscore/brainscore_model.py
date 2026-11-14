@@ -411,8 +411,10 @@ class BrainScoreModel(UnifiedModel):
         ``BRAINSCORE_REGIONS_PER_PASS`` is read and checked here, once, for every
         kind of session (see ``brainscore._model.channels``).
         """
+        from brainscore_core._evaluation.measures import note_session
         from ._model.channels import regions_per_pass
         plan = regions_per_pass()
+        note_session(session, plan)   # this model owns the plan, so the run record gets it from here
         with _one_session_at_a_time(self):
             self._regions_per_pass = plan
             try:
