@@ -1,5 +1,6 @@
 import pytest
 from brainscore_core import io_catalog
+from brainscore_core.compatibility import CompatibilityError
 from brainscore.capabilities import Capability, capability_registry, register_capability
 from brainscore_core.extensions import CatalogEntry, StreamEvent, register_channel
 from brainscore import BrainScoreModel
@@ -54,7 +55,7 @@ def test_external_input_output_state_reset_and_session():
     assert len(setups) == 2 and 'test_result' in model.out_channels
     with pytest.raises(ValueError):
         Session([StreamEvent('test_request', 'bad', 5)], ('test_result',))
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(CompatibilityError, match='cannot answer'):
         model.check_session_support({'test_result', 'motor'})
 
 

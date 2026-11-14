@@ -115,6 +115,12 @@ class LiveRecording:
     ``take(row)`` returns ``package(activity, inputs, row)``: ``activity`` in the
     order the pass reached the layers, ``row`` the stimulus row presented (None
     when there is none). Without ``package`` it returns ``(activity, inputs)``.
+
+    The activity is what the network computed from the input of that pass. A
+    task recording and the passive call reduce and package it with the same
+    functions, so they are equal when the network receives the same input; when
+    the answering part prepares the stimulus in its own way (a chat processor),
+    the recording holds what the network received from that part.
     """
 
     def __init__(self, model, root, layers: List[str], convert: Callable, package: Callable = None,

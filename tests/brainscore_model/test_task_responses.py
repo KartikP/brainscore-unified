@@ -6,6 +6,8 @@ measures come from a likelihood part or a readout. Each result says which.
 import numpy as np
 import pytest
 
+from brainscore_core.compatibility import CompatibilityError
+
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
@@ -133,7 +135,7 @@ def test_readout_probabilities_follow_the_task_label_order(labels):
 def test_reported_answers_from_a_readout_only_model_are_not_supported(response, channel):
     model, _ = _model(readout=True)
     assert channel not in model.out_channels
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(CompatibilityError, match=f"does not produce \\['{channel}'\\]"):
         _ask(model, TaskContext(response=response, fitting_stimuli=STIMULI), [channel])
 
 

@@ -125,7 +125,7 @@ from ._util import (
     record_clips,
     record_visual,
     resolve_frames_dir,
-    takes_audiovisual,
+    taken_inputs,
     time_mean,
 )
 
@@ -406,12 +406,11 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
                             & set(stimuli['stimulus_id'].astype(str).tolist()))
         frames = lambda: (lambda table: table[table['clip_id'].isin(unique_ids)])(  # noqa: E731
             frame_table(stimuli, list(DEFAULT_SAMPLE_TIMES_MS), self._frames_dir))
-        # A subject that records no A1 is N/A in pre-flight. A subject that takes a
-        # visual input but no audio passes pre-flight (one benchmark input is enough)
-        # and is scored here on the visual stream alone, but the attrs below still
-        # say 'concat' (a known fault, not fixed here; the GLM-beta benchmark raises
-        # instead).
-        if not (self._audio and takes_audiovisual(subject)):
+        # The streams are the benchmark inputs the subject takes in, matched as
+        # pre-flight matches them. A subject that takes one stream of the sound
+        # variant is scored on it alone; 'scored_inputs' names it (rules 5.4, 5.5).
+        taken = taken_inputs(subject, self.required_input_channels)
+        if 'audio' not in taken:
             def clips():
                 table = clip_table(stimuli, f'{stimuli.identifier}-videos')
                 return table[table['stimulus_id'].isin(unique_ids)]
@@ -419,32 +418,33 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             features, projected = _cap(time_mean(visual))
             attrs = {'feature_projection_protocol': TRANSDUCTIVE_SVD if projected else 'none'}
             if self._audio:
-                attrs.update(mode='concat', pipeline='tr_resolved_multimodal_concat')
+                attrs['scored_inputs'] = sorted(taken)
             return features, read_stimulus_ids(visual), attrs
-        # Two streams. Differences from the one-stream route above, kept so no score
-        # moves: the clip table is built in sorted stimulus order and named
-        # '-timeresolved-multimodal-video' (the one-stream table keeps the table
-        # order), each stream is projected on its own, and the joined features are
-        # cast to float32.
-        visual = record_visual(
-            subject, lambda: clip_table(stimuli, f'{stimuli.identifier}-timeresolved-multimodal-video',
-                                        ids=unique_ids), frames)
-        sound = record_clips(subject, clip_table(
+        # The sound, with the visual stream when the subject takes it. Differences
+        # from the one-stream route above, kept so no score moves: the clip table is
+        # built in sorted stimulus order and named '-timeresolved-multimodal-video'
+        # (the one-stream table keeps the table order), each stream is projected on
+        # its own, and the joined features are cast to float32.
+        streams = []
+        if taken & set(_VISUAL):
+            streams.append(('video', record_visual(subject, lambda: clip_table(
+                stimuli, f'{stimuli.identifier}-timeresolved-multimodal-video', ids=unique_ids),
+                frames)))
+        streams.append(('audio', record_clips(subject, clip_table(
             stimuli, f'{stimuli.identifier}-timeresolved-multimodal-audio', ids=unique_ids,
-            audio_dir=self._audio_dir), 'A1')
-        stimulus_ids = read_stimulus_ids(visual)
-        v_features, v_projected = _cap(time_mean(visual))
-        a_features, a_projected = _cap(align(time_mean(sound), read_stimulus_ids(sound),
-                                             stimulus_ids))
-        features = np.concatenate([v_features, a_features], axis=1).astype(np.float32)
-        return features, stimulus_ids, {
-            'feature_projection_protocol': (TRANSDUCTIVE_SVD + '_per_modality'
-                                            if v_projected or a_projected else 'none'),
-            'n_features_video': int(v_features.shape[1]),
-            'n_features_audio': int(a_features.shape[1]),
-            'mode': 'concat',
-            'pipeline': 'tr_resolved_multimodal_concat',
-        }
+            audio_dir=self._audio_dir), 'A1')))
+        stimulus_ids = read_stimulus_ids(streams[0][1])
+        capped = [(name, *_cap(align(time_mean(response), read_stimulus_ids(response), stimulus_ids)))
+                  for name, response in streams]
+        features = np.concatenate([block for _, block, _ in capped], axis=1).astype(np.float32)
+        attrs = {f'n_features_{name}': int(block.shape[1]) for name, block, _ in capped}
+        attrs.update(
+            feature_projection_protocol=(TRANSDUCTIVE_SVD + '_per_modality'
+                                         if any(projected for *_, projected in capped) else 'none'),
+            scored_inputs=sorted(taken))
+        if len(streams) == 2:
+            attrs.update(mode='concat', pipeline='tr_resolved_multimodal_concat')
+        return features, stimulus_ids, attrs
 
     # ── Design matrix ──────────────────────────────────────────────
 

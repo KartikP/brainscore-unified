@@ -61,14 +61,11 @@ def read_stimulus_ids(assembly):
         f"presentation axis; coords={list(assembly.coords)}")
 
 
-def takes_audiovisual(subject) -> bool:
-    """Whether the subject takes a visual input and audio, and records
-    ``neural:IT`` (the visual stream) and ``neural:A1`` (the sound)."""
-    from brainscore_core.streaming import parse_channel
-    families = {parse_channel(channel)[0] for channel in subject.in_channels}
-    return (bool(set(subject.in_channels) & {'vision:image', 'vision:video'})
-            and 'audio' in families
-            and {'neural:IT', 'neural:A1'} <= set(subject.out_channels))
+def taken_inputs(subject, channels) -> set:
+    """The benchmark inputs ``channels`` that the subject takes in, matched as
+    pre-flight matches them (``channel_declared``, rule 5.2)."""
+    from brainscore_core.streaming import channel_declared
+    return {channel for channel in channels if channel_declared(channel, subject.in_channels)}
 
 
 # ── Stimulus tables ───────────────────────────────────────────────────────

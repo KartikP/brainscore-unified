@@ -293,21 +293,28 @@ class BrainScoreModel(UnifiedModel):
     def check_session_support(self, channels):
         """The one capability that runs a session requesting ``channels``.
 
-        Raises before any input is consumed when no capability, or more than
-        one at the same priority, claims the combination.
+        Raises before any input is consumed: ``CompatibilityError`` (the pair is
+        N/A) when no capability claims the combination, naming the outputs the
+        subject does not produce; ``ValueError`` when more than one claims it at
+        the same priority.
         """
+        from brainscore_core.compatibility import CompatibilityError
         channels = frozenset(channels)
         if not channels:
             raise ValueError('A session must request at least one output channel.')
         claims = [c for c in self._declared_capabilities()
                   if c.supports_session(self, channels)]
         if not claims:
-            if 'perturbation' in channels:
-                raise NotImplementedError(
-                    f"Subject {self.identifier!r} has no intervention part. An intervention "
-                    f"needs BrainScoreModel(intervention=...), a callable "
-                    f"intervention(state_change) -> (PerturbationApplied, undo_function).")
-            raise NotImplementedError(f'No session handler for {sorted(channels)}')
+            missing = sorted(channels - set(self.out_channels))
+            hint = (' It has no intervention part: an intervention needs BrainScoreModel('
+                    'intervention=...), a callable intervention(state_change) -> '
+                    '(PerturbationApplied, undo_function).'
+                    if 'perturbation' in missing else '')
+            raise CompatibilityError(
+                f"Subject {self.identifier!r} cannot answer {sorted(channels)} in one session: "
+                + (f"it does not produce {missing}" if missing
+                   else 'no one part of it answers these outputs together')
+                + f"; out_channels: {sorted(self.out_channels)}.{hint}")
         first = min(c.order for c in claims)
         winners = [c for c in claims if c.order == first]
         if len(winners) > 1:

@@ -29,8 +29,11 @@ class Extractor(Protocol):
     first forward pass since the previous take, packaged on its own per layer by
     the functions of ``__call__``. ``row`` is the stimulus row of that pass (None
     for a policy step), for what the pass does not carry (a clip's duration).
-    The recording equals what ``__call__`` gives for ``stimuli``, or is refused:
-    before any pass when ``stimuli`` decide it, else before the pass. Every extractor in
+    It uses the reduction and packaging of ``__call__``, so it equals what
+    ``__call__`` gives for ``stimuli`` when the network receives the same input,
+    or it is refused: before any pass when ``stimuli`` decide it, else before the
+    pass. A part that prepares the stimulus in its own way (a chat processor) is
+    recorded on what the network received from it. Every extractor in
     ``brainscore.model_helpers`` has it, so a region of such a model is
     recorded during any task. A callable without it (a plain function, or the
     legacy ``PytorchWrapper``) still records plain viewing; during a task it

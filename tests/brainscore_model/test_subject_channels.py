@@ -1,5 +1,7 @@
 import pytest
 
+from brainscore_core.compatibility import CompatibilityError
+
 from brainscore import BrainScoreModel
 
 
@@ -23,7 +25,7 @@ def test_region_map_without_extractor_declares_no_neural_output():
     from brainscore import BrainScoreModel
     model = BrainScoreModel('unwired', region_layer_map={'IT': 'layer'})
     assert 'neural:IT' not in model.out_channels
-    with pytest.raises(NotImplementedError, match='No session handler'):
+    with pytest.raises(CompatibilityError, match=r"does not produce \['neural:IT'\]"):
         model.check_session_support({'neural:IT'})
     wired = BrainScoreModel('wired', region_layer_map={'IT': 'layer'},
                             extractor={'vision': lambda stimuli, layers=None, **k: None})

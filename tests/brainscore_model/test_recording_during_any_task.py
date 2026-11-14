@@ -98,7 +98,7 @@ ANSWERS = {
 
 @pytest.mark.parametrize('answer', list(ANSWERS))
 @pytest.mark.parametrize('kind', tiny_wrappers.KINDS)
-def test_a_region_recorded_during_an_answer_equals_passive_viewing(tmp_path, kind, answer):
+def test_a_region_recorded_during_an_answer_of_the_same_input_equals_passive_viewing(tmp_path, kind, answer):
     task, channel = ANSWERS[answer]
     model, stimuli = _build(kind, tmp_path, reply=True)
     session = stimulus_session(stimuli, [channel, f'neural:{REGION}'], task=task)
@@ -109,7 +109,7 @@ def test_a_region_recorded_during_an_answer_equals_passive_viewing(tmp_path, kin
 
 
 @pytest.mark.parametrize('kind', tiny_wrappers.KINDS)
-def test_a_region_recorded_during_a_policy_step_equals_passive_viewing(tmp_path, kind):
+def test_a_region_recorded_during_a_policy_step_of_the_same_input_equals_passive_viewing(tmp_path, kind):
     model, stimuli = _build(kind, tmp_path, policy=True)
     session = Session(EnvironmentSource(_Rows(stimuli['stimulus_id'])), ('motor', f'neural:{REGION}'))
     if kind == 'video':

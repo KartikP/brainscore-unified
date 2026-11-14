@@ -52,11 +52,12 @@ def test_frames_are_pooled_per_clip_from_the_benchmark_table():
 
 
 def test_routing_reads_declared_channels_only():
-    assert _util.takes_audiovisual(Recorder({'vision:video', 'audio'}, regions=('IT', 'A1')))
-    assert _util.takes_audiovisual(Recorder({'vision:image', 'audio'}, regions=('IT', 'A1')))
-    assert not _util.takes_audiovisual(Recorder({'vision:video'}, regions=('IT', 'A1')))
-    assert not _util.takes_audiovisual(Recorder({'vision', 'audio'}, regions=('IT', 'A1')))   # a bare name is no form
-    assert not _util.takes_audiovisual(Recorder({'vision:video', 'audio'}, regions=('IT',)))
+    def taken(in_channels):
+        return _util.taken_inputs(Recorder(in_channels), AUDIOVISUAL)
+    assert taken({'vision:video', 'audio'}) == {'vision:video', 'audio'}
+    assert taken({'vision:image', 'audio'}) == {'vision:image', 'audio'}
+    assert taken({'vision:video'}) == {'vision:video'}
+    assert taken({'vision', 'audio'}) == {'audio'}   # a bare name is no form
 
 
 # ── GLM betas ─────────────────────────────────────────────────────
@@ -86,14 +87,38 @@ def test_audiovisual_glm_records_both_streams(monkeypatch, tmp_path):
     assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [
         (['vision:video'], ['neural:IT']), (['audio'], ['neural:A1'])]
     assert (score.attrs['n_features_video'], score.attrs['n_features_audio']) == (4, 4)
+    assert score.attrs['scored_inputs'] == ['audio', 'vision:video']
+    assert (score.attrs['mode'], score.attrs['pipeline']) == ('concat', 'multimodal_av_concat')
 
 
-def test_audiovisual_glm_is_refused_before_any_compute(monkeypatch, tmp_path):
+@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+                                   lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
+def test_audiovisual_scores_the_visual_stream_alone_with_a_true_label(monkeypatch, tmp_path, build):
+    """A partial match runs (rule 5.5) on the stream the subject takes; the score
+    names it and carries no two-stream label. Both classes give the same answer."""
     install(monkeypatch, tmp_path)
-    subject = Recorder({'vision:video'}, regions=('IT', 'A1'))
-    with pytest.raises(ValueError, match='both'):
-        Lahner2024BOLDMoments(channels=AUDIOVISUAL)(subject)
-    assert subject.seen == []
+    subject = Recorder({'vision:video'}, regions=('IT', 'A1'), time_bins=3)
+    score = build()(subject)
+    assert np.isfinite(float(score))
+    assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [
+        (['vision:video'], ['neural:IT'])]
+    assert score.attrs['scored_inputs'] == ['vision:video']
+    assert 'mode' not in score.attrs and 'n_features_audio' not in score.attrs
+    assert score.attrs['pipeline'] in ('video_native', 'continuous_time_encoding')
+
+
+@pytest.mark.parametrize('build', [lambda: Lahner2024BOLDMoments(channels=AUDIOVISUAL),
+                                   lambda: _tr(channels=AUDIOVISUAL)], ids=['glm', 'tr'])
+def test_audiovisual_scores_the_sound_alone_for_a_subject_without_a_visual_form(
+        monkeypatch, tmp_path, build):
+    install(monkeypatch, tmp_path)
+    subject = Recorder({'audio'}, regions=('IT', 'A1'))
+    score = build()(subject)
+    assert np.isfinite(float(score))
+    assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [(['audio'], ['neural:A1'])]
+    assert score.attrs['scored_inputs'] == ['audio'] and score.attrs['n_features_audio'] == 4
+    assert 'mode' not in score.attrs and 'n_features_video' not in score.attrs
+    assert 'multimodal' not in score.attrs.get('pipeline', '')
 
 
 def test_unknown_channels_are_refused():
@@ -123,15 +148,6 @@ def test_audiovisual_tr_records_both_streams(monkeypatch, tmp_path):
     assert [(inputs, outputs) for inputs, outputs, _, _ in subject.seen] == [
         (['vision:video'], ['neural:IT']), (['audio'], ['neural:A1'])]
     assert (score.attrs['n_features_video'], score.attrs['n_features_audio']) == (4, 4)
-    assert score.attrs['pipeline'] == 'tr_resolved_multimodal_concat'
-
-
-def test_audiovisual_tr_scores_one_stream_from_declarations(monkeypatch, tmp_path):
-    install(monkeypatch, tmp_path)
-    subject = Recorder({'vision:video'}, regions=('IT', 'A1'))
-    score = _tr(channels=AUDIOVISUAL)(subject)
-    assert [outputs for _, outputs, _, _ in subject.seen] == [['neural:IT']]
-    assert 'n_features_video' not in score.attrs
     assert score.attrs['pipeline'] == 'tr_resolved_multimodal_concat'
 
 
@@ -188,18 +204,12 @@ def _old_record_frames_per_clip(subject, frames, region):
     return temporal_bin(subject.process(frames), time_bins=_util.TIME_BINS)
 
 
-def _old_takes_audiovisual(subject):
-    supports = set(subject.in_channels)
-    return bool(supports & {'vision:image', 'vision:video'}) and 'audio' in supports
-
-
 def _both(monkeypatch, run):
     new = run()
     with monkeypatch.context() as patch:
         for module in (_util, glm_module, tr_module):
             for name, old in (('record_clips', _old_record_clips),
-                              ('record_frames_per_clip', _old_record_frames_per_clip),
-                              ('takes_audiovisual', _old_takes_audiovisual)):
+                              ('record_frames_per_clip', _old_record_frames_per_clip)):
                 if hasattr(module, name):
                     patch.setattr(module, name, old)
         old = run()

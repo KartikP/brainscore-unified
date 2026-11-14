@@ -115,7 +115,10 @@ tracking. See [activation caching](docs/archive/caching.md) for supported paths 
 Give a custom extractor `record(layers, stimuli)` as well (see `brainscore/extractor.py`):
 a region is then recorded during any task, from the forward pass that produces the
 answer or the action. Build it on `LiveRecording` and on the functions your `__call__`
-uses to reduce and package, so the two recordings cannot differ. Without it, the
+uses to reduce and package. The task recording then uses the same reduction and
+packaging as the passive recording, and the two are equal when the network receives
+the same input. A model whose answering part prepares the stimulus in its own way (a
+chat processor) records what the network received during the task. Without it, the
 region is recorded during a task only through hooks on the network passed as `model=`,
 and otherwise the pair is N/A.
 

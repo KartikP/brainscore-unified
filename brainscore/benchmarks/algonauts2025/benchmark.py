@@ -444,9 +444,6 @@ class Algonauts2025(BenchmarkBase):
                 f"fMRI is withheld. Call `brainscore.tools.algonauts2025_predictions."
                 f"generate_predictions(subject, benchmark, out_dir)` to write the predictions. "
                 f"For a score, use `Algonauts2025-friends-sub{self._participant:02d}`.")
-        # The same pre-flight as score(): N/A before any recording.
-        from brainscore_core.compatibility import check_compatibility
-        check_compatibility(subject, self)
         bands, Y, groups, keep, stack = self.regression_inputs(subject)
         logger.debug('%d stimuli; %d of %d TRs after exclusions; banded ridge over bands %s '
                      '(5 folds over stimuli)', len(np.unique(groups)), int(keep.sum()),

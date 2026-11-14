@@ -47,6 +47,27 @@ def test_same_boards_every_candidate(bench):
     assert a == b
 
 
+def test_a_seeded_null_gives_one_score_each_time():
+    """The registered settings: one subject scored twice, and a new subject with
+    the same seed, give the first score; the first score is the measured floor."""
+    import brainscore
+    bench = brainscore.load_benchmark('GridGame-reach-5x5')
+    subject = policy_model(random_action_policy(0), 'random')
+    scores = [float(bench(subject)) for _ in range(2)]
+    scores.append(float(bench(policy_model(random_action_policy(0), 'random-again'))))
+    assert scores == [scores[0]] * 3
+    assert scores[0] * float(bench.ceiling) == bench._random_floor == 0.2
+
+
+def test_a_seeded_null_still_draws_new_actions_across_steps_and_episodes():
+    from brainscore.harnesses.grid_game import GridGameEnv, play_game
+    subject = policy_model(random_action_policy(0), 'random')
+    actions = [play_game(subject, GridGameEnv(size=5, seed=500 + i, max_steps=20))['actions']
+               for i in range(3)]
+    assert all(len(set(episode)) > 1 for episode in actions)
+    assert len({tuple(episode[:5]) for episode in actions}) == 3
+
+
 def test_registered():
     import brainscore
     assert 'GridGame-reach-5x5' in brainscore.benchmark_registry

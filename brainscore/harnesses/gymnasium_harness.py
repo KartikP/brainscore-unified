@@ -137,9 +137,6 @@ def play_gym_episode(subject, env_id: str, max_steps: int = 60, seed: int = 0,
 
 def random_gym_policy(seed: int = 0):
     """Uniform-random discrete policy (``row -> {'motor': action}``), the closed-loop null floor for a Gym env."""
-    rng = np.random.RandomState(seed)
-
-    def policy(row):
-        n = len(row['observation'].get('legal_actions', {})) or 7
-        return {'motor': int(rng.randint(0, n))}
-    return policy
+    from brainscore.harnesses.grid_game import _seeded_random_policy
+    return _seeded_random_policy(
+        seed, lambda row: len(row['observation'].get('legal_actions', {})) or 7)

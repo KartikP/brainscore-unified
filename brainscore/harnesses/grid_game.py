@@ -208,11 +208,30 @@ def greedy_oracle_policy(row: Mapping[str, Any]) -> Dict[str, int]:
 
 def random_action_policy(seed: int = 0) -> Callable:
     """Return a uniform-random discrete policy (``row -> {'motor': action}``), the closed-loop null floor."""
+    return _seeded_random_policy(seed, lambda row: len(ACTIONS))
+
+
+def _seeded_random_policy(seed: int, n_actions: Callable) -> Callable:
+    """A uniform-random policy whose draws repeat from run to run.
+
+    One generator, seeded once, draws the actions of every step and episode.
+    ``reset()`` runs when an episode begins; the first view of the episode then
+    sets the generator to the state it had when that view first began an
+    episode. The first run over a set of episodes draws one continuous stream;
+    a later run over the same episodes, by the same subject or by a new one
+    with the same seed, draws the same actions.
+    """
     rng = np.random.RandomState(seed)
+    starts, begun = {}, [False]
 
     def policy(row) -> Dict[str, int]:
-        return {'motor': int(rng.randint(0, len(ACTIONS)))}
+        if begun[0]:
+            begun[0] = False
+            view = np.asarray(row['observation']['frame']).tobytes()
+            rng.set_state(starts.setdefault(view, rng.get_state()))
+        return {'motor': int(rng.randint(0, n_actions(row)))}
 
+    policy.reset = lambda: begun.__setitem__(0, True)
     return policy
 
 

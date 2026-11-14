@@ -12,20 +12,34 @@ from brainscore.benchmarks.lahner2024._util import read_stimulus_ids
 from tests.lahner_synthetic import N_VOXELS, Recorder, install
 
 
-def test_benchmark_rejects_unimodal_subject():
-    """An audio-less subject must raise immediately, not silently
-    produce video-only output under a multimodal label."""
-    from brainscore import BrainScoreModel
+def _tr_multimodal():
+    from brainscore.benchmarks.lahner2024 import Lahner2024BOLDMoments_timeresolved, RunBlocks
+    return Lahner2024BOLDMoments_timeresolved(
+        channels=('vision:image', 'vision:video', 'audio'), folds=RunBlocks(2))
 
-    video_only = BrainScoreModel(
-        identifier='video-only',
-        model=None,
-        region_layer_map={'IT': 'layer.10'},
-        extractor={'video': lambda *a, **k: None},
-    )
-    b = brainscore.load_benchmark('Lahner2024-fMRI-naturalistic-multimodal-visualROI')
-    with pytest.raises(ValueError, match="both"):
-        b(video_only)
+
+@pytest.mark.parametrize('build', [
+    lambda: brainscore.load_benchmark('Lahner2024-fMRI-naturalistic-multimodal-visualROI'),
+    _tr_multimodal,
+], ids=['glm', 'tr'])
+def test_both_classes_give_one_answer_for_a_subject_that_takes_one_stream(
+        monkeypatch, tmp_path, build):
+    """Pre-flight alone decides: a subject without ``neural:A1`` is N/A, and a
+    subject that takes the clips but no sound runs as a partial match. Its score
+    names the inputs scored and carries no two-stream label."""
+    from brainscore_core.compatibility import CompatibilityError, check_compatibility
+    install(monkeypatch, tmp_path)
+    benchmark = build()
+    with pytest.raises(CompatibilityError, match='cannot produce output channels'):
+        check_compatibility(Recorder({'vision:video'}), benchmark)
+    subject = Recorder({'vision:video'}, regions=('IT', 'A1'))
+    score = brainscore.score(subject, benchmark, check_mem=False)
+    assert score.attrs['compatibility']['match'] == 'partial'
+    assert score.attrs['compatibility']['dropped_inputs'] == ['audio', 'vision:image']
+    assert score.attrs['scored_inputs'] == ['vision:video']
+    assert 'mode' not in score.attrs and 'n_features_audio' not in score.attrs
+    assert 'multimodal' not in score.attrs['pipeline']
+    assert [outputs for _, outputs, _, _ in subject.seen] == [['neural:IT']]
 
 
 @pytest.mark.parametrize('identifier, source', [

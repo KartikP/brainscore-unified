@@ -1,11 +1,14 @@
-"""A recording during a task equals the passive recording of the same stimuli, or is refused before any pass.
+"""A recording during a task of the same input equals the passive recording, or is refused before any pass.
 
 Each wrapper of ``brainscore.model_helpers`` records a task through the same
-functions as its passive call. Every cell of the grid below ends in one of two
-outcomes: the task recording has the values, dtype and coordinates of the
+reduction and packaging functions as its passive call. The answering part here
+shows each stimulus to the network as the wrapper does, so the network receives
+the same input on both paths. Every cell of the grid below then ends in one of
+two outcomes: the task recording has the values, dtype and coordinates of the
 passive recording, or the session is refused before any forward pass
-completes. The answering part shows each stimulus to the network as the
-wrapper does. Forward passes are counted after they complete.
+completes. A model whose answering part prepares the stimulus in its own way (a
+chat processor) records what the network received during the task; these tests
+do not cover that case. Forward passes are counted after they complete.
 """
 import functools
 
@@ -80,7 +83,7 @@ def _sessions(model, stimuli, regions, monkeypatch, plan, task=TASK):
 @pytest.mark.parametrize('batch', [1, 3])
 @pytest.mark.parametrize('count', [1, 2])
 @pytest.mark.parametrize('kind', tiny_wrappers.KINDS)
-def test_a_task_recording_equals_the_passive_recording(tmp_path, monkeypatch, kind, count, batch, regions,
+def test_a_task_recording_of_the_same_input_equals_the_passive_recording(tmp_path, monkeypatch, kind, count, batch, regions,
                                                         plan, answer):
     wrapper, stimuli, selectors, network = tiny_wrappers.FACTORIES[kind](tmp_path)
     wrapper._batch_size = batch
@@ -118,7 +121,7 @@ class _Rows:
 
 
 @pytest.mark.parametrize('kind', tiny_wrappers.KINDS)
-def test_a_policy_step_records_as_the_passive_recording_or_is_refused_before_any_pass(tmp_path, kind):
+def test_a_policy_step_of_the_same_input_records_as_passive_or_is_refused_before_any_pass(tmp_path, kind):
     wrapper, stimuli, selectors, network = tiny_wrappers.FACTORIES[kind](tmp_path)
     passes = _counted(network)
 
@@ -352,7 +355,7 @@ def test_video_clips_of_different_frame_counts_are_refused_before_any_pass():
 
 
 @pytest.mark.parametrize('strategy', ['block', 'causal'])
-def test_a_clip_shorter_than_its_window_is_one_window_and_records_as_the_passive_path(monkeypatch, strategy):
+def test_a_clip_shorter_than_its_window_is_one_window_and_records_the_same_input_as_passive(monkeypatch, strategy):
     model, stimuli, _ = _clip_subject({'a': 1000.0, 'b': 1000.0}, frames={'a': [1.0, 3.0], 'b': [5.0, 7.0]},
                                       context_window_ms=2000.0, context_strategy=strategy)
     task, passive = _sessions(model, stimuli, ['IT'], monkeypatch, 'all')['neural:IT']
@@ -395,7 +398,7 @@ class _Patches(torch.nn.Module):
         return self.layer(pixel_values)
 
 
-def test_a_vlm_pass_over_two_images_gives_each_image_as_the_passive_path():
+def test_a_vlm_pass_over_two_images_of_the_same_input_gives_each_image_as_passive():
     """Two images of two patches, batched (2, 2, 1) with means 2 and 6: one part per image."""
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     network = _Patches()

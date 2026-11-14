@@ -14,6 +14,7 @@ Covers:
 import pytest
 
 from brainscore import BrainScoreModel
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 from brainscore_core.streaming_helpers import apply_state_change
 
@@ -70,7 +71,7 @@ class TestInterventionDispatch:
             target=Selection(layer='blocks.10'),
             perturbation=Perturbation(kind='zero'),
         )
-        with pytest.raises(NotImplementedError, match='no intervention part'):
+        with pytest.raises(CompatibilityError, match='no intervention part'):
             apply_state_change(model, sc)
 
     def test_apply_returns_perturbation_applied(self):

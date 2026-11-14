@@ -153,7 +153,7 @@ def test_readout_records_in_the_same_extraction():
 def test_extractor_that_cannot_record_is_not_applicable_before_any_answer():
     net = ToyNet()
     model = _model(net, extractor_type=NoRecordExtractor)
-    with pytest.raises(NotImplementedError, match='No session handler'):
+    with pytest.raises(CompatibilityError, match='no one part of it answers'):
         _run(model, GENERATE, ['behavior', 'neural:A'])
     assert net.passes == 0
 
@@ -192,7 +192,7 @@ def test_the_extractor_for_the_form_decides_recording(image_records, form, colum
 
 
 def test_undeclared_region_is_not_supported():
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(CompatibilityError, match=r"does not produce \['neural:IT'\]"):
         _run(_model(ToyNet()), GENERATE, ['behavior', 'neural:IT'])
 
 

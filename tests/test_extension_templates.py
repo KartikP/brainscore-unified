@@ -18,7 +18,7 @@ import pytest
 
 from brainscore_core import io_catalog
 from brainscore.capabilities import capability_registry
-from brainscore_core.compatibility import check_compatibility
+from brainscore_core.compatibility import CompatibilityError, check_compatibility
 from brainscore import BrainScoreModel
 from brainscore_core.contract import Subject
 from brainscore_core.streaming import Session, StreamEvent
@@ -86,7 +86,7 @@ def test_capability_runs_through_participate_with_state_and_reset(capability):
 def test_capability_is_opt_in_per_model(capability):
     plain = BrainScoreModel(identifier='plain')
     assert not {capability.REQUEST, capability.RESULT} & (plain.in_channels | plain.out_channels)
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(CompatibilityError, match='does not produce'):
         plain.check_session_support({capability.RESULT})
     opted = capability.build_model()
     assert capability.REQUEST in opted.in_channels and capability.RESULT in opted.out_channels

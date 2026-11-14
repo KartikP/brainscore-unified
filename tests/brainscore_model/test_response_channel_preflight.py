@@ -3,6 +3,7 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
@@ -154,7 +155,7 @@ def test_recording_during_a_reply_is_decided_in_pre_flight(records, network_laye
     if supported:
         assert model.check_session_support(channels).identifier == 'behavior-sessions'
     else:
-        with pytest.raises(NotImplementedError, match='No session handler'):
+        with pytest.raises(CompatibilityError, match='no one part of it answers'):
             model.check_session_support(channels)
     assert extractor.calls == 0
 
@@ -165,5 +166,53 @@ def test_a_policy_records_a_region_only_where_the_wiring_can():
     model = BrainScoreModel(identifier='toy-policy', model=network, extractor={'vision': _CountingExtractor()},
                             region_layer_map={'V4': '0', 'IT': 'head'}, policy=lambda row: {'motor': 0})
     assert model.check_session_support({'motor', 'neural:V4'}).identifier == 'motor-sessions'
-    with pytest.raises(NotImplementedError, match='No session handler'):
+    with pytest.raises(CompatibilityError, match='no one part of it answers'):
         model.check_session_support({'motor', 'neural:IT'})
+
+
+# ── A subject that cannot serve a session is N/A, by every path ──────────────
+
+def _audio_model(policy=None):
+    """A sound model with a region and no answering part, as ``random-wav2vec2-base``."""
+    return BrainScoreModel(identifier='toy-audio', region_layer_map={'A1': 'layer'},
+                           extractor={'audio': lambda stimuli, layers=None, **kwargs: None},
+                           policy=policy)
+
+
+@pytest.mark.parametrize('policy, outputs, missing', [
+    (None, ('behavior:choice', 'neural:A1'), 'behavior:choice'),                  # no part at all
+    (lambda row: {'motor': 0}, ('behavior:choice', 'neural:A1'), 'behavior:choice'),  # a part for another output
+    (None, ('neural:V9',), 'neural:V9'),                                          # a region it does not map
+], ids=['no-part', 'part-for-another-output', 'unmapped-region'])
+def test_a_subject_that_cannot_serve_a_session_is_not_applicable_before_compute(policy, outputs, missing):
+    import re
+    from types import SimpleNamespace
+    import brainscore
+    model = _audio_model(policy)
+    named = re.escape(f"does not produce ['{missing}']")
+    with pytest.raises(CompatibilityError, match=named):
+        model.check_session_support(outputs)
+    stimuli = StimulusSet({'stimulus_id': ['a'], 'audio_path': ['/no/such/file.wav']})
+    stimuli.identifier = 'toy-audio-stimuli'
+    task = (TaskContext(instruction='Is it loud?', response=Choice(['yes', 'no']))
+            if 'behavior:choice' in outputs else None)
+    with pytest.raises(CompatibilityError, match=named):
+        model.participate(stimulus_session(stimuli, list(outputs), task))
+    # Through score(), pre-flight refuses the same pair from the declarations.
+    benchmark = SimpleNamespace(identifier='toy-audio-benchmark', version=1,
+                                required_input_channels=frozenset({'audio'}),
+                                requested_output_channels=frozenset(outputs))
+    with pytest.raises(CompatibilityError, match=re.escape(f"'{missing}'")):
+        brainscore.score(model, benchmark, check_mem=False)
+
+
+def test_an_unknown_channel_is_not_applicable():
+    from types import SimpleNamespace
+    from brainscore_core.compatibility import check_compatibility
+    model = _audio_model()
+    with pytest.raises(CompatibilityError, match=r"does not produce \['telepathy'\]"):
+        model.check_session_support({'telepathy'})
+    benchmark = SimpleNamespace(identifier='toy', required_input_channels=frozenset({'audio'}),
+                                requested_output_channels=frozenset({'telepathy'}))
+    with pytest.raises(CompatibilityError, match="unknown channel 'telepathy'"):
+        check_compatibility(model, benchmark)
