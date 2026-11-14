@@ -179,6 +179,5 @@ def get_model(identifier: str) -> BrainScoreModel:
             'video': video_wrapper,
             'audio': audio_wrapper,
         },
-        required_channels={'vision:video', 'audio'},
         visual_degrees=8,
     )

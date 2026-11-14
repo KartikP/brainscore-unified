@@ -173,8 +173,13 @@ class BrainScoreModel(UnifiedModel):
             example by a closed-weight ``answer`` function (``'text'``,
             ``'vision:image'``). Extractor mappings already declare their
             inputs; do not repeat them here.
-        :param required_channels: input channels the model cannot run without;
-            each one is declared by an extractor or by ``in_channels``.
+        :param required_channels: input channels the model cannot run without.
+            Only for one part that takes several inputs together and cannot
+            run on part of them: one extractor (for example a fused one), or
+            the parts that take ``in_channels``. Every listed channel must be
+            taken by that one part. Separate parts each run on their own
+            input, so a set across them, or a set that repeats the one input
+            of a part, is refused.
         :param visual_degrees: the visual field legacy vision benchmarks place
             stimuli in; ignored by other benchmarks.
         :param capability_config: settings for added capabilities, keyed by the
@@ -211,15 +216,37 @@ class BrainScoreModel(UnifiedModel):
         self._capability_state: Dict[str, Any] = {}
         self._capability_setup_done: Set[str] = set()
 
-        required = _channels(required_channels)
-        declared_channels = self._input_channels(self._input_keys)
-        if not required <= declared_channels:
+        self._required_channels = self._joint_requirement(_channels(required_channels))
+
+    def _joint_requirement(self, required: Set[str]) -> frozenset:
+        """``required`` if one part that takes several inputs together serves all of it.
+
+        A part is one extractor object, or the parts that take ``in_channels``
+        without an extractor (``answer``, ``reply``, ``likelihood``). Each
+        separate part runs on its own inputs, and pre-flight already needs one
+        declared input, so a requirement is a fact only of one part with
+        several inputs.
+        """
+        if not required:
+            return frozenset()
+        parts = {}
+        for key, extractor in self._extractors.items():
+            parts.setdefault(id(extractor), set()).add(MODALITY_TO_INPUT_CHANNEL.get(key, key))
+        no_extractor = self._input_channels(self._input_keys - set(self._extractors))
+        if no_extractor:
+            parts['in_channels'] = no_extractor
+        serving = [channels for channels in parts.values() if required <= channels]
+        if not serving:
             raise ValueError(
-                f"required_channels {sorted(required)} are not all declared: the subject "
-                f"declares {sorted(declared_channels)}. A subject cannot require an input "
-                f"it does not declare."
-            )
-        self._required_channels = frozenset(required)
+                f"required_channels {sorted(required)} must all be taken by one part "
+                f"(one extractor, or the parts that take in_channels); here separate parts "
+                f"or none take them. A separate part runs on its own input, so leave "
+                f"required_channels out.")
+        if len(serving[0]) == 1:
+            raise ValueError(
+                f"required_channels {sorted(required)} only repeats the one input of the part "
+                f"that takes it, which that part already declares; leave it out.")
+        return frozenset(required)
 
     @property
     def capability_config(self):

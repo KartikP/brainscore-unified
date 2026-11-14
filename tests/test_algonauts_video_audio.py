@@ -85,14 +85,10 @@ def test_a_region_is_declared_for_every_form_the_run_selects_an_extractor_for(tm
     assert check_compatibility(model, image).kind == 'full'
 
 
-def test_a_video_only_subject_runs_on_part_of_the_inputs_and_a_sound_subject_needs_sound(tmp_path):
+def test_a_video_only_subject_runs_on_part_of_the_inputs(tmp_path):
     benchmark = _benchmark(tmp_path)
     match = check_compatibility(Declared({'vision:video'}, AV_REGIONS), benchmark)
     assert match.kind == 'partial' and match.dropped_inputs == frozenset({'audio'})
-    # A model that needs sound gets N/A on the video form, which sends none.
-    video = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
-    with pytest.raises(CompatibilityError, match='hard-requires'):
-        check_compatibility(_av_model([]), video)
     assert check_compatibility(_av_model([]), benchmark).kind == 'full'
 
 
@@ -148,14 +144,6 @@ def _av_model(calls):
     """Declares what vjepa1-wav2vec2 declares (three video regions, one audio), with tiny towers."""
     return BrainScoreModel(
         identifier='fake-av', model=None, region_layer_map=_av_regions(),
-        extractor={'video': _extractor('video_path', 1.0, VIDEO_BINS, calls),
-                   'audio': _extractor('audio_path', 2.0, AUDIO_BINS, calls)},
-        required_channels={'vision:video', 'audio'})
-
-
-def _av_model_without_requirement(calls):
-    return BrainScoreModel(
-        identifier='fake-av-free', model=None, region_layer_map=_av_regions(),
         extractor={'video': _extractor('video_path', 1.0, VIDEO_BINS, calls),
                    'audio': _extractor('audio_path', 2.0, AUDIO_BINS, calls)})
 
@@ -264,12 +252,10 @@ def test_a_region_the_benchmark_does_not_name_is_not_asked_for(tmp_path):
     assert {column for column, *_ in calls} == {'image_file_name'}    # no text request
 
 
-def test_on_the_video_form_an_audiovisual_model_is_na_or_runs_with_the_video_regions(tmp_path):
+def test_on_the_video_form_an_audiovisual_model_runs_with_the_video_regions(tmp_path):
     video = Algonauts2025(participant=1, channels=('vision:video',), assembly_root=tmp_path)
-    with pytest.raises(CompatibilityError, match='hard-requires'):
-        check_compatibility(_av_model([]), video)
     calls = []
-    model = _av_model_without_requirement(calls)
+    model = _av_model(calls)
     assert check_compatibility(model, video).kind == 'full'
     _, score = _score(tmp_path, False, calls, channels=('vision:video',), columns=('video_path',), model=model)
     assert score.attrs['bands'] == ['IT', 'V1', 'V4']
@@ -278,7 +264,7 @@ def test_on_the_video_form_an_audiovisual_model_is_na_or_runs_with_the_video_reg
 
 @pytest.mark.parametrize('form, columns, make', [
     ('image', ('image_file_name',), _vision_language_model),
-    ('video', ('video_path',), _av_model_without_requirement)])
+    ('video', ('video_path',), _av_model)])
 def test_the_memory_probe_records_a_requested_region(tmp_path, form, columns, make):
     from brainscore_core.memory import _probe_feature_dim
     benchmark = Algonauts2025(participant=1, channels=CHANNELS[form], assembly_root=tmp_path)

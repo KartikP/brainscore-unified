@@ -41,8 +41,7 @@ def test_channel_arguments_refuse_a_modality_name(word, name, channel):
         BrainScoreModel('id', reply=_f, **{word: {name}})
 
 
-def test_in_channels_and_required_channels_are_declared_as_given():
-    model = BrainScoreModel('id', reply=_f, in_channels={'text', 'vision:video'},
-                            required_channels={'vision:video'})
+def test_in_channels_are_declared_as_given():
+    model = BrainScoreModel('id', reply=_f, in_channels={'text', 'vision:video'})
     assert {'text', 'vision:video'} <= model.in_channels
-    assert model.required_channels == {'vision:video'}
+    assert model.required_channels == set()

@@ -87,5 +87,6 @@ def test_required_channels_must_match_the_declared_visual_form():
         raise AssertionError('not called')
     for key, required in (('vision', 'vision:video'), ('video', 'vision:image')):
         with pytest.raises(ValueError, match='vision:'):
-            BrainScoreModel('m', extractor={key: extractor}, required_channels={required},
+            BrainScoreModel('m', extractor={(key, 'text'): extractor},
+                            required_channels={required, 'text'},
                             region_layer_map={'A': 'layers.3'})

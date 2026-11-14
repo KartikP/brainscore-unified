@@ -133,16 +133,15 @@ def test_a_multi_image_trial_is_recorded_per_image():
     assert list(recorded['part_name'].values) == ['rules', 'word_1', 'word_2']
 
 
-@pytest.mark.parametrize('keys, forms, required', [
-    (('vision',), {'vision:image'}, set()),
-    (('video',), {'vision:video'}, {'vision:video'}),
-    (('vision', 'video'), {'vision:image', 'vision:video'}, set())])
-def test_declared_inputs_are_exactly_the_forms_taken(keys, forms, required):
-    model = BrainScoreModel('m', extractor={key: _extractor(1.0) for key in keys},
-                            required_channels={'vision:video'} if required else None)
+@pytest.mark.parametrize('keys, forms', [
+    (('vision',), {'vision:image'}),
+    (('video',), {'vision:video'}),
+    (('vision', 'video'), {'vision:image', 'vision:video'})])
+def test_declared_inputs_are_exactly_the_forms_taken(keys, forms):
+    model = BrainScoreModel('m', extractor={key: _extractor(1.0) for key in keys})
     assert {c for c in model.in_channels if c.startswith('vision')} == forms
     assert 'vision' not in model.in_channels
-    assert model.required_channels == required
+    assert model.required_channels == set()
 
 
 @pytest.mark.parametrize('keys, compatible', [(('vision',), True), (('video',), True),

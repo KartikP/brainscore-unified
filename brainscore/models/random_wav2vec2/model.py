@@ -80,6 +80,5 @@ def get_model(identifier: str) -> BrainScoreModel:
         extractor={
             'audio': audio_wrapper,
         },
-        required_channels={'audio'},
         visual_degrees=8,
     )
