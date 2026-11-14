@@ -1,12 +1,12 @@
 """Rule 4.11: the registration states which part owns an answer output several parts can give.
 
 One eligible part answers without a statement; several need an owner, checked
-at construction. The parity tests pin that the owners the registrations state
-choose exactly the part the removed fixed order (generation, likelihood,
-readout) chose, for every part combination and task form.
+at construction. Each output's owner stands on its own. The parity tests
+compare with the selection of the base commit 280f49c, captured in
+``tests/fixtures/fixed_order_baseline.json`` by ``fixed_order_baseline.py``.
 """
 import ast
-import itertools
+import json
 from pathlib import Path
 
 import pytest
@@ -18,7 +18,8 @@ from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI, _features
-from tests.fixed_order import ORDER, fixed_order_owners, owned
+from tests.brainscore_model.fixed_order_baseline import FIXTURE, task_from
+from tests.fixed_order import fixed_order_owners
 
 pytestmark = pytest.mark.unit
 
@@ -35,7 +36,11 @@ def _model(*arguments, owners=None, calls=None):
         'behavioral_readout_layer': 'late',
     }
     config = {} if owners is None else {'capability_config': {'behavior-sessions': owners}}
-    return BrainScoreModel('owned', extractor={'text': _features}, in_channels={'text'},
+
+    def extract(stimuli, layers, **kwargs):
+        calls.append('extract')
+        return _features(stimuli, layers, **kwargs)
+    return BrainScoreModel('owned', extractor={'text': extract}, in_channels={'text'},
                            **{name: parts[name] for name in arguments}, **config)
 
 
@@ -100,98 +105,229 @@ def test_a_task_no_part_can_serve_stays_not_feasible():
         _run(model, ['behavior:choice'], task)
 
 
-# --- parity with the removed fixed order -------------------------------------
+# --- finding 1: each output's owner stands on its own --------------------------
 
-TASKS = {
-    'legacy instruction': dict(task_type='probabilities', instruction='Which?', label_set=['cat', 'dog']),
-    'legacy fitting': dict(task_type='probabilities', label_set=['cat', 'dog'], fitting_stimuli=FITTING),
-    'legacy both': dict(task_type='probabilities', instruction='Which?', label_set=['cat', 'dog'],
-                        fitting_stimuli=FITTING),
-    'choice': dict(response=Choice(['cat', 'dog'])),
-    'choice fitting': dict(response=Choice(['cat', 'dog']), fitting_stimuli=FITTING),
-    'probabilities': dict(response=Choice(['cat', 'dog'], probabilities=True), fitting_stimuli=FITTING),
-    'probabilities no fitting': dict(response=Choice(['cat', 'dog'], probabilities=True)),
-    'rt': dict(response=Choice(['cat', 'dog'], reaction_time='surprisal'), fitting_stimuli=FITTING),
-    'raw scores': dict(response=Choice(['cat', 'dog'], raw_scores=True), fitting_stimuli=FITTING),
-    'raw text': dict(response=Choice(['cat', 'dog'], raw_text=True, probabilities=True),
-                     fitting_stimuli=FITTING),
-    'confidence': dict(response=Choice(['cat', 'dog'], confidence=Scale(1, 5)), fitting_stimuli=FITTING),
-    'per-row labels': dict(response=Choice('options', probabilities=True), fitting_stimuli=FITTING),
-    'scale': dict(response=Scale(1, 7), fitting_stimuli=FITTING),
-    'text': dict(response=Text()),
+CROSS = {'readout choice': {'behavior:choice': 'readout', 'behavior:probabilities': 'likelihood'},
+         'likelihood choice': {'behavior:choice': 'likelihood', 'behavior:probabilities': 'readout'}}
+
+
+@pytest.mark.parametrize('settings', [{'probabilities': True}, {'reaction_time': 'surprisal'}],
+                         ids=['probabilities', 'reaction time'])
+@pytest.mark.parametrize('owners', sorted(CROSS))
+def test_a_choice_and_probabilities_from_different_owners_are_refused_before_compute(owners, settings):
+    """The executor cannot take a likelihood or readout choice and the probabilities
+    from the other part; neither owner is replaced, the session is refused."""
+    calls = []
+    model = _model('likelihood', 'behavioral_readout_layer', owners=CROSS[owners], calls=calls)
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], **settings),
+                       fitting_stimuli=FITTING)
+    outputs = ['behavior:choice', 'behavior:probabilities' if 'probabilities' in settings else 'behavior:rt']
+    with pytest.raises(ExecutionNotFeasibleError, match='in one session'):
+        _run(model, outputs, task)
+    assert calls == []        # no extraction, no readout fit, no likelihood call
+
+
+@pytest.mark.parametrize('owners', sorted(CROSS))
+def test_a_choice_alone_answers_through_its_own_owner(owners):
+    calls = []
+    model = _model('likelihood', 'behavioral_readout_layer', owners=CROSS[owners], calls=calls)
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
+    choice = _run(model, ['behavior:choice'], task).collect('behavior:choice')
+    assert choice.attrs['measure']['source'] == CROSS[owners]['behavior:choice']
+
+
+@pytest.mark.parametrize('settings', [{'probabilities': True}, {'reaction_time': 'surprisal'}],
+                         ids=['probabilities', 'reaction time'])
+@pytest.mark.parametrize('probabilities', ['likelihood', 'readout'])
+def test_a_generated_choice_takes_probabilities_from_their_owner(probabilities, settings):
+    calls = []
+    model = _model('reply', 'likelihood', 'behavioral_readout_layer', calls=calls, owners={
+        'behavior:choice': 'generation', 'behavior:rating': 'generation',
+        'behavior:probabilities': probabilities})
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], **settings),
+                       fitting_stimuli=FITTING)
+    channel = 'behavior:probabilities' if 'probabilities' in settings else 'behavior:rt'
+    session = _run(model, ['behavior:choice', channel], task)
+    assert session.collect('behavior:choice').attrs['measure']['source'] == 'reply'
+    assert session.collect(channel).attrs['measure']['source'] == probabilities
+    assert ('likelihood' in calls) == (probabilities == 'likelihood')
+
+
+# --- finding 2: no choice among parts that do not own the output -------------
+
+def test_several_parts_that_do_not_own_the_output_are_refused_before_compute():
+    """The owner (generation, answer=) cannot serve raw text; likelihood and readout
+    both could, and neither owns the choice: nothing chooses between them."""
+    calls = []
+    model = _model('answer', 'likelihood', 'behavioral_readout_layer', calls=calls,
+                   owners=fixed_order_owners('answer', 'likelihood', 'behavioral_readout_layer'))
+    task = TaskContext(response=Choice(['cat', 'dog'], raw_text=True), fitting_stimuli=FITTING)
+    with pytest.raises(ExecutionNotFeasibleError, match=r"\['likelihood', 'readout'\] that can do not own it"):
+        _run(model, ['behavior:choice'], task)
+    assert calls == []
+
+
+LEGACY_NO_INSTRUCTION = TaskContext(task_type='probabilities', label_set=['cat', 'dog'],
+                                    fitting_stimuli=FITTING)
+QWEN = ('answer', 'reply', 'likelihood', 'behavioral_readout_layer')
+BLIP2 = ('answer', 'behavioral_readout_layer')
+CAUSAL_LM = ('reply', 'likelihood')
+
+# The cases where a registered model answers an output through a part that does
+# not own it, because the task form excludes the owner and exactly one other part
+# can serve it. Ownership is stated per output; these differ by task form, which
+# the statement cannot express (design note ANSWER_ownership, section 5).
+TASK_FORM_CASES = {
+    'qwen legacy without instruction': (QWEN, LEGACY_NO_INSTRUCTION, ['behavior'], 'readout'),
+    'blip2 legacy without instruction': (BLIP2, LEGACY_NO_INSTRUCTION, ['behavior'], 'readout'),
+    'qwen raw scores': (QWEN, TaskContext(response=Choice(['cat', 'dog'], raw_scores=True)),
+                        ['behavior:choice'], 'likelihood'),
+    'causal lm raw scores': (CAUSAL_LM, TaskContext(response=Choice(['cat', 'dog'], raw_scores=True)),
+                             ['behavior:choice'], 'likelihood'),
+    'blip2 raw text': (BLIP2, TaskContext(response=Choice(['cat', 'dog'], raw_text=True),
+                                          fitting_stimuli=FITTING), ['behavior:choice'], 'readout'),
 }
 
 
-def _fixed_order(wired, task):
-    """The (path, probability source) the fixed order chose; None when it refused."""
-    response, readout = task.response, 'behavioral_readout_layer' in wired
-    if response is None:
-        can = {'generation': 'answer' in wired and bool(task.instruction),
-               'likelihood': False, 'readout': readout and task.fitting_stimuli is not None}
-        path = next((p for p in ORDER if can[p]), None)
-        return None if path is None else (path, None)
-    choice = isinstance(response, Choice)
-    confidence, raw_scores = choice and response.confidence is not None, choice and response.raw_scores
-    per_row = choice and isinstance(response.labels, str)
-    readout = readout and task.fitting_stimuli is not None
-    if raw_scores and 'likelihood' not in wired:
-        return None
-    can = {'generation': not raw_scores and ('reply' in wired or (
-               'answer' in wired and choice and not confidence and not response.raw_text)),
-           'likelihood': 'likelihood' in wired and choice and not confidence,
-           'readout': readout and isinstance(response, (Choice, Scale)) and not confidence
-                      and not raw_scores and not per_row}
-    path = next((p for p in ORDER if can[p]), None)
-    if path is None:
-        return None
-    source = None
-    if choice and (response.probabilities or response.reaction_time or raw_scores):
-        source = ('likelihood' if path != 'readout' and 'likelihood' in wired
-                  else 'readout' if readout and not per_row else None)
-        if source is None:
-            return None
-    return path, source
+@pytest.mark.parametrize('case', sorted(TASK_FORM_CASES))
+def test_the_one_part_that_serves_a_task_form_answers_for_a_registered_model(case):
+    parts, task, outputs, source = TASK_FORM_CASES[case]
+    owners = fixed_order_owners(*parts)
+    assert owners[outputs[0]] != source                  # not the owner of the output
+    session = _run(_model(*parts, owners=owners), outputs, task)
+    assert session.collect(outputs[0]).attrs['measure']['source'] == source
 
 
-COMBINATIONS = [wired for size in range(1, 5) for wired in itertools.combinations(ARGUMENTS, size)]
+# --- finding 3: parity with the base commit ----------------------------------
+
+BASELINE = json.loads(Path(FIXTURE).read_text(encoding='utf-8'))
+REGISTERED_PART_SETS = {('behavioral_readout_layer',), BLIP2, QWEN, CAUSAL_LM, ('answer', 'reply')}
+# The only cases where the new rule differs from the base commit: two parts that
+# do not own the choice could serve it (above). No registered part set is among them.
+REFUSED_NOW = {(('answer', 'likelihood', 'behavioral_readout_layer'),
+                (('labels', 'shared'), ('probabilities', p), ('raw_text', True), ('reaction_time', rt)))
+               for p in (False, True) for rt in (None, 'surprisal')}
 
 
-@pytest.mark.parametrize('wired', COMBINATIONS, ids=['+'.join(w) for w in COMBINATIONS])
-def test_the_fixed_order_owners_choose_what_the_fixed_order_chose(monkeypatch, wired):
-    model = _model(*wired, owners=fixed_order_owners(*wired))
+def _key(case):
+    task = case['task']
+    return (tuple(case['parts']), tuple(sorted((k, v) for k, v in task.items() if k in (
+        'labels', 'probabilities', 'raw_text', 'reaction_time'))))
+
+
+def test_the_baseline_covers_every_part_combination_and_task_form():
+    assert BASELINE['base'] == '280f49c'
+    assert len({tuple(case['parts']) for case in BASELINE['cases']}) == 15
+    assert len(BASELINE['cases']) == 15 * 80
+
+
+@pytest.mark.parametrize('parts', sorted({tuple(case['parts']) for case in BASELINE['cases']}),
+                         ids='+'.join)
+def test_the_fixed_order_owners_choose_what_the_base_commit_chose(monkeypatch, parts):
+    model = _model(*parts, owners=fixed_order_owners(*parts))
     monkeypatch.setattr(model._behavioral, 'fit_behavioral_readout', lambda stimuli: None)
-    for name, settings in TASKS.items():
-        task = TaskContext(**settings)
-        expected = _fixed_order(wired, task)
-        if expected is None:
-            with pytest.raises(ExecutionNotFeasibleError):
-                model.start_task(task)
-            continue
-        model.start_task(task)
-        chosen = (model._behavioral.response_path, model._behavioral.probability_source)
-        assert chosen == expected, name
+    differences = set()
+    for case in (case for case in BASELINE['cases'] if tuple(case['parts']) == parts):
+        try:
+            model.start_task(task_from(case['task'], FITTING))
+            outcome = [model._behavioral.response_path, model._behavioral.probability_source]
+        except ExecutionNotFeasibleError:
+            outcome = 'refused'
+        if outcome != case['outcome']:
+            assert outcome == 'refused' and case['task']['fitting'] and not case['task']['confidence'], case
+            differences.add(_key(case))
+    assert differences == {key for key in REFUSED_NOW if key[0] == parts}
+    if parts in REGISTERED_PART_SETS:
+        assert not differences
+
+
+SOURCE = {'generation': {'answer': 'answer', 'reply': 'reply'}, 'likelihood': 'likelihood', 'readout': 'readout'}
+RATINGS = FITTING.copy()
+RATINGS['label'] = [6.0, 2.0, 6.0, 2.0]
+RATINGS.identifier = 'behavior-paths-ratings'
+CHOICE_FORM = {'kind': 'choice', 'labels': 'shared', 'probabilities': False, 'reaction_time': None,
+               'raw_scores': False, 'raw_text': False, 'confidence': False, 'fitting': True}
+SESSIONS = {   # baseline task descriptions and the outputs the session requests
+    'legacy answer': ({'kind': 'legacy', 'instruction': True, 'label_set': ['cat', 'dog'], 'fitting': True},
+                      ['behavior']),
+    'legacy readout': ({'kind': 'legacy', 'instruction': False, 'label_set': ['cat', 'dog'], 'fitting': True},
+                       ['behavior']),
+    'choice': (dict(CHOICE_FORM, probabilities=True), ['behavior:choice', 'behavior:probabilities']),
+    'raw scores': (dict(CHOICE_FORM, raw_scores=True, fitting=False),
+                   ['behavior:choice', 'behavior:probabilities']),
+    'rating': ({'kind': 'scale', 'fitting': True}, ['behavior:rating']),
+}
+
+
+@pytest.mark.parametrize('session_name', sorted(SESSIONS))
+@pytest.mark.parametrize('parts', sorted(REGISTERED_PART_SETS), ids='+'.join)
+def test_registered_part_sets_emit_the_sources_the_base_commit_chose(parts, session_name):
+    """What a session emits (the source of each answer and the parts called) follows the base selection."""
+    description, outputs = SESSIONS[session_name]
+    case = next(c for c in BASELINE['cases'] if tuple(c['parts']) == parts and c['task'] == description)
+    task = task_from(description, RATINGS if description['kind'] == 'scale' else FITTING)
+    calls = []
+    model = _model(*parts, owners=fixed_order_owners(*parts), calls=calls)
+    if case['outcome'] == 'refused':
+        with pytest.raises(ExecutionNotFeasibleError):
+            _run(model, outputs, task)
+        assert calls == []
+        return
+    path, source = case['outcome']
+    # A legacy task is answered by answer=; a response task by reply= when wired.
+    generator = 'reply' if 'reply' in parts and task.response is not None else 'answer'
+    expected = generator if path == 'generation' else path
+    session = _run(model, outputs, task)
+    answer = session.collect(outputs[0])
+    if task.response is None and path == 'readout':
+        assert answer.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
+    else:
+        assert answer.attrs['measure']['source'] == expected
+    if source is not None:
+        assert session.collect('behavior:probabilities').attrs['measure']['source'] == source
+    called = {'likelihood': 'likelihood', 'readout': 'extract', 'generation': generator}
+    assert called[path] in calls
+    for part in {'answer', 'reply', 'likelihood'} - {called[path], called.get(source)}:
+        assert part not in calls, (part, calls)
+
+
+# --- the registrations state the owners the base order chose ------------------
+
+ARGUMENTS_WITH_OUTPUTS = ('answer', 'reply', 'likelihood', 'behavioral_readout_layer')
+# Constructor calls whose keywords come partly from ``**`` expansion: the scan cannot
+# see those keywords. Each is listed with what the expansion carries.
+EXPANDED = {
+    'models/qwen25_vl_3b/model.py': 'variant_kwargs: intervention only',
+    'tools/auto_register.py': 'brainscore_model_kwargs: the caller\'s keywords, checked by the constructor',
+}
 
 
 def _registrations():
-    """Each BrainScoreModel call of a registration: its answer arguments and stated owners."""
+    """Every BrainScoreModel call in the library: its answer arguments and stated owners."""
     root = Path(brainscore.__file__).parent
-    files = sorted((root / 'models').glob('*/model.py')) + [root / 'model_helpers' / 'causal_lm.py']
-    found = []
-    for path in files:
+    found, expanded = [], set()
+    for path in sorted(root.rglob('*.py')):
         for node in ast.walk(ast.parse(path.read_text(encoding='utf-8'))):
             if isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'BrainScoreModel':
+                if any(keyword.arg is None for keyword in node.keywords):
+                    expanded.add(path.relative_to(root).as_posix())
                 keywords = {k.arg: k.value for k in node.keywords if k.arg}
-                wired = [name for name in ARGUMENTS if name in keywords
+                wired = [name for name in ARGUMENTS_WITH_OUTPUTS if name in keywords
                          and not (isinstance(keywords[name], ast.Constant) and keywords[name].value is None)]
                 config = (ast.literal_eval(keywords['capability_config'])
                           if 'capability_config' in keywords else {})
-                found.append((path.parent.name, wired, config.get('behavior-sessions', {})))
-    return found
+                found.append((path.relative_to(root).as_posix(), wired, config.get('behavior-sessions', {})))
+    return found, expanded
 
 
-def test_every_registration_states_the_owner_the_fixed_order_chose():
-    registrations = _registrations()
-    assert {'qwen25_vl_3b', 'qwen36_27b', 'blip2_opt_2_7b', 'model_helpers'} <= {r[0] for r in registrations}
-    for folder, wired, stated in registrations:
-        assert stated == fixed_order_owners(*wired), folder
+def test_every_registration_states_the_owner_the_base_order_chose():
+    """Covers every direct ``BrainScoreModel(...)`` call in the library, helpers included
+    (``model_helpers/causal_lm.py``). Not covered: keywords that arrive through ``**``
+    expansion (``EXPANDED``) and models built outside the library; the constructor checks those."""
+    registrations, expanded = _registrations()
+    assert expanded == set(EXPANDED)
+    assert {'models/qwen25_vl_3b/model.py', 'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',
+            'model_helpers/causal_lm.py'} <= {r[0] for r in registrations}
+    for where, wired, stated in registrations:
+        assert stated == fixed_order_owners(*wired), where
         _model(*wired, owners=stated)   # construction accepts it

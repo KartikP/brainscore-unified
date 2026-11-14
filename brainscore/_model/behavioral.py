@@ -317,18 +317,30 @@ class BehavioralReadout:
 
     _PATHS = ('generation', 'likelihood', 'readout')
 
-    def _select(self, output, can) -> Optional[str]:
-        """The part that gives ``output`` for this task, from the parts that can (``can``).
+    def _select(self, output, can, task) -> Optional[str]:
+        """The part that gives ``output`` for ``task``, from the parts that can serve it (``can``).
 
-        One part that can: that part. Several: the owner stated at registration
-        (``answer_owners``). The fixed order generation, likelihood, readout
-        stays only for a case no registered model reaches: the stated owner
-        cannot serve this task and two or more other parts can.
+        The owner stated at registration answers when it can serve the task
+        (``answer_owners``; with one wired part, that part). When the task form
+        excludes the owner, the one other part that can serve it answers: a
+        registered model relies on this, for example a legacy task without an
+        instruction goes to the readout, and a Choice with raw scores to the
+        likelihood (design note ANSWER_ownership, section 5). When two or more
+        parts that do not own the output can serve it, nothing chooses between
+        them: the task is refused before any compute. ``None``: no part can.
         """
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
         eligible = [p for p in self._PATHS if can.get(p)]
-        if len(eligible) == 1 or self.owners.get(output) not in eligible:
-            return next(iter(eligible), None)
-        return self.owners[output]
+        owner = self.owners.get(output)
+        if owner in eligible:
+            return owner
+        if len(eligible) <= 1:
+            only_part_for_this_task_form = eligible[0] if eligible else None
+            return only_part_for_this_task_form
+        raise ExecutionNotFeasibleError(
+            f"Subject '{self.owner.identifier}': {output!r} is owned by {owner!r}, which cannot "
+            f"serve this task, and the parts {eligible} that can do not own it. State an owner "
+            f"that serves the task, or build one model per part.", task_type=task.task_type)
 
     def _choose_path(self, task) -> Tuple[str, Optional[str]]:
         """The part that answers ``task`` and the source of implied probabilities, before any compute.
@@ -357,7 +369,7 @@ class BehavioralReadout:
             needs = {'generation': 'answer=, TaskContext.instruction and TaskContext.label_set',
                      'likelihood': 'a TaskContext(response=Choice(...)); a legacy task has no likelihood path',
                      'readout': 'TaskContext.fitting_stimuli (and behavioral_readout_layer=)'}
-            path = self._select('behavior', can)
+            path = self._select('behavior', can, task)
             if path is None:
                 raise ExecutionNotFeasibleError(
                     f"Subject '{owner.identifier}' cannot run the behavioral task "
@@ -384,7 +396,7 @@ class BehavioralReadout:
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
                         and not reported_confidence and not raw_scores and not per_row),
         }
-        path = self._select(response.channels[0], can)
+        path = self._select(response.channels[0], can, task)
         if path is None:
             needs = {'generation': 'reply= (or answer= for a plain Choice)',
                      'likelihood': 'likelihood= and a Choice without reported confidence',
@@ -397,16 +409,23 @@ class BehavioralReadout:
         source = None
         if isinstance(response, Choice) and (response.probabilities or response.reaction_time
                                              or response.raw_scores):
-            # A likelihood or readout answer gives its own probabilities; a generated
-            # answer takes them from either part.
             source = self._select('behavior:probabilities', {
-                'likelihood': path != 'readout' and owner._likelihood is not None,
-                'readout': path != 'likelihood' and readout_wired and not per_row})
+                'likelihood': owner._likelihood is not None,
+                'readout': readout_wired and not per_row}, task)
             if source is None:
                 raise ExecutionNotFeasibleError(
                     f"Subject '{owner.identifier}' cannot give implied probabilities: "
                     'it needs likelihood= or a readout (behavioral_readout_layer=, '
                     'fitting_stimuli).', task_type=task.task_type)
+            if {path, source} == {'likelihood', 'readout'}:
+                # One pass gives a likelihood or readout answer and its probabilities;
+                # the executor cannot take the choice from one and the probabilities
+                # from the other. Each owner stands, so the combination is refused.
+                raise ExecutionNotFeasibleError(
+                    f"Subject '{owner.identifier}' cannot give choices from its {path} part "
+                    f"and probabilities from its {source} part in one session; request "
+                    "the choice alone, or state one owner for both outputs.",
+                    task_type=task.task_type)
         return path, source
 
     def respond(self, stimuli, channels, regions=()):
