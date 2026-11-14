@@ -81,6 +81,8 @@ class TestMetricSeamFirstClass:
       'selectivity_topographic_alignment']),
     ('brainscore.metrics.direct_comparison', ['DirectComparisonMetric', 'per_unit_pearson']),
 ])
+# The public names of a moved metric module are the names it defines; names it only imports
+# (np, Optional, Tuple, Metric, Score) are not public names of the module and are not re-exported.
 def test_a_moved_metric_keeps_each_public_name_at_its_path(path, names):
     import importlib
     module = importlib.import_module(path)

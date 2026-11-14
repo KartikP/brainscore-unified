@@ -174,6 +174,9 @@ def qualify(root, out, *, mode='source', wheels=None):
     env = dict(os.environ, PYTHONPATH=os.pathsep.join(str(root/repo) for repo in SUITES),
         RESULTCACHING_DISABLE='1', HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1',
         BS_INSTALL_DEPENDENCIES='no')
+    for variable in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS',   # as tests/conftest.py:
+                     'VECLIB_MAXIMUM_THREADS', 'NUMEXPR_NUM_THREADS'):               # a value you set stays
+        env.setdefault(variable, '4')
     if mode == 'installed':
         for key in ('PYTHONPATH', 'PYTHONHOME', 'PYTEST_ADDOPTS', 'PYTEST_PLUGINS'):
             env.pop(key, None)
