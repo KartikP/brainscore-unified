@@ -14,6 +14,7 @@ checkpoint qualification. Real CLIP/Qwen score parity is a separate remote run.
 import ast
 import contextlib
 import importlib.util
+import inspect
 import sys
 import types
 import warnings
@@ -400,6 +401,13 @@ def test_clip_keeps_its_wrappers_and_preprocessing(build, tmp_path):
     assert model._answer is None
 
 
+def _effective(wrapper, kwargs):
+    """Every constructor argument, the defaults included."""
+    bound = inspect.signature(wrapper).bind(**kwargs)
+    bound.apply_defaults()
+    return dict(bound.arguments)
+
+
 def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
     module, model = build('qwen2.5-vl-3b')
     torch = module.torch   # the stub bound at import
@@ -414,14 +422,17 @@ def test_qwen_keeps_its_wrappers_dtype_and_generation(build):
     vision, text = FakeExtractor.instances
     assert type(vision) is FakeVLMVisionWrapper and type(text) is FakeTextWrapper
     patch_count_fn = vision.kwargs['patch_count_fn']
-    assert vision.kwargs == {'model': qwen.model.visual, 'processor': processor,
-                             'identifier': 'qwen2.5-vl-3b-vision', 'image_input_key': 'pixel_values',
-                             'forward_kwargs_map': {'grid_thw': 'image_grid_thw'},
-                             'patch_count_fn': patch_count_fn,
-                             'layer_aggregation': 'mean_patches', 'batch_size': 4}
+    # The settings each wrapper is built with, defaults included, are unchanged.
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    assert _effective(VLMVisionWrapper, vision.kwargs) == _effective(VLMVisionWrapper, {
+        'model': qwen.model.visual, 'processor': processor,
+        'identifier': 'qwen2.5-vl-3b-vision', 'image_input_key': 'pixel_values',
+        'forward_kwargs_map': {'grid_thw': 'image_grid_thw'}, 'patch_count_fn': patch_count_fn,
+        'layer_aggregation': 'mean_patches', 'batch_size': 4})
     assert patch_count_fn({'image_grid_thw': [(1, 2, 3), (2, 2, 2)]}) == [6, 8]
-    assert text.kwargs == {'model': qwen.model.language_model, 'tokenizer': processor.tokenizer,
-                           'identifier': 'qwen2.5-vl-3b-text',
-                           'layer_aggregation': 'last_token', 'max_length': 512}
+    assert _effective(TextWrapper, text.kwargs) == _effective(TextWrapper, {
+        'model': qwen.model.language_model, 'tokenizer': processor.tokenizer,
+        'identifier': 'qwen2.5-vl-3b-text', 'layer_aggregation': 'last_token', 'max_length': 512})
     assert model._behavioral_readout_layer == 'blocks.28'
     assert model._answer is not None

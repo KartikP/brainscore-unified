@@ -92,7 +92,6 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     return BrainScoreModel(
         identifier=identifier,
-        model=None,
         region_layer_map={
             region: LayerSelector(name=layer, modality=REGION_MODALITY_MAP.get(region))
             for region, layer in REGION_LAYER_MAP.items()
@@ -101,5 +100,4 @@ def get_model(identifier: str) -> BrainScoreModel:
             'vision': vision_wrapper,
             'audio': audio_wrapper,
         },
-        visual_degrees=8,
     )

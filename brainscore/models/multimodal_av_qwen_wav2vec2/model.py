@@ -52,12 +52,9 @@ def get_model(identifier: str) -> BrainScoreModel:
         # Share the standalone Qwen vision-cache key: same backbone, same
         # forward pass for the visual side.
         backbone_id='qwen2.5-vl-3b-vision',
-        image_input_key='pixel_values',
         forward_kwargs_map={'grid_thw': 'image_grid_thw'},
         patch_count_fn=lambda out: [
             int(t * h * w) for t, h, w in out['image_grid_thw']],
-        layer_aggregation='mean_patches',
-        batch_size=4,
     )
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)
 
@@ -69,5 +66,4 @@ def get_model(identifier: str) -> BrainScoreModel:
             'vision': vision_wrapper,
             'audio': audio_wrapper,
         },
-        visual_degrees=8,
     )

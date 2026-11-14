@@ -243,5 +243,4 @@ def get_model(identifier: str) -> BrainScoreModel:
         extractor={
             'video': video_wrapper,
         },
-        visual_degrees=8,
     )

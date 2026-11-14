@@ -171,11 +171,8 @@ def get_model(identifier: str) -> Subject:
         model=qwen_model.model.visual,
         processor=qwen_processor,
         identifier=f'{identifier}-vision',
-        image_input_key='pixel_values',
         forward_kwargs_map={'grid_thw': 'image_grid_thw'},
         patch_count_fn=lambda out: [int(t * h * w) for t, h, w in out['image_grid_thw']],
-        layer_aggregation='mean_patches',
-        batch_size=4,
     )
 
     # Text: TextWrapper wraps model.language_model (causal decoder).
@@ -184,8 +181,6 @@ def get_model(identifier: str) -> Subject:
         model=qwen_model.model.language_model,
         tokenizer=qwen_processor.tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='last_token',
-        max_length=512,
     )
 
     # Qwen-VL is instruction-following, so expose its generate() as the
@@ -214,7 +209,6 @@ def get_model(identifier: str) -> Subject:
             'vision': vision_wrapper,
             'text': text_wrapper,
         },
-        visual_degrees=8,
         answer=answer,
         reply=reply,
         likelihood=likelihood,

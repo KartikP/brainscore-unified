@@ -137,8 +137,6 @@ def _build_audio_wrapper(identifier: str, random_init: bool = False):
         identifier=f'{identifier}-audio',
         backbone_id=backbone_id,
         layer_aggregation='time_series',  # keep T axis for temporal alignment
-        max_duration_sec=60.0,
-        batch_size=4,
         audio_loader=_wav_loader,
     )
     return wrapper, model
@@ -162,11 +160,9 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     return BrainScoreModel(
         identifier=identifier,
-        model=None,
         region_layer_map=REGION_LAYER_MAP,
         extractor={
             'video': video_wrapper,
             'audio': audio_wrapper,
         },
-        visual_degrees=8,
     )

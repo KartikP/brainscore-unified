@@ -88,5 +88,4 @@ def get_model(identifier: str) -> BrainScoreModel:
             'vision': vision_wrapper,
             'audio': audio_wrapper,
         },
-        visual_degrees=8,
     )

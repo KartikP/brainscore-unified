@@ -42,11 +42,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=gpt2,
         tokenizer=tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='last_token',
-        # Long enough for a whole Pereira passage in context (193 tokens);
-        # inputs shorter than this are unaffected, so other benchmarks do
-        # not move. GPT-2's own window is 1024.
-        max_length=512,
     )
 
     return BrainScoreModel(

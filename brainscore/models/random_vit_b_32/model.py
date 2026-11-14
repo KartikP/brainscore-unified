@@ -92,6 +92,5 @@ def get_model(identifier: str) -> BrainScoreModel:
             'vision': vision_wrapper,
             'text': text_wrapper,
         },
-        visual_degrees=8,
         behavioral_readout_layer='encoder.layers.10',
     )

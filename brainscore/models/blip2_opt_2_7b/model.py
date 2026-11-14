@@ -153,8 +153,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=blip_model.language_model.model.decoder,
         tokenizer=blip_processor.tokenizer,
         identifier=f'{identifier}-text',
-        layer_aggregation='last_token',
-        max_length=512,
     )
 
     # BLIP-2 is composed of vision_model + qformer + language_projection +
@@ -176,7 +174,6 @@ def get_model(identifier: str) -> BrainScoreModel:
             'vision': vision_wrapper,
             'text': text_wrapper,
         },
-        visual_degrees=8,
         answer=answer,
         # Readout path also available — PCA-1000 features from 'IT' layer.
         behavioral_readout_layer='encoder.layers.34',

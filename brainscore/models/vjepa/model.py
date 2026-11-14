@@ -141,9 +141,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         # skip_predictor avoids running the 12-layer predictor head at
         # inference time; it's only needed during self-supervised pretraining.
         forward_kwargs={'skip_predictor': True},
-        # 8192 tokens × 1024 hidden × 24 layers is attention-heavy; one
-        # video per forward keeps us comfortably under A10G 24GB.
-        batch_size=1,
     )
 
     return BrainScoreModel(
@@ -153,5 +150,4 @@ def get_model(identifier: str) -> BrainScoreModel:
         extractor={
             'video': video_wrapper,
         },
-        visual_degrees=8,
     )

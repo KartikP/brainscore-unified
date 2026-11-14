@@ -93,7 +93,6 @@ def get_model(identifier: str) -> BrainScoreModel:
             'vision': vision_wrapper,
             'text': text_wrapper,
         },
-        visual_degrees=8,
         # Behavioral readout uses the final vision encoder block (matches
         # the 'IT' layer convention). Behavioral benchmarks like Ferguson2024
         # will fit a logistic readout on top of this layer's features.
