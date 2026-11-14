@@ -219,16 +219,14 @@ def test_an_unknown_channel_is_not_applicable():
         check_compatibility(model, benchmark)
 
 
-def test_score_returns_na_when_no_part_answers_the_outputs_together():
-    """Declarations pass; the subject refuses at session start; score() gives N/A, no pass."""
-    import math
+def test_score_raises_when_no_part_answers_the_outputs_together():
+    """Declarations pass; the subject refuses at session start; score() raises, no pass."""
     import brainscore
     extractor = _CountingExtractor()     # cannot record while a reply runs
     replies = []
     model = BrainScoreModel(identifier='toy-reply', extractor={'text': extractor},
                             region_layer_map={'IT': 'late'},
                             reply=lambda prompt: replies.append(prompt) or 'cat')
-    loads = []
 
     class _Benchmark:
         identifier = 'toy-reply-and-record'
@@ -236,14 +234,12 @@ def test_score_returns_na_when_no_part_answers_the_outputs_together():
         requested_output_channels = frozenset({'behavior:choice', 'neural:IT'})
 
         def __call__(self, subject):
-            loads.append('data')         # the benchmark's own preparation runs
             task = TaskContext(instruction='Cat or dog?', response=Choice(['cat', 'dog']))
             subject.participate(stimulus_session(STIMULI, sorted(self.requested_output_channels), task))
             raise AssertionError('the session must not run')
 
-    result = brainscore.score(model, _Benchmark(), check_mem=False)
-    assert math.isnan(float(result)) and result.attrs['status'] == 'N/A'
-    assert 'no one part of it answers' in result.attrs['reason']
-    assert result.attrs['missing_channels'] == ['behavior:choice', 'neural:IT']
-    assert result.attrs['model_identifier'] == 'toy-reply'
-    assert loads == ['data'] and replies == [] and extractor.calls == 0
+    with pytest.raises(CompatibilityError, match="task type 'choice'.*no one part of it answers"
+                       ".*passed the declared compatibility check") as caught:
+        brainscore.score(model, _Benchmark(), check_mem=False)
+    assert caught.value.channels == {'behavior:choice', 'neural:IT'}
+    assert replies == [] and extractor.calls == 0

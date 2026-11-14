@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from ._model.behavioral import BehavioralReadout
+from brainscore_core.compatibility import CompatibilityError
 from brainscore_core.contract import UnifiedModel, TaskContext
 from ._model import dispatch
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
@@ -293,14 +294,13 @@ class BrainScoreModel(UnifiedModel):
     def check_session_support(self, channels):
         """The one capability that runs a session requesting ``channels``.
 
-        This is the support step of scoring (rule 5.7); ``participate`` runs it
-        when a session starts. Raises before any input is consumed:
-        ``CompatibilityError`` (the pair is N/A; ``score()`` returns the N/A
-        result) when no capability claims the combination, naming the outputs
-        the subject does not produce; ``ValueError`` when more than one claims it at
+        ``participate`` runs it when a session starts. Raises before any input
+        is consumed: ``CompatibilityError`` when no capability claims the
+        combination, naming the outputs the subject does not produce (inside
+        ``score()`` this is an error of the run, not N/A: the declarations did
+        not express the limit); ``ValueError when more than one claims it at
         the same priority.
         """
-        from brainscore_core.compatibility import CompatibilityError
         channels = frozenset(channels)
         if not channels:
             raise ValueError('A session must request at least one output channel.')
@@ -316,7 +316,10 @@ class BrainScoreModel(UnifiedModel):
                 f"Subject {self.identifier!r} cannot answer {sorted(channels)} in one session: "
                 + (f"it does not produce {missing}" if missing
                    else 'no one part of it answers these outputs together')
-                + f"; out_channels: {sorted(self.out_channels)}.{hint}",
+                + f"; out_channels: {sorted(self.out_channels)}.{hint}"
+                + ' The pair passed the declared compatibility check, so this limit is not'
+                ' expressed in the declarations of the subject or the benchmark; the session'
+                ' was refused and there is no result.',
                 channels=missing or channels)
         first = min(c.order for c in claims)
         winners = [c for c in claims if c.order == first]
@@ -413,7 +416,14 @@ class BrainScoreModel(UnifiedModel):
         plan = regions_per_pass()
         with _one_session_at_a_time(self):
             self._regions_per_pass = plan
-            handler = self.check_session_support(session_outputs(session))
+            try:
+                handler = self.check_session_support(session_outputs(session))
+            except CompatibilityError as error:
+                task = getattr(session, 'task', None)
+                raise CompatibilityError(
+                    f"Session refused (task type "
+                    f"{getattr(task, 'task_type', None) if task is not None else 'none'!r}): {error}",
+                    channels=error.channels) from error
             from .capabilities.registry import _setup_once
             _setup_once(self, handler)
             # A task the session configures ends with the session (rule 4.5).

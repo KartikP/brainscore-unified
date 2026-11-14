@@ -768,8 +768,8 @@ def test_an_experiment_and_a_benchmark_agree_on_which_pairs_fit(declares_control
         assert protocol.describe()['compatibility'] == \
             check_compatibility(Remembers(), benchmark).as_attrs()
     else:
-        # Trial history without control fails both ways (the old protocol rule let it pass).
-        with pytest.raises(CompatibilityError, match='control'):
+        # Trial history without control is a malformed subject declaration, both ways.
+        with pytest.raises(ValueError, match='control'):
             check_compatibility(Remembers(), benchmark)
-        with pytest.raises(CompatibilityError, match='control'):
+        with pytest.raises(ValueError, match='control'):
             protocol.validate(Remembers())

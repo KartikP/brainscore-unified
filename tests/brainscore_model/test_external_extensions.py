@@ -78,8 +78,7 @@ def test_external_modality_routes_without_host_modification():
                          columns=['image_path'])
 
 
-def test_a_support_refusal_at_session_start_is_not_applicable_before_compute():
-    import math
+def test_a_support_refusal_at_session_start_is_an_error_of_the_run():
     import brainscore
     from brainscore_core.compatibility import check_channel_compatibility, CompatibilityError
     from brainscore_core.streaming import Session
@@ -99,8 +98,7 @@ def test_a_support_refusal_at_session_start_is_not_applicable_before_compute():
     def refuse(channels):
         raise CompatibilityError('no driver', channels=channels)
     model.check_session_support = refuse
-    result = brainscore.score(model, _Benchmark(), check_mem=False)
-    assert math.isnan(float(result)) and result.attrs['status'] == 'N/A'
-    assert result.attrs['reason'] == 'no driver'
-    assert result.attrs['missing_channels'] == ['motor']
+    with pytest.raises(CompatibilityError, match=r"Session refused \(task type 'none'\): no driver") as caught:
+        brainscore.score(model, _Benchmark(), check_mem=False)
+    assert caught.value.channels == {'motor'}
     assert steps == []

@@ -84,7 +84,7 @@ def test_compatible_pair_score_is_unchanged():
     assert result.attrs['compatibility']['match'] == 'full'
 
 
-# ── N/A only before compute (the run's sessions are watched) ─────────────────
+# ── N/A only from the declaration check; a refusal during the run is an error ─
 
 import numpy as np
 
@@ -134,22 +134,16 @@ class _TextBenchmark:
         return self.run(subject)
 
 
-def test_a_task_no_part_answers_is_na_with_zero_compute_without_the_memory_probe():
+@pytest.mark.parametrize('check_mem', [False, True])
+def test_a_refusal_at_session_start_is_an_error_not_na(check_mem):
+    # The pair passes the declared check; the subject then refuses the task. There
+    # is no result, and the error says the declarations do not express the limit.
     model, extractor = _recording_model()
     benchmark = _TextBenchmark(lambda s: s.participate(stimulus_session(STIMULI, ['neural:IT'], CHOICE)))
-    result = brainscore.score(model, benchmark, check_mem=False)
-    assert result.attrs['status'] == 'N/A' and 'Choice' in result.attrs['reason']
-    assert extractor.calls == 0
-
-
-def test_with_the_memory_probe_only_the_probe_computes_before_the_na():
-    # The residual: the task is known only inside the benchmark, so the probe
-    # (one stimulus) runs before the first session refuses. The result is N/A.
-    model, extractor = _recording_model()
-    benchmark = _TextBenchmark(lambda s: s.participate(stimulus_session(STIMULI, ['neural:IT'], CHOICE)))
-    result = brainscore.score(model, benchmark, check_mem=True)
-    assert result.attrs['status'] == 'N/A'
-    assert extractor.calls == 1          # the memory probe, one stimulus
+    with pytest.raises(CompatibilityError, match='Choice'):
+        brainscore.score(model, benchmark, check_mem=check_mem)
+    if not check_mem:
+        assert extractor.calls == 0
 
 
 def test_a_later_session_that_refuses_is_an_error():
@@ -158,19 +152,18 @@ def test_a_later_session_that_refuses_is_an_error():
     def run(subject):
         subject.participate(stimulus_session(STIMULI, ['neural:IT']))
         subject.participate(stimulus_session(STIMULI, ['neural:IT'], CHOICE))
-    with pytest.raises(RuntimeError, match=r"after the run computed.*\['neural:IT'\]") as caught:
+    with pytest.raises(CompatibilityError):
         brainscore.score(model, _TextBenchmark(run), check_mem=False)
-    assert isinstance(caught.value.__cause__, CompatibilityError)
     assert extractor.calls == 1
 
 
-def test_a_compatibility_error_from_the_metric_after_responses_is_an_error():
+def test_a_compatibility_error_from_the_metric_is_an_error():
     model, _ = _recording_model()
 
     def run(subject):
         subject.participate(stimulus_session(STIMULI, ['neural:IT']))
         raise CompatibilityError('metric cannot compare these responses')
-    with pytest.raises(RuntimeError, match='after the run computed'):
+    with pytest.raises(CompatibilityError, match='metric cannot compare'):
         brainscore.score(model, _TextBenchmark(run), check_mem=False)
 
 
@@ -191,7 +184,7 @@ class _Lesionable(Subject):
         pass
 
 
-def test_an_intervention_left_active_before_a_refusal_is_an_error():
+def test_a_refusal_after_an_intervention_is_an_error():
     from brainscore_core.events import Perturbation, Selection, StateChange
 
     class _Benchmark:
@@ -204,7 +197,7 @@ def test_an_intervention_left_active_before_a_refusal_is_an_error():
                                  perturbation=Perturbation(kind='zero'))
             subject.participate(Session([StreamEvent('lesion', change, 0.0)], ['perturbation']))
             raise CompatibilityError('cannot answer the next session')
-    with pytest.raises(RuntimeError, match=r"\['h1'\] are still active"):
+    with pytest.raises(CompatibilityError, match='cannot answer the next session'):
         brainscore.score(_Lesionable(), _Benchmark(), check_mem=False)
 
 
@@ -242,9 +235,9 @@ def test_an_inconsistent_output_inputs_raises():
         brainscore.score(subject, _Benchmark(), check_mem=False)
 
 
-# ── Support refusals of the legacy paths are N/A through brainscore.score ────
+# ── Refusals of the legacy paths during the run are errors ───────────────────
 
-def test_a_neural_only_subject_on_a_legacy_behavioral_task_is_na():
+def test_a_neural_only_subject_on_a_legacy_behavioral_task_is_an_error():
     from brainscore_core.legacy_facade import mark_legacy_benchmark
     subject = _Recorder({'text'}, {'neural:language_network'})
 
@@ -255,12 +248,13 @@ def test_a_neural_only_subject_on_a_legacy_behavioral_task_is_na():
         def __call__(self, candidate):
             candidate.start_behavioral_task('reading_times')
             candidate.digest_text(['the', 'cat'])
-    result = brainscore.score(subject, mark_legacy_benchmark(_Legacy()), check_mem=False)
-    assert result.attrs['status'] == 'N/A' and result.attrs['missing_channels'] == ['behavior']
+    with pytest.raises(CompatibilityError, match="declares no 'behavior' output") as caught:
+        brainscore.score(subject, mark_legacy_benchmark(_Legacy()), check_mem=False)
+    assert caught.value.channels == {'behavior'}
     assert subject.calls == []
 
 
-def test_a_legacy_vision_model_asked_for_behavior_and_a_region_together_is_na():
+def test_a_legacy_vision_model_asked_for_behavior_and_a_region_together_is_an_error():
     from unittest.mock import MagicMock, PropertyMock
     from brainscore_vision.compat.unified_adapter import VisionModelAdapter
     legacy = MagicMock()
@@ -277,7 +271,16 @@ def test_a_legacy_vision_model_asked_for_behavior_and_a_region_together_is_na():
 
         def __call__(self, subject):
             subject.participate(stimulus_session(images, ['behavior', 'neural:IT']))
-    result = brainscore.score(VisionModelAdapter(legacy), _Joint(), check_mem=False)
-    assert result.attrs['status'] == 'N/A'
-    assert result.attrs['missing_channels'] == ['behavior', 'neural:IT']
+    with pytest.raises(CompatibilityError, match='passed the declared compatibility check') as caught:
+        brainscore.score(VisionModelAdapter(legacy), _Joint(), check_mem=False)
+    assert caught.value.channels == {'behavior', 'neural:IT'}
     legacy.look_at.assert_not_called()
+
+
+def test_a_defect_hidden_behind_a_mismatch_still_raises():
+    class _Listing(_Recorder):
+        output_inputs = {'behavior': frozenset({'audio'})}   # an input it does not declare
+    subject = _Listing({'vision:image'}, {'behavior'})       # and no neural:IT: a mismatch too
+    with pytest.raises(ValueError, match='output_inputs'):
+        brainscore.score(subject, _Benchmark(), check_mem=False)
+    assert subject.calls == []
