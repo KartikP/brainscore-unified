@@ -8,6 +8,7 @@ import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.contract import TaskContext
+from tests.fixed_order import owned
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore.selection import CompositeSelector, LayerSelector
@@ -77,7 +78,8 @@ def _model(net, region_map=None, replies=True):
                 for i, c in enumerate(candidates)}
     return BrainScoreModel('toy', extractor={'text': Recordable(net)},
                            region_layer_map=region_map or {'A': LayerSelector('early', modality='text')},
-                           reply=reply if replies else None, likelihood=likelihood)
+                           reply=reply if replies else None, likelihood=likelihood,
+                           **owned('likelihood', *(['reply'] if replies else [])))
 
 
 def _run(model, task, channels, streaming=False):

@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
+from tests.fixed_order import owned
 from dataclasses import replace
 
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
@@ -102,7 +103,8 @@ def _model(net, extractor_type=ToyExtractor, **kwargs):
     return BrainScoreModel(identifier='toy', extractor={'text': extractor_type(net)},
                            region_layer_map={'A': LayerSelector('early', modality='text'),
                                              'B': LayerSelector('late', modality='text')},
-                           answer=answer, intervention=intervention, **kwargs)
+                           answer=answer, intervention=intervention, **kwargs,
+                           **owned('answer', *kwargs))
 
 
 def _run(model, task, channels):

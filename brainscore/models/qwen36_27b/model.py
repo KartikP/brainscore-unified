@@ -166,5 +166,9 @@ def get_model(identifier: str) -> BrainScoreModel:
         reply=reply,
         likelihood=likelihood,
         behavioral_readout_layer=REGION_LAYER_MAP['IT'],
+        # Several parts can give these answers; each output names the part that answers it.
+        capability_config={'behavior-sessions': {
+            'behavior': 'generation', 'behavior:choice': 'generation',
+            'behavior:probabilities': 'likelihood', 'behavior:rating': 'generation'}},
         intervention=build_pytorch_ablation_fn(_tower_root(visual, language_model)),
     )

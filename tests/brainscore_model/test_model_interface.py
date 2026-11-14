@@ -2,6 +2,7 @@ import pytest
 import warnings
 
 from brainscore import BrainScoreModel, UnitSelector, LayerSelector
+from tests.fixed_order import owned
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 
@@ -426,6 +427,7 @@ class TestBehavioralPathDispatch:
             extractor={'vision': make_stub_extractor()},
             behavioral_readout_layer='layer4' if has_readout else None,
             **answer,
+            **owned(*answer, *(['behavioral_readout_layer'] if has_readout else [])),
         )
 
     def _fitting_stub(self):
@@ -467,13 +469,11 @@ class TestBehavioralPathDispatch:
             warnings.simplefilter('error', UserWarning)
             m.start_task(ctx)
 
-    def test_dual_path_warning_with_readout_layer(self):
-        m = self._make_dual_path_model()
-        ctx = TaskContext(task_type='probabilities', label_set=['real', 'pseudo'],
-                          instruction="Is this real?",
-                          fitting_stimuli=self._fitting_stub())
-        with pytest.warns(UserWarning, match='Both generation and fitted readout'):
-            m.start_task(ctx)
+    def test_two_paths_without_a_stated_owner_are_refused_at_construction(self):
+        with pytest.raises(ValueError, match="'generation', 'readout'.*'behavior'"):
+            BrainScoreModel(identifier='dual-path-model', region_layer_map={'IT': 'layer4'},
+                            extractor={'vision': make_stub_extractor()}, behavioral_readout_layer='layer4',
+                            answer=lambda stim_row, instruction, label_set: label_set[0])
 
 
 # -- BrainScoreModel state tests ---------------------------------------------

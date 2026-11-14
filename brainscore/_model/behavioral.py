@@ -51,6 +51,9 @@ class BehavioralReadout:
         # task can reuse it after a session gave the caller's task back.
         # Dropped when the model changes or is reset.
         self._remembered: Optional[Dict[str, Any]] = None
+        # The part that owns each answer output several parts can give (rule 4.11),
+        # stated at registration and checked by ``answer_owners``.
+        self.owners: Dict[str, str] = {}
         self._changes = 0   # counts invalidations, so a session can see one happen
         self._resets = 0    # counts resets, so a session does not undo one
 
@@ -314,15 +317,28 @@ class BehavioralReadout:
 
     _PATHS = ('generation', 'likelihood', 'readout')
 
+    def _select(self, output, can) -> Optional[str]:
+        """The part that gives ``output`` for this task, from the parts that can (``can``).
+
+        One part that can: that part. Several: the owner stated at registration
+        (``answer_owners``). The fixed order generation, likelihood, readout
+        stays only for a case no registered model reaches: the stated owner
+        cannot serve this task and two or more other parts can.
+        """
+        eligible = [p for p in self._PATHS if can.get(p)]
+        if len(eligible) == 1 or self.owners.get(output) not in eligible:
+            return next(iter(eligible), None)
+        return self.owners[output]
+
     def _choose_path(self, task) -> Tuple[str, Optional[str]]:
         """The part that answers ``task`` and the source of implied probabilities, before any compute.
 
-        The first part that can answer, in the order generation, likelihood,
-        readout. Which parts exist is a property of the model: a model meant to
-        answer through its readout is built without ``answer``/``reply``. A
-        legacy task (``task_type`` with ``label_set``) is answered by
-        ``answer=`` (with an instruction and labels) or by the readout (with
-        fitting stimuli).
+        A part is eligible for an output when it is wired and can serve the
+        task's settings (``can`` below). One eligible part answers; several
+        answer through the owner the registration states for the output
+        (rule 4.11, ``answer_owners``). A legacy task (``task_type`` with
+        ``label_set``) answers on ``behavior``, through ``answer=`` (with an
+        instruction and labels) or the readout (with fitting stimuli).
 
         A task that no part of the model can answer raises
         ``ExecutionNotFeasibleError`` before any compute. Sessions refuse with
@@ -341,21 +357,13 @@ class BehavioralReadout:
             needs = {'generation': 'answer=, TaskContext.instruction and TaskContext.label_set',
                      'likelihood': 'a TaskContext(response=Choice(...)); a legacy task has no likelihood path',
                      'readout': 'TaskContext.fitting_stimuli (and behavioral_readout_layer=)'}
-            path = next((p for p in order if can[p]), None)
+            path = self._select('behavior', can)
             if path is None:
                 raise ExecutionNotFeasibleError(
                     f"Subject '{owner.identifier}' cannot run the behavioral task "
                     f"task_type={task.task_type!r}. Paths tried: "
                     + '; '.join(f'{p} needs {needs[p]}' for p in order),
                     task_type=task.task_type)
-            if path == 'generation' and can['readout']:
-                import warnings
-                warnings.warn(
-                    'Both generation and fitted readout are available; '
-                    'the answer function answers and the readout is not fitted on '
-                    'fitting_stimuli. To answer through the readout, build the '
-                    'model without answer=.',
-                    UserWarning, stacklevel=4)
             return path, None
         readout_wired = readout_wired and task.fitting_stimuli is not None
         reported_confidence = isinstance(response, Choice) and response.confidence is not None
@@ -376,7 +384,7 @@ class BehavioralReadout:
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
                         and not reported_confidence and not raw_scores and not per_row),
         }
-        path = next((p for p in order if can[p]), None)
+        path = self._select(response.channels[0], can)
         if path is None:
             needs = {'generation': 'reply= (or answer= for a plain Choice)',
                      'likelihood': 'likelihood= and a Choice without reported confidence',
@@ -389,11 +397,12 @@ class BehavioralReadout:
         source = None
         if isinstance(response, Choice) and (response.probabilities or response.reaction_time
                                              or response.raw_scores):
-            if path != 'readout' and owner._likelihood is not None:
-                source = 'likelihood'
-            elif readout_wired and not per_row:
-                source = 'readout'
-            else:
+            # A likelihood or readout answer gives its own probabilities; a generated
+            # answer takes them from either part.
+            source = self._select('behavior:probabilities', {
+                'likelihood': path != 'readout' and owner._likelihood is not None,
+                'readout': path != 'likelihood' and readout_wired and not per_row})
+            if source is None:
                 raise ExecutionNotFeasibleError(
                     f"Subject '{owner.identifier}' cannot give implied probabilities: "
                     'it needs likelihood= or a readout (behavioral_readout_layer=, '
@@ -630,6 +639,65 @@ class BehavioralReadout:
                 neural[region] = neural[region].assign_attrs(
                     recording=self._stamp('readout', 'readout extraction'))
         return behavior, neural
+
+
+def answer_parts(subject) -> Dict[str, set]:
+    """The answer outputs each wired part can give (rule 2.4), keyed by part.
+
+    ``generation`` is ``answer=`` and ``reply=``; ``readout`` is
+    ``behavioral_readout_layer=``. ``behavior`` is the answer to a legacy task.
+    """
+    parts: Dict[str, set] = {}
+    if subject._answer is not None:
+        parts.setdefault('generation', set()).update({'behavior', 'behavior:choice'})
+    if subject._reply is not None:
+        parts.setdefault('generation', set()).update(
+            {'behavior:choice', 'behavior:rating', 'behavior:confidence', 'behavior:text'})
+    if subject._likelihood is not None:
+        parts['likelihood'] = {'behavior:choice', 'behavior:probabilities', 'behavior:rt'}
+    if subject._behavioral_readout_layer is not None:
+        parts['readout'] = {'behavior', 'behavior:choice', 'behavior:probabilities',
+                            'behavior:rating', 'behavior:rt'}
+    return parts
+
+
+# behavior:rt is computed from the probabilities, so their owner gives it.
+_FOLLOWS = {'behavior:rt': 'behavior:probabilities'}
+
+
+def answer_owners(subject, stated) -> Dict[str, str]:
+    """Check the stated owner of each answer output at construction (rule 4.11).
+
+    ``stated`` maps an output channel to a part (``generation``, ``likelihood``,
+    ``readout``); it is ``capability_config['behavior-sessions']``. An output
+    that one wired part can give needs no owner. An output that several parts
+    can give needs one; without it, or with an owner that cannot give the
+    output, construction fails.
+    """
+    stated = dict(stated or {})
+    parts = answer_parts(subject)
+    if not subject._extractors:
+        parts.pop('readout', None)   # a readout layer without an extractor never answers
+    outputs = set().union(*parts.values()) - set(_FOLLOWS)
+    for output in sorted(set(stated) - outputs):
+        raise ValueError(
+            f"Subject '{subject.identifier}': capability_config['behavior-sessions'] names "
+            f"an owner for {output!r}, which is not an answer output of the subject"
+            + (f'; it follows {_FOLLOWS[output]!r}' if output in _FOLLOWS else '')
+            + f'. Answer outputs: {sorted(outputs)}.')
+    for output in sorted(outputs):
+        eligible = [part for part in BehavioralReadout._PATHS if output in parts.get(part, ())]
+        owner = stated.get(output)
+        if owner is not None and owner not in eligible:
+            raise ValueError(
+                f"Subject '{subject.identifier}': the owner {owner!r} stated for {output!r} "
+                f"cannot give it; the parts that can are {eligible}.")
+        if owner is None and len(eligible) > 1:
+            raise ValueError(
+                f"Subject '{subject.identifier}': the parts {eligible} can all give "
+                f"{output!r}. State the owner: BrainScoreModel(..., capability_config="
+                f"{{'behavior-sessions': {{{output!r}: <one of {eligible}>}}}}).")
+    return stated
 
 
 def _fitted_intact(task) -> bool:

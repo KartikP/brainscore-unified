@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
+from tests.fixed_order import owned
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Text
@@ -52,7 +53,8 @@ def _model(calls, **parts):
         return {'cat': -1.0, 'dog': -2.0} if prompt.stimulus_id != 'b' else {'cat': -3.0, 'dog': -0.5}
     chosen = {'answer': answer, 'reply': reply, 'likelihood': likelihood}
     return BrainScoreModel('paths', extractor={'text': _features}, behavioral_readout_layer='late',
-                           **{name: chosen[name] for name in parts})
+                           **{name: chosen[name] for name in parts},
+                           **owned('behavioral_readout_layer', *parts))
 
 
 def _run(model, outputs, task):
@@ -83,11 +85,13 @@ def test_a_legacy_task_with_an_answer_part_calls_it_once_per_stimulus_and_keeps_
     assert answer.attrs['measure'] == {'kind': 'reported', 'source': 'answer'}
 
 
-def test_a_legacy_task_prefers_the_answer_and_warns_when_a_readout_could_fit():
+def test_a_legacy_task_goes_to_the_stated_owner_without_a_warning():
     calls = []
     model = _model(calls, answer=True)
-    with pytest.warns(UserWarning, match='Both generation and fitted readout'):
+    with pytest.warns(UserWarning) as notices:
         session = _run(model, ['behavior'], TaskContext(**LEGACY, fitting_stimuli=FITTING))
+    # Only the invalid answer 'neither' is reported; two parts are no warning (rule 4.11).
+    assert all('neither' in str(notice.message) for notice in notices)
     assert [call[0] for call in calls] == ['answer'] * 3
     assert session.collect('behavior').attrs['measure'] == {'kind': 'reported', 'source': 'answer'}
 
@@ -105,7 +109,7 @@ def test_a_legacy_task_streamed_gives_one_event_per_trial():
     calls = []
     model = _model(calls, answer=True)
     session = stimulus_session(STIMULI, ['behavior'], TaskContext(**LEGACY), streaming=True)
-    with pytest.warns(UserWarning):
+    with pytest.warns(UserWarning, match="answer function returned 'neither'"):
         model.participate(session)
     assert [dict(e.meta) for e in session.emitted] == [
         {'driver': 'interact_streaming', 'task_type': 'probabilities', 'trial_index': i, 'streaming': True}

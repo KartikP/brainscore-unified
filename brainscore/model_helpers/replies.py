@@ -1,7 +1,8 @@
 """``reply`` and ``likelihood`` parts for a Hugging Face chat model (text, image or video).
 
     reply, likelihood = chat_parts(model, processor, chat_template_kwargs={'enable_thinking': False})
-    BrainScoreModel(..., reply=reply, likelihood=likelihood)
+    BrainScoreModel(..., reply=reply, likelihood=likelihood,
+                    capability_config={'behavior-sessions': {'behavior:choice': 'generation'}})
 
 Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
 (instruction, stimulus parts, the response's directive). They are shown as one

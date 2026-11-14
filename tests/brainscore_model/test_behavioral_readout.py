@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from brainscore import BrainScoreModel
+from tests.fixed_order import owned
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.streaming_helpers import behavioral_response
@@ -220,6 +221,7 @@ class TestBrainScoreModelGenerationPath:
             extractor={'vision': extractor},
             behavioral_readout_layer='some_layer',
             answer=lambda **kw: 'cat',  # shouldn't be called
+            **owned('answer', 'behavioral_readout_layer'),
         )
         fitting = _make_image_stimulus_set(['cat'] * 3 + ['dog'] * 3,
                                             identifier='gen_fit')

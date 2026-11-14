@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel, CompositeSelector, LayerSelector
+from tests.fixed_order import owned
 from brainscore_core import TaskContext
 from brainscore_core.assembly_builder import concat_neuroid_assemblies
 from brainscore_core.streaming_helpers import stimulus_session
@@ -151,7 +152,8 @@ def task_model(net, extractor_type, regions):
         net.forward(stimulus_row['stimulus_id'], prompt=instruction)
         return label_set[0]
     return BrainScoreModel('task-layers', extractor={'text': extractor_type(net)}, region_layer_map=regions,
-                           behavioral_readout_layer='late', answer=answer)
+                           behavioral_readout_layer='late', answer=answer,
+                           **owned('behavioral_readout_layer', 'answer'))
 
 
 READOUT = TaskContext(task_type='probabilities', label_set=['cat', 'dog'], fitting_stimuli=STIMULI)

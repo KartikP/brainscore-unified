@@ -7,7 +7,7 @@ from types import MappingProxyType
 from collections.abc import Mapping
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Union
 
-from ._model.behavioral import BehavioralReadout
+from ._model.behavioral import BehavioralReadout, answer_owners
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import UnifiedModel, TaskContext
 from ._model import dispatch
@@ -177,9 +177,14 @@ class BrainScoreModel(UnifiedModel):
             each one is declared by an extractor or by ``in_channels``.
         :param visual_degrees: the visual field legacy vision benchmarks place
             stimuli in; ignored by other benchmarks.
-        :param capability_config: settings for added capabilities, keyed by the
+        :param capability_config: settings for capabilities, keyed by the
             capability identifier; a capability reads it as
-            ``subject.capability_config``.
+            ``subject.capability_config``. Under ``'behavior-sessions'``: the
+            part that owns each answer output several parts can give, for
+            example ``{'behavior:choice': 'generation', 'behavior:probabilities':
+            'likelihood'}`` (parts: ``generation`` is ``answer``/``reply``,
+            ``likelihood``, ``readout``). An output only one part can give needs
+            no owner; one several parts can give and no owner is refused here.
         """
         if memory not in (None, 'trial_history'):
             raise ValueError("memory must be None or 'trial_history'")
@@ -205,6 +210,8 @@ class BrainScoreModel(UnifiedModel):
 
         self._recorder = Recorder(self)
         self._behavioral = BehavioralReadout(self)
+        self._behavioral.owners = answer_owners(
+            self, self._capability_config.get('behavior-sessions'))
         self._interventions = Interventions(self)
         self._shared_calls = None       # set by dispatch.one_call_per_extractor
         self._regions_per_pass = 'all'  # the session's BRAINSCORE_REGIONS_PER_PASS, read in participate

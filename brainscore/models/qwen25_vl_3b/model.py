@@ -228,6 +228,10 @@ def get_model(identifier: str) -> Subject:
         # Also enable the readout path so Qwen can be compared on the same
         # behavioral benchmark both ways. Uses the same vision layer as 'IT'.
         behavioral_readout_layer='blocks.28',
+        # Several parts can give these answers; each output names the part that answers it.
+        capability_config={'behavior-sessions': {
+            'behavior': 'generation', 'behavior:choice': 'generation',
+            'behavior:probabilities': 'likelihood', 'behavior:rating': 'generation'}},
         **variant_kwargs,
     )
     if not bf16:

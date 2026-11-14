@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
+from tests.fixed_order import owned
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Text
@@ -40,7 +41,7 @@ def _build(kind, folder, **parts):
     chosen = {'reply': reply, 'policy': policy}
     wired = {name: chosen[name] if value is True else value for name, value in parts.items()}
     model = BrainScoreModel(f'tiny-{kind}', extractor={tiny_wrappers.MODALITY[kind]: wrapper},
-                            region_layer_map={REGION: regions[REGION]}, **wired)
+                            region_layer_map={REGION: regions[REGION]}, **wired, **owned(*wired))
     return model, stimuli
 
 
@@ -180,7 +181,7 @@ def test_a_region_that_cannot_record_during_the_answer_is_refused_before_compute
     network.register_forward_pre_hook(lambda module, args: passes.append(1))
     model = BrainScoreModel('plain-audio', extractor={'audio': _Plain(wrapper)},
                             region_layer_map={REGION: regions[REGION]}, behavioral_readout_layer='head',
-                            reply=lambda prompt: 'yes')
+                            reply=lambda prompt: 'yes', **owned('reply', 'behavioral_readout_layer'))
     task = TaskContext(instruction='Is it there?', response=Choice(['yes', 'no']))
     with pytest.raises(ExecutionNotFeasibleError, match='cannot record'):
         model.participate(stimulus_session(stimuli, channels, task=task))
