@@ -177,8 +177,10 @@ class Intervene(Tool):
             return
         subject = context.experiment.subject
         applied = apply_state_change(subject, self.change)
-        context.publish('intervention', {'handle_id': applied.handle_id}, source=self.name)
         try:
+            # Once the change is applied its undo is certain, even when a
+            # subscriber of the publish raises.
+            context.publish('intervention', {'handle_id': applied.handle_id}, source=self.name)
             yield
         finally:
             apply_state_change(subject, StateChange(kind='reset', handle_id=applied.handle_id))

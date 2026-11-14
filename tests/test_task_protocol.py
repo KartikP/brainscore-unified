@@ -773,3 +773,32 @@ def test_an_experiment_and_a_benchmark_agree_on_which_pairs_fit(declares_control
             check_compatibility(Remembers(), benchmark)
         with pytest.raises(ValueError, match='control'):
             protocol.validate(Remembers())
+
+
+def test_intervention_is_undone_when_its_publish_raises(tmp_path):
+    """A subscriber that raises at the intervention publish must not skip the undo."""
+    from types import SimpleNamespace
+    from brainscore.experiments.runner import RunContext
+
+    undone = []
+
+    def intervention(change):
+        return (PerturbationApplied(handle_id='h-publish', target=change.target,
+                                    perturbation=change.perturbation),
+                lambda: undone.append('h-publish'))
+
+    subject = BrainScoreModel('publish-raises', intervention=intervention)
+    tool = Intervene(StateChange(kind='lesion', target=Selection('x'),
+                                 perturbation=Perturbation(kind='zero')))
+    context = RunContext(SimpleNamespace(run_directory=tmp_path, tools=[tool], subject=subject),
+                         {'artifacts': []})
+
+    def recorder(envelope):                      # for example a recorder over its byte budget
+        if envelope['kind'] == 'intervention':
+            raise RuntimeError('recording budget exceeded')
+
+    with context.subscribe(recorder), pytest.raises(RuntimeError, match='budget'):
+        with context.repetition(0):
+            pass
+    assert undone == ['h-publish']
+    assert subject._interventions.active_interventions == {}
