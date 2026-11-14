@@ -134,8 +134,10 @@ def _answers(subject: Subject, context, stimuli, mode: str, repetition: int) -> 
     answers = session.collect(channel)
     if 'choice' not in getattr(answers, 'dims', ()):
         raise TypeError(f'EWoK {mode} requires one row of option values per question')
-    if mode == 'logprobs' and answers.attrs.get('measure', {}).get('scale') != 'log':
-        raise ValueError('EWoK log-probability mode requires raw log scores (measure scale "log")')
+    record = answers.attrs.get('response') or {}
+    if mode == 'logprobs' and (record.get('parameters') or {}).get('scale') != 'log':
+        raise ValueError('EWoK log-probability mode requires raw log scores '
+                         '(response record parameter scale "log")')
     requested = list(stimuli['stimulus_id'])
     order = {stimulus_id: row for row, stimulus_id in
              enumerate(response_stimulus_ids(answers, requested))}
@@ -285,7 +287,7 @@ class EWoKBenchmark(BenchmarkBase):
             return adapter_score(
                 self, value, metric='accuracy', context=context,
                 input_adaptation=_CHOICE_NOTE if self._mode == 'choice' else _LOGPROBS_NOTE,
-                protocol=self._mode,
+                mode=self._mode,
                 aggregation='mean of within-version mean accuracies',
                 version_scores=versions, domain_scores=domains,
                 items=len(scored), questions=2 * len(scored),

@@ -70,15 +70,15 @@ model.reset()
 print(choices.values.tolist())   # [[1.0, 0.0], [1.0, 0.0]]: 'real' for both words
 ```
 
-## Reported and implied
+## How an answer was given
 
-A **reported** answer is the model's reply, parsed. An **implied** measure is read from the model's internals by a stated link, as Futrell2018 reads reading times from surprisal. Every result says which it is in `attrs['measure']`.
+Every answer carries a response record in `attrs['response']`, and every score copies the records of its answers. The record says the format (the channel), the category (`behavioral` or `model-derived`), the origin (`native`, or `derived` by a conversion or a link), the method (`generation`, `likelihood`, `readout`, `link`), the conversion (`argmax`, `softmax`, `softmax_argmax` or none), the source format of a derived answer, the conversion's parameters (for example the tie rule `first`) and who parsed generated text (`parsed_by`). The conversions are core functions in `brainscore_core.response_formats`. A choice from a readout is the `argmax` of its probabilities; a choice from a likelihood part is `softmax_argmax` of the options' log probabilities.
 
 | Path | How | Gives | Model needs |
 | --- | --- | --- | --- |
-| **Generation** | the model replies to the instruction; the response parses it | choice, rating, confidence, text (reported) | `reply` (or `answer` for a plain choice) |
-| **Likelihood** | the model scores each label as its reply, without generating | choice, probabilities (implied) | `likelihood` |
-| **Readout** | a classifier or ridge regression on one layer, fitted on `fitting_stimuli` | choice, probabilities, rating (implied) | `behavioral_readout_layer` and an extractor |
+| **Generation** | the model replies to the instruction; the response parses it | choice, rating, confidence, text | `reply` (or `answer` for a plain choice) |
+| **Likelihood** | the model scores each label as its reply, without generating | choice (`softmax_argmax`), probabilities (`softmax`) | `likelihood` |
+| **Readout** | a classifier or ridge regression on one layer, fitted on `fitting_stimuli` | choice (`argmax`), probabilities, rating | `behavioral_readout_layer` and an extractor |
 
 Which path answers is a property of the model, not of the task. When only one of its paths can give an answer, that path gives it. When several can give the same answer (for example a reply and a likelihood both give a choice), the registration states which one owns it, per answer channel:
 
@@ -105,9 +105,9 @@ owned.participate(legacy)
 choice = stimulus_session(test_stimuli, ['behavior:choice', 'behavior:probabilities'], TaskContext(
     instruction='Is this a real word?', response=Choice(['real', 'pseudo'], probabilities=True)))
 owned.participate(choice)
-print(legacy.collect('behavior').attrs['measure']['source'],          # answer
-      choice.collect('behavior:choice').attrs['measure']['source'],   # reply
-      choice.collect('behavior:probabilities').attrs['measure']['source'])   # likelihood
+print(legacy.collect('behavior').attrs['response']['method'],          # generation (answer)
+      choice.collect('behavior:choice').attrs['response']['method'],   # generation (reply)
+      choice.collect('behavior:probabilities').attrs['response']['method'])   # likelihood
 ```
 
 Bare `behavior` is the answer channel of a legacy task; `behavior:choice` is the choice of a `Choice` response. They are different channels, and neither is shorthand for the other: a model whose answer and readout parts can both answer a legacy task states an owner for `behavior` as well. A model with several paths for one answer and no stated owner is refused when it is built. The owner answers its channel. When a task form excludes the owner (for example raw scores, which only the likelihood gives, or a legacy task without an instruction, which only the readout can answer) and exactly one other path can serve it, that path answers; when two or more paths that do not own the channel could serve it, the session is refused before any compute. A choice from the likelihood with probabilities from the readout (or the reverse) cannot come from one session and is refused; the choice alone still runs. To compare paths, build one model for each with only the parts of that path (for example the same network without `answer` and `reply`, so it answers through its readout). A readout asks what information a layer holds; generation asks what the model does when asked.
@@ -128,7 +128,7 @@ BrainScoreModel(..., reply=reply, likelihood=likelihood,
 
 **A part obeys the task or stops.** A `reply` or `likelihood` part reads the task from `prompt.response`. It obeys each setting the task gives (the generation settings of `Text`, `raw_text`, `raw_scores` and the options) or stops with an error; it never ignores a setting. For example, the Claude reply part raises `ValueError` for a temperature other than 1.0, for `top_p` and for `seed`, because the Anthropic API cannot obey them.
 
-**Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged. The same chooser picks the path for them: `answer` (with `instruction` and `label_set`), then the readout (with `fitting_stimuli`). The answer keeps its older form: one-hot rows over `label_set`, where only an exact label counts (`attrs['measure']['source']` is `'answer'`), or the readout's probabilities. A behavioral answer comes only from a session (`behavioral_response`, `stimulus_session` and `participate`); `process()` does not answer a task.
+**Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged. The same chooser picks the path for them: `answer` (with `instruction` and `label_set`), then the readout (with `fitting_stimuli`). The answer keeps its older form: one-hot rows over `label_set`, where only an exact label counts (`attrs['response']['method']` is `'generation'`), or the readout's probabilities. A behavioral answer comes only from a session (`behavioral_response`, `stimulus_session` and `participate`); `process()` does not answer a task.
 
 ## Hosted models
 

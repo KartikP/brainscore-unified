@@ -57,7 +57,7 @@ CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], proba
 def test_one_part_is_selected_without_a_statement():
     calls = []
     choice = _run(_model('likelihood', calls=calls), ['behavior:choice'], CHOICE).collect('behavior:choice')
-    assert choice.attrs['measure']['source'] == 'likelihood' and set(calls) == {'likelihood'}
+    assert choice.attrs['response']['method'] == 'likelihood' and set(calls) == {'likelihood'}
 
 
 def test_two_parts_without_an_owner_are_refused_at_construction():
@@ -70,7 +70,7 @@ def test_two_parts_with_a_stated_owner_answer_through_the_owner():
     calls = []
     model = _model('reply', 'likelihood', owners={'behavior:choice': 'likelihood'}, calls=calls)
     choice = _run(model, ['behavior:choice'], CHOICE).collect('behavior:choice')
-    assert choice.attrs['measure']['source'] == 'likelihood' and 'reply' not in calls
+    assert choice.attrs['response']['method'] == 'likelihood' and 'reply' not in calls
 
 
 @pytest.mark.parametrize('probabilities', ['likelihood', 'readout'])
@@ -81,8 +81,8 @@ def test_each_output_has_its_own_owner(probabilities):
         'behavior:choice': 'generation', 'behavior:rating': 'generation',
         'behavior:probabilities': probabilities})
     session = _run(model, ['behavior:choice', 'behavior:probabilities'], CHOICE)
-    assert session.collect('behavior:choice').attrs['measure']['source'] == 'reply'
-    assert session.collect('behavior:probabilities').attrs['measure']['source'] == probabilities
+    assert session.collect('behavior:choice').attrs['response']['method'] == 'generation'
+    assert session.collect('behavior:probabilities').attrs['response']['method'] == probabilities
     text = _run(model, ['behavior:text'], TaskContext(instruction='Say it.', response=Text()))
     assert text.collect('behavior:text').values.tolist() == ['cat'] * len(STIMULI)
 
@@ -133,7 +133,7 @@ def test_a_choice_alone_answers_through_its_own_owner(owners):
     model = _model('likelihood', 'behavioral_readout_layer', owners=CROSS[owners], calls=calls)
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     choice = _run(model, ['behavior:choice'], task).collect('behavior:choice')
-    assert choice.attrs['measure']['source'] == CROSS[owners]['behavior:choice']
+    assert choice.attrs['response']['method'] == CROSS[owners]['behavior:choice']
 
 
 @pytest.mark.parametrize('settings', [{'probabilities': True}, {'reaction_time': 'surprisal'}],
@@ -148,8 +148,11 @@ def test_a_generated_choice_takes_probabilities_from_their_owner(probabilities, 
                        fitting_stimuli=FITTING)
     channel = 'behavior:probabilities' if 'probabilities' in settings else 'behavior:rt'
     session = _run(model, ['behavior:choice', channel], task)
-    assert session.collect('behavior:choice').attrs['measure']['source'] == 'reply'
-    assert session.collect(channel).attrs['measure']['source'] == probabilities
+    assert session.collect('behavior:choice').attrs['response']['method'] == 'generation'
+    record = session.collect(channel).attrs['response']
+    # A reaction time is a link from the probabilities; its record names their method.
+    assert (record['parameters']['source_method'] if channel == 'behavior:rt'
+            else record['method']) == probabilities
     assert ('likelihood' in calls) == (probabilities == 'likelihood')
 
 
@@ -195,7 +198,7 @@ def test_the_one_part_that_serves_a_task_form_answers_for_a_registered_model(cas
     owners = fixed_order_owners(*parts)
     assert owners[outputs[0]] != source                  # not the owner of the output
     session = _run(_model(*parts, owners=owners), outputs, task)
-    assert session.collect(outputs[0]).attrs['measure']['source'] == source
+    assert session.collect(outputs[0]).attrs['response']['method'] == source
 
 
 # --- finding 3: parity with the base commit ----------------------------------
@@ -276,15 +279,12 @@ def test_registered_part_sets_emit_the_sources_the_base_commit_chose(parts, sess
     path, source = case['outcome']
     # A legacy task is answered by answer=; a response task by reply= when wired.
     generator = 'reply' if 'reply' in parts and task.response is not None else 'answer'
-    expected = generator if path == 'generation' else path
     session = _run(model, outputs, task)
     answer = session.collect(outputs[0])
-    if task.response is None and path == 'readout':
-        assert answer.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
-    else:
-        assert answer.attrs['measure']['source'] == expected
+    # Both answer= and reply= are the generation method; `calls` below names the part.
+    assert answer.attrs['response']['method'] == path
     if source is not None:
-        assert session.collect('behavior:probabilities').attrs['measure']['source'] == source
+        assert session.collect('behavior:probabilities').attrs['response']['method'] == source
     called = {'likelihood': 'likelihood', 'readout': 'extract', 'generation': generator}
     assert called[path] in calls
     for part in {'answer', 'reply', 'likelihood'} - {called[path], called.get(source)}:

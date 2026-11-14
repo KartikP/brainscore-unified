@@ -368,7 +368,6 @@ def score(model_identifier, benchmark_identifier,
     from brainscore_core.memory import check_memory
     from brainscore_core.score_status import na_score
     from brainscore_core.score_metadata import (
-        infer_score_protocol,
         requested_output_channels_for_score,
         stamp_score_metadata,
     )
@@ -434,8 +433,6 @@ def score(model_identifier, benchmark_identifier,
         result,
         subject,
         requested_channels=requested_channels,
-        protocol=infer_score_protocol(subject, benchmark, requested_channels,
-                                      measures=measures),
         harness_id='brainscore',
         measures=measures,
     )

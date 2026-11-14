@@ -1,11 +1,12 @@
 """TaskContext(response=...): choices, confidence, ratings and written answers.
 
-Reported answers come from a reply and are parsed by the response; implied
-measures come from a likelihood part or a readout. Each result says which.
+Answers come from a reply (parsed by the response), a likelihood part or a
+readout. Each answer's response record says which.
 """
 import numpy as np
 import pytest
 
+from brainscore_core.response_formats import response_record
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 
 from brainscore.brainscore_model import BrainScoreModel
@@ -61,7 +62,7 @@ def test_choice_reply_is_parsed_and_invalid_replies_are_kept_as_invalid():
     assert np.isnan(choice.values[2:]).all()
     assert list(choice['answer_valid'].values) == [True, True, False, False]
     assert list(choice['raw_answer'].values) == ['Cat', 'a dog.', 'cat or dog', 'bird']
-    assert choice.attrs['measure'] == {'kind': 'reported', 'source': 'reply'}
+    assert choice.attrs['response'] == response_record('behavior:choice', 'generation', parsed_by='model')
     assert prompts[0] == 'Which animal?\n\nw\n\nAnswer with exactly one of: cat, dog.'
 
 
@@ -87,7 +88,7 @@ def test_rating_from_a_reply_and_from_a_readout():
     task = TaskContext(response=Scale(1, 7), fitting_stimuli=fitting)
     predicted = _ask(readout, task, ['behavior:rating']).collect('behavior:rating')
     np.testing.assert_allclose(predicted.values, [6, 2, 6, 2], atol=0.5)
-    assert predicted.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
+    assert predicted.attrs['response'] == response_record('behavior:rating', 'readout')
 
 
 def test_written_answers_are_kept_as_written():
@@ -107,7 +108,9 @@ def test_likelihood_gives_a_choice_and_its_implied_probabilities():
     probabilities = session.collect('behavior:probabilities')
     np.testing.assert_allclose(probabilities.values[0], [1 / (1 + np.exp(-2)), 1 - 1 / (1 + np.exp(-2))],
                                rtol=1e-6)
-    assert probabilities.attrs['measure'] == {'kind': 'implied', 'source': 'likelihood'}
+    assert probabilities.attrs['response'] == response_record(
+        'behavior:probabilities', 'likelihood', conversion='softmax',
+        source_format='behavior:log_probabilities')
     np.testing.assert_array_equal(session.collect('behavior:choice').values.argmax(1), [0, 1, 0, 1])
 
 
@@ -200,7 +203,9 @@ def test_implied_reaction_times_rise_for_close_calls(link):
     model, _ = _model(scores=scores)
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], reaction_time=link))
     rt = _ask(model, task, ['behavior:rt']).collect('behavior:rt')
-    assert rt.attrs['measure'] == {'kind': 'implied', 'link': link, 'source': 'likelihood'}
+    assert rt.attrs['response'] == response_record(
+        'behavior:rt', 'link', source_format='behavior:probabilities',
+        parameters={'link': link, 'source_method': 'likelihood'})
     fast, slow = rt.values[0], rt.values[3]                   # a clear call, a near tie
     assert slow > fast
 

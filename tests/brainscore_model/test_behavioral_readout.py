@@ -91,7 +91,7 @@ class TestBrainScoreModelBehavioral:
         assert result.shape == (6, 2)
         # Sums to 1
         assert np.allclose(result.values.sum(axis=1), 1.0, atol=1e-6)
-        assert result.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
+        assert result.attrs['response']['method'] == 'readout'
 
     def test_choice_keeps_the_first_seen_order_of_the_fitting_labels(self):
         labels = ['z', 'a', 'z', 'm', 'a', 'z', 'm', 'a', 'z']
@@ -232,7 +232,7 @@ class TestBrainScoreModelGenerationPath:
             # no instruction
         ))
         # The answer part takes keywords only, so a call would raise.
-        assert result.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
+        assert result.attrs['response']['method'] == 'readout'
 
     def test_error_when_no_path_viable(self, scored_stimuli):
         """TaskContext with no fitting_stimuli, no answer function, no

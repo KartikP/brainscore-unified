@@ -668,7 +668,8 @@ def test_options_that_differ_for_each_row_reach_each_part():
     # Raw scores, as the part gave them, in the order of each row's options.
     np.testing.assert_array_equal(scores.values, [[-0.25, 0.5], [0.5, -0.25]])
     assert list(scores['choice'].values) == [0, 1]
-    assert scores.attrs['measure'] == {'kind': 'implied', 'source': 'likelihood', 'scale': 'log'}
+    from brainscore_core.response_formats import response_record
+    assert scores.attrs['response'] == response_record('behavior:probabilities', 'likelihood', category='model-derived', parameters={'scale': 'log'})
     np.testing.assert_array_equal(session.collect('behavior:choice').values, [[0, 1], [1, 0]])
     assert seen == [('likelihood', (('text', 'the cat'),), ('sat', 'ran')),
                     ('likelihood', (('text', 'the dog'),), ('kind', 'mean'))]

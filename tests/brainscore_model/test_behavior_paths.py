@@ -13,6 +13,7 @@ import pytest
 
 from brainscore import BrainScoreModel
 from tests.fixed_order import owned
+from brainscore_core.response_formats import response_record
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Text
@@ -82,7 +83,7 @@ def test_a_legacy_task_with_an_answer_part_calls_it_once_per_stimulus_and_keeps_
     assert list(answer.indexes['presentation'].names) == [
         'stimulus_id', 'sentence', 'label', 'raw_answer', 'answer_valid']
     assert list(answer['raw_answer'].values) == ['cat', 'dog', 'neither']
-    assert answer.attrs['measure'] == {'kind': 'reported', 'source': 'answer'}
+    assert answer.attrs['response'] == response_record('behavior', 'generation', parsed_by='model')
 
 
 def test_a_legacy_task_goes_to_the_stated_owner_without_a_warning():
@@ -93,7 +94,7 @@ def test_a_legacy_task_goes_to_the_stated_owner_without_a_warning():
     # Only the invalid answer 'neither' is reported; two parts are no warning (rule 4.11).
     assert all('neither' in str(notice.message) for notice in notices)
     assert [call[0] for call in calls] == ['answer'] * 3
-    assert session.collect('behavior').attrs['measure'] == {'kind': 'reported', 'source': 'answer'}
+    assert session.collect('behavior').attrs['response']['method'] == 'generation'
 
 
 def test_a_legacy_task_on_a_model_built_without_an_answer_part_is_read_out():
@@ -101,7 +102,7 @@ def test_a_legacy_task_on_a_model_built_without_an_answer_part_is_read_out():
     model = _model(calls)
     answer = _run(model, ['behavior'], TaskContext(**LEGACY, fitting_stimuli=FITTING)).collect('behavior')
     assert calls == []
-    assert answer.attrs['measure'] == {'kind': 'implied', 'source': 'readout'}
+    assert answer.attrs['response'] == response_record('behavior', 'readout')
     assert answer.values.argmax(1).tolist() == [0, 1, 0]
 
 
@@ -134,7 +135,7 @@ def test_a_choice_goes_to_the_reply_part_with_the_full_prompt():
                   ).collect('behavior:choice')
     assert calls[0] == ('reply', 'a', 'Which animal?\n\nreal x\n\nAnswer with exactly one of: cat, dog.')
     assert [c[0] for c in calls] == ['reply'] * 3
-    assert choice.attrs['measure'] == {'kind': 'reported', 'source': 'reply'}
+    assert choice.attrs['response'] == response_record('behavior:choice', 'generation', parsed_by='model')
 
 
 def test_a_plain_choice_without_a_reply_part_goes_to_the_answer_part():
@@ -144,7 +145,7 @@ def test_a_plain_choice_without_a_reply_part_goes_to_the_answer_part():
                   TaskContext(instruction='Which animal?', response=Choice(['cat', 'dog']))
                   ).collect('behavior:choice')
     assert calls == [('answer', sid, 'Which animal?', ['cat', 'dog']) for sid in 'abc']
-    assert choice.attrs['measure'] == {'kind': 'reported', 'source': 'answer'}
+    assert choice.attrs['response'] == response_record('behavior:choice', 'generation', parsed_by='model')
     assert list(choice['answer_valid'].values) == [True, True, False]
 
 
@@ -154,8 +155,9 @@ def test_probabilities_next_to_a_reply_come_from_the_likelihood_part_first():
     session = _run(model, ['behavior:choice', 'behavior:probabilities'],
                    TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True)))
     assert [c[0] for c in calls] == ['likelihood', 'reply'] * 3
-    assert session.collect('behavior:probabilities').attrs['measure'] == {
-        'kind': 'implied', 'source': 'likelihood'}
+    assert session.collect('behavior:probabilities').attrs['response'] == response_record(
+        'behavior:probabilities', 'likelihood', conversion='softmax',
+        source_format='behavior:log_probabilities')
 
 
 def test_text_settings_reach_the_reply_part_and_extra_data_reaches_the_event():

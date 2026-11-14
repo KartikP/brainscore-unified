@@ -15,6 +15,7 @@ from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
 
 from brainscore_core.contract import TaskContext
+from brainscore_core.response_formats import argmax, response_record, softmax, softmax_argmax
 from brainscore_core.streaming import StreamEvent
 
 import numpy as np
@@ -22,6 +23,16 @@ import numpy as np
 from . import answers
 from .dispatch import detect_modalities, extract_for_modality, pick_modality, record
 from .recording import gather_region, per_stimulus, region_modality, region_selector
+
+
+# A likelihood part gives each option's summed log probability: the continuation
+# log-probability format (Response Format Standard, F6; no channel yet).
+LOG_PROBABILITIES = 'behavior:log_probabilities'
+
+
+def _softmax_record():
+    return response_record('behavior:probabilities', 'likelihood', conversion='softmax',
+                           source_format=LOG_PROBABILITIES)
 
 
 class BehavioralReadout:
@@ -313,7 +324,8 @@ class BehavioralReadout:
     def predict_probabilities(self, stimuli):
         """Return a BehavioralAssembly of per-label probabilities."""
         features = self.extract_behavioral_features(stimuli)
-        return answers.implied(self.readout_classifier.predict_proba(features), 'readout')
+        return answers.with_record(self.readout_classifier.predict_proba(features),
+                                   response_record('behavior', 'readout'))
 
     _PATHS = ('generation', 'likelihood', 'readout')
 
@@ -463,14 +475,22 @@ class BehavioralReadout:
         if path == 'readout':
             values, neural = self._read_out_and_record(stimuli, layers, raw=True)
             if isinstance(response, Scale):
-                outputs['behavior:rating'] = answers.numbers(values, stimuli, 'readout')
+                outputs['behavior:rating'] = answers.numbers(
+                    values, stimuli, response_record('behavior:rating', 'readout'))
             else:
+                # The readout's own column order, as before: ties go to its first column.
+                indices, chose = argmax(np.asarray(values.values))
+                options = values['choice'].values
                 outputs['behavior:choice'] = answers.one_hot(
-                    [str(values['choice'].values[i]) for i in np.asarray(values.values).argmax(1)],
-                    [True] * len(stimuli), stimuli, row_labels, axis, 'readout', raw=None)
+                    [str(options[i]) if ok else None for i, ok in zip(indices, chose)],
+                    list(chose), stimuli, row_labels, axis, response_record(
+                        'behavior:choice', 'readout', conversion='argmax',
+                        source_format='behavior:probabilities',
+                        parameters={'tie': 'first', 'option_order': 'readout'}))
                 if self.probability_source == 'readout':
-                    outputs['behavior:probabilities'] = answers.implied(
-                        answers.in_order(values, labels), 'readout')
+                    outputs['behavior:probabilities'] = answers.with_record(
+                        answers.in_order(values, labels),
+                        response_record('behavior:probabilities', 'readout'))
         else:
             score_first = path == 'generation' and self.probability_source == 'likelihood'
             remember = owner._memory == 'trial_history'
@@ -507,44 +527,56 @@ class BehavioralReadout:
                 replies, scores, extras = (list(column) for column in zip(*replies)) if replies else ([], [], [])
             if path == 'likelihood':
                 logp = answers.score_rows(replies, row_labels)
-                probabilities = answers.softmax(logp)
-                chosen = [options[i] for options, i in zip(row_labels, probabilities.argmax(1))]
-                outputs['behavior:choice'] = answers.one_hot(chosen, [True] * len(stimuli), stimuli,
-                                                             row_labels, axis, 'likelihood', raw=None)
+                indices, chose = softmax_argmax(logp)
+                chosen = [options[i] if ok else None
+                          for options, i, ok in zip(row_labels, indices, chose)]
+                outputs['behavior:choice'] = answers.one_hot(
+                    chosen, list(chose), stimuli, row_labels, axis, response_record(
+                        'behavior:choice', 'likelihood', conversion='softmax_argmax',
+                        source_format=LOG_PROBABILITIES))
                 if response.raw_scores:
                     outputs['behavior:probabilities'] = answers.implied_array(
-                        logp, stimuli, axis, 'likelihood', scale='log')
+                        logp, stimuli, axis, response_record(
+                            'behavior:probabilities', 'likelihood', category='model-derived',
+                            parameters={'scale': 'log'}))
                 elif self.probability_source == 'likelihood':
                     outputs['behavior:probabilities'] = answers.implied_array(
-                        probabilities, stimuli, axis, 'likelihood')
+                        softmax(logp), stimuli, axis, _softmax_record())
             elif isinstance(response, Text):
                 parsed = [response.parse(reply) for reply in replies]
                 outputs['behavior:text'] = answers.texts(parsed, replies, stimuli)
             elif isinstance(response, Scale):
                 parsed = [response.parse(reply) for reply in replies]
-                outputs['behavior:rating'] = answers.numbers(parsed, stimuli, 'reply', raw=replies)
+                outputs['behavior:rating'] = answers.numbers(
+                    parsed, stimuli, response_record('behavior:rating', 'generation',
+                                                     parsed_by='model'), raw=replies)
             else:
                 parsed = [prompt.response.parse(str(reply)) for prompt, reply in zip(prompts, replies)]
-                source = 'reply' if owner._reply is not None else 'answer'
                 outputs['behavior:choice'] = answers.one_hot(
                     [label for label, _ in parsed], [label is not None for label, _ in parsed],
-                    stimuli, row_labels, axis, source, raw=[str(r) for r in replies],
-                    errors=[error for _, error in parsed])
+                    stimuli, row_labels, axis,
+                    response_record('behavior:choice', 'generation', parsed_by='model'),
+                    raw=replies, errors=[error for _, error in parsed])
                 if response.confidence is not None:
                     outputs['behavior:confidence'] = answers.numbers(
                         [response.parse_confidence(reply) for reply in replies], stimuli,
-                        'reply', raw=replies)
+                        response_record('behavior:confidence', 'generation', parsed_by='model'),
+                        raw=replies)
                 if score_first:
                     outputs['behavior:probabilities'] = answers.implied_array(
-                        answers.softmax(answers.score_rows(scores, row_labels)), stimuli, axis, 'likelihood')
+                        softmax(answers.score_rows(scores, row_labels)), stimuli, axis,
+                        _softmax_record())
                 elif self.probability_source == 'readout':
-                    outputs['behavior:probabilities'] = answers.implied(answers.in_order(
+                    outputs['behavior:probabilities'] = answers.with_record(answers.in_order(
                         self.readout_classifier.predict_proba(self.extract_behavioral_features(stimuli)),
-                        labels), 'readout')
+                        labels), response_record('behavior:probabilities', 'readout'))
         if isinstance(response, Choice) and response.reaction_time:
             outputs['behavior:rt'] = answers.reaction_time(outputs['behavior:probabilities'],
                                                            response.reaction_time, stimuli)
-        outputs['behavior'] = outputs[response.channels[0]]
+        # The bare channel carries the same answer; its record names that channel.
+        first = outputs[response.channels[0]]
+        outputs['behavior'] = answers.with_record(first, {**first.attrs['response'],
+                                                          'format': 'behavior'})
         meta = answers.trials_meta(extras)
         if meta:
             # The reply's extra data goes into the meta of its answer event, as a
@@ -647,7 +679,8 @@ class BehavioralReadout:
         if raw and isinstance(self.task.response, Scale):
             behavior = [(float(v), None) for v in self.readout_classifier.predict(features)]
         else:
-            behavior = answers.implied(self.readout_classifier.predict_proba(features), 'readout')
+            behavior = answers.with_record(self.readout_classifier.predict_proba(features),
+                                           response_record('behavior', 'readout'))
         neural = {}
         for region, region_layers in layers.items():
             per_layer = [part_of[region](layer) for layer in region_layers]

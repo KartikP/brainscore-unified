@@ -4,11 +4,14 @@
 readout values); the functions here package them: one-hot choices, ratings,
 texts, implied probabilities and reaction times, and a legacy task's one-hot
 rows over ``label_set``. An answer that cannot be read is kept with
-``answer_valid=False`` (a NaN row for a choice or a number, rule 6.2).
+``answer_valid=False`` (a NaN row for a choice or a number, rule 6.2). Every
+answer carries its response record in ``attrs['response']``
+(``brainscore_core.response_formats``).
 """
 
 import numpy as np
 
+from brainscore_core.response_formats import response_record
 from brainscore_core.streaming import StreamEvent
 
 
@@ -46,7 +49,8 @@ def legacy_one_hot(answers, label_set, stimuli):
     coords['answer_valid'] = ('presentation', valid)
     return BehavioralAssembly(proba, coords={**coords, 'choice': label_set},
                               dims=['presentation', 'choice'],
-                              attrs={'measure': {'kind': 'reported', 'source': 'answer'}})
+                              attrs={'response': response_record('behavior', 'generation',
+                                                                 parsed_by='model')})
 
 
 def _presentation(stimuli):
@@ -60,11 +64,13 @@ def _presentation(stimuli):
                        for value in stimuli[column].values)}
 
 
-def one_hot(chosen, valid, stimuli, row_labels, axis, source, raw=None, errors=None):
+def one_hot(chosen, valid, stimuli, row_labels, axis, record, raw=None, errors=None):
     """One row per stimulus, 1 for the chosen label; invalid rows are NaN (rule 6.2).
 
     ``row_labels`` are each row's options; ``axis`` names the choice axis (the
     labels, or option positions when the options differ for each row).
+    ``record`` is the answer's response record. Without ``raw`` the raw
+    response is the chosen label (empty when there is none).
     """
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     values = np.zeros((len(stimuli), len(axis)), dtype=np.float32)
@@ -75,15 +81,15 @@ def one_hot(chosen, valid, stimuli, row_labels, axis, source, raw=None, errors=N
             values[i] = np.nan
     coords = {**_presentation(stimuli), 'choice': list(axis),
               'answer_valid': ('presentation', list(valid)),
-              'raw_answer': ('presentation', [str(r) for r in (raw or chosen)])}
+              'raw_answer': ('presentation', [str(r) for r in raw] if raw is not None
+                             else ['' if c is None else str(c) for c in chosen])}
     if errors is not None:
         coords['parse_error'] = ('presentation', [e or '' for e in errors])
     return BehavioralAssembly(values, coords=coords, dims=['presentation', 'choice'],
-                              attrs={'measure': {'kind': 'reported' if source in ('reply', 'answer')
-                                                 else 'implied', 'source': source}})
+                              attrs={'response': record})
 
 
-def numbers(parsed, stimuli, source, raw=None):
+def numbers(parsed, stimuli, record, raw=None):
     """One number per stimulus (a rating or a confidence); invalid ones are NaN."""
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     values = np.array([np.nan if v is None else v for v, _ in parsed], dtype=float)
@@ -93,8 +99,7 @@ def numbers(parsed, stimuli, source, raw=None):
     if raw is not None:
         coords['raw_answer'] = ('presentation', [str(r) for r in raw])
     return BehavioralAssembly(values, coords=coords, dims=['presentation'],
-                              attrs={'measure': {'kind': 'reported' if source == 'reply'
-                                                 else 'implied', 'source': source}})
+                              attrs={'response': record})
 
 
 def reply_and_meta(reply):
@@ -123,7 +128,7 @@ def texts(parsed, replies, stimuli):
     coords = {**_presentation(stimuli),
               'answer_valid': ('presentation', [v is not None for v, _ in parsed])}
     return BehavioralAssembly(values, coords=coords, dims=['presentation'],
-                              attrs={'measure': {'kind': 'reported', 'source': 'reply'}})
+                              attrs={'response': response_record('behavior:text', 'generation')})
 
 
 def reaction_time(probabilities, link, stimuli):
@@ -135,9 +140,11 @@ def reaction_time(probabilities, link, stimuli):
         rt = 1.0 - (ordered[:, 0] - ordered[:, 1])
     else:                                         # surprisal of the chosen (most probable) label
         rt = -np.log2(np.clip(ordered[:, 0], 1e-12, 1.0))
+    source = probabilities.attrs['response']
     return BehavioralAssembly(rt, dims=['presentation'], coords=_presentation(stimuli),
-                              attrs={'measure': {'kind': 'implied', 'link': link,
-                                                 'source': probabilities.attrs.get('measure', {}).get('source')}})
+                              attrs={'response': response_record(
+                                  'behavior:rt', 'link', source_format=source['format'],
+                                  parameters={'link': link, 'source_method': source['method']})})
 
 
 def score_rows(scores, row_labels):
@@ -146,21 +153,13 @@ def score_rows(scores, row_labels):
                      for row, options in zip(scores, row_labels)], dtype=float)
 
 
-def softmax(logp):
-    logp = logp - logp.max(axis=1, keepdims=True)
-    p = np.exp(logp)
-    return p / p.sum(axis=1, keepdims=True)
-
-
-def implied_array(values, stimuli, axis, source, scale=None):
-    """Implied values per option. Raw scores (``scale='log'``) keep full precision."""
+def implied_array(values, stimuli, axis, record):
+    """Values per option. Raw scores (record parameter ``scale='log'``) keep full precision."""
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-    measure = {'kind': 'implied', 'source': source}
-    if scale is not None:
-        measure['scale'] = scale
-    return BehavioralAssembly(values if scale is not None else values.astype(np.float32),
+    log_scale = record['parameters'].get('scale') == 'log'
+    return BehavioralAssembly(values if log_scale else values.astype(np.float32),
                               coords={**_presentation(stimuli), 'choice': list(axis)},
-                              dims=['presentation', 'choice'], attrs={'measure': measure})
+                              dims=['presentation', 'choice'], attrs={'response': record})
 
 
 def in_order(assembly, labels):
@@ -169,5 +168,6 @@ def in_order(assembly, labels):
     return assembly.sel(choice=present) if len(present) == assembly.sizes['choice'] else assembly
 
 
-def implied(assembly, source):
-    return assembly.assign_attrs(measure={'kind': 'implied', 'source': source})
+def with_record(assembly, record):
+    """``assembly`` with ``record`` as its response record."""
+    return assembly.assign_attrs(response=record)

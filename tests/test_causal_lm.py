@@ -63,7 +63,8 @@ def _scores(model, contexts, targets, raw_text=True):
     session = stimulus_session(stimuli, ['behavior:probabilities'], task)
     model.participate(session)
     scores = session.collect('behavior:probabilities')
-    assert scores.attrs['measure'] == {'kind': 'implied', 'source': 'likelihood', 'scale': 'log'}
+    from brainscore_core.response_formats import response_record
+    assert scores.attrs['response'] == response_record('behavior:probabilities', 'likelihood', category='model-derived', parameters={'scale': 'log'})
     return [float(v) for v in scores.values[:, 0]]
 
 

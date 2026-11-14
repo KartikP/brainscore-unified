@@ -106,7 +106,7 @@ def test_a_reply_with_implied_probabilities_records_the_prompt_pass():
     session = _run(_model(net), task, ['behavior:choice', 'behavior:probabilities', 'neural:A'])
     expected = [Net().forward(_prompt_text(s))['early'] for s in ('x', 'yy', 'zzz')]
     np.testing.assert_array_equal(session.collect('neural:A').values, expected)
-    assert session.collect('behavior:probabilities').attrs['measure']['source'] == 'likelihood'
+    assert session.collect('behavior:probabilities').attrs['response']['method'] == 'likelihood'
 
 
 def test_a_composite_region_records_its_chosen_units():

@@ -404,6 +404,7 @@ class _ParticipateOnlyReader(Subject):
     def participate(self, session):
         from brainscore_core.streaming import StreamEvent
         from brainscore_core.responses import Prompt
+        from brainscore_core.response_formats import response_record
         from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
         self.sessions += 1
         assert tuple(session.outputs) == ('behavior:probabilities',)
@@ -414,7 +415,9 @@ class _ParticipateOnlyReader(Subject):
                 [[scores[option] for option in options]],
                 coords={'stimulus_id': ('presentation', [event.meta['stimulus_id']]),
                         'choice': [0, 1]}, dims=['presentation', 'choice'],
-                attrs={'measure': {'kind': 'implied', 'source': 'likelihood', 'scale': self.scale}}),
+                attrs={'response': response_record(
+                    'behavior:probabilities', 'likelihood', parameters={'scale': self.scale},
+                    category='model-derived' if self.scale == 'log' else 'behavioral')}),
                 event.t_ms, dict(event.meta)))
 
     def reset(self):
@@ -433,6 +436,7 @@ class _ParticipateOnlyChooser(Subject):
     def participate(self, session):
         from brainscore_core.streaming import StreamEvent
         from brainscore_core.responses import Prompt
+        from brainscore_core.response_formats import response_record
         from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
         self.sessions += 1
         assert tuple(session.outputs) == ('behavior:choice',)
@@ -561,7 +565,7 @@ def test_logprobs_match_the_removed_request_path_on_the_same_model(tiny_lm, word
                                TaskContext(response=_TASKS['logprobs'][0]))
     model.participate(session)
     new = session.collect('behavior:probabilities')
-    assert new.attrs['measure']['scale'] == 'log'
+    assert new.attrs['response']['parameters']['scale'] == 'log'
     # Old path: the requests the old benchmark sent, (target, context) pairs, eight items each.
     old = {}
     for target in (1, 2):
