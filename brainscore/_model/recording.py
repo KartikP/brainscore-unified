@@ -106,6 +106,7 @@ def open_recordings(owner, stimuli, layers):
     groups: Dict[tuple, Tuple[object, List[str], List[str]]] = {}
     for region, region_layers in layers.items():
         modality = region_modality(owner, region)
+        # The key keeps the modality: a fused extractor under two modalities stays two groups.
         extractor = extractor_for(owner, modality, stimuli, region_layers)
         _, group_layers, regions = groups.setdefault((modality, id(extractor)), (extractor, [], []))
         group_layers.extend(layer for layer in region_layers if layer not in group_layers)
@@ -129,13 +130,13 @@ def per_stimulus(owner, stimuli, layers, call, prompts=None):
     recordings = open_recordings(owner, stimuli, layers)
     replies, trials = [], []
     with ExitStack() as stack:
-        live = {m: stack.enter_context(r) for m, r in recordings.items()}
+        live = {regions: stack.enter_context(r) for regions, r in recordings.items()}
         for index, (_, row) in enumerate(stimuli.iterrows()):
             replies.append(call(row, None if prompts is None else prompts[index]))
-            trials.append({m: recording.take(row) for m, recording in live.items()})
-            for m, taken in trials[-1].items():
+            trials.append({regions: recording.take(row) for regions, recording in live.items()})
+            for regions, taken in trials[-1].items():
                 for layer, trial in taken.items():
-                    _same_axes(trials[0][m].get(layer), trial)
+                    _same_axes(trials[0][regions].get(layer), trial)
     return replies, trial_regions(owner, trials, stimuli, layers)
 
 
