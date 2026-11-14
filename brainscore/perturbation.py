@@ -3,6 +3,8 @@
 Lives in ``unified`` (not ``core``) because it depends on ``torch``.
 :func:`build_pytorch_ablation_fn` turns a torch module into an intervention
 part that installs a forward hook to zero, scale or drive units at a layer.
+A parameter edit (``kind='weights'``) also takes ``'replace'``; attention
+heads take ``'zero'``, ``'scale'``, ``'drive'`` or ``'replace'``.
 The hook is installed when the subject receives the intervention and removed
 when the intervention is undone by its handle, or by ``reset()``. Each change
 also has an on/off switch, so a readout can be fitted on the intact network
@@ -53,6 +55,10 @@ from brainscore_core.events import Perturbation, PerturbationApplied, Selection,
 # network, and its handle and cleanup stay the same.
 _SWITCHES = weakref.WeakKeyDictionary()
 
+# The kinds an activation change takes, and the kinds a head change takes.
+_ACTIVATION_KINDS = ('zero', 'scale', 'drive')
+_HEAD_KINDS = ('zero', 'scale', 'drive', 'replace')
+
 
 def _hooked(module, hook, site: str) -> Callable[[], None]:
     """Install ``hook`` on ``module`` behind a switch; return its cleanup.
@@ -99,7 +105,9 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
       gives back that value exactly.
     - ``kind='attention_heads'``: silence or scale heads of an attention module
       (``target.layer``; ``indices`` are head numbers) by editing each head's
-      slice of the input to its output projection.
+      slice of the input to its output projection. Heads take the kinds
+      ``'zero'``, ``'scale'``, ``'drive'`` and ``'replace'``; ``'replace'``
+      needs ``perturbation.replacement``.
 
     For ``kind='ablation'`` (the canonical case), the hook is installed on
     the layer named by ``state_change.target.layer``. The layer path is
@@ -183,7 +191,9 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                     return torch.zeros_like(tensor)
                 elif kind == 'scale':
                     return tensor * scale
-                return tensor + _amount_like(tensor)   # 'drive': the kind is checked at apply
+                elif kind == 'drive':
+                    return tensor + _amount_like(tensor)
+                raise ValueError(f"Unknown perturbation kind {kind!r}")
             # Use the same coordinates as recording; never reinterpret indices.
             # Some devices (MPS) silently ignore out-of-range indices; fail everywhere.
             if max(indices) >= view.shape[axis]:
@@ -199,9 +209,11 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
                 vals = modified.index_select(axis, idx) * scale
                 # in-place scatter back
                 modified.index_copy_(axis, idx, vals)
-            else:   # 'drive': the kind is checked at apply
+            elif kind == 'drive':
                 vals = modified.index_select(axis, idx) + _amount_like(tensor)
                 modified.index_copy_(axis, idx, vals)
+            else:
+                raise ValueError(f"Unknown perturbation kind {kind!r}")
             return modified.reshape(tensor.shape)
 
         return pre_hook if split_site(selection.layer)[1] == 'input' else hook
@@ -306,7 +318,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
     def _change_heads(state_change):
         """Silence or scale attention heads: ``target.layer`` is the attention module,
         ``indices`` the heads. Edits each head's slice of the output projection's input."""
-        if state_change.perturbation.kind not in ('zero', 'scale', 'drive', 'replace'):
+        if state_change.perturbation.kind not in _HEAD_KINDS:
             raise ValueError(
                 f"Perturbation(kind={state_change.perturbation.kind!r}) cannot change attention heads: "
                 "kind='attention_heads' takes 'zero', 'scale', 'drive' or 'replace'.")
@@ -342,7 +354,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         if state_change.kind == 'attention_heads':
             return _change_heads(state_change)
         path, site = split_site(state_change.target.layer)
-        if state_change.perturbation.kind not in ('zero', 'scale', 'drive'):
+        if state_change.perturbation.kind not in _ACTIVATION_KINDS:
             raise ValueError(
                 f"Perturbation(kind={state_change.perturbation.kind!r}) cannot change the activity of "
                 f"{state_change.target.layer!r}: an activation change takes 'zero', 'scale' or 'drive' "

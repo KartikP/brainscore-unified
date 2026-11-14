@@ -409,6 +409,19 @@ class TestKindValidation:
                                                perturbation=Perturbation(kind='noise')))
         assert torch.equal(net(x).detach(), baseline)
 
+    @pytest.mark.parametrize('indices', [None, [0]])
+    def test_a_weights_change_of_an_unknown_kind_raises_at_apply(self, model_with_ablation, indices):
+        bs, net = model_with_ablation
+        x = torch.ones(1, 4)
+        baseline = net(x).detach().clone()
+        weights = net.fc1.weight.detach().clone()
+        with pytest.raises(ValueError, match='Unknown perturbation kind'):
+            apply_state_change(bs, StateChange(
+                kind='weights', target=Selection(layer='fc1.weight', indices=indices),
+                perturbation=Perturbation(kind='noise')))
+        assert torch.equal(net.fc1.weight.detach(), weights)
+        assert torch.equal(net(x).detach(), baseline)
+
 
 def test_perturbation_positional_api_preserved():
     # 'amount' (added for kind='drive') must not shift the (kind, scale,
