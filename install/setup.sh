@@ -144,7 +144,9 @@ conda run --name "$ENV_NAME" python -m pip install \
 echo "Verifying package consistency"
 conda run --name "$ENV_NAME" python -m pip check
 conda run --name "$ENV_NAME" python -c "import brainscore, brainscore_core, brainscore_vision, brainscore_language; print('Brain-Score imports: OK')"
-conda run --name "$ENV_NAME" python -c "from transformers import DynamicCache; assert hasattr(DynamicCache(), 'to_legacy_cache'); print('Transformers cache API: OK')"
+# Check the cache operation the code uses (slice_kv_cache), not one transformers
+# version's method: transformers 5 removed to_legacy_cache, and both are supported.
+conda run --name "$ENV_NAME" python -c "import torch; from transformers import DynamicCache; from brainscore_language.model_helpers.huggingface import slice_kv_cache; cache = DynamicCache(); kv = torch.zeros(1, 1, 3, 2); cache.update(kv, kv, 0); assert slice_kv_cache(cache, 2).get_seq_length() == 2; print('Transformers cache API: OK')"
 conda run --name "$ENV_NAME" python -c "import numpy, sklearn, transformers, xarray; print('numpy', numpy.__version__); print('xarray', xarray.__version__); print('scikit-learn', sklearn.__version__); print('transformers', transformers.__version__)"
 # Same check the user is told to run, so a fresh install is verified by the tool
 # they will actually use rather than by a one-off snippet that can drift from it.
