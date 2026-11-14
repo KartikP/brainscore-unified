@@ -1,7 +1,8 @@
 """The extractor of a region comes from the wiring: the one whose layers include it.
 
-A region names its extractor only when its layer name is in extractors of two
-inputs, or in an extractor that cannot list its layers.
+In a model with several extractor objects, a region names its extractor only
+when its layer name is found in extractors of two input families; an extractor
+that cannot list its layers counts as having every layer.
 """
 import numpy as np
 import pytest

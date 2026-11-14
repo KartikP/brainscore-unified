@@ -323,7 +323,8 @@ def validate_region_layers(owner, selectors) -> None:
 def region_extractor_keys(owner, selector) -> List[str]:
     """The extractor keys a region is recorded from (``dispatch.extractor_keys``
     for its modality and layers). ``output_inputs`` lists the input channel of
-    each, so declarations, pre-flight and the run agree on the forms of a region."""
+    each, so declarations, pre-flight and the run agree on the forms of a region,
+    except when the run takes the fused path (``dispatch.fused_for``)."""
     from .dispatch import extractor_keys
     return extractor_keys(owner, selector.modality, selector.layer_paths)
 

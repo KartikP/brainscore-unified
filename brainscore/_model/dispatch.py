@@ -4,8 +4,9 @@
 table; ``act`` asks the policy for one closed-loop step. A session part calls
 them directly, and so does ``BrainScoreModel.process``; nothing here selects a
 part. The extractor for an input is chosen by ``extractor_keys``, except
-that a table bringing every input of a fused (tuple-key) extractor goes to
-that extractor, chosen by ``fused_for``.
+that when a table brings two or more input types and every one of them is an
+input of a fused (tuple-key) extractor, ``fused_for`` picks that extractor
+for all requested layers (the fused extractor need not get all its inputs).
 """
 
 import os
@@ -51,7 +52,8 @@ def _activation_cache_disabled():
 
 
 def fused_for(owner, detected):
-    """The fused extractor taking every detected input type, if one is registered."""
+    """The first fused extractor whose inputs include every detected input type
+    (two or more detected), if one is registered. Its other inputs may be absent."""
     if len(detected) < 2:
         return None
     for types, extractor in owner._fused_extractors:
@@ -78,8 +80,9 @@ def extractor_keys(owner, modality, layers=(), channels=None) -> List[str]:
     """The extractor keys that can record ``layers`` of ``modality``, best first.
 
     The resolver of declarations, pre-flight and the run, except for a fused
-    extractor: when a table brings every input it takes, ``fused_for`` picks
-    it and it records every requested layer. A key serves
+    extractor: when a table brings two or more input types that are all inputs
+    of a fused extractor, ``fused_for`` picks it for every requested layer, and
+    that choice can differ from this one. A key serves
     ``modality`` when it is of its input family (``vision`` and ``video`` both
     serve ``vision``; every key when ``modality`` is None), and it can record
     when its extractor has all of ``layers`` (an extractor without
