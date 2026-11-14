@@ -139,21 +139,24 @@ def texts(parsed, replies, stimuli):
                               attrs={'response': response_record('behavior:text', 'generation')})
 
 
-def reaction_time(probabilities, link, stimuli):
-    """An implied reaction time per stimulus from label probabilities (larger = slower)."""
+def reaction_time(probabilities, valid, source, link, stimuli):
+    """An implied reaction time per stimulus from label probabilities (larger = slower).
+
+    ``probabilities`` are the float64 rows the link reads, ``valid`` their validity
+    as probability rows (a reaction time from an invalid row is invalid), ``source``
+    their response record. The rows are kept as the source evidence.
+    """
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
-    values = np.asarray(probabilities.values, dtype=float)
+    values = np.asarray(probabilities, dtype=float)
     ordered = np.sort(values, axis=1)[:, ::-1]
     if link == 'evidence_margin':
         rt = 1.0 - (ordered[:, 0] - ordered[:, 1])
     else:                                         # surprisal of the chosen (most probable) label
         rt = -np.log2(np.clip(ordered[:, 0], 1e-12, 1.0))
-    source = probabilities.attrs['response']
-    coords = _presentation(stimuli)
-    try:   # a reaction time from an invalid probability row is invalid too
-        coords['answer_valid'] = ('presentation', [bool(v) for v in probabilities['answer_valid'].values])
-    except KeyError:
-        pass
+    coords = {**_presentation(stimuli),
+              'answer_valid': ('presentation', [bool(v) for v in valid]),
+              'parse_error': ('presentation', conversion_errors(valid)),
+              'raw_answer': ('presentation', source_rows(values))}
     # A link gives a reading-time predictor, not a time in ms: units 'monotone'.
     return BehavioralAssembly(rt, dims=['presentation'], coords=coords,
                               attrs={'response': response_record(
@@ -168,11 +171,12 @@ def score_rows(scores, row_labels):
                      for row, options in zip(scores, row_labels)], dtype=float)
 
 
-def implied_array(values, valid, stimuli, axis, record):
+def implied_array(values, valid, stimuli, axis, record, raw=None):
     """Values per option. Raw scores (record parameter ``scale='log'``) keep full precision.
 
     ``valid`` is the validity of each row a conversion returned (None for raw
-    scores, which core checks itself); an invalid row is marked so.
+    scores, which core checks itself); an invalid row is marked so. ``raw`` is
+    the source evidence of a derived answer (each source row as text).
     """
     from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
     log_scale = record['parameters'].get('scale') == 'log'
@@ -180,6 +184,8 @@ def implied_array(values, valid, stimuli, axis, record):
     if valid is not None:
         coords['answer_valid'] = ('presentation', [bool(v) for v in valid])
         coords['parse_error'] = ('presentation', conversion_errors(valid))
+    if raw is not None:
+        coords['raw_answer'] = ('presentation', list(raw))
     return BehavioralAssembly(values if log_scale else values.astype(np.float32),
                               coords=coords, dims=['presentation', 'choice'],
                               attrs={'response': record})

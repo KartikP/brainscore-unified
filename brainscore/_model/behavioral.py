@@ -35,6 +35,16 @@ def _softmax_record():
                            source_format=LOG_PROBABILITIES)
 
 
+def _softmax_probabilities(outputs, logp, stimuli, axis):
+    """Store the softmax of likelihood scores, with the scores as source evidence;
+    return the float64 probabilities, their validity and the record, for a reaction time."""
+    probabilities, valid = softmax(logp)
+    record = _softmax_record()
+    outputs['behavior:probabilities'] = answers.implied_array(
+        probabilities, valid, stimuli, axis, record, raw=answers.source_rows(logp))
+    return probabilities, valid, record
+
+
 class BehavioralReadout:
     """Owns behavioral task state for a BrainScoreModel instance."""
 
@@ -460,6 +470,7 @@ class BehavioralReadout:
         # Every trial's prompt is built first, so a bad layout fails before any compute.
         prompts = [trial_prompt(task, row) for _, row in stimuli.iterrows()]
         neural, outputs, extras = {}, {}, []
+        rt_source = None   # (float64 probabilities, row validity, record) for a reaction time
         # The options of each row: the task's labels, or the row's own (labels names a column).
         # The choice axis is then the labels, or the position of each option.
         row_labels, axis = None, labels
@@ -491,8 +502,8 @@ class BehavioralReadout:
                     raw=answers.source_rows(source),
                     errors=answers.conversion_errors(chose))
                 if self.probability_source == 'readout':
-                    outputs['behavior:probabilities'] = answers.readout_probabilities(
-                        answers.in_order(values, labels), stimuli)
+                    rt_source = self._readout_probabilities(
+                        outputs, answers.in_order(values, labels), stimuli)
         else:
             score_first = path == 'generation' and self.probability_source == 'likelihood'
             remember = owner._memory == 'trial_history'
@@ -543,8 +554,7 @@ class BehavioralReadout:
                             'behavior:probabilities', 'likelihood', category='model-derived',
                             parameters={'scale': 'log'}))
                 elif self.probability_source == 'likelihood':
-                    outputs['behavior:probabilities'] = answers.implied_array(
-                        *softmax(logp), stimuli, axis, _softmax_record())
+                    rt_source = _softmax_probabilities(outputs, logp, stimuli, axis)
             elif isinstance(response, Text):
                 parsed = [response.parse(reply) for reply in replies]
                 outputs['behavior:text'] = answers.texts(parsed, replies, stimuli)
@@ -566,16 +576,16 @@ class BehavioralReadout:
                         response_record('behavior:confidence', 'generation', parsed_by='model'),
                         raw=replies)
                 if score_first:
-                    outputs['behavior:probabilities'] = answers.implied_array(
-                        *softmax(answers.score_rows(scores, row_labels)), stimuli, axis,
-                        _softmax_record())
+                    rt_source = _softmax_probabilities(
+                        outputs, answers.score_rows(scores, row_labels), stimuli, axis)
                 elif self.probability_source == 'readout':
-                    outputs['behavior:probabilities'] = answers.readout_probabilities(
-                        answers.in_order(self.readout_classifier.predict_proba(
+                    rt_source = self._readout_probabilities(outputs, answers.in_order(
+                        self.readout_classifier.predict_proba(
                             self.extract_behavioral_features(stimuli)), labels), stimuli)
         if isinstance(response, Choice) and response.reaction_time:
-            outputs['behavior:rt'] = answers.reaction_time(outputs['behavior:probabilities'],
-                                                           response.reaction_time, stimuli)
+            # From the float64 probabilities and their validity, not the stored float32 copy.
+            outputs['behavior:rt'] = answers.reaction_time(*rt_source, response.reaction_time,
+                                                           stimuli)
         # The bare channel carries the same answer; its record names that channel.
         first = outputs[response.channels[0]]
         outputs['behavior'] = answers.with_record(first, {**first.attrs['response'],
@@ -597,6 +607,14 @@ class BehavioralReadout:
         stamp = self._stamp(path, 'readout extraction' if path == 'readout' else 'prompt')
         return ({c: outputs[c] for c in channels},
                 {r: a.assign_attrs(recording=stamp) for r, a in neural.items()})
+
+    @staticmethod
+    def _readout_probabilities(outputs, ordered, stimuli):
+        """Store a readout's probabilities (float32); return the float64 rows, their
+        validity as probability rows and the record, for a reaction time."""
+        values = np.asarray(ordered.values)
+        outputs['behavior:probabilities'] = answers.readout_probabilities(ordered, stimuli)
+        return values, argmax(values)[1], outputs['behavior:probabilities'].attrs['response']
 
     @contextmanager
     def suspended(self):
