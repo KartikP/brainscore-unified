@@ -22,7 +22,6 @@ from .._model.recording import open_recordings, records_while_answering, region_
 from .registry import register_capability
 from brainscore_core import streaming_helpers as _drivers
 from brainscore_core.streaming import StreamEvent, parse_channel
-from brainscore_core.responses import response_channels
 
 # After every added capability (default order 1000), so an added one that
 # claims the same outputs runs the session.
@@ -283,14 +282,7 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     if task.response is None and set(answers) - {"behavior"}:
         raise ValueError(f"{answers} need TaskContext(response=...); task_type "
                          f"{task.task_type!r} answers on 'behavior'.")
-    if task.response is not None:
-        given = set(response_channels(task.response))
-        unanswered = sorted(set(answers) - given - {"behavior"})
-        if unanswered:
-            raise ValueError(
-                f"{unanswered} requested, but the task's response "
-                f"{type(task.response).__name__} answers only on "
-                f"{sorted(given)}; ask for those or change the response.")
+    # A format the task's response does not name was refused when the session was built (core).
     _drivers.refuse_variance(subject, session)
     if task.response is not None:
         # The requested formats decide the answering parts; refused here before any compute.

@@ -306,7 +306,7 @@ def test_a_malformed_cell_raises_and_nothing_is_stored(fmt, cell, message):
     assert sessions[0].emitted == []
 
 
-# --- joint requests: what the code does today ------------------------------------------------
+# --- joint requests --------------------------------------------------------------------------
 
 CHOICE_TASK = TaskContext(instruction='Is this a real word?', response=Choice(pseudo.OPTIONS),
                           fitting_stimuli=pseudo.FITTING)
@@ -336,30 +336,16 @@ def test_choice_and_probabilities_from_a_reply_alone_are_refused_before_compute(
     assert calls == []
 
 
+@pytest.mark.parametrize('producer', sorted(PRODUCERS))
 @pytest.mark.parametrize('task, missing', [(CHOICE_TASK, 'behavior:rating'), (SCALE_TASK, 'behavior:choice')],
                          ids=['choice task', 'scale task'])
-def test_choice_and_rating_from_a_model_are_refused_before_compute(task, missing):
-    """A BrainScoreModel refuses a format its task's response does not name (a ValueError,
-    not ExecutionNotFeasibleError); no joint choice and rating exists (standard 5)."""
-    calls = []
+def test_choice_and_rating_are_refused_when_the_session_is_built(producer, task, missing):
+    """Core refuses a format its task's response does not name when the session is built
+    (a ValueError: the request is malformed), for every producer; no joint choice and
+    rating exists (standard 5)."""
     with pytest.raises(ValueError, match=rf"\['{missing}'\] requested, but the task's response "
                                          rf"{type(task.response).__name__} answers only on"):
-        _session(pseudo.reply_model(calls), ['behavior:choice', 'behavior:rating'], task)
-    assert calls == []
-
-
-def test_choice_and_rating_from_a_custom_subject_under_a_choice_task_are_stored_unchecked():
-    """Today the session takes a rating under a Choice task: with no scale, core checks no
-    bounds, so a rating of 99 is stored as valid (finding Q4)."""
-    subject = pseudo.CellSubject(cells={('behavior:rating', 's0'): 99.0})
-    session = _session(subject, ['behavior:choice', 'behavior:rating'], CHOICE_TASK)
-    rating = session.collect('behavior:rating')
-    assert _trial(rating, 's0') == ('valid', '99.0', '')
-
-
-def test_a_choice_cell_under_a_scale_task_is_a_contract_error():
-    with pytest.raises(ValueError, match='the options of this trial are not known'):
-        _session(pseudo.CellSubject(), ['behavior:choice', 'behavior:rating'], SCALE_TASK)
+        stimulus_session(pseudo.text_stimuli(), ['behavior:choice', 'behavior:rating'], task)
 
 
 # --- findings kept as strict expected failures ------------------------------------------------
