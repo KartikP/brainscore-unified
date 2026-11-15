@@ -1,0 +1,568 @@
+{
+ "environments": {
+  "reference-2026-11-15": {
+   "description": "reference machine, package list of 2026-11-15",
+   "fingerprint": null,
+   "software": {
+    "python": "3.11.15",
+    "numpy": "1.26.4",
+    "torch": "2.6.0+cu124",
+    "transformers": "4.57.6",
+    "scikit-learn": "1.7.2",
+    "xarray": "2022.3.0"
+   },
+   "note": "The cloud machine whose 226 installed packages are the full lock of the Linux CUDA platform. The fingerprint is stated when scores carry one."
+  },
+  "not stated": {
+   "description": "a production row: the value was scored before environments were recorded",
+   "fingerprint": null
+  }
+ },
+ "runs": {
+  "clean13": {
+   "date": "2026-11-14",
+   "commits": {
+    "core": "6bcdc2a",
+    "unified": "82442a6"
+   }
+  },
+  "clean15": {
+   "date": "2026-11-15",
+   "commits": {
+    "core": "547cea4",
+    "unified": "d008df4",
+    "vision": "4a23243c",
+    "language": "3c17052"
+   }
+  },
+  "clean16": {
+   "date": "2026-11-15",
+   "commits": {
+    "core": "7a182d4",
+    "unified": "3c08251",
+    "vision": "b751e71f",
+    "language": "abdac3f"
+   }
+  },
+  "clean16-earlier-side": {
+   "date": "2026-11-15",
+   "commits": {
+    "core": "547cea4",
+    "unified": "d008df4",
+    "vision": "4a23243c",
+    "language": "3c17052"
+   },
+   "note": "the code of clean15, run again on the machine of clean16"
+  }
+ },
+ "scores": [
+  {
+   "subject": "random-vit-b-32",
+   "benchmark": "Yeatman2021-lexical_decision-image",
+   "value": 0.6657078282309431,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean16",
+    "clean16-earlier-side"
+   ]
+  },
+  {
+   "subject": "clip-vit-b-32",
+   "benchmark": "Yeatman2021-lexical_decision-image",
+   "value": 0.8506266694062049,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15",
+    "clean16"
+   ]
+  },
+  {
+   "subject": "qwen2.5-vl-3b-vwfa",
+   "benchmark": "Yeatman2021-induced_dyslexia-image",
+   "value": 0.79,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15",
+    "clean16"
+   ]
+  },
+  {
+   "subject": "clip-vit-b-32",
+   "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
+   "value": 0.6340323395546993,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "vjepa1-vitl",
+   "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
+   "value": 0.7314809535115232,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "gpt2",
+   "benchmark": "LeBel2023-UTS03-encoding-smoke",
+   "value": 0.10012616962194443,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "gpt2",
+   "benchmark": "LeBel2023-UTS03-encoding",
+   "value": 0.10132698714733124,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "clip-wav2vec2",
+   "benchmark": "Lahner2024-fMRI-naturalistic-multimodal-visualROI",
+   "value": 0.4563599283018316,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "clip-vit-b-32",
+   "benchmark": "MajajHong2015public.IT-pls",
+   "value": 0.37394222899100477,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "random-vit-b-32",
+   "benchmark": "MajajHong2015public.IT-pls",
+   "value": 0.10386558821657678,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean16",
+    "clean16-earlier-side"
+   ]
+  },
+  {
+   "subject": "gpt2",
+   "benchmark": "Pereira2018.243sentences-ridge",
+   "value": 0.8353275832482019,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "qwen2.5-vl-3b",
+   "benchmark": "Yeatman2021-lexical_decision-image",
+   "value": 1.1095130470515717,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15",
+    "clean16"
+   ]
+  },
+  {
+   "subject": "clip-vit-b-32",
+   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-visualROI",
+   "value": 0.08772171288728714,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "vjepa1-wav2vec2",
+   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI",
+   "value": 0.08733421564102173,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "vjepa1-wav2vec2",
+   "benchmark": "Lahner2024-fMRI-naturalistic-multimodal-auditoryROI",
+   "value": 0.06489515931725419,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "videomae-base",
+   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved",
+   "value": 0.031850092113018036,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "vjepa1-vitl",
+   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI",
+   "value": 0.1322588324546814,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "clip-wav2vec2",
+   "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-multimodal-auditoryROI",
+   "value": 0.022395163774490356,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "clip-vit-b-32",
+   "benchmark": "Lahner2024-fMRI-naturalistic",
+   "value": 0.07195588221072631,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "clip-wav2vec2",
+   "benchmark": "MajajHong2015public.IT-pls",
+   "value": 0.37394222899100477,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean13",
+    "clean15"
+   ]
+  },
+  {
+   "subject": "clip-vit-b-32",
+   "benchmark": "Pereira2018.243sentences-ridge",
+   "value": 0.7966167125252321,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean16",
+    "clean16-earlier-side"
+   ]
+  },
+  {
+   "subject": "vjepa2-vitl",
+   "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
+   "value": 0.5866656337485614,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean16",
+    "clean16-earlier-side"
+   ]
+  },
+  {
+   "subject": "videomae-base",
+   "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
+   "value": 0.44528981308074445,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean16",
+    "clean16-earlier-side"
+   ]
+  },
+  {
+   "subject": "blip2-opt-2.7b",
+   "benchmark": "MajajHong2015public.IT-pls",
+   "value": 0.3336732201178536,
+   "kind": "reference",
+   "environment": "reference-2026-11-15",
+   "tolerance": 0.0,
+   "runs": [
+    "clean16",
+    "clean16-earlier-side"
+   ]
+  },
+  {
+   "subject": "alexnet",
+   "benchmark": "MajajHong2015.IT-pls",
+   "value": 0.41748,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "neural:IT",
+   "production_baseline": 0.417,
+   "match": true,
+   "tolerance": 0.0006,
+   "evidence": "Leaderboard value rounded to 3 decimals (5e-4) plus 1e-4, about 3 times the largest observed delta between a fresh score and the recorded value (3.3e-5). On 2026-11-09 (cloud g5.4xlarge, cold caches) UMI equalled upstream bit for bit in one environment, on GPU and on CPU: GPU IT 0.41746951668719495, V4 0.4919152765977861, i2n 0.3702114698148112; CPU IT 0.4174799858892488, V4 0.4919518163116004, i2n 0.3701657913463906. The cause of the delta from the stored values is not identified.",
+   "note": "PLS convergence non-determinism; delta 4e-6 from initial baseline"
+  },
+  {
+   "subject": "alexnet",
+   "benchmark": "MajajHong2015.V4-pls",
+   "value": 0.491946,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "neural:V4",
+   "production_baseline": 0.492,
+   "match": true,
+   "tolerance": 0.0006,
+   "evidence": "Leaderboard value rounded to 3 decimals (5e-4) plus 1e-4, about 3 times the largest observed delta between a fresh score and the recorded value (3.3e-5). On 2026-11-09 (cloud g5.4xlarge, cold caches) UMI equalled upstream bit for bit in one environment, on GPU and on CPU: GPU IT 0.41746951668719495, V4 0.4919152765977861, i2n 0.3702114698148112; CPU IT 0.4174799858892488, V4 0.4919518163116004, i2n 0.3701657913463906. The cause of the delta from the stored values is not identified."
+  },
+  {
+   "subject": "alexnet",
+   "benchmark": "Allen2022_fmri_surface.IT-rdm",
+   "value": 0.380788,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "neural:IT",
+   "production_baseline": 0.381,
+   "match": true,
+   "tolerance": 0.01,
+   "evidence": "The historical bound; no same-environment comparison with upstream exists for this pair."
+  },
+  {
+   "subject": "alexnet",
+   "benchmark": "Rajalingham2018-i2n",
+   "value": 0.370199,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "behavior",
+   "old_task": "probabilities",
+   "production_baseline": 0.37,
+   "match": true,
+   "tolerance": 0.0006,
+   "evidence": "Leaderboard value rounded to 3 decimals (5e-4) plus 1e-4, about 3 times the largest observed delta between a fresh score and the recorded value (3.3e-5). On 2026-11-09 (cloud g5.4xlarge, cold caches) UMI equalled upstream bit for bit in one environment, on GPU and on CPU: GPU IT 0.41746951668719495, V4 0.4919152765977861, i2n 0.3702114698148112; CPU IT 0.4174799858892488, V4 0.4919518163116004, i2n 0.3701657913463906. The cause of the delta from the stored values is not identified."
+  },
+  {
+   "subject": "alexnet",
+   "benchmark": "Ferguson2024color-value_delta",
+   "value": 0.71851,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "behavior",
+   "old_task": "probabilities",
+   "production_baseline": 0.719,
+   "match": true,
+   "tolerance": 0.01,
+   "evidence": "The historical bound; no same-environment comparison with upstream exists for this pair."
+  },
+  {
+   "subject": "hmax",
+   "benchmark": "MajajHong2015.IT-pls",
+   "value": 0.047453,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "neural:IT",
+   "production_baseline": 0.101,
+   "match": false,
+   "note": "Current vision master and UMI agree exactly on the recorded mapped HMAX CPU profile; historical published references remain unreproduced",
+   "provenance_status": "incomplete",
+   "published_reference_qualified": false,
+   "current_master_compatible": true,
+   "current_master_compatibility_profile": "hmax-master-macos-cpu-2026-09-16",
+   "current_master_evidence": "docs/qualification/2026-09-16-hmax-master.json"
+  },
+  {
+   "subject": "hmax",
+   "benchmark": "MajajHong2015.V4-pls",
+   "value": 0.032693,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "neural:V4",
+   "production_baseline": 0.161,
+   "match": false,
+   "note": "Current vision master and UMI agree exactly on the recorded mapped HMAX CPU profile; historical published references remain unreproduced",
+   "provenance_status": "incomplete",
+   "published_reference_qualified": false,
+   "current_master_compatible": true,
+   "current_master_compatibility_profile": "hmax-master-macos-cpu-2026-09-16",
+   "current_master_evidence": "docs/qualification/2026-09-16-hmax-master.json"
+  },
+  {
+   "subject": "hmax",
+   "benchmark": "Rajalingham2018-i2n",
+   "value": -0.046385,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "behavior",
+   "old_task": "probabilities",
+   "production_baseline": null,
+   "match": null,
+   "note": "No production baseline available"
+  },
+  {
+   "subject": "pixels",
+   "benchmark": "MajajHong2015.IT-pls",
+   "value": 0.01264,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "neural:IT",
+   "production_baseline": 0.013,
+   "match": true,
+   "tolerance": 0.01,
+   "evidence": "The historical bound; no same-environment comparison with upstream exists for this pair."
+  },
+  {
+   "subject": "pixels",
+   "benchmark": "MajajHong2015.V4-pls",
+   "value": 0.061174,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "neural:V4",
+   "production_baseline": 0.061,
+   "match": true,
+   "tolerance": 0.01,
+   "evidence": "The historical bound; no same-environment comparison with upstream exists for this pair."
+  },
+  {
+   "subject": "compact_vgg19_V4",
+   "benchmark": "MajajHong2015.IT-pls",
+   "value": 0.254135,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "neural:IT",
+   "production_baseline": 0.254,
+   "match": true,
+   "tolerance": 0.01,
+   "evidence": "The historical bound; no same-environment comparison with upstream exists for this pair."
+  },
+  {
+   "subject": "compact_vgg19_V4",
+   "benchmark": "MajajHong2015.V4-pls",
+   "value": 0.638881,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "neural:V4",
+   "production_baseline": 0.639,
+   "match": true,
+   "tolerance": 0.01,
+   "evidence": "The historical bound; no same-environment comparison with upstream exists for this pair."
+  },
+  {
+   "subject": "compact_vgg19_V4",
+   "benchmark": "Rajalingham2018-i2n",
+   "value": 0.029998,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "behavior",
+   "old_task": "probabilities",
+   "production_baseline": 0.03,
+   "match": true,
+   "tolerance": 0.01,
+   "evidence": "The historical bound; no same-environment comparison with upstream exists for this pair."
+  },
+  {
+   "subject": "compact_vgg19_V4",
+   "benchmark": "Ferguson2024color-value_delta",
+   "value": 0.578928,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "vision",
+   "format": "behavior",
+   "old_task": "probabilities",
+   "production_baseline": 0.579,
+   "match": true,
+   "tolerance": 0.01,
+   "evidence": "The historical bound; no same-environment comparison with upstream exists for this pair."
+  },
+  {
+   "subject": "oasm-sigma1.0",
+   "benchmark": "Fedorenko2016-ridge",
+   "value": 1.0,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "language",
+   "format": "neural:language_system",
+   "production_baseline": null,
+   "match": null
+  },
+  {
+   "subject": "gpt2",
+   "benchmark": "Fedorenko2016-ridge",
+   "value": 0.648146,
+   "kind": "production",
+   "environment": "not stated",
+   "domain": "language",
+   "format": "neural:language_system",
+   "production_baseline": null,
+   "match": null
+  }
+ ]
+}
