@@ -84,22 +84,40 @@ def _one(values):
     return NOT_STATED if not values else values[0] if len(values) == 1 else values
 
 
+def _parameter_devices(parameters):
+    """Where the part's parameters are: one device, or a sorted list.
+
+    ``'not stated'`` when the parameters cannot tell where the part runs: none, a
+    parameter on the meta device, or parameters on more than one device type (an
+    automatic device map with offload keeps some on the CPU or on meta and moves
+    them in for each call). Several devices of one type (two GPUs) are listed.
+    """
+    devices = {p.device for p in parameters}
+    types = {device.type for device in devices}
+    if not devices or 'meta' in types or len(types) > 1:
+        return NOT_STATED
+    return _one(devices)
+
+
 def _extractor_facts(extractor, facts) -> dict:
     """The facts of an extractor: a caching wrapper states them, any other part does not.
 
     ``facts`` is the set of settings fingerprints its calls of this session gave
     (``CachingExtractor._session_facts``), or None for a part that keeps none.
+    ``parameter_devices`` and ``parameter_dtypes`` are read from the part's
+    parameters at the end of the session; the device the inputs are sent to is
+    not a fact of the part and is not recorded.
     """
     from brainscore.model_helpers._extractors import CachingExtractor
     if not isinstance(extractor, CachingExtractor) or facts is None:
-        return {'kind': _kind(extractor), 'settings': NOT_STATED, 'dtype': NOT_STATED,
-                'device': NOT_STATED, 'batch_size': NOT_STATED}
+        return {'kind': _kind(extractor), 'settings': NOT_STATED, 'parameter_devices': NOT_STATED,
+                'parameter_dtypes': NOT_STATED, 'batch_size': NOT_STATED}
     model = getattr(extractor, '_model', None)
     parameters = list(model.parameters()) if hasattr(model, 'parameters') else []
     batch_size = getattr(extractor, '_batch_size', None)
     return {'kind': _kind(extractor), 'settings': _one(facts),
-            'dtype': _one(str(p.dtype) for p in parameters),
-            'device': str(getattr(extractor, '_device', None) or NOT_STATED),
+            'parameter_devices': _parameter_devices(parameters),
+            'parameter_dtypes': _one(str(p.dtype) for p in parameters),
             'batch_size': batch_size if batch_size is not None else NOT_STATED}
 
 

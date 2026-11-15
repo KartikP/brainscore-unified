@@ -3,8 +3,11 @@
 Each test asserts the complete entry. A part states kind, settings, dtype, device and batch
 size; a fact it cannot give is 'not stated'. No response is changed for it.
 """
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
+import torch
 
 import brainscore
 from brainscore import BrainScoreModel, LayerSelector
@@ -77,7 +80,7 @@ def test_a_neural_score_from_one_extractor_states_it():
     assert score.attrs['provenance'] == ({
         'subject': 'provenance-text', 'activation_store': 'off',
         'parts': [{'serves': 'neural:IT', 'part': 'extractor', 'kind': TEXT, 'settings': STORE_OFF,
-                   'dtype': 'torch.float32', 'device': 'cpu', 'batch_size': 2}]},)
+                   'parameter_devices': 'cpu', 'parameter_dtypes': 'torch.float32', 'batch_size': 2}]},)
 
 
 def test_with_the_store_on_the_settings_are_the_cache_key_without_inputs(monkeypatch):
@@ -91,7 +94,7 @@ def test_with_the_store_on_the_settings_are_the_cache_key_without_inputs(monkeyp
     assert score.attrs['provenance'] == ({
         'subject': 'provenance-text', 'activation_store': 'on',
         'parts': [{'serves': 'neural:IT', 'part': 'extractor', 'kind': TEXT, 'settings': expected,
-                   'dtype': 'torch.float32', 'device': 'cpu', 'batch_size': 2}]},)
+                   'parameter_devices': 'cpu', 'parameter_dtypes': 'torch.float32', 'batch_size': 2}]},)
     # Another batch size is another setting; the value does not move.
     other = _score(_text_model(batch_size=3), _Neural(_sentences(), {'neural:IT'}))
     assert other.attrs['provenance'][0]['parts'][0]['settings'] != expected
@@ -122,14 +125,14 @@ def test_a_picture_and_sound_score_lists_both_towers(tmp_path):
     assert score.attrs['provenance'] == ({
         'subject': 'provenance-av', 'activation_store': 'off',
         'parts': [{'serves': 'neural:A1', 'part': 'extractor', 'kind': AUDIO, 'settings': STORE_OFF,
-                   'dtype': 'torch.float32', 'device': 'cpu', 'batch_size': 2},
+                   'parameter_devices': 'cpu', 'parameter_dtypes': 'torch.float32', 'batch_size': 2},
                   {'serves': 'neural:IT', 'part': 'extractor', 'kind': f'{__name__}._picture',
-                   'settings': NS, 'dtype': NS, 'device': NS, 'batch_size': NS}]},)
+                   'settings': NS, 'parameter_devices': NS, 'parameter_dtypes': NS, 'batch_size': NS}]},)
 
 
 def _part(name, kind):
-    return {'serves': 'behavior:choice', 'part': name, 'kind': kind, 'settings': NS, 'dtype': NS,
-            'device': NS, 'batch_size': NS}
+    return {'serves': 'behavior:choice', 'part': name, 'kind': kind, 'settings': NS, 'parameter_devices': NS,
+            'parameter_dtypes': NS, 'batch_size': NS}
 
 
 def _answer_model():
@@ -162,7 +165,7 @@ def test_a_registration_adds_its_own_entry_and_keeps_the_parts():
     assert score.attrs['provenance'] == (
         {'subject': 'provenance-text', 'activation_store': 'off',
          'parts': [{'serves': 'neural:IT', 'part': 'extractor', 'kind': TEXT, 'settings': STORE_OFF,
-                    'dtype': 'torch.float32', 'device': 'cpu', 'batch_size': 2}]},
+                    'parameter_devices': 'cpu', 'parameter_dtypes': 'torch.float32', 'batch_size': 2}]},
         {'subject': 'provenance-text', 'activation_store': 'off', 'registration': registration})
 
 
@@ -314,3 +317,29 @@ def test_a_store_off_recording_replays_equal_with_the_store_on(monkeypatch, tmp_
         assert compare_outputs(recorded.directory, replay.directory)['equal']
         counts.append(len(computed))
     assert counts[0] > 0 and counts[1] == counts[0]       # the warm replay read the store
+
+
+# Where a part's parameters are (no input device is recorded as the part's device).
+
+class _Placed:
+    def __init__(self, *placements):
+        self._parameters = [SimpleNamespace(device=torch.device(device), dtype=dtype) for device, dtype in placements]
+
+    def parameters(self):
+        return iter(self._parameters)
+
+
+@pytest.mark.parametrize('placements, devices, dtypes', [
+    ([('cuda:0', torch.float16), ('cuda:1', torch.float16)], ['cuda:0', 'cuda:1'], 'torch.float16'),
+    ([('cuda:0', torch.bfloat16), ('cuda:0', torch.float32)], 'cuda:0', ['torch.bfloat16', 'torch.float32']),
+    ([('cuda:0', torch.float16), ('cpu', torch.float16)], NS, 'torch.float16'),        # offloaded to the CPU
+    ([('cuda:0', torch.float16), ('meta', torch.float16)], NS, 'torch.float16'),       # offloaded to disk
+    ([], NS, NS),
+], ids=['two GPUs', 'mixed precision', 'cpu offload', 'meta offload', 'no parameters'])
+def test_a_part_states_where_its_parameters_are(placements, devices, dtypes):
+    from brainscore.model_helpers.provenance import _extractor_facts
+    wrapper = text_wrapper(batch_size=2)
+    wrapper._model, wrapper._device = _Placed(*placements), 'cuda:0'     # the input device is not the part's
+    facts = _extractor_facts(wrapper, {'not hashed (store off)'})
+    assert (facts['parameter_devices'], facts['parameter_dtypes']) == (devices, dtypes)
+    assert 'device' not in facts and 'dtype' not in facts
