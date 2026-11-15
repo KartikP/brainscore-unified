@@ -8,7 +8,7 @@ This is the "capable VLM" complement to the V-JEPA-class native-video
 combos — it lets us check whether a contrastive image-text encoder
 trained on web data carries comparable brain-prediction signal to
 representation-reconstruction video models, when both are paired with
-the same audio tower.
+the same audio extractor.
 
 Four signal/null permutations registered:
 - clip-wav2vec2                  signal vision + signal audio
@@ -43,11 +43,11 @@ REGION_MODALITY_MAP = {
 
 
 def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
-    """The picture tower of ``clip-vit-b-32`` (or of ``random-vit-b-32`` with ``random_init``)."""
-    from brainscore.models.clip_vit_b_32.model import load_clip, picture_tower
+    """The picture extractor of ``clip-vit-b-32`` (or of ``random-vit-b-32`` with ``random_init``)."""
+    from brainscore.models.clip_vit_b_32.model import load_clip, picture_extractor
     clip_model, processor = load_clip(random_init=random_init)
     # The activations carry the backbone's name; the cache key is the combo's.
-    vision_wrapper = picture_tower(clip_model, processor,
+    vision_wrapper = picture_extractor(clip_model, processor,
                                    'random-clip-vit-b-32' if random_init else 'clip-vit-b-32',
                                    backbone_id=f'{combo_identifier}-vision')
     return vision_wrapper

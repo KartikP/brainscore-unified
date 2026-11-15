@@ -17,12 +17,12 @@ pytestmark = pytest.mark.unit
 
 # (family module, loader, tower builder, picture-only identifier, combination identifiers)
 FAMILIES = [
-    ('blip2_opt_2_7b', 'load_blip2', 'picture_tower', 'blip2-opt-2.7b', ['blip2-wav2vec2']),
-    ('clip_vit_b_32', 'load_clip', 'picture_tower', 'clip-vit-b-32', ['clip-wav2vec2', 'clip-random-wav2vec2']),
-    ('clip_vit_b_32', 'load_clip', 'picture_tower', 'random-vit-b-32',
+    ('blip2_opt_2_7b', 'load_blip2', 'picture_extractor', 'blip2-opt-2.7b', ['blip2-wav2vec2']),
+    ('clip_vit_b_32', 'load_clip', 'picture_extractor', 'clip-vit-b-32', ['clip-wav2vec2', 'clip-random-wav2vec2']),
+    ('clip_vit_b_32', 'load_clip', 'picture_extractor', 'random-vit-b-32',
      ['random-clip-wav2vec2', 'random-clip-random-wav2vec2']),
-    ('qwen25_vl_3b', 'load_qwen', 'picture_tower', 'qwen2.5-vl-3b', ['qwen2.5-vl-wav2vec2']),
-    ('vjepa_v1', 'load_backbone', 'video_tower', 'vjepa1-vitl',
+    ('qwen25_vl_3b', 'load_qwen', 'picture_extractor', 'qwen2.5-vl-3b', ['qwen2.5-vl-wav2vec2']),
+    ('vjepa_v1', 'load_backbone', 'video_extractor', 'vjepa1-vitl',
      ['vjepa1-wav2vec2', 'vjepa1-random-wav2vec2']),
 ]
 MODULES = {'blip2-opt-2.7b': 'blip2_opt_2_7b', 'clip-vit-b-32': 'clip_vit_b_32', 'random-vit-b-32': 'random_vit_b_32',
@@ -72,7 +72,7 @@ def recorded(monkeypatch):
 
         def tower(*args, **kwargs):
             calls.append(('tower', bound(tower_signature, args, kwargs), None))
-            return (MagicMock(name='extractor'), MagicMock(name='model')) if tower_name == 'video_tower' \
+            return (MagicMock(name='extractor'), MagicMock(name='model')) if tower_name == 'video_extractor' \
                 else MagicMock(name='extractor')
 
         from brainscore import BrainScoreModel

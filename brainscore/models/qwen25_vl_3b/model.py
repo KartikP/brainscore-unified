@@ -161,7 +161,7 @@ def load_qwen(identifier: str, size: str):
     return qwen_model, qwen_processor, download
 
 
-def picture_tower(qwen_model, qwen_processor, identifier: str):
+def picture_extractor(qwen_model, qwen_processor, identifier: str):
     """The picture extractor of every Qwen2.5-VL registration: the visual tower, ``<identifier>-vision``."""
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     # VLMVisionWrapper handles Qwen's flattened-patch layout by default
@@ -178,7 +178,7 @@ def get_model(identifier: str) -> Subject:
     from brainscore.model_helpers.text_wrapper import TextWrapper
 
     qwen_model, qwen_processor, download = load_qwen(identifier, size)
-    vision_wrapper = picture_tower(qwen_model, qwen_processor, identifier)
+    vision_wrapper = picture_extractor(qwen_model, qwen_processor, identifier)
 
     # Text: TextWrapper wraps model.language_model (causal decoder).
     # last aggregation with attention_mask handles padded batches.

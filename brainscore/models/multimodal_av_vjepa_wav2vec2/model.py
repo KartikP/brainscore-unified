@@ -20,9 +20,9 @@ from brainscore import BrainScoreModel
 from brainscore.models._shared import build_audio_wrapper
 
 
-# ── Audio tower config ─────────────────────────────────────────────
+# ── Audio extractor config ─────────────────────────────────────────
 
-# The audio tower is the shared Wav2Vec2-base (``_shared.build_audio_wrapper``).
+# The audio extractor is the shared Wav2Vec2-base (``_shared.build_audio_wrapper``).
 # Wav2Vec2-base output is (B, T_out, 768) where T_out = floor(samples / 320).
 # At 16 kHz that's a 50 Hz step → 20 ms per token. Lahner clips are 3s,
 # so each clip yields ~150 audio tokens before chunking; AudioWrapper's
@@ -51,14 +51,14 @@ def _build_video_wrapper(identifier: str, random_init: bool = False):
     fresh random initialization (deterministic via ``torch.manual_seed(0)``).
     Used for the null-control variants.
     """
-    from brainscore.models.vjepa_v1.model import load_backbone, video_tower
+    from brainscore.models.vjepa_v1.model import load_backbone, video_extractor
     from .backbone_inits import randomize_module_in_place
 
     backbone = load_backbone(identifier)
     if random_init:
         # Random-init the loaded backbone in-place. Deterministic seed.
         randomize_module_in_place(backbone, seed=0)
-    wrapper, model = video_tower(backbone, f'{identifier}-video')
+    wrapper, model = video_extractor(backbone, f'{identifier}-video')
     return wrapper, model
 
 

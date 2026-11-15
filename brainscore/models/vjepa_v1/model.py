@@ -203,7 +203,7 @@ def load_backbone(identifier: str):
     return _load_vjepa_v1_vitl(ckpt).eval()
 
 
-def video_tower(backbone, identifier: str):
+def video_extractor(backbone, identifier: str):
     """The video extractor of every V-JEPA v1 registration, and the network it wraps."""
     from brainscore.model_helpers.video_wrapper import VideoWrapper
     model = _BCTPermuteAdapter(backbone).eval()
@@ -221,7 +221,7 @@ def video_tower(backbone, identifier: str):
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'vjepa1-vitl'
-    video_wrapper, model = video_tower(load_backbone(identifier), identifier)
+    video_wrapper, model = video_extractor(load_backbone(identifier), identifier)
 
     return BrainScoreModel(
         identifier=identifier,

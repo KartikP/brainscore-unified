@@ -4,9 +4,9 @@
   (the ``post_hook_fn``) and ``fit_frames`` (pads or subsamples a clip to the
   frame count of the model).
 - Wav2Vec2-base: ``build_audio_wrapper`` and its wav loader, for the audio
-  towers and the random-init null.
+  extractors and the random-init null.
 - HuggingFace image processors (CLIP, BLIP-2): the image loader of their
-  ``PytorchWrapper`` towers.
+  ``PytorchWrapper`` extractors.
 
 A registration then names its network, layers and real choices only.
 """
