@@ -57,7 +57,8 @@ def preprocess(paths):
 torch.manual_seed(0)
 net = Net().eval()
 
-folder = tempfile.mkdtemp()
+workspace = tempfile.TemporaryDirectory()      # removed when the script ends
+folder = workspace.name
 rows = []
 for index in range(8):
     path = os.path.join(folder, f'{index}.png')

@@ -44,7 +44,8 @@ subject = BrainScoreModel(identifier='tiny-cnn', model=net, region_layer_map={'I
                           extractor={'vision': PytorchWrapper(
                               identifier='tiny-cnn', model=net,
                               preprocessing=lambda paths: load_preprocess_images(paths, image_size=16))})
-folder = tempfile.mkdtemp()
+workspace = tempfile.TemporaryDirectory()      # removed when the script ends
+folder = workspace.name
 paths = {f's{i}': os.path.join(folder, f'{i}.png') for i in range(4)}
 for i, path in enumerate(paths.values()):
     Image.fromarray(np.random.RandomState(i).randint(0, 256, (16, 16, 3), dtype=np.uint8)).save(path)
