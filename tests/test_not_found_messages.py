@@ -14,12 +14,13 @@ pytestmark = pytest.mark.unit
     (brainscore.load_dataset, 'data'),
     (brainscore.load_stimulus_set, 'data'),
 ])
-def test_names_the_import_line(load, folder):
+def test_says_a_plugin_folder_registers_by_its_presence(load, folder):
     with pytest.raises(KeyError) as raised:
         load('no-such-plugin-x7')
     message = str(raised.value)
     assert "'no-such-plugin-x7' not found" in message
-    assert f"add 'from . import <name>' to brainscore/{folder}/__init__.py" in message
+    assert f'a folder brainscore/{folder}/<name>/ with an __init__.py is imported with brainscore' in message
+    assert 'a plugin in another package registers when you import that package' in message
 
 
 def test_tool_message_names_both_ways():

@@ -9,9 +9,9 @@ UMI is a v2 source candidate. See the [release policy](docs/archive/production_r
 ## Layout
 
 - `brainscore/model_helpers/`: extraction wrappers for image, text, VLM vision, video and audio.
-- `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, human-harness scaffold), and the adapters for external experiment libraries (`adapter.py` holds what every adapter shares; `coggym.py`, `ewok.py`).
+- `brainscore/harnesses/`: environment and subject harnesses (robotics environment harness, a prototype human subject `HumanSubject`), and the adapters for external experiment libraries (`adapter.py` holds what every adapter shares; `coggym.py`, `ewok.py`).
 - `brainscore/models/`: registered models (CLIP, Qwen-VL, BLIP-2, V-JEPA, null controls and others).
-- `brainscore/benchmarks/`: registered benchmarks (ROAR, induced dyslexia, Lahner2024, LeBel2023, Algonauts2025, CogGym, EWoK, the grid game). The `-unified` regression variants of MajajHong2015 and Pereira2018 are registered in the vision and language packages.
+- `brainscore/benchmarks/`: registered benchmarks (ROAR, induced dyslexia, Lahner2024, LeBel2023, Algonauts2025, CogGym, EWoK, the grid game). MajajHong2015, Pereira2018 and the other Brain-Score 2.0 benchmarks are registered in the vision and language packages; `brainscore.score` runs them for any subject that fits.
 - `brainscore/metrics/`: scoring metrics.
 - `brainscore/data/`: data plugins (stimuli, recorded responses, and the packaging scripts that build them).
 - `brainscore/tools/`: tools to fit, apply and register (linear probe, LEACE, steering, layer mapping, auto-register, Algonauts prediction export).

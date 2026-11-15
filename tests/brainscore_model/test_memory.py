@@ -78,8 +78,13 @@ class TestProbeThroughParticipate:
         import logging
         behavioral = BrainScoreModel('policy', policy=lambda step: None)
         benchmark = SimpleNamespace(identifier='bench-ridge', stimulus_set=_stimuli())
-        # No width can be probed, so the check is skipped (loudly) even with no memory.
+        # No neural region for the probe: no estimate, even with no memory. One line, without
+        # a traceback, that says memory is not guarded.
         with patch('brainscore_core.memory.get_host_available_memory', return_value=1), \
                 caplog.at_level(logging.WARNING, logger='brainscore_core.memory'):
             check_memory(behavioral, benchmark)
-        assert any('could NOT run' in record.getMessage() for record in caplog.records)
+        records = [record for record in caplog.records if record.name == 'brainscore_core.memory']
+        assert len(records) == 1 and records[0].exc_info is None
+        message = records[0].getMessage()
+        assert message.startswith('Memory estimate not made: no neural region')
+        assert "'bench-ridge'" in message and 'not guarded' in message and 'feature_dim' in message

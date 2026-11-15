@@ -25,11 +25,7 @@ Neither scores anything. A benchmark loads both and compares a model against the
 ## Install
 
 Copy this folder to `brainscore/data/<your_name>/` and move `test_data.py` to
-`tests/test_<your_name>.py`. Then add one line to `brainscore/data/__init__.py`:
-
-```
-from . import your_name
-```
+`tests/test_<your_name>.py`. Nothing else to edit: the folder registers by its presence.
 
 Then, typically from inside a benchmark (here from the `templates/` folder, where
 importing the template registers it):
@@ -55,13 +51,18 @@ print(dict(choices.sizes))                  # {'presentation': 128}: 4 participa
 
 Run `pytest` after each step. The tests fail with a named reason, not a shape error.
 
+As shipped, loading the template writes its 32 example images once to
+`your_data_stimuli/` in the Brain-Score home (`BRAINSCORE_HOME`, default `~/.brain-score`).
+The template's test points `BRAINSCORE_HOME` at a temporary folder, so a test run leaves
+nothing there; keep that in your test while your loader writes files.
+
 ## The four things that make data benchmark-usable
 
 Each corresponds to a failure that is easy to hit and hard to read:
 
 - A recognized modality column: `image_path`, `sentence`, `audio_path`,
   `video_path`. The subject finds a stimulus set's modality by column name. Without
-  one you get `No recognized modality columns`.
+  one you get `No column in this stimulus set says what kind of input it holds`.
 - `stimulus_paths` pointing at files that exist. A real model opens them. Paths that
   merely look plausible fail only once someone runs a real model, not in your tests.
 - At least two coords per axis. With one, brainio never builds the MultiIndex, and

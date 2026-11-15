@@ -94,6 +94,45 @@ stimulus_set_registry: Dict[str, Callable[..., Any]] = _Registry()
 data_builder_registry: Dict[str, Callable[[], Any]] = _Registry()
 
 
+# Plugin packages that failed to import: {qualified name: 'ErrorType: message'}, and the
+# __init__.py file of each (read before a load falls back to an old registry).
+_plugin_import_failures: Dict[str, str] = {}
+_plugin_failed_files: Dict[str, Path] = {}
+
+
+def _import_plugins(package: str) -> None:
+    """Import every plugin of the kind folder ``package`` so that it registers.
+
+    A plugin is a sub-package (a folder with an ``__init__.py``) whose name does not
+    start with ``_``; a plain module (a shared helper) is not imported. A plugin whose
+    import fails is named in a warning with the cause and recorded; the other plugins
+    still register, and the loaders' not-found message names it.
+    """
+    import importlib
+    import os
+    import pkgutil
+    import sys
+    for info in sorted(pkgutil.iter_modules(sys.modules[package].__path__), key=lambda i: i.name):
+        if not info.ispkg or info.name.startswith('_'):
+            continue
+        name = f'{package}.{info.name}'
+        try:
+            importlib.import_module(name)
+        except ImportError as error:
+            _plugin_import_failures[name] = f'{type(error).__name__}: {error}'
+            folder = Path(info.module_finder.path) / info.name
+            _plugin_failed_files[name] = folder / '__init__.py'
+            # Remove what the package registered before its error (the source of an entry is
+            # a factory of the package, or a registering statement in a file of its folder).
+            for registry in (model_registry, benchmark_registry, metric_registry, data_registry,
+                             stimulus_set_registry, data_builder_registry):
+                for key, source in list(registry._sources.items()):
+                    if source.startswith((f'{name}.', f'{folder}{os.sep}')):
+                        del registry[key]
+            _logger.warning(f'plugin {name} failed to import and registers nothing: '
+                            f'{type(error).__name__}: {error}')
+
+
 def _populate_unified_registries() -> None:
     """Import benchmark + model subpackages so they register factories.
 
@@ -213,14 +252,40 @@ def list_benchmarks():
     return _listing(benchmark_registry, 'benchmarks', 'benchmark_registry')
 
 
+def _refuse_failed_owner(kind: str, identifier: str, folder: str) -> None:
+    """Raise when a unified plugin of ``folder`` that failed to import names ``identifier``.
+
+    Called before a load falls back to an old registry, so a broken unified plugin is not
+    silently replaced by an old registration of the same identifier. Reads the
+    ``__init__.py`` text of each failed package of the kind; nothing when none failed.
+    """
+    for name, init_file in _plugin_failed_files.items():
+        if not name.startswith(f'brainscore.{folder}.'):
+            continue
+        try:
+            text = init_file.read_text(encoding='utf-8')
+        except OSError:
+            continue
+        if f"'{identifier}'" in text or f'"{identifier}"' in text:
+            raise LoadError(
+                f"{kind} '{identifier}' is named by the unified plugin {name}, which failed to "
+                f"import ({_plugin_import_failures[name]}). It is not loaded from another registry; "
+                f"repair the plugin's import.")
+
+
 def _not_found(kind: str, identifier: str, sources: str, folder: str, listing: str = '') -> KeyError:
     """The one message of a loader that finds no identifier."""
     listed = f' {listing} lists them all.' if listing else ''
+    failed = {name: cause for name, cause in _plugin_import_failures.items()
+              if name.startswith(f'brainscore.{folder}.')}
+    broken = (' These plugin packages failed to import, so their identifiers are missing: '
+              + '; '.join(f'{name} ({cause})' for name, cause in sorted(failed.items())) + '.'
+              if failed else '')
     return KeyError(
-        f"{kind} '{identifier}' not found in {sources} registries.{listed} A plugin registers "
-        f"when its package is imported: for a plugin in brainscore/{folder}/<name>/, add "
-        f"'from . import <name>' to brainscore/{folder}/__init__.py, or import the package "
-        f"before you load it.")
+        f"{kind} '{identifier}' not found in {sources} registries.{listed}{broken} A plugin "
+        f"registers when its package is imported: a folder brainscore/{folder}/<name>/ with an "
+        f"__init__.py is imported with brainscore; a plugin in another package registers when "
+        f"you import that package before you load it.")
 
 
 def load_model(identifier: str) -> Subject:
@@ -234,6 +299,7 @@ def load_model(identifier: str) -> Subject:
     """
     if identifier in model_registry:
         return model_registry[identifier]()
+    _refuse_failed_owner('Model', identifier, 'models')
     for domain in ('vision', 'language'):
         try:
             with _explained(identifier, domain, 'weights'):
@@ -258,6 +324,7 @@ def load_benchmark(identifier: str, **configuration: Any) -> Benchmark:
 
     if configuration:
         raise TypeError('Benchmark configuration is supported only by unified registry factories')
+    _refuse_failed_owner('Benchmark', identifier, 'benchmarks')
 
     for domain, modality in (('vision', 'vision'), ('language', 'text')):
         try:
@@ -279,6 +346,7 @@ def load_metric(identifier: str, *args, **kwargs) -> Metric:
     """
     if identifier in metric_registry:
         return metric_registry[identifier](*args, **kwargs)
+    _refuse_failed_owner('Metric', identifier, 'metrics')
 
     try:
         from brainscore_vision import load_metric as load_vision_metric
@@ -303,6 +371,7 @@ def load_dataset(identifier: str, *args, **kwargs):
         raise KeyError(
             f"Dataset '{identifier}' not found in unified registry; "
             "domain fallbacks do not accept loader arguments.")
+    _refuse_failed_owner('Dataset', identifier, 'data')
 
     try:
         from brainscore_vision import load_dataset as _vision
@@ -326,6 +395,7 @@ def load_stimulus_set(identifier: str, *args, **kwargs):
         raise KeyError(
             f"StimulusSet '{identifier}' not found in unified registry; "
             "domain fallbacks do not accept loader arguments.")
+    _refuse_failed_owner('StimulusSet', identifier, 'data')
 
     try:
         from brainscore_vision import load_stimulus_set as _vision
@@ -406,6 +476,11 @@ def score(model_identifier, benchmark_identifier,
         compatibility = check_compatibility(subject, benchmark)
     except CompatibilityError as error:
         result = na_score(error)
+        if isinstance(subject, BrainScoreModel):
+            # A format a wired part derives but no statement declares: name the line to write
+            # (the text of the session refusal; read from the wiring, nothing runs).
+            from ._model.behavioral import statement_hint
+            result.attrs['reason'] += statement_hint(subject, result.attrs['missing_channels'])
         result.attrs.update(model_identifier=model_id, benchmark_identifier=benchmark_id)
         return result
     if check_mem:

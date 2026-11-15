@@ -28,7 +28,7 @@ class WordLengthReader(Subject):
         while (event := session.next_input()) is not None:
             # A reading time in ms for each word: one number per trial.
             session.respond(StreamEvent('behavior:rt', 200 + 30 * len(event.payload),
-                                        t_ms=event.t_ms, meta={'units': 'ms'}))
+                                        t_ms=event.t_ms, meta={**event.meta, 'units': 'ms'}))
 ```
 
 The experiment only sees this interface, so a CNN, a language model, a robot policy and a remote API are all handled the same way.
@@ -85,23 +85,27 @@ A **benchmark** is a fixed test: it presents stimuli, requests outputs, and comp
 ```python
 import numpy as np
 from brainscore_core import Benchmark, Score
+from brainscore_core.streaming_helpers import stimulus_session
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 
 class ToyReadingTimes(Benchmark):
     identifier = 'toy-reading-times'
     version = 1
-    required_input_channels = {'text'}
     requested_output_channels = {'behavior:rt'}
     words = ['cat', 'elephant', 'dog', 'hippopotamus']
+    stimulus_set = StimulusSet({'stimulus_id': words, 'sentence': words})   # the inputs: `sentence` goes on `text`
+    stimulus_set.identifier = 'toy-reading-words'
     measured_ms = [310, 390, 330, 520]       # made-up reading times, one per word
 
     def __call__(self, subject):
-        session = Session([StreamEvent('text', word, t_ms=i * 500) for i, word in enumerate(self.words)],
-                          ['behavior:rt'])
+        session = stimulus_session(self.stimulus_set, ['behavior:rt'])
         subject.participate(session)
-        predicted = list(session.collect('behavior:rt').values)   # one stored row per answer
+        predicted = session.collect('behavior:rt').values.ravel()   # one stored row per word
         return Score(np.corrcoef(predicted, self.measured_ms)[0, 1])   # the metric
 ```
+
+The benchmark keeps its stimuli as a table (`stimulus_set`, and a behavioral task as `task`); pre-flight reads its input channels from the table's columns.
 
 A **raw** score is the metric value itself. A **ceiled** score divides by the benchmark's estimate of how well the data can be predicted at all, and can exceed 1. Report which one you use.
 

@@ -12,14 +12,6 @@ measures none.
 """
 from ._score import benchmark_score, not_estimated  # noqa: F401
 
-# Import each benchmark subpackage so its __init__.py runs and registers
-# entries in `brainscore.benchmark_registry`.
-from . import roar_yeatman2021  # noqa: F401
-from . import induced_dyslexia  # noqa: F401  perturbation benchmark (ablation)
-from . import grid_game         # noqa: F401  closed-loop benchmark
-from . import lahner2024        # noqa: F401  naturalistic fMRI (scaffolding)
-from . import algonauts2025     # noqa: F401  multimodal movie fMRI (scaffold; data on EC2)
-from . import lebel2023         # noqa: F401  whole-cortex story-listening fMRI
-from . import coggym            # noqa: F401  pinned external cognitive experiments
+from brainscore import _import_plugins
 
-from . import ewok  # noqa: F401
+_import_plugins(__name__)    # every plugin folder here registers by its presence

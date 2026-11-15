@@ -20,9 +20,11 @@ tests that define the contract. `../docs/02_core_concepts.md` covers the vocabul
    (a tool is one module, `brainscore/tools/<your_name>.py`; a capability lives in your own
    package; call its `register()` once).
 2. Fill the `TODO`s.
-3. Register it (`__init__.py`) and add `from . import <your_name>` to the parent package's
-   `__init__.py`. A plugin registers when its package is imported; without that line,
-   `load_*` does not find it. A tool is one line in `_TOOLS` of `brainscore/tools/_registry.py`.
+3. Register it (`__init__.py`). The folder registers by its presence: every subpackage of
+   `brainscore/{models,benchmarks,data,metrics}/` is imported with `brainscore`, so no other
+   file changes. A plugin in another package (another repository) registers when you import that package before you load it. A tool in Brain-Score is one line in `_TOOLS` of
+   `brainscore/tools/_registry.py`; a tool in your own package registers with
+   `register_tool(identifier, factory)` when you import that package.
 4. Move the template's test to `tests/test_<your_name>.py`, adapt it and run it. Every
    plugin's test lives in `tests/`; the template keeps its test beside it only so the
    template can be tried in place.

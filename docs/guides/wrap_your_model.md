@@ -154,6 +154,48 @@ model = BrainScoreModel(
 
 The [CLIP registration](../../brainscore/models/clip_vit_b_32/model.py) is a complete example.
 
+A text part is wrapped with `TextWrapper(model, tokenizer)`. The tokenizer is a Hugging Face
+tokenizer, or any callable with the same call: it takes a list of texts and `padding`,
+`truncation`, `max_length` and `return_tensors='pt'`, and returns a mapping whose keys are the
+network's forward arguments (`input_ids`, and `attention_mask` to mark padding). The
+wrapper calls the network with that mapping. Here a tiny network with an image part and a
+text part, next to the image network above:
+
+```python
+from brainscore import LayerSelector
+from brainscore.model_helpers.text_wrapper import TextWrapper
+
+
+class TextNet(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.embed = torch.nn.Embedding(128, 8)
+        self.encoder = torch.nn.Linear(8, 8)
+
+    def forward(self, input_ids, attention_mask=None):
+        return self.encoder(self.embed(input_ids))
+
+
+def tokenizer(texts, padding=True, truncation=True, max_length=512, return_tensors='pt', **kwargs):
+    """Characters as token ids, padded with 0 to the longest text."""
+    ids = [[ord(character) % 128 for character in text][:max_length] for text in texts]
+    width = max(len(row) for row in ids)
+    return {'input_ids': torch.tensor([row + [0] * (width - len(row)) for row in ids]),
+            'attention_mask': torch.tensor([[1] * len(row) + [0] * (width - len(row)) for row in ids])}
+
+
+text_net = TextNet().eval()
+both = BrainScoreModel(
+    identifier='my-cnn-and-text',
+    extractor={'vision': vision,
+               'text': TextWrapper(text_net, tokenizer, layer_aggregation='mean')},
+    region_layer_map={'IT': LayerSelector(name='layer4', modality='vision'),
+                      'language_system': LayerSelector(name='encoder', modality='text')},
+)
+print(sorted(both.in_channels), sorted(c for c in both.out_channels if c.startswith('neural')))
+# ['control', 'text', 'vision:image'] ['neural:IT', 'neural:language_system']
+```
+
 **Stills and clips.** The `extractor` keys declare the visual forms a model takes natively: a `'vision'` key takes pictures (`vision:image`) and a `'video'` key takes clips (`vision:video`). A model that takes both, such as a vision-language model, registers one of each; each stimulus then goes to the matching one. Never wrap a picture as a one-frame video for a model that takes pictures. The [Qwen3.6 registration](../../brainscore/models/qwen36_27b/model.py) registers both.
 
 ## Models without accessible layers

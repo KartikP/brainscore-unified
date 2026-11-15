@@ -1,7 +1,7 @@
 """Registers your stimuli and measurements so benchmarks can load them by identifier.
 
-To install: copy this folder to ``brainscore/data/your_name/``, then add
-``from . import your_name`` to ``brainscore/data/__init__.py``.
+To install: copy this folder to ``brainscore/data/your_name/``; it registers by
+its presence (no other file changes).
 
 Then anywhere (typically inside a benchmark):
 

@@ -9,12 +9,12 @@ See `EXTENDING.md` (Seam 2) for the contract.
 2. Edit `benchmark.py`. Implement `_load_assembly()` (your measurements + stimulus_set),
    `_ceiling()`, and `__call__(subject)`. Pick your metric via `load_metric(...)`.
 3. Pick your identifier in `benchmark_registry['<your-id>']`.
-4. Add `from . import <your_name>` to `brainscore/benchmarks/__init__.py`.
+4. Nothing else to edit: the folder registers by its presence.
 5. Move `test_benchmark.py` to `tests/test_<your_name>.py`, adapt it and run it.
 
 ## Variants
 
-A variant of a benchmark is one more registry line: `benchmark_registry['<id>-<suffix>'] = partial(YourBenchmark, <arguments>)` (or `lambda: YourBenchmark(<arguments>)`). Put the arguments that make the variant in that line, for example `channels=('text',)` for a variant that sends text. The registry line names the identifier too: a class with variants takes it as an argument, `identifier='<id>-<suffix>'`, as ROAR, induced dyslexia and Algonauts2025 do, and does not build it from a table of suffixes. Do not write a subclass or a factory function that only passes arguments. Write a subclass only when it adds behavior. The identifier of a variant stays fixed once registered.
+A variant of a benchmark is one more registry line: `benchmark_registry['<id>-<suffix>'] = partial(YourBenchmark, <arguments>)` (or `lambda: YourBenchmark(<arguments>)`). Put the arguments that make the variant in that line, for example `channels=('text',)` for a variant that sends text. The registry line names the identifier too: a class with variants takes it as an argument, `identifier='<id>-<suffix>'`, as ROAR, induced dyslexia and Algonauts2025 do, and does not build it from a table of suffixes. When an argument changes what the variant requests, the class sets `self.requested_output_channels` in `__init__` from it (an instance attribute), before `super().__init__(...)`. Do not write a subclass or a factory function that only passes arguments. Write a subclass only when it adds behavior. The identifier of a variant stays fixed once registered.
 
 From the `templates/` folder, the template benchmark scores the template model
 offline:

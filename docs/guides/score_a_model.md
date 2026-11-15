@@ -18,10 +18,10 @@ from brainscore.harnesses.grid_game import random_action_policy
 subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy(seed=0))
 score = brainscore.score(subject, 'GridGame-reach-5x5')
 print(float(score), score.attrs['success_rate'], score.attrs['random_floor'])
-# 0.2 0.2 0.2
+# 0.5333333333333333 0.5333333333333333 0.5333333333333333
 ```
 
-The random subject reaches the goal on 3 of the 15 boards, the same rate as the floor
+The random subject reaches the goal on 8 of the 15 boards, the same rate as the floor
 that the benchmark measures with its own random policy. A subject with no `policy` part,
 such as `chance-baseline`, does not give the `motor` output, so this pair is N/A.
 
@@ -46,10 +46,13 @@ subject = BrainScoreModel(identifier='random-moves', policy=random_action_policy
 score = brainscore.score(subject, benchmark)
 ```
 
+The two arguments also have names: `brainscore.score(model_identifier=..., benchmark_identifier=...)`
+takes the same registered names or objects.
+
 What happens:
 
-1. **Compatibility check.** The subject's declared channels are compared with what the benchmark provides and requests. For an incompatible pair, known from the declarations, `score` returns the N/A result before any compute: the value is NaN (never zero), `attrs['status']` is `'N/A'`, `attrs['reason']` says why and `attrs['missing_channels']` names the channels. See [Core concepts, section 6](../02_core_concepts.md#6-compatibility).
-2. **Memory check.** One stimulus is run to estimate the memory the full benchmark needs. Pass `check_mem=False` to skip it.
+1. **Compatibility check.** The subject's declared channels are compared with what the benchmark provides and requests. For an incompatible pair, known from the declarations, `score` returns the N/A result before any compute: the value is NaN (never zero), `attrs['status']` is `'N/A'`, `attrs['reason']` says why and `attrs['missing_channels']` names the channels. When a `BrainScoreModel` has a wired part that derives a missing answer format, the reason also names the statement to write (for example `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}`). See [Core concepts, section 6](../02_core_concepts.md#6-compatibility).
+2. **Memory check.** One stimulus is run to estimate the memory the full benchmark needs. Pass `check_mem=False` to skip it. When no neural region is available for that probe (the benchmark names no `neural:<region>` output and no `region`, and no feature width is declared), the estimate is not made: one line says so and that memory is not guarded for the run. To estimate anyway, declare the width: `expected_feature_dim` on the benchmark or `feature_dim` on the model.
 3. **The benchmark runs** the subject through sessions and returns a `Score`. A subject that refuses a session when it starts (it cannot answer the requested outputs together, or has no part for the task) raises `ExecutionNotFeasibleError`: the pair passed the declared check, so the declarations do not yet express that limit, and there is no result. A malformed declaration also raises (`ValueError`). If the benchmark leaves an intervention active on the subject, `score` fails.
 
 Every unified benchmark score carries the same attributes: `raw` (the metric value before any ceiling normalization), `ceiling` (the reference, a `Score`), `normalized` (whether the score is `raw` divided by a measured ceiling; when it is `False` the score is the raw value, and the ceiling is NaN with `attrs['status'] == 'not_estimated'`), `metric`, `benchmark_version`, `benchmark_identifier` and `compatibility`. A raw score and a normalized score are not on one scale.

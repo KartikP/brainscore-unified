@@ -42,6 +42,10 @@ CORE_ORDER = ('check_compatibility', 'check_memory', 'subject_for_benchmark',
 # (step, entry points that have it): reason. Violations only; the target is empty.
 ALLOWED = {}
 
+_STATEMENT = ('Contract Rule 11.5: for a BrainScoreModel (a unified class), the N/A reason of '
+              'unified score() names the statement that declares a format a wired part derives '
+              '(statement_hint, the text of the session refusal; read from the wiring, nothing runs)')
+
 # (step, entry points that have it): the rule sentence that states the difference
 STATED_EXCEPTIONS = {
     ('call _resolve_identifier', 'unified'):
@@ -61,6 +65,8 @@ STATED_EXCEPTIONS = {
         "Contract Rule 11.5: vision runs its old memory probe (score_benchmark, the "
         "benchmark's preallocate_memory) for old models; unified and language use core's "
         'memory check (check_memory) only',
+    ('call statement_hint', 'unified'): _STATEMENT,
+    ("attrs['reason']", 'unified'): _STATEMENT,
 }
 
 
