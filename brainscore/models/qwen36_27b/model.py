@@ -105,6 +105,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     from brainscore.model_helpers.intervention import pytorch_intervention
+    from brainscore.selection import LayerSelector
 
     # 56 GB at bf16, so placement is automatic. Left to itself accelerate packs
     # each device to the brim and the first forward pass then OOMs on
@@ -144,7 +145,10 @@ def get_model(identifier: str) -> BrainScoreModel:
     return BrainScoreModel(
         identifier=identifier,
         model=full,
-        region_layer_map=REGION_LAYER_MAP,
+        # The picture tokens enter the language model, so its layer is reached from text and from a
+        # picture in an answering pass (rule 2.5); the text extractor records it.
+        region_layer_map=dict(REGION_LAYER_MAP, language_system=LayerSelector(
+            name=REGION_LAYER_MAP['language_system'], modality=('text', 'vision'))),
         extractor={'vision': vision, 'video': video, 'text': text},
         answer=_make_answer(full, processor),
         reply=reply,

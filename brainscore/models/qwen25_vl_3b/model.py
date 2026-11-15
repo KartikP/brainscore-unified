@@ -198,7 +198,10 @@ def get_model(identifier: str) -> Subject:
     from brainscore.model_helpers.replies import chat_parts
     reply, likelihood = chat_parts(qwen_model, qwen_processor)
 
-    layers = dict(REGION_LAYER_MAP, language_system=language_layer)
+    # The picture tokens enter the language model, so its layer is reached from text and from a
+    # picture in an answering pass (rule 2.5); the text extractor records it.
+    from brainscore.selection import LayerSelector
+    layers = dict(REGION_LAYER_MAP, language_system=LayerSelector(name=language_layer, modality=('text', 'vision')))
     variant_kwargs = {}
     if identifier in VARIANTS:
         from brainscore.model_helpers.intervention import pytorch_intervention
