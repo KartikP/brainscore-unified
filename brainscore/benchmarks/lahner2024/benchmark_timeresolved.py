@@ -105,7 +105,7 @@ from brainscore.temporal import (
 )
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge
-from brainscore.benchmarks._score import benchmark_score
+from brainscore.benchmarks._score import benchmark_score, not_estimated
 
 from .benchmark import (
     BIBTEX,
@@ -311,7 +311,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
             identifier=identifier,
             version=2,
             parent='naturalistic',
-            ceiling=Score(1.0 if ceiling is None else float(ceiling)),
+            ceiling=not_estimated() if ceiling is None else Score(float(ceiling)),
             bibtex=BIBTEX,
         )
 

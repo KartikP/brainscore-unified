@@ -23,8 +23,7 @@ def _benchmark(ceiling):
 
 def test_a_normalized_score_carries_raw_ceiling_and_metric():
     benchmark = _benchmark(Score(0.8))
-    score = benchmark_score(benchmark, 0.6 / 0.8, raw=0.6, metric='accuracy',
-                            normalized=True, n_items=5)
+    score = benchmark_score(benchmark, raw=0.6, metric='accuracy', n_items=5)
     assert all(key in score.attrs for key in COMMON)
     assert float(score) == 0.6 / 0.8
     assert isinstance(score.attrs['raw'], Score) and float(score.attrs['raw']) == 0.6
@@ -35,22 +34,50 @@ def test_a_normalized_score_carries_raw_ceiling_and_metric():
 
 
 def test_a_raw_score_carries_the_not_estimated_ceiling():
-    score = benchmark_score(_benchmark(not_estimated()), 0.2, raw=0.2, metric='r',
-                            normalized=False)
+    score = benchmark_score(_benchmark(not_estimated()), raw=0.2, metric='r')
+    assert float(score) == 0.2
     assert score.attrs['normalized'] is False
     assert math.isnan(float(score.attrs['ceiling']))
     assert score.attrs['ceiling'].attrs['status'] == 'not_estimated'
 
 
 def test_another_reference_is_kept_as_a_score():
-    score = benchmark_score(_benchmark(Score(1.0)), 0.5, raw=0.4, metric='r',
-                            normalized=True, ceiling=0.8)
+    score = benchmark_score(_benchmark(not_estimated()), raw=0.4, metric='r', ceiling=0.8)
     assert isinstance(score.attrs['ceiling'], Score) and float(score.attrs['ceiling']) == 0.8
+    assert float(score) == 0.4 / 0.8 and score.attrs['normalized'] is True
 
 
-def test_normalized_is_a_boolean():
-    with pytest.raises(TypeError, match='normalized'):
-        benchmark_score(_benchmark(Score(1.0)), 0.5, raw=0.5, metric='r', normalized=1)
+def test_a_per_target_value_needs_a_measured_ceiling():
+    score = benchmark_score(_benchmark(not_estimated()), value=0.7, raw=0.4, metric='r',
+                            ceiling=Score(0.6))
+    assert float(score) == 0.7 and score.attrs['normalized'] is True
+    with pytest.raises(ValueError, match='measured ceiling'):
+        benchmark_score(_benchmark(not_estimated()), value=0.7, raw=0.4, metric='r')
+
+
+@pytest.mark.parametrize('ceiling,flag', [
+    (not_estimated(), True), (Score(0.8), False), (Score(0.8), 1), (not_estimated(), 'yes')])
+def test_the_normalized_flag_cannot_be_set(ceiling, flag):
+    with pytest.raises(TypeError, match="normalized"):
+        benchmark_score(_benchmark(ceiling), raw=0.4, metric='r', normalized=flag)
+
+
+def test_benchmark_version_cannot_be_set():
+    with pytest.raises(TypeError, match="benchmark_version"):
+        benchmark_score(_benchmark(Score(0.8)), raw=0.4, metric='r', benchmark_version=9)
+
+
+@pytest.mark.parametrize('ceiling', [Score(float('nan')), float('nan')])
+def test_an_untagged_nan_ceiling_is_refused(ceiling):
+    with pytest.raises(ValueError, match=r'not_estimated\(\)'):
+        benchmark_score(_benchmark(not_estimated()), raw=0.4, metric='r', ceiling=ceiling)
+    with pytest.raises(ValueError, match=r'not_estimated\(\)'):
+        benchmark_score(_benchmark(Score(float('nan'))), raw=0.4, metric='r')
+
+
+def test_a_measured_ceiling_of_one_stays_measured():
+    score = benchmark_score(_benchmark(Score(1.0)), raw=0.4, metric='r')
+    assert float(score) == 0.4 and score.attrs['normalized'] is True
 
 
 def test_no_unified_benchmark_writes_the_common_attributes_by_hand():

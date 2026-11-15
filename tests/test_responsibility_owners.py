@@ -215,10 +215,8 @@ ALLOWED = {
     ('R15 score construction', 'unified:metrics/topographic/metric.py'):
         'registered metric builds Score directly (second score builder)',
     ('R15 score construction', 'unified:benchmarks/grid_game/benchmark.py'): _NO_CEILING,
-    ('R15 score construction', 'unified:benchmarks/induced_dyslexia/benchmark.py'): _NO_CEILING,
     ('R15 score construction', 'unified:benchmarks/lahner2024/benchmark.py'): _NO_CEILING,
     ('R15 score construction', 'unified:benchmarks/lahner2024/benchmark_timeresolved.py'): _NO_CEILING,
-    ('R15 score construction', 'unified:benchmarks/lebel2023/benchmark.py'): _NO_CEILING,
     ('R15 score construction', 'unified:benchmarks/roar_yeatman2021/benchmark.py'): _NO_CEILING,
     ('R15 score construction', 'unified:harnesses/human_replay.py'): _NO_CEILING,
     ('R18 cache validity', 'unified:_model/dispatch.py'):

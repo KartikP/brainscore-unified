@@ -255,11 +255,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         correct = [p == t for p, t in zip(predicted_labels, truth)]
         raw_accuracy = float(np.mean(correct))
 
-        ceiling_value = float(self.ceiling)
-        ceiled = raw_accuracy / ceiling_value
-
-        score = benchmark_score(self, ceiled, raw=raw_accuracy, metric='accuracy',
-                                normalized=True)
+        score = benchmark_score(self, raw=raw_accuracy, metric='accuracy')
         score.attrs['n_test_stimuli'] = len(stim_ids)
         score.attrs['n_invalid_answers'] = int(invalid.sum())
         score.attrs['dyslexia_threshold'] = DYSLEXIA_THRESHOLD

@@ -258,7 +258,8 @@ class StimulusExtractor:
 
 
 def test_benchmark_keeps_its_identity_and_scores_a_participate_only_subject(benchmark):
-    assert (benchmark.identifier, benchmark.version, float(benchmark.ceiling)) == ('your-benchmark', 1, 1.0)
+    assert (benchmark.identifier, benchmark.version) == ('your-benchmark', 1)
+    assert benchmark.ceiling.attrs['status'] == 'not_estimated'
     assert benchmark.parent == 'neural'
     assert len(benchmark._stimulus_set) == 32
     subject = ParticipateOnlySubject()
@@ -270,7 +271,8 @@ def test_benchmark_keeps_its_identity_and_scores_a_participate_only_subject(benc
     assert list(responses['stimulus_id'].values) == list(benchmark._stimulus_set['stimulus_id'])
     score = benchmark(subject)
     assert np.isfinite(float(score))
-    assert float(score.attrs['ceiling']) == 1.0 and 'raw' in score.attrs
+    assert score.attrs['ceiling'] is benchmark.ceiling and 'raw' in score.attrs
+    assert score.attrs['normalized'] is False and float(score) == float(score.attrs['raw'])
     assert float(score) == float(benchmark(ParticipateOnlySubject()))   # deterministic
 
 
@@ -286,7 +288,7 @@ def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
     current = subject()
     check_compatibility(current, benchmark)
     score = benchmark(current)
-    assert float(score) == float(expected) / float(benchmark.ceiling)
+    assert float(score) == float(expected)   # the ceiling is not estimated: the score is raw
     np.testing.assert_array_equal(score.attrs['raw'].values, expected.values)
     extractor = current._extractors['vision']
     assert extractor.calls == [(list(benchmark._stimulus_set['stimulus_id']), ['layer2'])]

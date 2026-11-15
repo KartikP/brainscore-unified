@@ -1,6 +1,6 @@
 # Template: a new benchmark
 
-This template evaluates a subject through task/recording helpers and returns a ceiling-adjusted `Score`. Benchmarks without a reliability ceiling can return raw scores instead; state the score definition explicitly.
+This template evaluates a subject through task/recording helpers and returns a `Score`: the raw value divided by a measured ceiling, or the raw value when the ceiling is `not_estimated()` (as shipped). Never use `Score(1.0)` to mean "no ceiling".
 See `EXTENDING.md` (Seam 2) for the contract.
 
 ## Use it
@@ -24,7 +24,7 @@ import brainscore
 import new_model, new_benchmark      # registers 'your-model' and 'your-benchmark'
 
 score = brainscore.score('your-model', 'your-benchmark')
-print(score.attrs['metric'], score.attrs['normalized'])   # linear_predictivity True
+print(score.attrs['metric'], score.attrs['normalized'])   # linear_predictivity False (no ceiling estimated yet)
 ```
 
 ## The interface contract

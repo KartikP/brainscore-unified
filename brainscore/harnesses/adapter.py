@@ -58,7 +58,7 @@ def adapter_score(benchmark, value: float, *, metric: str, input_adaptation: dic
     evaluator (Contract Rule 3.9; Communication Rule 2.3).
     """
     return benchmark_score(
-        benchmark, value, raw=value, metric=metric, normalized=False,
+        benchmark, raw=value, metric=metric,
         benchmark_identifier=benchmark.identifier,
         leaderboard_eligible=benchmark.leaderboard_eligible,
         run_directory=str(context.directory),

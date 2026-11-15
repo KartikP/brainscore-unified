@@ -1,6 +1,7 @@
 """TODO: one-line description — what measurements, which model capability, which metric.
 
-A benchmark drives the subject and returns a ceiled Score. It runs the subject
+A benchmark drives the subject and returns a Score: raw divided by a measured ceiling,
+or raw when the ceiling is not estimated. It runs the subject
 through typed helpers such as `neural_response`, which hand it a session via
 `subject.participate(session)`. Any Subject can be scored, including one that implements
 only `participate` (no `start_recording` / `process`).
@@ -29,7 +30,7 @@ from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidA
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.streaming_helpers import neural_response
 from brainscore import benchmark_registry
-from brainscore.benchmarks import benchmark_score
+from brainscore.benchmarks import benchmark_score, not_estimated
 import brainscore_vision
 
 BIBTEX = """TODO: @article{...} citation for the data."""
@@ -90,10 +91,10 @@ def _load_assembly():
 
 
 def _ceiling() -> Score:
-    # TODO: estimate the data ceiling (e.g. split-half reliability). Score(1.0) means
-    # "unceiled" — fine to start, but say so wherever you report the number, because an
-    # unceiled score is not comparable to a ceiled one.
-    return Score(1.0)
+    # TODO: estimate the data ceiling (e.g. split-half reliability) and return it as
+    # Score(estimate). Until then the ceiling is not estimated and the score is the raw
+    # value (normalized=False), which is not comparable to a ceiled score.
+    return not_estimated()
 
 
 class YourBenchmark(BenchmarkBase):
@@ -142,12 +143,11 @@ class YourBenchmark(BenchmarkBase):
             coord_name='object_name',
             values=[categories[stimulus_id] for stimulus_id in predictions['stimulus_id'].values],
         )
-        # 3) score against the target, then normalize by the ceiling
+        # 3) score against the target
         raw = self._metric(predictions, self._assembly)
-        # benchmark_score writes the attributes every unified score carries:
-        # raw, ceiling, normalized, metric and benchmark_version.
-        return benchmark_score(self, float(raw) / float(self.ceiling), raw=raw,
-                               metric='linear_predictivity', normalized=True)
+        # benchmark_score divides by a measured ceiling (the score is raw otherwise) and
+        # writes raw, ceiling, normalized, metric and benchmark_version.
+        return benchmark_score(self, raw=raw, metric='linear_predictivity')
 
 
 benchmark_registry['your-benchmark'] = lambda: YourBenchmark()

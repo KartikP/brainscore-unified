@@ -46,7 +46,8 @@ def test_normalized_beats_raw_but_stays_below_one():
 def test_whole_cortex_variant_does_not_borrow_the_roi_ceiling():
     # The ceiling was measured on the 4042-voxel ROI mask. Whole cortex has a very
     # different reliability profile, so applying this number there would be wrong.
-    assert float(Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic').ceiling) == 1.0
+    ceiling = Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic').ceiling
+    assert ceiling.attrs['status'] == 'not_estimated'
 
 
 def test_whole_cortex_takes_the_scalar_path(monkeypatch, tmp_path):

@@ -30,7 +30,7 @@ import numpy as np
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.streaming_helpers import neural_response
-from brainscore.benchmarks._score import benchmark_score
+from brainscore.benchmarks._score import benchmark_score, not_estimated
 
 from ...metrics.encoding import (
     NormalEquations, cross_validated_r, grid_search, group_kfold,
@@ -164,9 +164,9 @@ class LeBel2023Encoding(BenchmarkBase):
                  delays=DEFAULT_DELAYS, alpha_grid=DEFAULT_ALPHA_GRID,
                  n_splits=5, context_window_tr=5, max_targets=None,
                  per_voxel_alpha=False, random_state=0):
-        # Ceiling is 1.0 because none is estimable here (see module docstring);
-        # the reported value is therefore a raw correlation.
-        super().__init__(identifier=identifier, ceiling=Score(1.0),
+        # No ceiling is estimable here (see module docstring); the reported
+        # value is therefore a raw correlation.
+        super().__init__(identifier=identifier, ceiling=not_estimated(),
                          version=1, parent='neural_language', bibtex=BIBTEX)
         self._region = region
         self.requested_output_channels = frozenset({f'neural:{region}'})
@@ -228,9 +228,8 @@ class LeBel2023Encoding(BenchmarkBase):
 
         reported, extra_attrs = self._summarize(per_vertex, median_r, mean_r)
         # No ceiling is estimable (single presentation per story): the score is
-        # the raw correlation and the registered ceiling stays Score(1.0).
-        score = benchmark_score(self, reported, raw=reported, metric=self.metric,
-                                normalized=False, **extra_attrs)
+        # the raw correlation.
+        score = benchmark_score(self, raw=reported, metric=self.metric, **extra_attrs)
         # The score of each target, in target order, for a cortical surface.
         score.attrs['per_vertex_r'] = per_vertex
         score.attrs['mean_r'] = mean_r
