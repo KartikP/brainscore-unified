@@ -9,6 +9,7 @@ import re
 import pytest
 
 from brainscore import BrainScoreModel
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from tests.brainscore_model.test_answer_ownership import _model, _run
@@ -129,3 +130,34 @@ def test_no_message_names_a_word_a_registrant_cannot_write():
         with pytest.raises(ValueError) as refused:
             _readout(owners)
         assert 'log_probabilities' not in str(refused.value)
+
+
+# --- ADR-0063 decision 4: a refusal names the statement to write ----------------------
+
+@pytest.mark.parametrize('parts, channel, line', [
+    (('behavioral_readout_layer',), 'behavior:choice',
+     "capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}"),
+    (('likelihood',), 'behavior:choice',
+     "capability_config={'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax')}}"),
+    (('likelihood',), 'behavior:probabilities',
+     "capability_config={'behavior-sessions': {'behavior:probabilities': ('likelihood', 'softmax')}}"),
+], ids=['readout choice', 'likelihood choice', 'likelihood probabilities'])
+def test_a_derived_format_without_its_statement_is_refused_with_the_line_to_write(parts, channel, line):
+    calls = []
+    model = _model(*parts, calls=calls)
+    assert channel not in model.out_channels
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
+    with pytest.raises(ExecutionNotFeasibleError) as raised:
+        _run(model, [channel], task)
+    assert f"{channel!r} is derived by a wired part; state it: {line}." in str(raised.value)
+    assert calls == []
+
+
+def test_two_parts_that_derive_a_format_are_both_named():
+    model = _model('likelihood', 'behavioral_readout_layer')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
+    with pytest.raises(ExecutionNotFeasibleError) as raised:
+        _run(model, ['behavior:choice'], task)
+    assert ("'behavior:choice' is derived by 2 wired parts; state one: "
+            "capability_config={'behavior-sessions': {'behavior:choice': ('likelihood', 'softmax_argmax')}} or "
+            "capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}.") in str(raised.value)

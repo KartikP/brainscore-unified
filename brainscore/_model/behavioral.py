@@ -888,6 +888,31 @@ def _declared_formats(subject) -> set:
     return declared
 
 
+def statement_hint(subject, missing) -> str:
+    """The statement that would declare each missing format a wired part only derives.
+
+    ADR-0063, decision 4: a refusal names the exact line to write, for example
+    ``capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}``.
+    With two candidate parts it names each line and asks for one. Empty when no wired
+    part derives a missing format.
+    """
+    parts = _formats_by_part(subject)
+    if not subject._extractors:
+        parts.pop('readout', None)
+    lines = []
+    for channel in sorted(missing):
+        candidates = [(part, formats[channel]) for part, formats in sorted(parts.items())
+                      if formats.get(channel) not in (None, 'link')]
+        written = [f"capability_config={{'behavior-sessions': {{{channel!r}: ({part!r}, {how!r})}}}}"
+                   for part, how in candidates]
+        if len(written) == 1:
+            lines.append(f' {channel!r} is derived by a wired part; state it: {written[0]}.')
+        elif written:
+            lines.append(f' {channel!r} is derived by {len(written)} wired parts; state one: '
+                         + ' or '.join(written) + '.')
+    return ''.join(lines)
+
+
 _ARGUMENTS = {'generation': 'answer= or reply=', 'likelihood': 'likelihood=',
               'readout': 'behavioral_readout_layer= (with an extractor)'}
 
