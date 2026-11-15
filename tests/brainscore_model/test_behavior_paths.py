@@ -137,9 +137,21 @@ def test_a_legacy_task_with_a_region_records_the_answer_pass():
     assert calls == []                               # before any answer
 
 
-def test_a_choice_goes_to_the_reply_part_with_the_full_prompt():
+def test_a_plain_choice_goes_to_the_answer_part_when_one_is_wired():
+    """With answer= wired, a plain Choice is answered by it, not by the reply part (point r)."""
     calls = []
     model = _model(calls, answer=True, reply=True, likelihood=True)
+    choice = _run(model, ['behavior:choice'],
+                  TaskContext(instruction='Which animal?', response=Choice(['cat', 'dog']))
+                  ).collect('behavior:choice')
+    assert calls == [('answer', sid, 'Which animal?', ['cat', 'dog']) for sid in 'abc']
+    assert choice.attrs['response'] == response_record('behavior:choice', 'generation', parsed_by='model')
+
+
+def test_a_choice_goes_to_the_reply_part_with_the_full_prompt():
+    """Without answer=, the reply part answers a plain Choice and gets the full prompt."""
+    calls = []
+    model = _model(calls, reply=True, likelihood=True)
     choice = _run(model, ['behavior:choice'],
                   TaskContext(instruction='Which animal?', response=Choice(['cat', 'dog']))
                   ).collect('behavior:choice')
