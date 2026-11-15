@@ -383,7 +383,8 @@ def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
 class CachingExtractor:
     """The one sequence of the caching wrappers: a stimulus table, its inputs, the cache, its columns.
 
-    ``extractor(stimuli, layers)`` takes a ``StimulusSet`` (its inputs come from
+    ``extractor(stimuli, layers)`` checks ``layers`` first (a non-empty list of
+    layer names), before the store and before any compute. It takes a ``StimulusSet`` (its inputs come from
     ``_table_inputs`` and its columns go onto the result with ``_columns``) or a
     list of inputs. Both pass through ``_cached``: with a stimuli identifier and
     the cache on, the wrapper's ``@store_xarray`` method (``_STORED``) gives the
@@ -404,6 +405,10 @@ class CachingExtractor:
         return self._identifier
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
+        if (not isinstance(layers, (list, tuple)) or not layers
+                or not all(isinstance(layer, str) for layer in layers)):
+            raise ValueError(f'layers is a non-empty list of layer names, for example '
+                             f"['encoder.layers.6']; got {layers!r}.")
         if isinstance(stimuli, StimulusSet):
             if stimuli_identifier is None and hasattr(stimuli, 'identifier'):
                 stimuli_identifier = stimuli.identifier

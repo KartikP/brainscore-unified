@@ -199,3 +199,23 @@ def test_a_list_of_inputs_with_a_stimuli_identifier_is_cached_as_a_table_is(name
     compute = f'_from_{wrapper._INPUTS}'
     monkeypatch.setattr(wrapper, compute, lambda *a, **k: pytest.fail('the stored entry was not read'))
     xarray.testing.assert_identical(wrapper(inputs, layers=layers, stimuli_identifier='share-list'), computed)
+
+
+@pytest.mark.parametrize('name', sorted(LIST_INPUTS))
+@pytest.mark.parametrize('store_state', ['warm', 'cold', 'off'])
+def test_layers_other_than_a_list_of_names_are_refused_before_any_pass(name, store_state, store, tmp_path,
+                                                                      monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    build, _, layers = CASES[name]
+    wrapper = build()
+    store.install(wrapper)
+    inputs = LIST_INPUTS[name]()
+    if store_state == 'warm':
+        wrapper(inputs, layers=layers, stimuli_identifier='share-layers')
+    store.enabled = store_state != 'off'
+    passes = []
+    wrapper._model.register_forward_pre_hook(lambda *_: passes.append(1))
+    for bad in ([], None, layers[0]):
+        with pytest.raises(ValueError, match='non-empty list of layer names'):
+            wrapper(inputs, layers=bad, stimuli_identifier='share-layers')
+    assert passes == []
