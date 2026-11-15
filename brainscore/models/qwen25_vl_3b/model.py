@@ -92,24 +92,25 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
     Signature (the ``answer`` part of BrainScoreModel):
         fn(stimulus_row, instruction, label_set) -> the generated text
     """
-    from brainscore.model_helpers.api_behavioral import _required_column
+    from brainscore.model_helpers.api_behavioral import _row_parts
     device = next(qwen_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
-        image = Image.open(stimulus_row[_required_column(
-            stimulus_row, 'image', 'Qwen2.5-VL answer')]).convert('RGB')
-        messages = [{
-            'role': 'user',
-            'content': [
-                {'type': 'image', 'image': image},
-                {'type': 'text',  'text': (f'{instruction} ' if instruction else '')
-                 + Choice(label_set).directive()},
-            ],
-        }]
+        # The row's picture, then its text (before the instruction and the directive).
+        image_column, text_column = _row_parts(stimulus_row, 'Qwen2.5-VL answer')
+        text = (f'{instruction} ' if instruction else '') + Choice(label_set).directive()
+        if text_column:
+            text = f'{stimulus_row[text_column]}\n\n{text}'
+        content, images = [], None
+        if image_column:
+            images = [Image.open(stimulus_row[image_column]).convert('RGB')]
+            content.append({'type': 'image', 'image': images[0]})
+        content.append({'type': 'text', 'text': text})
+        messages = [{'role': 'user', 'content': content}]
         prompt = qwen_processor.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True)
         inputs = qwen_processor(
-            text=[prompt], images=[image], return_tensors='pt', padding=True,
+            text=[prompt], images=images, return_tensors='pt', padding=True,
         ).to(device)
 
         with torch.no_grad():

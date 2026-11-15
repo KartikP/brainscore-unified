@@ -52,18 +52,25 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
     prompt it in a captioning-style template that it handles better:
     "Question: {instruction} Answer:" → model completes with label.
     """
-    from brainscore.model_helpers.api_behavioral import _required_column
+    from brainscore.model_helpers.api_behavioral import _row_parts
     device = next(blip_model.parameters()).device
 
     def generate(stimulus_row, instruction: str, label_set: List[str]) -> str:
-        image = Image.open(stimulus_row[_required_column(
-            stimulus_row, 'image', 'BLIP-2 answer')]).convert('RGB')
+        image_column, text_column = _row_parts(stimulus_row, 'BLIP-2 answer')
         # BLIP-2 OPT responds best to "Question: ... Answer:" template; with no
-        # instruction there is no question.
+        # instruction there is no question. The row's text comes first.
         prompt = ((f"Question: {instruction} " if instruction else '')
                   + f"Choose from: {', '.join(label_set)}. Answer:")
-        inputs = blip_processor(text=prompt, images=image,
-                                return_tensors='pt')
+        if text_column:
+            prompt = f"{stimulus_row[text_column]}\n\n{prompt}"
+        if image_column:
+            image = Image.open(stimulus_row[image_column]).convert('RGB')
+            inputs = blip_processor(text=prompt, images=image, return_tensors='pt')
+            run = blip_model.generate
+        else:
+            # No picture: BLIP-2's own language model reads the text alone.
+            inputs = blip_processor.tokenizer(prompt, return_tensors='pt')
+            run = blip_model.language_model.generate
         # Explicit per-tensor device move. BatchFeature.to(device) does not
         # reliably move all tensors on MPS; BLIP-2's generate() accesses
         # input_ids inside get_input_embeddings() and needs it on the same
@@ -76,7 +83,7 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
         }
 
         with torch.no_grad():
-            generated = blip_model.generate(
+            generated = run(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,

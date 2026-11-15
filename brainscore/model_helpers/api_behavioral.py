@@ -60,14 +60,19 @@ def _find_column(row, kind: str) -> Optional[str]:
     return None
 
 
-def _required_column(row, kind: str, part: str) -> str:
-    """``_find_column``, or a ValueError that names the accepted columns."""
+def _row_parts(row, part: str) -> Tuple[Optional[str], Optional[str]]:
+    """The picture column and the text column of ``row`` (``_find_column``), either may be
+    ``None``; a row with neither raises a ValueError that names the accepted columns.
+
+    An answer part shows what the row has: its picture, its text, or both.
+    """
     from brainscore_core.responses import part_columns
-    column = _find_column(row, kind)
-    if column is None:
-        raise ValueError(f"{part}: the stimulus row has no {kind} column; accepted columns, "
-                         f"in order: {list(part_columns(kind))}.")
-    return column
+    image, text = _find_column(row, 'image'), _find_column(row, 'text')
+    if image is None and text is None:
+        raise ValueError(f"{part}: the stimulus row has no image column and no text column; "
+                         f"accepted columns, in order: image {list(part_columns('image'))}, "
+                         f"text {list(part_columns('text'))}.")
+    return image, text
 
 
 def _encode_image(path: Union[str, Path]) -> Tuple[str, str]:
@@ -291,9 +296,7 @@ def build_api_generation_fn(
         label_set = list(label_set)
         prompt = _answer_text(instruction, label_set)
 
-        img_col = _find_column(stimulus_row, 'image')
-        txt_col = None if img_col else _required_column(
-            stimulus_row, 'text', 'api_behavioral (no image column either)')
+        img_col, txt_col = _row_parts(stimulus_row, 'api_behavioral answer')
 
         # stimulus identity for the cache key
         try:
@@ -301,16 +304,15 @@ def build_api_generation_fn(
         except (KeyError, TypeError):
             stim_key = ''
 
+        # The row's picture, then its text before the prompt; a row with both shows both.
+        image, user_text, payload = None, prompt, ''
         if img_col is not None:
             media, b64 = _encode_image(stimulus_row[img_col])
-            image = (media, b64)
-            user_text = prompt
-            payload_hash = hashlib.sha256(b64.encode('utf-8')).hexdigest()[:16]
-        else:
-            image = None
+            image, payload = (media, b64), b64
+        if txt_col is not None:
             text = str(stimulus_row[txt_col])
-            user_text = f"{text}\n\n{prompt}"
-            payload_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
+            user_text, payload = f"{text}\n\n{prompt}", payload + text
+        payload_hash = hashlib.sha256(payload.encode('utf-8')).hexdigest()[:16]
 
         key = _key(prompt, label_set, stim_key, payload_hash)
         response = cache.get(key) if cache is not None else None

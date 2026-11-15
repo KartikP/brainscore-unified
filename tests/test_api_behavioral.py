@@ -9,7 +9,7 @@ import pytest
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
-    build_api_generation_fn, _find_column, _answer_text, _required_column,
+    build_api_generation_fn, _find_column, _answer_text, _row_parts,
 )
 
 
@@ -40,10 +40,12 @@ class TestPureHelpers:
         row = pd.Series({'image_file_name': float('nan'), 'sentence': 'hi'})
         assert _find_column(row, 'image') is None  # NaN is not a usable path
 
-    def test_required_column_names_the_accepted_columns(self):
-        with pytest.raises(ValueError, match=r"part: the stimulus row has no text column; "
-                                             r"accepted columns, in order: \['sentence', 'text'\]"):
-            _required_column(pd.Series({'notes': 'x'}), 'text', 'part')
+    def test_row_parts_names_the_accepted_columns_when_the_row_has_neither(self):
+        assert _row_parts(pd.Series({'image_path': '/x.png', 'text': 'hi'}), 'part') == ('image_path', 'text')
+        with pytest.raises(ValueError, match=r"part: the stimulus row has no image column and no text "
+                                             r"column; accepted columns, in order: image \['image_file_name', "
+                                             r"'image_path', 'filename', 'image', 'vision'\], text \['sentence', 'text'\]"):
+            _row_parts(pd.Series({'notes': 'x'}), 'part')
 
 
 def _turn(messages):
@@ -91,7 +93,7 @@ class TestGenerationClosure:
     def test_missing_modality_column_raises(self):
         gen = build_api_generation_fn(self._mock(), 'mock')
         row = pd.Series({'unrelated': 7, 'stimulus_id': 's1'})
-        with pytest.raises(ValueError, match='no text column; accepted columns'):
+        with pytest.raises(ValueError, match='no image column and no text column'):
             gen(row, 'Is this real?', ['real', 'pseudo'])
 
     def test_cache_avoids_resecond_call(self, tmp_path):

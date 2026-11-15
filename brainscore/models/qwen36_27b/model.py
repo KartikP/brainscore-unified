@@ -60,23 +60,22 @@ def _tower_root(visual, language_model):
 
 
 def _make_answer(model, processor, max_new_tokens: int = 16):
-    """``answer(stimulus_row, instruction, label_set) -> label`` for behavioral
-    tasks. Thinking is switched off so the reply is the label itself."""
+    """``answer(stimulus_row, instruction, label_set) -> text`` for behavioral
+    tasks: the row's picture and text, then the prompt. Thinking is switched off
+    so the reply is short; the generated text is returned exactly."""
     import torch
     from PIL import Image
     from brainscore.model_helpers.api_behavioral import (
-        _answer_text, _find_column, _required_column)
+        _answer_text, _row_parts)
 
     def answer(stimulus_row, instruction, label_set):
         prompt = _answer_text(instruction, label_set)
-        image_column = _find_column(stimulus_row, 'image')
+        image_column, text_column = _row_parts(stimulus_row, 'Qwen3.6-27B answer')
         content, images = [], None
         if image_column:
             images = [Image.open(stimulus_row[image_column]).convert('RGB')]
             content.append({'type': 'image', 'image': images[0]})
-        else:
-            text_column = _required_column(stimulus_row, 'text',
-                                           'Qwen3.6-27B answer (no image column either)')
+        if text_column:
             prompt = f'{stimulus_row[text_column]}\n\n{prompt}'
         content.append({'type': 'text', 'text': prompt})
         text = processor.apply_chat_template(
