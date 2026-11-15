@@ -55,7 +55,7 @@ def test_native_subject_loads_without_adaptation_and_scores(package, monkeypatch
     score_fn = domain.score if package == "brainscore" else domain._run_score
     result = score_fn(subject.identifier, benchmark.identifier, check_mem=False)
     assert float(result) == 8.0
-    assert result.attrs["out_channels"] == ("neural:language_network",)
+    assert result.attrs["requested_outputs"] == ("neural:language_network",)
 
 
 @pytest.mark.parametrize("subject_form, benchmark_form", [

@@ -89,12 +89,12 @@ class TestPreflightInScore:
         assert result is score
         assert score.attrs['existing'] == 'preserved'
         assert score.attrs['in_channels'] == ('vision:image',)
-        assert score.attrs['out_channels'] == ('neural:IT',)
+        assert score.attrs['requested_outputs'] == ('neural:IT',)
         assert score.attrs['response'] == ()
         assert 'protocol' not in score.attrs
-        assert score.attrs['subject_id'] == 'test-model'
+        assert score.attrs['subject_identifier'] == 'test-model'
         assert score.attrs['compatibility']['match'] == 'full'
-        assert score.attrs['harness_id'] == 'brainscore'
+        assert score.attrs['entry_point'] == 'brainscore'
         assert score.attrs['benchmark_identifier'] == 'test-bench'
         assert score.attrs['trial_memory'] == 'none'
 
