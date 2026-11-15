@@ -425,6 +425,26 @@ def in_layer_order(assembly, layers):
     return assembly.isel(neuroid=np.argsort(order, kind='stable'))
 
 
+def catalog_paths(stimuli, channel: str):
+    """The values of the first column of ``stimuli`` that the core catalog binds to ``channel``, or None.
+
+    The catalog (``brainscore_core.io_catalog.stimulus_columns``) is the one
+    answer to which column feeds which channel, for pre-flight, dispatch and
+    the wrappers; columns are tried in its order.
+    """
+    from brainscore_core.io_catalog import stimulus_columns
+    for column, fed in stimulus_columns().items():
+        if fed == channel and column in stimuli.columns:
+            return list(stimuli[column].values)
+    return None
+
+
+def catalog_columns(channel: str) -> list:
+    """The stimulus columns the core catalog binds to ``channel``, in its order (for messages)."""
+    from brainscore_core.io_catalog import stimulus_columns
+    return [column for column, fed in stimulus_columns().items() if fed == channel]
+
+
 def attach_stimulus_set(assembly, stimuli):
     """Copy every stimulus column onto the presentation axis.
 

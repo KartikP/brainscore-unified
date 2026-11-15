@@ -50,8 +50,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_numpy, attach_stimulus_set, attention_mask, cache_signature, checked_aggregation, in_layer_order,
-    labelled, one_dtype, run_batches,
+    LiveRecording, as_numpy, attach_stimulus_set, attention_mask, cache_signature, catalog_columns,
+    catalog_paths, checked_aggregation, in_layer_order, labelled, one_dtype, run_batches,
 )
 
 
@@ -216,14 +216,11 @@ class AudioWrapper:
 
     @staticmethod
     def _extract_paths(stimulus_set) -> List[str]:
-        for col in ('audio_path', 'audio_file_name', 'audio_file', 'filename'):
-            if col in stimulus_set.columns:
-                return list(stimulus_set[col].values)
-        raise ValueError(
-            f"No audio column found in stimulus set. Columns: "
-            f"{list(stimulus_set.columns)}. Expected one of: audio_path, "
-            f"audio_file_name, audio_file, filename."
-        )
+        paths = catalog_paths(stimulus_set, 'audio')
+        if paths is None:
+            raise ValueError(f"No audio column found in stimulus set: expected one of "
+                             f"{catalog_columns('audio')}; got {list(stimulus_set.columns)}.")
+        return paths
 
     # ── Caching boundary ────────────────────────────────────────────
 

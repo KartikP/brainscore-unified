@@ -74,7 +74,7 @@ from brainscore.temporal import window_plan
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_float32, cache_signature, in_layer_order, labelled,
+    LiveRecording, as_float32, cache_signature, catalog_columns, catalog_paths, in_layer_order, labelled,
 )
 
 
@@ -277,16 +277,15 @@ class VideoWrapper:
         return activations
 
     def _extract_video_paths(self, stimulus_set) -> List[str]:
-        for col in ('video_path', 'video_file_name', 'image_file_name', 'filename'):
-            if col in stimulus_set.columns:
-                return [str(p) for p in stimulus_set[col].values]
+        paths = catalog_paths(stimulus_set, 'vision:video')
+        if paths is not None:
+            return [str(p) for p in paths]
         if hasattr(stimulus_set, 'stimulus_paths'):
             return [str(stimulus_set.stimulus_paths[sid])
                     for sid in stimulus_set['stimulus_id']]
-        raise ValueError(
-            f"Could not find video paths in stimulus set. "
-            f"Looked for columns: video_path, video_file_name, "
-            f"image_file_name, filename. Got: {list(stimulus_set.columns)}")
+        raise ValueError(f"Could not find video paths in stimulus set: expected one of "
+                         f"{catalog_columns('vision:video')} (or stimulus_paths); "
+                         f"got {list(stimulus_set.columns)}.")
 
     CACHE_FIELDS = (
         '_preprocessing',

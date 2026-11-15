@@ -29,8 +29,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_float32, cache_signature, checked_aggregation, in_layer_order, labelled, layer_assembly,
-    run_batches,
+    LiveRecording, as_float32, cache_signature, catalog_columns, catalog_paths, checked_aggregation,
+    in_layer_order, labelled, layer_assembly, run_batches,
 )
 
 
@@ -117,13 +117,12 @@ class VLMVisionWrapper:
         if hasattr(stimulus_set, 'stimulus_paths'):
             stimulus_ids = list(stimulus_set['stimulus_id'].values)
             return [str(stimulus_set.get_stimulus(sid)) for sid in stimulus_ids]
-        if 'image_file_name' in stimulus_set.columns:
-            return list(stimulus_set['image_file_name'].values)
-        if 'image_path' in stimulus_set.columns:
-            return list(stimulus_set['image_path'].values)
-        raise ValueError(
-            f"No image column found in stimulus set. "
-            f"Columns: {list(stimulus_set.columns)}")
+        paths = catalog_paths(stimulus_set, 'vision:image')
+        if paths is None:
+            raise ValueError(f"No image column found in stimulus set: expected one of "
+                             f"{catalog_columns('vision:image')} (or stimulus_paths); "
+                             f"got {list(stimulus_set.columns)}.")
+        return paths
 
     CACHE_FIELDS = (
         '_processor',
