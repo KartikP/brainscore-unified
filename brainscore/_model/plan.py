@@ -89,7 +89,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
         _refuse_task_session(model, session, task, answers, regions)
         delivery = 'stream' if streaming else 'per_trial' if history else 'table'
         if task.response is not None or task.task_type != 'passive':
-            pick = _choose_answering_part(model, session, task, answers, regions, delivery)
+            pick = _choose_answering_part(model, session, task, answers, regions, delivery, passes)
             pick_key = _pick_key(task, answers)
             if task.response is not None:
                 by_answer = model._behavioral.by_answer(task)
@@ -172,15 +172,16 @@ def _refuse_task_session(model, session, task, answers, regions) -> None:
     refuse_variance(model, session)
 
 
-def _choose_answering_part(model, session, task, answers, regions, delivery):
+def _choose_answering_part(model, session, task, answers, regions, delivery, passes='all'):
     """The answering part and the probability source, chosen once; refused before any fit.
 
     The refusals that ``respond`` and the readout would raise after the readout
     was fitted are raised here: trial history without a reply or likelihood part,
     and, when the source presents exactly its table, a region the readout cannot record from
-    the input it presents, a bad prompt layout and rows with different numbers of
-    options (whole table only; one trial at a time or a stream compares nothing
-    across trials). Any other source is checked per batch (stated limit, O2).
+    the input it presents, a readout extraction (the readout layer and its regions) that
+    no extractor of that input can make, a bad prompt layout and rows with different
+    numbers of options (whole table only; one trial at a time or a stream compares
+    nothing across trials). Any other source is checked per batch (stated limit, O2).
     """
     readout = model._behavioral
     readout.validate_task(task)
@@ -196,8 +197,10 @@ def _choose_answering_part(model, session, task, answers, regions, delivery):
         return pick                     # only the batches show their rows (rule 5.14, stated limit)
     # A presented table is checked whole, also for a streamed delivery;
     # options are compared across rows only when the whole table is answered at once.
-    if path == 'readout' and regions:
-        readout.refuse_readout_regions(stimuli, regions)
+    if path == 'readout':
+        # The input the readout presents, then its whole extraction request, before the fit.
+        modality = readout.refuse_readout_regions(stimuli, regions)
+        readout.refuse_readout_request(stimuli, modality, _region_layers(model, regions), passes)
     if task.response is not None:
         from .behavioral import trial_prompts
         trial_prompts(task, stimuli, compare_options=delivery == 'table')

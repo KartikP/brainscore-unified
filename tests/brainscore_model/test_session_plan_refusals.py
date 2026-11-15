@@ -46,6 +46,7 @@ CLASS = {
     'R19': ValueError, 'R20': ENFE, 'R20 direct call': ValueError, 'R21': ValueError, 'R22 process': ValueError,
     'R23 process': ValueError, 'R24 layers': ENFE, 'R24 no extractor': ENFE,
     'R24 layers direct call': ValueError, 'R24 no extractor direct call': NotImplementedError,
+    'R24 readout': ENFE, 'R24 readout direct call': ValueError,
     'R25': ValueError, 'R26': ValueError, 'R27': ValueError,
     'R28 parts': ENFE, 'R28 history': ENFE,
     'R29 reset without handle': ValueError, 'R29 unknown handle': KeyError,
@@ -462,6 +463,51 @@ def _r24_none_direct(log, monkeypatch, tmp_path):
     model = _subject(log, extractors=('vision',), regions={'IT': 'late'})
     model.start_recording('IT')
     model.process(STIMULI)
+
+
+def _readout_two_forms(log):
+    """SP-21: an image extractor owns the readout layer 'late'; a video extractor owns the region's 'early'."""
+    class _Pictures(_Layered):
+        def __call__(self, stimuli, layers, **_):          # features from the row position (no text column)
+            from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+            self.log.append('extract')
+            ids = list(stimuli['stimulus_id'])
+            values = np.array([[2.0, 0.0] if i % 2 == 0 else [0.0, 2.0] for i in range(len(ids))])
+            return NeuroidAssembly(values, dims=['presentation', 'neuroid'], coords={
+                'stimulus_id': ('presentation', ids), 'stimulus_path': ('presentation', ids),
+                'neuroid_id': ('neuroid', ['n0', 'n1']), 'layer': ('neuroid', [layers[0]] * 2)})
+    model = BrainScoreModel('readout-missing', extractor={'vision': _Pictures(['late'], log),
+                                                          'video': _Pictures(['early'], log)},
+                            region_layer_map={'V4': 'early'}, behavioral_readout_layer='late',
+                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+
+    def pictures(ids, labels, identifier):
+        table = StimulusSet({'stimulus_id': ids, 'image_path': [f'{i}.png' for i in ids],
+                             'sentence': ['real ' + i if label == 'cat' else 'fake ' + i
+                                          for i, label in zip(ids, labels)], 'label': labels})
+        table.identifier = identifier
+        return table
+    fitting = pictures(['f0', 'f1', 'f2', 'f3'], ['cat', 'dog', 'cat', 'dog'], 'readout-two-forms-fit')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=fitting)
+    return model, task, pictures(['s0', 's1'], ['cat', 'dog'], 'readout-two-forms')
+
+
+_READOUT_R24 = (r"Subject 'readout-missing' has no 'vision' extractor for the inputs in this stimulus set that "
+                r"has all of the layers \['late', 'early'\]")
+
+
+@row('R24 readout', _READOUT_R24)
+def _r24_readout(log, monkeypatch, tmp_path):
+    """Before SP-21: one fitting extraction, then the direct-call class."""
+    model, task, stimuli = _readout_two_forms(log)
+    model.participate(stimulus_session(stimuli, ['behavior:choice', 'neural:V4'], task))
+
+
+@row('R24 readout direct call', _READOUT_R24, ['fit', 'extract'])
+def _r24_readout_direct(log, monkeypatch, tmp_path):
+    model, task, stimuli = _readout_two_forms(log)
+    model.start_task(task)                       # fits the readout: one extraction
+    model._behavioral._read_out_and_record(stimuli, {'V4': ['early']})
 
 
 @row('R25', r"Neural output for region 'IT' has no 'neuroid' dimension\.", ['extract'])

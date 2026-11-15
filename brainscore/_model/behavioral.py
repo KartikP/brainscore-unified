@@ -857,6 +857,26 @@ class BehavioralReadout:
                     task_type=self.task.task_type if self.task is not None else None)
         return modality
 
+    def _readout_requests(self, layers, passes):
+        """The layer lists the readout extracts: one call for the readout layer and every
+        region under ``BRAINSCORE_REGIONS_PER_PASS=all``, else one for each."""
+        readout_layer = self.owner._behavioral_readout_layer
+        if passes == 'all':
+            return [list(dict.fromkeys([readout_layer, *(l for ls in layers.values() for l in ls)]))]
+        return [[readout_layer], *(list(region_layers) for region_layers in layers.values())]
+
+    def refuse_readout_request(self, stimuli, modality, layers, passes) -> None:
+        """Refuse a readout extraction that no extractor of ``modality`` can make (R24).
+
+        The session's plan calls it before the readout is fitted, with the requests
+        the readout will make (``_readout_requests``) and the one resolver of the
+        recording (``extractor_or_refuse``), in the session's class
+        (``ExecutionNotFeasibleError``); a direct call of the readout keeps its class.
+        """
+        from .dispatch import extractor_or_refuse
+        for request in self._readout_requests(layers, passes):
+            extractor_or_refuse(self.owner, stimuli, modality, request, in_session=True)
+
     def _read_out_and_record(self, stimuli, layers, raw: bool = False):
         from brainscore_core.responses import Scale
         owner = self.owner
@@ -885,7 +905,7 @@ class BehavioralReadout:
         joint = None
         plan = owner._session_plan
         if (plan.regions_per_pass if plan is not None else 'all') == 'all':
-            all_layers = list(dict.fromkeys([readout_layer, *(l for ls in layers.values() for l in ls)]))
+            all_layers = self._readout_requests(layers, 'all')[0]
             try:
                 joint = extract(all_layers)
             except LayerDtypesDiffer:
