@@ -51,6 +51,11 @@ print(dict(choices.sizes))                  # {'presentation': 128}: 4 participa
 
 Run `pytest` after each step. The tests fail with a named reason, not a shape error.
 
+As shipped, loading the template writes its 32 example images once to
+`your_data_stimuli/` in the Brain-Score home (`BRAINSCORE_HOME`, default `~/.brain-score`).
+The template's test points `BRAINSCORE_HOME` at a temporary folder, so a test run leaves
+nothing there; keep that in your test while your loader writes files.
+
 ## The four things that make data benchmark-usable
 
 Each corresponds to a failure that is easy to hit and hard to read:
