@@ -15,7 +15,7 @@ from contextlib import ExitStack
 import pandas as pd
 
 from .base import Capability
-from .._model.behavioral import answer_parts
+from .._model.behavioral import _formats_by_part
 from .._model.dispatch import act
 from .._model.intervention import INTERVENTION_CHANNELS
 from .._model.recording import open_recordings, records_while_answering, region_selector, trial_regions
@@ -89,7 +89,7 @@ class BehaviorSessions(Capability):
 
     def declared_output_channels(self, subject):
         # Each part declares the kinds of answer it can give (rule 2.4).
-        return {'behavior'}.union(*answer_parts(subject).values())
+        return {'behavior'}.union(*_formats_by_part(subject).values())
 
     def supports_session(self, subject, channels) -> bool:
         # Behavior alone, or behavior plus regions recorded during the same answers.

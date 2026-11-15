@@ -357,7 +357,8 @@ class BehavioralReadout:
         them: the task is refused before any compute. ``None``: no part can.
         """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
-        eligible = [p for p in self._PATHS if can.get(p)]
+        formats = _formats_by_part(self.owner)
+        eligible = [p for p in self._PATHS if can.get(p) and output in formats.get(p, ())]
         owner = self.owners.get(output)
         if owner in eligible:
             return owner
@@ -719,28 +720,34 @@ class BehavioralReadout:
         return behavior, neural
 
 
-def answer_parts(subject) -> Dict[str, set]:
-    """The answer outputs each wired part can give (rule 2.4), keyed by part.
+# The answer formats of each part kind (Response Format Standard 4.2; rule
+# 4.11): format -> None when the part gives it natively, else the conversion
+# that derives it. ``answer`` and ``reply`` are the two kinds of the part
+# ``generation``. The likelihood gives log scores natively; until step 5 they
+# travel on ``behavior:probabilities`` with ``raw_scores``. ``'link'``:
+# ``behavior:rt`` follows the owner of ``behavior:probabilities`` and is
+# never stated. ``behavior`` is the answer to a legacy task.
+_PART_FORMATS = {
+    'answer': {'behavior': None, 'behavior:choice': None},
+    'reply': {'behavior:choice': None, 'behavior:rating': None,
+              'behavior:confidence': None, 'behavior:text': None},
+    'likelihood': {'behavior:probabilities': 'softmax', 'behavior:choice': 'softmax_argmax',
+                   'behavior:rt': 'link'},
+    'readout': {'behavior': None, 'behavior:probabilities': None, 'behavior:rating': None,
+                'behavior:choice': 'argmax', 'behavior:rt': 'link'},
+}
 
-    ``generation`` is ``answer=`` and ``reply=``; ``readout`` is
-    ``behavioral_readout_layer=``. ``behavior`` is the answer to a legacy task.
-    """
+
+def _formats_by_part(subject) -> Dict[str, set]:
+    """The answer formats of each wired part, native or derived, read from ``_PART_FORMATS``."""
+    wired = {'answer': subject._answer, 'reply': subject._reply,
+             'likelihood': subject._likelihood, 'readout': subject._behavioral_readout_layer}
     parts: Dict[str, set] = {}
-    if subject._answer is not None:
-        parts.setdefault('generation', set()).update({'behavior', 'behavior:choice'})
-    if subject._reply is not None:
-        parts.setdefault('generation', set()).update(
-            {'behavior:choice', 'behavior:rating', 'behavior:confidence', 'behavior:text'})
-    if subject._likelihood is not None:
-        parts['likelihood'] = {'behavior:choice', 'behavior:probabilities', 'behavior:rt'}
-    if subject._behavioral_readout_layer is not None:
-        parts['readout'] = {'behavior', 'behavior:choice', 'behavior:probabilities',
-                            'behavior:rating', 'behavior:rt'}
+    for kind, formats in _PART_FORMATS.items():
+        if wired[kind] is not None:
+            part = 'generation' if kind in ('answer', 'reply') else kind
+            parts.setdefault(part, set()).update(formats)
     return parts
-
-
-# behavior:rt is computed from the probabilities, so their owner gives it.
-_FOLLOWS = {'behavior:rt': 'behavior:probabilities'}
 
 
 def answer_owners(subject, stated) -> Dict[str, str]:
@@ -753,15 +760,17 @@ def answer_owners(subject, stated) -> Dict[str, str]:
     output, construction fails.
     """
     stated = dict(stated or {})
-    parts = answer_parts(subject)
+    parts = _formats_by_part(subject)
     if not subject._extractors:
         parts.pop('readout', None)   # a readout layer without an extractor never answers
-    outputs = set().union(*parts.values()) - set(_FOLLOWS)
+    followers = {f for formats in _PART_FORMATS.values() for f, how in formats.items()
+                 if how == 'link'}
+    outputs = set().union(*parts.values()) - followers
     for output in sorted(set(stated) - outputs):
         raise ValueError(
             f"Subject '{subject.identifier}': capability_config['behavior-sessions'] names "
             f"an owner for {output!r}, which is not an answer output of the subject"
-            + (f'; it follows {_FOLLOWS[output]!r}' if output in _FOLLOWS else '')
+            + ("; it follows 'behavior:probabilities'" if output in followers else '')
             + f'. Answer outputs: {sorted(outputs)}.')
     for output in sorted(outputs):
         eligible = [part for part in BehavioralReadout._PATHS if output in parts.get(part, ())]
