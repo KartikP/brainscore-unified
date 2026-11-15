@@ -37,6 +37,8 @@ missing because it is not in a registry dict.
 
 A plugin is a subpackage whose `__init__.py` adds a factory to the
 matching registry; the parent package imports it so registration runs on load. Load by id.
+A plugin whose package is not imported is not found: add `from . import <name>` to the
+parent package's `__init__.py`. Each plugin's test goes in `tests/test_<name>.py`.
 The folders in `templates/` are such plugins; started from the `templates/` folder, this
 runs as written:
 
@@ -71,6 +73,7 @@ The model template builds a `BrainScoreModel`; the benchmark template scores any
 | **Benchmark** | `brainscore/benchmarks/<name>/` | a `BenchmarkBase` subclass | `__call__(subject) -> Score` | `templates/new_benchmark/` |
 | **Metric** | `brainscore/metrics/<name>/` | a `Metric` subclass | `__call__(assembly1, assembly2) -> Score` | `templates/new_metric/` |
 | **Data / Stimulus set** | `brainscore/data/<name>/` | loaders registered in `data_registry` / `stimulus_set_registry` | return a `StimulusSet` and a `DataAssembly` | `templates/new_data/` |
+| **Tool** | `brainscore/tools/<name>.py` and one line in `_TOOLS` (`brainscore/tools/_registry.py`) | a `Tool` subclass | `on_event(event)`; see [Extend UMI](docs/guides/extend.md#a-new-tool) | `templates/new_tool/` |
 | **Capability** | constructor slots on `BrainScoreModel`, or your own package | a function (`answer` / `policy` / `intervention`) or a registered `Capability` | see below | `templates/new_capability/` |
 
 Reference registered data from a benchmark with `load_dataset` /

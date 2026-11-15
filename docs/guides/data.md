@@ -4,6 +4,8 @@ A **data plugin** holds the source files of a study: the stimuli that were shown
 
 ## Load a dataset
 
+This block downloads the hosted LeBel2023 files on first use and caches them.
+
 ```python
 import brainscore
 
@@ -64,7 +66,12 @@ stimulus_set_registry['MyStudy2026'] = load_stimuli     # returns a StimulusSet
 print(brainscore.load_dataset('MyStudy2026').shape)      # (2, 3)
 ```
 
-`templates/new_data/` is a complete data plugin with loaders, image files and tests.
+Behavioral data (what participants answered) is a `BehavioralAssembly` with one row per
+(participant, trial): `stimulus_id` and `participant` on `presentation`, the chosen label as
+the value.
+
+`templates/new_data/` is a complete data plugin with loaders for stimuli, recordings and
+participant choices, image files and tests. Its test goes to `tests/test_<name>.py`.
 
 Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in `brainscore/data/local.py`, so users get instructions instead of a missing-file error.
 

@@ -72,5 +72,5 @@ The first run downloads model weights and benchmark data. Large checkpoints stop
 ## Reading a score
 
 - **Raw** is the metric value. **Ceiled** divides by the benchmark's ceiling and can exceed 1.
-- Compare a model with a **null baseline** that fits the benchmark before interpreting it: a random policy for a closed-loop benchmark (above), `random-vit-b-32` (CLIP ViT-B/32 with random weights) for image or text benchmarks, `chance-baseline` for a task on the plain `behavior` channel. [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb) shows why.
+- Compare a model with a **null baseline** that fits the benchmark before interpreting it: a random policy for a closed-loop benchmark (above), `random-vit-b-32` (CLIP ViT-B/32 with random weights; it downloads the CLIP configuration and processor) for image or text benchmarks, `chance-baseline` for a task on the plain `behavior` channel. [Lesson 5](../../notebooks/lessons/05_layers_and_regions.ipynb) shows why.
 - The score's `attrs` record provenance: compatibility result, behavioral path, model and benchmark identifiers, the subject's traits (`subject_traits`) and the trial memory (`trial_memory`).

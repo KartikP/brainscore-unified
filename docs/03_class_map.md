@@ -83,6 +83,33 @@ from brainscore.model_helpers.audio_wrapper import AudioWrapper
 
 Each wrapper is named after what it wraps; pick the one for your model. A model with two towers, such as CLIP, gets two entries: `extractor={'vision': image_wrapper, 'text': text_wrapper}`.
 
+A callable extractor returns one row per stimulus, in the order of `stimuli`, with `stimulus_id` on `presentation` and `neuroid_id` on `neuroid`:
+
+```python
+import numpy as np
+import pandas as pd
+from brainscore import BrainScoreModel
+from brainscore_core.streaming_helpers import neural_response
+from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+
+
+def word_lengths(stimuli, layers):
+    values = np.array([[len(sentence)] for sentence in stimuli['sentence']], dtype=float)
+    return NeuroidAssembly(values, dims=['presentation', 'neuroid'],
+                           coords={'stimulus_id': ('presentation', list(stimuli['stimulus_id'])),
+                                   'neuroid_id': ('neuroid', [f'{layers[0]}.0'])})
+
+
+model = BrainScoreModel(identifier='word-length', extractor={'text': word_lengths},
+                        region_layer_map={'language': 'length'})
+sentences = StimulusSet(pd.DataFrame({'stimulus_id': ['s0', 's1'], 'sentence': ['a cat', 'the zebra']}))
+sentences.identifier = 'two-sentences'
+print(neural_response(model, sentences, ['neural:language']).values.tolist())   # [[5.0], [9.0]]
+```
+
+A callable cannot list its layers, so it counts as having every layer. Next to another extractor, every region then names its input with `LayerSelector(name=..., modality=...)`.
+
 ### `region_layer_map` values
 
 | Value | Means |

@@ -87,9 +87,56 @@ gives 1.25: a ceiled score can exceed 1.
 | Stimuli | A `StimulusSet` (one row per stimulus, a `stimulus_id` column, and a column per input type such as `image_path` or `sentence`), or your own list of `StreamEvent`s. |
 | Declarations | `required_input_channels`, `requested_output_channels`, and any `required_traits` such as `memory:trial_history`. Channels match by exact name. Compatibility compares these with the subject's declarations. |
 | Session | Usually `stimulus_session(stimuli, outputs)`. Add a `TaskContext(...)` as the third argument for behavior; `TaskContext(trial_memory='history')` keeps the subject's history across trials. With the default `trial_memory`, a second answer to one trial is an error; an answer belongs to the trial named by the row identity in its metadata. For closed-loop tasks, use `run_environment` ([Closed loop](closed_loop.md)). |
-| Metric | Any function of model output and measured data. Brain-Score ships metrics such as PLS regression, ridge regression, RSA and accuracy (`brainscore.load_metric`). |
+| Metric | Any function of model output and measured data, or a shipped metric loaded with `brainscore.load_metric` (see [Metrics](#metrics)). |
 | Ceiling | An estimate of how well the data can be predicted, for example split-half reliability. With none, use `not_estimated()`; the score is then the raw value (`normalized=False`). |
 | Reference data | Measured responses in an assembly whose `presentation` dimension carries `stimulus_id` and at least one more coordinate (a condition, a category, a subject). A dimension with only one coordinate keeps its values as the dimension's index and loses the coordinate's name, so `reference['stimulus_id']` would fail. |
+
+## Metrics
+
+Load a shipped metric with `brainscore.load_metric(identifier, **arguments)`. It looks in
+the unified registry, then in the vision registry. The first argument of a metric is the
+model's response, the second the measured data.
+
+| Identifier | Compares | Arguments |
+| --- | --- | --- |
+| `pls`, `ridge`, `linear_predictivity`, `neuron_to_neuron` | model units regressed onto each measured unit, Pearson r on held-out stimuli, cross-validated | `crossvalidation_kwargs` (below) |
+| `pls_split`, `ridge_split`, `linear_predictivity_split`, `neuron_to_neuron_split` | the same, with a train and a test set you give: `metric(source_train=..., target_train=..., source_test=..., target_test=...)` | none |
+| `rdm`, `rdm_cv` | representational dissimilarity matrices | `rdm_cv`: `crossvalidation_kwargs` (default `test_size=0.9`: each fold compares 90 % of the stimuli) |
+| `cka`, `cka_cv` | centered kernel alignment | `cka_cv`: `crossvalidation_kwargs` |
+| `accuracy` | behavioral answers against labels | none |
+| `i1`, `i2n` | per-image behavioral consistency with participants (Rajalingham et al. 2018) | none |
+| `direct-comparison` | each model unit with the measured unit of the same position; needs identical shapes | `shuffle_seed=0` |
+| `topographic-alignment` | spatial layout of model units against cortical topography | `n_bins=15` |
+
+The folders of `brainscore_vision/metrics/` hold more specialized metrics.
+
+**Cross-validation and data size.** The cross-validated regression metrics (`pls`,
+`ridge`, `linear_predictivity`, `neuron_to_neuron`) compute a Pearson r inside
+each test fold and average over folds. By default they make 10 folds, each with 90 % of
+the stimuli to fit and 10 % to test, stratified by the presentation coordinate
+`object_name`. A correlation on two stimuli is always +1 or -1, so each test fold needs at
+least three stimuli; these metrics do not check it. With the default split that means at
+least 30 stimuli. With fewer, give a larger test fold:
+
+```python
+import brainscore
+
+metric = brainscore.load_metric('linear_predictivity',
+                                crossvalidation_kwargs=dict(splits=10, train_size=0.5))
+```
+
+Keys of `crossvalidation_kwargs`: `splits` (10), `train_size` (0.9) or `test_size`,
+`stratification_coord` (`'object_name'`; `None` for no stratification), `split_coord`
+(`'stimulus_id'`), `kfold` (`False`; `True` for k-fold with `splits` folds) and
+`random_state` (1).
+
+A benchmark that fits a ridge from model features to many targets (voxels, parcels)
+composes the regression kit in `brainscore.metrics.encoding` instead: `cross_validated_r`
+with `row_kfold` or `group_kfold` folds and a `ridge` fit. It pools the held-out
+predictions of all folds before it correlates, so a small outer fold is allowed. A
+penalty chosen with `grid_search` is scored on inner check folds; a check fold with fewer
+than three rows is refused with a `ValueError`. `brainscore/benchmarks/lahner2024` and
+`brainscore/benchmarks/lebel2023` use it.
 
 ## Checklist
 
