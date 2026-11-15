@@ -21,7 +21,7 @@ from brainscore.benchmarks.lahner2024.benchmark import _split_half_reliability
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved import TR_SEC
 from brainscore.temporal import double_gamma_hrf, hrf_convolve
 from tests.lahner_synthetic import (
-    CLIPS, GLM_CLIPS, GLM_REPS, N_TR, N_VOXELS, TEST_CLIPS, Recorder, glm_assembly, glm_values, install, tr_events,
+    CLIPS, GLM_CLIPS, GLM_REPS, N_TR, N_VOXELS, Recorder, glm_assembly, glm_values, install, tr_events,
     tr_runs, unit_values)
 
 WIDTH = 4   # features per clip of the default Recorder
@@ -85,12 +85,12 @@ def test_a_constant_voxel_in_the_region_is_left_out_and_counted(monkeypatch, tmp
 def test_with_a_measured_ceiling_a_voxel_without_r_or_ceiling_is_left_out(monkeypatch, tmp_path):
     """Version 1 divided the shorter vector of finite r by every ceiling: a shape error
     here. Version 2 leaves out the constant voxel (no r, no ceiling) and the voxel
-    whose reliability is at or below zero (an r, no ceiling). The ceilings come from
-    the test-set videos and only the training videos are scored."""
+    whose reliability is at or below zero (an r, no ceiling). Only the training videos
+    are scored, and the ceilings come from them."""
     values = glm_values()
     constant = 20000
     values[:, constant] = 3.0
-    reliability = _split_half_reliability(glm_assembly(values), stimuli=TEST_CLIPS)
+    reliability = _split_half_reliability(glm_assembly(values), stimuli=CLIPS)
     reliable = [int(v) for v in np.flatnonzero(reliability > 0.3)[-30:]]
     unreliable = int(np.flatnonzero((reliability <= 0) & (np.arange(N_VOXELS) < 1000))[0])
     mask = mask_of(reliable + [constant, unreliable])
