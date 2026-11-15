@@ -173,3 +173,15 @@ def test_vision_extractor_keeps_its_identifier_and_cache_key(monkeypatch):
     assert {key: settings[key] for key in ('_layer_aggregation', '_batch_size')} == {
         '_layer_aggregation': 'mean', '_batch_size': 4}
     assert settings['_processor'] is processor
+
+
+def test_a_transformers_without_the_class_names_the_model_and_both_versions(monkeypatch):
+    """The reference environment (transformers 4.57.6) has no Qwen3_5ForConditionalGeneration."""
+    monkeypatch.setitem(sys.modules, 'transformers', types.SimpleNamespace(
+        __version__='4.57.6', AutoProcessor=object()))
+    monkeypatch.setattr(downloads, 'hf_preflight', lambda *a, **k: {})
+    with pytest.raises(ImportError) as refused:
+        registration.get_model('qwen3.6-27b')
+    message = str(refused.value)
+    assert "'qwen3.6-27b'" in message and 'transformers 5 or later' in message
+    assert 'installed transformers is 4.57.6' in message
