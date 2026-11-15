@@ -95,6 +95,37 @@ class TestPreflightInScore:
         assert score.attrs['subject_id'] == 'test-model'
         assert score.attrs['compatibility']['match'] == 'full'
         assert score.attrs['harness_id'] == 'brainscore'
+        assert score.attrs['benchmark_identifier'] == 'test-bench'
+        assert score.attrs['trial_memory'] == 'none'
+
+    @pytest.mark.parametrize('written, refused', [
+        ('test-bench', False),             # the requested identifier
+        ('test-bench.qualified', False),   # the benchmark's own identifier
+        ('another-bench', True),
+    ])
+    @patch('brainscore.load_benchmark')
+    @patch('brainscore.load_model')
+    def test_a_score_may_name_only_the_requested_or_the_benchmark_identifier(
+            self, mock_load_model, mock_load_benchmark, written, refused):
+        import brainscore
+
+        model, benchmark = self._make_model_and_benchmark({'vision:image'}, {'vision'})
+        benchmark.identifier = 'test-bench.qualified'
+        model.out_channels = {'neural:IT'}
+        model.region_layer_map = {'IT': 'it-layer'}
+        benchmark.region = 'IT'
+        score = MagicMock()
+        score.attrs = {'benchmark_identifier': written}
+        benchmark.return_value = score
+        mock_load_model.return_value = model
+        mock_load_benchmark.return_value = benchmark
+
+        if refused:
+            with pytest.raises(ValueError, match='must match the requested identifier'):
+                brainscore.score('test-model', 'test-bench', check_mem=False)
+        else:
+            assert brainscore.score('test-model', 'test-bench', check_mem=False) \
+                .attrs['benchmark_identifier'] == written
 
     @patch('brainscore.load_benchmark')
     @patch('brainscore.load_model')

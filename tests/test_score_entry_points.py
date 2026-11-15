@@ -40,15 +40,7 @@ CORE_ORDER = ('check_compatibility', 'check_memory', 'subject_for_benchmark',
               'stamp_score_metadata')
 
 # (step, entry points that have it): reason. Violations only; the target is empty.
-ALLOWED = {
-    ('call check_benchmark_assets', 'unified'):
-        'only unified checks local benchmark assets before loading (R5 drift)',
-    ('raise ValueError', 'unified'):
-        'only unified checks the benchmark identifier that the score records (R5 drift)',
-    ("attrs['trial_memory']", 'unified'): 'only unified stamps trial_memory (R5 drift)',
-    ('call score_benchmark', 'vision'):
-        'only vision runs score_benchmark and so the preallocate_memory hook (R5, R19 drift)',
-}
+ALLOWED = {}
 
 # (step, entry points that have it): the rule sentence that states the difference
 STATED_EXCEPTIONS = {
@@ -61,6 +53,14 @@ STATED_EXCEPTIONS = {
     ("attrs['comment']", 'vision'):
         'Contract Rule 11.5: vision records the layer commitment of a Brain-Score 2.0 '
         'model on its score',
+    ('call check_benchmark_assets', 'unified'):
+        'Contract Rule 11.5: unified score() checks the local data of a benchmark before it '
+        'scores; load_benchmark does not, so a benchmark can be loaded to read its '
+        'declarations without its local data',
+    ('call score_benchmark', 'vision'):
+        "Contract Rule 11.5: vision runs its old memory probe (score_benchmark, the "
+        "benchmark's preallocate_memory) for old models; unified and language use core's "
+        'memory check (check_memory) only',
 }
 
 

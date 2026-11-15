@@ -425,23 +425,17 @@ def score(model_identifier, benchmark_identifier,
     measures.check_released(benchmark_id, model_id)
     result.attrs['runtime_sec'] = round(_time.time() - _t0, 2)
     result.attrs['model_identifier'] = model_id
-    # Benchmarks can supply a qualified identity for settings or data subsets.
-    recorded_id = result.attrs.get('benchmark_identifier', benchmark_id)
-    resolved_id = _resolve_identifier(benchmark, benchmark_id)
-    if not isinstance(recorded_id, str) or recorded_id not in (benchmark_id, resolved_id):
-        raise ValueError(
-            'Score benchmark_identifier must match the requested alias or resolved benchmark identifier'
-        )
-    result.attrs.setdefault('benchmark_identifier', benchmark_id)
+    # A benchmark can supply a qualified identity for settings or data subsets.
     stamp_score_metadata(
         result,
         subject,
         requested_channels=requested_channels,
         harness_id='brainscore',
         measures=measures,
+        benchmark=benchmark,
+        benchmark_identifier=benchmark_id,
     )
     result.attrs['compatibility'] = compatibility.as_attrs()
-    result.attrs['trial_memory'] = getattr(benchmark, 'trial_memory', 'none')
     return result
 
 
