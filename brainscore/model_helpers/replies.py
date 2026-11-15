@@ -170,18 +170,23 @@ def chat_inputs(model, processor, prompt, template=None):
         return content
 
     # The task's instruction is the system turn, as a library's own client sends it.
+    # It is the text part named 'instruction'; a screen in a column of that name
+    # (present=('image:instruction', ...)) is a shown part like any other.
     # Earlier trials of the episode (memory='trial_history') become earlier turns.
+    def is_instruction(part, name):
+        return part[0] == 'text' and name == 'instruction'
+
     def shown(trial):
         names = trial.names or (None,) * len(trial.parts)
-        return [part for part, name in zip(trial.parts, names) if name != 'instruction']
+        return [part for part, name in zip(trial.parts, names) if not is_instruction(part, name)]
     names = prompt.names or (None,) * len(prompt.parts)
-    instruction = [value for (_, value), name in zip(prompt.parts, names) if name == 'instruction']
+    instruction = [part[1] for part, name in zip(prompt.parts, names) if is_instruction(part, name)]
     messages = []
     for earlier, answered in prompt.history:
         messages.append({'role': 'user', 'content': content_of(shown(earlier))})
         messages.append({'role': 'assistant', 'content': [{'type': 'text', 'text': answered}]})
     messages.append({'role': 'user', 'content': content_of(shown(prompt))})
-    system = ([{'role': 'system', 'content': [{'type': 'text', 'text': instruction[0]}]}]
+    system = ([{'role': 'system', 'content': [{'type': 'text', 'text': '\n\n'.join(instruction)}]}]
               if instruction else [])
     from jinja2.exceptions import TemplateError
     try:

@@ -109,7 +109,7 @@ def _instruction_and_text(prompt):
     names = prompt.names or (None,) * len(prompt.parts)
     instruction = [content for (_, content), name in zip(prompt.parts, names) if name == 'instruction']
     text = [content for (_, content), name in zip(prompt.parts, names) if name != 'instruction']
-    return (instruction[0] if instruction else None), '\n\n'.join(text)
+    return ('\n\n'.join(instruction) if instruction else None), '\n\n'.join(text)
 
 
 def _chat_text(tokenizer, instruction, messages, template_kwargs) -> str:
