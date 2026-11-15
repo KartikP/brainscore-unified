@@ -33,11 +33,23 @@ bash setup.sh
 conda activate brainscore-unified
 ```
 
+**The exact scoring platform** (Linux x86_64, Python 3.11, CUDA 12.4), for scores to be
+compared bit for bit: the same bootstrap with `--lock` installs every package at the version
+of `install/lock-linux-py311-cu124.txt` (227 packages, torch 2.6.0+cu124), and
+`python -m brainscore.doctor` then lists every package that differs from that lock:
+
+```bash
+bash setup.sh --lock
+```
+
+Both commands use conda-forge only, so a fresh miniconda does not stop at the terms of
+service of Anaconda's default channels.
+
 **With the four repositories already checked out side by side:**
 
 ```bash
 cd <workspace-root>          # the directory holding core/ vision/ language/ unified/
-conda create -y -n brainscore-unified python=3.11
+conda create -y -n brainscore-unified --override-channels -c conda-forge python=3.11
 conda activate brainscore-unified
 python -m pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
 python -m pip check
@@ -47,8 +59,10 @@ python -m brainscore.doctor
 Install all four repositories in the same pip command: the candidate peer versions come
 from these checkouts and are not on PyPI. Keep `-c unified/install/v2-constraints.txt`.
 The packages declare only broad bounds (`numpy<2`, `xarray==2022.3.0`, ...); the
-constraints file holds every shared dependency (pyarrow, torch, transformers, ...) at the
-tested version, and without it pip can pick versions that break imports.
+constraints file holds the shared dependencies that break imports or move scores when they
+drift (numpy, pandas, pyarrow, scipy, scikit-learn, xarray, transformers, torch, ...), not
+every package. For every package at one version, use the full lock (`bash setup.sh --lock`
+on the scoring platform).
 For an immutable checkout set, use [the integration instructions](install/README.md#reproduce-the-reviewed-peer-revisions).
 
 Do not point conda at `install/environment-unified.yml` in place: conda resolves its

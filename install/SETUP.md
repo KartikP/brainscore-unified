@@ -44,6 +44,28 @@ The script:
 5. Runs pip check, imports all four packages, and verifies the Transformers
    cache API needed by language scoring.
 
+Both ways use conda-forge only (the environment file lists `nodefaults`), so a fresh
+miniconda does not stop at the terms of service of Anaconda's default channels, and the
+script accepts nothing on your behalf.
+
+## Reproducible setup (the scoring platform)
+
+On Linux x86_64 with Python 3.11 and CUDA 12.4, one command installs every package at the
+version of the reference scoring machine:
+
+~~~bash
+bash setup.sh --lock
+conda activate brainscore-unified
+python -m brainscore.doctor     # lists every package that differs from the lock
+~~~
+
+It creates the environment with `conda create --override-channels -c conda-forge python=3.11 pip`,
+installs `unified/install/lock-linux-py311-cu124.txt` (it names the PyTorch CUDA 12.4 index
+itself), then installs the four repositories from their checkouts with `--no-deps`. On another
+platform the option stops with a message; the pinned setup above and the bounds of the doctor
+apply there. Do not combine the lock with `v2-constraints.txt`: that file is the CPU test
+profile and pins other versions of torch, torchvision, datasets, gymnasium and minigrid.
+
 The script refuses to overwrite an existing conda environment. Choose a
 different name when needed:
 
@@ -54,11 +76,12 @@ UMI_ENV_NAME=brainscore-unified-test bash setup.sh
 ## Manual setup
 
 With the four repositories already checked out side by side, the environment file is
-unnecessary; the shared constraints file holds every dependency to its tested version:
+unnecessary; the shared constraints file holds the shared dependencies that move scores
+or break imports at their tested versions (not every package; see the reproducible setup):
 
 ~~~bash
 cd <workspace-root>
-conda create -y -n brainscore-unified python=3.11
+conda create -y -n brainscore-unified --override-channels -c conda-forge python=3.11
 conda activate brainscore-unified
 pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
 python -m pip check
