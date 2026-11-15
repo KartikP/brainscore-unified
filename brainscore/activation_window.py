@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import numpy as np
 import torch
 
-from .percept_window import _resolve_targets
+from .percept_window import resolve_targets
 
 
 def first_tensor_out(out):
@@ -75,7 +75,7 @@ class ActivationWindow:
                  max_captures: int = 1024, select_output: Optional[Callable] = None,
                  label: Optional[str] = None, on_capture: Optional[Callable] = None,
                  retain: bool = True):
-        roots = _resolve_targets(target)
+        roots = resolve_targets(target)
         if not roots:
             raise ValueError("ActivationWindow found no torch module on the target.")
         self.on_capture = on_capture

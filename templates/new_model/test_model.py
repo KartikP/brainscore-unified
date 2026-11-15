@@ -15,7 +15,6 @@ import os
 # FileNotFoundError that has nothing to do with the model being registered.
 os.environ.setdefault('RESULTCACHING_DISABLE', '1')
 
-import tempfile
 
 import numpy as np
 import pytest
@@ -23,10 +22,10 @@ from PIL import Image
 
 
 @pytest.fixture(scope='module')
-def tiny_stimuli():
+def tiny_stimuli(tmp_path_factory):
     """Four small images on disk, as a StimulusSet. Replace with your own stimuli."""
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-    directory = tempfile.mkdtemp(prefix='your_model_test_')
+    directory = str(tmp_path_factory.mktemp('your_model_test'))   # pytest removes old runs
     rows, paths = [], {}
     for i in range(4):
         sid = f'stim{i}'

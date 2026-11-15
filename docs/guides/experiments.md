@@ -57,7 +57,8 @@ def preprocess(paths):
 torch.manual_seed(0)
 net = Net().eval()
 
-folder = tempfile.mkdtemp()
+workspace = tempfile.TemporaryDirectory()      # removed when the script ends
+folder = workspace.name
 rows = []
 for index in range(8):
     path = os.path.join(folder, f'{index}.png')
@@ -106,7 +107,9 @@ it = result.neural('IT', condition='lesioned', repetition=0)
   stimuli carry no input the subject takes.
 - A run lives in a temporary folder until the result is no longer used. Pass
   `output_dir='runs/my-study'`, or call `result.save('runs/my-study')`, to keep it. A named
-  folder must be new, so a run never overwrites another.
+  folder must be new, so a run never overwrites another. A process that is killed leaves its
+  temporary folder in the system's temporary folder; give `output_dir` for a run you want to
+  keep or control.
 
 ## Conditions and stimulus factors
 

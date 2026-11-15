@@ -803,6 +803,8 @@ class Experiment:
     With ``output_dir``, the run is written there; the folder must not exist yet.
     Without it, each run is written to a temporary folder that its result keeps
     until the result is no longer used; call ``result.save(path)`` to keep it.
+    A process that is killed leaves that folder in the system's temporary folder; give
+    ``output_dir`` for a run you want to keep or control.
 
     Protocols and tools are ordinary Python objects and can live in external
     packages. No concurrent reuse of a subject, tool, or provider is supported.
@@ -904,4 +906,6 @@ class Experiment:
             _write(self.run_directory / 'result.json', encoded)
             context.artifact(self.run_directory / 'result.json', producer='protocol',
                              description='Protocol return value, RunRecord payload encoding')
-        return ExperimentResult(self.run_directory, value, self._temporary)
+        # The result is the only owner of a temporary run folder from here on.
+        temporary, self._temporary = self._temporary, None
+        return ExperimentResult(self.run_directory, value, temporary)

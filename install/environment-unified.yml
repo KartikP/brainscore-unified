@@ -21,6 +21,7 @@
 name: brainscore-unified
 channels:
   - conda-forge
+  - nodefaults        # conda-forge only: no terms of service of Anaconda's default channels
 dependencies:
   - python=3.11
   - pip>=24

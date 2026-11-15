@@ -44,7 +44,8 @@ def preprocess(paths):
     return torch.from_numpy(np.stack(images)).permute(0, 3, 1, 2)
 
 
-folder = tempfile.mkdtemp()
+workspace = tempfile.TemporaryDirectory()      # removed when the script ends
+folder = workspace.name
 image_paths = {}
 for seed, name in enumerate(['cat', 'dog']):
     image_paths[name] = os.path.join(folder, f'{name}.png')

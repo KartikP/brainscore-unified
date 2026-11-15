@@ -8,13 +8,15 @@ A data plugin supplies the two halves a benchmark needs:
 
 Nothing here scores anything. A benchmark loads these and compares a model against them.
 
-**This file runs as-is.** It builds both from files it writes to a temp directory, so you
+**This file runs as-is.** It builds both from files it writes once to a folder in the Brain-Score home, so you
 can see the shapes before you have your own data wired up. Replace `_build_example_files`
 with something that reads *your* files, keep the rest, and the tests tell you when the
 result is still benchmark-usable.
 """
+import io
 import os
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -32,19 +34,48 @@ N_STIMULI, N_NEUROIDS, N_SUBJECTS = 32, 16, 4
 CATEGORIES = ['alpha', 'beta', 'gamma', 'delta']
 
 
+def _write_once(path, data: bytes) -> None:
+    """Write ``data`` to ``path`` unless the same bytes are already there.
+
+    The bytes go to an exclusive staging file with a unique name in the same folder, which
+    then replaces the final name in one step, so a reader never sees half a file and two
+    writers do not collide. A link at the final name is refused: the write would land in
+    another file.
+    """
+    if os.path.islink(path):
+        raise ValueError(f'{path} is a link; remove it and load again')
+    if os.path.isfile(path):
+        with open(path, 'rb') as existing:
+            if existing.read() == data:
+                return
+    descriptor, staging = tempfile.mkstemp(dir=os.path.dirname(path), suffix='.partial')
+    try:
+        with os.fdopen(descriptor, 'wb') as file:
+            file.write(data)
+        os.replace(staging, path)
+    except BaseException:
+        os.unlink(staging)
+        raise
+
+
 def _build_example_files():
     """TODO: replace entirely. Returns (directory, rows) for the example stimuli.
 
     Yours will instead point at images already on disk and read a CSV of metadata.
     The only thing that must survive is the SHAPE of what this returns.
     """
-    directory = tempfile.mkdtemp(prefix='your_data_')
+    # The images are the same on every call, so they are written once, to one folder in the
+    # Brain-Score home, and reused.
+    directory = Path(os.getenv('BRAINSCORE_HOME', '~/.brain-score')).expanduser() / 'your_data_stimuli'
+    directory.mkdir(parents=True, exist_ok=True)
     rows = []
     for i in range(N_STIMULI):
         stimulus_id = f'stim{i:03d}'
-        path = os.path.join(directory, f'{stimulus_id}.png')
-        rng = np.random.RandomState(i)
-        Image.fromarray(rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(path)
+        path = str(directory / f'{stimulus_id}.png')
+        image = io.BytesIO()
+        Image.fromarray(np.random.RandomState(i).randint(0, 255, (64, 64, 3), dtype=np.uint8)) \
+            .save(image, format='PNG')
+        _write_once(path, image.getvalue())
         rows.append({'stimulus_id': stimulus_id,
                      # 'image_path' is load-bearing: dispatch decides a stimulus
                      # set's MODALITY by looking for a recognized column name. Use

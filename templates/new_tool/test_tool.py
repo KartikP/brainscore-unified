@@ -30,6 +30,9 @@ def _tool_module():
     return module
 
 
+_WORKSPACE = tempfile.TemporaryDirectory()      # the test images; removed when the tests end
+
+
 def tiny_subject_and_stimuli():
     """A two-layer network and four images. Replace with what your tool needs."""
     from brainscore import BrainScoreModel
@@ -43,7 +46,7 @@ def tiny_subject_and_stimuli():
         extractor={'vision': PytorchWrapper(
             identifier='tool-test-cnn', model=net,
             preprocessing=lambda paths: load_preprocess_images(paths, image_size=16))})
-    folder = tempfile.mkdtemp()
+    folder = _WORKSPACE.name
     rows = []
     for i in range(4):
         path = os.path.join(folder, f'{i}.png')
