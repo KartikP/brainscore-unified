@@ -175,7 +175,7 @@ print(sorted(model.out_channels))
 # ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']
 ```
 
-For a hosted API, `build_api_reply(provider, model_id)` (a `reply`) and `build_api_generation_fn(provider, model_id)` (an `answer`) build both from one client per provider ([Behavior](behavior.md)).
+For a hosted API, `build_api_reply(provider, model_id)` (a `reply`) and `api_answer(provider, model_id)` (an `answer`) build both from one client per provider ([Behavior](behavior.md)).
 
 It can take part in behavioral benchmarks but not neural ones; neural benchmarks will report N/A.
 

@@ -9,7 +9,7 @@ import pytest
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
-    build_api_generation_fn, _find_column, _answer_text, _row_parts, _CACHE_FORM,
+    api_answer, _find_column, _answer_text, _row_parts, _CACHE_FORM,
 )
 
 
@@ -17,7 +17,7 @@ class TestPureHelpers:
     def test_the_provider_text_is_returned_exactly(self):
         """The answer part does not parse: BrainScoreModel reads the text with Choice.parse."""
         for text in ('REAL', '  Pseudo, not REAL  ', 'The answer is real.'):
-            gen = build_api_generation_fn(lambda model, system, messages, settings: text, 'mock')
+            gen = api_answer(lambda model, system, messages, settings: text, 'mock')
             assert gen(pd.Series({'sentence': 'florp', 'stimulus_id': 's1'}), 'Real?',
                        ['real', 'pseudo']) == text
 
@@ -69,14 +69,14 @@ class TestGenerationClosure:
         return call
 
     def test_text_row_returns_the_provider_text(self):
-        gen = build_api_generation_fn(self._mock({'return': 'pseudo'}), 'mock')
+        gen = api_answer(self._mock({'return': 'pseudo'}), 'mock')
         row = pd.Series({'sentence': 'florp', 'stimulus_id': 's1'})
         out = gen(row, 'Is this a real word?', ['real', 'pseudo'])
         assert out == 'pseudo'
 
     def test_text_dispatch_includes_stimulus_text(self):
         calls = []
-        gen = build_api_generation_fn(self._mock(counter=calls), 'mock')
+        gen = api_answer(self._mock(counter=calls), 'mock')
         row = pd.Series({'sentence': 'florp', 'stimulus_id': 's1'})
         gen(row, 'Is this real?', ['real', 'pseudo'])
         _model, user_text, image = calls[0]
@@ -84,21 +84,21 @@ class TestGenerationClosure:
         assert image is None              # text row -> no image payload
 
     def test_unparseable_returns_raw_for_caller_fallback(self):
-        gen = build_api_generation_fn(self._mock({'return': 'I cannot say'}), 'mock')
+        gen = api_answer(self._mock({'return': 'I cannot say'}), 'mock')
         row = pd.Series({'sentence': 'x', 'stimulus_id': 's1'})
         out = gen(row, 'Is this real?', ['real', 'pseudo'])
         # raw string passed through; BrainScoreModel records it as an invalid answer
         assert out == 'I cannot say'
 
     def test_missing_modality_column_raises(self):
-        gen = build_api_generation_fn(self._mock(), 'mock')
+        gen = api_answer(self._mock(), 'mock')
         row = pd.Series({'unrelated': 7, 'stimulus_id': 's1'})
         with pytest.raises(ValueError, match='no image column and no text column'):
             gen(row, 'Is this real?', ['real', 'pseudo'])
 
     def test_cache_avoids_resecond_call(self, tmp_path):
         calls = []
-        gen = build_api_generation_fn(
+        gen = api_answer(
             self._mock(counter=calls), 'mock', cache_dir=str(tmp_path))
         row = pd.Series({'sentence': 'florp', 'stimulus_id': 's1'})
         a = gen(row, 'Is this real?', ['real', 'pseudo'])
@@ -121,7 +121,7 @@ class TestGenerationClosure:
         old = ('Is this real?\n\nAnswer with exactly one of: real, pseudo. '
                'Reply with only that word, nothing else.')
         (tmp_path / f'{key(old)}.json').write_text(json.dumps({'response': 'pseudo'}))
-        gen = build_api_generation_fn(provider, 'mock', cache_dir=str(tmp_path))
+        gen = api_answer(provider, 'mock', cache_dir=str(tmp_path))
         assert gen(pd.Series({'sentence': 'florp', 'stimulus_id': 's1'}), 'Is this real?',
                    ['real', 'pseudo']) == 'real'
         assert len(calls) == 1
@@ -130,7 +130,7 @@ class TestGenerationClosure:
 
     def test_cache_distinguishes_stimuli(self, tmp_path):
         calls = []
-        gen = build_api_generation_fn(
+        gen = api_answer(
             self._mock(counter=calls), 'mock', cache_dir=str(tmp_path))
         gen(pd.Series({'sentence': 'a', 'stimulus_id': 's1'}),
             'Is this real?', ['real', 'pseudo'])
@@ -146,7 +146,7 @@ class TestGenerationClosure:
         img = tmp_path / 'stim.png'
         img.write_bytes(png)
         calls = []
-        gen = build_api_generation_fn(self._mock(counter=calls), 'mock')
+        gen = api_answer(self._mock(counter=calls), 'mock')
         row = pd.Series({'image_file_name': str(img), 'stimulus_id': 's1'})
         gen(row, 'Which object?', ['left', 'right'])
         _model, _text, image = calls[0]

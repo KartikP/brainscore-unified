@@ -56,9 +56,9 @@ def _words():
 
 
 def _answer_model(provider, **kwargs):
-    from brainscore.model_helpers.api_behavioral import build_api_generation_fn
+    from brainscore.model_helpers.api_behavioral import api_answer
     return BrainScoreModel(f'api-{provider}', in_channels={'text'},
-                           answer=build_api_generation_fn(provider, 'm', **kwargs))
+                           answer=api_answer(provider, 'm', **kwargs))
 
 
 def _choice(model):

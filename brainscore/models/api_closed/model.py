@@ -8,7 +8,7 @@ encoding. Scoring requires the provider's API key in the environment
 (``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY``); registration + load do not.
 """
 from brainscore import BrainScoreModel
-from brainscore.model_helpers.api_behavioral import build_api_generation_fn, build_api_reply
+from brainscore.model_helpers.api_behavioral import api_answer, build_api_reply
 
 # identifier -> (provider, model id, declared input channels). Pin dated snapshots
 # where the provider offers them (OpenAI) so behavioral scores reproduce; Claude
@@ -56,7 +56,7 @@ def get_model(identifier: str) -> BrainScoreModel:
         raise ValueError(f"unknown closed-API model '{identifier}'; "
                          f"known: {sorted(REGISTRY)}")
     cfg = REGISTRY[identifier]
-    answer = build_api_generation_fn(
+    answer = api_answer(
         provider=cfg['provider'],
         model=cfg['model'],
         max_tokens=16,

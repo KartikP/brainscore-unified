@@ -269,7 +269,7 @@ class _ResponseCache:
         self._path(key).write_text(json.dumps({'response': response}))
 
 
-def build_api_generation_fn(
+def api_answer(
     provider: Union[str, Callable],
     model: str,
     *,

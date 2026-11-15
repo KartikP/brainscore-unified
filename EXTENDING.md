@@ -338,7 +338,7 @@ capability that runs through `subject.participate(session)`.
 Builders: a function that builds a part is called `build_<part>` and returns
 it, for example `build_policy()` returns the function passed as `policy=`. Three
 ready-made builders still carry the names of removed parts:
-`build_api_generation_fn(...)` returns an `answer`, `build_api_action_fn(...)` a
+`api_answer(...)` returns an `answer`, `build_api_action_fn(...)` a
 `policy`, and `build_pytorch_ablation_fn(model)` an `intervention`.
 
 The interface evaluates checkpoints; it does not train. Register the checkpoint.

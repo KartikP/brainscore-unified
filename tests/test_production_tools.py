@@ -170,13 +170,13 @@ def test_api_episode_reset():
 
 
 def test_generation_cache_distinguishes_inference_settings(tmp_path):
-    from brainscore.model_helpers.api_behavioral import build_api_generation_fn
+    from brainscore.model_helpers.api_behavioral import api_answer
     calls = []
     def provider(*args):
         calls.append(args)
         return 'yes'
     for system, tokens in [('one', 16), ('two', 16), ('two', 32), ('two', 32)]:
-        generate = build_api_generation_fn(provider, 'fixture', system_prompt=system,
+        generate = api_answer(provider, 'fixture', system_prompt=system,
                                             max_tokens=tokens, cache_dir=tmp_path)
         generate({'text': 'stimulus'}, 'choose', ['yes', 'no'])
     assert len(calls) == 3
