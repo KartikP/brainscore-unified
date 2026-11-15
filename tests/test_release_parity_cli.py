@@ -7,6 +7,22 @@ from brainscore.validation.run_parity import main
 pytestmark = pytest.mark.unit
 
 
+@pytest.fixture(autouse=True)
+def cache_off(monkeypatch):
+    """The caller turns the activation cache off; the command only checks it."""
+    monkeypatch.setenv('RESULTCACHING_DISABLE', '1')
+
+
+def test_the_command_refuses_a_warm_cache_and_leaves_the_switch_alone(monkeypatch, capsys):
+    import os
+    monkeypatch.delenv('RESULTCACHING_DISABLE')
+    with pytest.raises(SystemExit) as error:
+        main(['--resnet18', 'unused', '--gpt2', 'unused'])
+    assert error.value.code == 2
+    assert 'RESULTCACHING_DISABLE=1' in capsys.readouterr().err
+    assert 'RESULTCACHING_DISABLE' not in os.environ
+
+
 @pytest.mark.parametrize('selection', ['not-a-benchmark', parity.PEREIRA_CASES[0].unified])
 def test_invalid_or_unpaired_selection_fails_before_inference(selection):
     with pytest.raises(SystemExit) as error:
