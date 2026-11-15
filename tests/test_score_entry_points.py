@@ -15,8 +15,9 @@ Reads (with ``ast``, never imported) the three entry points: unified
 2. The steps of each entry point: calls of Brain-Score functions (names
    imported from a Brain-Score package or defined in the same module),
    ``raise`` of an exception class, and keys written to ``attrs``. A step that
-   is not in all three entry points is a difference; known differences are
-   allow-listed with a reason. The allow-list may only shrink.
+   is not in all three entry points is a difference. ``ALLOWED`` holds the
+   differences that are violations (target: empty); ``STATED_EXCEPTIONS`` holds
+   those that rule 11.5 states, each with its sentence. Both may only shrink.
 
 Cannot detect: a difference in arguments (for example another
 ``harness_id``) or in what a step does inside; calls through a variable or a
@@ -38,19 +39,28 @@ CORE_ORDER = ('check_compatibility', 'check_memory', 'subject_for_benchmark',
               'weight_fingerprint_scope', 'record_measures', 'check_released',
               'stamp_score_metadata')
 
-# (step, entry points that have it): reason
+# (step, entry points that have it): reason. Violations only; the target is empty.
 ALLOWED = {
     ('call check_benchmark_assets', 'unified'):
         'only unified checks local benchmark assets before loading (R5 drift)',
-    ('call _resolve_identifier', 'unified'):
-        'only unified accepts built objects as well as identifiers',
     ('raise ValueError', 'unified'):
         'only unified checks the benchmark identifier that the score records (R5 drift)',
     ("attrs['trial_memory']", 'unified'): 'only unified stamps trial_memory (R5 drift)',
     ('call score_benchmark', 'vision'):
         'only vision runs score_benchmark and so the preallocate_memory hook (R5, R19 drift)',
-    ('raise AssertionError', 'vision'): 'vision adds a stale-cache hint to an AssertionError',
-    ("attrs['comment']", 'vision'): 'vision records the layer commitment of a legacy model',
+}
+
+# (step, entry points that have it): the rule sentence that states the difference
+STATED_EXCEPTIONS = {
+    ('call _resolve_identifier', 'unified'):
+        'Contract Rule 11.5: unified score() accepts a built subject or benchmark as well as '
+        'an identifier, and names a built object by its identifier',
+    ('raise AssertionError', 'vision'):
+        'Contract Rule 11.5: vision adds a hint about its stale activation cache to an '
+        'AssertionError that names a stimulus path',
+    ("attrs['comment']", 'vision'):
+        'Contract Rule 11.5: vision records the layer commitment of a Brain-Score 2.0 '
+        'model on its score',
 }
 
 
@@ -162,7 +172,12 @@ def test_entry_point_calls_the_core_steps_in_order(name):
 
 
 def test_entry_points_differ_only_by_known_steps():
-    compare(differences(_all_steps()), ALLOWED, 'differences between score entry points')
+    compare(differences(_all_steps()), {**ALLOWED, **STATED_EXCEPTIONS},
+            'differences between score entry points')
+
+
+def test_a_stated_difference_is_not_also_a_violation():
+    assert not set(ALLOWED) & set(STATED_EXCEPTIONS)
 
 
 _CONFORMING = '''
@@ -202,7 +217,8 @@ def test_difference_check_fails_on_a_new_violation():
     per_entry = _all_steps()
     per_entry['language'] = per_entry['language'] | {'call reserve_memory'}
     with pytest.raises(AssertionError, match='new differences'):
-        compare(differences(per_entry), ALLOWED, 'differences between score entry points')
+        compare(differences(per_entry), {**ALLOWED, **STATED_EXCEPTIONS},
+                'differences between score entry points')
 
 
 def test_difference_check_fails_on_a_stale_entry():
@@ -210,4 +226,5 @@ def test_difference_check_fails_on_a_stale_entry():
     for name in ('vision', 'language'):
         per_entry[name] = per_entry[name] | {'call check_benchmark_assets'}
     with pytest.raises(AssertionError, match='no longer violate'):
-        compare(differences(per_entry), ALLOWED, 'differences between score entry points')
+        compare(differences(per_entry), {**ALLOWED, **STATED_EXCEPTIONS},
+                'differences between score entry points')
