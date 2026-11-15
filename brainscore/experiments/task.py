@@ -172,7 +172,9 @@ class RecordBehavior(_ChannelRecorder):
             raise ValueError(f'{experiment.subject.identifier!r} does not declare {sorted(missing)}')
 
     def _keeps(self, event):
-        channel = event['payload'].channel if event['kind'] == 'output' else ''
+        # The subject's answers, and the finalized answers the runner publishes after
+        # each session (their trial states; ExperimentResult.trials reads them).
+        channel = event['payload'].channel if event['kind'] in ('output', 'answer') else ''
         return channel == 'behavior' or channel.startswith('behavior:')
 
 

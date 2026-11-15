@@ -28,7 +28,7 @@ declare only broad bounds; `v2-constraints.txt` holds the tested versions, so ke
 
 ~~~bash
 cd <workspace-root>
-conda create -y -n brainscore-unified python=3.11
+conda create -y -n brainscore-unified --override-channels -c conda-forge python=3.11
 conda activate brainscore-unified
 python -m pip install -c unified/install/v2-constraints.txt -e ./core -e ./vision -e ./language -e "./unified[notebooks,test]"
 python -m pip check

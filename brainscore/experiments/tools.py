@@ -25,8 +25,10 @@ class RecordInputsOutputs(Tool):
         return {} if self.max_bytes is None else {'max_bytes': self.max_bytes}
 
     def _keeps(self, event):
-        """Which events this recorder saves; all of them here."""
-        return True
+        """Which events this recorder saves: all the subject's events. The finalized
+        answers the runner publishes after a session are kept by RecordBehavior; they are
+        not part of the exchange that replay rebuilds."""
+        return event['kind'] != 'answer'
 
     @contextmanager
     def attach(self, context):

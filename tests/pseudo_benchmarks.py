@@ -89,12 +89,6 @@ def _states(answer):
     return dict(zip(answer['stimulus_id'].values, answer['response_state'].values))
 
 
-def _counts(answer):
-    states = list(answer['response_state'].values)
-    return {'n_trials': len(states), 'n_invalid': states.count('invalid'),
-            'n_missing': states.count('missing')}
-
-
 def _pearson(pairs):
     model, human = (np.array(column, dtype=float) for column in zip(*pairs)) if pairs else ([], [])
     return float(np.corrcoef(model, human)[0, 1]) if len(pairs) > 2 else float('nan')
@@ -126,8 +120,8 @@ class PseudoChoice(BenchmarkBase):
                                               answer['response_state'].values, answer.values)]
         correct += [False] * (len(IDS) - len(correct))
         accuracy = float(np.mean(correct))
-        return benchmark_score(self, raw=accuracy, metric='accuracy',
-                               **_counts(answer))
+        return benchmark_score(self, raw=accuracy, metric='accuracy', answers=answer,
+                               answer_policy='invalid: wrong, counted; missing: wrong, counted')
 
 
 class PseudoProbabilities(BenchmarkBase):
@@ -155,7 +149,8 @@ class PseudoProbabilities(BenchmarkBase):
                                             answer['response_state'].values, answer.values)
                  if state == 'valid']
         value = float(np.mean(given)) if given else float('nan')
-        return benchmark_score(self, raw=value, metric='mean probability of the human choice', **_counts(answer))
+        return benchmark_score(self, raw=value, metric='mean probability of the human choice', answers=answer,
+                               answer_policy='invalid: left out, counted; missing: left out, counted')
 
 
 class PseudoRating(BenchmarkBase):
@@ -181,7 +176,8 @@ class PseudoRating(BenchmarkBase):
             answer['stimulus_id'].values, answer['response_state'].values, answer.values)
             if state == 'valid']
         value = _pearson(pairs)
-        return benchmark_score(self, raw=value, metric='pearson r with human ratings', **_counts(answer))
+        return benchmark_score(self, raw=value, metric='pearson r with human ratings', answers=answer,
+                               answer_policy='invalid: left out, counted; missing: left out, counted')
 
 
 class PseudoResponseTime(BenchmarkBase):
@@ -209,7 +205,8 @@ class PseudoResponseTime(BenchmarkBase):
             answer['stimulus_id'].values, answer['response_state'].values, answer.values)
             if state == 'valid']
         value = _pearson(pairs)
-        return benchmark_score(self, raw=value, metric='pearson r with human response times', **_counts(answer))
+        return benchmark_score(self, raw=value, metric='pearson r with human response times', answers=answer,
+                               answer_policy='invalid: left out, counted; missing: left out, counted')
 
 
 class PseudoText(BenchmarkBase):
@@ -240,7 +237,8 @@ class PseudoText(BenchmarkBase):
             answer['response_state'].values, answer.values)]
         correct = [p == HUMAN_CHOICE[sid] for sid, p in zip(answer['stimulus_id'].values, parsed)]
         accuracy = float(np.mean(correct))
-        return benchmark_score(self, raw=accuracy, metric='exact match after parse', n_unparsed=parsed.count(None), **_counts(answer))
+        return benchmark_score(self, raw=accuracy, metric='exact match after parse', n_unparsed=parsed.count(None),
+                               answers=answer, answer_policy='unparsed, invalid or missing: wrong, counted')
 
 
 class PseudoLogProbabilities(BenchmarkBase):
@@ -268,7 +266,8 @@ class PseudoLogProbabilities(BenchmarkBase):
                  if state == 'valid']
         value = float(np.mean(agree)) if agree else float('nan')
         return benchmark_score(self, raw=value, metric='agreement of the likelier continuation',
-                               **_counts(answer))
+                               answers=answer,
+                               answer_policy='invalid: left out, counted; missing: left out, counted')
 
 
 BENCHMARKS = {'behavior:choice': PseudoChoice, 'behavior:probabilities': PseudoProbabilities,

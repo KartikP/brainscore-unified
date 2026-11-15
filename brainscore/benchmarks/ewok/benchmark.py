@@ -72,6 +72,13 @@ _TASKS = {
 }
 
 
+# What each form does with a trial that has no usable answer (Contract Rule 6.2).
+CHOICE_POLICY = 'invalid: wrong, counted; missing: wrong, counted'
+LOGPROBS_POLICY = ('non-finite or missing: an error of the run (an item needs four finite values); '
+                   'every finite value is scored as given; the counts are the states core gives '
+                   '(invalid: above 0 beyond its tolerance, or marked by the producer)')
+
+
 def _choice_item(heading, context1, context2, target, response):
     return (f'\n\n# {heading}\n\n## Contexts\n1. "{context1}"\n2. "{context2}"\n\n'
             f'## Scenario\n"{target}"\n\n## Task\nWhich context makes more sense given the '
@@ -121,14 +128,16 @@ def _answers(subject: Subject, context, stimuli, mode: str, repetition: int) -> 
 
     The session asks for the mode's output channel with the mode's task;
     each row is its own trial. Returns the values, one row per stimulus in the
-    order of ``stimuli`` and one column per option, and the labels of the
-    option axis.
+    order of ``stimuli`` and one column per option, the labels of the option
+    axis, the state core gave each row (same order) and the stored answer.
     """
     response, channel = _TASKS[mode]
     session = run_request(subject, context, repetition, stimuli, [channel],
                           TaskContext(response=response, trial_memory='none'))
-    if not any(event.channel == channel for event in session.emitted):
+    if mode == 'logprobs' and not any(event.channel == channel for event in session.emitted):
         raise TypeError(f'EWoK {mode} requires an answer on {channel}')
+    # The completed choice session gives a missing row for each question with no answer,
+    # also when no question was answered; those rows are wrong and counted (CHOICE_POLICY).
     answers = session.collect(channel)
     if 'choice' not in getattr(answers, 'dims', ()):
         raise TypeError(f'EWoK {mode} requires one row of option values per question')
@@ -140,7 +149,10 @@ def _answers(subject: Subject, context, stimuli, mode: str, repetition: int) -> 
     order = {stimulus_id: row for row, stimulus_id in
              enumerate(response_stimulus_ids(answers, requested))}
     values = np.asarray(answers.transpose('presentation', 'choice').values, dtype=float)
-    return np.array([values[order[stimulus_id]] for stimulus_id in requested]), list(answers['choice'].values)
+    states = [str(state) for state in answers['response_state'].values]
+    return (np.array([values[order[stimulus_id]] for stimulus_id in requested]),
+            list(answers['choice'].values),
+            [states[order[stimulus_id]] for stimulus_id in requested], answers)
 
 
 def _mean_by_version(rows: list[dict]) -> tuple[float, dict]:
@@ -224,6 +236,7 @@ class EWoKBenchmark(BenchmarkBase):
             # Recorded requests contain restricted item text; keep runs private.
             context.directory.chmod(0o700)
             scored = []
+            stored = []         # every stored answer, for the counts of the trial states
             requests_sent = 0   # one record repetition per request
             for offset in range(0, len(self._rows), self._batch_size):
                 batch = self._rows[offset:offset + self._batch_size]
@@ -246,29 +259,36 @@ class EWoKBenchmark(BenchmarkBase):
                         }))
                     returned[number] = _answers(subject, context, stimuli, self._mode,
                                                 repetition=requests_sent)
+                    stored.append(returned[number][3])
                     requests_sent += 1
                 for index, row in enumerate(batch):
                     if self._mode == 'logprobs':
+                        # A missing log probability is an error of the run, as a non-finite
+                        # one is (logprob_accuracy); a finite value above 0 is scored as
+                        # given and counted as invalid (LOGPROBS_POLICY).
+                        if any(returned[number][2][index] == 'missing' for number in (1, 2)):
+                            raise ValueError(f"EWoK item {row['item_id']!r}: a log probability is "
+                                             'missing; the log-probability form needs four finite '
+                                             'values per item')
                         # Columns are the options in order: Target1, Target2.
                         first, second = returned[1][0][index], returned[2][0][index]
                         # T1|C1, T1|C2, T2|C1, T2|C2 (target given context).
                         accuracy = logprob_accuracy([float(first[0]), float(second[0]),
                                                      float(first[1]), float(second[1])])
-                        invalid = 0
                     else:
                         choices = []
                         for number in (1, 2):
-                            values, labels = returned[number]
-                            row_values = values[index]
-                            choices.append(str(labels[int(row_values.argmax())])
-                                           if np.isfinite(row_values).all() else None)
-                        # An unparsed answer is wrong and counted, never dropped.
+                            values, labels, states, _ = returned[number]
+                            # An invalid or missing answer (its state) is wrong and counted.
+                            choices.append(str(labels[int(values[index].argmax())])
+                                           if states[index] == 'valid' else None)
                         accuracy = ((choices[0] == '1') + (choices[1] == '2')) / 2
-                        invalid = sum(choice is None for choice in choices)
+                    states = [returned[number][2][index] for number in (1, 2)]
                     scored.append({
                         'item_id': row['item_id'], 'domain': row['Domain'],
                         'family': row['family'], 'version': row['Version'],
-                        'accuracy': accuracy, 'invalid_answers': invalid,
+                        'accuracy': accuracy, 'n_invalid': states.count('invalid'),
+                        'n_missing': states.count('missing'),
                     })
                 # Save each completed batch. Replace the previous file only after
                 # writing finishes, so an interrupted write keeps the last checkpoint.
@@ -288,8 +308,8 @@ class EWoKBenchmark(BenchmarkBase):
                 mode=self._mode,
                 aggregation='mean of within-version mean accuracies',
                 version_scores=versions, domain_scores=domains,
-                items=len(scored), questions=2 * len(scored),
-                invalid_answers=sum(r['invalid_answers'] for r in scored),
+                items=len(scored), answers=stored,
+                answer_policy=LOGPROBS_POLICY if self._mode == 'logprobs' else CHOICE_POLICY,
                 dataset_sha256=self._manifest['items_sha256'],
                 dataset_scope=self._manifest['scope'], domain_subset=self._subset,
                 paper_replication=False,

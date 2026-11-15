@@ -35,7 +35,8 @@ torch.manual_seed(0)
 net = Net().eval()
 vision = PytorchWrapper(identifier='my-cnn', model=net, preprocessing=preprocess)
 
-folder = tempfile.mkdtemp()
+workspace = tempfile.TemporaryDirectory()      # removed when the script ends
+folder = workspace.name
 rows = []
 for index in range(12):
     label = 'face' if index % 2 == 0 else 'object'

@@ -17,8 +17,10 @@ out of the box:
 Copy the folder, run `pytest`, watch it pass, then swap in your real data and metric a
 piece at a time.
 """
+import io
 import os
 import tempfile
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
@@ -45,6 +47,30 @@ N_STIMULI, N_NEUROIDS = 32, 16
 CATEGORIES = ['alpha', 'beta', 'gamma', 'delta']
 
 
+def _write_once(path, data: bytes) -> None:
+    """Write ``data`` to ``path`` unless the same bytes are already there.
+
+    The bytes go to an exclusive staging file with a unique name in the same folder, which
+    then replaces the final name in one step, so a reader never sees half a file and two
+    writers do not collide. A link at the final name is refused: the write would land in
+    another file.
+    """
+    if os.path.islink(path):
+        raise ValueError(f'{path} is a link; remove it and load again')
+    if os.path.isfile(path):
+        with open(path, 'rb') as existing:
+            if existing.read() == data:
+                return
+    descriptor, staging = tempfile.mkstemp(dir=os.path.dirname(path), suffix='.partial')
+    try:
+        with os.fdopen(descriptor, 'wb') as file:
+            file.write(data)
+        os.replace(staging, path)
+    except BaseException:
+        os.unlink(staging)
+        raise
+
+
 def _load_assembly():
     """TODO: load your real target measurements as a DataAssembly.
 
@@ -66,14 +92,18 @@ def _load_assembly():
     stimulus_ids = [f'stim{i:03d}' for i in range(N_STIMULI)]
     categories = [CATEGORIES[i % len(CATEGORIES)] for i in range(N_STIMULI)]
 
-    directory = tempfile.mkdtemp(prefix='your_benchmark_stimuli_')
+    # The images are the same on every load, so they are written once, to one folder in the
+    # Brain-Score home, and reused.
+    directory = Path(os.getenv('BRAINSCORE_HOME', '~/.brain-score')).expanduser() / 'your_benchmark_stimuli'
+    directory.mkdir(parents=True, exist_ok=True)
     paths = {}
     for i, sid in enumerate(stimulus_ids):
-        path = os.path.join(directory, f'{sid}.png')
-        image_rng = np.random.RandomState(i)
+        path = directory / f'{sid}.png'
+        image = io.BytesIO()
         Image.fromarray(
-            image_rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(path)
-        paths[sid] = path
+            np.random.RandomState(i).randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(image, format='PNG')
+        _write_once(str(path), image.getvalue())
+        paths[sid] = str(path)
 
     stimulus_set = StimulusSet([
         {'stimulus_id': sid, 'image_path': paths[sid], 'object_name': obj}

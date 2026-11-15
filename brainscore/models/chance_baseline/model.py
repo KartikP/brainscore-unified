@@ -134,10 +134,6 @@ class ChanceBaseline(UnifiedModel):
             dims=['presentation', 'choice'],
         )
 
-    # Legacy compat (in case benchmarks call these directly)
-    def look_at(self, stimuli, **kwargs):
-        return self.process(stimuli)
-
     def visual_degrees(self) -> int:
         return 8
 

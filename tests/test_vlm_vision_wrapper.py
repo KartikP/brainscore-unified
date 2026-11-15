@@ -53,7 +53,9 @@ def _make_image_stimuli(n=3, identifier_suffix=''):
     tmpdir = tempfile.mkdtemp()
     paths = {}
     for i in range(n):
-        img = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
+        # Seeded, and different for each call (the counter), so cache entries stay apart.
+        pixels = np.random.RandomState(1000 * _img_counter + i).randint(0, 255, (224, 224, 3), dtype=np.uint8)
+        img = Image.fromarray(pixels)
         img_path = os.path.join(tmpdir, f'img{i}.png')
         img.save(img_path)
         paths[f'img{i}'] = img_path

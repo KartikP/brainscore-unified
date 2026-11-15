@@ -18,7 +18,7 @@ def test_a_participate_only_subject_gets_a_score(synthetic_roar):
     subject = _ReaderSubject()
     score = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')(subject)
     assert float(score.attrs['raw']) == 1.0
-    assert score.attrs['n_test_stimuli'] == 100
+    assert score.attrs['n_trials'] == 100
 
 
 def _noisy_readout_model():

@@ -464,7 +464,7 @@ class TestInputSite:
     def test_drive_down_proj_input_adds_weight_column(self):
         net = _GatedMLP()
         bs = self._bs(net)
-        x = torch.randn(2, 5, 6)  # (batch, tokens, d)
+        x = torch.randn(2, 5, 6, generator=torch.Generator().manual_seed(0))  # (batch, tokens, d)
         baseline = net(x).detach().clone()
 
         n, delta = 7, 2.5
@@ -479,7 +479,7 @@ class TestInputSite:
     def test_whole_layer_vector_drive(self):
         net = _GatedMLP()
         bs = self._bs(net)
-        x = torch.randn(2, 5, 6)
+        x = torch.randn(2, 5, 6, generator=torch.Generator().manual_seed(1))
         baseline = net(x).detach().clone()
         direction = torch.arange(6, dtype=torch.float64)  # dtype is matched to the layer
         self._steer(bs, 'down_proj', Perturbation(kind='drive', amount=direction))

@@ -31,7 +31,8 @@ def test_invalid_answers_count_as_wrong():
     score = benchmark(model)
     assert float(score.attrs['raw']) == pytest.approx(.5)
     # The count of invalid answers is in the score; each trial keeps its state and reason.
-    assert score.attrs['n_invalid_answers'] == 2
+    assert (score.attrs['n_invalid'], score.attrs['n_missing']) == (2, 0)
+    assert score.attrs['answer_policy'] == 'invalid: wrong, counted; missing: wrong, counted'
     answer = sessions[0].collect('behavior:choice')
     assert list(answer['response_state'].values) == ['valid', 'invalid', 'valid', 'invalid']
     assert list(answer['raw_answer'].values) == ['real', 'unsure', 'pseudo', 'unsure']
@@ -92,4 +93,71 @@ def test_session_reading_matches_the_configured_readout():
 
     score = benchmark(model())
     assert float(score.attrs['raw']) == np.mean(expected_correct)
-    assert score.attrs['n_test_stimuli'] == len(expected)
+    assert score.attrs['n_trials'] == len(expected)
+
+
+def test_a_missing_answer_counts_as_wrong_and_is_counted_apart():
+    """A trial with no answer is a missing row (core); ROAR counts it wrong and as missing."""
+    from brainscore_core import Subject
+    from brainscore_core.streaming import StreamEvent
+    replies = {'w1': 'real', 'w2': 'real', 'p1': 'pseudo'}            # p2 is never answered
+
+    class _Skips(Subject):
+        identifier = 'skips-one'
+        in_channels = {'text'}
+        out_channels = {'behavior:choice'}
+        required_channels = set()
+
+        def participate(self, session):
+            while (event := session.next_input()) is not None:
+                stimulus_id = event.meta.get('stimulus_id')
+                if stimulus_id in replies:
+                    session.respond(StreamEvent('behavior:choice', replies[stimulus_id], event.t_ms,
+                                                {'stimulus_id': stimulus_id}))
+
+        def reset(self):
+            pass
+
+    score = _benchmark()(_Skips())
+    assert float(score.attrs['raw']) == pytest.approx(.75)
+    assert (score.attrs['n_trials'], score.attrs['n_valid'], score.attrs['n_invalid'],
+            score.attrs['n_missing']) == (4, 3, 0, 1)
+    assert score.attrs['result_validity'] == 'valid'
+
+
+def test_stated_change_a_finite_row_marked_invalid_loses_credit():
+    """M9-03, stated change: a custom subject's one-hot row with answer_valid False counted
+    as answered before this step (1.0 here); its state is invalid, so it is wrong now (0.75).
+    No registered producer sends such a row: theirs are all-NaN when not valid."""
+    import numpy as np
+    from brainscore_core import Subject
+    from brainscore_core.response_formats import response_record
+    from brainscore_core.streaming import StreamEvent
+    from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
+    truth = {'w1': 'real', 'w2': 'real', 'p1': 'pseudo', 'p2': 'pseudo'}
+
+    class _FlagsFirst(Subject):
+        identifier = 'flags-first'
+        in_channels = {'text'}
+        out_channels = {'behavior:choice'}
+        required_channels = set()
+
+        def participate(self, session):
+            while session.next_input() is not None:
+                pass
+            ids = list(session.stimuli['stimulus_id'])
+            rows = np.array([[1.0, 0.0] if truth[sid] == 'real' else [0.0, 1.0] for sid in ids],
+                            dtype=np.float32)
+            session.respond(StreamEvent('behavior:choice', BehavioralAssembly(
+                rows, dims=['presentation', 'choice'], coords={
+                    'stimulus_id': ('presentation', ids), 'choice': ['real', 'pseudo'],
+                    'raw_answer': ('presentation', [truth[sid] for sid in ids]),
+                    'answer_valid': ('presentation', [sid != 'w1' for sid in ids])},
+                attrs={'response': response_record('behavior:choice', 'test')}), None))
+
+        def reset(self):
+            pass
+
+    score = _benchmark()(_FlagsFirst())
+    assert float(score.attrs['raw']) == pytest.approx(.75)
+    assert (score.attrs['n_valid'], score.attrs['n_invalid']) == (3, 1)
