@@ -10,7 +10,7 @@ import brainscore.benchmarks.lahner2024  # noqa: F401  (registers the benchmarks
 from brainscore.benchmarks.lahner2024 import (
     Lahner2024BOLDMoments_timeresolved, ParticipantRunBlocks, RunBlocks)
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved import (
-    FEATURE_DIM_CAP, RUN_KEY, TR_SEC, TRANSDUCTIVE_SVD)
+    FEATURE_DIM_CAP, RUN_KEY, TR_SEC, TRAINING_SVD)
 from brainscore.data.lahner2024 import MOTION_COLUMNS
 from brainscore.temporal import double_gamma_hrf, hrf_convolve
 from tests.lahner_synthetic import (
@@ -156,11 +156,11 @@ def test_interleaved_participants_are_reported(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize('channels, label', [
-    (('vision:image', 'vision:video'), TRANSDUCTIVE_SVD),
-    (AUDIOVISUAL, TRANSDUCTIVE_SVD + '_per_modality'),
+    (('vision:image', 'vision:video'), TRAINING_SVD),
+    (AUDIOVISUAL, TRAINING_SVD + '_per_modality'),
 ])
-def test_transductive_projection_is_labelled(monkeypatch, tmp_path, channels, label):
-    """Feature widths above the cap are projected with an SVD fit on all stimuli."""
+def test_projection_is_labelled(monkeypatch, tmp_path, channels, label):
+    """Feature widths above the cap are projected with an SVD fit on the training stimuli of each fold."""
     install(monkeypatch, tmp_path)
     subject = Recorder({'vision:video', 'audio'}, regions=('IT', 'A1'), width=FEATURE_DIM_CAP + 1)
     score = Lahner2024BOLDMoments_timeresolved(folds=RunBlocks(2), channels=channels, identifier='Lahner2024-fMRI-naturalistic-timeresolved')(subject)

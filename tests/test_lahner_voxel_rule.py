@@ -193,15 +193,14 @@ def test_a_voxel_is_preprocessed_alike_in_any_selection(monkeypatch, tmp_path, c
     bold[:, :, 6] = 10000.0 + 0.001 * (np.arange(N_TR) % 2)
     install(monkeypatch, tmp_path, runs=runs, bold=bold)
     benchmark = Lahner2024BOLDMoments_timeresolved(confounds=confounds, identifier='Lahner2024-fMRI-naturalistic-timeresolved')
-    design = np.zeros((len(runs), N_TR, 2), dtype=np.float32)
-    every = benchmark._concatenate_with_mask(design, benchmark.assembly)[1]
+    every = benchmark._concatenate_with_mask(benchmark.assembly)[0]
     assert every.dtype == np.float32
     assert not every[:, 5].any()
     assert every[:, 6].all() and every[:, 6].std() == pytest.approx(1, abs=1e-5)
     for voxels in ([5], [5, 6], [0, 5, 6, 9], range(0, N_VOXELS, 7)):
         region = mask_of(voxels)
         np.testing.assert_array_equal(
-            benchmark._concatenate_with_mask(design, benchmark.assembly, region)[1], every[:, region])
+            benchmark._concatenate_with_mask(benchmark.assembly, region)[0], every[:, region])
 
 
 @pytest.mark.parametrize('r,ceiling,kept', [
