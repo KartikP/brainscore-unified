@@ -43,9 +43,6 @@ CORE_ORDER = ('check_compatibility', 'check_memory', 'subject_for_benchmark',
 ALLOWED = {
     ('call check_benchmark_assets', 'unified'):
         'only unified checks local benchmark assets before loading (R5 drift)',
-    ('raise ValueError', 'unified'):
-        'only unified checks the benchmark identifier that the score records (R5 drift)',
-    ("attrs['trial_memory']", 'unified'): 'only unified stamps trial_memory (R5 drift)',
     ('call score_benchmark', 'vision'):
         'only vision runs score_benchmark and so the preallocate_memory hook (R5, R19 drift)',
 }
