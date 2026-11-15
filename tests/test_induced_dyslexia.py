@@ -231,6 +231,21 @@ class TestPreflight:
             check_compatibility(subject, self._bench())
         assert subject.sessions == 0
 
+    @pytest.mark.parametrize('listed', [{'text'}, {'text', 'lesion'}])
+    def test_a_subject_that_lists_its_lesion_record_from_text_is_refused_before_compute(self, listed):
+        # The record answers the lesion in every case: a stated map that gives it from
+        # another input is a malformed declaration, refused by pre-flight in score().
+        import brainscore
+
+        class _ListsText(_Subject):
+            output_inputs = property(lambda self: {'perturbation': frozenset(listed)})
+        subject = _ListsText()
+        with pytest.raises(ValueError, match="lists 'perturbation' in output_inputs from"):
+            check_compatibility(subject, self._bench())
+        with pytest.raises(ValueError, match='list only intervention inputs'):
+            brainscore.score(subject, self._bench(), check_mem=False)
+        assert subject.sessions == 0 and subject.applies == 0
+
     def test_an_addressed_lesion_declaration_is_refused_by_pre_flight(self):
         # The lesion channel has no address: the target is in the StateChange.
         subject = _Subject()

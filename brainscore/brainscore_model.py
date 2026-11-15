@@ -324,8 +324,9 @@ class BrainScoreModel(UnifiedModel):
         and a video extractor that both have its layers, is answered from stills
         (``vision:image``) and from clips (``vision:video``). In a model with one
         extractor, a region without a modality lists that extractor's channels.
-        Behavior, policy and perturbation outputs are not listed, so they can
-        be answered from any input the model takes.
+        Behavior, policy and perturbation outputs are not listed: behavior and
+        policy can be answered from any input the model takes, perturbation from
+        the intervention inputs it takes (core pre-flight, rule 4).
         """
         from ._model.recording import region_extractor_keys
         listed = {}
