@@ -592,3 +592,21 @@ def test_options_per_row_are_not_compared_across_trials_one_at_a_time(log):
     model = _subject(log, parts=('reply',), memory='trial_history')
     model.participate(stimulus_session(_options([2, 3, 2]), ['behavior:choice'], task))
     assert log == ['reply'] * 3
+
+
+@pytest.mark.parametrize('change', [StateChange(kind='reset'), StateChange(kind='reset', handle_id='nope')],
+                         ids=['reset without handle', 'unknown handle'])
+def test_a_refused_intervention_event_keeps_the_fitted_readout(change, log):
+    """R29: the readout fits again only when the model changes, not when an event is refused (O5)."""
+    model = _subject(log, parts=('behavioral_readout_layer',), owners={'behavior:choice': ('readout', 'argmax')},
+                     intervention=lambda c: (PerturbationApplied(handle_id='h', target=c.target,
+                                                                 perturbation=c.perturbation, applied_at=0),
+                                             lambda: None))
+    model.start_task(CHOICE)
+    assert model._behavioral.is_configured_for(CHOICE)
+    with pytest.raises((ValueError, KeyError)):
+        apply_state_change(model, change)
+    assert model._behavioral.is_configured_for(CHOICE)            # before O5: the refused event invalidated it
+    apply_state_change(model, StateChange(kind='ablation', target=Selection(layer='late'),
+                                          perturbation=Perturbation(kind='zero')))
+    assert not model._behavioral.is_configured_for(CHOICE)        # an applied change still invalidates
