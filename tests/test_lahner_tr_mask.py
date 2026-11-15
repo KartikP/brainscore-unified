@@ -163,7 +163,9 @@ def test_the_table_shown_has_the_identifier_of_its_set(monkeypatch, tmp_path, on
 # ── Variants without a reliability mask do not change ─────────────
 
 # Measured at 231b496 (before this change) on the synthetic data of ``install``:
-# (float(score), sum of per_voxel_r in float64), through ``repr``.
+# (float(score), sum of per_voxel_r in float64). The comparison allows the last digits
+# of another platform's linear algebra (measured: at most 6e-8 on a score and 1e-5 on a
+# sum between macOS and Linux); a changed set of runs, folds or stimuli moves them far more.
 PINNED = {
     'plain': (0.002611062489449978, 32.40087760982715),
     'improved': (-0.0034763552248477936, -90.65468233136926),
@@ -191,5 +193,7 @@ def test_variants_without_a_reliability_mask_keep_their_value(monkeypatch, tmp_p
     score = Lahner2024BOLDMoments_timeresolved(
         **configuration, identifier=PREFIX)(subject())
     per_voxel = score.attrs['per_voxel_r']
-    assert (float(score), float(np.nansum(per_voxel.astype('float64')))) == PINNED[name]
+    value, total = PINNED[name]
+    assert float(score) == pytest.approx(value, abs=1e-6)
+    assert float(np.nansum(per_voxel.astype('float64'))) == pytest.approx(total, abs=1e-3)
     assert score.attrs['n_runs'] == 4 and score.attrs['n_observations'] == 4 * N_TR

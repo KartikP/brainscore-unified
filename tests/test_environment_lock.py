@@ -65,6 +65,7 @@ def test_the_doctor_reports_lock_differences_on_the_locked_platform(monkeypatch)
     installed['quickbrain'] = '0.1'
     monkeypatch.setattr(doctor, '_lock_file', lambda: LOCK)
     monkeypatch.setattr(doctor, '_installed_distributions', lambda: installed)
+    monkeypatch.setattr(doctor.platform, 'python_version', lambda: doctor.read_lock_python(LOCK))
     monkeypatch.setattr(doctor, '_dependency_rows', lambda: [])
     monkeypatch.setattr(doctor, '_import_rows', lambda: [])
     monkeypatch.setattr(doctor, '_asset_rows', lambda: [])

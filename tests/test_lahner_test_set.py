@@ -107,6 +107,8 @@ def test_visual_roi_ceilings_are_sqrt_reliability_of_the_test_videos(monkeypatch
 
 # Measured at the base commit 6ee39c0 on this synthetic data: the variants with no
 # reliability mask and no ceiling score every video, and their value must not move.
+# The comparison allows the last digits of another platform's linear algebra (measured:
+# at most 8e-8 between macOS and Linux); a changed set of videos moves a value far more.
 UNCHANGED = [
     ('Lahner2024-fMRI-naturalistic', {'vision:video'}, ('IT',), -0.15729528665542603),
     ('Lahner2024-fMRI-naturalistic-multimodal', {'vision:video', 'audio'}, ('IT', 'A1'),
@@ -121,7 +123,7 @@ def test_variants_without_mask_or_ceiling_keep_their_value(monkeypatch, tmp_path
                                                            channels, regions, base):
     score, _, subject = _score(monkeypatch, tmp_path / 'a', identifier, channels, regions,
                                None)
-    assert repr(float(score)) == repr(base)
+    assert float(score) == pytest.approx(base, abs=1e-6)
     assert score.attrs['n_videos'] == len(GLM_CLIPS)
     for _, _, ids, _ in subject.seen:
         assert sorted(ids) == sorted(GLM_CLIPS)
