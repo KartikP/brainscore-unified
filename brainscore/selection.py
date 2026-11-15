@@ -18,12 +18,16 @@ class UnitSelector(ABC):
     records (``layer_paths``), which of them must contribute units
     (``required_layers``), whether it keeps chosen units of its layers
     (``gathers_units``, ``keeps_unit_subset``) and which units those are
-    (``gather_units``). The input it reads is ``modality``. Recording code asks
-    the selector and never checks its class. A subclass needs only
+    (``gather_units``). ``modality`` names the extractor (input family) that
+    records the region. A tuple names it first and then the other inputs that
+    reach the region's layer in an answering pass, which ``output_inputs`` lists
+    too; this is the registration author's statement about the wiring, not
+    checked before a pass. Recording code asks the selector and never checks
+    its class. A subclass needs only
     ``layer_path``; the defaults describe one whole layer.
     """
 
-    modality: Optional[str] = None
+    modality: Optional[Union[str, Tuple[str, ...]]] = None
     # True when the region keeps chosen units of its layers. Recording then
     # numbers each layer's units (``unit_index``) and calls ``gather_units``.
     gathers_units: bool = False
@@ -57,7 +61,7 @@ class UnitSelector(ABC):
 class LayerSelector(UnitSelector):
     """Select one layer for a region mapping; ``name`` is its layer path."""
     name: str
-    modality: Optional[str] = None
+    modality: Optional[Union[str, Tuple[str, ...]]] = None
 
     @property
     def layer_path(self) -> str:
@@ -79,7 +83,7 @@ class CompositeSelector(UnitSelector):
         unit of the layer.
     """
     layers: Tuple[Tuple[str, Optional[Tuple[int, ...]]], ...]
-    modality: Optional[str] = None
+    modality: Optional[Union[str, Tuple[str, ...]]] = None
     gathers_units = True
 
     def __post_init__(self) -> None:
@@ -137,6 +141,17 @@ def _promote_to_selector(value: Union[str, UnitSelector]) -> UnitSelector:
         f"region_layer_map values must be str or UnitSelector, "
         f"got {type(value).__name__}"
     )
+
+
+def _with_modality(selector: UnitSelector, modality: str) -> UnitSelector:
+    """A copy of ``selector`` that reads ``modality`` (the recording extractor of a tuple)."""
+    import copy
+    import dataclasses
+    if dataclasses.is_dataclass(selector):
+        return dataclasses.replace(selector, modality=modality)
+    routed = copy.copy(selector)
+    object.__setattr__(routed, 'modality', modality)
+    return routed
 
 
 class UnitSelection(ABC):

@@ -15,7 +15,7 @@ from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_moda
 from brainscore_core.events import InputEvent, OutputEvent, StateChange
 from ._model.intervention import Interventions
 from ._model.recording import RecordingRequest
-from .selection import UnitSelector, _promote_to_selector
+from .selection import UnitSelector, _promote_to_selector, _with_modality
 from brainscore_core.extraction_cache import weight_fingerprint_scope
 
 
@@ -323,6 +323,9 @@ class BrainScoreModel(Subject):
         and a video extractor that both have its layers, is answered from stills
         (``vision:image``) and from clips (``vision:video``). In a model with one
         extractor, a region without a modality lists that extractor's channels.
+        A region whose ``modality`` is a tuple also lists the inputs after the
+        first: the registration states that they reach its layer in an answering
+        pass (rule 2.5), and a passive session from them is refused at its start.
         Behavior, policy and perturbation outputs are not listed: behavior and
         policy can be answered from any input the model takes, perturbation from
         the intervention inputs it takes (core pre-flight, rule 4).
@@ -330,7 +333,8 @@ class BrainScoreModel(Subject):
         from ._model.recording import region_extractor_keys
         listed = {}
         for region, selector in self._region_layer_selectors.items():
-            channels = self._input_channels(region_extractor_keys(self, selector))
+            channels = (self._input_channels(region_extractor_keys(self, selector))
+                        | self._input_channels(self._region_inputs.get(region, ())))
             if channels:
                 listed[f'neural:{region}'] = frozenset(channels)
         return listed
@@ -376,13 +380,27 @@ class BrainScoreModel(Subject):
 
     def _install_region_layer_map(self, region_layer_map) -> None:
         """Validate and install one lossless region configuration atomically."""
-        selectors = {region: _promote_to_selector(value)
-                     for region, value in dict(region_layer_map).items()}
-        for region, selector in selectors.items():
+        given = {region: _promote_to_selector(value)
+                 for region, value in dict(region_layer_map).items()}
+        # A tuple modality names the recording extractor first and then the other inputs
+        # that reach the layer in an answering pass. Every routing reader sees the first
+        # entry only; output_inputs lists them all (_region_inputs).
+        selectors, region_inputs = {}, {}
+        families = {canonical_modality(key) for key in self._input_keys}
+        for region, selector in given.items():
             modality = getattr(selector, 'modality', None)
-            if (modality is not None and canonical_modality(modality)
-                    not in {canonical_modality(key) for key in self._input_keys}):
-                raise ValueError(f"Region {region!r} references modalities with no extractor: {modality!r}")
+            stated = modality if isinstance(modality, tuple) else (modality,) if modality is not None else ()
+            if isinstance(modality, tuple) and (not modality or not all(isinstance(m, str) for m in modality)
+                                                or len({canonical_modality(m) for m in modality}) != len(modality)):
+                raise ValueError(f"Region {region!r}: a tuple modality names distinct input families, "
+                                 f"the recording extractor first; got {modality!r}")
+            for name in stated:
+                if canonical_modality(name) not in families:
+                    raise ValueError(f"Region {region!r} references modalities with no extractor: {name!r}")
+            if isinstance(modality, tuple):
+                region_inputs[region] = modality[1:]
+                selector = _with_modality(selector, modality[0])
+            selectors[region] = selector
         from ._model.recording import region_extractor_keys, validate_region_layers
         validate_region_layers(self, selectors)
         routing = {r: sel.modality for r, sel in selectors.items() if sel.modality is not None}
@@ -408,6 +426,8 @@ class BrainScoreModel(Subject):
                     f"cannot list its layers counts as having every layer), so each of these "
                     f"regions names its extractor. "
                     f"Use LayerSelector(name=..., modality=...).")
+        self._region_selectors_given = given
+        self._region_inputs = region_inputs
         self._region_layer_selectors = selectors
         self._region_layer_map_dict = {r: sel.layer_path for r, sel in selectors.items()}
         self._region_modality_map = routing
@@ -423,7 +443,7 @@ class BrainScoreModel(Subject):
             # A selector that its own layer path promotes to is shown as that path.
             region: (selector.layer_path
                      if _promote_to_selector(selector.layer_path) == selector else selector)
-            for region, selector in self._region_layer_selectors.items()})
+            for region, selector in self._region_selectors_given.items()})
 
     @region_layer_map.setter
     def region_layer_map(self, region_layer_map) -> None:
