@@ -976,8 +976,9 @@ def _on_scale_steps(values, scale) -> Tuple[list, dict]:
     The grid of a scale is decimal: the points Decimal(repr(low)) + n * Decimal(repr(step)).
     The step index is read from the raw value in decimal; an index within 1e-9 of a half is a
     tie and goes to the higher step. The stored value is the float of that grid point, the
-    value core's step rule accepts; the index never passes the last point inside the bounds,
-    so a raw value inside the bounds stays in. A raw value outside the bounds, or not finite,
+    value core's step rule accepts, kept inside the bounds: the index never passes the last
+    point inside them, and a point one float rounding beyond ``high`` (or ``low``) is
+    stored as that bound. A raw value outside the bounds, or not finite,
     is not rounded and not clipped (core marks it invalid). A scale with no step leaves every
     value unchanged and records no rounding.
     """
@@ -998,7 +999,10 @@ def _grid_point(value, scale):
         index = (Decimal(repr(float(value))) - low) / step
         below = int(index.to_integral_value(ROUND_FLOOR))
         n = below + 1 if index - below > Decimal('0.5') - Decimal('1e-9') else below
-        return float(low + min(n, last) * step)
+        point = float(low + min(n, last) * step)
+    # A high (or low) one float rounding off a grid point: the stored value stays inside the
+    # bounds; it moves by at most 1e-9 of a step, which core's step rule accepts.
+    return min(max(point, float(scale.low)), float(scale.high))
 
 
 def _fitted_intact(task) -> bool:

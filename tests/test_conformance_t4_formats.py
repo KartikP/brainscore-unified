@@ -396,8 +396,11 @@ def test_a_readout_rating_on_a_scale_without_a_step_is_unchanged():
     (6.5, Scale(1, 7, 1), 7.0, 'valid'),
     (7.0, Scale(1, 7, 1), 7.0, 'valid'),
     (0.1, Scale(-1e15, 1, 0.1), 0.1, 'valid'),
+    (-3 + 16 * 0.3, Scale(-3, -3 + 16 * 0.3, 0.3), -3 + 16 * 0.3, 'valid'),   # high 1.7999999999999998
+    (7.29, Scale(0.1, 0.1 + 24 * 0.3, 0.3), 0.1 + 24 * 0.3, 'valid'),
 ], ids=['top of a decimal scale', 'decimal tie', 'large magnitude', 'above the bounds',
-        'integer tie', 'integer top', 'a far low bound'])
+        'integer tie', 'integer top', 'a far low bound', 'high one rounding below a point',
+        'raw near a high one rounding off'])
 def test_a_constant_readout_rating_lands_on_the_grid(label, scale, stored, state):
     answer = _readout_rating(scale, pseudo._fitting([label] * 4, f'pseudo-fit-constant-{label}'))
     assert set(answer.values.tolist()) == {stored}
@@ -475,7 +478,8 @@ def test_a_pseudo_ewok_runs_the_real_benchmark_on_made_up_items(tmp_path):
 
 @pytest.mark.parametrize('scale', [Scale(1, 7, 1), Scale(0.1, 0.3, 0.1), Scale(1.1, 7.1, 0.1),
                                    Scale(-1e15, 1, 0.1), Scale(100000000.0, 100000001.0, 0.1),
-                                   Scale(0, 1000000000000001, 1), Scale(-5, 5, 0.25)],
+                                   Scale(0, 1000000000000001, 1), Scale(-5, 5, 0.25),
+                                   Scale(-3, -3 + 16 * 0.3, 0.3), Scale(0.1, 0.1 + 24 * 0.3, 0.3)],
                          ids=str)
 def test_every_rounded_readout_rating_is_on_core_s_grid(scale):
     """One grid for the readout and core: each stored value inside the bounds is on the step."""
