@@ -227,6 +227,7 @@ def test_dose_cannot_be_changed_to_a_nonfinite_value():
 
 
 def test_saved_maps_load_and_apply_without_fitting_or_tensor_libraries(tmp_path):
+    pytest.importorskip('concept_erasure', reason='concept-erasure is not installed; install brainscore[test] (or brainscore[interpretability])')   # fits LEACE
     features, labels = discovery()
     fitted().save(tmp_path / 'steering.json')
     load_tool('leace', target='population').fit(features, labels).save(tmp_path / 'leace.json')
