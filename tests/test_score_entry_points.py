@@ -51,8 +51,6 @@ ALLOWED = {
         'only vision runs score_benchmark and so the preallocate_memory hook (R5, R19 drift)',
     ('raise AssertionError', 'vision'): 'vision adds a stale-cache hint to an AssertionError',
     ("attrs['comment']", 'vision'): 'vision records the layer commitment of a legacy model',
-    ('call declared_visual_degrees', 'unified+vision'):
-        'language subjects have no visual degrees',
 }
 
 
@@ -209,6 +207,7 @@ def test_difference_check_fails_on_a_new_violation():
 
 def test_difference_check_fails_on_a_stale_entry():
     per_entry = _all_steps()
-    per_entry['language'] = per_entry['language'] | {'call declared_visual_degrees'}
+    for name in ('vision', 'language'):
+        per_entry[name] = per_entry[name] | {'call check_benchmark_assets'}
     with pytest.raises(AssertionError, match='no longer violate'):
         compare(differences(per_entry), ALLOWED, 'differences between score entry points')
