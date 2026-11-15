@@ -198,7 +198,7 @@ print(sorted(both.in_channels), sorted(c for c in both.out_channels if c.startsw
 # ['control', 'text', 'vision:image'] ['neural:IT', 'neural:language_system']
 ```
 
-**Stills and clips.** The `extractor` keys declare the visual forms a model takes natively: a `'vision'` key takes pictures (`vision:image`) and a `'video'` key takes clips (`vision:video`). A model that takes both, such as a vision-language model, registers one of each; each stimulus then goes to the matching one. Never wrap a picture as a one-frame video for a model that takes pictures. The [Qwen3.6 registration](../../brainscore/models/qwen36_27b/model.py) registers both.
+**Stills and clips.** The `extractor` keys declare the visual forms a model takes natively: a `'vision'` key takes pictures (`vision:image`) and a `'video'` key takes clips (`vision:video`). A model that takes both, such as a vision-language model, registers one of each; each stimulus then goes to the matching one. Never wrap a picture as a one-frame video for a model that takes pictures. The [Qwen3.6 registration](../../brainscore/models/qwen36_27b/model.py) registers both. It needs transformers 5 or later and is not loadable in the reference environment (transformers 4.57.6).
 
 ## Models without accessible layers
 

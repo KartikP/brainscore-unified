@@ -12,8 +12,9 @@ Region paths are relative to the wrapper that records them: vision regions to
 module the earlier text-only registration wrapped, under the same identifier
 and cache key, so text recordings are unchanged.
 
-Needs transformers 5 (``qwen3_5``) and about 56 GB of accelerator memory in
-bf16; weights are placed automatically across the available devices.
+Needs transformers 5 or later (``qwen3_5``) and about 56 GB of accelerator memory in
+bf16; weights are placed automatically across the available devices. Not loadable in
+the reference environment (transformers 4.57.6): the load says so.
 """
 
 from brainscore.brainscore_model import BrainScoreModel
@@ -100,7 +101,14 @@ def get_model(identifier: str) -> BrainScoreModel:
     # Imported here, not at module scope: importing brainscore must not pull in
     # torch or transformers, which is asserted by tests/test_import_hygiene.py.
     import torch
-    from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
+    try:
+        from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
+    except ImportError as error:
+        import transformers
+        raise ImportError(
+            f"Model {identifier!r} needs transformers 5 or later (Qwen3_5ForConditionalGeneration); "
+            f"the installed transformers is {transformers.__version__}. It is not loadable in the "
+            f"reference environment (transformers 4.57.6).") from error
     from brainscore_core.hf_compat import pin_image_processor
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
