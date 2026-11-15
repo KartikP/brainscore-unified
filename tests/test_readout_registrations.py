@@ -111,6 +111,9 @@ def test_the_behavior_recorder_refuses_a_format_the_task_does_not_name(monkeypat
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
     experiment = Experiment(subject=subject, protocol=TaskProtocol(STIMULI, task),
                             tools=[RecordBehavior(['choice', 'rating'])], output_dir=tmp_path / 'refused')
-    with pytest.raises(ValueError, match=r"\['behavior:rating'\].*'behavior:choice', 'behavior:probabilities'"):
+    # The rule and its message are core's (the session's own check), applied before any session.
+    with pytest.raises(ValueError, match=r"^\['behavior:rating'\] requested, but the task's response Choice "
+                                         r"answers only on \['behavior:choice', 'behavior:probabilities', "
+                                         r"'behavior:log_probabilities'\]; ask for those or change the response\.$"):
         experiment.run()
     assert subject._behavioral.readout_classifier is None and subject._behavioral.task is None

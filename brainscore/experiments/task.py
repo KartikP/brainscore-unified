@@ -16,7 +16,7 @@ from contextlib import contextmanager
 
 from brainscore_core.contract import required_traits_for
 from brainscore_core.events import StateChange
-from brainscore_core.streaming import CONTROL_CHANNEL
+from brainscore_core.streaming import CONTROL_CHANNEL, check_response_formats
 from brainscore_core.streaming_helpers import apply_state_change, stimulus_session
 
 from brainscore._model.intervention import INTERVENTION_CHANNELS
@@ -65,11 +65,11 @@ class TaskProtocol(SessionProtocol):
             if self.task.task_type == 'passive':
                 raise ValueError('A passive task produces no behavior; remove RecordBehavior '
                                  'or give the task a response (Choice, Scale, Text).')
-        if formats:
-            given = self.task.response.channels if self.task.response is not None else ()
-            if formats - set(given):
-                raise ValueError(f'The task cannot be answered in {sorted(formats - set(given))}; '
-                                 f'its response names {list(given)}.')
+        if formats and self.task.response is None:
+            raise ValueError(f'{sorted(formats)} need TaskContext(response=...); task_type '
+                             f'{self.task.task_type!r} answers on bare behavior.')
+        # Refused here, before any session is built, by the rule the session itself applies.
+        check_response_formats(sorted(formats), self.task)
         if 'behavior' in channels and self.task.response is not None:
             # Bare behavior is the response's first format: the choice of a Choice.
             channels = (channels - {'behavior'}) | {self.task.response.channels[0]}
