@@ -188,7 +188,7 @@ from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.metrics import Score
 from brainscore_core.streaming_helpers import neural_response
 from brainscore import benchmark_registry, load_dataset, load_metric, load_stimulus_set
-from brainscore.benchmarks import benchmark_score
+from brainscore.benchmarks import benchmark_score, not_estimated
 
 BIBTEX = ''   # the citation of the data
 
@@ -199,7 +199,7 @@ class YourBenchmark(BenchmarkBase):
     requested_output_channels = {'neural:IT'}
 
     def __init__(self):
-        super().__init__(identifier='my-benchmark', ceiling=Score(1.0),  # or your estimate
+        super().__init__(identifier='my-benchmark', ceiling=not_estimated(),  # or Score(your estimate)
                          version=1, parent='neural', bibtex=BIBTEX)
         self._assembly = load_dataset('your-measurements')      # target measurements
         self._stimulus_set = load_stimulus_set('your-stimuli')
@@ -214,15 +214,15 @@ class YourBenchmark(BenchmarkBase):
             time_bins=[(70, 170)],
         )                                                    # -> NeuroidAssembly
         raw = self._metric(predictions, self._assembly)
-        return benchmark_score(self, float(raw) / float(self.ceiling), raw=raw,
-                               metric='your-metric', normalized=True)
+        return benchmark_score(self, raw=raw, metric='your-metric')
 
 
 benchmark_registry['my-benchmark'] = lambda: YourBenchmark()
 ```
 
 `benchmark_score` writes the attributes every unified score carries (`raw`, `ceiling`,
-`normalized`, `metric`, `benchmark_version`). `templates/new_benchmark/benchmark.py` is a
+`normalized`, `metric`, `benchmark_version`). The score is `raw` divided by a measured
+ceiling; with `not_estimated()` it is `raw`, and `normalized` says which. `templates/new_benchmark/benchmark.py` is a
 complete version of this class that scores the template model as shipped.
 
 Then add `from . import your_name` to `brainscore/benchmarks/__init__.py`. For naturalistic /
