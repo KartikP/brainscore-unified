@@ -973,11 +973,13 @@ VERBATIM_IN_TEMPLATE = {'template': "the reply part's own, if it has one"}
 def _on_scale_steps(values, scale) -> Tuple[list, dict]:
     """Each value on the nearest step of ``scale``, and the record parameters that say so.
 
+    The grid of a scale is decimal: the points Decimal(repr(low)) + n * Decimal(repr(step)).
     The step index is read from the raw value in decimal; an index within 1e-9 of a half is a
-    tie and goes to the higher step. The stored value is that grid point as a float; the first
-    and last points are ``low`` and ``high`` exactly, so a raw value inside the bounds stays in.
-    A raw value outside the bounds, or not finite, is not rounded and not clipped (core marks
-    it invalid). A scale with no step leaves every value unchanged and records no rounding.
+    tie and goes to the higher step. The stored value is the float of that grid point, the
+    value core's step rule accepts; the index never passes the last point inside the bounds,
+    so a raw value inside the bounds stays in. A raw value outside the bounds, or not finite,
+    is not rounded and not clipped (core marks it invalid). A scale with no step leaves every
+    value unchanged and records no rounding.
     """
     if scale.step is None:
         return list(values), {}
@@ -985,21 +987,18 @@ def _on_scale_steps(values, scale) -> Tuple[list, dict]:
 
 
 def _grid_point(value, scale):
-    from decimal import Decimal, ROUND_FLOOR
+    from decimal import Decimal, ROUND_FLOOR, localcontext
     if not (math.isfinite(value) and scale.low <= value <= scale.high):
         return value
-    low, step = Decimal(repr(float(scale.low))), Decimal(repr(float(scale.step)))
-    last = int(((Decimal(repr(float(scale.high))) - low) / step + Decimal('1e-9'))
-               .to_integral_value(ROUND_FLOOR))
-    index = (Decimal(repr(float(value))) - low) / step
-    below = int(index.to_integral_value(ROUND_FLOOR))
-    fraction = index - below
-    n = below + 1 if fraction > Decimal('0.5') - Decimal('1e-9') else below
-    n = min(n, last)
-    if n == 0:
-        return float(scale.low)
-    point = float(low + n * step)
-    return float(scale.high) if n == last and math.isclose(point, scale.high, rel_tol=0, abs_tol=1e-9 * float(step)) else point
+    with localcontext() as context:
+        context.prec = 50
+        low, step = Decimal(repr(float(scale.low))), Decimal(repr(float(scale.step)))
+        last = int(((Decimal(repr(float(scale.high))) - low) / step + Decimal('1e-9'))
+                   .to_integral_value(ROUND_FLOOR))
+        index = (Decimal(repr(float(value))) - low) / step
+        below = int(index.to_integral_value(ROUND_FLOOR))
+        n = below + 1 if index - below > Decimal('0.5') - Decimal('1e-9') else below
+        return float(low + min(n, last) * step)
 
 
 def _fitted_intact(task) -> bool:
