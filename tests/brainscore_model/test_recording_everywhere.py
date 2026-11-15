@@ -36,7 +36,7 @@ class Net:
 
 
 class Recordable:
-    identifier = backbone_id = 'toy'
+    identifier = 'toy'
 
     def __init__(self, net):
         self.net = net

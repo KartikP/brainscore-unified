@@ -202,7 +202,7 @@ def test_vlm_video_regions_share_one_call(tmp_path, streaming):
         inner = wrapper.__call__
         class Counted:          # counts the calls; declares what the wrapper declares
             independent_layers = VLMVideoWrapper.independent_layers
-            identifier = backbone_id = 'tiny-vlm-video'
+            identifier = 'tiny-vlm-video'
             def __call__(self, stimuli, layers, **kwargs):
                 calls.append(list(layers))
                 return inner(stimuli, layers, **kwargs)
@@ -230,7 +230,7 @@ class Declared:
     """A declared extractor: two units per layer, values from the layer and the stimulus."""
 
     independent_layers = True
-    identifier = backbone_id = 'declared'
+    identifier = 'declared'
 
     def __init__(self, calls, region=None):
         self.calls, self.region = calls, region

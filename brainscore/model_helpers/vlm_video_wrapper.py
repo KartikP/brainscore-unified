@@ -63,19 +63,15 @@ class VLMVideoWrapper:
     # call (brainscore._model.channels).
     independent_layers = True
 
-    def __init__(self, model, processor, identifier: str, *, backbone_id: str = None):
+    def __init__(self, model, processor, identifier: str):
         self._model, self._processor = model, processor
-        self._identifier, self._backbone_id = identifier, backbone_id or identifier
+        self._identifier = identifier
         video = processor.video_processor
         self._step_ms = 1000.0 * video.temporal_patch_size / video.fps
 
     @property
     def identifier(self) -> str:
         return self._identifier
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
 
     def __call__(self, stimuli, layers: List[str], stimuli_identifier=None, **kwargs):
         import torch

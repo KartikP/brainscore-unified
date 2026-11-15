@@ -28,7 +28,7 @@ The output assembly already has a ``time_bin`` dimension; downstream code
 matches against fMRI TRs) consumes it directly.
 
 Design symmetry with other wrappers:
-    - ``backbone_id`` (default: the identifier) keys the @store_xarray cache
+    - An explicit key (weights, settings, inputs) keys the @store_xarray cache
     - Accepts a StimulusSet with ``video_path`` column (or list of paths)
     - Takes ``layers`` kwarg; returns NeuroidAssembly
 
@@ -164,9 +164,8 @@ class VideoWrapper:
             producing a tensor appropriate for the model. Typical layouts:
             ``(T, C, H, W)`` for a single video, or already batched
             ``(1, T, C, H, W)``. The wrapper normalizes to ``(B, T, C, H, W)``.
-        identifier: Model identifier for caching.
-        backbone_id: Optional cache-key identifier shared by registrations
-            backed by the same weights. Defaults to ``identifier``.
+        identifier: Model identifier for the ``model`` coordinate; not part
+            of the cache key.
         target_fps: Frame sampling rate, in Hz. Default 5.
         num_frames: If set, sample exactly this many frames per video
             (overrides target_fps behavior). Defaults to None.
@@ -207,7 +206,6 @@ class VideoWrapper:
         model,
         preprocessing: Callable[[List[np.ndarray]], 'torch.Tensor'],  # noqa: F821
         identifier: Optional[str] = None,
-        backbone_id: Optional[str] = None,
         target_fps: float = 5.0,
         num_frames: Optional[int] = None,
         frame_sampler: Optional[Callable] = None,
@@ -242,18 +240,10 @@ class VideoWrapper:
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
-        # V-JEPA v1/v2 both wrap the same underlying ViT-L weights in many
-        # configurations; set a shared backbone_id so cached activations
-        # are reused across registrations. Defaults to identifier.
-        self._backbone_id = backbone_id or self._identifier
 
     @property
     def identifier(self) -> str:
         return self._identifier
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs) -> NeuroidAssembly:
         """Extract temporal activations from a batch of videos.

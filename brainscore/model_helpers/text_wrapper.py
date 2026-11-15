@@ -137,14 +137,9 @@ class TextWrapper:
     Args:
         model: A PyTorch text model (e.g., CLIPTextModel, GPT2Model).
         tokenizer: A HuggingFace tokenizer.
-        identifier: Model identifier for display/logging. Defaults to class name.
-        backbone_id: Optional cache-key identifier. When two registrations
-            share the same underlying backbone weights (e.g., two LM-adapted
-            models sitting on top of the same LLaMA-3.2-3B) they can pass the
-            same ``backbone_id`` so the @store_xarray cache entry is shared
-            across registrations. Defaults to ``identifier``. Shared entries
-            also require identical extraction fingerprints. Pre-fingerprint
-            entries are left untouched and miss once.
+        identifier: Model identifier for display and the ``model`` coordinate.
+            Defaults to the class name. It is not part of the cache key: two
+            registrations with the same weights and settings share one entry.
         layer_aggregation: How to reduce (batch, seq_len, hidden) to (batch, hidden).
             'last_token' for causal models, 'mean_tokens' for encoders.
         max_length: Max token length for truncation.
@@ -164,7 +159,7 @@ class TextWrapper:
 
     VALID_AGGREGATIONS = ('last_token', 'mean_tokens', 'per_token')
 
-    def __init__(self, model, tokenizer, identifier=None, backbone_id=None,
+    def __init__(self, model, tokenizer, identifier=None,
                  layer_aggregation='last_token', max_length=512,
                  batch_size=32, provenance=None, device=None):
         import torch
@@ -202,17 +197,11 @@ class TextWrapper:
             self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
-        # The cache key: backbone_id when given, else the identifier.
-        self._backbone_id = backbone_id or self._identifier
         self._provenance = None if provenance is None else deepcopy(dict(provenance))
 
     @property
     def identifier(self):
         return self._identifier
-
-    @property
-    def backbone_id(self):
-        return self._backbone_id
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
         """Extract activations from text stimuli.

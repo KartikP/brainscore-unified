@@ -52,7 +52,7 @@ def _assembly(rows, stimulus_ids, layers):
 
 
 class ToyExtractor:
-    identifier = backbone_id = 'toy'
+    identifier = 'toy'
 
     def __init__(self, net):
         self.net = net

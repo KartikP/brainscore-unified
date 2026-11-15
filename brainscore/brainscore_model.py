@@ -132,7 +132,7 @@ class BrainScoreModel(UnifiedModel):
             ``{('vision', 'text'): fused}``: one forward pass over all of a
             stimulus's parts. It declares each type, and takes any stimulus that
             brings several of them at once. An extractor keys its own activation
-            cache (``identifier`` and ``backbone_id`` of the extractor).
+            cache.
         :param behavioral_readout_layer: layer on which to fit a behavioral readout.
         :param answer: ``(stimulus_row, instruction, label_set) -> label``;
             generates and parses a behavioral answer for instruction-following

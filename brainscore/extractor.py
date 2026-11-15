@@ -13,8 +13,11 @@ from typing import Any, Protocol, Sequence
 class Extractor(Protocol):
     """Callable ``(stimuli, layers) -> NeuroidAssembly``.
 
-    ``identifier`` and ``backbone_id`` key the activation cache (registrations
-    that share weights share ``backbone_id``). An extractor that keeps state
+    ``identifier`` labels the ``model`` coordinate. An extractor keys its own
+    activation cache; the wrappers in ``brainscore.model_helpers`` key it by
+    their class, the ``_VERSION`` of their module, their settings, the weights,
+    the input device and the inputs, so registrations with the same weights
+    and settings share entries. An extractor that keeps state
     between calls also defines ``reset()``.
 
     An extractor may also define ``layer_names()``, returning every path it

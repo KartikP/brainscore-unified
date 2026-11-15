@@ -1,7 +1,7 @@
 """Unit tests for AudioWrapper — the fifth activations_model wrapper.
 
 Covers the pieces that don't require downloading a real audio checkpoint:
-- construction contract (identifier, backbone_id, sampling_rate resolution)
+- construction contract (identifier, sampling_rate resolution)
 - ``_extract_paths`` stimulus-column detection
 - ``_aggregate`` reduces (B, T, H) correctly under each mode
 - ``_load_waveform`` truncates clips longer than max_duration_sec
@@ -74,24 +74,14 @@ def wrapper():
     processor = _FakeProcessor(sampling_rate=16000)
     return AudioWrapper(
         model=model, processor=processor,
-        identifier='test-wrapper', backbone_id='test-backbone',
+        identifier='test-wrapper',
     )
 
 
 class TestConstruction:
 
-    def test_identifier_and_backbone_id(self, wrapper):
+    def test_identifier(self, wrapper):
         assert wrapper.identifier == 'test-wrapper'
-        assert wrapper.backbone_id == 'test-backbone'
-
-    def test_default_backbone_id_equals_identifier(self):
-        from brainscore.model_helpers.audio_wrapper import AudioWrapper
-        import torch.nn as nn
-        w = AudioWrapper(
-            model=nn.Identity(), processor=_FakeProcessor(),
-            identifier='audio-a',
-        )
-        assert w.backbone_id == 'audio-a'
 
     def test_sampling_rate_from_processor(self, wrapper):
         assert wrapper.target_sample_rate == 16000

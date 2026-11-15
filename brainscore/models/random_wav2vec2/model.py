@@ -57,7 +57,6 @@ def _build_random_wav2vec2(identifier: str):
         model=model,
         processor=processor,
         identifier=f'{identifier}-audio',
-        backbone_id=identifier,
         layer_aggregation='time_series',
         audio_loader=_wav_loader,
     )

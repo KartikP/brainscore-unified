@@ -132,3 +132,5 @@ def test_the_key_names_the_kind_not_the_identifier(name):
     assert config['kind'] == f'{MODULES[name]}.{type(wrapper).__name__}'
     assert config['version'] == sys.modules[MODULES[name]]._VERSION
     assert wrapper.identifier not in repr(config['settings'])
+    assert not hasattr(wrapper, 'backbone_id')
+    assert 'backbone_id' not in inspect.signature(type(wrapper)).parameters

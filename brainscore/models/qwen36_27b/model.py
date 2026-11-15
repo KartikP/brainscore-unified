@@ -135,7 +135,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=language_model,
         tokenizer=tokenizer,
         identifier=f'{identifier}-text',
-        backbone_id='qwen3.6-27b',               # shareable across registrations
         max_length=128,
     )
 

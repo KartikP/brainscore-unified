@@ -50,9 +50,7 @@ REGION_LAYER_MAP = {
 
 def _build_video_wrapper(identifier: str, random_init: bool = False):
     """Reuse the V-JEPA v1 backbone + preprocessing from the standalone
-    registration. Identifier passed in so VideoWrapper's cache key is
-    distinct from the standalone vjepa1-vitl entry — we don't share
-    backbone_id because the benchmark routing differs.
+    registration. The identifier labels the ``model`` coordinate.
 
     When ``random_init`` is True, replaces the loaded checkpoint with
     fresh random initialization (deterministic via ``torch.manual_seed(0)``).
@@ -74,14 +72,10 @@ def _build_video_wrapper(identifier: str, random_init: bool = False):
         randomize_module_in_place(backbone, seed=0)
     model = _BCTPermuteAdapter(backbone).eval()
     preprocessing = _make_preprocessing()
-    # Distinct backbone_id keeps cached activations separate so the
-    # null variant doesn't poison the trained-model cache.
-    backbone_id = 'random-vjepa1-vitl' if random_init else 'vjepa1-vitl'
     wrapper = VideoWrapper(
         model=model,
         preprocessing=preprocessing,
         identifier=f'{identifier}-video',
-        backbone_id=backbone_id,
         num_frames=NUM_INPUT_FRAMES,
         post_hook_fn=_vjepa_v1_post_hook,
         batch_size=4,
@@ -130,12 +124,10 @@ def _build_audio_wrapper(identifier: str, random_init: bool = False):
             wav = wav.mean(axis=-1)
         return wav
 
-    backbone_id = 'random-wav2vec2-base' if random_init else 'wav2vec2-base'
     wrapper = AudioWrapper(
         model=model,
         processor=processor,
         identifier=f'{identifier}-audio',
-        backbone_id=backbone_id,
         layer_aggregation='time_series',  # keep T axis for temporal alignment
         audio_loader=_wav_loader,
     )

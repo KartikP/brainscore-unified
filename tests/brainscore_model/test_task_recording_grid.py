@@ -594,7 +594,7 @@ def test_an_audio_pass_is_checked_before_it_runs(call, refused):
 
 class _Clocked:
     """A custom extractor: a ``time_bin`` axis named by its own coordinate (``clock`` per trial)."""
-    identifier = backbone_id = 'clocked'
+    identifier = 'clocked'
 
     def __init__(self, clocks):
         self.clocks = list(clocks)

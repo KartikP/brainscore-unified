@@ -11,7 +11,7 @@ returns ``(presentation, neuroid)``; ``time_series`` additionally preserves a
 ``time_bin`` dimension.
 
 Design:
-- Constructor: ``AudioWrapper(model, processor, identifier, backbone_id=...)``
+- Constructor: ``AudioWrapper(model, processor, identifier)``
 - ``__call__(stimuli, layers)`` — accepts a StimulusSet with ``audio_path``
   column (or a list of paths).
 - Layer aggregation modes:
@@ -25,9 +25,9 @@ Design:
 - Sampling rate: the wrapper target rate is taken from the processor's
     ``sampling_rate`` attribute; audio is resampled on load so the processor
     sees the rate it expects.
-- Caching: ``backbone_id`` (default = identifier) keys the ``@store_xarray``
-    cache so two registrations sharing the same audio backbone (e.g.,
-    TRIBEv2 and a standalone Wav2Vec-Bert registration) reuse activations.
+- Caching: the ``@store_xarray`` key is explicit (``_extractors.cache_config``):
+    the weights, settings and inputs, not the identifier. Two registrations
+    sharing one audio backbone and its settings reuse activations.
 
 Long clips are split into consecutive, non-overlapping chunks of at most
 ``max_duration_sec`` and recombined per clip. Multi-channel audio is mixed down
@@ -108,12 +108,8 @@ class AudioWrapper:
             attribute (or be queryable with ``processor.feature_extractor
             .sampling_rate`` — Wav2Vec2 convention). If neither is present,
             ``target_sample_rate`` must be passed explicitly.
-        identifier: Human-readable model id (used for logs + as the cache
-            key when ``backbone_id`` is not set).
-        backbone_id: Optional shared cache key. When multiple registrations
-            use the same audio backbone weights, set them all to the same
-            backbone_id so ``@store_xarray`` reuses the cached activations.
-            Defaults to ``identifier``.
+        identifier: Human-readable model id (logs and the ``model``
+            coordinate); not part of the cache key.
         target_sample_rate: Override the processor's expected sample rate.
             Usually unnecessary — read from ``processor.sampling_rate``.
         layer_aggregation: ``'mean_time'`` (default) reduces (B, T, H) →
@@ -139,7 +135,6 @@ class AudioWrapper:
         model,
         processor,
         identifier: Optional[str] = None,
-        backbone_id: Optional[str] = None,
         target_sample_rate: Optional[int] = None,
         layer_aggregation: str = 'mean_time',
         max_duration_sec: Optional[float] = 60.0,
@@ -181,7 +176,6 @@ class AudioWrapper:
             )
 
         self._identifier = identifier or model.__class__.__name__
-        self._backbone_id = backbone_id or self._identifier
         # Per-step duration in ms, derived from the first forward pass.
         # Used to attach time_bin_start_ms / time_bin_end_ms coords to
         # time_series outputs. Stays None until at least one batch has
@@ -193,10 +187,6 @@ class AudioWrapper:
     @property
     def identifier(self) -> str:
         return self._identifier
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
 
     @property
     def target_sample_rate(self) -> int:

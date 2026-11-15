@@ -50,10 +50,8 @@ class VLMVisionWrapper:
         model: The vision sub-module of a VLM (e.g., qwen_model.model.visual).
         processor: A HuggingFace AutoProcessor (or equivalent) whose output
             contains the input tensor and any auxiliary grouping metadata.
-        identifier: Human-readable model identifier; also the cache key when
-            ``backbone_id`` is omitted.
-        backbone_id: Optional cache key shared by registrations backed by the
-            same vision weights.
+        identifier: Human-readable model identifier (the ``model``
+            coordinate); not part of the cache key.
         image_input_key: Key in processor output for the main pixel tensor.
             Defaults to 'pixel_values'.
         forward_kwargs_map: Optional dict mapping model forward-kwarg name ->
@@ -75,7 +73,6 @@ class VLMVisionWrapper:
     independent_layers = True
 
     def __init__(self, model, processor, identifier: Optional[str] = None,
-                 backbone_id: Optional[str] = None,
                  image_input_key: str = 'pixel_values',
                  forward_kwargs_map: Optional[Dict[str, str]] = None,
                  patch_count_fn: Optional[Callable] = None,
@@ -94,19 +91,10 @@ class VLMVisionWrapper:
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
-        # When two VLMs share the same visual backbone (e.g. ViT-G across
-        # BLIP-2 and a future InstructBLIP registration) set the same
-        # backbone_id so the @store_xarray cache is reused. Default = the
-        # model's own identifier for backwards compatibility.
-        self._backbone_id = backbone_id or self._identifier
 
     @property
     def identifier(self) -> str:
         return self._identifier
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
         """Extract activations from image stimuli.

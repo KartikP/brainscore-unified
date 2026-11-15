@@ -164,7 +164,7 @@ def test_a_subject_with_no_task_part_is_refused_under_a_task(tmp_path):
 
 class _Plain:
     """A callable extractor with no record(layers) and no network passed as model=."""
-    identifier = backbone_id = 'plain'
+    identifier = 'plain'
 
     def __init__(self, inner):
         self.inner = inner

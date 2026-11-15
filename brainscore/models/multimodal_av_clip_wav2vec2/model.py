@@ -66,10 +66,8 @@ def _build_vision_wrapper(combo_identifier: str, random_init: bool = False):
 
     preprocessing = functools.partial(
         _load_preprocess_images, processor=processor, image_size=224)
-    # The activations carry the backbone's name; the cache key is the combo's.
     vision_wrapper = PytorchWrapper(
         identifier='random-clip-vit-b-32' if random_init else 'clip-vit-b-32',
-        backbone_id=f'{combo_identifier}-vision',
         model=clip_model.vision_model,
         preprocessing=preprocessing,
     )

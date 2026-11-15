@@ -113,7 +113,7 @@ def _text_model(region_layer_map):
 
     class Units:
         """Four units per layer; unit ``i`` of layer ``L`` reads ``10 * L + i``."""
-        identifier = backbone_id = 'four-units'
+        identifier = 'four-units'
 
         def __call__(self, stimuli, layers, **kwargs):
             values = np.array([[10.0 * int(layer[-1]) + i for layer in layers for i in range(4)]
