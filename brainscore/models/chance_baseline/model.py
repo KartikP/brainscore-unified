@@ -6,7 +6,7 @@ the label set on every call. Used as a floor for behavioral benchmarks:
 if this gets > 0.5 for balanced binary tasks, the benchmark's scoring
 has a leak somewhere.
 
-Implemented on the UnifiedModel compatibility base. It has no extractor,
+A ``Subject`` with typed methods. It has no extractor,
 no activations, and no logistic readout. A legacy task on bare ``behavior``
 gets its uniform rows through ``process``; a ``Choice`` task on
 ``behavior:choice`` gets the choice derived from those rows by core's
@@ -21,14 +21,14 @@ import pandas as pd
 from brainscore import BrainScoreModel
 from collections.abc import Mapping
 
-from brainscore_core.contract import UnifiedModel, TaskContext
+from brainscore_core.contract import Subject, TaskContext
 from brainscore_core.events import StateChange
 from brainscore_core.supported_data_standards.brainio.assemblies import (
     BehavioralAssembly,
 )
 
 
-class ChanceBaseline(UnifiedModel):
+class ChanceBaseline(Subject):
     """A model that returns uniform probabilities over the label set.
 
     Deterministic and reproducible (same output every call). For a
@@ -61,7 +61,8 @@ class ChanceBaseline(UnifiedModel):
 
     def participate(self, session) -> None:
         if list(session.outputs or ()) != ['behavior:choice']:
-            return super().participate(session)
+            from brainscore_core.streaming_helpers import drive_typed_session
+            return drive_typed_session(self, session)
         # One answer for the whole table: the choice derived from uniform rows, one row
         # for each trial (a stimulus shown twice is answered twice).
         from brainscore_core.response_formats import argmax, response_record

@@ -9,9 +9,8 @@ subclass that composes wrappers, recording, and capability callables. For benchm
 type annotations or a custom implementation, use the abstract `Subject` contract.
 Import `BrainScoreModel` from `brainscore` and `Subject` from `brainscore_core.contract`. A native `Subject`
 declares identity and input/output channels and implements `participate(session)`;
-it does not need `process()` or a layer map. `UnifiedModel` extends `Subject`
-with `process`, task/recording setup, and layer/modality declarations.
-`BrainScoreModel` builds on that base. See [Concepts](docs/02_core_concepts.md#1-subject).
+it does not need `process()` or a layer map. `BrainScoreModel` and the vision and
+language adapters inherit `Subject` too; there is no other base class. See [Concepts](docs/02_core_concepts.md#1-subject).
 
 > Companion: the interactive contract map at
 > [brain-score.github.io/public/UMI/architecture.html](https://brain-score.github.io/public/UMI/architecture.html).
