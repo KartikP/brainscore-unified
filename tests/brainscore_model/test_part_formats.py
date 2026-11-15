@@ -5,11 +5,11 @@ declared only when a statement names it. ``behavior:rt`` is declared with
 ``behavior:probabilities``. The literal sets below are the native and derived
 formats of each part kind.
 """
-import subprocess
 from pathlib import Path
 
 import pytest
 
+import brainscore
 from brainscore import BrainScoreModel
 from tests.brainscore_model.test_answer_ownership import _model
 
@@ -66,7 +66,9 @@ def test_a_reply_and_likelihood_model_declares_the_stated_probabilities():
 
 
 def test_the_replaced_names_are_gone():
-    root = Path(__file__).resolve().parents[2]
-    found = subprocess.run(['git', 'grep', '-n', '-e', 'answer_parts', '-e', '_FOLLOWS', '--',
-                            'brainscore'], cwd=root, capture_output=True, text=True).stdout
-    assert found == ''
+    # The imported package, so the check also holds for an installed copy.
+    package = Path(brainscore.__file__).parent
+    found = [f'{path}:{number}' for path in sorted(package.rglob('*.py'))
+             for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1)
+             if 'answer_parts' in line or '_FOLLOWS' in line]
+    assert found == []
