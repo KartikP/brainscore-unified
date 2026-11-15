@@ -32,6 +32,17 @@ class TestReport:
         text, _ = doctor.report()
         assert f'environment fingerprint  {environment_fingerprint()}' in text
 
+    def test_another_process_prints_the_same_fingerprint_as_a_score_here(self):
+        """Two processes of one environment give one value, whatever each imported first."""
+        import os, subprocess, sys
+        from brainscore_core.environment_check import _score_environment
+        code = ('import sys; sys.path.append("/nonexistent/vendor"); from brainscore import doctor; '
+                'doctor._lock_file = lambda: None; doctor.IMPORT_CHECKS = (); print(doctor.report()[0])')
+        out = subprocess.run([sys.executable, '-W', 'ignore', '-c', code], capture_output=True,
+                             text=True, env=dict(os.environ), check=True).stdout
+        line = next(l for l in out.splitlines() if l.startswith('environment fingerprint'))
+        assert line.split()[-1] == _score_environment()['software']['environment_fingerprint']
+
     def test_an_unavailable_fingerprint_is_printed_and_the_report_finishes(self, monkeypatch):
         from brainscore_core import environment_check
         monkeypatch.setattr(environment_check, 'environment_fingerprint',
