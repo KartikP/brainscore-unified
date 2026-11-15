@@ -1,6 +1,6 @@
 """The explicit activation cache key of the unified wrappers.
 
-The key is built from the kind (``<module>.<Class>``), the module's ``_VERSION``,
+The key is built from the kind (``<module>.<Class>``), the class's ``_VERSION``,
 the settings (``CACHE_FIELDS``), the model state, the input device and the
 inputs. The identifier and the source text are not part of it.
 """
@@ -120,8 +120,8 @@ def test_a_raised_version_changes_the_key(name, monkeypatch):
     inputs, _ = _inputs(name)
     wrapper = BUILD[name]()
     before = _key(wrapper, inputs)
-    module = sys.modules[MODULES[name]]
-    monkeypatch.setattr(module, '_VERSION', module._VERSION + 1)
+    cls = type(wrapper)
+    monkeypatch.setattr(cls, '_VERSION', vars(cls)['_VERSION'] + 1)
     assert _key(wrapper, inputs) != before
 
 
@@ -130,7 +130,8 @@ def test_the_key_names_the_kind_not_the_identifier(name):
     wrapper = BUILD[name]()
     config = wrapper.cache_config()
     assert config['kind'] == f'{MODULES[name]}.{type(wrapper).__name__}'
-    assert config['version'] == sys.modules[MODULES[name]]._VERSION
+    assert config['version'] == vars(type(wrapper))['_VERSION'] == 1
+    assert not hasattr(sys.modules[MODULES[name]], '_VERSION')
     assert wrapper.identifier not in repr(config['settings'])
     assert not hasattr(wrapper, 'backbone_id')
     assert 'backbone_id' not in inspect.signature(type(wrapper)).parameters

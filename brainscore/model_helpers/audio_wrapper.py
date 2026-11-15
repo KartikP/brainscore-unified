@@ -57,12 +57,6 @@ from brainscore.model_helpers._extractors import (
 
 logger = logging.getLogger(__name__)
 
-# The version of what this module extracts: a part of the activation cache key
-# (``_extractors.cache_config``). Raise it by hand when a change can move the
-# extracted values, also through code this module calls.
-_VERSION = 1
-
-
 # ── Default audio loader ────────────────────────────────────────────
 
 def _default_audio_loader(
@@ -123,6 +117,11 @@ class AudioWrapper:
         audio_loader: Optional callable ``(path, target_sr) -> 1-D float32
             waveform``. Defaults to torchaudio → librosa fallback.
     """
+
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
 
     # Recording several layers in one call gives, for each layer, exactly what a
     # call for that layer alone gives, so the regions of one session share one

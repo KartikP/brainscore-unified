@@ -104,23 +104,29 @@ class _Versioned(_Unversioned):
     _VERSION = 1
 
 
+class _SameModule(_Unversioned.__mro__[1]):
+    """A subclass declared, by its module name, in the module of its parent; no ``_VERSION`` of its own."""
+    __module__ = 'brainscore.model_helpers.text_wrapper'
+
+
 def _subclass(cls):
     wrapper = text_wrapper()
     wrapper.__class__ = cls
     return wrapper
 
 
-def test_a_subclass_without_its_own_version_does_not_use_the_cache(store, tmp_path, monkeypatch):
+@pytest.mark.parametrize('cls', [_Unversioned, _SameModule], ids=['other-module', 'parent-module'])
+def test_a_subclass_without_its_own_version_does_not_use_the_cache(cls, store, tmp_path, monkeypatch):
     from brainscore.model_helpers import _extractors
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(_extractors, '_UNVERSIONED', set())
     stimuli = _stimuli('share-subclass', sentence=['the cat sat', 'dog ran'])
-    wrapper = _subclass(_Unversioned)
+    wrapper = _subclass(cls)
     store.install(wrapper)
     calls = []
     extract = wrapper._from_texts
     monkeypatch.setattr(wrapper, '_from_texts', lambda *a, **k: calls.append(1) or extract(*a, **k))
-    with pytest.warns(UserWarning, match=r'_Unversioned has no _VERSION of its own') as warned:
+    with pytest.warns(UserWarning, match=rf'{cls.__qualname__} has no _VERSION of its own') as warned:
         first = wrapper(stimuli, layers=['enc'])
         second = wrapper(stimuli, layers=['enc'])
     assert len([w for w in warned if '_VERSION' in str(w.message)]) == 1

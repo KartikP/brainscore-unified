@@ -34,12 +34,6 @@ from brainscore.model_helpers._extractors import (
 
 logger = logging.getLogger(__name__)
 
-# The version of what this module extracts: a part of the activation cache key
-# (``_extractors.cache_config``). Raise it by hand when a change can move the
-# extracted values, also through code this module calls.
-_VERSION = 1
-
-
 def align_word_times_to_tokens(word_ids, word_onsets_ms, word_durations_ms):
     """Map per-token ``word_ids`` to per-token (start_ms, end_ms) windows.
 
@@ -151,6 +145,11 @@ class TextWrapper:
             with different provenance never share a cache entry. Default
             (None): no attr is added.
     """
+
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
 
     # Recording several layers in one call gives, for each layer, exactly what a
     # call for that layer alone gives, so the regions of one session share one

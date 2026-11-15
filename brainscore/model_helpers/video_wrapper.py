@@ -41,7 +41,7 @@ Design asymmetry (video-specific):
       absolute ms within the video, for layers that downsample time
       (e.g., a transformer with patch-wise temporal compression).
 
-Cache key: ``_VERSION`` below is part of the activation cache key. The module
+Cache key: ``VideoWrapper._VERSION`` is part of the activation cache key. The module
 functions ``_window_features``, ``_shared_clock``, ``_edges_from_centers`` and
 ``_default_time_mapping``, and ``brainscore.temporal.window_plan`` and
 ``brainscore_core.assembly_builder``, shape the values this wrapper returns but
@@ -77,12 +77,6 @@ from brainscore.model_helpers._extractors import LiveRecording, as_float32, cach
 
 
 logger = logging.getLogger(__name__)
-
-# The version of what this module extracts: a part of the activation cache key
-# (``_extractors.cache_config``). Raise it by hand when a change can move the
-# extracted values, also through code this module calls.
-_VERSION = 1
-
 
 def pad_out_of_bound(frames: List[Optional[np.ndarray]], oob_mask: List[bool],
                      strategy: str = 'repeat') -> List[np.ndarray]:
@@ -195,6 +189,11 @@ class VideoWrapper:
         max_clip_ms: Optional whole-clip duration guard. Over-long clips raise
             and should be handled with ``context_window_ms``.
     """
+
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
 
     # Recording several layers in one call gives, for each layer, exactly what a
     # call for that layer alone gives, so the regions of one session share one

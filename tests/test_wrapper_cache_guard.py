@@ -1,6 +1,6 @@
 """Guard: what each caching wrapper extracts from a tiny network is pinned per ``_VERSION``.
 
-The activation cache key of a wrapper names its module's ``_VERSION``, not its
+The activation cache key of a wrapper names the ``_VERSION`` of its class, not its
 source text. So a change that moves extracted values must raise ``_VERSION`` by
 hand, or the cache serves old activations. This test holds, for each wrapper and
 its current ``_VERSION``, a digest of the assembly it extracts from a tiny seeded
@@ -48,6 +48,7 @@ MODULES = {
     'video': 'brainscore.model_helpers.video_wrapper',
     'vlm_vision': 'brainscore.model_helpers.vlm_vision_wrapper',
 }
+CLASSES = {'text': 'TextWrapper', 'audio': 'AudioWrapper', 'video': 'VideoWrapper', 'vlm_vision': 'VLMVisionWrapper'}
 
 
 @pytest.fixture(autouse=True)
@@ -304,8 +305,12 @@ def digest(assembly) -> dict:
 
 
 def current_version(wrapper: str) -> int:
+    return vars(wrapper_class(wrapper))['_VERSION']
+
+
+def wrapper_class(wrapper: str):
     __import__(MODULES[wrapper])
-    return sys.modules[MODULES[wrapper]]._VERSION
+    return getattr(sys.modules[MODULES[wrapper]], CLASSES[wrapper])
 
 
 def _reference() -> dict:
@@ -318,9 +323,9 @@ def test_values_are_pinned_for_the_current_version(wrapper):
     version, recorded = current_version(wrapper), _reference().get(wrapper)
     changed = recorded is not None and recorded['version'] == version and any(
         recorded['cases'].get(case, digest_) != digest_ for case, digest_ in actual.items())
-    raise_message = (f'The values that {MODULES[wrapper]} extracts changed, and its _VERSION is still '
-                     f'{version}. The activation cache would serve the old values. Raise _VERSION in '
-                     f'{MODULES[wrapper]}, then record the new digests with '
+    raise_message = (f'The values that {MODULES[wrapper]}.{CLASSES[wrapper]} extracts changed, and its '
+                     f'_VERSION is still {version}. The activation cache would serve the old values. Raise '
+                     f'_VERSION in the body of {CLASSES[wrapper]}, then record the new digests with '
                      f'BRAINSCORE_WRAPPER_GUARD_UPDATE=1.')
     if UPDATE:
         assert not changed, raise_message
@@ -330,7 +335,7 @@ def test_values_are_pinned_for_the_current_version(wrapper):
         return
     assert recorded is not None, f'No reference for {wrapper}; record it with BRAINSCORE_WRAPPER_GUARD_UPDATE=1.'
     assert recorded['version'] == version, (
-        f'{MODULES[wrapper]} has _VERSION {version}; the reference is for {recorded["version"]}. '
+        f'{CLASSES[wrapper]} has _VERSION {version}; the reference is for {recorded["version"]}. '
         f'Record the digests of the new version with BRAINSCORE_WRAPPER_GUARD_UPDATE=1.')
     assert not changed, raise_message
     assert set(recorded['cases']) == set(actual), (

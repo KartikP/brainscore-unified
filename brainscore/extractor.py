@@ -15,7 +15,7 @@ class Extractor(Protocol):
 
     ``identifier`` labels the ``model`` coordinate. An extractor keys its own
     activation cache; the wrappers in ``brainscore.model_helpers`` key it by
-    their class, the ``_VERSION`` of their module, their settings, the weights,
+    their class, the ``_VERSION`` in their class body, their settings, the weights,
     the input device and the inputs, so registrations with the same weights
     and settings share entries. An extractor that keeps state
     between calls also defines ``reset()``.

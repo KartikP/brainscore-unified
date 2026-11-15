@@ -6,17 +6,16 @@ the extractor or another caller runs, run inputs in batches, key the
 activation cache, and copy stimulus columns onto an assembly.
 
 The activation cache key of a wrapper is explicit (``cache_config``): it names
-the ``_VERSION`` of the wrapper's module, not source text. A change that moves
-the values a wrapper extracts raises that ``_VERSION`` by hand. This holds for
+the ``_VERSION`` in the body of the wrapper's class, not source text. A change
+that moves the values a wrapper extracts raises that ``_VERSION`` by hand. This holds for
 code outside the wrapper classes too: this module, and what the wrappers call
 (``video_wrapper._window_features``, ``_shared_clock``, ``_edges_from_centers``,
 ``brainscore.temporal.window_plan``, ``brainscore_core.assembly_builder``). A
-change here raises the ``_VERSION`` of every wrapper module that uses the
+change here raises the ``_VERSION`` of every wrapper class that uses the
 changed code. ``tests/test_wrapper_cache_guard.py`` fails when values move
 under an unchanged ``_VERSION``.
 """
 import inspect
-import sys
 import warnings
 from collections import OrderedDict
 from typing import Callable, List
@@ -301,16 +300,16 @@ def kind(wrapper) -> str:
 def cache_config(wrapper, fields):
     """The explicit cache key of a wrapper, without its inputs.
 
-    Parts: the kind (``<module>.<Class>``); the ``_VERSION`` of the wrapper's
-    module; the settings ``fields`` (``CACHE_FIELDS``, batch size included; a
+    Parts: the kind (``<module>.<Class>``); the ``_VERSION`` in the body of the
+    wrapper's class; the settings ``fields`` (``CACHE_FIELDS``, batch size included; a
     callable counts by its code); the model (weights hash, structure, dtypes,
     library versions, precision, hooks); the input device. ``cache_signature``
     adds the inputs. No source text is part of it, so an edit that keeps values
     (a comment, a docstring, a move) keeps the key.
 
-    ``_VERSION`` belongs to the wrapper's own class: its class body, or the
-    module that defines the class. A subclass does not inherit it, since its
-    own code can change values (``cache_signature`` does not cache it).
+    ``_VERSION`` is read from the body of the wrapper's own class only. A
+    subclass does not inherit it, since its own code can change values; without
+    its own ``_VERSION``, ``cache_signature`` does not cache it.
 
     A torch autocast context around the call changes the values, so when
     autocast is enabled for the input device type, its dtype is part of the
@@ -339,10 +338,8 @@ def _autocast(device):
 
 
 def _version(cls):
-    """The ``_VERSION`` of ``cls`` itself (class body, else its own module), or None; never inherited."""
-    if '_VERSION' in vars(cls):
-        return vars(cls)['_VERSION']
-    return getattr(sys.modules.get(cls.__module__), '_VERSION', None)
+    """The ``_VERSION`` in the body of ``cls`` itself, or None; never inherited."""
+    return vars(cls).get('_VERSION')
 
 
 _UNVERSIONED = set()        # classes already warned about

@@ -37,12 +37,6 @@ from brainscore.model_helpers._extractors import (
 
 logger = logging.getLogger(__name__)
 
-# The version of what this module extracts: a part of the activation cache key
-# (``_extractors.cache_config``). Raise it by hand when a change can move the
-# extracted values, also through code this module calls.
-_VERSION = 1
-
-
 class VLMVisionWrapper:
     """Extractor for VLM vision encoders with flattened-patch layouts.
 
@@ -66,6 +60,11 @@ class VLMVisionWrapper:
             'mean_patches' (default), 'first_patch' (CLS-style), or 'none'.
         batch_size: Number of images per forward pass.
     """
+
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
 
     # Recording several layers in one call gives, for each layer, exactly what a
     # call for that layer alone gives, so the regions of one session share one
