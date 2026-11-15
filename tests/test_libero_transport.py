@@ -282,6 +282,7 @@ def test_server_helper_reports_a_forced_kill(tmp_path):
 #   late-thread  a new thread cannot start after the evaluator has disconnected
 #   late-thread-close-hangs  combine blocked thread startup and a stuck record save
 #   serve-fails  the server raises before receiving a stop signal
+#   signal-in-thread  GET /signal-in-thread sends SIGTERM to another thread 1 s later
 # Each step it reaches is printed, so a test can see what ran.
 BRIDGE_FAULTS = '''
 import http, os, runpy, sys, threading, time
@@ -310,6 +311,18 @@ if fault in ('late-thread', 'late-thread-close-hangs'):
         if request.path == '/block-late-thread-start':
             threading.Thread.start = blocked_start
             return connection.respond(http.HTTPStatus.OK, 'Fault installed')
+        return health(connection, request)
+    upstream._health_check = check
+if fault == 'signal-in-thread':
+    import signal
+    health = upstream._health_check
+    def check(connection, request):
+        if request.path == '/signal-in-thread':
+            def deliver():
+                time.sleep(1)  # the event loop is idle in select by then
+                signal.pthread_kill(threading.get_ident(), signal.SIGTERM)
+            threading.Thread(target=deliver, daemon=True).start()
+            return connection.respond(http.HTTPStatus.OK, 'Signal scheduled')
         return health(connection, request)
     upstream._health_check = check
 if fault == 'serve-fails':
@@ -392,6 +405,18 @@ def test_record_failure_still_closes_upstream_without_emergency_exit(tmp_path, m
     assert capture_manifest(tmp_path / 'record')['status'] == 'open'
 
 
+def test_stop_signal_taken_by_another_thread_wakes_the_idle_bridge(tmp_path, monkeypatch):
+    # The C-level handler runs in the thread that takes the signal, and Python runs
+    # on_stop in the main thread only once the event loop wakes. The same state follows a
+    # signal that reaches the main thread just before it blocks in select (seen on CI).
+    with faulty_bridge_session(tmp_path, monkeypatch, 'signal-in-thread') as (process, log):
+        port = process.args[process.args.index('--port') + 1]
+        urllib.request.urlopen('http://127.0.0.1:%s/signal-in-thread' % port, timeout=5).close()
+        assert process.wait(timeout=1 + 5) == 0  # the delay, then the stop grace at most
+    manifest = capture_manifest(tmp_path / 'record')
+    assert manifest['status'] == 'complete' and manifest['event_count'] == 2
+
+
 def test_server_failure_releases_the_idle_watchdog(tmp_path, monkeypatch):
     env = dict(transport_env(monkeypatch), BRIDGE_FAULT='serve-fails')
     with policy_server(env, tmp_path) as policy_port:
@@ -412,7 +437,7 @@ def test_server_failure_releases_the_idle_watchdog(tmp_path, monkeypatch):
 def test_repeated_stop_after_the_loop_closed_is_ignored(tmp_path, monkeypatch):
     with faulty_bridge_session(tmp_path, monkeypatch, 'slow-upstream') as (process, log):
         process.send_signal(signal.SIGTERM)
-        wait_until(lambda: 'upstream socket closed' in log.read_text(), timeout=20)
+        wait_until(lambda: 'upstream socket closed' in log.read_text(), timeout=5)
         process.send_signal(signal.SIGTERM)  # while main() is cleaning up; the loop is closed
         process.send_signal(signal.SIGINT)
         assert process.wait(timeout=9) == 0
