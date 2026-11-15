@@ -330,6 +330,39 @@ def test_experiment_saves_every_kind_of_answer(tmp_path):
     assert list(result.behavior(measure='text').values) == ['It reads x.', 'It reads yy.', 'It reads zzz.']
 
 
+def test_record_behavior_runs_for_subjects_without_bare_behavior(tmp_path):
+    """RecordBehavior asks for the task's response channels, not bare behavior: a reply-only
+    subject and a likelihood-only subject (the parts of build_causal_lm_subject) answer."""
+    from brainscore_core.responses import Choice, Text
+    replier = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=lambda prompt: 'It reads.')
+    written = TaskContext(instruction='Read it.', response=Text())
+    result = Experiment(subject=replier, protocol=TaskProtocol(STIMULI, written),
+                        tools=[RecordBehavior()], output_dir=tmp_path / 'text').run()
+    assert list(result.behavior(measure='text').values) == ['It reads.'] * len(STIMULI)
+
+    scorer = BrainScoreModel(identifier='scorer', in_channels={'text'},
+                             likelihood=lambda prompt, candidates: {'short': 0.0, 'long': -1.0},
+                             capability_config={'behavior-sessions': {
+                                 'behavior:choice': ('likelihood', 'softmax_argmax')}})
+    choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long']))
+    result = Experiment(subject=scorer, protocol=TaskProtocol(STIMULI, choice),
+                        tools=[RecordBehavior()], output_dir=tmp_path / 'choice').run()
+    assert result.behavior(measure='choice').sizes['presentation'] == len(STIMULI)
+
+
+def test_record_behavior_refuses_a_subject_without_the_response_channel(tmp_path):
+    from brainscore_core.responses import Text
+    calls = []
+    answerer = BrainScoreModel(identifier='answerer', in_channels={'text'},
+                               answer=lambda stimulus_row, instruction, label_set: calls.append(1) or 'x')
+    experiment = Experiment(subject=answerer,
+                            protocol=TaskProtocol(STIMULI, TaskContext(instruction='Read it.', response=Text())),
+                            tools=[RecordBehavior()], output_dir=tmp_path / 'refused')
+    with pytest.raises(ValueError, match=r"\['behavior:text'\]"):
+        experiment.run()
+    assert calls == [] and not experiment.output_dir.exists()
+
+
 def test_extra_data_of_a_reply_goes_into_the_meta_of_the_answer_event():
     """One answer event for several trials: each key holds one value per trial."""
     from brainscore_core.responses import Choice

@@ -134,6 +134,15 @@ class RecordBehavior(_ChannelRecorder):
     name = 'behavior'
     requested_output_channels = frozenset({'behavior'})
 
+    def validate(self, experiment):
+        # The protocol requests the channels of the task's response in place of bare
+        # behavior (TaskProtocol.accept_requests); the subject must declare those.
+        requested = {c for c in experiment.protocol.requested_output_channels
+                     if c == 'behavior' or c.startswith('behavior:')}
+        missing = requested - set(experiment.subject.out_channels)
+        if missing:
+            raise ValueError(f'{experiment.subject.identifier!r} does not declare {sorted(missing)}')
+
     def _keeps(self, event):
         channel = event['payload'].channel if event['kind'] == 'output' else ''
         return channel == 'behavior' or channel.startswith('behavior:')
