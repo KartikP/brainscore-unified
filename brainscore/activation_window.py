@@ -25,7 +25,7 @@ import torch
 from .percept_window import _resolve_targets
 
 
-def _first_tensor_out(out):
+def first_tensor_out(out):
     """The activation tensor from a layer's output — handles a bare Tensor, a
     tuple/list (many transformer blocks return tuples), or an HF-style object
     exposing ``last_hidden_state`` / ``hidden_states``."""
@@ -83,7 +83,7 @@ class ActivationWindow:
         self.label = label or 'activations'
         self.every = max(1, int(every))
         self.max_captures = max_captures
-        self.select_output = select_output or _first_tensor_out
+        self.select_output = select_output or first_tensor_out
         self.targets: List[Tuple[str, torch.nn.Module]] = []
         for rootname, root in roots:
             if layers:

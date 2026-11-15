@@ -49,8 +49,6 @@ ALLOWED = {
     ('benchmarks/majajhong2015/benchmark.py', 'call candidate.process'): _TYPED,
     ('benchmarks/pereira2018/benchmark.py', 'call candidate.start_recording'): _TYPED,
     ('benchmarks/pereira2018/benchmark.py', 'call candidate.process'): _TYPED,
-    ('experiments/tools.py', 'private brainscore.activation_window._first_tensor_out'):
-        'TorchInstrumentation shares the tensor unwrapping of ActivationWindow',
 }
 
 

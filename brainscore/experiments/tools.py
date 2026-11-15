@@ -265,13 +265,13 @@ class TorchInstrumentation:
 
     @contextmanager
     def record(self, targets, receive):
-        from brainscore.activation_window import ActivationWindow, _first_tensor_out
+        from brainscore.activation_window import ActivationWindow, first_tensor_out
         self.validate('record', targets)
         with ExitStack() as stack:
             for target in targets:
                 selection = _selection(target)
                 def select(output, selection=selection):
-                    tensor = _first_tensor_out(output)
+                    tensor = first_tensor_out(output)
                     if tensor is None:
                         raise TypeError('Activity target must expose a tensor')
                     from brainscore.model_helpers.selection import selection_view
