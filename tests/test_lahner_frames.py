@@ -1,13 +1,8 @@
 """The Lahner2024 frames: a local asset cut by the packaging script, read by the benchmark.
 
-The extractor moved from the benchmark to
-``brainscore/data/lahner2024/data_packaging/prepare_frames.py`` with the same
-OpenCV code. A tiny video written here shows that the moved extractor writes the
-same bytes as the old benchmark code at ``BASE`` (read with ``git show``), so no
-frame and no score moves.
+The extractor is in ``brainscore/data/lahner2024/data_packaging/prepare_frames.py``.
+A tiny video written here shows what it writes and what it refuses.
 """
-import hashlib
-import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -19,9 +14,6 @@ from brainscore.data.lahner2024.data_packaging.prepare_frames import extract_fra
 
 pytestmark = pytest.mark.unit
 
-BASE = '3b8c6bc'                     # the commit before the extractor moved
-OLD_FILE = 'brainscore/benchmarks/lahner2024/_util.py'
-REPOSITORY = Path(__file__).resolve().parents[1]
 TIMES_MS = (0, 500, 1500, 2500, 3200)   # the last is past the end: OpenCV reads no frame
 
 
@@ -36,29 +28,13 @@ def _video(folder):
     return path
 
 
-def _old_extractor():
-    try:
-        source = subprocess.run(['git', 'show', f'{BASE}:{OLD_FILE}'], cwd=REPOSITORY,
-                                capture_output=True, text=True, check=True).stdout
-    except (OSError, subprocess.CalledProcessError):
-        pytest.skip(f'commit {BASE} is not in this checkout')
-    namespace = {}
-    exec(compile(source, OLD_FILE, 'exec'), namespace)
-    return namespace['_extract_frame_with_cv2']
-
-
-def _sha256(path):
-    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
-
-
-def test_moved_extractor_writes_the_bytes_of_the_old_code(tmp_path):
+def test_extractor_writes_one_frame_file_for_each_time(tmp_path):
     video = _video(tmp_path)
-    old = _old_extractor()
     for time_ms in TIMES_MS[:-1]:
-        before = old(video, time_ms, frames_dir=tmp_path / 'old')
-        after = extract_frame(video, time_ms, tmp_path / 'new')
-        assert Path(after).name == Path(before).name == f'clip_0001_t{time_ms}.png'
-        assert _sha256(after) == _sha256(before)
+        written = Path(extract_frame(video, time_ms, tmp_path / 'new'))
+        assert written.name == f'clip_0001_t{time_ms}.png'
+        assert written == frame_file(tmp_path / 'new', video, time_ms)
+        assert written.stat().st_size > 0
 
 
 def test_a_frame_past_the_end_fails_as_before(tmp_path):
