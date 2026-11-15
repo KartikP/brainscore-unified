@@ -320,7 +320,7 @@ def test_experiment_saves_every_kind_of_answer(tmp_path):
     model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=reply)
     choice = TaskContext(instruction='Is it long?', response=Choice(['short', 'long'], confidence=Scale(1, 5, 1)))
     result = Experiment(subject=model, protocol=TaskProtocol(STIMULI, choice),
-                        tools=[RecordBehavior()], output_dir=tmp_path / 'choice').run()
+                        tools=[RecordBehavior(['choice', 'confidence'])], output_dir=tmp_path / 'choice').run()
     assert list(result.behavior()['raw_answer'].values) == ['short\n5', 'long\n4', 'long\n4']
     assert list(result.behavior(measure='confidence').values) == [5, 4, 4]
 

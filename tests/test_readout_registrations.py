@@ -82,3 +82,35 @@ def test_a_registered_readout_model_gives_choices_in_an_experiment(identifier, m
     record = choice.attrs['response']
     assert (record['origin'], record['conversion'], record['parameters']['option_order']) == \
         ('derived', 'argmax', 'readout')
+
+
+def test_the_behavior_recorder_records_the_formats_it_names(monkeypatch, tmp_path):
+    subject = BUILDERS['gpt2'](monkeypatch).get_model('gpt2')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
+    result = Experiment(subject=subject, protocol=TaskProtocol(STIMULI, task),
+                        tools=[RecordBehavior(['choice', 'probabilities'])],
+                        output_dir=tmp_path / 'both').run()
+    np.testing.assert_array_equal(result.behavior(measure='choice').values, [[1, 0], [0, 1], [1, 0]])
+    assert result.behavior(measure='probabilities').values.shape == (3, 2)
+
+
+def test_the_behavior_recorder_records_the_first_format_by_default(monkeypatch, tmp_path):
+    subject = BUILDERS['gpt2'](monkeypatch).get_model('gpt2')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
+    experiment = Experiment(subject=subject, protocol=TaskProtocol(STIMULI, task),
+                            tools=[RecordBehavior()], output_dir=tmp_path / 'default')
+    result = experiment.run()
+    assert experiment.protocol.requested_output_channels == {'behavior:choice'}
+    np.testing.assert_array_equal(result.behavior().values, [[1, 0], [0, 1], [1, 0]])
+    with pytest.raises(LookupError):
+        result.behavior(measure='probabilities')
+
+
+def test_the_behavior_recorder_refuses_a_format_the_task_does_not_name(monkeypatch, tmp_path):
+    subject = BUILDERS['gpt2'](monkeypatch).get_model('gpt2')
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
+    experiment = Experiment(subject=subject, protocol=TaskProtocol(STIMULI, task),
+                            tools=[RecordBehavior(['choice', 'rating'])], output_dir=tmp_path / 'refused')
+    with pytest.raises(ValueError, match=r"\['behavior:rating'\].*'behavior:choice', 'behavior:probabilities'"):
+        experiment.run()
+    assert subject._behavioral.readout_classifier is None and subject._behavioral.task is None

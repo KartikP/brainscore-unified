@@ -115,7 +115,7 @@ def test_direct_response_task_sessions_are_recorded(kind, expected):
         channels = ['behavior:choice']
     else:
         model, _ = _model(scores={s: {'cat': -1.0, 'dog': -2.0} for s in 'abcd'})
-        task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
+        task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
         channels = ['behavior:choice', 'behavior:probabilities']
     with record_measures() as measures:
         session = _ask(model, task, channels)

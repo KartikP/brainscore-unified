@@ -20,7 +20,7 @@ pytestmark = pytest.mark.unit
 
 LABELS = ['cat', 'dog']
 LEGACY = TaskContext(task_type='probabilities', label_set=LABELS, instruction='Which?', fitting_stimuli=FITTING)
-PROBABILITIES = TaskContext(instruction='Which?', response=Choice(LABELS, probabilities=True),
+PROBABILITIES = TaskContext(instruction='Which?', response=Choice(LABELS),
                            fitting_stimuli=FITTING)
 PLAIN = TaskContext(instruction='Which?', response=Choice(LABELS), fitting_stimuli=FITTING)
 
@@ -63,9 +63,11 @@ def test_the_legacy_one_hot_of_an_answer_part_equals_the_choice_one_hot(parts):
 
 
 def test_answer_and_readout_set_answers_both_forms_through_the_answer_part():
-    for outputs, task in ((['behavior'], LEGACY), (['behavior:choice'], PLAIN)):
+    # A Choice task can be answered in probabilities, which the readout owns here, so
+    # the setup fits it once (keyed by the task alone); the answers come from answer.
+    for outputs, task, fit in ((['behavior'], LEGACY, []), (['behavior:choice'], PLAIN, ['extract'])):
         answer, calls = _answers(BLIP2, outputs, task)
-        assert calls == ['answer'] * 3 and 'extract' not in calls
+        assert calls == fit + ['answer'] * 3
 
 
 def test_the_full_part_set_answers_legacy_through_answer_and_the_choice_through_reply_today():

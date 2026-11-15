@@ -28,7 +28,7 @@ def _session(monkeypatch, outputs=('behavior:probabilities', 'behavior:rt')):
     fitting = STIMULI.copy()
     fitting.identifier = 'rt-link-fitting'
     model, _ = _model(readout=True)
-    task = TaskContext(response=Choice(['cat', 'dog'], probabilities=True,
+    task = TaskContext(response=Choice(['cat', 'dog'],
                                        reaction_time='evidence_margin'),
                        fitting_stimuli=fitting)
     return _ask(model, task, list(outputs))
@@ -90,7 +90,7 @@ def test_the_readout_link_matches_7bc821e(monkeypatch, link, seed):
     fitting = STIMULI.copy()
     fitting.identifier = f'rt-parity-{seed}'
     model, _ = _model(readout=True)
-    task = TaskContext(response=Choice(['cat', 'dog'], probabilities=True, reaction_time=link),
+    task = TaskContext(response=Choice(['cat', 'dog'], reaction_time=link),
                        fitting_stimuli=fitting)
     rt = _ask(model, task, ['behavior:probabilities', 'behavior:rt']).collect('behavior:rt')
     readout = BehavioralAssembly(rows, dims=['presentation', 'choice'],

@@ -259,9 +259,17 @@ class BehavioralReadout:
         # The setup is keyed by the task alone: each format the task can give is
         # selected on its own (a single format never crosses two parts), so every
         # refusal comes before the fit, and the readout fits once when it serves any.
+        # A probability format that no part serves is skipped here: a session that
+        # requests it is refused by its own selection, before any compute.
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
         from brainscore_core.responses import response_channels
-        picks = [self._choose_path(task, [output])
-                 for output in (response_channels(task.response) or ('behavior',))]
+        picks = []
+        for output in (response_channels(task.response) or ('behavior',)):
+            try:
+                picks.append(self._choose_path(task, [output]))
+            except ExecutionNotFeasibleError:
+                if output not in self._PROBABILITY_SIDE:
+                    raise
         self.response_path = picks[0][0]
         self.probability_source = next((source for _, source in picks if source), None)
         self.readout_classifier = None
@@ -413,9 +421,8 @@ class BehavioralReadout:
         A task with a response is answered by the owner of its answer format
         (the raw scores of a raw-scores Choice, else the response kind's own
         format: choice, rating or text) and, when ``formats`` request
-        probabilities or a reaction time or the response carries the
-        probabilities switch or a reaction-time link (the passes of the task
-        stay as before stage 3), its implied probabilities by the
+        probabilities or a reaction time (or the response asks for raw
+        scores), its implied probabilities by the
         owner of ``behavior:probabilities`` (rule 4.11, ``answer_owners``); an
         owner that cannot serve the task's settings (``can`` below) is refused,
         no other part stands in. The choice that accompanies raw scores comes
@@ -491,12 +498,10 @@ class BehavioralReadout:
         source = None
         requested = set(formats)
         wanted = requested & self._PROBABILITY_SIDE
-        # The passes of a task stay as they were: while the response carries the
-        # probabilities switch or a reaction-time link, the probability owner runs
-        # (first, for a reply) even when the session does not request its formats;
-        # an unrequested answer is not sent. Stage 3 deletes the switch (a stated change).
-        if isinstance(response, Choice) and (wanted or response.probabilities
-                                             or response.reaction_time or response.raw_scores):
+        # The requested formats decide the passes: the probability owner runs (first,
+        # for a reply, so a recording comes from its pass) only when the session
+        # requests probabilities or a reaction time. Raw scores keep their pass.
+        if isinstance(response, Choice) and (wanted or raw_scores):
             source = self._owner_serving('behavior:probabilities', {
                 'likelihood': owner._likelihood is not None,
                 'readout': readout_wired and not per_row}, task, settings)

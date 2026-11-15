@@ -60,22 +60,32 @@ class TaskProtocol(SessionProtocol):
             raise ValueError('Attach a recorder (RecordNeural, RecordBehavior): '
                              'nothing would be measured.')
         channels = set(channels)
-        if 'behavior' in channels:
+        formats = {c for c in channels if c.startswith('behavior:')}
+        if 'behavior' in channels or formats:
             if self.task.task_type == 'passive':
                 raise ValueError('A passive task produces no behavior; remove RecordBehavior '
                                  'or give the task a response (Choice, Scale, Text).')
-            if self.task.response is not None:
-                # Every kind of answer the response asks for: e.g. choice and confidence.
-                channels = (channels - {'behavior'}) | set(self.task.response.channels)
+        if formats:
+            given = self.task.response.channels if self.task.response is not None else ()
+            if formats - set(given):
+                raise ValueError(f'The task cannot be answered in {sorted(formats - set(given))}; '
+                                 f'its response names {list(given)}.')
+        if 'behavior' in channels and self.task.response is not None:
+            # Bare behavior is the response's first format: the choice of a Choice.
+            channels = (channels - {'behavior'}) | {self.task.response.channels[0]}
         self.requested_output_channels = frozenset(channels)
 
     def validate(self, subject):
         # The required traits are checked with the channels by the one compatibility rule.
         if self.task.response is not None:
-            missing = set(self.task.response.channels) - set(subject.out_channels)
+            # The answer is given in every session, recorded or not; other formats
+            # only when a recorder asks for them.
+            needed = {self.task.response.channels[0]} | {
+                c for c in self.requested_output_channels if c.startswith('behavior:')}
+            missing = needed - set(subject.out_channels)
             if missing:
-                raise ValueError(f'Task response requires outputs {sorted(missing)} even when '
-                                 f'behavior is not recorded; subject {subject.identifier!r} '
+                raise ValueError(f'Task response requires outputs {sorted(missing)}; '
+                                 f'subject {subject.identifier!r} '
                                  f'declares {sorted(subject.out_channels)}.')
         super().validate(subject)
 
@@ -127,12 +137,32 @@ class RecordNeural(_ChannelRecorder):
 
 
 class RecordBehavior(_ChannelRecorder):
-    """Record the subject's answers: every kind the task's response asks for.
+    """Record the subject's answers in ``formats``.
 
-    Read back with ``result.behavior()``, or ``result.behavior(measure='confidence')``.
+    By default the first format of the task's response: the choice of a
+    ``Choice``, the rating of a ``Scale``, the text of a ``Text``. ``formats``
+    names more, by the part of the channel after ``behavior:``, as
+    ``result.behavior(measure=...)`` reads them: for example
+    ``RecordBehavior(['choice', 'probabilities'])``. A format that the task's
+    response does not name is refused before the run. Read back with
+    ``result.behavior()``, or ``result.behavior(measure='probabilities')``.
     """
     name = 'behavior'
-    requested_output_channels = frozenset({'behavior'})
+
+    def __init__(self, formats=None, *, max_bytes=None):
+        super().__init__(max_bytes=max_bytes)
+        if formats is None:
+            self.formats = None
+            self.requested_output_channels = frozenset({'behavior'})
+            return
+        if isinstance(formats, str) or not formats:
+            raise ValueError("Pass a nonempty list of formats, e.g. ['choice', 'probabilities']")
+        self.formats = list(formats)
+        self.requested_output_channels = frozenset(f'behavior:{name}' for name in self.formats)
+
+    def describe(self):
+        described = super().describe()
+        return described if self.formats is None else {**described, 'formats': self.formats}
 
     def validate(self, experiment):
         # The protocol requests the channels of the task's response in place of bare

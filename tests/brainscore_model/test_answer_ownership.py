@@ -46,7 +46,7 @@ def _run(model, outputs, task):
     return session
 
 
-CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
+CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                      fitting_stimuli=FITTING)
 
 
@@ -133,17 +133,18 @@ CROSS = {'readout choice': {'behavior:choice': ('readout', 'argmax'),
                                'behavior:probabilities': 'readout'}}
 
 
-@pytest.mark.parametrize('settings', [{'probabilities': True}, {'reaction_time': 'surprisal'}],
+@pytest.mark.parametrize('settings, channel', [({}, 'behavior:probabilities'),
+                                               ({'reaction_time': 'surprisal'}, 'behavior:rt')],
                          ids=['probabilities', 'reaction time'])
 @pytest.mark.parametrize('owners', sorted(CROSS))
-def test_a_choice_and_probabilities_from_different_owners_are_refused_before_compute(owners, settings):
+def test_a_choice_and_probabilities_from_different_owners_are_refused_before_compute(owners, settings, channel):
     """The executor cannot take a likelihood or readout choice and the probabilities
     from the other part; neither owner is replaced, the session is refused."""
     calls = []
     model = _model('likelihood', 'behavioral_readout_layer', owners=CROSS[owners], calls=calls)
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], **settings),
                        fitting_stimuli=FITTING)
-    outputs = ['behavior:choice', 'behavior:probabilities' if 'probabilities' in settings else 'behavior:rt']
+    outputs = ['behavior:choice', channel]
     with pytest.raises(ExecutionNotFeasibleError, match='in one session'):
         _run(model, outputs, task)
     assert calls == []        # no extraction, no readout fit, no likelihood call
@@ -158,17 +159,17 @@ def test_a_choice_alone_answers_through_its_own_owner(owners):
     assert choice.attrs['response']['method'] == CROSS[owners]['behavior:choice'][0]
 
 
-@pytest.mark.parametrize('settings', [{'probabilities': True}, {'reaction_time': 'surprisal'}],
+@pytest.mark.parametrize('settings, channel', [({}, 'behavior:probabilities'),
+                                               ({'reaction_time': 'surprisal'}, 'behavior:rt')],
                          ids=['probabilities', 'reaction time'])
 @pytest.mark.parametrize('probabilities', ['likelihood', 'readout'])
-def test_a_generated_choice_takes_probabilities_from_their_owner(probabilities, settings):
+def test_a_generated_choice_takes_probabilities_from_their_owner(probabilities, settings, channel):
     calls = []
     model = _model('reply', 'likelihood', 'behavioral_readout_layer', calls=calls, owners={
         'behavior:choice': 'generation', 'behavior:rating': 'generation',
         'behavior:probabilities': PROBABILITIES[probabilities]})
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], **settings),
                        fitting_stimuli=FITTING)
-    channel = 'behavior:probabilities' if 'probabilities' in settings else 'behavior:rt'
     session = _run(model, ['behavior:choice', channel], task)
     assert session.collect('behavior:choice').attrs['response']['method'] == 'generation'
     record = session.collect(channel).attrs['response']

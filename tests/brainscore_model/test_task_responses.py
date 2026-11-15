@@ -113,7 +113,7 @@ def test_likelihood_gives_a_choice_and_its_implied_probabilities():
     scores = {s: {'cat': -1.0, 'dog': -3.0} if s in 'ac' else {'cat': -2.0, 'dog': -0.5}
               for s in 'abcd'}
     model, _ = _model(scores=scores)
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     session = _ask(model, task, ['behavior:choice', 'behavior:probabilities'])
     probabilities = session.collect('behavior:probabilities')
     np.testing.assert_allclose(probabilities.values[0], [1 / (1 + np.exp(-2)), 1 - 1 / (1 + np.exp(-2))],
@@ -126,7 +126,7 @@ def test_likelihood_gives_a_choice_and_its_implied_probabilities():
 
 def test_readout_choice_with_probabilities():
     model, _ = _model(readout=True)
-    task = TaskContext(response=Choice(['cat', 'dog'], probabilities=True), fitting_stimuli=STIMULI)
+    task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=STIMULI)
     session = _ask(model, task, ['behavior:choice', 'behavior:probabilities'])
     np.testing.assert_array_equal(session.collect('behavior:choice').values.argmax(1), [0, 1, 0, 1])
     assert session.collect('behavior:probabilities').values.shape == (4, 2)
@@ -135,7 +135,7 @@ def test_readout_choice_with_probabilities():
 @pytest.mark.parametrize('labels', [['cat', 'dog'], ['dog', 'cat']])
 def test_readout_probabilities_follow_the_task_label_order(labels):
     model, _ = _model(readout=True)
-    task = TaskContext(response=Choice(labels, probabilities=True), fitting_stimuli=STIMULI)
+    task = TaskContext(response=Choice(labels), fitting_stimuli=STIMULI)
     session = _ask(model, task, ['behavior:choice', 'behavior:probabilities'])
     choice, probabilities = session.collect('behavior:choice'), session.collect('behavior:probabilities')
     assert list(probabilities['choice'].values) == list(choice['choice'].values) == labels

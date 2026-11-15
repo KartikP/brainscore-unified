@@ -56,31 +56,32 @@ def _ask(model, task, channels):
     return session
 
 
-def test_readout_refuses_probabilities_the_response_does_not_give():
+def test_readout_refuses_a_format_the_response_does_not_give():
     model, extractor = _readout_model()
     fits = []
     model._behavioral.fit_behavioral_readout = lambda *a, **k: fits.append(1)  # never reached
-    task = TaskContext(response=Choice(['cat', 'dog'], probabilities=False),
+    task = TaskContext(response=Choice(['cat', 'dog']),
                        fitting_stimuli=STIMULI)
-    assert 'behavior:probabilities' in model.out_channels
-    with pytest.raises(ValueError, match=r"behavior:probabilities.*behavior:choice"):
-        _ask(model, task, ['behavior:probabilities'])
+    assert 'behavior:rating' in model.out_channels
+    with pytest.raises(ValueError, match=r"behavior:rating.*behavior:choice"):
+        _ask(model, task, ['behavior:rating'])
     assert extractor.calls == 0
     assert fits == []
     assert model._behavioral.readout_classifier is None
 
 
-def test_likelihood_refuses_probabilities_the_response_does_not_give():
+def test_likelihood_refuses_a_reaction_time_the_response_does_not_link():
     model, calls = _likelihood_model()
-    task = TaskContext(instruction='Pick.', response=Choice(['cat', 'dog'], probabilities=False))
-    with pytest.raises(ValueError, match='behavior:probabilities'):
-        _ask(model, task, ['behavior:choice', 'behavior:probabilities'])
+    task = TaskContext(instruction='Pick.', response=Choice(['cat', 'dog']))
+    assert 'behavior:rt' in model.out_channels
+    with pytest.raises(ValueError, match='behavior:rt'):
+        _ask(model, task, ['behavior:choice', 'behavior:rt'])
     assert calls == []
 
 
 def test_readout_matched_request_is_unchanged():
     model, extractor = _readout_model()
-    task = TaskContext(response=Choice(['cat', 'dog'], probabilities=True), fitting_stimuli=STIMULI)
+    task = TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=STIMULI)
     session = _ask(model, task, ['behavior:probabilities'])
     assert session.collect('behavior:probabilities').values.shape == (4, 2)
     assert extractor.calls > 0
@@ -88,7 +89,7 @@ def test_readout_matched_request_is_unchanged():
 
 def test_likelihood_matched_request_is_unchanged():
     model, calls = _likelihood_model()
-    task = TaskContext(instruction='Pick.', response=Choice(['cat', 'dog'], probabilities=True))
+    task = TaskContext(instruction='Pick.', response=Choice(['cat', 'dog']))
     session = _ask(model, task, ['behavior:choice', 'behavior:probabilities'])
     np.testing.assert_array_equal(session.collect('behavior:choice').values.argmax(1), [1, 1, 1, 1])
     assert session.collect('behavior:probabilities').values.shape == (4, 2)
@@ -99,7 +100,7 @@ def test_a_likelihood_alone_does_not_declare_bare_behavior():
     """Bare behavior answers a legacy task: only answer= or a readout with an extractor gives it."""
     model, calls = _likelihood_model()
     assert 'behavior' not in model.out_channels
-    task = TaskContext(instruction='Pick.', response=Choice(['cat', 'dog'], probabilities=True))
+    task = TaskContext(instruction='Pick.', response=Choice(['cat', 'dog']))
     with pytest.raises(ExecutionNotFeasibleError, match=r"does not produce \['behavior'\]"):
         _ask(model, task, ['behavior', 'behavior:choice', 'behavior:probabilities'])
     assert calls == []

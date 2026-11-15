@@ -82,7 +82,7 @@ def test_a_likelihood_choice_is_the_same_choice_as_before():
               'c': {'cat': -0.5, 'dog': -3.0}, 'd': {'cat': -2.0, 'dog': -2.0}}
     model, _ = _model(scores=scores)
     session = _ask(model, TaskContext(instruction='Which?',
-                                      response=Choice(['cat', 'dog'], probabilities=True)),
+                                      response=Choice(['cat', 'dog'])),
                    ['behavior:choice', 'behavior:probabilities'])
     logp = np.array([[scores[s]['cat'], scores[s]['dog']] for s in 'abcd'])
     old = _old_softmax()(logp)
@@ -97,7 +97,7 @@ def test_every_derived_answer_names_its_conversion():
     scores = {s: {'cat': -1.0, 'dog': -2.0} for s in 'abcd'}
     model, _ = _model(scores=scores)
     session = _ask(model, TaskContext(instruction='Which?', response=Choice(
-        ['cat', 'dog'], probabilities=True)), ['behavior:choice', 'behavior:probabilities'])
+        ['cat', 'dog'])), ['behavior:choice', 'behavior:probabilities'])
     assert session.collect('behavior:choice').attrs['response'] == response_record(
         'behavior:choice', 'likelihood', conversion='softmax_argmax',
         source_format='behavior:log_probabilities')

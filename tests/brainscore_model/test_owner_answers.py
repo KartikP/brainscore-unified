@@ -53,7 +53,7 @@ def test_blip2_raw_text_choice_is_refused_before_compute():
 def test_a_readout_alone_gives_probabilities_natively():
     model = _model('behavioral_readout_layer',
                    owners=REGISTERED_STATEMENTS[('behavioral_readout_layer',)])
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                        fitting_stimuli=FITTING)
     probabilities = _run(model, ['behavior:probabilities'], task).collect('behavior:probabilities')
     assert probabilities.values.shape == (len(STIMULI), 2)
@@ -76,7 +76,7 @@ def test_two_owners_for_choice_and_probabilities_are_refused_before_compute():
     owners = {'behavior': 'generation', 'behavior:rating': 'generation',
               'behavior:choice': ('likelihood', 'softmax_argmax'), 'behavior:probabilities': 'readout'}
     model = _model(*QWEN, owners=owners, calls=calls)
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                        fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError,
                        match=r"choices from its likelihood part and probabilities from its readout part"):
@@ -139,7 +139,7 @@ CROSSED = {
                        'behavior:probabilities': ('likelihood', 'softmax')},
 }
 CHOICE_AND_PROBABILITIES = TaskContext(instruction='Which?',
-                                       response=Choice(['cat', 'dog'], probabilities=True),
+                                       response=Choice(['cat', 'dog']),
                                        fitting_stimuli=FITTING)
 
 
@@ -276,22 +276,30 @@ def _pass_model(net, parts, owners):
 
 PASS_STIMULI = StimulusSet({'stimulus_id': ['a', 'b', 'c'], 'sentence': ['x', 'y', 'z']})
 PASS_STIMULI.identifier = 'pass-net'
-PROBABILITIES_RAW_TEXT = TaskContext(response=Choice(['cat', 'dog'], probabilities=True, raw_text=True))
+CHOICE_RAW_TEXT = TaskContext(response=Choice(['cat', 'dog'], raw_text=True))
+LIKELIHOOD_ROWS = [[100.0, 101.0, 102.0], [101.0, 102.0, 103.0], [102.0, 103.0, 104.0]]
+REPLY_ROWS = [[110.0, 111.0, 112.0], [111.0, 112.0, 113.0], [112.0, 113.0, 114.0]]
 
 
 @pytest.mark.parametrize('parts', [CAUSAL_LM, QWEN], ids=['causal lm', 'qwen'])
-@pytest.mark.parametrize('outputs', [['behavior:choice', 'neural:A'], ['neural:A']],
-                         ids=['choice and neural', 'neural only'])
-def test_a_probabilities_task_keeps_its_passes_and_its_recording(parts, outputs):
-    """The values are those of a37dcb3: the likelihood (the probabilities' owner) scores the
-    prompt first, so the recording comes from the likelihood pass, whether or not the session
-    requests probabilities."""
+@pytest.mark.parametrize('outputs, calls, rows', [
+    (['behavior:choice', 'behavior:probabilities', 'neural:A'], ['likelihood', 'reply'] * 3, LIKELIHOOD_ROWS),
+    (['behavior:choice', 'neural:A'], ['reply'] * 3, REPLY_ROWS),
+    (['neural:A'], ['reply'] * 3, REPLY_ROWS),
+    # Probabilities alone: as before stage 3, the reply still gives the trial's answer pass.
+    (['behavior:probabilities'], ['likelihood', 'reply'] * 3, None),
+], ids=['choice, probabilities and neural', 'choice and neural', 'neural only', 'probabilities only'])
+def test_the_requested_formats_decide_the_passes_and_the_recording(parts, outputs, calls, rows):
+    """The likelihood (the owner of the probabilities) runs only when the session requests
+    them, and it scores the prompt first, so a recording comes from its pass. Otherwise
+    only the pass of the choice runs, and the recording comes from it (rule 4.5)."""
     net = _PassNet()
-    session = stimulus_session(PASS_STIMULI, outputs, task=PROBABILITIES_RAW_TEXT)
+    session = stimulus_session(PASS_STIMULI, outputs, task=CHOICE_RAW_TEXT)
     _pass_model(net, parts, REGISTERED_STATEMENTS[parts]).participate(session)
-    assert net.calls == ['likelihood', 'reply'] * 3
+    assert net.calls == calls
+    if rows is None:
+        return
     recorded = session.collect('neural:A')
-    assert recorded.values.tolist() == [[100.0, 101.0, 102.0], [101.0, 102.0, 103.0],
-                                        [102.0, 103.0, 104.0]]
+    assert recorded.values.tolist() == rows
     assert (recorded.attrs['recording']['path'], recorded.attrs['recording']['forward_pass']) == (
         'generation', 'prompt')

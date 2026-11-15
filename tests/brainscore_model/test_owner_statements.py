@@ -19,7 +19,7 @@ pytestmark = pytest.mark.unit
 QWEN = ('answer', 'reply', 'likelihood', 'behavioral_readout_layer')
 QWEN_STATEMENT = {'behavior': 'generation', 'behavior:rating': 'generation',
                   'behavior:probabilities': ('likelihood', 'softmax')}
-CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
+CHOICE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                      fitting_stimuli=FITTING)
 FORMATS = ("['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:probabilities', "
            "'behavior:rating', 'behavior:text']")
@@ -61,7 +61,7 @@ def test_a_wrong_statement_is_refused_with_what_to_write(owners, message):
 def test_the_qwen_statement_answers_choice_by_generation_and_probabilities_by_softmax():
     model = _model(*QWEN, owners=QWEN_STATEMENT)
     session = _run(model, ['behavior:choice', 'behavior:probabilities'],
-                   TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True)))
+                   TaskContext(instruction='Which?', response=Choice(['cat', 'dog'])))
     assert session.collect('behavior:choice').attrs['response']['method'] == 'generation'
     probabilities = session.collect('behavior:probabilities').attrs['response']
     assert (probabilities['method'], probabilities['conversion']) == ('likelihood', 'softmax')

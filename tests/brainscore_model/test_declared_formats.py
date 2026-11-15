@@ -219,7 +219,7 @@ SESSIONS = {
     B: TaskContext(task_type='probabilities', instruction='Which?', label_set=['cat', 'dog'],
                    fitting_stimuli=FITTING),
     CH: TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING),
-    P: TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True),
+    P: TaskContext(instruction='Which?', response=Choice(['cat', 'dog']),
                    fitting_stimuli=FITTING),
     RA: TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=RATINGS),
     CO: TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], confidence=Scale(1, 5))),

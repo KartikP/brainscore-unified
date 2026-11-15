@@ -163,7 +163,7 @@ def test_probabilities_next_to_a_reply_come_from_the_likelihood_part_first():
     calls = []
     model = _model(calls, reply=True, likelihood=True)
     session = _run(model, ['behavior:choice', 'behavior:probabilities'],
-                   TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True)))
+                   TaskContext(instruction='Which?', response=Choice(['cat', 'dog'])))
     assert [c[0] for c in calls] == ['likelihood', 'reply'] * 3
     assert session.collect('behavior:probabilities').attrs['response'] == response_record(
         'behavior:probabilities', 'likelihood', conversion='softmax',

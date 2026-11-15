@@ -25,7 +25,7 @@ Y02 = {
 }
 
 
-@pytest.mark.parametrize('settings, channel', [({'probabilities': True}, 'behavior:probabilities'),
+@pytest.mark.parametrize('settings, channel', [({}, 'behavior:probabilities'),
                                                ({'reaction_time': 'surprisal'}, 'behavior:rt')],
                          ids=['probabilities', 'reaction time'])
 @pytest.mark.parametrize('case', sorted(Y02))

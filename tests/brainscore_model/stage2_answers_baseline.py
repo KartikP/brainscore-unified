@@ -26,14 +26,14 @@ FIXTURE = Path(__file__).resolve().parents[1] / 'fixtures' / 'stage2_answers_bas
 RATINGS = FITTING.copy()
 RATINGS['label'] = [6.0, 2.0, 6.0, 2.0]
 RATINGS.identifier = 'behavior-paths-ratings'
-CHOICE_FORM = {'kind': 'choice', 'labels': 'shared', 'probabilities': False, 'reaction_time': None,
+CHOICE_FORM = {'kind': 'choice', 'labels': 'shared', 'reaction_time': None,
                'raw_scores': False, 'raw_text': False, 'confidence': False, 'fitting': True}
 SESSIONS = {   # task descriptions and the outputs the session requests
     'legacy answer': ({'kind': 'legacy', 'instruction': True, 'label_set': ['cat', 'dog'], 'fitting': True},
                       ['behavior']),
     'legacy readout': ({'kind': 'legacy', 'instruction': False, 'label_set': ['cat', 'dog'], 'fitting': True},
                        ['behavior']),
-    'choice': (dict(CHOICE_FORM, probabilities=True), ['behavior:choice', 'behavior:probabilities']),
+    'choice': (dict(CHOICE_FORM), ['behavior:choice', 'behavior:probabilities']),
     'raw scores': (dict(CHOICE_FORM, raw_scores=True, fitting=False),
                    ['behavior:choice', 'behavior:probabilities']),
     'rating': ({'kind': 'scale', 'fitting': True}, ['behavior:rating']),
@@ -53,7 +53,6 @@ def task_from(description, fitting_stimuli):
     if kind == 'scale':
         return TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=fitting)
     choice = Choice(['cat', 'dog'] if description['labels'] == 'shared' else 'options',
-                    probabilities=description['probabilities'],
                     reaction_time=description['reaction_time'], raw_scores=description['raw_scores'],
                     raw_text=description['raw_text'],
                     confidence=Scale(1, 5) if description['confidence'] else None)
@@ -95,8 +94,8 @@ def _cases():
                            fitting_stimuli=FITTING)
     cases = {f'choice with reaction time {link}': (
         ['behavior:choice', 'behavior:probabilities', 'behavior:rt'],
-        choice(probabilities=True, reaction_time=link)) for link in Choice.REACTION_TIMES}
-    cases['probabilities only'] = (['behavior:probabilities'], choice(probabilities=True))
+        choice(reaction_time=link)) for link in Choice.REACTION_TIMES}
+    cases['probabilities only'] = (['behavior:probabilities'], choice())
     return cases
 
 

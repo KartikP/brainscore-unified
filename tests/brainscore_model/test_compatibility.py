@@ -102,7 +102,7 @@ def test_every_declared_output_answers_or_fails_before_any_compute():
     ('neural:IT', None),
     ('behavior', TaskContext(task_type='probabilities', fitting_stimuli=FITTING)),
     ('behavior:choice', TaskContext(response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)),
-    ('behavior:probabilities', TaskContext(response=Choice(['cat', 'dog'], probabilities=True),
+    ('behavior:probabilities', TaskContext(response=Choice(['cat', 'dog']),
                                            fitting_stimuli=FITTING)),
 ])
 def test_a_declared_stimulus_output_runs_with_the_session_it_needs(output, task):

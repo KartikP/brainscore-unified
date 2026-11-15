@@ -48,7 +48,7 @@ def test_a_conversion_of_a_non_finite_likelihood_row_stays_invalid():
               'c': {'cat': -np.inf, 'dog': -1.0}, 'd': {'cat': -3.0, 'dog': -1.0}}   # c: -inf
     model, _ = _model(scores=scores)
     session = _ask(model, TaskContext(instruction='Which?',
-                                      response=Choice(['cat', 'dog'], probabilities=True)),
+                                      response=Choice(['cat', 'dog'])),
                    ['behavior:choice', 'behavior:probabilities'])
     choice = session.collect('behavior:choice')
     probabilities = session.collect('behavior:probabilities')

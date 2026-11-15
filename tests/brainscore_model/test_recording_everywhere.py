@@ -96,7 +96,7 @@ def _prompt_text(stimulus_text):
 
 def test_recording_during_likelihood_scoring_is_the_prompt_pass():
     net = Net()
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     recorded = _run(_model(net, replies=False), task, ['behavior:probabilities', 'neural:A']).collect('neural:A')
     expected = [Net().forward(_prompt_text(s))['early'] for s in ('x', 'yy', 'zzz')]
     np.testing.assert_array_equal(recorded.values, expected)
@@ -104,7 +104,7 @@ def test_recording_during_likelihood_scoring_is_the_prompt_pass():
 
 def test_a_reply_with_implied_probabilities_records_the_prompt_pass():
     net = Net()
-    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], probabilities=True))
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']))
     session = _run(_model(net), task, ['behavior:choice', 'behavior:probabilities', 'neural:A'])
     expected = [Net().forward(_prompt_text(s))['early'] for s in ('x', 'yy', 'zzz')]
     np.testing.assert_array_equal(session.collect('neural:A').values, expected)
