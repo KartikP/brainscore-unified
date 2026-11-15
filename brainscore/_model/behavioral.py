@@ -249,7 +249,21 @@ class BehavioralReadout:
                 fitting_stimuli=fitting_stimuli,
             )
         self.task = task
+        self.validate_task(task)
+        if task.response is None and task.task_type == 'passive':
+            self.response_path = self.probability_source = None
+            self.readout_classifier = None
+            return
+        # A session chose the answering part once, in its plan; a direct call chooses here.
+        planned = self._planned(task, formats)
+        picks = [planned] if planned is not None else self._eligible_picks(task)
+        self.response_path = picks[0][0]
+        self.probability_source = next((source for _, source in picks if source), None)
+        self.readout_classifier = None
+        self.fit_for(formats, picks)
 
+    def validate_task(self, task) -> None:
+        """Refuse a malformed task: an unknown ``readout_fit`` or legacy ``task_type`` (``ValueError``)."""
         if task.readout_fit not in ('current', 'intact'):
             raise ValueError(f"readout_fit must be 'current' or 'intact', not {task.readout_fit!r}.")
         if task.response is None and task.task_type != 'passive' \
@@ -259,15 +273,11 @@ class BehavioralReadout:
                 f"'passive' or one of {sorted(self.BEHAVIORAL_TASK_TYPES)}; "
                 f"answer and readout models both use 'probabilities'."
             )
-        if task.response is None and task.task_type == 'passive':
-            self.response_path = self.probability_source = None
-            self.readout_classifier = None
-            return
-        picks = self._eligible_picks(task)
-        self.response_path = picks[0][0]
-        self.probability_source = next((source for _, source in picks if source), None)
-        self.readout_classifier = None
-        self.fit_for(formats, picks)
+
+    def _planned(self, task, formats):
+        """The answering part the running session's plan chose for ``task`` and ``formats``, or None."""
+        plan = self.owner._session_plan
+        return None if plan is None or formats is None else plan.pick_for(task, formats)
 
     def _eligible_picks(self, task) -> list:
         """The selection of each format ``task`` can be answered in, one format at a time.
@@ -299,7 +309,7 @@ class BehavioralReadout:
         if formats is None:
             picks = picks or self._eligible_picks(self.task)
         else:
-            picks = [self._choose_path(self.task, formats)]
+            picks = [self._planned(self.task, formats) or self._choose_path(self.task, formats)]
         if not any('readout' in pick for pick in picks):
             return False
         self.fit_behavioral_readout(self.task.fitting_stimuli)
@@ -474,8 +484,16 @@ class BehavioralReadout:
 
         A task that no part of the model can answer raises
         ``ExecutionNotFeasibleError`` before any compute. Sessions refuse with
-        this choice; the refusal is an error of the run.
+        this choice; the refusal is an error of the run. A session makes it
+        once, in its plan (``_model/plan.py``).
         """
+        return self._choose(task, formats)
+
+    def _choice_owner_serves(self, task) -> None:
+        """Refuse a task whose choice format has no owner that can serve it (part of one choice)."""
+        self._choose(task, ['behavior:choice'])
+
+    def _choose(self, task, formats):
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         from brainscore_core.responses import Choice, Scale
         owner, response = self.owner, task.response
@@ -542,6 +560,9 @@ class BehavioralReadout:
         source = None
         wanted = requested & self._PROBABILITY_SIDE
         if log_probabilities:
+            # The task's choice format keeps an owner that can serve the task, as the setup
+            # of the task always checked (``_eligible_picks``); the likelihood answers it here.
+            self._choice_owner_serves(task)
             # One likelihood pass gives the log probabilities and what derives from them.
             return path, (path if wanted else None)
         # The requested formats decide the passes: the probability owner runs (first,
@@ -575,31 +596,22 @@ class BehavioralReadout:
         probabilities next to a reply are scored first, from the same prompt,
         so the recording is still the prompt pass.
         """
-        from brainscore_core.responses import Choice, Scale, Text, labels_of, trial_prompt
+        from brainscore_core.responses import Choice, Scale, Text, labels_of
         owner, task = self.owner, self.task
         response, path, probability_source = task.response, self.response_path, self.probability_source
         if response is not None:
-            path, probability_source = self._choose_path(task, channels)
+            path, probability_source = (self._planned(task, channels)
+                                        or self._choose_path(task, channels))
         layers = {region: list(region_selector(owner, region).layer_paths) for region in regions}
         if response is None:
             behavior, neural = self._answer_legacy_task(stimuli, layers)
             return ({channel: behavior for channel in channels}, neural)
         labels = labels_of(response)
-        # Every trial's prompt is built first, so a bad layout fails before any compute.
-        prompts = [trial_prompt(task, row) for _, row in stimuli.iterrows()]
+        # Every trial's prompt is built first, so a bad layout fails before any compute
+        # (for a session with its table, the plan built them before the readout fit).
+        prompts, row_labels, axis = trial_prompts(task, stimuli)
         neural, outputs, extras = {}, {}, []
         rt_source = None   # (float64 probabilities, row validity, record) for a reaction time
-        # The options of each row: the task's labels, or the row's own (labels names a column).
-        # The choice axis is then the labels, or the position of each option.
-        row_labels, axis = None, labels
-        if isinstance(response, Choice):
-            row_labels = [list(prompt.response.labels) for prompt in prompts]
-            if labels is None:
-                counts = {len(options) for options in row_labels}
-                if len(counts) > 1:
-                    raise ValueError(f'Every row must give the same number of options in column '
-                                     f'{response.labels!r}; got {sorted(counts)}')
-                axis = list(range(counts.pop())) if counts else []
 
         if path == 'readout':
             values, neural = self._read_out_and_record(stimuli, layers, raw=True)
@@ -629,10 +641,8 @@ class BehavioralReadout:
                         outputs, answers.in_order(values, labels), stimuli)
         else:
             score_first = path == 'generation' and probability_source == 'likelihood'
+            # Trial history without a reply or likelihood part was refused by the session's plan.
             remember = owner._memory == 'trial_history'
-            if remember and owner._reply is None and owner._likelihood is None:
-                raise ValueError("memory='trial_history' needs reply= or likelihood=; answer= cannot see "
-                                 'earlier trials.')
 
             def with_history(prompt):
                 return replace(prompt, history=tuple(self.history)) if remember else prompt
@@ -791,17 +801,30 @@ class BehavioralReadout:
                 if self.task.response is not None else None,
                 'forward_pass': forward_pass, 'readout_fit': self.task.readout_fit}
 
+    def refuse_readout_regions(self, stimuli, regions) -> str:
+        """The input the readout presents for ``stimuli``; refuse a region that reads another one.
+
+        One presentation cannot record a region of another input
+        (``ExecutionNotFeasibleError``). The session's plan calls it before the
+        readout is fitted; the readout calls it again for a trial of a stream.
+        """
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        owner = self.owner
+        modality = pick_modality(owner, detect_modalities(owner, stimuli))
+        for region in regions:
+            if owner._region_modality_map.get(region) and region_modality(owner, region) != modality:
+                raise ExecutionNotFeasibleError(
+                    f'Region {region!r} reads {region_modality(owner, region)!r} input, but '
+                    f'the readout presents {modality!r} input; one presentation cannot '
+                    'record it.', channels={f'neural:{region}'},
+                    task_type=self.task.task_type if self.task is not None else None)
+        return modality
+
     def _read_out_and_record(self, stimuli, layers, raw: bool = False):
         from brainscore_core.responses import Scale
         owner = self.owner
         readout_layer = owner._behavioral_readout_layer
-        modality = pick_modality(owner, detect_modalities(owner, stimuli))
-        for region in layers:
-            if owner._region_modality_map.get(region) and region_modality(owner, region) != modality:
-                raise ValueError(
-                    f'Region {region!r} reads {region_modality(owner, region)!r} input, but '
-                    f'the readout presents {modality!r} input; one presentation cannot '
-                    'record it.')
+        modality = self.refuse_readout_regions(stimuli, layers)
 
         def extract(call_layers):
             extracted = owner._recorder.ensure_layer_provenance(
@@ -845,6 +868,30 @@ class BehavioralReadout:
                 neural[region] = neural[region].assign_attrs(
                     recording=self._stamp('readout', 'readout extraction'))
         return behavior, neural
+
+
+def trial_prompts(task, stimuli, compare_options: bool = True):
+    """Every trial's prompt, each row's options and the choice axis, before any compute.
+
+    A bad layout raises ``ValueError`` (core ``trial_prompt``). With
+    ``compare_options``, rows of a ``Choice`` whose options come from a column
+    must give the same number of options (``ValueError``); the choice axis is
+    then the labels, or the position of each option.
+    """
+    from brainscore_core.responses import Choice, labels_of, trial_prompt
+    response = task.response
+    prompts = [trial_prompt(task, row) for _, row in stimuli.iterrows()]
+    labels = labels_of(response)
+    row_labels, axis = None, labels
+    if isinstance(response, Choice):
+        row_labels = [list(prompt.response.labels) for prompt in prompts]
+        if labels is None:
+            counts = {len(options) for options in row_labels}
+            if compare_options and len(counts) > 1:
+                raise ValueError(f'Every row must give the same number of options in column '
+                                 f'{response.labels!r}; got {sorted(counts)}')
+            axis = list(range(counts.pop())) if counts else []
+    return prompts, row_labels, axis
 
 
 # The answer formats of each part kind (Response Format Standard 4.2; rule

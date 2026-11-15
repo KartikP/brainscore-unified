@@ -78,3 +78,84 @@ def test_a_task_session_that_cannot_run_is_refused_by_the_plan_before_any_call(o
     with pytest.raises(ExecutionNotFeasibleError, match=match):
         _counting(calls).participate(stimulus_session(STIMULI, outputs, task, **settings))
     assert calls == []
+
+
+def _reply_model(calls, memory=None):
+    def reply(prompt):
+        calls.append(('reply', prompt.stimulus_id))
+        return 'cat'
+
+    def extract(stimuli, layers, **kwargs):
+        calls.append(('extract', tuple(layers)))
+        return _features(stimuli, layers, **kwargs)
+    return BrainScoreModel('chooses-once', extractor={'text': extract}, in_channels={'text'},
+                           behavioral_readout_layer='late', reply=reply, memory=memory,
+                           capability_config={'behavior-sessions': {
+                               'behavior:rating': 'generation', 'behavior:probabilities': 'readout'}})
+
+
+@pytest.mark.parametrize('delivery', ['table', 'per trial', 'stream'])
+def test_the_answering_part_is_chosen_once_per_session(delivery, monkeypatch):
+    """Before the plan: once in the driver, once per format of the Choice in the setup
+    (three), once in the fit and once per answered batch: 6 for a table, 5 + n for n
+    trials one at a time (8 here)."""
+    from brainscore._model.behavioral import BehavioralReadout
+    chosen, original = [], BehavioralReadout._choose_path
+    monkeypatch.setattr(BehavioralReadout, '_choose_path',
+                        lambda self, *a, **k: chosen.append(1) or original(self, *a, **k))
+    calls = []
+    model = _reply_model(calls, memory='trial_history' if delivery == 'per trial' else None)
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
+    session = stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities'], task,
+                               streaming=delivery == 'stream')
+    model.participate(session)
+    assert session.collect('behavior:choice').sizes['presentation'] == len(STIMULI)
+    assert [c for c in calls if c[0] == 'reply'] == [('reply', s) for s in STIMULI['stimulus_id']]
+    assert len(chosen) == 1
+
+
+def test_trial_history_without_a_part_that_sees_it_is_refused_before_the_readout_fit():
+    calls = []
+
+    def answer(stimulus_row, instruction, label_set):
+        calls.append(('answer',))
+        return label_set[0]
+
+    def extract(stimuli, layers, **kwargs):
+        calls.append(('extract', tuple(layers)))
+        return _features(stimuli, layers, **kwargs)
+    model = BrainScoreModel('answers', extractor={'text': extract}, in_channels={'text'},
+                            behavioral_readout_layer='late', answer=answer, memory='trial_history',
+                            capability_config={'behavior-sessions': {
+                                'behavior': 'generation', 'behavior:probabilities': 'readout'}})
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
+    with pytest.raises(ExecutionNotFeasibleError, match="memory='trial_history' needs reply="):
+        model.participate(stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities'], task))
+    assert calls == []          # before the plan: the readout was fitted first
+
+
+def test_a_region_the_readout_cannot_record_is_refused_before_the_readout_fit():
+    from brainscore.selection import LayerSelector
+    calls = []
+
+    def extract(stimuli, layers, **kwargs):
+        calls.append(('extract', tuple(layers)))
+        return _features(stimuli, layers, **kwargs)
+    model = BrainScoreModel('two-inputs', extractor={'text': extract, 'audio': extract},
+                            region_layer_map={'A1': LayerSelector('late', modality='audio')},
+                            behavioral_readout_layer='late',
+                            capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}})
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING)
+    with pytest.raises(ExecutionNotFeasibleError, match="reads 'audio' input, but the readout presents 'text'"):
+        model.participate(stimulus_session(STIMULI, ['behavior:choice', 'neural:A1'], task))
+    assert calls == []          # before the plan: the readout was fitted first
+
+
+def test_a_bad_prompt_layout_is_refused_before_the_readout_fit():
+    calls = []
+    model = _reply_model(calls)
+    task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING,
+                       present=('text:no_such_column',))
+    with pytest.raises(ValueError, match='no_such_column'):
+        model.participate(stimulus_session(STIMULI, ['behavior:choice', 'behavior:probabilities'], task))
+    assert calls == []

@@ -239,7 +239,8 @@ class TestIntactSwitchesChangesInPlace:
         apply_state_change(bs, StateChange(kind='ablation', target=Selection(layer='fc1'),
                                            perturbation=Perturbation(kind='zero')))
         x = torch.ones(1, 4)
-        with pytest.raises(NotImplementedError, match='switched off in place'):
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        with pytest.raises(ExecutionNotFeasibleError, match='switched off in place'):
             with bs._interventions.intact():
                 pass
         assert torch.equal(net(x), torch.zeros(1, 8))

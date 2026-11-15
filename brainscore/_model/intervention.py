@@ -58,7 +58,8 @@ class Interventions:
                     for handle, cleanup in self.active_interventions.items()]
         fixed = [handle for handle, switch in switches if switch is None]
         if fixed:
-            raise NotImplementedError(
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            raise ExecutionNotFeasibleError(
                 f"Subject '{self.owner.identifier}' cannot fit on the intact network: the "
                 f"active intervention(s) {fixed} cannot be switched off in place. Only "
                 f"build_pytorch_ablation_fn makes changes that can. Use "

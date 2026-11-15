@@ -49,10 +49,14 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     """The plan of ``session`` for ``model``; raises before any compute when it cannot run.
 
     ``session`` is the view of the session that the model receives (its declared
-    inputs); ``passes`` is the pass plan ``participate`` read. Refusals: the outputs no one part answers together, a task session without a task,
-    several time bins during a task, an answer format a legacy task does not
-    give, trial-to-trial variance, and a task no part can answer
-    (``ExecutionNotFeasibleError``).
+    inputs); ``passes`` is the pass plan ``participate`` read. The answering part
+    is chosen here, once per session. Refusals: the outputs no one part answers
+    together, a task session without a task, several time bins during a task, an
+    answer format a legacy task does not give, trial-to-trial variance, a task no
+    part can answer, trial history without a part that sees it, a region the
+    readout cannot record from its input (``ExecutionNotFeasibleError``); a
+    malformed task, a bad prompt layout and rows with different numbers of
+    options (``ValueError``).
     """
     outputs = session_outputs(session)
     task = getattr(session, 'task', None)
@@ -80,6 +84,9 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     if task_path:
         _refuse_task_session(model, session, task, answers, regions)
         delivery = 'stream' if streaming else 'per_trial' if history else 'table'
+        if task.response is not None or task.task_type != 'passive':
+            pick = _choose_answering_part(model, session, task, answers, regions, delivery)
+            pick_key = _pick_key(task, answers)
     elif handler is _NEURAL:
         refuse_variance(model, session)
         per_trial = history and (task is None or task.trial_memory == 'none')
@@ -110,3 +117,32 @@ def _refuse_task_session(model, session, task, answers, regions) -> None:
             f"{task.task_type!r} answers on 'behavior'.", channels=formats, task_type=task.task_type)
     # A format the task's response does not name was refused when the session was built (core).
     refuse_variance(model, session)
+
+
+def _choose_answering_part(model, session, task, answers, regions, delivery):
+    """The answering part and the probability source, chosen once; refused before any fit.
+
+    The refusals that ``respond`` and the readout would raise after the readout
+    was fitted are raised here: trial history without a reply or likelihood part,
+    and, when the session has its table, a region the readout cannot record from
+    the input it presents, a bad prompt layout and rows with different numbers of
+    options (whole table only; one trial at a time compares nothing across trials).
+    """
+    readout = model._behavioral
+    readout.validate_task(task)
+    pick = readout._choose_path(task, answers)
+    path = pick[0]
+    if (task.response is not None and path != 'readout' and model._memory == 'trial_history'
+            and model._reply is None and model._likelihood is None):
+        raise ExecutionNotFeasibleError(
+            "memory='trial_history' needs reply= or likelihood=; answer= cannot see earlier trials.",
+            channels=set(answers), task_type=task.task_type)
+    stimuli = getattr(session, 'stimuli', None)
+    if stimuli is None or delivery == 'stream':
+        return pick                     # only the trials show their columns (rule 5.14, stated limit)
+    if path == 'readout' and regions:
+        readout.refuse_readout_regions(stimuli, regions)
+    if task.response is not None:
+        from .behavioral import trial_prompts
+        trial_prompts(task, stimuli, compare_options=delivery == 'table')
+    return pick

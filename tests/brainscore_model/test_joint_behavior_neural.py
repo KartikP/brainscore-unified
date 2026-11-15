@@ -257,7 +257,7 @@ def test_readout_fit_intact_refuses_a_change_it_cannot_switch_off():
     net = ToyNet()
     model = _model(net, behavioral_readout_layer='late')
     apply_state_change(model, SILENCE)
-    with pytest.raises(NotImplementedError, match='switched off in place'):
+    with pytest.raises(ExecutionNotFeasibleError, match='switched off in place'):
         _run(model, _readout_task('intact'), ['behavior', 'neural:A'])
     assert net.passes == 0 and net.silenced
 

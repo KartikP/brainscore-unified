@@ -263,10 +263,7 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     plan = subject._session_plan
     task = session.task
     regions, answers = list(plan.regions), list(plan.answers)
-    if task.response is not None:
-        # The requested formats decide the answering parts; refused here before any compute.
-        subject._behavioral._choose_path(task, answers)
-    # The requested outputs decide whether the readout is fitted (as they decide the parts).
+    # The plan chose the answering part for the requested formats. The requested outputs decide whether the readout is fitted (as they decide the parts).
     subject.start_task(task, formats=answers)
     # A streaming session reads one trial, answers it and sends its outputs, then
     # reads the next. Otherwise the inputs are read first. A subject without the
