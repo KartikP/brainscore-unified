@@ -657,7 +657,8 @@ def test_the_result_is_the_only_owner_of_its_run_folder(tmp_path, monkeypatch):
     result = experiment.run()
     folder = result.directory.parent
     assert folder.name.startswith(f'umi-run-{os.getpid()}-')
-    assert (folder / '.umi-run-owner').read_text() == str(os.getpid())
+    import socket
+    assert (folder / '.umi-run-owner').read_text() == f'{socket.gethostname()} {os.getpid()}'
     del result
     gc.collect()
     assert not folder.exists()          # the experiment object is still alive here
@@ -677,22 +678,28 @@ def test_a_run_removes_folders_of_ended_processes_only(tmp_path, monkeypatch):
     import tempfile
     monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
 
+    import socket
+    host = socket.gethostname()
+
     def folder(name, owner=None):
         path = tmp_path / name
         (path / 'run').mkdir(parents=True)
         if owner is not None:
-            (path / '.umi-run-owner').write_text(str(owner))
+            (path / '.umi-run-owner').write_text(owner)
         return path
 
     ended = _ended_process_id()
-    dead = folder(f'umi-run-{ended}-abc', owner=ended)
-    live = folder(f'umi-run-{os.getppid()}-def', owner=os.getppid())
+    dead = folder(f'umi-run-{ended}-abc', owner=f'{host} {ended}')
+    live = folder(f'umi-run-{os.getppid()}-def', owner=f'{host} {os.getppid()}')
+    other_host = folder(f'umi-run-{ended}-ghi', owner=f'another-container {ended}')
+    old_form = folder(f'umi-run-{ended}-jkl', owner=str(ended))   # a bare number
     unmarked = folder('umi-run-old')                   # made before the marker existed
     named = folder(f'umi-run-{ended}-mine')            # a user's own folder: no marker
     result = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
                         tools=[RecordBehavior()]).run()
     assert not dead.exists()
     assert live.exists() and unmarked.exists() and named.exists()
+    assert other_host.exists() and old_form.exists()   # process ids of another host mean nothing here
     assert result.directory.exists()
     explicit = tmp_path / f'umi-run-{ended}-explicit'
     Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),

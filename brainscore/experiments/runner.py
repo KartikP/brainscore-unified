@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import socket
 import tempfile
 import threading
 import time
@@ -625,8 +626,10 @@ class RunContext:
 
 
 # A run made without output_dir lives in <tmp>/umi-run-<pid>-<random>/, with a marker file
-# that holds the id of the process that made it. Its result owns the folder; a folder whose
-# process has ended (killed before the result was collected) is removed at the next run.
+# that holds the host name and the id of the process that made it ('<host> <pid>'). Its result
+# owns the folder; a folder whose process has ended on this host (killed before the result was
+# collected) is removed at the next run. Process ids belong to one host or container, so a
+# folder of another host, sharing the temporary folder, is never removed.
 _RUN_PREFIX = 'umi-run-'
 _OWNER_MARKER = '.umi-run-owner'
 
@@ -641,20 +644,26 @@ def _process_alive(pid: int) -> bool:
     return True
 
 
+def _owner() -> str:
+    return f'{socket.gethostname()} {os.getpid()}'
+
+
 def _remove_runs_of_ended_processes() -> None:
     """Remove the run folders this runner made in processes that have ended.
 
     Only a folder named ``umi-run-*`` with the owner marker is touched, so a folder the
-    user named with ``output_dir`` is never removed, nor a folder of a live process.
+    user named with ``output_dir`` is never removed, nor a folder of a live process, nor a
+    folder of another host; a marker in the old form (a bare number) is left alone.
     """
     if os.name != 'posix':
         return          # ponytail: liveness by signal 0 is POSIX only; Windows keeps leftovers
     for folder in Path(tempfile.gettempdir()).glob(f'{_RUN_PREFIX}*'):
         try:
-            pid = int((folder / _OWNER_MARKER).read_text())
+            host, pid = (folder / _OWNER_MARKER).read_text().rsplit(' ', 1)
+            pid = int(pid)
         except (OSError, ValueError):
             continue
-        if pid != os.getpid() and not _process_alive(pid):
+        if host == socket.gethostname() and pid != os.getpid() and not _process_alive(pid):
             shutil.rmtree(folder, ignore_errors=True)
 
 
@@ -724,7 +733,7 @@ class Experiment:
             # A fresh temporary folder per run, so the same Experiment can run again.
             _remove_runs_of_ended_processes()
             self._temporary = tempfile.TemporaryDirectory(prefix=f'{_RUN_PREFIX}{os.getpid()}-')
-            (Path(self._temporary.name) / _OWNER_MARKER).write_text(str(os.getpid()))
+            (Path(self._temporary.name) / _OWNER_MARKER).write_text(_owner())
             self.run_directory = Path(self._temporary.name) / 'run'
         self.run_directory.mkdir(parents=True, exist_ok=False)
         manifest = {'schema_version': 1, 'run_id': uuid.uuid4().hex, 'status': 'running',
