@@ -44,7 +44,7 @@ def test_normalized_beats_raw_but_stays_below_one():
 
 @pytest.mark.unit
 def test_whole_cortex_variant_does_not_borrow_the_roi_ceiling():
-    # The ceiling was measured on the 4042-voxel ROI mask. Whole cortex has a very
+    # The ceiling was measured on the voxels of the ROI mask. Whole cortex has a very
     # different reliability profile, so applying this number there would be wrong.
     ceiling = Lahner2024BOLDMoments(identifier='Lahner2024-fMRI-naturalistic').ceiling
     assert ceiling.attrs['status'] == 'not_estimated'

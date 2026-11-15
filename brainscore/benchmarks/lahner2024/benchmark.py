@@ -494,12 +494,11 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return score
 
 
-# Noise ceiling for the visual-ROI voxel set, measured on EC2 2026-07-31.
+# Noise ceiling for the visual-ROI voxel set, measured on the hosted data 2026-11-15.
 # For a predictivity correlation the ceiling is sqrt(reliability): the highest r a
-# perfect model could reach given measurement noise. This value is the median over
-# the 4042 ROI voxels of sqrt(_split_half_reliability(assembly, n_splits=20,
-# random_state=0)) on all 1026 videos, measured before the mask and the ceilings
-# moved to the 93 test-set videos; it is not yet measured again. The constant only
-# marks the variant that divides by a ceiling: the score recomputes the per-voxel
-# ceilings from the test-set videos and does not read this value.
-VISUAL_ROI_CEILING = 0.7304512193654528
+# perfect model could reach given measurement noise. This value is the median of
+# sqrt(reliability_on_test_set(assembly)) over the 7209 voxels of the mask
+# (reliability at least 0.3 on the 93 test-set videos). The constant marks the
+# variant that divides by a ceiling and is what ``benchmark.ceiling`` reports: the
+# score divides each voxel by its own ceiling and does not read this value.
+VISUAL_ROI_CEILING = 0.7400961024018685
