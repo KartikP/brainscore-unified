@@ -64,10 +64,10 @@ def reference_digest(reference: dict) -> str:
     return digest.hexdigest()
 
 
-def _selections(provider, operation, targets):
+def _selections(instrumentation, operation, targets):
     from .tools import _selection
     targets = tuple(targets)
-    provider.validate(operation, targets)
+    instrumentation.validate(operation, targets)
     selections = [_selection(target) for target in targets]
     for selection in selections:
         if selection.indices is not None:
@@ -77,7 +77,7 @@ def _selections(provider, operation, targets):
     return selections
 
 
-def _capture(provider, selections, call, objective, location, *, gradients):
+def _capture(instrumentation, selections, call, objective, location, *, gradients):
     import torch
     from .tools import _forward_hook
     tensors, values, shapes, dtypes = {}, {}, {}, {}
@@ -100,7 +100,7 @@ def _capture(provider, selections, call, objective, location, *, gradients):
                     # Downstream in-place operations must not rewrite the captured value.
                     return _replace(output, tensor.clone())
                 tensors[name] = tensor
-            _forward_hook(stack, provider.targets[selection.layer], hook)
+            _forward_hook(stack, instrumentation.targets[selection.layer], hook)
         with torch.enable_grad() if gradients else torch.no_grad():
             score = objective(call())
         if set(tensors) != {s.layer for s in selections}:
@@ -116,7 +116,7 @@ def _capture(provider, selections, call, objective, location, *, gradients):
 
 
 def attribute(
-    provider: Any,
+    instrumentation: Any,
     targets: Any,
     *,
     reference_call: Callable[[], Any],
@@ -133,21 +133,21 @@ def attribute(
     accumulated. Returned arrays are detached snapshots suitable for run records.
     """
     import torch
-    selections = _selections(provider, 'attribute', targets)
+    selections = _selections(instrumentation, 'attribute', targets)
     location = _location(location)
     if not isinstance(normalize, bool):
         raise TypeError('normalize must be True or False')
     if not all(callable(fn) for fn in (reference_call, comparison_call, objective)):
         raise TypeError('Provide two forward callbacks and a scalar objective')
-    if any(module.training for module in provider.targets.values()):
+    if any(module.training for module in instrumentation.targets.values()):
         raise ValueError('Use model.eval() before attribution')
     if torch.is_inference_mode_enabled():
         raise ValueError('Attribution cannot run inside torch.inference_mode()')
     clean, _, clean_values, shapes, dtypes = _capture(
-        provider, selections, reference_call, objective, location, gradients=False,
+        instrumentation, selections, reference_call, objective, location, gradients=False,
     )
     changed, tensors, changed_values, changed_shapes, changed_dtypes = _capture(
-        provider, selections, comparison_call, objective, location, gradients=True,
+        instrumentation, selections, comparison_call, objective, location, gradients=True,
     )
     if shapes != changed_shapes or dtypes != changed_dtypes:
         raise ValueError('Paired activity shapes and dtypes must match; align inputs explicitly')
@@ -186,9 +186,9 @@ def attribute(
     }
 
 
-def validate_reference(provider: Any, targets: Any, reference: dict) -> None:
+def validate_reference(instrumentation: Any, targets: Any, reference: dict) -> None:
     """Check a saved reference before installing any replacement hooks."""
-    selections = _selections(provider, 'patch', targets)
+    selections = _selections(instrumentation, 'patch', targets)
     keys = {'schema_version', 'location', 'indices', 'shapes', 'dtypes', 'values'}
     if not isinstance(reference, dict) or set(reference) != keys or reference['schema_version'] != 1:
         raise ValueError('Use a reference returned by TorchInstrumentation.attribute')
@@ -220,12 +220,12 @@ def validate_reference(provider: Any, targets: Any, reference: dict) -> None:
 
 
 @contextmanager
-def patch(provider: Any, targets: Any, reference: dict) -> Iterator[None]:
+def patch(instrumentation: Any, targets: Any, reference: dict) -> Iterator[None]:
     """Replace selected outputs on exactly one forward call; always remove hooks."""
     import torch
     from .tools import _forward_hook
-    selections = _selections(provider, 'patch', targets)
-    validate_reference(provider, selections, reference)
+    selections = _selections(instrumentation, 'patch', targets)
+    validate_reference(instrumentation, selections, reference)
     reference = copy.deepcopy(reference)
     location = _location(reference['location'])
     seen = set()
@@ -255,7 +255,7 @@ def patch(provider: Any, targets: Any, reference: dict) -> Iterator[None]:
                 view = result if location is None else result[location]
                 view[..., indices] = replacement
                 return _replace(output, result)
-            _forward_hook(stack, provider.targets[selection.layer], hook)
+            _forward_hook(stack, instrumentation.targets[selection.layer], hook)
         yield
         if seen != {s.layer for s in selections}:
             raise ValueError('Every patch target must run exactly once per scope')

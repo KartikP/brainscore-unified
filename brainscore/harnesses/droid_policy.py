@@ -1,4 +1,4 @@
-"""Connect a caller-supplied OpenPI-style policy to the UMI action provider."""
+"""Connect a caller-supplied OpenPI-style policy to the UMI policy part."""
 import numpy as np
 
 from brainscore_core.streaming import StreamEvent

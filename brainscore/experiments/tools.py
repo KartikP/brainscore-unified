@@ -85,7 +85,7 @@ class RecordActivity(Tool):
         if not any(isinstance(tool, RecordInputsOutputs) for tool in experiment.tools):
             raise ValueError('RecordActivity requires RecordInputsOutputs to persist its events')
         if experiment.instrumentation is None:
-            raise ValueError('RecordActivity requires an instrumentation provider')
+            raise ValueError('RecordActivity requires an instrumentation')
         experiment.instrumentation.validate('record', self.targets)
 
     @contextmanager
@@ -119,7 +119,7 @@ class Ablate(Tool):
 
     def validate(self, experiment):
         if experiment.instrumentation is None:
-            raise ValueError(f'{type(self).__name__} requires an instrumentation provider')
+            raise ValueError(f'{type(self).__name__} requires an instrumentation')
         experiment.instrumentation.validate(self.operation, self.targets)
         available_conditions = getattr(experiment.protocol, 'conditions', ('default',))
         if self.conditions is not None and (not self.conditions or set(self.conditions) - set(available_conditions)):

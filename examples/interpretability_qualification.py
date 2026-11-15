@@ -98,7 +98,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
     subject = BrainScoreModel(identifier='interpretability-qualification', extractor={'text': extractor},
                               region_layer_map={'population': layer})
     site = model.get_submodule(layer)
-    provider = TorchInstrumentation({layer: site})
+    instrumentation = TorchInstrumentation({layer: site})
     weights, rng = weights_digest(model), torch.random.get_rng_state().clone()
     training, labels, testing, test_labels = sentences()
     require(not set(training) & set(testing), 'disjoint discovery and evaluation inputs')
@@ -171,7 +171,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
                load_tool('leace', artifact=directory / 'leace.json', conditions=['erased']),
                load_tool('record-activity', targets=[layer], name='after'),
                load_tool('linear-probe', artifact=directory / 'linear-probe.json', name='probe_after')],
-        instrumentation=provider, output_dir=directory / 'experiment', metadata={'provenance': provenance}).run()
+        instrumentation=instrumentation, output_dir=directory / 'experiment', metadata={'provenance': provenance}).run()
     events = list(result.record.events())  # Validates persisted checksums while reading.
     for condition, output in zip(CONDITIONS, result.value):
         expected = native.clone()
@@ -213,12 +213,12 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
     donor_texts = [t.replace('red', 'TEMP').replace('blue', 'red').replace('TEMP', 'blue') for t in testing]
     donor_tokens = tokenizer(donor_texts, padding=True, truncation=True, max_length=64, return_tensors='pt')
     require(torch.equal(tokens['attention_mask'], donor_tokens['attention_mask']), 'explicit donor token alignment')
-    analysis = provider.attribute([layer], reference_call=lambda: model(**donor_tokens),
+    analysis = instrumentation.attribute([layer], reference_call=lambda: model(**donor_tokens),
         comparison_call=lambda: model(**tokens), objective=lambda out: out.last_hidden_state[..., 0].sum(),
         normalize=False)
     with attach_tools(subject, tools=[load_tool('record-io'),
                       load_tool('patch-activity', targets=[layer], reference=analysis['reference'])],
-                      instrumentation=provider, output_dir=directory / 'patch'):
+                      instrumentation=instrumentation, output_dir=directory / 'patch'):
         patched = evaluate(testing)
     errors['exact_patch'] = check_close(patched.values, pool(analysis['reference']['values'][layer]),
                                        'donor patch', exact=True)
@@ -231,7 +231,7 @@ def check_model(directory: Path, model: Any, tokenizer: Any, layer: str, provena
         try:
             with attach_tools(subject, tools=[load_tool('record-io'),
                               load_tool('contrastive-steering', artifact=directory / 'contrastive-steering.json')],
-                              instrumentation=provider, output_dir=directory / 'interrupted'):
+                              instrumentation=instrumentation, output_dir=directory / 'interrupted'):
                 evaluate(testing)
                 raise RuntimeError('intentional qualification interruption')
         except RuntimeError as error:

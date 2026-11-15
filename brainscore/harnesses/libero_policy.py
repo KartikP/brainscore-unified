@@ -12,7 +12,7 @@ from brainscore_core.streaming import StreamEvent
 
 
 class LiberoChunkPolicy:
-    """Adapt ``infer(request)`` to a UMI action provider without consuming chunks.
+    """Adapt ``infer(request)`` to a UMI policy part without consuming chunks.
 
     The seven outputs are the LIBERO controller's six end-effector commands
     and gripper command, in the checkpoint's convention. They are not seven

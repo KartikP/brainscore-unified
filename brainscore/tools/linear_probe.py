@@ -160,7 +160,7 @@ class LinearProbe(Tool):
     def validate(self, experiment: Any) -> None:
         self._payload()
         if experiment.instrumentation is None:
-            raise ValueError('LinearProbe requires an instrumentation provider')
+            raise ValueError('LinearProbe requires an instrumentation')
         experiment.instrumentation.validate('record', [self.target])
 
     @contextmanager

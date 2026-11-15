@@ -59,7 +59,7 @@ def run(directory: Path) -> None:
     probe.save(artifact)
     before = load_tool('linear-probe', artifact=artifact, name='color_before', when='before')
     after = load_tool('linear-probe', artifact=artifact, name='color_after')
-    provider = TorchInstrumentation({'population': subject.population})
+    instrumentation = TorchInstrumentation({'population': subject.population})
 
     @contextmanager
     def factory(trial):
@@ -75,13 +75,13 @@ def run(directory: Path) -> None:
                load_tool('ablate', targets=['population'], conditions=['lesioned']),
                load_tool('record-activity', targets=['population'], name='activity_after'),
                after],
-        instrumentation=provider, output_dir=directory / 'experiment',
+        instrumentation=instrumentation, output_dir=directory / 'experiment',
     ).run()
     for event in result.record.events():
         if event['kind'] == 'probe':
             print(event['source'], event['condition'], event['payload'].values.round(3).tolist())
 
-    with attach_tools(subject, tools=[load_tool('record-io'), after], instrumentation=provider,
+    with attach_tools(subject, tools=[load_tool('record-io'), after], instrumentation=instrumentation,
                       output_dir=directory / 'direct'):
         subject.participate(make_session(['a red circle']))
 

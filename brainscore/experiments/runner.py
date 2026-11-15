@@ -807,7 +807,7 @@ class Experiment:
     ``output_dir`` for a run you want to keep or control.
 
     Protocols and tools are ordinary Python objects and can live in external
-    packages. No concurrent reuse of a subject, tool, or provider is supported.
+    packages. No concurrent reuse of a subject, tool, or instrumentation is supported.
     """
     def __init__(self, *, subject, protocol, tools=(), output_dir=None,
                  instrumentation=None, metadata=None):

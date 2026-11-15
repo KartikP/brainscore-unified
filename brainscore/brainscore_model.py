@@ -573,12 +573,12 @@ class BrainScoreModel(Subject):
                     self._capability_setup_done.discard(identifier)
                 except Exception as error:
                     failures.append(error)
-        failures.extend(self._reset_providers())
+        failures.extend(self._reset_parts())
         if failures:
-            raise RuntimeError('A model provider failed to reset; the model is not clean: '
+            raise RuntimeError('A model part failed to reset; the model is not clean: '
                                + ' | '.join(str(error) for error in failures)) from failures[0]
 
-    def _reset_providers(self) -> list:
+    def _reset_parts(self) -> list:
         """Clear the episode state of every part once; return the failures.
 
         A part (policy, answer, reply, likelihood, extractor) that keeps episode
@@ -587,12 +587,12 @@ class BrainScoreModel(Subject):
         (``policy=agent.act`` resets ``agent``), once per object: two parts of
         one owner reset it one time.
         """
-        providers = [self._policy, self._answer, self._reply, self._likelihood,
-                     *self._extractors.values()]
+        parts = [self._policy, self._answer, self._reply, self._likelihood,
+                 *self._extractors.values()]
         seen, failures = set(), []
-        for provider in providers:
+        for part in parts:
             try:
-                self._reset_provider(provider, seen)
+                self._reset_part(part, seen)
             except Exception as error:
                 failures.append(error)
         return failures
@@ -603,18 +603,18 @@ class BrainScoreModel(Subject):
         parts (policy, extractors, reply and likelihood functions). The one method
         every session kind calls when an episode begins."""
         self._behavioral.history = []
-        failures = self._reset_providers()
+        failures = self._reset_parts()
         if failures:
-            raise RuntimeError('A model provider failed to clear its episode state.') from failures[0]
+            raise RuntimeError('A model part failed to clear its episode state.') from failures[0]
 
-    def _reset_provider(self, provider, seen: Set[int]) -> None:
+    def _reset_part(self, part, seen: Set[int]) -> None:
         """Call ``reset()`` of one part (a callable or an extractor), or of the owner of
         a bound method, once, if it has one."""
-        provider = provider.__self__ if inspect.ismethod(provider) else provider
-        if provider is None or provider is self or id(provider) in seen:
+        part = part.__self__ if inspect.ismethod(part) else part
+        if part is None or part is self or id(part) in seen:
             return
-        seen.add(id(provider))
-        reset = getattr(provider, 'reset', None)
+        seen.add(id(part))
+        reset = getattr(part, 'reset', None)
         if callable(reset):
             reset()
 
