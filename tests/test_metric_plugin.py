@@ -79,7 +79,7 @@ class TestMetricSeamFirstClass:
      ['TopographicMetric', 'SelectivityTopographicMetric', 'correlation_distance_profile',
       'spatial_smoothness', 'topographic_alignment', 'selectivity_maps', 'selectivity_centroids',
       'selectivity_topographic_alignment']),
-    ('brainscore.metrics.direct_comparison', ['DirectComparisonMetric', 'per_unit_pearson']),
+    ('brainscore.metrics.direct_comparison', ['DirectComparisonMetric']),   # per_unit_pearson is core's
 ])
 # The public names of a moved metric module are the names it defines; names it only imports
 # (np, Optional, Tuple, Metric, Score) are not public names of the module and are not re-exported.

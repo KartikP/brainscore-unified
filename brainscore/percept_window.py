@@ -176,7 +176,7 @@ def _first_tensor(args, kwargs):
     return None
 
 
-def _resolve_targets(target, _containers=()) -> List[Tuple[str, torch.nn.Module]]:
+def resolve_targets(target, _containers=()) -> List[Tuple[str, torch.nn.Module]]:
     """Resolve a network target into ``[(name, module), ...]``.
 
     Accepts a torch Module, a list of Modules or a ``{name: module}`` mapping.
@@ -203,7 +203,7 @@ def _resolve_targets(target, _containers=()) -> List[Tuple[str, torch.nn.Module]
     _containers += (id(target),)
     items = enumerate(target) if isinstance(target, (list, tuple)) else target.items()
     for key, t in items:
-        for nm, m in _resolve_targets(t, _containers):
+        for nm, m in resolve_targets(t, _containers):
             add(f"{key}:{nm}", m)
     return found
 
@@ -230,7 +230,7 @@ class PerceptWindow:
     def __init__(self, target, modality: Optional[str] = None,
                  denorm: Any = None, every: int = 1, max_captures: int = 64,
                  select_input: Optional[Callable] = None, label: Optional[str] = None):
-        self.targets = _resolve_targets(target)
+        self.targets = resolve_targets(target)
         if not self.targets:
             raise ValueError(
                 "PerceptWindow found no torch module to hook on the target. Pass "

@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple, Un
 
 from ._model.behavioral import BehavioralReadout, answer_owners, statement_hint
 from brainscore_core.compatibility import ExecutionNotFeasibleError
-from brainscore_core.contract import UnifiedModel, TaskContext
+from brainscore_core.contract import Subject, TaskContext
 from ._model import dispatch
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
 from brainscore_core.events import InputEvent, OutputEvent, StateChange
@@ -71,7 +71,7 @@ def _one_session_at_a_time(model):
                 del _active_sessions[key]
 
 
-class BrainScoreModel(UnifiedModel):
+class BrainScoreModel(Subject):
     """The one concrete subject, assembled from parts (extractors, region map,
     answer, reply, likelihood, policy, intervention, capabilities). Evaluated
     through ``participate``, which selects the one session part that runs the

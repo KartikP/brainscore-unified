@@ -646,6 +646,35 @@ def test_save_keeps_a_temporary_run_and_refuses_an_existing_folder(tmp_path):
         result.save(tmp_path / 'kept')
 
 
+def test_the_result_is_the_only_owner_of_its_run_folder(tmp_path, monkeypatch):
+    """The experiment keeps no reference after run(): dropping the result removes the folder."""
+    import gc
+    import tempfile
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    experiment = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+                            tools=[RecordBehavior()])
+    result = experiment.run()
+    folder = result.directory.parent
+    assert folder.parent == tmp_path and folder.name.startswith('umi-run-')
+    del result
+    gc.collect()
+    assert not folder.exists()          # the experiment object is still alive here
+    assert experiment is not None
+
+
+def test_a_run_touches_no_other_folder_in_the_temporary_folder(tmp_path, monkeypatch):
+    """No clean-up by inference: other run folders, whoever made them, stay."""
+    import tempfile
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    other = tmp_path / 'umi-run-left-by-a-killed-process' / 'run'
+    other.mkdir(parents=True)
+    (other / 'experiment.json').write_text('{}')
+    result = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+                        tools=[RecordBehavior()]).run()
+    assert (other / 'experiment.json').read_text() == '{}'
+    assert result.directory.exists()
+
+
 def test_without_output_dir_each_run_gets_its_own_folder(tmp_path):
     experiment = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
                             tools=[RecordBehavior()])

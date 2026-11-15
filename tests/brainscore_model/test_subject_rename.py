@@ -1,8 +1,8 @@
-"""The minimal subject and the legacy compatibility base remain interoperable."""
+"""BrainScoreModel is a Subject; core has no other base class."""
 
 
 from brainscore import BrainScoreModel
-from brainscore_core.contract import Subject, UnifiedModel
+from brainscore_core.contract import Subject
 
 
 class TestSubjectRename:
@@ -10,4 +10,4 @@ class TestSubjectRename:
 
     def test_brainscoremodel_subclasses_subject(self):
         assert issubclass(BrainScoreModel, Subject)
-        assert issubclass(BrainScoreModel, UnifiedModel)  # via the compatibility base
+        assert BrainScoreModel.__bases__ == (Subject,)

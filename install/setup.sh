@@ -2,8 +2,25 @@
 set -euo pipefail
 
 # Brain-Score Unified Model Interface local bootstrap.
-# Usage: bash setup.sh
+# Usage: bash setup.sh            the pinned environment (environment-unified.yml)
+#        bash setup.sh --lock     the exact scoring platform (Linux x86_64, Python 3.11,
+#                                 CUDA 12.4): every package at the version of
+#                                 unified/install/lock-linux-py311-cu124.txt
 # Optional: UMI_ENV_NAME=my-env bash setup.sh
+# Both create the environment from conda-forge only, so a fresh miniconda does not stop
+# at the terms of service of Anaconda's default channels.
+
+LOCK=0
+case "${1:-}" in
+    "") ;;
+    --lock) LOCK=1 ;;
+    *) echo "Usage: bash setup.sh [--lock]" >&2; exit 2 ;;
+esac
+if [[ "$LOCK" == 1 && ( "$(uname -s)" != "Linux" || "$(uname -m)" != "x86_64" ) ]]; then
+    echo "Error: --lock installs the Linux x86_64 scoring platform; this is $(uname -s) $(uname -m)." >&2
+    echo "Run bash setup.sh without --lock here." >&2
+    exit 2
+fi
 
 WORKDIR="$(cd "$(dirname "$0")" && pwd)"
 BRANCH="unified-model-interface-v2"
@@ -121,25 +138,32 @@ if conda env list | awk '{print $1}' | grep -Fxq "$ENV_NAME"; then
     exit 1
 fi
 
-# Recent conda (>=24.x) gates environment creation behind the Anaconda channels'
-# Terms of Service, which a fresh install has not accepted -- `conda env create`
-# then fails with CondaToSNonInteractiveError. Accept it non-interactively when
-# the subcommand exists (older conda has no `tos`); harmless if already accepted.
-if conda tos --help >/dev/null 2>&1; then
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main >/dev/null 2>&1 || true
-    conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r    >/dev/null 2>&1 || true
-fi
-
+# Only conda-forge is used: the environment file lists it with `nodefaults`, and the lock
+# path passes --override-channels. Anaconda's default channels, whose terms of service a
+# fresh miniconda asks to accept, are never contacted; nothing is accepted on your behalf.
 cd "$WORKDIR"
-conda env create --name "$ENV_NAME" --file "$ENV_FILE"
+if [[ "$LOCK" == 1 ]]; then
+    LOCK_FILE="$WORKDIR/unified/install/lock-linux-py311-cu124.txt"
+    conda create --yes --name "$ENV_NAME" --override-channels --channel conda-forge python=3.11 pip
+    echo "Installing every package at the version of $LOCK_FILE"
+    conda run --name "$ENV_NAME" python -m pip install -r "$LOCK_FILE"
+    echo "Installing the four repositories from this checkout (their dependencies are in the lock)"
+    conda run --name "$ENV_NAME" python -m pip install --no-deps \
+        -e "$WORKDIR/core" \
+        -e "$WORKDIR/vision" \
+        -e "$WORKDIR/language" \
+        -e "$WORKDIR/unified"
+else
+    conda env create --name "$ENV_NAME" --file "$ENV_FILE"
 
-echo "Refreshing editable installs from this checkout"
-conda run --name "$ENV_NAME" python -m pip install \
-    -c "$WORKDIR/unified/install/v2-constraints.txt" \
-    -e "$WORKDIR/core" \
-    -e "$WORKDIR/vision" \
-    -e "$WORKDIR/language" \
-    -e "$WORKDIR/unified[notebooks]"
+    echo "Refreshing editable installs from this checkout"
+    conda run --name "$ENV_NAME" python -m pip install \
+        -c "$WORKDIR/unified/install/v2-constraints.txt" \
+        -e "$WORKDIR/core" \
+        -e "$WORKDIR/vision" \
+        -e "$WORKDIR/language" \
+        -e "$WORKDIR/unified[notebooks]"
+fi
 
 echo "Verifying package consistency"
 conda run --name "$ENV_NAME" python -m pip check
