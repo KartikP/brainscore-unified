@@ -2,7 +2,9 @@
 
 Pre-processing step for the multimodal Lahner2024 variant. Reads the
 existing BOLDMoments stimulus_set, locates each MP4 in the local brainio
-cache, and writes a parallel WAV per clip into ``audio_dir``.
+cache, and writes a parallel WAV per clip into the local asset
+``lahner2024-sound`` (``BRAINSCORE_LAHNER_SOUND_DIR``, default
+``~/.brainio/lahner2024_audio_16k``), or into ``--audio-dir``.
 
 Silent clips (a small number of source MP4s ship without an audio stream)
 get a zero waveform of matching duration, so every clip ends up with a
@@ -10,8 +12,7 @@ file at the expected path. The AudioWrapper sees a uniform schema.
 
 Usage:
     python -m brainscore.data.lahner2024.data_packaging.prepare_audio_tracks \
-        --audio-dir ~/.brainio/lahner2024_audio_16k \
-        --target-rate 16000
+        [--audio-dir <folder>] [--target-rate 16000]
 
 Idempotent — skips clips whose WAV already exists. Re-run safely.
 """
@@ -75,8 +76,10 @@ def _extract_one(video_path: Path, audio_path: Path,
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--audio-dir', type=Path, required=True,
-                        help='Directory to write WAV files into')
+    from brainscore.data.lahner2024 import LAHNER_SOUND
+    parser.add_argument('--audio-dir', type=Path, default=LAHNER_SOUND.resolved(),
+                        help=f'Directory to write WAV files into (default: {LAHNER_SOUND.env_var} '
+                             f'or ~/{LAHNER_SOUND.default_path})')
     parser.add_argument('--target-rate', type=int, default=16000)
     args = parser.parse_args()
 

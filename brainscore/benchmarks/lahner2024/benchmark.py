@@ -58,7 +58,6 @@ The score attrs include ``pipeline`` (``frame_aggregation`` or
 one-stream result.
 """
 
-from pathlib import Path
 from typing import Callable, List, Optional, Sequence
 
 import numpy as np
@@ -71,9 +70,8 @@ from brainscore_core.supported_data_standards.brainio.assemblies import (
 from brainscore import load_dataset, load_stimulus_set
 from brainscore.benchmarks._score import benchmark_score, not_estimated
 from brainscore.metrics.encoding import SklearnRidge, cross_validated_r, ridge, row_kfold
+from brainscore.data.lahner2024 import DEFAULT_SAMPLE_TIMES_MS
 from ._util import (
-    DEFAULT_AUDIO_DIR,
-    DEFAULT_SAMPLE_TIMES_MS,
     align,
     channel_regions,
     clip_table,
@@ -81,7 +79,6 @@ from ._util import (
     read_stimulus_ids,
     record_clips,
     record_visual,
-    resolve_frames_dir,
     stream_regions,
     taken_inputs,
     time_mean,
@@ -234,8 +231,6 @@ class Lahner2024BOLDMoments(BenchmarkBase):
             as its ``output_inputs`` allow. ``attrs['scored_inputs']`` names the
             inputs shown.
         sample_times_ms: the frames a stills-only subject sees from each clip.
-        frames_dir: where extracted frames are kept (see ``resolve_frames_dir``).
-        audio_dir: where the sound tracks are (16 kHz WAV, one per clip).
         ceiling: a measured noise ceiling; the score is then normalized per voxel.
         reliability_threshold: score only the voxels whose split-half
             reliability is at least this value.
@@ -250,8 +245,6 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         self,
         channels: Sequence[str] = _VISUAL,
         sample_times_ms: List[float] = list(DEFAULT_SAMPLE_TIMES_MS),
-        frames_dir: Optional[Path] = None,
-        audio_dir: Optional[str] = None,
         ceiling: Optional[float] = None,
         reliability_threshold: Optional[float] = None,
         voxel_mask_fn: Optional[Callable[[], np.ndarray]] = None,
@@ -266,8 +259,6 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         self._regions = regions
         self._audio = 'audio' in channels
         self._sample_times_ms = list(sample_times_ms)
-        self._frames_dir = resolve_frames_dir(frames_dir)
-        self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
         self._reliability_threshold = reliability_threshold
         self._voxel_mask_fn = voxel_mask_fn
         self._assembly: Optional[NeuronRecordingAssembly] = None
@@ -309,7 +300,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         return self._voxel_mask
 
     def _frames(self):
-        return frame_table(self.stimulus_set, self._sample_times_ms, self._frames_dir)
+        return frame_table(self.stimulus_set, self._sample_times_ms)
 
     def _per_voxel_ceiling(self, mask):
         """sqrt(reliability) per scored voxel; ``None`` without a measured ceiling.
@@ -357,7 +348,7 @@ class Lahner2024BOLDMoments(BenchmarkBase):
         # NaN-skipping mean (the one-stream route and the time-resolved benchmark use
         # numpy's mean; the two differ only when a response holds NaN).
         # The sound tracks are checked before any stream is recorded.
-        sound = clip_table(stimuli, f'{stimuli.identifier}-multimodal-audio', audio_dir=self._audio_dir)
+        sound = clip_table(stimuli, f'{stimuli.identifier}-multimodal-audio', sound=True)
         streams = []
         for stream, _, regions in plan:
             if stream == 'video':

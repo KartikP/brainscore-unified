@@ -148,8 +148,12 @@ def test_records_name_exactly_the_registered_benchmarks_that_read_them():
         'ewok-core-1.0': family('EWoK-core-1.0-'),
         'lana-atlas': {'LeBel2023-UTS03-encoding-languagemask'},
         'lebel2023-pickle': set(),       # the registered variants read the hosted files
+        # Needed only by the route a subject takes; the benchmark checks them when read.
+        'lahner2024-frames': set(),
+        'lahner2024-sound': set(),
     }
-    assert all(identifiers for name, identifiers in expected.items() if name != 'lebel2023-pickle')
+    none = {'lebel2023-pickle', 'lahner2024-frames', 'lahner2024-sound'}
+    assert all(identifiers for name, identifiers in expected.items() if name not in none)
     assert {name: set(asset.used_by) for name, asset in local.REGISTRY.items()} == expected
     for name, asset in local.REGISTRY.items():
         assert len(asset.used_by) == len(set(asset.used_by)), f'{name} repeats an identifier'
