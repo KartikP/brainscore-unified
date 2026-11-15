@@ -52,10 +52,11 @@ def test_the_doctor_reports_lock_differences_on_the_locked_platform(monkeypatch)
     monkeypatch.setattr(doctor, '_dependency_rows', lambda: [])
     monkeypatch.setattr(doctor, '_import_rows', lambda: [])
     monkeypatch.setattr(doctor, '_asset_rows', lambda: [])
+    monkeypatch.setenv('RESULTCACHING_DISABLE', '1')
     text, problems = doctor.report()
     assert 'lock-linux-py311-cu124.txt: 1 package(s) differ' in text
     assert re.search(r'XX numpy\s+1\.26\.3\s+lock 1\.26\.4', text)
-    assert problems >= 1 and 'setup.sh --lock' in text
+    assert problems == 1 and 'setup.sh --lock' in text  # each lock difference is a problem
 
 
 @pytest.mark.parametrize('platform_key', [('darwin', 'arm64', '3.11'), ('linux', 'aarch64', '3.11'),

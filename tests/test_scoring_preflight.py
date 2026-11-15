@@ -55,6 +55,8 @@ def test_doctor_reports_invalid_cache(monkeypatch, tmp_path):
     monkeypatch.setenv('RESULTCACHING_DISABLE', '0')
     monkeypatch.setattr(doctor, '_dependency_rows', lambda: [])
     monkeypatch.setattr(doctor, '_asset_rows', lambda: [])
+    monkeypatch.setattr(doctor, '_import_rows', lambda: [])
+    monkeypatch.setattr(doctor, '_lock_file', lambda: None)  # the cache is the only problem
     text, problems = doctor.report()
     assert problems == 1
     assert 'Result cache is not writable' in text

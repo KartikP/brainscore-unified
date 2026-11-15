@@ -12,6 +12,15 @@ pytestmark = pytest.mark.unit
 
 
 class TestReport:
+    @pytest.fixture(autouse=True)
+    def stand_in_environment(self, monkeypatch):
+        """Each test counts only the rows it sets up. The real lock section, imports and
+        result cache add rows of the machine (a Linux machine with the full lock and other
+        installed packages adds one per difference); a test that needs one sets it itself."""
+        monkeypatch.setattr(doctor, '_lock_file', lambda: None)
+        monkeypatch.setattr(doctor, 'IMPORT_CHECKS', ())
+        monkeypatch.setenv('RESULTCACHING_DISABLE', '1')
+
     def test_names_the_interpreter_that_answered(self):
         """Which env replied is usually the whole question."""
         import sys
