@@ -45,11 +45,11 @@ DECLARED = {
     'model_helpers/causal_lm.py': ({B, CH, CO, P, RA, RT, TE}, {CH, CO, P, RA, RT, TE}),
     'models/api_closed/model.py': ({B, CH, CO, RA, TE}, {B, CH, CO, RA, TE}),
     'models/blip2_opt_2_7b/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
-    'models/clip_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, P, RA, RT}),
-    'models/gpt2/model.py': ({B, CH, P, RA, RT}, {B, P, RA, RT}),
+    'models/clip_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
+    'models/gpt2/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/qwen25_vl_3b/model.py': ({B, CH, CO, P, RA, RT, TE}, {B, CH, CO, P, RA, RT, TE}),
     'models/qwen36_27b/model.py': ({B, CH, CO, P, RA, RT, TE}, {B, CH, CO, P, RA, RT, TE}),
-    'models/random_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, P, RA, RT}),
+    'models/random_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'tools/rajalingham2018_2afc/score_2afc.py': ({B, CH}, {B, CH}),
     **{where: (set(), set()) for where in NEURAL_ONLY},
 }
@@ -71,11 +71,11 @@ COMPATIBLE = {
     'model_helpers/causal_lm.py': (ALL, {'EWoK choice', 'EWoK logprobs', 'CogGym'}),
     'models/api_closed/model.py': (ALL - {'EWoK logprobs'}, ALL - {'EWoK logprobs'}),
     'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL - {'CogGym'}),
-    'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK choice'}),
-    'models/gpt2/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK choice'}),
+    'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym'}),
+    'models/gpt2/model.py': (ALL - {'CogGym'}, ALL - {'CogGym'}),
     'models/qwen25_vl_3b/model.py': (ALL, ALL),
     'models/qwen36_27b/model.py': (ALL, ALL),
-    'models/random_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK choice'}),
+    'models/random_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym'}),
     'tools/rajalingham2018_2afc/score_2afc.py': (ALL - {'EWoK logprobs', 'CogGym'},
                                                  ALL - {'EWoK logprobs', 'CogGym'}),
     **{where: (set(), set()) for where in NEURAL_ONLY},
@@ -130,19 +130,18 @@ def test_each_library_call_is_compatible_where_the_matrix_says(where, wired, sta
 
 
 def test_the_matrix_changes_only_where_the_declarations_change():
-    """The changed cells: causal_lm loses bare behavior; the readout-only models lose
-    behavior:choice (plan, section 3, point g; the image and facade cells of causal_lm
-    follow from the same bare behavior)."""
+    """The changed cells: causal_lm loses bare behavior (plan, section 3, point g; the
+    image and facade cells follow from the same bare behavior). The readout-only
+    registrations state ('readout', 'argmax') and keep behavior:choice."""
     changed = {(where, name) for where, (before, after) in COMPATIBLE.items() for name in before ^ after}
     assert changed == {('model_helpers/causal_lm.py', name) for name in
-                       ('ROAR image', 'ROAR text', 'dyslexia image', 'dyslexia text', 'facade')} | {
-        (where, 'EWoK choice') for where in ('models/clip_vit_b_32/model.py', 'models/gpt2/model.py',
-                                             'models/random_vit_b_32/model.py')}
+                       ('ROAR image', 'ROAR text', 'dyslexia image', 'dyslexia text', 'facade')}
     assert all(after <= before for before, after in COMPATIBLE.values())
 
 
 def test_no_pair_that_answers_today_becomes_not_applicable():
-    """Each newly N/A pair was an error of the run before: no part could answer its task."""
+    """Each newly N/A pair was an error of the run before: no part could answer its task.
+    A readout without a choice statement (no registration) could not answer EWoK choice either."""
     legacy = TaskContext(task_type='probabilities', instruction='Which?', label_set=['cat', 'dog'],
                          fitting_stimuli=FITTING)
     causal = _stand_in(['reply', 'likelihood'], {P: ('likelihood', 'softmax')})

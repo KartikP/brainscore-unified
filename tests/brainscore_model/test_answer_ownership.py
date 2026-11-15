@@ -234,7 +234,7 @@ REGISTERED_PART_SETS = {('behavioral_readout_layer',), BLIP2, QWEN, CAUSAL_LM, (
 # The statement each registered part set carries in the library (CLIP, random ViT and
 # GPT-2; BLIP-2; the Qwen family; causal_lm; the API models), checked by the scan below.
 REGISTERED_STATEMENTS = {
-    ('behavioral_readout_layer',): {},
+    ('behavioral_readout_layer',): {'behavior:choice': ('readout', 'argmax')},
     BLIP2: {'behavior': 'generation'},
     QWEN: {'behavior': 'generation', 'behavior:rating': 'generation',
            'behavior:probabilities': ('likelihood', 'softmax')},
@@ -298,10 +298,9 @@ SESSIONS = {   # baseline task descriptions and the outputs the session requests
 }
 
 
-# Sessions that request a format the part set does not declare (C3: a derived format
-# with no statement): refused at session start. A readout-only model (CLIP, random
-# ViT, GPT-2) states no ('readout', 'argmax'), so it does not declare behavior:choice.
-UNDECLARED = {(('behavioral_readout_layer',), 'choice')}
+# Sessions that request a format the part set does not declare are refused at
+# session start (C3). Every registered part set declares the formats of SESSIONS.
+UNDECLARED = set()
 
 
 @pytest.mark.parametrize('session_name', sorted(SESSIONS))

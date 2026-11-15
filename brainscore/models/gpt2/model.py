@@ -58,4 +58,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         # its own criterion. Yeatman2021-lexical_decision-text is unchanged by
         # the re-map (raw 0.81 at both), confirming the two are independent.
         behavioral_readout_layer='h.11',
+        # The readout derives the choice from its probabilities by argmax.
+        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
     )

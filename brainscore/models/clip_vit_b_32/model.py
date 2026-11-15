@@ -97,4 +97,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         # the 'IT' layer convention). Behavioral benchmarks like Ferguson2024
         # will fit a logistic readout on top of this layer's features.
         behavioral_readout_layer='encoder.layers.10',
+        # The readout derives the choice from its probabilities by argmax.
+        capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}},
     )
