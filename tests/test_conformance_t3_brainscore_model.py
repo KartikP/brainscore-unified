@@ -2,7 +2,7 @@
 
 1. Parity: the core conversions give the numbers of the inline code they
    replace, bit for bit. The old ``softmax`` is read from the base commit
-   (``git show 7bc821e:brainscore/_model/answers.py``); the old choice was
+   (``tests/reference_answers_7bc821e.py``, a frozen copy of 7bc821e); the old choice was
    ``probabilities.argmax(1)`` (likelihood) and ``values.argmax(1)``
    (readout). Finite rows (with ties) match exactly, as values and dtypes.
    A source row with a non-finite value (NaN, +inf, -inf) had a choice
@@ -13,10 +13,6 @@
 The core version (the functions alone) is core
 ``tests/test_conformance_t3_conversions.py``.
 """
-import ast
-import subprocess
-from pathlib import Path
-
 import numpy as np
 import pytest
 
@@ -24,21 +20,12 @@ from brainscore_core.contract import TaskContext
 from brainscore_core.response_formats import argmax, response_record, softmax, softmax_argmax
 from brainscore_core.responses import Choice
 from tests.brainscore_model.test_task_responses import STIMULI, _ask, _model
+from tests.reference_answers_7bc821e import softmax as _softmax_7bc821e
 
 pytestmark = pytest.mark.unit
 
-BASE = '7bc821e'
-
-
 def _old_softmax():
-    source = subprocess.run(['git', 'show', f'{BASE}:brainscore/_model/answers.py'],
-                            capture_output=True, text=True, check=True,
-                            cwd=Path(__file__).resolve().parents[1]).stdout
-    node = next(n for n in ast.parse(source).body
-                if isinstance(n, ast.FunctionDef) and n.name == 'softmax')
-    namespace = {'np': np}
-    exec(compile(ast.Module(body=[node], type_ignores=[]), f'{BASE}:answers.py', 'exec'), namespace)
-    return namespace['softmax']
+    return _softmax_7bc821e
 
 
 def _inputs():

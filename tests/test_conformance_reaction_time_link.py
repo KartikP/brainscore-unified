@@ -53,14 +53,8 @@ def test_the_link_reads_the_float64_rows_not_the_stored_float32_copy(monkeypatch
 
 def _old_answers():
     """The answers module of 7bc821e: its softmax, implied_array and reaction_time."""
-    import subprocess
-    from pathlib import Path
-    source = subprocess.run(['git', 'show', '7bc821e:brainscore/_model/answers.py'],
-                            capture_output=True, text=True, check=True,
-                            cwd=Path(__file__).resolve().parents[1]).stdout
-    namespace = {}
-    exec(compile(source, '7bc821e:answers.py', 'exec'), namespace)
-    return namespace
+    from tests import reference_answers_7bc821e
+    return vars(reference_answers_7bc821e)
 
 
 def _likelihood_rt(scores, link):
