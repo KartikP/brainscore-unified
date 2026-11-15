@@ -42,6 +42,40 @@ class TestResolution:
         monkeypatch.setenv(asset.env_var, str(target))
         assert local.path(asset.name) == target
 
+    def test_a_tilde_means_the_home_folder(self, asset, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv(asset.env_var, '~/frames')
+        assert asset.resolved() == pathlib.Path.home() / 'frames'
+
+    def test_a_tilde_with_a_literal_folder_here_is_refused(self, asset, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / '~' / 'frames').mkdir(parents=True)
+        monkeypatch.setenv(asset.env_var, '~/frames')
+        with pytest.raises(ValueError, match='ambiguous') as caught:
+            asset.resolved()
+        assert str(pathlib.Path.home() / 'frames') in str(caught.value)
+        assert str(tmp_path / '~' / 'frames') in str(caught.value)
+        row, = [row for row in local.status() if row['name'] == asset.name]
+        assert row['present'] is False and row['path'].startswith('refused:')
+
+    @pytest.mark.parametrize('value', ['', '  '])
+    def test_an_empty_variable_is_refused(self, asset, monkeypatch, value):
+        monkeypatch.setenv(asset.env_var, value)
+        with pytest.raises(ValueError, match=f'{asset.env_var} is set but empty.*unset it'):
+            asset.resolved()
+
+    def test_an_empty_ewok_variable_is_refused_not_read_as_this_folder(self, monkeypatch):
+        from brainscore.data.ewok.data import load_prepared
+        monkeypatch.setenv('BRAINSCORE_EWOK_ROOT', '')
+        with pytest.raises(ValueError, match='BRAINSCORE_EWOK_ROOT is set but empty'):
+            load_prepared()
+
+    def test_an_empty_friends_variable_is_refused_not_read_as_the_default(self, monkeypatch):
+        from brainscore.data.algonauts2025 import default_data_root
+        monkeypatch.setenv('BRAINSCORE_ALGONAUTS_PREPARED', '')
+        with pytest.raises(ValueError, match='BRAINSCORE_ALGONAUTS_PREPARED is set but empty'):
+            default_data_root()
+
     def test_unknown_asset_names_the_known_ones(self):
         with pytest.raises(KeyError, match='known:'):
             local.path('no-such-asset')
@@ -97,8 +131,9 @@ class TestFriendsLocation:
     """The Friends benchmarks read two folders; each has one BRAINSCORE_ variable."""
 
     def test_two_assets_with_prefixed_variables(self):
-        assert local.ALGONAUTS_ROOT.env_var == 'BRAINSCORE_ALGONAUTS_ROOT'
-        assert local.ALGONAUTS_PREPARED.env_var == 'BRAINSCORE_ALGONAUTS_PREPARED'
+        from brainscore.data.algonauts2025 import ALGONAUTS_PREPARED, ALGONAUTS_ROOT
+        assert ALGONAUTS_ROOT.env_var == 'BRAINSCORE_ALGONAUTS_ROOT'
+        assert ALGONAUTS_PREPARED.env_var == 'BRAINSCORE_ALGONAUTS_PREPARED'
 
     def test_data_code_reads_the_prepared_asset(self, tmp_path, monkeypatch):
         from brainscore.data.algonauts2025 import default_data_root
@@ -147,8 +182,34 @@ def test_records_name_exactly_the_registered_benchmarks_that_read_them():
         'ewok-core-1.0': family('EWoK-core-1.0-'),
         'lana-atlas': {'LeBel2023-UTS03-encoding-languagemask'},
         'lebel2023-pickle': set(),       # the registered variants read the hosted files
+        # Needed only by the route a subject takes; the benchmark checks them when read.
+        'lahner2024-frames': set(),
+        'lahner2024-sound': set(),
     }
-    assert all(identifiers for name, identifiers in expected.items() if name != 'lebel2023-pickle')
+    none = {'lebel2023-pickle', 'lahner2024-frames', 'lahner2024-sound'}
+    assert all(identifiers for name, identifiers in expected.items() if name not in none)
     assert {name: set(asset.used_by) for name, asset in local.REGISTRY.items()} == expected
     for name, asset in local.REGISTRY.items():
         assert len(asset.used_by) == len(set(asset.used_by)), f'{name} repeats an identifier'
+
+
+def test_the_asset_list_needs_no_ml_import():
+    """Each data plugin declares its assets in its own ``__init__.py``; listing them
+    (``python -m brainscore.data``) imports no ML library."""
+    import subprocess
+    import sys
+    code = (
+        "import sys\n"
+        "from brainscore.data.__main__ import main\n"
+        "main([])\n"
+        "loaded = [m for m in ('torch', 'transformers', 'cv2', 'sklearn') if m in sys.modules]\n"
+        "assert not loaded, loaded\n")
+    result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    for name in local.REGISTRY:
+        assert name in result.stdout
+
+
+def test_a_second_asset_with_the_same_name_is_refused(asset):
+    with pytest.raises(ValueError, match='already declared'):
+        local.register(asset)

@@ -29,13 +29,13 @@ A wrapper reads a stimulus file path only from the column names that the core ca
 | `EWoK-core-1.0` | `EWoK-core-1.0` | world-knowledge contrasts and their answer keys | local: gated text | `EWoK-core-1.0-logprobs`, `-choice` |
 | `Yeatman2021` | `Yeatman2021` | word and pseudoword images with human lexical decisions (ROAR) | hosted | `Yeatman2021-lexical_decision-*` |
 
-CogGym's experiments, human results and scoring code come from the authors' repository at a pinned revision; point `BRAINSCORE_COGGYM_CHECKOUT` at that checkout. `python -m brainscore.data` lists the files you supply yourself that a plugin declares as a local asset (the Algonauts 2025 files, the CogGym checkout, the EWoK data, the language atlas and the LeBel source pickle), where to get each and whether it is found; `python -m brainscore.data <name>` prints how to obtain one. The Lahner2024 frame and sound folders are not in that list.
+CogGym's experiments, human results and scoring code come from the authors' repository at a pinned revision; point `BRAINSCORE_COGGYM_CHECKOUT` at that checkout. `python -m brainscore.data` lists the files you supply yourself that a plugin declares as a local asset (the Algonauts 2025 files, the CogGym checkout, the EWoK data, the Lahner2024 frames and sound tracks, the language atlas and the LeBel source pickle), where to get each and whether it is found; `python -m brainscore.data <name>` prints how to obtain one.
 
 ## Add a data plugin
 
 ```
 brainscore/data/<name>/
-    __init__.py          registration: identifiers and loader functions, no I/O until called
+    __init__.py          registration: identifiers, loader functions and local assets, no I/O until called
     README.md            where the data come from, their license, how to cite them
     data_packaging/      scripts that build the hosted files from the source data
 ```
@@ -75,6 +75,27 @@ the value.
 `templates/new_data/` is a complete data plugin with loaders for stimuli, recordings and
 participant choices, image files and tests. Its test goes to `tests/test_<name>.py`.
 
-Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in `brainscore/data/local.py`, so users get instructions instead of a missing-file error.
+Hosted files are fetched once, checked against a sha1 and cached (see `brainscore/data/lebel2023/hosted.py`). Data you may not redistribute stays local: declare it as a `LocalAsset` in your plugin's `__init__.py`, so users get instructions instead of a missing-file error, and `python -m brainscore.data` lists it. Put the script that prepares it in your `data_packaging/` folder and name it in `prepare`. Read the location with `local.path(...)` when the data is needed, not at import. A second asset with the same name is refused.
+
+```python
+from brainscore.data import local
+
+# In brainscore/data/mystudy2026/__init__.py, beside the registry lines.
+MY_FILMS = local.register(local.LocalAsset(
+    name='mystudy2026-films',
+    env_var='BRAINSCORE_MYSTUDY2026_FILMS',
+    default_path='mystudy2026/films',           # under the home folder when the variable is unset
+    kind='stimuli',
+    why_local='The films are licensed to each lab; Brain-Score may not share them.',
+    source='https://example.org/mystudy2026',
+    obtain='The 12 film files, about 4 GB.',
+    prepare='python -m brainscore.data.mystudy2026.data_packaging.cut_frames',
+))
+
+try:
+    films = local.path(MY_FILMS.name)          # the folder, when it is there
+except local.LocalDataMissing as missing:
+    print(missing)                             # where to get it, the variable, the command
+```
 
 A benchmark reaches its data only through `load_dataset` / `load_stimulus_set`, or the identifiers and constants a plugin's package exports. It never imports a plugin's modules; `tests/test_data_boundaries.py` checks this.

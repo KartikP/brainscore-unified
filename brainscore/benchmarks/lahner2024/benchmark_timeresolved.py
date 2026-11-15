@@ -88,7 +88,6 @@ the feature design all differ. A score difference between this variant and
 of temporal information.
 """
 
-from pathlib import Path
 from typing import List, Optional, Sequence
 
 import numpy as np
@@ -114,9 +113,8 @@ from .benchmark import (
     _select_voxels,
     voxel_score,
 )
+from brainscore.data.lahner2024 import DEFAULT_SAMPLE_TIMES_MS
 from ._util import (
-    DEFAULT_AUDIO_DIR,
-    DEFAULT_SAMPLE_TIMES_MS,
     align,
     channel_regions,
     clip_table,
@@ -124,7 +122,6 @@ from ._util import (
     read_stimulus_ids,
     record_clips,
     record_visual,
-    resolve_frames_dir,
     stream_regions,
     taken_inputs,
     time_mean,
@@ -269,7 +266,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         folds: the fold rule, ``RunBlocks(52)`` (default) or ``ParticipantRunBlocks(10)``.
         confounds: columns of the motion sidecar regressed out of each run's
             BOLD before the z-score (``MOTION_COLUMNS``); none by default.
-        ceiling, reliability_threshold, voxel_mask_fn, audio_dir: as for
+        ceiling, reliability_threshold, voxel_mask_fn: as for
             ``Lahner2024BOLDMoments``. The reliability is the GLM-beta one: both
             assemblies share the fsaverage5 voxels.
         identifier: the benchmark identifier (required; the registry key of the variant).
@@ -285,7 +282,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         ceiling: Optional[float] = None,
         reliability_threshold: Optional[float] = None,
         voxel_mask_fn=None,
-        audio_dir: Optional[str] = None,
         *,
         identifier: str,
     ):
@@ -300,8 +296,6 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         self._confounds = list(confounds)
         self._reliability_threshold = reliability_threshold
         self._voxel_mask_fn = voxel_mask_fn
-        self._audio_dir = Path(audio_dir or DEFAULT_AUDIO_DIR).expanduser()
-        self._frames_dir = resolve_frames_dir()
         self._voxel_mask: Optional[np.ndarray] = None
         self._assembly: Optional[NeuronRecordingAssembly] = None
         self._events = None
@@ -408,7 +402,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         unique_ids = sorted(set(self.events['stimulus_id'].unique().tolist())
                             & set(stimuli['stimulus_id'].astype(str).tolist()))
         frames = lambda: (lambda table: table[table['clip_id'].isin(unique_ids)])(  # noqa: E731
-            frame_table(stimuli, list(DEFAULT_SAMPLE_TIMES_MS), self._frames_dir))
+            frame_table(stimuli, list(DEFAULT_SAMPLE_TIMES_MS)))
         # Every region the benchmark names is requested (rule 5.1a). The streams
         # shown are the benchmark inputs the subject takes in, matched as pre-flight
         # matches them; each region is recorded from a stream the subject can answer
@@ -437,7 +431,7 @@ class Lahner2024BOLDMoments_timeresolved(BenchmarkBase):
         # its own, and the joined features are cast to float32.
         # The sound tracks are checked before any stream is recorded.
         sound = clip_table(stimuli, f'{stimuli.identifier}-timeresolved-multimodal-audio', ids=unique_ids,
-                           audio_dir=self._audio_dir)
+                           sound=True)
         streams = []
         for stream, _, regions in plan:
             if stream == 'video':

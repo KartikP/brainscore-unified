@@ -3,7 +3,8 @@
 CogGym's runner reads experiments and reference human results directly from the
 authors' repository. Preparing data means obtaining that pinned checkout; there
 is no separate UMI conversion or `brainscore.data prepare` builder for CogGym.
-This folder documents that workflow and contains no dataset registration.
+This folder documents that workflow; its `__init__.py` declares the checkout as a local
+asset (`coggym-checkout`) and registers no dataset.
 
 ## 1. Obtain the reference files
 

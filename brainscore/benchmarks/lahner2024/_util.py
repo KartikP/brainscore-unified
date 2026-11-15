@@ -5,7 +5,6 @@ tables and record the subject here. A benchmark reads a subject only through
 ``participate`` (the core helper ``neural_response``) and routes only on the
 subject's declared channels (Contract Rules 1.1, 2.1, 2.2, 5.9).
 """
-import os
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
@@ -19,12 +18,9 @@ CHANNEL_REGIONS = {
 }
 
 # Videos are 3 seconds long; by default a stills-only subject sees three
-# frames per clip (start, middle, end).
+# frames per clip (``DEFAULT_SAMPLE_TIMES_MS`` of the data plugin).
 VIDEO_DURATION_MS = 3000
-DEFAULT_SAMPLE_TIMES_MS = (500, 1500, 2500)
 TIME_BINS = [(0, VIDEO_DURATION_MS)]
-# Default location of the sound tracks (16 kHz mono WAV, one per clip).
-DEFAULT_AUDIO_DIR = '~/.brainio/lahner2024_audio_16k'
 
 
 def channel_regions(channels: Sequence[str]):
@@ -108,30 +104,28 @@ def stream_regions(subject, taken, regions) -> List[Tuple[str, str, List[str]]]:
 
 
 def clip_table(stimuli, identifier: str, ids: Optional[Sequence[str]] = None,
-               audio_dir: Optional[Path] = None):
+               sound: bool = False):
     """One row per clip of ``stimuli``: ``stimulus_id`` and the clip's file.
 
-    The file is the video (``video_path``). With ``audio_dir`` it is the sound
-    track demuxed from the video (``audio_path``, ``<audio_dir>/<video stem>.wav``),
-    and every file must exist. ``ids`` picks and orders the clips; the default
-    is every row of ``stimuli`` in table order.
+    The file is the video (``video_path``). With ``sound`` it is the sound track
+    demuxed from the video (``audio_path``, ``<video stem>.wav`` in the local asset
+    ``lahner2024-sound``), and every file must exist. ``ids`` picks and orders the
+    clips; the default is every row of ``stimuli`` in table order.
     """
     import pandas as pd
     from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
     ids = list(stimuli['stimulus_id']) if ids is None else list(ids)
     videos = [stimuli.get_stimulus(stimulus_id) for stimulus_id in ids]
-    if audio_dir is None:
+    if not sound:
         column, files = 'video_path', [str(video) for video in videos]
     else:
+        from brainscore.data import local
+        from brainscore.data.lahner2024 import LAHNER_SOUND
+        audio_dir = local.path(LAHNER_SOUND.name)
         column = 'audio_path'
         files = [str(audio_dir / f'{Path(video).stem}.wav') for video in videos]
-        missing = [path for path in files if not Path(path).exists()]
-        if missing:
-            raise FileNotFoundError(
-                f"{len(missing)} audio files missing under {audio_dir}. Run `python -m "
-                f"brainscore.data.lahner2024.data_packaging.prepare_audio_tracks "
-                f"--audio-dir {audio_dir}` first. First missing: {missing[0]}")
+        _require_files(files, audio_dir, LAHNER_SOUND)
     frame = pd.DataFrame({'stimulus_id': ids, column: files})
     table = StimulusSet(frame)
     table.identifier = identifier
@@ -139,72 +133,39 @@ def clip_table(stimuli, identifier: str, ids: Optional[Sequence[str]] = None,
     return table
 
 
-def resolve_frames_dir(frames_dir=None) -> Path:
-    """Where extracted frames are kept: ``frames_dir``, else
-    ``BRAINSCORE_LAHNER_FRAMES_DIR``, else ``~/brainscore-data/lahner2024/frames``."""
-    if frames_dir:
-        return Path(frames_dir)
-    configured = os.environ.get('BRAINSCORE_LAHNER_FRAMES_DIR')
-    return Path(configured) if configured else Path.home() / 'brainscore-data' / 'lahner2024' / 'frames'
-
-
-def frame_table(stimuli, sample_times_ms: Sequence[float], frames_dir: Path):
-    """One row per (clip, sample time): a still extracted from every clip of ``stimuli``.
+def frame_table(stimuli, sample_times_ms: Sequence[float]):
+    """One row per (clip, sample time): a prepared still of every clip of ``stimuli``.
 
     Rows carry ``clip_id`` and ``frame_time_ms`` (see ``expand_clip_to_frames``).
-    Frames are extracted once with OpenCV and kept under ``frames_dir``.
+    The frames are the local asset ``lahner2024-frames``; every one must exist.
     """
+    from brainscore.data import local
+    from brainscore.data.lahner2024 import LAHNER_FRAMES, frame_file
     from brainscore.temporal import expand_clip_to_frames
 
-    if not frames_dir.exists():
-        try:
-            frames_dir.mkdir(parents=True, exist_ok=True)
-        except OSError as error:
-            raise FileNotFoundError(
-                f"Lahner2024 frame cache directory {frames_dir} does not "
-                f"exist and could not be created ({error}). Set "
-                f"BRAINSCORE_LAHNER_FRAMES_DIR to a writable path, or pass "
-                f"frames_dir=... when constructing the benchmark.") from error
+    frames_dir = local.path(LAHNER_FRAMES.name)
+    clips = clip_table(stimuli, stimuli.identifier)
+    _require_files([str(frame_file(frames_dir, video, time_ms))
+                    for video in clips['video_path'] for time_ms in sample_times_ms],
+                   frames_dir, LAHNER_FRAMES,
+                   options=' --sample-times-ms ' + ' '.join(f'{t:g}' for t in sample_times_ms))
     return expand_clip_to_frames(
-        clip_table(stimuli, stimuli.identifier),
+        clips,
         sample_times_ms=sample_times_ms,
-        frame_extractor=lambda video_path, t_ms: _extract_frame_with_cv2(
-            video_path, t_ms, frames_dir=frames_dir),
+        frame_extractor=lambda video_path, t_ms: str(frame_file(frames_dir, video_path, t_ms)),
         clip_id_col='stimulus_id',
         video_col='video_path',
     )
 
 
-def _extract_frame_with_cv2(video_path, time_ms: float, frames_dir: Path) -> str:
-    """Extract one frame of ``video_path`` at ``time_ms`` as a PNG under ``frames_dir``.
-
-    Returns the path. Idempotent: an existing frame is returned without
-    extracting it again.
-    """
-    import cv2  # imported here to avoid making it a brainscore_core dep
-
-    video_path = Path(video_path)
-    frames_dir.mkdir(parents=True, exist_ok=True)
-    out_path = frames_dir / f'{video_path.stem}_t{int(time_ms)}.png'
-    if out_path.exists():
-        return str(out_path)
-
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise IOError(f"cv2 could not open {video_path}")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    target_frame_idx = int(round(time_ms / 1000.0 * fps))
-    cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame_idx)
-    ok, frame = cap.read()
-    cap.release()
-    if not ok:
-        raise IOError(
-            f"cv2 failed to read frame at {time_ms}ms "
-            f"(target idx {target_frame_idx}, fps {fps}) from {video_path}")
-    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)   # cv2 reads BGR
-    from PIL import Image
-    Image.fromarray(frame).save(out_path)
-    return str(out_path)
+def _require_files(files, folder, asset, options=''):
+    """Raise ``LocalDataMissing`` naming the preparation command when a file is absent."""
+    from brainscore.data.local import LocalDataMissing
+    missing = [path for path in files if not Path(path).exists()]
+    if missing:
+        raise LocalDataMissing(
+            f"{len(missing)} of {len(files)} files of {asset.name} are missing under {folder} "
+            f"(first: {missing[0]}). Prepare them:\n    {asset.prepare}{options}")
 
 
 # ── Recording ─────────────────────────────────────────────────────────────

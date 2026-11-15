@@ -14,6 +14,7 @@ from brainscore import data_registry, stimulus_set_registry
 from .data import (ASSEMBLY_ID, CHOICES_ID, STIMULUS_SET_ID, load_assembly,
                    load_choices, load_stimulus_set)
 
+# Data you may not share: declare a local asset here too (README, "Data you may not share").
 # The values are factories, not the data itself — nothing is read until something asks
 # for it, so importing the package stays cheap even with a large dataset behind it.
 stimulus_set_registry[STIMULUS_SET_ID] = load_stimulus_set
