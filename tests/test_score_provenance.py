@@ -343,3 +343,38 @@ def test_a_part_states_where_its_parameters_are(placements, devices, dtypes):
     facts = _extractor_facts(wrapper, {'not hashed (store off)'})
     assert (facts['parameter_devices'], facts['parameter_dtypes']) == (devices, dtypes)
     assert 'device' not in facts and 'dtype' not in facts
+
+
+# A conversation: a model that states its parts and a custom subject in one score.
+
+class _Conversation(BenchmarkBase):
+    """Two seats talk for two turns; the scored subject takes the first seat."""
+    requested_output_channels = frozenset({'behavior:text'})
+
+    def __init__(self, partner):
+        self.partner = partner
+        self.required_input_channels = frozenset({'text'})
+        super().__init__(identifier='provenance-conversation', version=1, parent='behavioral',
+                         ceiling=not_estimated())
+
+    def __call__(self, subject):
+        from brainscore.harnesses.multi_agent import DialogueMediator, multi_agent_rollout
+        transcript = multi_agent_rollout([subject, self.partner], DialogueMediator(start='hi'), n_turns=2)
+        return benchmark_score(self, raw=float(len(transcript)), metric='answers')
+
+
+def _say_hello(row):
+    return {'behavior:text': 'hello'}
+
+
+def test_a_conversation_states_the_model_parts_and_the_silent_partner():
+    from brainscore.harnesses.multi_agent import EchoAgent
+    model = BrainScoreModel('provenance-talker', policy=_say_hello, policy_in_channels=('text',),
+                            policy_out_channels=('behavior:text',))
+    score = _score(model, _Conversation(EchoAgent('provenance-partner')))
+    assert float(score) == 4.0
+    assert score.attrs['provenance'] == (
+        {'subject': 'provenance-partner', 'parts': NS, 'activation_store': 'off'},
+        {'subject': 'provenance-talker', 'activation_store': 'off',
+         'parts': [{'serves': 'behavior:text', 'part': 'policy', 'kind': f'{__name__}._say_hello',
+                    'settings': NS, 'parameter_devices': NS, 'parameter_dtypes': NS, 'batch_size': NS}]})

@@ -159,6 +159,10 @@ def multi_agent_rollout(subjects: Union[Sequence, Dict[str, Any]],
 
     seats = [_Seat(action_channel) for _ in subjects]
     sessions = [environment_session(seat, outputs, action_channel=action_channel) for seat in seats]
+    from brainscore_core.score_metadata import note_session
+    for subject, session in zip(subjects, sessions):
+        # Several subjects take part: each session names its subject for the score's provenance.
+        note_session(session, subject=subject.identifier)
     threads = [threading.Thread(target=contextvars.copy_context().run,
                                 args=(_take_part, subject, session, seat),
                                 name=f'participate-{subject.identifier}', daemon=True)
