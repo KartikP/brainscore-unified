@@ -78,8 +78,12 @@ class TestProbeThroughParticipate:
         import logging
         behavioral = BrainScoreModel('policy', policy=lambda step: None)
         benchmark = SimpleNamespace(identifier='bench-ridge', stimulus_set=_stimuli())
-        # No width can be probed, so the check is skipped (loudly) even with no memory.
+        # No neural output: the check cannot apply, even with no memory. It says so in one
+        # line, without a traceback.
         with patch('brainscore_core.memory.get_host_available_memory', return_value=1), \
                 caplog.at_level(logging.WARNING, logger='brainscore_core.memory'):
             check_memory(behavioral, benchmark)
-        assert any('could NOT run' in record.getMessage() for record in caplog.records)
+        records = [record for record in caplog.records if record.name == 'brainscore_core.memory']
+        assert len(records) == 1 and records[0].exc_info is None
+        assert records[0].getMessage().startswith("Memory check not run: benchmark 'bench-ridge' "
+                                                  "names no neural output")
