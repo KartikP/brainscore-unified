@@ -342,8 +342,6 @@ class BehavioralReadout:
         return answers.with_record(self.readout_classifier.predict_proba(features),
                                    response_record('behavior', 'readout'))
 
-    _PATHS = ('generation', 'likelihood', 'readout')
-
     def _select(self, output, can, task) -> Optional[str]:
         """The part that answers bare ``behavior`` (a legacy task), from the parts that can serve it.
 
@@ -359,7 +357,7 @@ class BehavioralReadout:
         """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         formats = _formats_by_part(self.owner)
-        eligible = [p for p in self._PATHS if can.get(p) and output in formats.get(p, ())]
+        eligible = sorted(p for p, given in formats.items() if can.get(p) and output in given)
         owner = self.owners.get(output)
         if owner in eligible:
             return owner
@@ -381,7 +379,7 @@ class BehavioralReadout:
         """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         formats = _formats_by_part(self.owner)
-        givers = [p for p in self._PATHS if output in formats.get(p, ())]
+        givers = sorted(p for p, given in formats.items() if output in given)
         owner = self.owners.get(output) or (givers[0] if len(givers) == 1 else None)
         if owner is None and len(givers) > 1:
             raise ExecutionNotFeasibleError(
@@ -419,7 +417,6 @@ class BehavioralReadout:
         owner, response = self.owner, task.response
         readout_wired = (owner._behavioral_readout_layer is not None
                          and bool(owner._extractors))
-        order = self._PATHS
         if response is None:
             can = {'generation': bool(owner._answer is not None and task.instruction and task.label_set),
                    'likelihood': False,
@@ -432,7 +429,7 @@ class BehavioralReadout:
                 raise ExecutionNotFeasibleError(
                     f"Subject '{owner.identifier}' cannot run the behavioral task "
                     f"task_type={task.task_type!r}. Paths tried: "
-                    + '; '.join(f'{p} needs {needs[p]}' for p in order),
+                    + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                     task_type=task.task_type)
             return path, None
         readout_wired = readout_wired and task.fitting_stimuli is not None
@@ -469,7 +466,7 @@ class BehavioralReadout:
             raise ExecutionNotFeasibleError(
                 f"Subject '{owner.identifier}' cannot give a {type(response).__name__} answer"
                 + (' with reported confidence (needs reply=)' if reported_confidence else '')
-                + '. Paths tried: ' + '; '.join(f'{p} needs {needs[p]}' for p in order),
+                + '. Paths tried: ' + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                 task_type=task.task_type)
         source = None
         if isinstance(response, Choice) and (response.probabilities or response.reaction_time
@@ -881,7 +878,7 @@ def answer_owners(subject, stated) -> Dict[str, str]:
             raise ValueError(f"{prefix}names {part!r} for {key!r}, but no {_ARGUMENTS[part]} "
                              f"part is wired.")
         if key not in parts[part]:
-            givers = [p for p in BehavioralReadout._PATHS if key in parts.get(p, ())]
+            givers = sorted(p for p, given in parts.items() if key in given)
             raise ValueError(f"{prefix}names {part!r} for {key!r}, but {part!r} does not give "
                              f"{key!r}. Parts of this subject that give it: {givers}.")
         given = parts[part][key]
@@ -895,8 +892,8 @@ def answer_owners(subject, stated) -> Dict[str, str]:
                              f"{conversion!r}. Write ({part!r}, {given!r}).")
         owners[key] = part
     for output in formats:
-        native = [p for p in BehavioralReadout._PATHS
-                  if output in parts.get(p, {}) and parts[p][output] is None]
+        native = sorted(p for p, given in parts.items()
+                        if output in given and given[output] is None)
         if output in owners or not native:
             continue
         if len(native) > 1:
