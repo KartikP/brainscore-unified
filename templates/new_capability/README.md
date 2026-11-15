@@ -33,7 +33,7 @@ model = BrainScoreModel(
 Ready-made builders return the function you pass to a slot:
 `api_answer(...)` returns an `answer`, `api_policy(...)`
 a `policy` (both in `brainscore/model_helpers/api_behavioral.py`), and
-`build_pytorch_ablation_fn(model)` an `intervention`
+`pytorch_intervention(model)` an `intervention`
 (`brainscore/perturbation.py`). `brainscore/harnesses/grid_game.py` runs
 policies in a closed loop.
 

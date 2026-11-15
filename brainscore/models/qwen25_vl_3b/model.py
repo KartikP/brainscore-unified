@@ -201,11 +201,11 @@ def get_model(identifier: str) -> Subject:
     layers = dict(REGION_LAYER_MAP, language_system=language_layer)
     variant_kwargs = {}
     if identifier in VARIANTS:
-        from brainscore.perturbation import build_pytorch_ablation_fn
+        from brainscore.perturbation import pytorch_intervention
         layers['VWFA'] = VWFA_LAYER
         # Selection paths are relative to the extraction root. The same
         # visual module is also used by the full model's generate().
-        variant_kwargs = dict(intervention=build_pytorch_ablation_fn(qwen_model.model.visual))
+        variant_kwargs = dict(intervention=pytorch_intervention(qwen_model.model.visual))
     subject = BrainScoreModel(
         identifier=identifier,
         model=qwen_model,

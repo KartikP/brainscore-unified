@@ -37,7 +37,7 @@ class Interventions:
         hooks of the network, and its handle and cleanup do not change. Inside
         the block the network is intact, so an extraction may use the
         activation cache of the intact model. Only a change made by
-        ``build_pytorch_ablation_fn`` has a switch; with any other change
+        ``pytorch_intervention`` has a switch; with any other change
         active, the block refuses before it changes anything.
 
         The set of interventions is fixed while the block runs: applying,
@@ -62,7 +62,7 @@ class Interventions:
             raise ExecutionNotFeasibleError(
                 f"Subject '{self.owner.identifier}' cannot fit on the intact network: the "
                 f"active intervention(s) {fixed} cannot be switched off in place. Only "
-                f"build_pytorch_ablation_fn makes changes that can. Use "
+                f"pytorch_intervention makes changes that can. Use "
                 f"readout_fit='current', or fit the readout before the change.")
         off = []
         self._intact_depth = 1

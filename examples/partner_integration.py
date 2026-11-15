@@ -12,7 +12,7 @@ import torch
 
 from brainscore.activation_window import ActivationWindow
 from brainscore.instrumentation import observed
-from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore.perturbation import pytorch_intervention
 from brainscore.harnesses.robotics import ActionSpec, droid_steps, evaluate_droid_episode
 from brainscore.run_record import RunRecord, RunRecorder
 from brainscore_core.events import StateChange, Selection, Perturbation
@@ -56,7 +56,7 @@ def demo(out):
 
     model = BrainScoreModel('synthetic-robot-policy', model=network, policy=policy,
                             policy_in_channels=('vision:image', 'proprioception', 'instruction'),
-                            intervention=build_pytorch_ablation_fn(network))
+                            intervention=pytorch_intervention(network))
     spec = ActionSpec(tuple(f'component_{i}' for i in range(7)), ('normalized',)*7,
                       'synthetic_fixture', 50, (-1.,)*7, (1.,)*7)
     rows = []

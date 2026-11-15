@@ -339,7 +339,7 @@ Builders: a function that builds a part is called `build_<part>` and returns
 it, for example `build_policy()` returns the function passed as `policy=`. Three
 ready-made builders still carry the names of removed parts:
 `api_answer(...)` returns an `answer`, `api_policy(...)` a
-`policy`, and `build_pytorch_ablation_fn(model)` an `intervention`.
+`policy`, and `pytorch_intervention(model)` an `intervention`.
 
 The interface evaluates checkpoints; it does not train. Register the checkpoint.
 For a discovery or analysis pipeline that produces no `Score`, run an

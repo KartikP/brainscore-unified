@@ -206,7 +206,7 @@ def _forward_hook(stack, module, hook):
     """Run ``hook`` on each forward call of ``module`` until ``stack`` closes.
 
     The one place the experiment tools hook a module (R11); recording uses
-    ActivationWindow and interventions use build_pytorch_ablation_fn.
+    ActivationWindow and interventions use pytorch_intervention.
     """
     stack.callback(module.register_forward_hook(hook).remove)
 
@@ -225,7 +225,7 @@ def _describe_target(target):
 class TorchInstrumentation:
     """Expose model layer paths or explicitly named modules to experiment tools.
 
-    Recording uses ActivationWindow; ablation uses build_pytorch_ablation_fn.
+    Recording uses ActivationWindow; ablation uses pytorch_intervention.
     Selection.axis uses the same coordinates for recording and intervention.
     The default -1 indexes the last axis; None flattens non-batch dimensions.
     """
@@ -348,7 +348,7 @@ class TorchInstrumentation:
     @contextmanager
     def _perturb(self, targets, perturbation):
         import torch
-        from brainscore.perturbation import build_pytorch_ablation_fn
+        from brainscore.perturbation import pytorch_intervention
         self.validate('ablate', targets)
         with ExitStack() as stack:
             for target in targets:
@@ -356,7 +356,7 @@ class TorchInstrumentation:
                 module = self.targets[selection.layer]
                 # An auxiliary root provides a stable path without modifying the model.
                 root = torch.nn.ModuleDict({'target': module})
-                apply = build_pytorch_ablation_fn(root)
+                apply = pytorch_intervention(root)
                 _, cleanup = apply(StateChange(kind='ablation',
                     target=Selection(layer='target', indices=selection.indices,
                                      axis=selection.axis, expected_shape=selection.expected_shape),

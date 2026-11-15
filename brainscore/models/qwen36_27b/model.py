@@ -104,7 +104,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     from brainscore_core.hf_compat import pin_image_processor
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
-    from brainscore.perturbation import build_pytorch_ablation_fn
+    from brainscore.perturbation import pytorch_intervention
 
     # 56 GB at bf16, so placement is automatic. Left to itself accelerate packs
     # each device to the brim and the first forward pass then OOMs on
@@ -155,5 +155,5 @@ def get_model(identifier: str) -> BrainScoreModel:
         capability_config={'behavior-sessions': {
             'behavior': 'generation', 'behavior:rating': 'generation',
             'behavior:probabilities': ('likelihood', 'softmax')}},
-        intervention=build_pytorch_ablation_fn(_tower_root(visual, language_model)),
+        intervention=pytorch_intervention(_tower_root(visual, language_model)),
     )

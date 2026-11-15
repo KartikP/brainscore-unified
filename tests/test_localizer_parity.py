@@ -15,7 +15,7 @@ from torch import nn
 from brainscore_core.streaming_helpers import apply_state_change
 from brainscore import BrainScoreModel, CompositeSelector, FunctionalSelection
 from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
-from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore.perturbation import pytorch_intervention
 from brainscore.selection import UnitSelector, selection_coordinates, selection_unit_indices
 from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.streaming_helpers import neural_response
@@ -142,7 +142,7 @@ def _model(region_layer_map):
     net = _net()
     return net, BrainScoreModel('parity', model=net, region_layer_map=region_layer_map,
                                 extractor={'text': _Extractor(net, _inputs())},
-                                intervention=build_pytorch_ablation_fn(net))
+                                intervention=pytorch_intervention(net))
 
 
 def _same(new, old):

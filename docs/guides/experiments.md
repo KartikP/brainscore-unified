@@ -31,7 +31,7 @@ import pandas as pd
 import torch
 from PIL import Image
 from brainscore import BrainScoreModel
-from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore.perturbation import pytorch_intervention
 from brainscore_core import Perturbation, Selection, StateChange, TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
@@ -79,7 +79,7 @@ def answer(*, stimulus_row, instruction, label_set):
 subject = BrainScoreModel(identifier='my-cnn', model=net, region_layer_map={'IT': 'layer4'},
                           extractor={'vision': PytorchWrapper(identifier='my-cnn', model=net,
                                                               preprocessing=preprocess)},
-                          answer=answer, intervention=build_pytorch_ablation_fn(net))
+                          answer=answer, intervention=pytorch_intervention(net))
 task = TaskContext(instruction='Animal or vehicle?', response=Choice(['animal', 'vehicle']))
 lesion = StateChange(kind='ablation', target=Selection(layer='layer3'),
                      perturbation=Perturbation(kind='zero'))
@@ -140,7 +140,7 @@ subject in an experiment ([Perturb and select units](perturb_and_select_units.md
 the default). `TaskContext(..., readout_fit='intact')` fits it with every change switched
 off and tests the changed network, as an animal trained before a lesion is tested after it.
 Each change stays in place during the fit, so the order of the hooks on the network does
-not change. Only a change made by `build_pytorch_ablation_fn` can be switched off; with
+not change. Only a change made by `pytorch_intervention` can be switched off; with
 another intervention part active, the fit stops with an error.
 
 For models that generate answers, `RecordNeural(..., during='prompt')` keeps the prompt

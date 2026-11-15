@@ -435,11 +435,11 @@ def test_conditions_repetitions_shared_record_and_replay(tmp_path):
 
 def test_toolbox_and_state_change_share_selection_semantics():
     from brainscore_core.events import Selection, StateChange, Perturbation
-    from brainscore.perturbation import build_pytorch_ablation_fn
+    from brainscore.perturbation import pytorch_intervention
     network = torch.nn.Sequential(torch.nn.Identity())
     selection = Selection('0', [1])
     value = torch.tensor([[1., 2., 3.]])
-    _, cleanup = build_pytorch_ablation_fn(network)(
+    _, cleanup = pytorch_intervention(network)(
         StateChange('ablation', selection, Perturbation('zero')))
     try:
         expected = network(value)

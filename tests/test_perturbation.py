@@ -1,4 +1,4 @@
-"""Tests for build_pytorch_ablation_fn: interventions sent with
+"""Tests for pytorch_intervention: interventions sent with
 ``apply_state_change`` on a real torch.nn.Module, through forward-hook
 installation and removal.
 """
@@ -10,7 +10,7 @@ torch = pytest.importorskip('torch')
 
 from brainscore import BrainScoreModel
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
-from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore.perturbation import pytorch_intervention
 from brainscore_core.streaming_helpers import apply_state_change
 
 
@@ -38,7 +38,7 @@ def model_with_ablation():
         model=net,
         region_layer_map={},
         extractor={'vision': lambda stimuli, layers=None: stimuli},
-        intervention=build_pytorch_ablation_fn(net),
+        intervention=pytorch_intervention(net),
     )
     return bs, net
 
@@ -272,7 +272,7 @@ class TestLayerResolution:
             model=net,
             region_layer_map={},
             extractor={'vision': lambda stimuli, layers=None: stimuli},
-            intervention=build_pytorch_ablation_fn(net),
+            intervention=pytorch_intervention(net),
         )
         # Sequential's children are accessed by integer index
         applied = apply_state_change(bs, StateChange(
@@ -364,7 +364,7 @@ class TestIndexValidation:
         from brainscore_core.events import PerturbationApplied
         net = torch.nn.Sequential(torch.nn.Conv2d(3, 4, 3))  # output (N, 4, H-2, W-2)
         bs = BrainScoreModel('conv', net, {}, extractor={'vision': lambda stimuli, layers=None: stimuli},
-                             intervention=build_pytorch_ablation_fn(net))
+                             intervention=pytorch_intervention(net))
         applied = apply_state_change(bs, StateChange(
             kind='ablation',
             target=Selection(layer='0', indices=[5]),  # > out_channels, < width
@@ -404,7 +404,7 @@ class TestKindValidation:
                 return self.o_proj(x)
         net = torch.nn.Sequential(Attention())
         bs = BrainScoreModel(identifier='heads-test', model=net, region_layer_map={},
-                             intervention=build_pytorch_ablation_fn(net))
+                             intervention=pytorch_intervention(net))
         x = torch.ones(1, 4)
         baseline = net(x).detach().clone()
         with pytest.raises(ValueError, match="'zero', 'scale', 'drive' or 'replace'"):
@@ -455,7 +455,7 @@ class TestInputSite:
 
     def _bs(self, net):
         return BrainScoreModel(identifier='gated-mlp-test', model=net, region_layer_map={},
-                               intervention=build_pytorch_ablation_fn(net))
+                               intervention=pytorch_intervention(net))
 
     def _steer(self, bs, layer, perturbation, indices=None):
         return apply_state_change(bs, StateChange(kind='steer', perturbation=perturbation,
@@ -499,7 +499,7 @@ class TestInputSite:
 # ── Array drive amounts never grow the activity ──────────────────────
 
 def _drive(net, amount, layer='0', indices=None):
-    return build_pytorch_ablation_fn(net)(StateChange(
+    return pytorch_intervention(net)(StateChange(
         kind='steer', target=Selection(layer=layer, indices=indices),
         perturbation=Perturbation(kind='drive', amount=amount)))
 
@@ -618,7 +618,7 @@ def test_index_out_of_range_for_the_selected_axis_fails_on_every_device():
     MPS ignores out-of-range indices silently, so the hook checks bounds itself.
     """
     conv = torch.nn.Sequential(torch.nn.Conv2d(1, 2, 1))
-    apply_fn = build_pytorch_ablation_fn(conv)
+    apply_fn = pytorch_intervention(conv)
     apply_fn(StateChange(kind='ablation', target=Selection(layer='0', indices=[0, 7], axis=-1),
                          perturbation=Perturbation(kind='zero')))
     with pytest.raises(ValueError, match='out of range for axis'):
@@ -647,7 +647,7 @@ class _EmptyTuple(torch.nn.Module):
 def test_an_intervention_on_an_output_with_no_leading_tensor_raises(module):
     """The change cannot be made; before the repair the output passed unchanged and silently."""
     net = torch.nn.Sequential(module)
-    apply_fn = build_pytorch_ablation_fn(net)
+    apply_fn = pytorch_intervention(net)
     _, cleanup = apply_fn(StateChange(kind='ablation', target=Selection(layer='0'),
                                       perturbation=Perturbation(kind='zero')))
     with pytest.raises(TypeError, match="'0' gives a .*, not a tensor"):

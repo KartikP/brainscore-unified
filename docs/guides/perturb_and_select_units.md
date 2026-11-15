@@ -65,11 +65,11 @@ A `BrainScoreModel` applies an intervention with its `intervention` part, which 
 from brainscore import BrainScoreModel
 from brainscore_core import Perturbation, Selection, StateChange
 from brainscore_core.streaming_helpers import apply_state_change
-from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore.perturbation import pytorch_intervention
 
 model = BrainScoreModel(identifier='my-cnn', model=net, extractor={'vision': vision},
                         region_layer_map={'IT': 'layer4'},
-                        intervention=build_pytorch_ablation_fn(net))
+                        intervention=pytorch_intervention(net))
 
 applied = apply_state_change(model, StateChange(kind='ablation',
                              target=Selection(layer='layer3', indices=[0, 5, 9], axis=1),
