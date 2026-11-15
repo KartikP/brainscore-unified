@@ -176,6 +176,7 @@ def build(monkeypatch):
     torch.no_grad = contextlib.nullcontext
     transformers = types.ModuleType('transformers')
     transformers.CLIPModel = loader('CLIPModel', FakeCLIP)
+    transformers.CLIPConfig = loader('CLIPConfig', object)
     transformers.CLIPProcessor = loader('CLIPProcessor', FakeProcessor)
     transformers.Qwen2_5_VLForConditionalGeneration = loader('Qwen2_5_VL', FakeQwen)
     transformers.AutoProcessor = loader('AutoProcessor', FakeProcessor)
@@ -386,7 +387,8 @@ def test_clip_keeps_its_wrappers_and_preprocessing(build, tmp_path):
     vision, text = FakeExtractor.instances
     assert type(vision) is FakePytorchWrapper and type(text) is FakeTextWrapper
     preprocessing = vision.kwargs['preprocessing']
-    assert vision.kwargs == {'identifier': 'clip-vit-b-32', 'model': clip.vision_model,
+    # backbone_id=None is the legacy wrapper's default: its stored path is named by the identifier.
+    assert vision.kwargs == {'identifier': 'clip-vit-b-32', 'backbone_id': None, 'model': clip.vision_model,
                              'preprocessing': preprocessing}
     assert 'image_size' not in vars(vision)
     assert preprocessing.func is module._load_preprocess_images

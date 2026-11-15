@@ -96,11 +96,13 @@ def _make_answer(blip_model, blip_processor, max_new_tokens: int = 8):
     return generate
 
 
-def get_model(identifier: str) -> BrainScoreModel:
-    assert identifier == 'blip2-opt-2.7b'
+def load_blip2(identifier: str):
+    """BLIP-2 OPT-2.7B in float16 and its processor (image part pinned): the one load of the family.
+
+    ``identifier`` names the registration in the download check.
+    """
     from brainscore.models._downloads import hf_preflight
     download = hf_preflight(identifier, 'Salesforce/blip2-opt-2.7b', 15.5)
-
     blip_model = Blip2ForConditionalGeneration.from_pretrained(
         'Salesforce/blip2-opt-2.7b',
         torch_dtype=torch.float16,
@@ -110,27 +112,36 @@ def get_model(identifier: str) -> BrainScoreModel:
     # names, moving the default from PIL to torchvision and shifting pixels.
     blip_processor = AutoProcessor.from_pretrained('Salesforce/blip2-opt-2.7b', **download)
     blip_processor = pin_image_processor(blip_processor, 'Salesforce/blip2-opt-2.7b', **download)
+    return blip_model, blip_processor
 
-    preprocessing = functools.partial(
-        _load_preprocess_images,
-        processor=blip_processor,
-    )
 
-    # Vision: PytorchWrapper wraps vision_model. BLIP-2's vision_model can be
-    # called standalone (forward signature: pixel_values -> last_hidden_state)
-    # so the full model wrapper isn't needed.
+def picture_tower(blip_model, blip_processor, identifier: str, backbone_id=None) -> PytorchWrapper:
+    """The picture extractor of every BLIP-2 registration: the vision model, the image loader, LayerPCA(1000).
+
+    ``identifier`` labels the activations; ``backbone_id`` names the stored
+    path of the legacy wrapper (its ``identifier`` when None).
+    """
+    # BLIP-2's vision_model can be called standalone (pixel_values ->
+    # last_hidden_state), so the full model wrapper isn't needed.
     vision_wrapper = PytorchWrapper(
         identifier=identifier,
+        backbone_id=backbone_id,
         model=blip_model.vision_model,
-        preprocessing=preprocessing,
+        preprocessing=functools.partial(_load_preprocess_images, processor=blip_processor),
     )
-
     # ViT-G hook outputs (batch, 257, 1408) flatten to 361K features per image.
     # That's too many for sklearn PLS at scoring time. LayerPCA(1000) is the
     # convention used by LayerSelection / Layer Mapping Explorer — it fits a
     # PCA on 1000 ImageNet validation images and reduces hook output to 1000D.
     # First-time overhead is ~1-2 min per layer; result cached to disk.
     LayerPCA.hook(vision_wrapper, n_components=1000)
+    return vision_wrapper
+
+
+def get_model(identifier: str) -> BrainScoreModel:
+    assert identifier == 'blip2-opt-2.7b'
+    blip_model, blip_processor = load_blip2(identifier)
+    vision_wrapper = picture_tower(blip_model, blip_processor, identifier)
 
     # Text: TextWrapper wraps the OPT decoder. Causal LM → last aggregation.
     # Wrap language_model.model.decoder so layer paths are 'layers.{N}'.

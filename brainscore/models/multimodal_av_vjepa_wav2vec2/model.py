@@ -51,30 +51,14 @@ def _build_video_wrapper(identifier: str, random_init: bool = False):
     fresh random initialization (deterministic via ``torch.manual_seed(0)``).
     Used for the null-control variants.
     """
-    from brainscore.model_helpers.video_wrapper import VideoWrapper
-    from brainscore.models.vjepa_v1.model import (
-        _BCTPermuteAdapter, _default_cache_dir, _download_checkpoint,
-        _load_vjepa_v1_vitl, _make_preprocessing, _vjepa_v1_post_hook,
-        CHECKPOINT_URL, NUM_INPUT_FRAMES,
-    )
+    from brainscore.models.vjepa_v1.model import load_backbone, video_tower
     from .backbone_inits import randomize_module_in_place
 
-    cache = _default_cache_dir()
-    ckpt = _download_checkpoint(CHECKPOINT_URL, cache / 'vitl16.pth.tar', identifier)
-    backbone = _load_vjepa_v1_vitl(ckpt).eval()
+    backbone = load_backbone(identifier)
     if random_init:
         # Random-init the loaded backbone in-place. Deterministic seed.
         randomize_module_in_place(backbone, seed=0)
-    model = _BCTPermuteAdapter(backbone).eval()
-    preprocessing = _make_preprocessing()
-    wrapper = VideoWrapper(
-        model=model,
-        preprocessing=preprocessing,
-        identifier=f'{identifier}-video',
-        num_frames=NUM_INPUT_FRAMES,
-        post_hook_fn=_vjepa_v1_post_hook,
-        batch_size=4,
-    )
+    wrapper, model = video_tower(backbone, f'{identifier}-video')
     return wrapper, model
 
 

@@ -9,10 +9,7 @@ Single registration only. See blip2-wav2vec2 docstring for why we
 skip null variants on these two heavy VLMs (CLIP and V-JEPA combos
 already cover the four signal/null permutations).
 """
-import torch
-
 from brainscore import BrainScoreModel
-from brainscore_core.hf_compat import pin_image_processor
 
 
 REGION_LAYER_MAP = {
@@ -26,30 +23,12 @@ REGION_LAYER_MAP = {
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'qwen2.5-vl-wav2vec2'
-    from brainscore.models._downloads import hf_preflight
-    download = hf_preflight(identifier, 'Qwen/Qwen2.5-VL-3B-Instruct', 7.6)
-
-    from transformers import (
-        AutoProcessor, Qwen2_5_VLForConditionalGeneration)
-    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     from brainscore.models._shared import build_audio_wrapper
+    from brainscore.models.qwen25_vl_3b.model import load_qwen, picture_tower
 
-    qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-        'Qwen/Qwen2.5-VL-3B-Instruct',
-        torch_dtype=torch.float16,
-        **download,
-    )
-    # Pin the image-processor implementation (see brainscore_core.hf_compat).
-    qwen_processor = AutoProcessor.from_pretrained(
-        'Qwen/Qwen2.5-VL-3B-Instruct', **download)
-    qwen_processor = pin_image_processor(
-        qwen_processor, 'Qwen/Qwen2.5-VL-3B-Instruct', **download)
-
-    vision_wrapper = VLMVisionWrapper(
-        model=qwen_model.model.visual,
-        processor=qwen_processor,
-        identifier=f'{identifier}-vision',
-    )
+    # The picture tower of qwen2.5-vl-3b: the same load and the same extractor.
+    qwen_model, qwen_processor, _ = load_qwen(identifier, 'qwen2.5-vl-3b')
+    vision_wrapper = picture_tower(qwen_model, qwen_processor, identifier)
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)
 
     return BrainScoreModel(

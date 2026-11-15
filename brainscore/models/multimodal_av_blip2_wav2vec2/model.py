@@ -8,21 +8,17 @@ on each, mean-pool over frames before regression.
 ViT-G hook outputs (batch, 257, 1408) flatten to 361K features per
 image — far too many for sklearn ridge. The standalone BLIP-2 model
 applies LayerPCA(1000) at registration time to keep features
-manageable; we reuse the same pattern here.
+manageable. The picture tower is the one of ``blip2-opt-2.7b``: the same
+load (float16) and the same picture extractor (``load_blip2``,
+``picture_tower``).
 
 Single registration only (no random-init null variants — BLIP-2 is
 2.7B params and re-randomizing would be costly compute we'd repeat
 on every cold load). The CLIP and V-JEPA combos already cover all
 4 signal/null permutations between them.
 """
-import functools
-
-import torch
-
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore.models._shared import (
-    _load_preprocess_images, build_audio_wrapper)
-from brainscore_core.hf_compat import pin_image_processor
+from brainscore.models._shared import build_audio_wrapper
 
 
 REGION_LAYER_MAP = {
@@ -44,33 +40,13 @@ REGION_MODALITY_MAP = {
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'blip2-wav2vec2'
-    from brainscore.models._downloads import hf_preflight
-    download = hf_preflight(identifier, 'Salesforce/blip2-opt-2.7b', 15.5)
-
-    from transformers import AutoProcessor, Blip2ForConditionalGeneration
-    from brainscore_vision.model_helpers.activations.pca import LayerPCA
-    from brainscore_vision.model_helpers.activations.pytorch import (
-        PytorchWrapper)
+    from brainscore.models.blip2_opt_2_7b.model import load_blip2, picture_tower
     from brainscore.model_helpers._device import select_device
 
-    # Pin the image-processor implementation (see brainscore_core.hf_compat).
-    blip_processor = AutoProcessor.from_pretrained(
-        'Salesforce/blip2-opt-2.7b', **download)
-    blip_processor = pin_image_processor(
-        blip_processor, 'Salesforce/blip2-opt-2.7b', **download)
-    blip_model = Blip2ForConditionalGeneration.from_pretrained(
-        'Salesforce/blip2-opt-2.7b', torch_dtype=torch.float32, **download)
-
-    preprocessing = functools.partial(
-        _load_preprocess_images, processor=blip_processor)
+    blip_model, blip_processor = load_blip2(identifier)
     # The activations carry the reduced backbone's name; the cache key is the combo's.
-    vision_wrapper = PytorchWrapper(
-        identifier='blip2-vision-pca1000',
-        backbone_id=f'{identifier}-vision',
-        model=blip_model.vision_model,
-        preprocessing=preprocessing,
-    )
-    LayerPCA.hook(vision_wrapper, n_components=1000)
+    vision_wrapper = picture_tower(blip_model, blip_processor, 'blip2-vision-pca1000',
+                                   backbone_id=f'{identifier}-vision')
 
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)
 

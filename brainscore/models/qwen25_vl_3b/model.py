@@ -136,11 +136,15 @@ def _make_answer(qwen_model, qwen_processor, max_new_tokens: int = 8):
     return generate
 
 
-def get_model(identifier: str) -> Subject:
+def load_qwen(identifier: str, size: str):
+    """A Qwen2.5-VL of ``size`` (``SIZES``), on one device, and its processor (image part pinned).
+
+    The one load of the family: float16, or bfloat16 at ``BF16_REVISION`` for
+    ``BF16_IDENTIFIER``. ``identifier`` names the registration in the download
+    check. Returns the model, the processor and the download settings.
+    """
     bf16 = identifier == BF16_IDENTIFIER
-    size = 'qwen2.5-vl-3b' if bf16 else VARIANTS.get(identifier, identifier)
-    assert size in SIZES, identifier
-    hf_id, download_gb, language_layer = SIZES[size]
+    hf_id, download_gb, _ = SIZES[size]
     from brainscore.models._downloads import hf_preflight
     selection = {'revision': BF16_REVISION} if bf16 else {}
     download = hf_preflight(identifier, hf_id, download_gb, **selection)
@@ -148,9 +152,6 @@ def get_model(identifier: str) -> Subject:
         download = {**download, 'revision': BF16_REVISION}
 
     from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
-    from brainscore.model_helpers.text_wrapper import TextWrapper
-    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
-
     qwen_model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
         hf_id,
         torch_dtype=torch.bfloat16 if bf16 else torch.float16,
@@ -164,14 +165,27 @@ def get_model(identifier: str) -> Subject:
     qwen_model = qwen_model.to(select_device())
     qwen_processor = AutoProcessor.from_pretrained(hf_id, **download)
     qwen_processor = pin_image_processor(qwen_processor, hf_id, **download)
+    return qwen_model, qwen_processor, download
 
-    # Vision: VLMVisionWrapper handles Qwen's flattened-patch layout by default
+
+def picture_tower(qwen_model, qwen_processor, identifier: str):
+    """The picture extractor of every Qwen2.5-VL registration: the visual tower, ``<identifier>-vision``."""
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    # VLMVisionWrapper handles Qwen's flattened-patch layout by default
     # (image_grid_thw segments the patches back to images).
-    vision_wrapper = VLMVisionWrapper(
-        model=qwen_model.model.visual,
-        processor=qwen_processor,
-        identifier=f'{identifier}-vision',
-    )
+    return VLMVisionWrapper(model=qwen_model.model.visual, processor=qwen_processor,
+                            identifier=f'{identifier}-vision')
+
+
+def get_model(identifier: str) -> Subject:
+    bf16 = identifier == BF16_IDENTIFIER
+    size = 'qwen2.5-vl-3b' if bf16 else VARIANTS.get(identifier, identifier)
+    assert size in SIZES, identifier
+    language_layer = SIZES[size][2]
+    from brainscore.model_helpers.text_wrapper import TextWrapper
+
+    qwen_model, qwen_processor, download = load_qwen(identifier, size)
+    vision_wrapper = picture_tower(qwen_model, qwen_processor, identifier)
 
     # Text: TextWrapper wraps model.language_model (causal decoder).
     # last aggregation with attention_mask handles padded batches.

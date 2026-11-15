@@ -37,18 +37,25 @@ def _loader(make):
     return SimpleNamespace(from_pretrained=lambda *args, **kwargs: make())
 
 
+class _CLIPModel:
+    """``CLIPModel(config)`` (the untrained null) and ``CLIPModel.from_pretrained`` give a stand-in network."""
+
+    def __new__(cls, *args, **kwargs):
+        return _network()
+
+    from_pretrained = staticmethod(_network)
+
+
 def _clip(monkeypatch, module_name):
     import importlib
+    from brainscore.models.clip_vit_b_32 import model as family     # the family's one load and tower
     module = importlib.import_module(module_name)
-    monkeypatch.setattr(module, 'CLIPProcessor', _loader(lambda: SimpleNamespace(tokenizer=object())))
-    monkeypatch.setattr(module, 'pin_image_processor', lambda processor, name: processor)
-    monkeypatch.setattr(module, 'PytorchWrapper', _Extractor)
+    monkeypatch.setattr(family, 'CLIPProcessor', _loader(lambda: SimpleNamespace(tokenizer=object())))
+    monkeypatch.setattr(family, 'pin_image_processor', lambda processor, name: processor)
+    monkeypatch.setattr(family, 'PytorchWrapper', _Extractor)
+    monkeypatch.setattr(family, 'CLIPConfig', _loader(object))
+    monkeypatch.setattr(family, 'CLIPModel', _CLIPModel)
     monkeypatch.setattr(module, 'TextWrapper', _Extractor)
-    if module_name.endswith('random_vit_b_32.model'):
-        monkeypatch.setattr(module, 'CLIPConfig', _loader(object))
-        monkeypatch.setattr(module, 'CLIPModel', _network)
-    else:
-        monkeypatch.setattr(module, 'CLIPModel', _loader(_network))
     return module
 
 
