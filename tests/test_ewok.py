@@ -397,11 +397,11 @@ def test_real_hooks_change_score_and_restore(prepared, tmp_path):
 
 
 class _ParticipateOnlyReader(Subject):
-    """Answers EWoK contexts with raw option scores through participate only: no process."""
+    """Answers EWoK contexts with option log probabilities through participate only: no process."""
     identifier = 'participate-only-ewok'
     in_channels = {'text'}
-    out_channels = {'behavior:probabilities'}
-    scale = 'log'
+    out_channels = {'behavior:log_probabilities'}
+    layout = 'continuation'
 
     def __init__(self, provider):
         self.provider, self.sessions = provider, 0
@@ -412,20 +412,21 @@ class _ParticipateOnlyReader(Subject):
         from brainscore_core.response_formats import response_record
         from brainscore_core.supported_data_standards.brainio.assemblies import BehavioralAssembly
         self.sessions += 1
-        assert tuple(session.outputs) == ('behavior:probabilities',)
+        from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
+        assert tuple(session.outputs) == ('behavior:log_probabilities',)
+        segment = self.layout == 'segment'
+        parameters = {**VERBATIM_LOG_PROBABILITIES, 'layout': self.layout,
+                      'context': 'prefix' if segment else 'shared'}
         while (event := session.next_input()) is not None:
             options = list(session.stimuli.loc[event.meta['stimulus_index'], 'options'])
             scores = self.provider(Prompt((('text', event.payload),)), options)
-            log = self.scale == 'log'
-            session.respond(StreamEvent('behavior:probabilities', BehavioralAssembly(
-                np.array([[scores[option] for option in options]],
-                         dtype=np.float64 if log else np.float32),
+            session.respond(StreamEvent('behavior:log_probabilities', BehavioralAssembly(
+                np.array([[scores[option] for option in options]], dtype=np.float64),
                 coords={'stimulus_id': ('presentation', [event.meta['stimulus_id']]),
-                        'choice': [0, 1]}, dims=['presentation', 'choice'],
+                        'choice': [1, 2] if segment else [0, 1]}, dims=['presentation', 'choice'],
                 attrs={'response': response_record(
-                    'behavior:probabilities', 'likelihood',
-                    parameters={'scale': 'log'} if log else {},
-                    category='model-derived' if log else 'behavioral')}),
+                    'behavior:log_probabilities', 'likelihood', parameters=parameters,
+                    category='model-derived')}),
                 event.t_ms, dict(event.meta)))
 
     def reset(self):
@@ -571,11 +572,11 @@ def test_logprobs_match_the_removed_request_path_on_the_same_model(tiny_lm, word
         'stimulus_id': [f'{r["item_id"]}.context{n}' for n in (1, 2) for r in rows],
         'text': [r[f'Context{n}'] for n in (1, 2) for r in rows],
         'options': [(r['Target1'], r['Target2']) for n in (1, 2) for r in rows]}))
-    session = stimulus_session(stimuli, ['behavior:probabilities'],
+    session = stimulus_session(stimuli, ['behavior:log_probabilities'],
                                TaskContext(response=_TASKS['logprobs'][0]))
     model.participate(session)
-    new = session.collect('behavior:probabilities')
-    assert new.attrs['response']['parameters']['scale'] == 'log'
+    new = session.collect('behavior:log_probabilities')
+    assert new.attrs['response']['parameters']['layout'] == 'continuation'
     # Old path: the requests the old benchmark sent, (target, context) pairs, eight items each.
     old = {}
     for target in (1, 2):
@@ -641,7 +642,7 @@ def test_replay_rebuilds_one_session_per_request(prepared, tmp_path):
     for event in events:
         if event['kind'] == 'output':
             outputs.setdefault(event['repetition_id'], []).append(event['payload'].channel)
-    assert list(outputs.values()) == [['behavior:probabilities']] * 4
+    assert list(outputs.values()) == [['behavior:log_probabilities']] * 4
 
     calls = []
     counting = likelihood_subject(lambda prompt, candidates: calls.append(prompt) or provider(prompt, candidates))
@@ -653,16 +654,16 @@ def test_replay_rebuilds_one_session_per_request(prepared, tmp_path):
     assert compare_outputs(original.directory, replay.directory)['equal']
 
 
-class _NormalizedReader(_ParticipateOnlyReader):
-    """Sends normalized probabilities where raw log scores were asked for."""
-    scale = None
+class _SegmentReader(_ParticipateOnlyReader):
+    """Sends log probabilities of the segment layout where continuations were asked for."""
+    layout = 'segment'
 
 
-def test_normalized_probabilities_are_refused_not_scored(prepared, tmp_path):
+def test_segment_log_probabilities_are_refused_not_scored(prepared, tmp_path):
     benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared,
                                           output_dir=tmp_path / 'run')
-    with pytest.raises(ValueError, match='raw log scores'):
-        benchmark(_NormalizedReader(EWoKProvider(NativeModel())))
+    with pytest.raises(ValueError, match="layout 'continuation'"):
+        benchmark(_SegmentReader(EWoKProvider(NativeModel())))
 
 
 class _TorchNative:
@@ -762,7 +763,7 @@ def test_stateful_subject_inside_a_caller_intervention_keeps_both(prepared, tmp_
 
 
 @pytest.mark.parametrize('mode, inputs, outputs', [
-    ('logprobs', {'text'}, {'behavior:probabilities'}),
+    ('logprobs', {'text'}, {'behavior:log_probabilities'}),
     ('choice', {'text'}, {'behavior:choice'}),
 ])
 def test_declares_its_inputs_and_outputs(mode, inputs, outputs, prepared):
@@ -796,3 +797,17 @@ def test_choice_replay_rebuilds_one_session_per_request(prepared, tmp_path):
     # Two batches, two questions per item: six prompts in four sessions.
     assert len(calls) == 6
     assert compare_outputs(original.directory, replay.directory)['equal']
+
+
+def test_a_readout_only_model_is_not_applicable_on_logprobs(prepared):
+    """Only a likelihood part gives behavior:log_probabilities: pre-flight gives N/A."""
+    from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
+    from tests.brainscore_model.test_answer_ownership import REGISTERED_STATEMENTS, _model
+    calls = []
+    readout = _model('behavioral_readout_layer', calls=calls,
+                     owners=REGISTERED_STATEMENTS[('behavioral_readout_layer',)])
+    assert 'behavior:log_probabilities' not in readout.out_channels
+    benchmark = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared)
+    with pytest.raises(CompatibilityError, match='behavior:log_probabilities'):
+        check_channel_compatibility(readout, benchmark)
+    assert calls == []

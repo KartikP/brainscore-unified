@@ -239,10 +239,10 @@ OPTIONS = STIMULI.copy()
 OPTIONS['options'] = [['cat', 'dog']] * len(STIMULI)
 OPTIONS.identifier = 'behavior-paths-options'
 # The task forms the library's benchmarks and harnesses send beyond the numeric
-# baseline: EWoK (raw-text choice; raw scores of the options of each row),
+# baseline: EWoK (verbatim choice; log probabilities of the options of each row),
 # CogGym (free text).
 EWOK_CHOICE = TaskContext(response=Choice(['1', '2'], verbatim=True))
-EWOK_LOGPROBS = TaskContext(response=Choice('options', raw_scores=True, verbatim=True))
+EWOK_LOGPROBS = TaskContext(response=Choice('options', verbatim=True))
 FREE_TEXT = TaskContext(instruction='Say it.', response=Text())
 # (part set, task, stimuli, requested channel, method in the response record or None when refused)
 TASK_FORMS = {
@@ -250,8 +250,9 @@ TASK_FORMS = {
     'causal lm ewok choice': (CAUSAL_LM, EWOK_CHOICE, STIMULI, 'behavior:choice', 'generation'),
     'api ewok choice': (API, EWOK_CHOICE, STIMULI, 'behavior:choice', 'generation'),
     'readout ewok choice': (READOUT, EWOK_CHOICE, STIMULI, 'behavior:choice', None),
-    'qwen ewok logprobs': (QWEN, EWOK_LOGPROBS, OPTIONS, 'behavior:probabilities', 'likelihood'),
-    'causal lm ewok logprobs': (CAUSAL_LM, EWOK_LOGPROBS, OPTIONS, 'behavior:probabilities', 'likelihood'),
+    'qwen ewok logprobs': (QWEN, EWOK_LOGPROBS, OPTIONS, 'behavior:log_probabilities', 'likelihood'),
+    'causal lm ewok logprobs': (CAUSAL_LM, EWOK_LOGPROBS, OPTIONS, 'behavior:log_probabilities',
+                                'likelihood'),
     'qwen free text': (QWEN, FREE_TEXT, STIMULI, 'behavior:text', 'generation'),
     'causal lm free text': (CAUSAL_LM, FREE_TEXT, STIMULI, 'behavior:text', 'generation'),
     'api free text': (API, FREE_TEXT, STIMULI, 'behavior:text', 'generation'),

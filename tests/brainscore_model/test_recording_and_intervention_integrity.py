@@ -666,8 +666,6 @@ _LEGACY = dict(task_type='probabilities', instruction='Which?', label_set=['a', 
 _TASKS = {
     'legacy': lambda: TaskContext(**_LEGACY),
     'choice': lambda: TaskContext(instruction='Which?', response=Choice(['a', 'b'])),
-    'choice with raw scores': lambda: TaskContext(
-        instruction='Which?', response=Choice(['a', 'b'], raw_scores=True)),
     'scale': lambda: TaskContext(instruction='How?', response=Scale(1, 7)),
     'text': lambda: TaskContext(instruction='Say.', response=Text()),
 }
@@ -682,8 +680,6 @@ _PARTS = {
 _INSUFFICIENT = [
     ('legacy', 'none'), ('legacy', 'readout without fitting'), ('legacy', 'likelihood'), ('legacy', 'reply'),
     ('choice', 'none'), ('choice', 'readout without fitting'),
-    ('choice with raw scores', 'none'), ('choice with raw scores', 'answer'),
-    ('choice with raw scores', 'reply'),
     ('scale', 'none'), ('scale', 'answer'), ('scale', 'likelihood'),
     ('scale', 'readout without fitting'),
     ('text', 'none'), ('text', 'answer'), ('text', 'likelihood'), ('text', 'readout without fitting'),

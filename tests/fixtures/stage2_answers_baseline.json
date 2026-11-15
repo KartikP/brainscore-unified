@@ -565,7 +565,7 @@
    "ewok log scores": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:log_probabilities'] in one session: it does not produce ['behavior:log_probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "legacy answer": {
@@ -672,6 +672,12 @@
       ]
      }
     }
+   },
+   "log probabilities": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:log_probabilities'] in one session: it does not produce ['behavior:log_probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+    ]
    },
    "probabilities only": {
     "outputs": {
@@ -807,12 +813,6 @@
       ]
      }
     }
-   },
-   "raw scores": {
-    "error": [
-     "ExecutionNotFeasibleError",
-     "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
-    ]
    },
    "roar plain choice": {
     "outputs": {
@@ -997,7 +997,7 @@
    "ewok log scores": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:log_probabilities'] in one session: it does not produce ['behavior:log_probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "legacy answer": {
@@ -1064,6 +1064,12 @@
     "error": [
      "ExecutionNotFeasibleError",
      "Subject 'owned' cannot run the behavioral task task_type='probabilities'. Paths tried: generation needs answer=, TaskContext.instruction and TaskContext.label_set; likelihood needs a TaskContext(response=Choice(...)); a legacy task has no likelihood path; readout needs TaskContext.fitting_stimuli (and behavioral_readout_layer=)"
+    ]
+   },
+   "log probabilities": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:log_probabilities'] in one session: it does not produce ['behavior:log_probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "probabilities only": {
@@ -1141,12 +1147,6 @@
       ]
      }
     }
-   },
-   "raw scores": {
-    "error": [
-     "ExecutionNotFeasibleError",
-     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
-    ]
    },
    "roar plain choice": {
     "outputs": {
@@ -1229,6 +1229,7 @@
   "out_channels": [
    "behavior",
    "behavior:choice",
+   "behavior:log_probabilities",
    "behavior:probabilities",
    "behavior:rating",
    "behavior:rt",
@@ -1904,7 +1905,7 @@
    },
    "ewok log scores": {
     "outputs": {
-     "behavior:probabilities": {
+     "behavior:log_probabilities": {
       "dims": [
        "presentation",
        "choice"
@@ -1945,11 +1946,20 @@
       "response": {
        "category": "model-derived",
        "conversion": null,
-       "format": "behavior:probabilities",
+       "format": "behavior:log_probabilities",
        "method": "likelihood",
        "origin": "native",
        "parameters": {
-        "scale": "log"
+        "aggregation": "sum",
+        "context": "shared",
+        "layout": "continuation",
+        "tokenization": {
+         "join": "space",
+         "special_tokens": "none",
+         "template": "none",
+         "truncation": "none"
+        },
+        "units": "nats"
        },
        "parsed_by": null,
        "source_format": null
@@ -2070,6 +2080,158 @@
        "f64:66494f925110e03f",
        "f64:66494f925110e03f",
        "f64:346d61db5cdfdf3f"
+      ]
+     }
+    }
+   },
+   "log probabilities": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax_argmax",
+       "format": "behavior:choice",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "tie": "first",
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:log_probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "model-derived",
+       "conversion": null,
+       "format": "behavior:log_probabilities",
+       "method": "likelihood",
+       "origin": "native",
+       "parameters": {
+        "aggregation": "sum",
+        "context": "shared",
+        "layout": "continuation",
+        "tokenization": {
+         "join": "space",
+         "special_tokens": "none",
+         "template": "none",
+         "truncation": "none"
+        },
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf"
       ]
      }
     }
@@ -2219,149 +2381,6 @@
        "f64:000000000000f87f",
        "f64:000000000000f87f",
        "f64:000000000000f87f"
-      ]
-     }
-    }
-   },
-   "raw scores": {
-    "outputs": {
-     "behavior:choice": {
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float32",
-      "presentation": {
-       "answer_valid": [
-        true,
-        true,
-        true
-       ],
-       "label": [
-        "cat",
-        "dog",
-        "cat"
-       ],
-       "parse_error": [
-        "",
-        "",
-        ""
-       ],
-       "raw_answer": [
-        "[-0.0, -1.0]",
-        "[-0.0, -1.0]",
-        "[-0.0, -1.0]"
-       ],
-       "response_reason": [
-        "",
-        "",
-        ""
-       ],
-       "response_state": [
-        "valid",
-        "valid",
-        "valid"
-       ],
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "behavioral",
-       "conversion": "softmax_argmax",
-       "format": "behavior:choice",
-       "method": "likelihood",
-       "origin": "derived",
-       "parameters": {
-        "option_order": "trial",
-        "temperature": 1,
-        "tie": "first",
-        "units": "nats"
-       },
-       "parsed_by": null,
-       "source_format": "behavior:log_probabilities"
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000"
-      ]
-     },
-     "behavior:probabilities": {
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float64",
-      "presentation": {
-       "label": [
-        "cat",
-        "dog",
-        "cat"
-       ],
-       "raw_answer": [
-        "[-0.0, -1.0]",
-        "[-0.0, -1.0]",
-        "[-0.0, -1.0]"
-       ],
-       "response_reason": [
-        "",
-        "",
-        ""
-       ],
-       "response_state": [
-        "valid",
-        "valid",
-        "valid"
-       ],
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "model-derived",
-       "conversion": null,
-       "format": "behavior:probabilities",
-       "method": "likelihood",
-       "origin": "native",
-       "parameters": {
-        "scale": "log"
-       },
-       "parsed_by": null,
-       "source_format": null
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:0000000000000080",
-       "f64:000000000000f0bf",
-       "f64:0000000000000080",
-       "f64:000000000000f0bf",
-       "f64:0000000000000080",
-       "f64:000000000000f0bf"
       ]
      }
     }
@@ -3018,7 +3037,7 @@
    "ewok log scores": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:log_probabilities'] in one session: it does not produce ['behavior:log_probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "legacy answer": {
@@ -3110,6 +3129,12 @@
       ]
      }
     }
+   },
+   "log probabilities": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:log_probabilities'] in one session: it does not produce ['behavior:log_probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+    ]
    },
    "probabilities only": {
     "outputs": {
@@ -3246,12 +3271,6 @@
      }
     }
    },
-   "raw scores": {
-    "error": [
-     "ExecutionNotFeasibleError",
-     "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
-    ]
-   },
    "roar plain choice": {
     "outputs": {
      "behavior:choice": {
@@ -3335,6 +3354,7 @@
  "reply+likelihood": {
   "out_channels": [
    "behavior:choice",
+   "behavior:log_probabilities",
    "behavior:probabilities",
    "behavior:rating",
    "behavior:rt",
@@ -4010,7 +4030,7 @@
    },
    "ewok log scores": {
     "outputs": {
-     "behavior:probabilities": {
+     "behavior:log_probabilities": {
       "dims": [
        "presentation",
        "choice"
@@ -4051,11 +4071,20 @@
       "response": {
        "category": "model-derived",
        "conversion": null,
-       "format": "behavior:probabilities",
+       "format": "behavior:log_probabilities",
        "method": "likelihood",
        "origin": "native",
        "parameters": {
-        "scale": "log"
+        "aggregation": "sum",
+        "context": "shared",
+        "layout": "continuation",
+        "tokenization": {
+         "join": "space",
+         "special_tokens": "none",
+         "template": "none",
+         "truncation": "none"
+        },
+        "units": "nats"
        },
        "parsed_by": null,
        "source_format": null
@@ -4078,14 +4107,166 @@
    "legacy answer": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:log_probabilities', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "legacy readout": {
     "error": [
      "ExecutionNotFeasibleError",
-     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+     "Session refused (task type 'probabilities'): Subject 'owned' cannot answer ['behavior'] in one session: it does not produce ['behavior']; out_channels: ['behavior:choice', 'behavior:log_probabilities', 'behavior:probabilities', 'behavior:rating', 'behavior:rt', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
+   },
+   "log probabilities": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax_argmax",
+       "format": "behavior:choice",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "tie": "first",
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:log_probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "model-derived",
+       "conversion": null,
+       "format": "behavior:log_probabilities",
+       "method": "likelihood",
+       "origin": "native",
+       "parameters": {
+        "aggregation": "sum",
+        "context": "shared",
+        "layout": "continuation",
+        "tokenization": {
+         "join": "space",
+         "special_tokens": "none",
+         "template": "none",
+         "truncation": "none"
+        },
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf"
+      ]
+     }
+    }
    },
    "probabilities only": {
     "outputs": {
@@ -4232,149 +4413,6 @@
        "f64:000000000000f87f",
        "f64:000000000000f87f",
        "f64:000000000000f87f"
-      ]
-     }
-    }
-   },
-   "raw scores": {
-    "outputs": {
-     "behavior:choice": {
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float32",
-      "presentation": {
-       "answer_valid": [
-        true,
-        true,
-        true
-       ],
-       "label": [
-        "cat",
-        "dog",
-        "cat"
-       ],
-       "parse_error": [
-        "",
-        "",
-        ""
-       ],
-       "raw_answer": [
-        "[-0.0, -1.0]",
-        "[-0.0, -1.0]",
-        "[-0.0, -1.0]"
-       ],
-       "response_reason": [
-        "",
-        "",
-        ""
-       ],
-       "response_state": [
-        "valid",
-        "valid",
-        "valid"
-       ],
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "behavioral",
-       "conversion": "softmax_argmax",
-       "format": "behavior:choice",
-       "method": "likelihood",
-       "origin": "derived",
-       "parameters": {
-        "option_order": "trial",
-        "temperature": 1,
-        "tie": "first",
-        "units": "nats"
-       },
-       "parsed_by": null,
-       "source_format": "behavior:log_probabilities"
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000",
-       "f64:000000000000f03f",
-       "f64:0000000000000000"
-      ]
-     },
-     "behavior:probabilities": {
-      "dims": [
-       "presentation",
-       "choice"
-      ],
-      "dtype": "float64",
-      "presentation": {
-       "label": [
-        "cat",
-        "dog",
-        "cat"
-       ],
-       "raw_answer": [
-        "[-0.0, -1.0]",
-        "[-0.0, -1.0]",
-        "[-0.0, -1.0]"
-       ],
-       "response_reason": [
-        "",
-        "",
-        ""
-       ],
-       "response_state": [
-        "valid",
-        "valid",
-        "valid"
-       ],
-       "sentence": [
-        "real x",
-        "fake y",
-        "real z"
-       ],
-       "stimulus_id": [
-        "a",
-        "b",
-        "c"
-       ]
-      },
-      "response": {
-       "category": "model-derived",
-       "conversion": null,
-       "format": "behavior:probabilities",
-       "method": "likelihood",
-       "origin": "native",
-       "parameters": {
-        "scale": "log"
-       },
-       "parsed_by": null,
-       "source_format": null
-      },
-      "shape": [
-       3,
-       2
-      ],
-      "values": [
-       "f64:0000000000000080",
-       "f64:000000000000f0bf",
-       "f64:0000000000000080",
-       "f64:000000000000f0bf",
-       "f64:0000000000000080",
-       "f64:000000000000f0bf"
       ]
      }
     }

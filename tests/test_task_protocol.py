@@ -703,19 +703,24 @@ def test_options_that_differ_for_each_row_reach_each_part():
         seen.append(('answer', stimulus_row['text'], tuple(label_set)))
         return label_set[0]
 
-    raw = TaskContext(response=Choice(labels='options', raw_scores=True, verbatim=True))
+    raw = TaskContext(response=Choice(labels='options', verbatim=True))
     scorer = BrainScoreModel(identifier='scorer', in_channels={'text'}, likelihood=likelihood,
                              capability_config={'behavior-sessions': {   # derived formats (rule 4.11)
                                  'behavior:choice': ('likelihood', 'softmax_argmax'),
                                  'behavior:probabilities': ('likelihood', 'softmax')}})
-    session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:probabilities'], raw)
+    session = stimulus_session(_options_stimuli(), ['behavior:choice', 'behavior:log_probabilities'], raw)
     scorer.participate(session)
-    scores = session.collect('behavior:probabilities')
-    # Raw scores, as the part gave them, in the order of each row's options.
+    scores = session.collect('behavior:log_probabilities')
+    # Log probabilities, as the part gave them, in the order of each row's options. A
+    # value above 0 is not a log probability: core stores that row as invalid.
     np.testing.assert_array_equal(scores.values, [[-0.25, 0.5], [0.5, -0.25]])
+    assert list(scores['response_state'].values) == ['invalid', 'invalid']
     assert list(scores['choice'].values) == [0, 1]
+    from brainscore._model.behavioral import VERBATIM_LOG_PROBABILITIES
     from brainscore_core.response_formats import response_record
-    assert scores.attrs['response'] == response_record('behavior:probabilities', 'likelihood', category='model-derived', parameters={'scale': 'log'})
+    assert scores.attrs['response'] == response_record(
+        'behavior:log_probabilities', 'likelihood', category='model-derived',
+        parameters=VERBATIM_LOG_PROBABILITIES)
     np.testing.assert_array_equal(session.collect('behavior:choice').values, [[0, 1], [1, 0]])
     assert seen == [('likelihood', (('text', 'the cat'),), ('sat', 'ran')),
                     ('likelihood', (('text', 'the dog'),), ('kind', 'mean'))]
@@ -732,15 +737,17 @@ def test_options_that_differ_for_each_row_reach_each_part():
     assert seen[2] == ('answer', 'the cat', ('sat', 'ran'))
 
 
-def test_raw_scores_need_a_likelihood_part():
-    """A model that would have to guess or normalize is N/A, never scored."""
-    from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
+def test_log_probabilities_need_a_likelihood_part():
+    """A model that would have to guess or normalize does not declare the format."""
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
     model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=lambda p: 'sat')
-    task = TaskContext(response=Choice(labels='options', raw_scores=True, verbatim=True))
-    with pytest.raises(ExecutionNotFeasibleError, match='likelihood'):
-        model.start_task(task)
+    assert 'behavior:log_probabilities' not in model.out_channels
+    session = stimulus_session(_options_stimuli(), ['behavior:log_probabilities'],
+                               TaskContext(response=Choice(labels='options', verbatim=True)))
+    with pytest.raises(ExecutionNotFeasibleError, match='does not produce'):
+        model.participate(session)
 
 
 def test_chat_parts_scores_plain_text_under_verbatim():

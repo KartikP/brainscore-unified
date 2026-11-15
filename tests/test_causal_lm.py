@@ -47,24 +47,32 @@ def _stimuli():
 
 
 def _scores(model, contexts, targets, verbatim=True):
-    """Each target's raw score after its context, through participate.
+    """Each target's log probability after its context.
 
-    A raw-score choice needs two distinct options per row; the second is a
-    filler word, and only the first column is read.
+    Verbatim: through participate, on ``behavior:log_probabilities`` (only a verbatim
+    choice can request it). Not verbatim: the likelihood part itself on each trial's
+    prompt, which the chat scoring tests check. A choice needs two distinct options per
+    row; the second is a filler word, and only the first column is read.
     """
     from brainscore_core.contract import TaskContext
-    from brainscore_core.responses import Choice
+    from brainscore_core.responses import Choice, trial_prompt
     from brainscore_core.streaming_helpers import stimulus_session
     fillers = ['mean' if target != 'mean' else 'kind' for target in targets]
     stimuli = StimulusSet({'stimulus_id': [f's{i}' for i in range(len(contexts))], 'text': list(contexts),
                            'options': [(t, f) for t, f in zip(targets, fillers)]})
     stimuli.identifier = 'causal-lm-scores'
-    task = TaskContext(response=Choice(labels='options', raw_scores=True, verbatim=verbatim))
-    session = stimulus_session(stimuli, ['behavior:probabilities'], task)
+    task = TaskContext(response=Choice(labels='options', verbatim=verbatim))
+    if not verbatim:
+        prompts = [trial_prompt(task, row) for _, row in stimuli.iterrows()]
+        return [float(model._likelihood(prompt, list(prompt.response.labels))[prompt.response.labels[0]])
+                for prompt in prompts]
+    session = stimulus_session(stimuli, ['behavior:log_probabilities'], task)
     model.participate(session)
-    scores = session.collect('behavior:probabilities')
-    from brainscore_core.response_formats import response_record
-    assert scores.attrs['response'] == response_record('behavior:probabilities', 'likelihood', category='model-derived', parameters={'scale': 'log'})
+    scores = session.collect('behavior:log_probabilities')
+    record = scores.attrs['response']
+    assert (record['format'], record['method'], record['origin'], record['category']) == (
+        'behavior:log_probabilities', 'likelihood', 'native', 'model-derived')
+    assert (record['parameters']['units'], record['parameters']['layout']) == ('nats', 'continuation')
     return [float(v) for v in scores.values[:, 0]]
 
 
@@ -141,12 +149,12 @@ def test_recording_input_site_sees_the_steered_neuron(subject):
 def test_intervention_changes_scores_and_reset_restores_them(subject):
     model, _, _ = subject
     contexts, targets = ['the cat', 'the dog'], ['sat', 'ran']
-    before = _scores(model, contexts, targets, verbatim=False)
+    before = _scores(model, contexts, targets)
     apply_state_change(model, StateChange(kind='steer', perturbation=Perturbation(kind='drive', amount=10.0),
                                           target=Selection(layer=NEURON_IN, indices=[4])))
-    during = _scores(model, contexts, targets, verbatim=False)
+    during = _scores(model, contexts, targets)
     model.reset()
-    after = _scores(model, contexts, targets, verbatim=False)
+    after = _scores(model, contexts, targets)
     assert during != before and after == before
 
 
@@ -161,17 +169,17 @@ def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
                                  contrast=(['x'], ['y']), n_units=3, sign='abs')
     units = target.resolve(model)
     assert units.layer == NEURON_IN
-    before = _scores(model, ['the cat'], ['sat'], verbatim=False)
+    before = _scores(model, ['the cat'], ['sat'])
     apply_state_change(model, StateChange(kind='lesion', target=units,
                                           perturbation=Perturbation(kind='drive', amount=50.0)))
-    assert _scores(model, ['the cat'], ['sat'], verbatim=False) != before
+    assert _scores(model, ['the cat'], ['sat']) != before
 
 
 def test_declares_what_it_can_do(subject):
     model, _, _ = subject
     assert {'text', 'instruction'} <= model.in_channels
     assert {'neural:mlp_in', 'neural:block1', 'behavior:text', 'behavior:choice',
-            'behavior:probabilities'} <= model.out_channels
+            'behavior:probabilities', 'behavior:log_probabilities'} <= model.out_channels
 
 
 def test_record_and_push_an_input_site_through_participate(subject):
@@ -296,3 +304,21 @@ def test_the_instruction_is_the_system_turn():
     # A template with no system turn gets the instruction first in the user turn.
     assert _chat_text(Tokenizer(False), instruction, turns, {}) == [
         {'role': 'user', 'content': 'Follow the rules.\n\nIs it a word?'}]
+
+
+def test_log_probabilities_without_verbatim_are_refused_before_any_forward_pass(subject, monkeypatch):
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from brainscore_core.streaming_helpers import stimulus_session
+    model, net, _ = subject
+    calls = []
+    original = type(net).forward
+    monkeypatch.setattr(type(net), 'forward', lambda self, *a, **k: calls.append(1) or original(self, *a, **k))
+    stimuli = StimulusSet({'stimulus_id': ['s0'], 'text': ['the cat'], 'options': [('sat', 'mean')]})
+    stimuli.identifier = 'causal-lm-no-verbatim'
+    session = stimulus_session(stimuli, ['behavior:log_probabilities'],
+                               TaskContext(response=Choice(labels='options')))
+    with pytest.raises(ExecutionNotFeasibleError, match='verbatim'):
+        model.participate(session)
+    assert calls == []

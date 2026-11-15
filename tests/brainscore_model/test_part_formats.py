@@ -18,7 +18,7 @@ pytestmark = pytest.mark.unit
 NATIVE = {
     'answer': {'behavior', 'behavior:choice'},
     'reply': {'behavior:choice', 'behavior:rating', 'behavior:text'},
-    'likelihood': set(),
+    'likelihood': {'behavior:log_probabilities'},
     'behavioral_readout_layer': {'behavior', 'behavior:probabilities', 'behavior:rating',
                                  'behavior:rt'},
 }
@@ -62,7 +62,7 @@ def test_a_readout_only_model_declares_probabilities_rating_rt_not_choice():
 def test_a_reply_and_likelihood_model_declares_the_stated_probabilities():
     model = _model('reply', 'likelihood', owners={'behavior:probabilities': ('likelihood', 'softmax')})
     assert _behavior(model) == {'behavior:choice', 'behavior:probabilities', 'behavior:rating',
-                                'behavior:text', 'behavior:rt'}
+                                'behavior:text', 'behavior:rt', 'behavior:log_probabilities'}
 
 
 def test_the_replaced_names_are_gone():

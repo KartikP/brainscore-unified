@@ -209,7 +209,7 @@ class BrainScoreModel(UnifiedModel):
             are different channels: neither is shorthand for the other. A
             wrong statement is refused here with a message that says what to
             write. The owner answers its channel. When a task form excludes it (for
-            example raw scores, which only a likelihood gives) and exactly one
+            example log probabilities, which only a likelihood gives) and exactly one
             other part can serve that form, that part answers; when two or more
             can, the session is refused before any compute.
         """

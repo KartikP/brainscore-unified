@@ -35,20 +35,22 @@ PARTS = {'answer': lambda stimulus_row, instruction, label_set: label_set[0], 'r
          'behavioral_readout_layer': 'late'}
 B, CH, P, RA, RT, TE = ('behavior', 'behavior:choice', 'behavior:probabilities',
                         'behavior:rating', 'behavior:rt', 'behavior:text')
+LP = 'behavior:log_probabilities'
 NEURAL_ONLY = ('benchmarks/grid_game/benchmark.py', 'models/multimodal_av_blip2_wav2vec2/model.py',
                'models/multimodal_av_clip_wav2vec2/model.py', 'models/multimodal_av_qwen_wav2vec2/model.py',
                'models/multimodal_av_vjepa_wav2vec2/model.py', 'models/random_wav2vec2/model.py',
                'models/videomae_base/model.py', 'models/vjepa/model.py', 'models/vjepa_v1/model.py',
                'tools/auto_register.py', 'validation/benchmark_parity.py')
-# Declared behavior formats per library call, before this chunk and after it.
+# Declared behavior formats per library call, before the stage 2 chunk and now (a
+# likelihood part also gives behavior:log_probabilities natively since stage 3, S4).
 DECLARED = {
-    'model_helpers/causal_lm.py': ({B, CH, P, RA, RT, TE}, {CH, P, RA, RT, TE}),
+    'model_helpers/causal_lm.py': ({B, CH, P, RA, RT, TE}, {CH, P, LP, RA, RT, TE}),
     'models/api_closed/model.py': ({B, CH, RA, TE}, {B, CH, RA, TE}),
     'models/blip2_opt_2_7b/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/clip_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'models/gpt2/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
-    'models/qwen25_vl_3b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, RA, RT, TE}),
-    'models/qwen36_27b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, RA, RT, TE}),
+    'models/qwen25_vl_3b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
+    'models/qwen36_27b/model.py': ({B, CH, P, RA, RT, TE}, {B, CH, P, LP, RA, RT, TE}),
     'models/random_vit_b_32/model.py': ({B, CH, P, RA, RT}, {B, CH, P, RA, RT}),
     'tools/rajalingham2018_2afc/score_2afc.py': ({B, CH}, {B, CH}),
     **{where: (set(), set()) for where in NEURAL_ONLY},
@@ -61,7 +63,7 @@ BENCHMARKS = {
     'dyslexia image': ({'vision:image', 'instruction', 'lesion'}, {B, 'neural:VWFA', 'perturbation'}),
     'dyslexia text': ({'text', 'instruction', 'lesion'}, {B, 'neural:VWFA', 'perturbation'}),
     'EWoK choice': ({'text'}, {CH}),
-    'EWoK logprobs': ({'text'}, {P}),
+    'EWoK logprobs': ({'text'}, {LP}),
     'CogGym': ({'instruction', 'text'}, {TE}),
     'facade': ({'text'}, {B}),
 }
@@ -70,12 +72,12 @@ ALL = set(BENCHMARKS)
 COMPATIBLE = {
     'model_helpers/causal_lm.py': (ALL, {'EWoK choice', 'EWoK logprobs', 'CogGym'}),
     'models/api_closed/model.py': (ALL - {'EWoK logprobs'}, ALL - {'EWoK logprobs'}),
-    'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL - {'CogGym'}),
-    'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym'}),
-    'models/gpt2/model.py': (ALL - {'CogGym'}, ALL - {'CogGym'}),
+    'models/blip2_opt_2_7b/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
+    'models/clip_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
+    'models/gpt2/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'models/qwen25_vl_3b/model.py': (ALL, ALL),
     'models/qwen36_27b/model.py': (ALL, ALL),
-    'models/random_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym'}),
+    'models/random_vit_b_32/model.py': (ALL - {'CogGym'}, ALL - {'CogGym', 'EWoK logprobs'}),
     'tools/rajalingham2018_2afc/score_2afc.py': (ALL - {'EWoK logprobs', 'CogGym'},
                                                  ALL - {'EWoK logprobs', 'CogGym'}),
     **{where: (set(), set()) for where in NEURAL_ONLY},
@@ -132,10 +134,15 @@ def test_each_library_call_is_compatible_where_the_matrix_says(where, wired, sta
 def test_the_matrix_changes_only_where_the_declarations_change():
     """The changed cells: causal_lm loses bare behavior (plan, section 3, point g; the
     image and facade cells follow from the same bare behavior). The readout-only
-    registrations state ('readout', 'argmax') and keep behavior:choice."""
+    registrations state ('readout', 'argmax') and keep behavior:choice. Since stage 3,
+    S4, EWoK logprobs requests behavior:log_probabilities, which only a likelihood
+    gives, so the readout-only registrations are N/A there (before, the run raised:
+    raw scores came only from a likelihood)."""
     changed = {(where, name) for where, (before, after) in COMPATIBLE.items() for name in before ^ after}
     assert changed == {('model_helpers/causal_lm.py', name) for name in
-                       ('ROAR image', 'ROAR text', 'dyslexia image', 'dyslexia text', 'facade')}
+                       ('ROAR image', 'ROAR text', 'dyslexia image', 'dyslexia text', 'facade')} | {
+        (where, 'EWoK logprobs') for where in ('models/blip2_opt_2_7b/model.py', 'models/clip_vit_b_32/model.py',
+                                               'models/gpt2/model.py', 'models/random_vit_b_32/model.py')}
     assert all(after <= before for before, after in COMPATIBLE.values())
 
 
@@ -209,7 +216,7 @@ def test_session_support_uses_the_declared_set(where, wired, stated):
     model = _stand_in(wired, stated)
     behavior = next(c for c in model._declared_capabilities() if c.identifier == 'behavior-sessions') \
         if _behavior(model) else None
-    for channel in (B, CH, P, RA, RT, TE):
+    for channel in (B, CH, P, LP, RA, RT, TE):
         supported = behavior is not None and behavior.supports_session(model, [channel])
         assert supported == (channel in model.out_channels), (where, channel)
 
@@ -223,6 +230,7 @@ SESSIONS = {
                    fitting_stimuli=FITTING),
     RA: TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=RATINGS),
     TE: TaskContext(instruction='Say it.', response=Text()),
+    LP: TaskContext(response=Choice(['cat', 'dog'], verbatim=True)),
     RT: TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], reaction_time='surprisal'),
                     fitting_stimuli=FITTING),
 }
