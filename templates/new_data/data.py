@@ -20,11 +20,13 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
+from brainscore_core.supported_data_standards.brainio.assemblies import (
+    BehavioralAssembly, NeuroidAssembly)
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 
 STIMULUS_SET_ID = 'your-stimuli'
 ASSEMBLY_ID = 'your-measurements'
+CHOICES_ID = 'your-choices'
 
 N_STIMULI, N_NEUROIDS, N_SUBJECTS = 32, 16, 4
 CATEGORIES = ['alpha', 'beta', 'gamma', 'delta']
@@ -44,12 +46,12 @@ def _build_example_files():
         rng = np.random.RandomState(i)
         Image.fromarray(rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(path)
         rows.append({'stimulus_id': stimulus_id,
-                     # 'image_file_name' is load-bearing: dispatch decides a stimulus
+                     # 'image_path' is load-bearing: dispatch decides a stimulus
                      # set's MODALITY by looking for a recognized column name. Use
                      # 'sentence' for text, 'audio_path' for audio, 'video_path' for
                      # video. Without one of these, process() raises
                      # "No recognized modality columns".
-                     'image_file_name': path,
+                     'image_path': path,
                      # Any extra columns ride along as presentation metadata. Keep
                      # 'object_name' (or whatever your categories are called) — the
                      # cross-validated metrics stratify their splits on a presentation
@@ -63,7 +65,7 @@ def load_stimulus_set() -> StimulusSet:
     _, rows = _build_example_files()
     stimulus_set = StimulusSet(pd.DataFrame(rows))
     # stimulus_paths maps each id to a file that must REALLY EXIST — a model opens them.
-    stimulus_set.stimulus_paths = {r['stimulus_id']: r['image_file_name'] for r in rows}
+    stimulus_set.stimulus_paths = {r['stimulus_id']: r['image_path'] for r in rows}
     stimulus_set.identifier = STIMULUS_SET_ID
     return stimulus_set
 
@@ -102,6 +104,31 @@ def load_assembly() -> NeuroidAssembly:
     assembly.attrs['stimulus_set'] = stimulus_set
     assembly.attrs['identifier'] = ASSEMBLY_ID
     return assembly
+
+
+def load_choices() -> BehavioralAssembly:
+    """What participants answered: one row per (participant, trial), the label as the value.
+
+    TODO: replace the made-up answers with yours. A behavioral benchmark compares a model's
+    answers with these, matched by `stimulus_id`. Here each participant names the category
+    of each stimulus and is right four times in five.
+    """
+    stimulus_set = load_stimulus_set()
+    rng = np.random.RandomState(1)
+    stimulus_ids, participants, answers = [], [], []
+    for participant in range(N_SUBJECTS):
+        for stimulus_id, category in zip(stimulus_set['stimulus_id'], stimulus_set['object_name']):
+            stimulus_ids.append(stimulus_id)
+            participants.append(f'sub-{participant + 1:02d}')
+            answers.append(category if rng.rand() < 0.8 else rng.choice(CATEGORIES))
+    choices = BehavioralAssembly(
+        answers,
+        coords={'stimulus_id': ('presentation', stimulus_ids),
+                'participant': ('presentation', participants)},
+        dims=['presentation'])
+    choices.attrs['stimulus_set'] = stimulus_set
+    choices.attrs['identifier'] = CHOICES_ID
+    return choices
 
 
 # ---------------------------------------------------------------------------
