@@ -18,7 +18,7 @@ Copy the folder, run `pytest`, watch it pass, then swap in your real data and me
 piece at a time.
 """
 import os
-import tempfile
+from pathlib import Path
 
 import numpy as np
 from PIL import Image
@@ -66,14 +66,20 @@ def _load_assembly():
     stimulus_ids = [f'stim{i:03d}' for i in range(N_STIMULI)]
     categories = [CATEGORIES[i % len(CATEGORIES)] for i in range(N_STIMULI)]
 
-    directory = tempfile.mkdtemp(prefix='your_benchmark_stimuli_')
+    # The images are the same on every load, so they are written once, to one folder in the
+    # Brain-Score home, and reused.
+    directory = Path(os.getenv('BRAINSCORE_HOME', '~/.brain-score')).expanduser() / 'your_benchmark_stimuli'
+    directory.mkdir(parents=True, exist_ok=True)
     paths = {}
     for i, sid in enumerate(stimulus_ids):
-        path = os.path.join(directory, f'{sid}.png')
-        image_rng = np.random.RandomState(i)
-        Image.fromarray(
-            image_rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(path)
-        paths[sid] = path
+        path = directory / f'{sid}.png'
+        if not path.is_file():
+            image_rng = np.random.RandomState(i)
+            partial = directory / f'.{sid}.{os.getpid()}.png'   # complete before it is visible
+            Image.fromarray(
+                image_rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(partial)
+            os.replace(partial, path)
+        paths[sid] = str(path)
 
     stimulus_set = StimulusSet([
         {'stimulus_id': sid, 'image_path': paths[sid], 'object_name': obj}

@@ -336,3 +336,25 @@ def test_tool_template_tests_pass():
         template_tests.test_mean_equals_a_direct_recording(template_tests.tiny_subject_and_stimuli())
     finally:
         _registry._TOOLS.pop('your-tool', None)   # the template registers itself for the test
+
+
+def test_the_benchmark_template_writes_its_stimuli_once_to_one_folder(tmp_path, monkeypatch):
+    """Every load reuses one folder in the Brain-Score home; the images are the seeded ones."""
+    import io
+    from PIL import Image
+    import brainscore
+    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    module = _load('new_benchmark/benchmark.py', 'umi_template_benchmark_stimuli')
+    if 'your-benchmark' in brainscore.benchmark_registry:      # the import registers it
+        del brainscore.benchmark_registry['your-benchmark']
+    first = module._load_assembly().stimulus_set.stimulus_paths
+    second = module._load_assembly().stimulus_set.stimulus_paths
+    assert first == second
+    assert [path.name for path in tmp_path.iterdir()] == ['your_benchmark_stimuli']
+    folder = tmp_path / 'your_benchmark_stimuli'
+    assert sorted(p.name for p in folder.iterdir()) == sorted(f'{sid}.png' for sid in first)
+    for i, sid in enumerate(sorted(first)):
+        expected = io.BytesIO()
+        Image.fromarray(np.random.RandomState(i).randint(0, 255, (64, 64, 3), dtype=np.uint8)) \
+            .save(expected, format='PNG')
+        assert (folder / f'{sid}.png').read_bytes() == expected.getvalue()
