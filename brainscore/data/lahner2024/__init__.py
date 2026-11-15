@@ -155,29 +155,21 @@ def load_lahner2024_timeresolved_assembly(
     )
 
 
-def _s3_key(filename: str) -> tuple[str, str]:
-    bucket, *prefix = STIMULUS_BUCKET.split('/', 1)
-    key = f'{prefix[0]}/{filename}' if prefix else filename
-    return bucket, key
-
-
-def _load_csv_sidecar(filename: str, version_id: Optional[str],
+def _load_csv_sidecar(identifier: str, version_id: Optional[str],
                       sha1: Optional[str], prep_script: str):
-    import io
-
-    import boto3
+    """A hosted CSV sidecar, fetched once, checked against its sha1 and cached."""
     import pandas as pd
+    from brainscore_core.supported_data_standards.brainio.s3 import get_path
 
-    _require_hosted(filename, version_id, sha1, prep_script)
-    bucket, key = _s3_key(filename)
-    obj = boto3.client('s3').get_object(
-        Bucket=bucket, Key=key, VersionId=version_id)
-    return pd.read_csv(io.BytesIO(obj['Body'].read()))
+    _require_hosted(identifier, version_id, sha1, prep_script)
+    bucket, folder = STIMULUS_BUCKET.split('/', 1)
+    return pd.read_csv(get_path(identifier, 'csv', bucket, version_id, sha1,
+                                filename_prefix='', folder_name=folder))
 
 
 def load_lahner2024_timeresolved_events():
     return _load_csv_sidecar(
-        'Lahner2024-fMRI-timeresolved-events.csv',
+        TIMERESOLVED_EVENTS_ID,
         TIMERESOLVED_EVENTS_VERSION_ID,
         TIMERESOLVED_EVENTS_SHA1,
         "python -m brainscore.data.lahner2024.data_packaging.prepare_timeresolved_assembly",
@@ -186,7 +178,7 @@ def load_lahner2024_timeresolved_events():
 
 def load_lahner2024_timeresolved_motion():
     return _load_csv_sidecar(
-        'Lahner2024-fMRI-timeresolved-motion.csv',
+        TIMERESOLVED_MOTION_ID,
         TIMERESOLVED_MOTION_VERSION_ID,
         TIMERESOLVED_MOTION_SHA1,
         "python -m brainscore.data.lahner2024.data_packaging.prepare_motion_sidecar",
