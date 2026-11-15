@@ -16,6 +16,167 @@
   ],
   "refused": true
  },
+ "answer+behavioral_readout_layer | choice with reaction time evidence_margin | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | choice with reaction time evidence_margin | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ]
+  ],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | choice with reaction time evidence_margin | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
  "answer+behavioral_readout_layer | choice with reaction time evidence_margin | stream": {
   "calls": [
    [
@@ -145,6 +306,167 @@
    ]
   ],
   "refused": true
+ },
+ "answer+behavioral_readout_layer | choice with reaction time surprisal | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | choice with reaction time surprisal | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ]
+  ],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | choice with reaction time surprisal | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
  },
  "answer+behavioral_readout_layer | choice with reaction time surprisal | stream": {
   "calls": [
@@ -276,6 +598,167 @@
   ],
   "refused": true
  },
+ "answer+behavioral_readout_layer | choice | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | choice | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ]
+  ],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | choice | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
  "answer+behavioral_readout_layer | choice | stream": {
   "calls": [
    [
@@ -393,6 +876,18 @@
   "calls": [],
   "refused": true
  },
+ "answer+behavioral_readout_layer | ewok choice | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | ewok choice | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | ewok choice | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "answer+behavioral_readout_layer | ewok choice | stream": {
   "calls": [],
   "refused": true
@@ -406,6 +901,18 @@
   "refused": true
  },
  "answer+behavioral_readout_layer | ewok log scores | history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | ewok log scores | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | ewok log scores | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | ewok log scores | live region stream": {
   "calls": [],
   "refused": true
  },
@@ -433,6 +940,135 @@
    ],
    [
     "answer",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | legacy answer | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | legacy answer | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | legacy answer | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -498,6 +1134,122 @@
     [
      "a",
      "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | legacy readout | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | legacy readout | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | legacy readout | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
      "c"
     ]
    ]
@@ -608,6 +1360,18 @@
   "calls": [],
   "refused": true
  },
+ "answer+behavioral_readout_layer | log probabilities | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | log probabilities | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | log probabilities | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "answer+behavioral_readout_layer | log probabilities | stream": {
   "calls": [],
   "refused": true
@@ -636,6 +1400,167 @@
    ]
   ],
   "refused": true
+ },
+ "answer+behavioral_readout_layer | probabilities only | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | probabilities only | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ]
+  ],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | probabilities only | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
  },
  "answer+behavioral_readout_layer | probabilities only | stream": {
   "calls": [
@@ -794,6 +1719,122 @@
   ],
   "refused": false
  },
+ "answer+behavioral_readout_layer | rating | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | rating | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | rating | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
  "answer+behavioral_readout_layer | rating | stream": {
   "calls": [
    [
@@ -898,6 +1939,92 @@
   "calls": [],
   "refused": true
  },
+ "answer+behavioral_readout_layer | roar plain choice | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+behavioral_readout_layer | roar plain choice | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+behavioral_readout_layer | roar plain choice | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "answer+behavioral_readout_layer | roar plain choice | stream": {
   "calls": [
    [
@@ -940,6 +2067,18 @@
   "calls": [],
   "refused": true
  },
+ "answer+reply | choice with reaction time evidence_margin | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | choice with reaction time evidence_margin | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | choice with reaction time evidence_margin | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "answer+reply | choice with reaction time evidence_margin | stream": {
   "calls": [],
   "refused": true
@@ -956,6 +2095,18 @@
   "calls": [],
   "refused": true
  },
+ "answer+reply | choice with reaction time surprisal | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | choice with reaction time surprisal | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | choice with reaction time surprisal | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "answer+reply | choice with reaction time surprisal | stream": {
   "calls": [],
   "refused": true
@@ -969,6 +2120,18 @@
   "refused": true
  },
  "answer+reply | choice | history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | choice | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | choice | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | choice | live region stream": {
   "calls": [],
   "refused": true
  },
@@ -996,6 +2159,135 @@
    ],
    [
     "reply",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | ewok choice | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | ewok choice | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | ewok choice | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -1043,6 +2335,18 @@
   "calls": [],
   "refused": true
  },
+ "answer+reply | ewok log scores | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | ewok log scores | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | ewok log scores | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "answer+reply | ewok log scores | stream": {
   "calls": [],
   "refused": true
@@ -1067,6 +2371,135 @@
    ],
    [
     "answer",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | legacy answer | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | legacy answer | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | legacy answer | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -1114,6 +2547,18 @@
   "calls": [],
   "refused": true
  },
+ "answer+reply | legacy readout | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | legacy readout | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | legacy readout | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "answer+reply | legacy readout | stream": {
   "calls": [],
   "refused": true
@@ -1130,6 +2575,18 @@
   "calls": [],
   "refused": true
  },
+ "answer+reply | log probabilities | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | log probabilities | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | log probabilities | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "answer+reply | log probabilities | stream": {
   "calls": [],
   "refused": true
@@ -1143,6 +2600,18 @@
   "refused": true
  },
  "answer+reply | probabilities only | history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | probabilities only | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | probabilities only | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "answer+reply | probabilities only | live region stream": {
   "calls": [],
   "refused": true
  },
@@ -1170,6 +2639,135 @@
    ],
    [
     "reply",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | rating | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | rating | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | rating | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -1225,6 +2823,135 @@
    ],
    [
     "reply",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | roar plain choice | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | roar plain choice | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply | roar plain choice | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -1292,6 +3019,171 @@
    ],
    [
     "reply",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | choice with reaction time evidence_margin | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | choice with reaction time evidence_margin | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | choice with reaction time evidence_margin | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -1388,6 +3280,171 @@
   ],
   "refused": false
  },
+ "answer+reply+likelihood+behavioral_readout_layer | choice with reaction time surprisal | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | choice with reaction time surprisal | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | choice with reaction time surprisal | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "answer+reply+likelihood+behavioral_readout_layer | choice with reaction time surprisal | stream": {
   "calls": [
    [
@@ -1479,6 +3536,171 @@
   ],
   "refused": false
  },
+ "answer+reply+likelihood+behavioral_readout_layer | choice | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | choice | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | choice | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "answer+reply+likelihood+behavioral_readout_layer | choice | stream": {
   "calls": [
    [
@@ -1558,6 +3780,135 @@
   ],
   "refused": false
  },
+ "answer+reply+likelihood+behavioral_readout_layer | ewok choice | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | ewok choice | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | ewok choice | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "answer+reply+likelihood+behavioral_readout_layer | ewok choice | stream": {
   "calls": [
    [
@@ -1613,6 +3964,79 @@
   ],
   "refused": false
  },
+ "answer+reply+likelihood+behavioral_readout_layer | ewok log scores | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": true
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | ewok log scores | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ]
+  ],
+  "refused": true
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | ewok log scores | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ]
+  ],
+  "refused": true
+ },
  "answer+reply+likelihood+behavioral_readout_layer | ewok log scores | stream": {
   "calls": [
    [
@@ -1663,6 +4087,135 @@
    ],
    [
     "answer",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | legacy answer | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | legacy answer | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | legacy answer | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -1728,6 +4281,122 @@
     [
      "a",
      "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | legacy readout | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | legacy readout | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | legacy readout | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
      "c"
     ]
    ]
@@ -1851,6 +4520,135 @@
   ],
   "refused": false
  },
+ "answer+reply+likelihood+behavioral_readout_layer | log probabilities | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | log probabilities | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | log probabilities | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "answer+reply+likelihood+behavioral_readout_layer | log probabilities | stream": {
   "calls": [
    [
@@ -1913,6 +4711,171 @@
    ],
    [
     "reply",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | probabilities only | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | probabilities only | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | probabilities only | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -1997,6 +4960,135 @@
   ],
   "refused": false
  },
+ "answer+reply+likelihood+behavioral_readout_layer | rating | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | rating | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | rating | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "answer+reply+likelihood+behavioral_readout_layer | rating | stream": {
   "calls": [
    [
@@ -2052,6 +5144,135 @@
   ],
   "refused": false
  },
+ "answer+reply+likelihood+behavioral_readout_layer | roar plain choice | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | roar plain choice | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "answer+reply+likelihood+behavioral_readout_layer | roar plain choice | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "answer",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "answer+reply+likelihood+behavioral_readout_layer | roar plain choice | stream": {
   "calls": [
    [
@@ -2091,6 +5312,122 @@
   "refused": true
  },
  "behavioral_readout_layer | choice with reaction time evidence_margin | history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | choice with reaction time evidence_margin | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | choice with reaction time evidence_margin | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | choice with reaction time evidence_margin | live region stream": {
   "calls": [
    [
     "extract",
@@ -2278,6 +5615,122 @@
   ],
   "refused": false
  },
+ "behavioral_readout_layer | choice with reaction time surprisal | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | choice with reaction time surprisal | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | choice with reaction time surprisal | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
  "behavioral_readout_layer | choice with reaction time surprisal | stream": {
   "calls": [
    [
@@ -2379,6 +5832,122 @@
   "refused": false
  },
  "behavioral_readout_layer | choice | history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | choice | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | choice | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | choice | live region stream": {
   "calls": [
    [
     "extract",
@@ -2526,6 +6095,18 @@
   "calls": [],
   "refused": true
  },
+ "behavioral_readout_layer | ewok choice | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "behavioral_readout_layer | ewok choice | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "behavioral_readout_layer | ewok choice | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "behavioral_readout_layer | ewok choice | stream": {
   "calls": [],
   "refused": true
@@ -2539,6 +6120,18 @@
   "refused": true
  },
  "behavioral_readout_layer | ewok log scores | history": {
+  "calls": [],
+  "refused": true
+ },
+ "behavioral_readout_layer | ewok log scores | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "behavioral_readout_layer | ewok log scores | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "behavioral_readout_layer | ewok log scores | live region stream": {
   "calls": [],
   "refused": true
  },
@@ -2576,6 +6169,122 @@
     [
      "a",
      "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | legacy answer | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | legacy answer | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | legacy answer | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
      "c"
     ]
    ]
@@ -2710,6 +6419,122 @@
   ],
   "refused": false
  },
+ "behavioral_readout_layer | legacy readout | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | legacy readout | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | legacy readout | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
  "behavioral_readout_layer | legacy readout | stream": {
   "calls": [
    [
@@ -2814,6 +6639,18 @@
   "calls": [],
   "refused": true
  },
+ "behavioral_readout_layer | log probabilities | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "behavioral_readout_layer | log probabilities | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "behavioral_readout_layer | log probabilities | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "behavioral_readout_layer | log probabilities | stream": {
   "calls": [],
   "refused": true
@@ -2827,6 +6664,122 @@
   "refused": true
  },
  "behavioral_readout_layer | probabilities only | history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | probabilities only | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | probabilities only | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | probabilities only | live region stream": {
   "calls": [
    [
     "extract",
@@ -3014,6 +6967,122 @@
   ],
   "refused": false
  },
+ "behavioral_readout_layer | rating | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | rating | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | rating | live region stream": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
  "behavioral_readout_layer | rating | stream": {
   "calls": [
    [
@@ -3115,6 +7184,122 @@
   "refused": false
  },
  "behavioral_readout_layer | roar plain choice | history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | roar plain choice | live region": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a",
+     "b",
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | roar plain choice | live region history": {
+  "calls": [
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "f0",
+     "f1",
+     "f2",
+     "f3"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "a"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "b"
+    ]
+   ],
+   [
+    "extract",
+    [
+     "late"
+    ],
+    [
+     "c"
+    ]
+   ]
+  ],
+  "refused": false
+ },
+ "behavioral_readout_layer | roar plain choice | live region stream": {
   "calls": [
    [
     "extract",
@@ -3459,6 +7644,171 @@
   ],
   "refused": false
  },
+ "reply+likelihood | choice with reaction time evidence_margin | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | choice with reaction time evidence_margin | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | choice with reaction time evidence_margin | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "reply+likelihood | choice with reaction time evidence_margin | stream": {
   "calls": [
    [
@@ -3545,6 +7895,171 @@
    ],
    [
     "reply",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | choice with reaction time surprisal | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | choice with reaction time surprisal | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | choice with reaction time surprisal | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -3641,6 +8156,171 @@
   ],
   "refused": false
  },
+ "reply+likelihood | choice | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | choice | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | choice | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "reply+likelihood | choice | stream": {
   "calls": [
    [
@@ -3720,6 +8400,135 @@
   ],
   "refused": false
  },
+ "reply+likelihood | ewok choice | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | ewok choice | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | ewok choice | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "reply+likelihood | ewok choice | stream": {
   "calls": [
    [
@@ -3775,6 +8584,79 @@
   ],
   "refused": false
  },
+ "reply+likelihood | ewok log scores | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": true
+ },
+ "reply+likelihood | ewok log scores | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ]
+  ],
+  "refused": true
+ },
+ "reply+likelihood | ewok log scores | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ]
+  ],
+  "refused": true
+ },
  "reply+likelihood | ewok log scores | stream": {
   "calls": [
    [
@@ -3817,6 +8699,18 @@
   "calls": [],
   "refused": true
  },
+ "reply+likelihood | legacy answer | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "reply+likelihood | legacy answer | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "reply+likelihood | legacy answer | live region stream": {
+  "calls": [],
+  "refused": true
+ },
  "reply+likelihood | legacy answer | stream": {
   "calls": [],
   "refused": true
@@ -3830,6 +8724,18 @@
   "refused": true
  },
  "reply+likelihood | legacy readout | history": {
+  "calls": [],
+  "refused": true
+ },
+ "reply+likelihood | legacy readout | live region": {
+  "calls": [],
+  "refused": true
+ },
+ "reply+likelihood | legacy readout | live region history": {
+  "calls": [],
+  "refused": true
+ },
+ "reply+likelihood | legacy readout | live region stream": {
   "calls": [],
   "refused": true
  },
@@ -3857,6 +8763,135 @@
    ],
    [
     "likelihood",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | log probabilities | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | log probabilities | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | log probabilities | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -3924,6 +8959,171 @@
    ],
    [
     "reply",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | probabilities only | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | probabilities only | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | probabilities only | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "a"
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "b"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "likelihood",
+    "c"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],
@@ -4008,6 +9208,135 @@
   ],
   "refused": false
  },
+ "reply+likelihood | rating | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | rating | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | rating | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
  "reply+likelihood | rating | stream": {
   "calls": [
    [
@@ -4058,6 +9387,135 @@
    ],
    [
     "reply",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | roar plain choice | live region": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | roar plain choice | live region history": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
+    "c"
+   ]
+  ],
+  "refused": false
+ },
+ "reply+likelihood | roar plain choice | live region stream": {
+  "calls": [
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "a"
+   ],
+   [
+    "take",
+    "a"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "b"
+   ],
+   [
+    "take",
+    "b"
+   ],
+   [
+    "record",
+    [
+     "late"
+    ]
+   ],
+   [
+    "reply",
+    "c"
+   ],
+   [
+    "take",
     "c"
    ]
   ],

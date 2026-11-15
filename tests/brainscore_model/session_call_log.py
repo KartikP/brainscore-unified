@@ -5,13 +5,16 @@ Run from the unified root to regenerate ``tests/fixtures/session_call_log.json``
     python -m tests.brainscore_model.session_call_log
 
 The fixture was written from the code of the commit before the session plan
-(unified ``1808a13``). For each part set of ``stage2_answers_baseline`` and each
+(unified ``1808a13`` with core ``a5af7ad``). For each part set of ``stage2_answers_baseline`` and each
 session there (as a table, as a stream, with a region recorded during the task,
 and for a subject that keeps its trial history), and for sessions that record two
 regions under both pass plans, it records the calls in order: ``answer``,
 ``reply`` and ``likelihood`` with the stimulus, and ``extract`` with the layers
-and the stimuli. A refused session records ``refused``. The stand-in parts are
-fixed functions: no weights, no downloads.
+and the stimuli. The sessions marked ``live region`` (a table, a stream, a subject
+that keeps its history) use an extractor that records during a task
+(``record(layers, stimuli)``, then ``take`` for each trial), so a region recorded
+while a part answers is compared too. A refused session records ``refused``. The
+stand-in parts are fixed functions: no weights, no downloads.
 """
 import json
 import os
@@ -22,7 +25,37 @@ FIXTURE = Path(__file__).resolve().parents[1] / 'fixtures' / 'session_call_log.j
 REGIONS = {'IT': 'late', 'V4': 'early'}
 
 
-def _model(parts, owners, log, memory=None):
+class _Live:
+    """An extractor that also records during a task; it logs each call, recording and take."""
+
+    def __init__(self, log):
+        self.log = log
+
+    def __call__(self, stimuli, layers, **kwargs):
+        from tests.brainscore_model.test_behavior_paths import _features
+        self.log.append(['extract', list(layers), [str(s) for s in stimuli['stimulus_id']]])
+        return _features(stimuli, layers, **kwargs)
+
+    def record(self, layers, stimuli):
+        import pandas as pd
+        from tests.brainscore_model.test_behavior_paths import _features
+        log, layers = self.log, list(layers)
+        log.append(['record', layers])
+
+        class _Recording:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def take(self, row):
+                log.append(['take', str(row['stimulus_id'])])
+                return {layer: _features(pd.DataFrame([row]), [layer]) for layer in layers}
+        return _Recording()
+
+
+def _model(parts, owners, log, memory=None, live=False):
     from brainscore import BrainScoreModel
     from tests.brainscore_model.test_behavior_paths import _features
 
@@ -44,7 +77,7 @@ def _model(parts, owners, log, memory=None):
     available = {'answer': answer, 'reply': reply, 'likelihood': likelihood,
                  'behavioral_readout_layer': 'late'}
     config = {'capability_config': {'behavior-sessions': owners}} if owners else {}
-    return BrainScoreModel('logged', extractor={'text': extract}, in_channels={'text'},
+    return BrainScoreModel('logged', extractor={'text': _Live(log) if live else extract}, in_channels={'text'},
                            region_layer_map=dict(REGIONS), memory=memory,
                            **{part: available[part] for part in parts}, **config)
 
@@ -88,13 +121,17 @@ def capture():
         owners = REGISTERED_STATEMENTS[parts]
         for name in sorted(sessions):
             outputs, task, stimuli = sessions[name]
+            region = [*outputs, 'neural:IT']
             variants = {'table': ({}, outputs), 'stream': ({'streaming': True}, outputs),
-                        'with region': ({}, [*outputs, 'neural:IT']), 'history': ({}, outputs)}
+                        'with region': ({}, region), 'history': ({}, outputs),
+                        'live region': ({}, region), 'live region stream': ({'streaming': True}, region),
+                        'live region history': ({}, region)}
             for variant, (settings, requested) in variants.items():
                 log = []
-                memory = 'trial_history' if variant == 'history' else None
+                memory = 'trial_history' if variant.endswith('history') else None
                 found[f"{'+'.join(parts)} | {name} | {variant}"] = _run(
-                    _model(parts, owners, log, memory), log, requested, task, stimuli, **settings)
+                    _model(parts, owners, log, memory, live=variant.startswith('live')),
+                    log, requested, task, stimuli, **settings)
     for plan in ('all', 'one'):
         for streaming in (False, True):
             log = []
