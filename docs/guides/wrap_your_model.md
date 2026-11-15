@@ -154,6 +154,8 @@ model = BrainScoreModel(
 
 The [CLIP registration](../../brainscore/models/clip_vit_b_32/model.py) is a complete example.
 
+In a network where a picture also reaches a text part's layer (the picture tokens of Qwen-VL enter its language model), name the recording extractor first and the other inputs after it, `LayerSelector(name='layers.28', modality=('text', 'vision'))`: the region is then recorded from a picture during an answer, and a passive picture session is refused before compute. This is your claim about the wiring, and it is not checked before a pass: a region stated as reached from an input that never reaches it fails at the first pass with `No forward pass reached ...`.
+
 A text part is wrapped with `TextWrapper(model, tokenizer)`. The tokenizer is a Hugging Face
 tokenizer, or any callable with the same call: it takes a list of texts and `padding`,
 `truncation`, `max_length` and `return_tensors='pt'`, and returns a mapping whose keys are the
