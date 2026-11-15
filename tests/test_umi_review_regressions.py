@@ -283,7 +283,7 @@ def test_reset_and_readout_clear_composite_recording():
     model.start_task(task)
     assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
     model.reset()
-    assert not model._recorder.composite_recording and model._recorder.time_bins is None
+    assert not model._recording_request.composite_recording and model._recording_request.time_bins is None
     model.start_task(task)
     assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
 

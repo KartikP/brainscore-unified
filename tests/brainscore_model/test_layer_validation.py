@@ -55,7 +55,7 @@ def test_existing_raw_layer_records_without_a_warning():
         warnings.simplefilter('error')
         model.start_recording('layer1')
         model.start_recording('layer1:input')
-    assert model._recorder.current_layers() == ['layer1:input']
+    assert model._recording_request.current_layers() == ['layer1:input']
 
 
 def test_composite_selector_layers_are_each_checked():

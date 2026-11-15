@@ -292,7 +292,7 @@ def test_benchmark_scores_a_model_as_the_earlier_template_did(benchmark):
     np.testing.assert_array_equal(score.attrs['raw'].values, expected.values)
     extractor = current._extractors['vision']
     assert extractor.calls == [(list(benchmark.stimulus_set['stimulus_id']), ['layer2'])]
-    assert current._recorder.time_bins == [(70, 170)]
+    assert current._recording_request.time_bins == [(70, 170)]
 
 
 def test_benchmark_template_dummy_candidate_is_scorable(benchmark):

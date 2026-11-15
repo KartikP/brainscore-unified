@@ -14,7 +14,7 @@ from ._model import dispatch
 from brainscore_core.io_catalog import MODALITY_TO_INPUT_CHANNEL, canonical_modality
 from brainscore_core.events import InputEvent, OutputEvent, StateChange
 from ._model.intervention import Interventions
-from ._model.recording import Recorder
+from ._model.recording import RecordingRequest
 from .selection import UnitSelector, _promote_to_selector
 from brainscore_core.extraction_cache import weight_fingerprint_scope
 
@@ -243,7 +243,7 @@ class BrainScoreModel(Subject):
         self._policy_out_channels = frozenset(policy_out_channels)
         self._intervention = intervention
 
-        self._recorder = Recorder(self)
+        self._recording_request = RecordingRequest(self)
         self._behavioral = BehavioralReadout(self)
         self._behavioral.owners = answer_owners(
             self, self._capability_config.get('behavior-sessions'))
@@ -508,9 +508,9 @@ class BrainScoreModel(Subject):
         ``recording_target`` is a mapped region name, a list of
         mapped regions, or a raw layer path. Multiple regions are extracted in
         one call and returned with per-neuroid ``layer`` and ``region``
-        provenance. See :class:`Recorder` for validation details.
+        provenance. See :class:`RecordingRequest` for validation details.
         """
-        self._recorder.start_recording(recording_target, time_bins,
+        self._recording_request.start_recording(recording_target, time_bins,
                                        recording_type)
 
     def start_task(self, task, fitting_stimuli=None,
@@ -559,7 +559,7 @@ class BrainScoreModel(Subject):
         # Inside intact() the reset refuses before any part changes.
         self._interventions._refuse_while_intact('reset')
         failures = []
-        for component in (self._recorder, self._behavioral, self._interventions):
+        for component in (self._recording_request, self._behavioral, self._interventions):
             try:
                 component.reset()
             except Exception as error:

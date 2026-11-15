@@ -1,6 +1,6 @@
 """How a BrainScoreModel records a region.
 
-Region and layer resolution, the ``Recorder`` state that ``record`` reads,
+Region and layer resolution, the ``RecordingRequest`` state that ``record`` reads,
 and the live recordings taken during the pass that answers a task or acts
 in a closed loop (``open_recordings``, ``per_stimulus``, ``trial_regions``).
 """
@@ -205,7 +205,7 @@ def gather_region(owner, region, per_layer):
         return per_layer[0]
     from brainscore_core.time_axis import require_one_time_axis
     require_one_time_axis(per_layer, sources=[f'{region}:layer{i}' for i in range(len(per_layer))])
-    combined = xr.concat([Recorder.ensure_unit_indices(a) for a in per_layer], dim='neuroid')
+    combined = xr.concat([RecordingRequest.ensure_unit_indices(a) for a in per_layer], dim='neuroid')
     selected = selector.gather_units(combined)
     if not selected.sizes['neuroid']:
         raise ValueError(f'Region {region!r} selects no neuroids from its layers.')
@@ -354,8 +354,8 @@ def region_extractor_keys(owner, selector) -> List[str]:
     return extractor_keys(owner, selector.modality, selector.layer_paths)
 
 
-class Recorder:
-    """Owns recording target state for a BrainScoreModel instance."""
+class RecordingRequest:
+    """What a BrainScoreModel is asked to record: the regions, their layers and the time bins."""
 
     def __init__(self, owner) -> None:
         self.owner = owner
