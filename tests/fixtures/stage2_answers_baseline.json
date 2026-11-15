@@ -974,7 +974,9 @@
        "format": "behavior:choice",
        "method": "generation",
        "origin": "native",
-       "parameters": {},
+       "parameters": {
+        "template": "the reply part's chat template"
+       },
        "parsed_by": "model",
        "source_format": null
       },
@@ -1881,7 +1883,9 @@
        "format": "behavior:choice",
        "method": "generation",
        "origin": "native",
-       "parameters": {},
+       "parameters": {
+        "template": "the reply part's chat template"
+       },
        "parsed_by": "model",
        "source_format": null
       },
@@ -3986,7 +3990,9 @@
        "format": "behavior:choice",
        "method": "generation",
        "origin": "native",
-       "parameters": {},
+       "parameters": {
+        "template": "the reply part's chat template"
+       },
        "parsed_by": "model",
        "source_format": null
       },

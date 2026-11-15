@@ -187,9 +187,9 @@ def test_several_parts_that_do_not_own_the_output_are_refused_before_compute():
     calls = []
     model = _model('answer', 'likelihood', 'behavioral_readout_layer', calls=calls,
                    owners={'behavior': 'generation', 'behavior:probabilities': ('likelihood', 'softmax')})
-    task = TaskContext(response=Choice(['cat', 'dog'], raw_text=True), fitting_stimuli=FITTING)
+    task = TaskContext(response=Choice(['cat', 'dog'], verbatim=True), fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError, match=r"'behavior:choice' is owned by 'generation', "
-                                                        r"which cannot serve this task \(task settings: raw_text\)"):
+                                                        r"which cannot serve this task \(task settings: verbatim\)"):
         _run(model, ['behavior:choice'], task)
     assert calls == []
 
@@ -242,8 +242,8 @@ OPTIONS.identifier = 'behavior-paths-options'
 # The task forms the library's benchmarks and harnesses send beyond the numeric
 # baseline: EWoK (raw-text choice; raw scores of the options of each row),
 # CogGym (free text), and a choice with reported confidence.
-EWOK_CHOICE = TaskContext(response=Choice(['1', '2'], raw_text=True))
-EWOK_LOGPROBS = TaskContext(response=Choice('options', raw_scores=True, raw_text=True))
+EWOK_CHOICE = TaskContext(response=Choice(['1', '2'], verbatim=True))
+EWOK_LOGPROBS = TaskContext(response=Choice('options', raw_scores=True, verbatim=True))
 FREE_TEXT = TaskContext(instruction='Say it.', response=Text())
 CONFIDENCE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], confidence=Scale(1, 5)),
                          fitting_stimuli=FITTING)

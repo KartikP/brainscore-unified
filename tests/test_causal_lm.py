@@ -46,7 +46,7 @@ def _stimuli():
     return s
 
 
-def _scores(model, contexts, targets, raw_text=True):
+def _scores(model, contexts, targets, verbatim=True):
     """Each target's raw score after its context, through participate.
 
     A raw-score choice needs two distinct options per row; the second is a
@@ -59,7 +59,7 @@ def _scores(model, contexts, targets, raw_text=True):
     stimuli = StimulusSet({'stimulus_id': [f's{i}' for i in range(len(contexts))], 'text': list(contexts),
                            'options': [(t, f) for t, f in zip(targets, fillers)]})
     stimuli.identifier = 'causal-lm-scores'
-    task = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=raw_text))
+    task = TaskContext(response=Choice(labels='options', raw_scores=True, verbatim=verbatim))
     session = stimulus_session(stimuli, ['behavior:probabilities'], task)
     model.participate(session)
     scores = session.collect('behavior:probabilities')
@@ -95,9 +95,9 @@ def test_logprobs_match_a_manual_forward_pass(subject):
 
 
 def test_chat_scoring_puts_the_text_in_a_user_turn(subject):
-    """Without raw_text the trial (text, then the choice's directive) is a chat user turn."""
+    """Without verbatim the trial (text, then the choice's directive) is a chat user turn."""
     model, net, tok = subject
-    value = _scores(model, ['the cat'], ['sat'], raw_text=False)[0]
+    value = _scores(model, ['the cat'], ['sat'], verbatim=False)[0]
     shown = 'the cat\n\nAnswer with exactly one of: sat, mean.'
     prompt = tok.apply_chat_template([{'role': 'user', 'content': shown}], tokenize=False,
                                      add_generation_prompt=True)
@@ -141,12 +141,12 @@ def test_recording_input_site_sees_the_steered_neuron(subject):
 def test_intervention_changes_scores_and_reset_restores_them(subject):
     model, _, _ = subject
     contexts, targets = ['the cat', 'the dog'], ['sat', 'ran']
-    before = _scores(model, contexts, targets, raw_text=False)
+    before = _scores(model, contexts, targets, verbatim=False)
     apply_state_change(model, StateChange(kind='steer', perturbation=Perturbation(kind='drive', amount=10.0),
                                           target=Selection(layer=NEURON_IN, indices=[4])))
-    during = _scores(model, contexts, targets, raw_text=False)
+    during = _scores(model, contexts, targets, verbatim=False)
     model.reset()
-    after = _scores(model, contexts, targets, raw_text=False)
+    after = _scores(model, contexts, targets, verbatim=False)
     assert during != before and after == before
 
 
@@ -161,10 +161,10 @@ def test_functional_localizer_finds_and_perturbs_mlp_neurons(subject):
                                  contrast=(['x'], ['y']), n_units=3, sign='abs')
     units = target.resolve(model)
     assert units.layer == NEURON_IN
-    before = _scores(model, ['the cat'], ['sat'], raw_text=False)
+    before = _scores(model, ['the cat'], ['sat'], verbatim=False)
     apply_state_change(model, StateChange(kind='lesion', target=units,
                                           perturbation=Perturbation(kind='drive', amount=50.0)))
-    assert _scores(model, ['the cat'], ['sat'], raw_text=False) != before
+    assert _scores(model, ['the cat'], ['sat'], verbatim=False) != before
 
 
 def test_declares_what_it_can_do(subject):
@@ -218,7 +218,7 @@ def test_unscorable_text_is_refused_before_its_forward_pass(subject, monkeypatch
 
 def test_an_empty_chat_text_is_conditioned_on_the_template(subject):
     model, net, tok = subject
-    value = _scores(model, [''], ['sat'], raw_text=False)[0]
+    value = _scores(model, [''], ['sat'], verbatim=False)[0]
     shown = 'Answer with exactly one of: sat, mean.'
     prompt = tok.apply_chat_template([{'role': 'user', 'content': shown}], tokenize=False,
                                      add_generation_prompt=True)

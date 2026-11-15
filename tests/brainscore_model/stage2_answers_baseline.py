@@ -27,7 +27,7 @@ RATINGS = FITTING.copy()
 RATINGS['label'] = [6.0, 2.0, 6.0, 2.0]
 RATINGS.identifier = 'behavior-paths-ratings'
 CHOICE_FORM = {'kind': 'choice', 'labels': 'shared', 'reaction_time': None,
-               'raw_scores': False, 'raw_text': False, 'confidence': False, 'fitting': True}
+               'raw_scores': False, 'verbatim': False, 'confidence': False, 'fitting': True}
 SESSIONS = {   # task descriptions and the outputs the session requests
     'legacy answer': ({'kind': 'legacy', 'instruction': True, 'label_set': ['cat', 'dog'], 'fitting': True},
                       ['behavior']),
@@ -54,9 +54,9 @@ def task_from(description, fitting_stimuli):
         return TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=fitting)
     choice = Choice(['cat', 'dog'] if description['labels'] == 'shared' else 'options',
                     reaction_time=description['reaction_time'], raw_scores=description['raw_scores'],
-                    raw_text=description['raw_text'],
+                    verbatim=description['verbatim'],
                     confidence=Scale(1, 5) if description['confidence'] else None)
-    return TaskContext(instruction=None if description['raw_text'] else 'Which?', response=choice,
+    return TaskContext(instruction=None if description['verbatim'] else 'Which?', response=choice,
                        fitting_stimuli=fitting)
 
 
@@ -111,8 +111,8 @@ def stage3_cases():
         'roar plain choice': (['behavior:choice'], TaskContext(
             instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING), STIMULI),
         'ewok log scores': (['behavior:probabilities'], TaskContext(
-            response=Choice('options', raw_scores=True, raw_text=True)), OPTIONS),
-        'ewok choice': (['behavior:choice'], TaskContext(response=Choice(['1', '2'], raw_text=True)), STIMULI),
+            response=Choice('options', raw_scores=True, verbatim=True)), OPTIONS),
+        'ewok choice': (['behavior:choice'], TaskContext(response=Choice(['1', '2'], verbatim=True)), STIMULI),
     }
 
 

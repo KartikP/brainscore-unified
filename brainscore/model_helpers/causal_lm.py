@@ -12,7 +12,7 @@ One registration declares, and answers through ``participate`` (or ``process``):
   template, under the task's generation settings (``Text(max_tokens=...,
   temperature=..., top_p=..., seed=...)``),
 - a ``likelihood`` part: the summed log probability of each option. Under a
-  ``raw_text`` choice it scores ``f"{text} {option}"`` as plain text, with no
+  ``verbatim`` choice it scores ``f"{text} {option}"`` as plain text, with no
   chat template and no beginning-of-sequence token, as EWoK's ``score`` does;
   otherwise the text is a user turn of the chat template and each option is
   scored as the assistant's reply.
@@ -70,7 +70,7 @@ class _CausalLMParts:
 
     def likelihood(self, prompt, candidates: Sequence[str]) -> dict:
         """The summed log probability of each candidate after the trial's text."""
-        if isinstance(prompt.response, Choice) and prompt.response.raw_text:
+        if isinstance(prompt.response, Choice) and prompt.response.verbatim:
             return _plain_text_scores(self.model, self.tokenizer, prompt, candidates)
         import torch
         context = self.tokenizer(self.format(prompt), add_special_tokens=False)['input_ids']

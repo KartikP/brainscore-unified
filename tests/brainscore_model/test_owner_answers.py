@@ -40,12 +40,12 @@ def test_raw_scores_come_from_the_owner_of_the_probabilities(parts):
     assert calls.count('likelihood') == len(STIMULI)
 
 
-def test_blip2_raw_text_choice_is_refused_before_compute():
+def test_blip2_verbatim_choice_is_refused_before_compute():
     calls = []
     model = _model(*BLIP2, owners=REGISTERED_STATEMENTS[BLIP2], calls=calls)
-    task = TaskContext(response=Choice(['cat', 'dog'], raw_text=True), fitting_stimuli=FITTING)
+    task = TaskContext(response=Choice(['cat', 'dog'], verbatim=True), fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError,
-                       match=r"'behavior:choice' is owned by 'generation'.*task settings: raw_text"):
+                       match=r"'behavior:choice' is owned by 'generation'.*task settings: verbatim"):
         _run(model, ['behavior:choice'], task)
     assert calls.count('extract') == 0 and calls == []
 
@@ -276,7 +276,7 @@ def _pass_model(net, parts, owners):
 
 PASS_STIMULI = StimulusSet({'stimulus_id': ['a', 'b', 'c'], 'sentence': ['x', 'y', 'z']})
 PASS_STIMULI.identifier = 'pass-net'
-CHOICE_RAW_TEXT = TaskContext(response=Choice(['cat', 'dog'], raw_text=True))
+CHOICE_RAW_TEXT = TaskContext(response=Choice(['cat', 'dog'], verbatim=True))
 LIKELIHOOD_ROWS = [[100.0, 101.0, 102.0], [101.0, 102.0, 103.0], [102.0, 103.0, 104.0]]
 REPLY_ROWS = [[110.0, 111.0, 112.0], [111.0, 112.0, 113.0], [112.0, 113.0, 114.0]]
 

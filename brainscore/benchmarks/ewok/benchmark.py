@@ -4,7 +4,7 @@ Both modes run on the common channels; each question is one stimulus row.
 
 Log-probability mode shows each context as ``text``, exactly as given. The two
 targets are the options of that row (``Choice(labels='options',
-raw_scores=True, raw_text=True)``), and the subject returns the raw score of
+raw_scores=True, verbatim=True)``), and the subject returns the raw score of
 each target on ``behavior:probabilities``: the summed log probability of the
 target's tokens in ``f"{context} {target}"``, raw text, no template, as EWoK's
 ``score`` does. A subject needs a ``likelihood`` part: one that does not
@@ -22,7 +22,7 @@ these two differences.
 Choice mode shows EWoK's own choice prompt (instructions, two worked examples,
 the two contexts numbered 1 and 2, the scenario and a response cue) as
 ``text``, with no added sentence (``Choice(labels=('1', '2'),
-raw_text=True)``). The subject answers on ``behavior:choice``; any subject with
+verbatim=True)``). The subject answers on ``behavior:choice``; any subject with
 a ``reply``, ``likelihood`` or ``answer`` part and the ``text`` input runs it.
 Choice scores can differ from EWoK's own evaluator: a chat model answers
 through its own chat template and the subject decodes by its own rule, where
@@ -68,9 +68,9 @@ _LOGPROBS_NOTE = {
 }
 # What each mode asks for. Log probabilities: the raw score of each target after a context.
 _TASKS = {
-    'logprobs': (Choice(labels='options', raw_scores=True, raw_text=True),
+    'logprobs': (Choice(labels='options', raw_scores=True, verbatim=True),
                  'behavior:probabilities'),
-    'choice': (Choice(labels=('1', '2'), raw_text=True), 'behavior:choice'),
+    'choice': (Choice(labels=('1', '2'), verbatim=True), 'behavior:choice'),
 }
 
 

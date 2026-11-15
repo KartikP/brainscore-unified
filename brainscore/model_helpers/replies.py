@@ -9,7 +9,7 @@ Both receive a ``brainscore_core.responses.Prompt``: the trial's parts in order
 (instruction, stimulus parts, the response's directive). They are shown as one
 user message in that order; images as images, clips as video with their real
 frame rate. ``reply(prompt)`` returns the model's raw reply; the task's response
-parses it. Under a ``raw_text`` choice, ``likelihood`` scores
+parses it. Under a ``verbatim`` choice, ``likelihood`` scores
 ``f"{text} {candidate}"`` as plain text, with no chat template and no
 beginning-of-sequence token, as EWoK's ``score`` does; ``reply`` still uses the
 chat template, because a chat model cannot answer without it. A ``Text`` response carries the task's generation settings
@@ -47,7 +47,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
 
     def likelihood(prompt, candidates: Sequence[str]) -> dict:
         import torch
-        if isinstance(prompt.response, Choice) and prompt.response.raw_text:
+        if isinstance(prompt.response, Choice) and prompt.response.verbatim:
             return _plain_text_scores(model, tokenizer, prompt, candidates)
         inputs = inputs_for(prompt)
         prompt_ids = inputs['input_ids']
@@ -81,7 +81,7 @@ def chat_parts(model, processor, *, max_new_tokens: int = 64,
 def _plain_text_scores(model, tokenizer, prompt, candidates: Sequence[str]) -> dict:
     """Score each candidate after the trial's text as plain text, as EWoK's ``score`` does.
 
-    For a ``raw_text`` task: the text is ``f"{text} {candidate}"`` with no chat
+    For a ``verbatim`` task: the text is ``f"{text} {candidate}"`` with no chat
     template and no beginning-of-sequence token. The value is the summed log
     probability of the tokens after the text's own tokens. The text runs alone
     first, so a recording made during scoring is the text pass. An empty text

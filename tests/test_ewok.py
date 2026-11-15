@@ -274,7 +274,7 @@ def test_choice_prompt_is_ewoks_own_text_with_nothing_added(prepared, tmp_path):
     assert first.endswith('"\n\n## Task\nWhich context makes more sense given the scenario? '
                           'Please answer using either "1" or "2".\n\n## Response\n')
     assert '1. "fixture context A 0"\n2. "fixture context B 0"' in first
-    assert all(p.response.labels==('1','2') and p.response.raw_text for p in prompts)
+    assert all(p.response.labels==('1','2') and p.response.verbatim for p in prompts)
 
 
 def test_a_likelihood_part_also_runs_choice(prepared, tmp_path, parts={'likelihood'}):
@@ -292,7 +292,7 @@ def test_a_likelihood_part_also_runs_choice(prepared, tmp_path, parts={'likeliho
     assert float(b(model))==1
 
 
-def test_an_answer_part_cannot_run_the_raw_text_choice(prepared, tmp_path):
+def test_an_answer_part_cannot_run_the_verbatim_choice(prepared, tmp_path):
     model=BrainScoreModel('fixture', in_channels={'text'}, answer=lambda row, instruction, labels: '1')
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
     with pytest.raises(ExecutionNotFeasibleError,match='cannot give a Choice answer'):

@@ -147,7 +147,7 @@ def test_no_pair_that_answers_today_becomes_not_applicable():
     causal = _stand_in(['reply', 'likelihood'], {P: ('likelihood', 'softmax')})
     with pytest.raises(ExecutionNotFeasibleError, match='Paths tried'):
         causal._behavioral._choose_path(legacy)            # ROAR, dyslexia, facade: bare behavior
-    ewok_choice = TaskContext(response=Choice(labels=('1', '2'), raw_text=True), trial_memory='none')
+    ewok_choice = TaskContext(response=Choice(labels=('1', '2'), verbatim=True), trial_memory='none')
     with pytest.raises(ExecutionNotFeasibleError, match='Paths tried'):
         _stand_in(['behavioral_readout_layer'], {})._behavioral._choose_path(ewok_choice)
 

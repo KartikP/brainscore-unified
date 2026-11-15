@@ -503,11 +503,11 @@ class BehavioralReadout:
                 f"Subject '{owner.identifier}' cannot give raw scores of the options: "
                 'they come only from a likelihood= part.', task_type=task.task_type)
         per_row = isinstance(response, Choice) and isinstance(response.labels, str)
-        raw_text = isinstance(response, Choice) and response.raw_text
+        verbatim = isinstance(response, Choice) and response.verbatim
         can = {
             'generation': not raw_scores and (owner._reply is not None or (
                 owner._answer is not None and isinstance(response, Choice)
-                and not reported_confidence and not raw_text)),   # answer= takes no settings
+                and not reported_confidence and not verbatim)),   # answer= takes no settings
             'likelihood': (owner._likelihood is not None and isinstance(response, Choice)
                            and not reported_confidence),
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
@@ -516,7 +516,7 @@ class BehavioralReadout:
         # The answer format: the raw scores of a raw-scores Choice (they travel on
         # behavior:probabilities), else the response's first format. Its owner answers;
         # a task form the owner cannot serve is refused (no other part stands in).
-        settings = [name for name, on in (('raw_text', raw_text), ('raw_scores', raw_scores),
+        settings = [name for name, on in (('verbatim', verbatim), ('raw_scores', raw_scores),
                                           ('confidence', reported_confidence),
                                           ('labels per row', per_row)) if on]
         answer_format = ('behavior:probabilities' if raw_scores   # decision: raw scores travel there
@@ -685,7 +685,9 @@ class BehavioralReadout:
                 outputs['behavior:choice'] = answers.one_hot(
                     [label for label, _ in parsed], [label is not None for label, _ in parsed],
                     stimuli, row_labels, axis,
-                    response_record('behavior:choice', 'generation', parsed_by='model'),
+                    response_record('behavior:choice', 'generation', parsed_by='model',
+                                    parameters=(VERBATIM_IN_TEMPLATE if response.verbatim
+                                                and owner._reply is not None else None)),
                     raw=replies, errors=[error for _, error in parsed])
                 if response.confidence is not None:
                     outputs['behavior:confidence'] = answers.numbers(
@@ -957,6 +959,8 @@ def answer_owners(subject, stated) -> Dict[str, str]:
 
 
 RATING_ROUNDING = 'nearest step, ties to the higher step'
+# A verbatim trial text reaches a reply part inside that part's own chat template (ADR-0063).
+VERBATIM_IN_TEMPLATE = {'template': "the reply part's chat template"}
 
 
 def _on_scale_steps(values, scale) -> Tuple[list, dict]:

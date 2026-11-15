@@ -697,7 +697,7 @@ def test_options_that_differ_for_each_row_reach_each_part():
         seen.append(('answer', stimulus_row['text'], tuple(label_set)))
         return label_set[0]
 
-    raw = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
+    raw = TaskContext(response=Choice(labels='options', raw_scores=True, verbatim=True))
     scorer = BrainScoreModel(identifier='scorer', in_channels={'text'}, likelihood=likelihood,
                              capability_config={'behavior-sessions': {   # derived formats (rule 4.11)
                                  'behavior:choice': ('likelihood', 'softmax_argmax'),
@@ -732,12 +732,12 @@ def test_raw_scores_need_a_likelihood_part():
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
     model = BrainScoreModel(identifier='replier', in_channels={'text'}, reply=lambda p: 'sat')
-    task = TaskContext(response=Choice(labels='options', raw_scores=True, raw_text=True))
+    task = TaskContext(response=Choice(labels='options', raw_scores=True, verbatim=True))
     with pytest.raises(ExecutionNotFeasibleError, match='likelihood'):
         model.start_task(task)
 
 
-def test_chat_parts_scores_plain_text_under_raw_text():
+def test_chat_parts_scores_plain_text_under_verbatim():
     """No template, no BOS: the option's tokens after the text's own tokens."""
     from brainscore_core.responses import Choice, Prompt
     from brainscore.model_helpers.replies import chat_parts
@@ -749,7 +749,7 @@ def test_chat_parts_scores_plain_text_under_raw_text():
         seen.setdefault('ids', []).append(input_ids)
         return TinyLM2.forward(model, input_ids, attention_mask, torch.zeros_like(input_ids))
     model.forward = forward
-    prompt = Prompt((('text', 'ab'),), response=Choice(['c', 'dd'], raw_text=True))
+    prompt = Prompt((('text', 'ab'),), response=Choice(['c', 'dd'], verbatim=True))
     scores = likelihood(prompt, ['c', 'dd'])
     tok = processor.tokenizer
     for option in ('c', 'dd'):
@@ -762,7 +762,7 @@ def test_chat_parts_scores_plain_text_under_raw_text():
     assert not hasattr(processor, 'kwargs')
 
 
-def test_an_answer_part_cannot_serve_a_raw_text_choice():
+def test_an_answer_part_cannot_serve_a_verbatim_choice():
     """answer= takes no response settings and adds its own directive, so it is refused."""
     from brainscore_core.responses import Choice
     from brainscore_core.streaming_helpers import stimulus_session
@@ -772,7 +772,7 @@ def test_an_answer_part_cannot_serve_a_raw_text_choice():
         calls.append(1)
         return label_set[0]
     model = BrainScoreModel(identifier='answerer', in_channels={'text'}, answer=answer)
-    task = TaskContext(response=Choice(labels='options', raw_text=True))
+    task = TaskContext(response=Choice(labels='options', verbatim=True))
     session = stimulus_session(_options_stimuli(), ['behavior:choice'], task)
     with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice answer'):
         model.participate(session)
@@ -857,7 +857,7 @@ def test_plain_text_scoring_refuses_several_parts_and_trial_history():
     from brainscore_core.responses import Choice, Prompt
     from brainscore.model_helpers.replies import chat_parts
     _, likelihood = chat_parts(TinyLM2(), CharProcessor())
-    response = Choice(['c', 'dd'], raw_text=True)
+    response = Choice(['c', 'dd'], verbatim=True)
     with pytest.raises(ExecutionNotFeasibleError, match='exactly one text part'):
         likelihood(Prompt((('text', 'a'), ('text', 'b')), response=response), ['c', 'dd'])
     earlier = Prompt((('text', 'a'),), response=response)

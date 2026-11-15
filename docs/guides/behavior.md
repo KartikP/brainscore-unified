@@ -40,7 +40,7 @@ task = TaskContext(
 | `Text()` | a written answer, kept as written | `behavior:text` |
 | `Text(max_tokens=512, temperature=1.0)` | a written answer under the task's generation settings | `behavior:text` |
 
-Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording is the benchmark's science: the benchmark writes the instruction and the stimulus text. A task accepts only `Choice`, `Scale` and `Text` themselves, not a subclass, so a benchmark cannot change the directive by subclassing. To add no sentence at all, use `Choice(..., raw_text=True)`.
+Each response phrases its own directive after the instruction ("Answer with exactly one of: real, pseudo.") and parses the reply. Prompt wording is the benchmark's science: the benchmark writes the instruction and the stimulus text. A task accepts only `Choice`, `Scale` and `Text` themselves, not a subclass, so a benchmark cannot change the directive by subclassing. To add no sentence at all, use `Choice(..., verbatim=True)`.
 
 Three fields of `Choice` serve a library that compares options by their likelihood (EWoK):
 
@@ -48,7 +48,7 @@ Three fields of `Choice` serve a library that compares options by their likeliho
 | --- | --- |
 | `labels='options'` | a column name in place of the options: the options differ for each row, and the column holds each row's options. The `choice` axis is then the position of each option in that cell. |
 | `raw_scores=True` | `behavior:probabilities` carries each option's score exactly as the `likelihood` part gave it (summed log probability), not normalized; the response record in `attrs['response']` has `category` `'model-derived'` and `parameters['scale']` `'log'`. Only a `likelihood` part gives it; any other model refuses the session (`ExecutionNotFeasibleError`). |
-| `raw_text=True` | the stimulus text is shown exactly as given: no directive, and no instruction. A `likelihood` part scores `f"{text} {option}"` as plain text, with no chat template and no beginning-of-sequence token. A `reply` part gets no added sentence but still answers through its chat template. |
+| `verbatim=True` | the stimulus text is shown exactly as given: no directive, and no instruction. A `likelihood` part scores `f"{text} {option}"` as plain text, with no chat template and no beginning-of-sequence token. A `reply` part gets no added sentence but still answers through its chat template; its record says so: `parameters['template']`. |
 
 **The order of a trial.** A model that replies receives a `Prompt`: the instruction, the stimulus, then the response's directive. When a stimulus has several parts (a sentence and a clip), say the order people saw them in with `present`; a stimulus with several parts and no order fails before any compute. A model that does not take in a part (a text-only model on a task with a clip) gets the task without that entry, so its trial shows only the parts it takes in. An entry that names a column no stimulus has is an error for every model:
 
@@ -152,7 +152,7 @@ BrainScoreModel(..., reply=reply, likelihood=likelihood,
 
 **Generation settings.** The settings of a written answer belong to the task, so the benchmark sets them on `Text`: `max_tokens`, `temperature` (0 or `None` is greedy), `top_p` (needs a temperature above 0) and `seed`. A `reply` part reads them from `prompt.response`. The reply that `chat_parts` builds obeys them. With no settings it is greedy and at most `max_new_tokens` (64) tokens long, as before.
 
-**A part obeys the task or stops.** A `reply` or `likelihood` part reads the task from `prompt.response`. It obeys each setting the task gives (the generation settings of `Text`, `raw_text`, `raw_scores` and the options) or stops with an error; it never ignores a setting. For example, the Claude reply part raises `ValueError` for a temperature other than 1.0, for `top_p` and for `seed`, because the Anthropic API cannot obey them.
+**A part obeys the task or stops.** A `reply` or `likelihood` part reads the task from `prompt.response`. It obeys each setting the task gives (the generation settings of `Text`, `verbatim`, `raw_scores` and the options) or stops with an error; it never ignores a setting. For example, the Claude reply part raises `ValueError` for a temperature other than 1.0, for `top_p` and for `seed`, because the Anthropic API cannot obey them.
 
 **Older task types.** `task_type='label'`, `'classification'` and `'probabilities'` still work on the plain `behavior` channel with `answer`, `label_set` and a readout, so existing benchmarks and scores are unchanged. The same chooser picks the path for them: `answer` (with `instruction` and `label_set`), then the readout (with `fitting_stimuli`). The answer keeps its older form: one-hot rows over `label_set`, where only an exact label counts (`attrs['response']['method']` is `'generation'`), or the readout's probabilities. A behavioral answer comes only from a session (`behavioral_response`, `stimulus_session` and `participate`); `process()` does not answer a task.
 
