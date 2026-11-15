@@ -73,8 +73,10 @@ def image_stimuli(folder):
 
 
 def _fitting(labels, identifier):
+    # image_label: the column a legacy vision model's probabilities task is fitted on.
     stimuli = StimulusSet({'stimulus_id': ['f0', 'f1', 'f2', 'f3'],
-                           'sentence': ['real 0', 'fake 1', 'real 2', 'fake 3'], 'label': labels})
+                           'sentence': ['real 0', 'fake 1', 'real 2', 'fake 3'], 'label': labels,
+                           'image_label': labels})
     stimuli.identifier = identifier
     return stimuli
 
@@ -132,11 +134,12 @@ class PseudoProbabilities(BenchmarkBase):
     """Mean probability given to the option people chose.
     Policy: an invalid or missing row is left out and counted."""
     requested_output_channels = frozenset({'behavior:probabilities'})
-    required_input_channels = frozenset({'text'})
     trial_memory = 'none'
 
-    def __init__(self, fitting=True):
-        self.stimuli, self.fitting = text_stimuli(), FITTING if fitting else None
+    def __init__(self, fitting=True, channel='text', folder=None):
+        self.required_input_channels = frozenset({channel})
+        self.stimuli = text_stimuli() if channel == 'text' else image_stimuli(folder)
+        self.fitting = FITTING if fitting else None
         super().__init__(identifier='pseudo-probabilities', version=1, parent='behavioral',
                          ceiling=not_estimated())
 
@@ -512,3 +515,36 @@ def marker_likelihood_model(calls=None):
         context = prompt.parts[0][1]
         return {label: 0.0 if (' A ' in label) == (' A ' in context) else -1.0 for label in labels}
     return BrainScoreModel('pseudo-marker-likelihood', in_channels={'text'}, likelihood=likelihood)
+
+
+class LegacyVisionStandIn:
+    """A legacy vision BrainModel (the old interface: start_task, look_at): its probabilities
+    task gives rows in its own column order (pseudo, real), its label task one label per
+    stimulus. Wrapped by the vision adapter it is a producer of choice and probabilities."""
+    identifier = 'legacy-vision-stand-in'
+
+    def __init__(self, calls=None):
+        self.calls = calls if calls is not None else []
+        self.task = None
+
+    def start_task(self, task, fitting_stimuli=None, **kwargs):
+        self.task = task
+
+    def look_at(self, stimuli, number_of_trials=1):
+        ids = list(stimuli['stimulus_id'])
+        self.calls.extend(ids)
+        coords = {'stimulus_id': ('presentation', ids), 'position': ('presentation', list(range(len(ids))))}
+        if self.task == 'label':
+            return BehavioralAssembly([[_truth(sid) for sid in ids]], coords=coords,
+                                      dims=['choice', 'presentation'])
+        rows = np.array([_probabilities(sid, ['pseudo', 'real']) for sid in ids])
+        return BehavioralAssembly(rows, coords={**coords, 'choice': ['pseudo', 'real']},
+                                  dims=['presentation', 'choice'])
+
+    def visual_degrees(self):
+        return 8
+
+
+def legacy_vision_model(calls=None):
+    from brainscore_vision.compat.unified_adapter import VisionModelAdapter
+    return VisionModelAdapter(LegacyVisionStandIn(calls))
