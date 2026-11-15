@@ -636,7 +636,13 @@ class _NoneFirst(torch.nn.Module):
         return (None, x)
 
 
-@pytest.mark.parametrize('module', [_DictOutput(), _NoneFirst()], ids=['mapping', 'tuple-led-by-none'])
+class _EmptyTuple(torch.nn.Module):
+    def forward(self, x):
+        return ()
+
+
+@pytest.mark.parametrize('module', [_DictOutput(), _NoneFirst(), _EmptyTuple()],
+                         ids=['mapping', 'tuple-led-by-none', 'empty-tuple'])
 def test_an_intervention_on_an_output_with_no_leading_tensor_raises(module):
     """The change cannot be made; before the repair the output passed unchanged and silently."""
     net = torch.nn.Sequential(module)

@@ -174,7 +174,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         def hook(_module, _inputs, output):
             # Some layers return tuples (e.g., MultiheadAttention).
             # We modify the leading tensor only; the rest pass through.
-            if isinstance(output, tuple):
+            if isinstance(output, tuple) and output:
                 head, *rest = output
                 head = _apply(head)
                 return (head, *rest)
