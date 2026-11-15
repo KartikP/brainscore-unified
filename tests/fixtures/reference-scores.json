@@ -53,7 +53,9 @@
     "language": "3c17052"
    },
    "note": "the code of clean15, run again on the machine of clean16"
-  }
+  },
+  "clean18": {"date": "2026-11-15", "commits": {"core": "98072d6", "unified": "3b8c6bc", "vision": "3fc67a6b", "language": "93d7d61"}, "note": "after the store layout repair (every extractor result in one memory layout): four V-JEPA 1 pairs moved at the seventh decimal, a stated change; every other measured pair is equal to clean16"},
+  "clean19": {"date": "2026-11-15", "commits": {"core": "f6526d4", "unified": "69ed4b4", "vision": "4fed7889", "language": "c9c847d"}, "note": "the same machine and package list, the code of the seventeenth push: every measured pair equal to clean18"}
  },
  "scores": [
   {
@@ -109,14 +111,11 @@
   {
    "subject": "vjepa1-vitl",
    "benchmark": "Lahner2024-fMRI-naturalistic-visualROI",
-   "value": 0.7314809535115232,
+   "value": 0.7314807858267065,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
-   "runs": [
-    "clean13",
-    "clean15"
-   ]
+   "runs": ["clean18", "clean19"]
   },
   {
    "subject": "gpt2",
@@ -218,26 +217,20 @@
   {
    "subject": "vjepa1-wav2vec2",
    "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-multimodal-visualROI",
-   "value": 0.08733421564102173,
+   "value": 0.08733426779508591,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
-   "runs": [
-    "clean13",
-    "clean15"
-   ]
+   "runs": ["clean18", "clean19"]
   },
   {
    "subject": "vjepa1-wav2vec2",
    "benchmark": "Lahner2024-fMRI-naturalistic-multimodal-auditoryROI",
-   "value": 0.06489515931725419,
+   "value": 0.06489513679876427,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
-   "runs": [
-    "clean13",
-    "clean15"
-   ]
+   "runs": ["clean18", "clean19"]
   },
   {
    "subject": "videomae-base",
@@ -254,14 +247,11 @@
   {
    "subject": "vjepa1-vitl",
    "benchmark": "Lahner2024-fMRI-naturalistic-timeresolved-improved-visualROI",
-   "value": 0.1322588324546814,
+   "value": 0.13225853443145752,
    "kind": "reference",
    "environment": "reference-2026-11-15",
    "tolerance": 0.0,
-   "runs": [
-    "clean13",
-    "clean15"
-   ]
+   "runs": ["clean18", "clean19"]
   },
   {
    "subject": "clip-wav2vec2",
