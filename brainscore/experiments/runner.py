@@ -21,7 +21,7 @@ from brainscore_core.contract import Subject
 
 # These data fields affect built-in session evaluation. Never serialize a live
 # environment, iterator, callback, or clock when recording a replay request.
-from brainscore_core.streaming import Session
+from brainscore_core.streaming import Session, StreamEvent
 
 _SESSION_CONTEXT_FIELDS = Session.context_fields
 
@@ -145,6 +145,32 @@ def participate_observed(subject, session, context):
         subject.participate(session)
 
 
+def _publish_finalized_answers(session, context, collected=None):
+    """Publish the stored answer of each behavior format of a completed session.
+
+    While the runner owns the completed session, each addressed ``behavior:<format>``
+    answer is collected once (``collected``, when the protocol collected the outputs)
+    and published as one ``answer`` event, with the condition and repetition of the
+    record. It holds core's stored form: each trial's state, reason and raw answer.
+    ``RecordBehavior`` keeps it; ``ExperimentResult.trials()`` reads the states from
+    it and its rows from the ``output`` events, so no row is counted twice. A session
+    whose history limit dropped responses cannot be collected: it publishes none.
+    """
+    if session.dropped:
+        return
+    channels = [channel for channel in (session.outputs or ()) if channel.startswith('behavior:')]
+    for channel in channels:
+        if not any(event.channel == channel for event in session.emitted):
+            continue
+        if isinstance(collected, dict):
+            answer = collected[channel]
+        elif collected is not None and len(session.outputs) == 1:
+            answer = collected
+        else:
+            answer = session.collect(channel)
+        context.publish('answer', StreamEvent(channel, answer, None, {'finalized': True}))
+
+
 class SessionProtocol:
     """Factory creates a fresh context-managed session for each independent repetition.
 
@@ -227,8 +253,10 @@ class SessionProtocol:
                         participate_observed(subject, session, context)
                         if not session.complete:
                             raise RuntimeError('Environment session ended before episode completion')
+                        collected = session.collect() if self.collect_outputs else None
+                        _publish_finalized_answers(session, context, collected)
                         if self.collect_outputs:
-                            results.append(session.collect())
+                            results.append(collected)
                 except BaseException as error:
                     try:
                         subject.reset()
@@ -467,7 +495,12 @@ class ExperimentResult:
         ``choice`` (the chosen label), ``p(<label>)`` for each label's probability, ``rt``,
         ``rating``, ``text``. For an answer that was read from a reply,
         ``<answer>_valid``, ``<answer>_raw`` and ``<answer>_error`` say whether it could be
-        read, what the reply was, and why not. An unreadable answer is empty (``None`` or NaN).
+        read, what the reply was, and why not. For every behavior format,
+        ``<answer>_state`` and ``<answer>_reason`` are the state core stored for the
+        trial (``valid``, ``invalid``, ``missing``) and its reason, read from the
+        finalized answer the runner saves after each session (empty for a session that
+        ended with an error, or whose history limit dropped responses). An unreadable
+        answer is empty (``None`` or NaN).
         """
         import numpy as np
         import pandas as pd
@@ -504,6 +537,29 @@ class ExperimentResult:
             for name, suffix in details.items():              # how the answer was read
                 if name in per_trial:
                     table[f'{answer}_{suffix}'] = list(per_trial[name])
+        # The state of each trial: from the finalized answers (no rows of their own).
+        finalized = [row['payload'] for row in RunRecord(path).events() if row['payload']['kind'] == 'answer']
+        for env in finalized:
+            table = tables.get((env['condition'], env['repetition_id']))
+            if table is None:
+                continue
+            channel, assembly = env['payload'].channel, env['payload'].payload
+            name = channel.split(':', 1)[1]
+            by_occurrence, seen = {}, {}
+            for stimulus_id, state, reason in zip(assembly['stimulus_id'].values,
+                                                  assembly['response_state'].values,
+                                                  assembly['response_reason'].values):
+                key = (stimulus_id, seen.get(stimulus_id, 0))
+                seen[stimulus_id] = key[1] + 1
+                by_occurrence[key] = (str(state), str(reason))
+            states, reasons, seen = [], [], {}
+            for stimulus_id in table['stimulus_id']:
+                key = (stimulus_id, seen.get(stimulus_id, 0))
+                seen[stimulus_id] = key[1] + 1
+                state, reason = by_occurrence.get(key, (None, None))
+                states.append(state)
+                reasons.append(reason)
+            table[f'{name}_state'], table[f'{name}_reason'] = states, reasons
         frames = [pd.DataFrame(columns).assign(condition=condition, repetition=repetition)
                   for (condition, repetition), columns in tables.items()]
         if not frames:
