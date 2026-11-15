@@ -354,3 +354,29 @@ def test_the_score_records_the_execution_configuration(monkeypatch, listed, plan
     assert result.attrs['software']['python']
     assert result.attrs['code_commits']['brainscore'] is None or len(
         result.attrs['code_commits']['brainscore']) == 40
+
+
+class _ChoiceBenchmark:
+    identifier = 'toy-choice'
+    required_input_channels = frozenset({'text'})
+    requested_output_channels = frozenset({'behavior:choice'})
+
+
+def test_the_na_reason_names_the_statement_a_readout_needs():
+    """A readout derives the choice; with no statement the model does not declare it. The N/A
+    reason names the line to write, as the session refusal does; nothing runs."""
+    extractor = _CountingExtractor()
+    subject = BrainScoreModel(identifier='no-statement', extractor={'text': extractor},
+                              region_layer_map={}, behavioral_readout_layer='late')
+    result = brainscore.score(subject, _ChoiceBenchmark(), check_mem=False)
+    assert result.attrs['status'] == 'N/A' and result.attrs['missing_channels'] == ['behavior:choice']
+    assert ("'behavior:choice' is derived by a wired part; state it: capability_config="
+            "{'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}.") in result.attrs['reason']
+    assert extractor.calls == 0
+
+
+def test_the_na_reason_adds_nothing_when_no_part_derives_the_format():
+    subject, _ = _recording_model()
+    result = brainscore.score(subject, _ChoiceBenchmark(), check_mem=False)
+    assert result.attrs['status'] == 'N/A'
+    assert 'state it' not in result.attrs['reason']

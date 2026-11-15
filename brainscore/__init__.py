@@ -438,6 +438,11 @@ def score(model_identifier, benchmark_identifier,
         compatibility = check_compatibility(subject, benchmark)
     except CompatibilityError as error:
         result = na_score(error)
+        if isinstance(subject, BrainScoreModel):
+            # A format a wired part derives but no statement declares: name the line to write
+            # (the text of the session refusal; read from the wiring, nothing runs).
+            from ._model.behavioral import statement_hint
+            result.attrs['reason'] += statement_hint(subject, result.attrs['missing_channels'])
         result.attrs.update(model_identifier=model_id, benchmark_identifier=benchmark_id)
         return result
     if check_mem:
