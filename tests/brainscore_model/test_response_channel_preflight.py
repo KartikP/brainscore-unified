@@ -106,22 +106,20 @@ def test_a_likelihood_alone_does_not_declare_bare_behavior():
     assert calls == []
 
 
-def test_driver_refuses_addressed_channels_without_a_response_before_task_setup():
-    from types import SimpleNamespace
-    from brainscore.capabilities.sessions import drive_behavior_and_neural_session
+def test_the_plan_refuses_addressed_channels_without_a_response_before_task_setup(monkeypatch):
+    model, _ = _readout_model()
     setup = []
-    model = SimpleNamespace(start_task=lambda _: setup.append('start_task'),
-                            _behavioral=SimpleNamespace(history=[]))
+    monkeypatch.setattr(model, 'start_task', lambda *a, **k: setup.append('start_task'))
     session = stimulus_session(STIMULI, ['behavior:probabilities'], task=TaskContext(task_type='probabilities'))
-    with pytest.raises(ValueError, match='TaskContext'):
-        drive_behavior_and_neural_session(model, session)
+    with pytest.raises(ExecutionNotFeasibleError, match='TaskContext'):
+        model.participate(session)
     assert setup == []
 
 
 def test_readout_without_a_response_refuses_addressed_channels_before_fitting():
     model, extractor = _readout_model()
     task = TaskContext(task_type='probabilities', label_set=['cat', 'dog'], fitting_stimuli=STIMULI)
-    with pytest.raises(ValueError, match='TaskContext'):
+    with pytest.raises(ExecutionNotFeasibleError, match='TaskContext'):
         _ask(model, task, ['behavior:probabilities'])
     assert extractor.calls == 0
     assert model._behavioral.readout_classifier is None

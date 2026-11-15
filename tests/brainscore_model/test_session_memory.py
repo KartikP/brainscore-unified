@@ -2,7 +2,7 @@
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from brainscore_core.compatibility import CompatibilityError
+from brainscore_core.compatibility import CompatibilityError, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
@@ -82,5 +82,5 @@ def test_a_memory_benchmark_marks_a_model_without_memory_na():
 def test_memory_needs_a_part_that_can_see_history():
     model = BrainScoreModel('answers', in_channels={'text'}, memory='trial_history',
                             answer=lambda stimulus_row, instruction, label_set: 'no')
-    with pytest.raises(ValueError, match='reply'):
+    with pytest.raises(ExecutionNotFeasibleError, match='reply'):
         _answers(model)
