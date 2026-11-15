@@ -17,6 +17,8 @@ responses = brainscore.load_dataset('LeBel2023-UTS03')            # what was rec
 
 To present your own images instead, build a stimulus set from a table with `stimulus_id` and `image_path` columns ([Wrap your model](wrap_your_model.md#try-it-on-your-own-images)).
 
+A wrapper reads a stimulus file path only from the column names that the core catalog binds to its input (`brainscore_core.io_catalog.stimulus_columns`), tried in the catalog's order: `audio_path`, `audio_file_name`, `audio_file`, `audio` for sound; `video_path`, `video_file_name`, `video` for clips; `image_file_name`, `image_path`, `filename`, `image`, `vision` for images; a table with none of them is refused with that list.
+
 ## Datasets in the unified package
 
 | Dataset | Stimulus set | What it is | Files | Used by |
