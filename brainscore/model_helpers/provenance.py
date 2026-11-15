@@ -181,7 +181,9 @@ def session_entry(model, session, facts_by_extractor) -> dict:
     behavioral = model._behavioral
     parts = []
     for channel in sorted(session.outputs or ()):
-        if channel.startswith('neural:'):
+        if channel in model._policy_out_channels:      # the policy answers the channels it declares
+            parts.append({'serves': channel, 'part': 'policy', **_extractor_facts(model._policy, None)})
+        elif channel.startswith('neural:'):
             extractor = _serving_extractor(model, stimuli, channel.split(':', 1)[1])
             parts.append({'serves': channel, 'part': 'extractor',
                           **_extractor_facts(extractor, facts_by_extractor.get(id(extractor)))})
@@ -201,8 +203,6 @@ def session_entry(model, session, facts_by_extractor) -> dict:
             callable_part = {'answer': model._answer, 'reply': model._reply,
                              'likelihood': model._likelihood}.get(part)
             parts.append({'serves': channel, 'part': part or NOT_STATED, **_extractor_facts(callable_part, None)})
-        elif channel in model._policy_out_channels:
-            parts.append({'serves': channel, 'part': 'policy', **_extractor_facts(model._policy, None)})
         else:
             parts.append({'serves': channel, 'part': NOT_STATED, **_extractor_facts(None, None)})
     return {'subject': model.identifier, 'parts': parts}
