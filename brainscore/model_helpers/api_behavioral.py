@@ -137,7 +137,7 @@ def _call_anthropic(model, system, messages, settings):
     if system:
         kwargs['system'] = system
     resp = client.messages.create(**kwargs)
-    text = ''.join(b.text for b in resp.content if b.type == 'text').strip()
+    text = ''.join(b.text for b in resp.content if b.type == 'text')   # exactly as given
     reasoning = ''.join(b.thinking for b in resp.content if b.type == 'thinking') or None
     usage = getattr(resp, 'usage', None)
     return _with_meta(text, reasoning, None if usage is None else {
@@ -194,7 +194,7 @@ def _make_openai_compatible(base_url=None, api_key_env='OPENAI_API_KEY', label='
         # DeepSeek names the reasoning reasoning_content; OpenRouter names it reasoning.
         reasoning = getattr(message, 'reasoning_content', None) or getattr(message, 'reasoning', None)
         usage = getattr(resp, 'usage', None)
-        return _with_meta((message.content or '').strip(), reasoning,
+        return _with_meta(message.content or '', reasoning,   # the content exactly as given
                           None if usage is None else {'input_tokens': usage.prompt_tokens,
                                                       'output_tokens': usage.completion_tokens})
     call.__name__ = f'_call_{label}'
@@ -240,6 +240,12 @@ def _one_turn(call, model, system, text, image, max_tokens) -> str:
         content, settings = text_part + image_part, {'max_tokens': max_tokens, 'temperature': 0}
     reply = call(model, system, [{'role': 'user', 'content': content}], settings)
     return reply.payload if isinstance(reply, StreamEvent) else reply
+
+
+# The form of a cached text, part of every cache key. Before it, the clients stored
+# the provider's text stripped of outer spaces; those entries stay on disk and are
+# never read, so each key misses once and then stores the exact text.
+_CACHE_FORM = 'exact-text-v1'
 
 
 class _ResponseCache:
@@ -289,7 +295,7 @@ def build_api_generation_fn(
 
     def _key(prompt, label_set, stim_key, payload_hash) -> str:
         raw = json.dumps([provider_name, model, prompt, list(map(str, label_set)),
-                          stim_key, payload_hash, system_prompt, max_tokens])
+                          stim_key, payload_hash, system_prompt, max_tokens, _CACHE_FORM])
         return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
     def generate(stimulus_row, instruction: str, label_set) -> str:
@@ -409,8 +415,8 @@ def build_api_reply(
         if call is _call_anthropic:
             _anthropic_settings(settings)   # fail before the cache or a request
         system, messages = _reply_messages(prompt)
-        key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings],
-                                        sort_keys=True).encode('utf-8')).hexdigest()
+        key = hashlib.sha256(json.dumps([provider_name, model, system, messages, settings,
+                                         _CACHE_FORM], sort_keys=True).encode('utf-8')).hexdigest()
         # A sampled call without a seed differs on each repetition: do not cache it.
         use_cache = cache is not None and not (
             (settings.get('temperature') or 0) > 0 and settings.get('seed') is None)
@@ -599,7 +605,8 @@ def build_api_action_fn(
             # cache_dir=None for fresh per-tick calls.
             key = hashlib.sha256(
                 '|'.join([provider_name, model, prompt, payload,
-                          str(len(trace)), str(system_prompt), str(max_tokens)]).encode()
+                          str(len(trace)), str(system_prompt), str(max_tokens),
+                          _CACHE_FORM]).encode()
             ).hexdigest()
             response = cache.get(key)
         if response is None:

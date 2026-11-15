@@ -9,7 +9,7 @@ import pytest
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore.model_helpers.api_behavioral import (
-    build_api_generation_fn, _find_column, _answer_text, _row_parts,
+    build_api_generation_fn, _find_column, _answer_text, _row_parts, _CACHE_FORM,
 )
 
 
@@ -113,8 +113,9 @@ class TestGenerationClosure:
         provider = self._mock(counter=calls)
         payload = hashlib.sha256(b'florp').hexdigest()[:16]
 
-        def key(prompt):
-            raw = json.dumps([provider.__name__, 'mock', prompt, ['real', 'pseudo'], 's1', payload, None, 16])
+        def key(prompt, *form):      # the old key had no form part
+            raw = json.dumps([provider.__name__, 'mock', prompt, ['real', 'pseudo'], 's1', payload, None, 16,
+                              *form])
             return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
         old = ('Is this real?\n\nAnswer with exactly one of: real, pseudo. '
@@ -125,7 +126,7 @@ class TestGenerationClosure:
                    ['real', 'pseudo']) == 'real'
         assert len(calls) == 1
         new = 'Is this real?\n\nAnswer with exactly one of: real, pseudo.'
-        assert (tmp_path / f'{key(new)}.json').exists()
+        assert (tmp_path / f'{key(new, _CACHE_FORM)}.json').exists()
 
     def test_cache_distinguishes_stimuli(self, tmp_path):
         calls = []
@@ -489,7 +490,7 @@ class TestApiReply:
         monkeypatch.setitem(sys.modules, 'anthropic', fake)
         reply = build_api_reply('anthropic', 'claude-x')
         assert reply(Prompt((('text', 'Do it.'), ('text', 'x')), names=('instruction', 'text'),
-                            response=Text(max_tokens=512, temperature=1.0))) == 'ok'
+                            response=Text(max_tokens=512, temperature=1.0))) == ' ok '   # the provider's text exactly
         assert sent == {'model': 'claude-x', 'max_tokens': 512, 'system': 'Do it.',
                         'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'x'}]}]}
 
@@ -514,7 +515,7 @@ class TestApiReply:
         prompt = Prompt((('text', '2 + 2?'),), response=Text())
         for _ in range(2):   # the second reply comes from the cache, with its extra data
             answer = reply(prompt)
-            assert isinstance(answer, StreamEvent) and answer.payload == '4'
+            assert isinstance(answer, StreamEvent) and answer.payload == ' 4 '   # exactly as given
             assert answer.meta == {'reasoning': 'Add them.',
                                    'token_usage': {'input_tokens': 7, 'output_tokens': 2}}
         assert len(requests) == 1
@@ -532,7 +533,7 @@ class TestApiReply:
             completions=types.SimpleNamespace(create=lambda **kwargs: response)))
         monkeypatch.setitem(sys.modules, 'openai', types.SimpleNamespace(OpenAI=lambda **kwargs: client))
         answer = _make_openai_compatible()('m', None, [{'role': 'user', 'content': []}], {'max_tokens': 8})
-        assert answer.payload == '4'
+        assert answer.payload == ' 4 '   # exactly as given
         assert answer.meta == {'reasoning': 'Add them.',
                                'token_usage': {'input_tokens': 7, 'output_tokens': 2}}
 
