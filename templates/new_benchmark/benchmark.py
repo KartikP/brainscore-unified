@@ -17,7 +17,9 @@ out of the box:
 Copy the folder, run `pytest`, watch it pass, then swap in your real data and metric a
 piece at a time.
 """
+import io
 import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -43,6 +45,30 @@ BIBTEX = """TODO: @article{...} citation for the data."""
 # stimuli, set a larger test fold (see the metric below).
 N_STIMULI, N_NEUROIDS = 32, 16
 CATEGORIES = ['alpha', 'beta', 'gamma', 'delta']
+
+
+def _write_once(path, data: bytes) -> None:
+    """Write ``data`` to ``path`` unless the same bytes are already there.
+
+    The bytes go to an exclusive staging file with a unique name in the same folder, which
+    then replaces the final name in one step, so a reader never sees half a file and two
+    writers do not collide. A link at the final name is refused: the write would land in
+    another file.
+    """
+    if os.path.islink(path):
+        raise ValueError(f'{path} is a link; remove it and load again')
+    if os.path.isfile(path):
+        with open(path, 'rb') as existing:
+            if existing.read() == data:
+                return
+    descriptor, staging = tempfile.mkstemp(dir=os.path.dirname(path), suffix='.partial')
+    try:
+        with os.fdopen(descriptor, 'wb') as file:
+            file.write(data)
+        os.replace(staging, path)
+    except BaseException:
+        os.unlink(staging)
+        raise
 
 
 def _load_assembly():
@@ -73,12 +99,10 @@ def _load_assembly():
     paths = {}
     for i, sid in enumerate(stimulus_ids):
         path = directory / f'{sid}.png'
-        if not path.is_file():
-            image_rng = np.random.RandomState(i)
-            partial = directory / f'.{sid}.{os.getpid()}.png'   # complete before it is visible
-            Image.fromarray(
-                image_rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(partial)
-            os.replace(partial, path)
+        image = io.BytesIO()
+        Image.fromarray(
+            np.random.RandomState(i).randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(image, format='PNG')
+        _write_once(str(path), image.getvalue())
         paths[sid] = str(path)
 
     stimulus_set = StimulusSet([

@@ -13,7 +13,9 @@ can see the shapes before you have your own data wired up. Replace `_build_examp
 with something that reads *your* files, keep the rest, and the tests tell you when the
 result is still benchmark-usable.
 """
+import io
 import os
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -32,6 +34,30 @@ N_STIMULI, N_NEUROIDS, N_SUBJECTS = 32, 16, 4
 CATEGORIES = ['alpha', 'beta', 'gamma', 'delta']
 
 
+def _write_once(path, data: bytes) -> None:
+    """Write ``data`` to ``path`` unless the same bytes are already there.
+
+    The bytes go to an exclusive staging file with a unique name in the same folder, which
+    then replaces the final name in one step, so a reader never sees half a file and two
+    writers do not collide. A link at the final name is refused: the write would land in
+    another file.
+    """
+    if os.path.islink(path):
+        raise ValueError(f'{path} is a link; remove it and load again')
+    if os.path.isfile(path):
+        with open(path, 'rb') as existing:
+            if existing.read() == data:
+                return
+    descriptor, staging = tempfile.mkstemp(dir=os.path.dirname(path), suffix='.partial')
+    try:
+        with os.fdopen(descriptor, 'wb') as file:
+            file.write(data)
+        os.replace(staging, path)
+    except BaseException:
+        os.unlink(staging)
+        raise
+
+
 def _build_example_files():
     """TODO: replace entirely. Returns (directory, rows) for the example stimuli.
 
@@ -46,11 +72,10 @@ def _build_example_files():
     for i in range(N_STIMULI):
         stimulus_id = f'stim{i:03d}'
         path = str(directory / f'{stimulus_id}.png')
-        if not os.path.isfile(path):
-            rng = np.random.RandomState(i)
-            partial = str(directory / f'.{stimulus_id}.{os.getpid()}.png')   # complete before it is visible
-            Image.fromarray(rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(partial)
-            os.replace(partial, path)
+        image = io.BytesIO()
+        Image.fromarray(np.random.RandomState(i).randint(0, 255, (64, 64, 3), dtype=np.uint8)) \
+            .save(image, format='PNG')
+        _write_once(path, image.getvalue())
         rows.append({'stimulus_id': stimulus_id,
                      # 'image_path' is load-bearing: dispatch decides a stimulus
                      # set's MODALITY by looking for a recognized column name. Use

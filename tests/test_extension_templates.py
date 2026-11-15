@@ -358,3 +358,40 @@ def test_the_benchmark_template_writes_its_stimuli_once_to_one_folder(tmp_path, 
         Image.fromarray(np.random.RandomState(i).randint(0, 255, (64, 64, 3), dtype=np.uint8)) \
             .save(expected, format='PNG')
         assert (folder / f'{sid}.png').read_bytes() == expected.getvalue()
+
+
+@pytest.mark.parametrize('template, folder, load', [
+    ('new_benchmark/benchmark.py', 'your_benchmark_stimuli', '_load_assembly'),
+    ('new_data/data.py', 'your_data_stimuli', '_build_example_files'),
+])
+def test_a_template_refuses_a_link_where_a_stimulus_goes(tmp_path, monkeypatch, template, folder, load):
+    import brainscore
+    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    module = _load(template, 'umi_template_link_' + folder)
+    if 'your-benchmark' in brainscore.benchmark_registry:      # the import registers it
+        del brainscore.benchmark_registry['your-benchmark']
+    target = tmp_path / 'elsewhere.txt'
+    target.write_text('not a stimulus')
+    (tmp_path / folder).mkdir()
+    (tmp_path / folder / 'stim000.png').symlink_to(target)
+    with pytest.raises(ValueError, match='is a link'):
+        getattr(module, load)()
+    assert target.read_text() == 'not a stimulus'
+
+
+@pytest.mark.parametrize('template, folder, load', [
+    ('new_benchmark/benchmark.py', 'your_benchmark_stimuli', '_load_assembly'),
+    ('new_data/data.py', 'your_data_stimuli', '_build_example_files'),
+])
+def test_two_threads_write_the_template_stimuli_at_once(tmp_path, monkeypatch, template, folder, load):
+    import brainscore
+    from concurrent.futures import ThreadPoolExecutor
+    monkeypatch.setenv('BRAINSCORE_HOME', str(tmp_path))
+    module = _load(template, 'umi_template_threads_' + folder)
+    if 'your-benchmark' in brainscore.benchmark_registry:
+        del brainscore.benchmark_registry['your-benchmark']
+    with ThreadPoolExecutor(2) as pool:
+        results = [pool.submit(getattr(module, load)) for _ in range(2)]
+        [result.result() for result in results]                  # both succeed
+    written = sorted(p.name for p in (tmp_path / folder).iterdir())
+    assert written == [f'stim{i:03d}.png' for i in range(module.N_STIMULI)]   # no staging file left
