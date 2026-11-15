@@ -31,12 +31,11 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_float32, cache_signature, layer_assembly, run_batches,
+    LiveRecording, as_float32, cache_signature, in_layer_order, labelled, layer_assembly, run_batches,
 )
 
 
 logger = logging.getLogger(__name__)
-
 
 class VLMVisionWrapper:
     """Extractor for VLM vision encoders with flattened-patch layouts.
@@ -45,10 +44,8 @@ class VLMVisionWrapper:
         model: The vision sub-module of a VLM (e.g., qwen_model.model.visual).
         processor: A HuggingFace AutoProcessor (or equivalent) whose output
             contains the input tensor and any auxiliary grouping metadata.
-        identifier: Human-readable model identifier; also the cache key when
-            ``backbone_id`` is omitted.
-        backbone_id: Optional cache key shared by registrations backed by the
-            same vision weights.
+        identifier: Human-readable model identifier (the ``model``
+            coordinate); not part of the cache key.
         image_input_key: Key in processor output for the main pixel tensor.
             Defaults to 'pixel_values'.
         forward_kwargs_map: Optional dict mapping model forward-kwarg name ->
@@ -64,8 +61,17 @@ class VLMVisionWrapper:
         batch_size: Number of images per forward pass.
     """
 
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
+
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
+
     def __init__(self, model, processor, identifier: Optional[str] = None,
-                 backbone_id: Optional[str] = None,
                  image_input_key: str = 'pixel_values',
                  forward_kwargs_map: Optional[Dict[str, str]] = None,
                  patch_count_fn: Optional[Callable] = None,
@@ -84,19 +90,10 @@ class VLMVisionWrapper:
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
-        # When two VLMs share the same visual backbone (e.g. ViT-G across
-        # BLIP-2 and a future InstructBLIP registration) set the same
-        # backbone_id so the @store_xarray cache is reused. Default = the
-        # model's own identifier for backwards compatibility.
-        self._backbone_id = backbone_id or self._identifier
 
     @property
     def identifier(self) -> str:
         return self._identifier
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
         """Extract activations from image stimuli.
@@ -112,7 +109,7 @@ class VLMVisionWrapper:
         """
         if isinstance(stimuli, StimulusSet):
             return self._from_stimulus_set(stimuli, layers, stimuli_identifier)
-        return self._from_paths(stimuli, layers, stimuli_identifier)
+        return in_layer_order(self._from_paths(stimuli, layers, stimuli_identifier), layers)
 
     def _from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
         if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
@@ -150,14 +147,14 @@ class VLMVisionWrapper:
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
         signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
         if signature is None:
-            return self._from_paths(paths, layers, stimuli_identifier)
-        return self._from_paths_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
-                                       layers=layers, paths=paths, extraction_fingerprint=signature)
+            return in_layer_order(self._from_paths(paths, layers, stimuli_identifier), layers)
+        stored = self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
+                                         extraction_fingerprint=signature)
+        return in_layer_order(labelled(stored, self._identifier), layers)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths,
-                           extraction_fingerprint):
+    def _from_paths_stored(self, layers, stimuli_identifier, paths, extraction_fingerprint):
         return self._from_paths(paths, layers, stimuli_identifier)
 
     def _from_paths(self, paths, layers, stimuli_identifier=None):
@@ -363,9 +360,3 @@ class VLMVisionWrapper:
                 {column: ('presentation', list(stimulus_set[column].values))})
         return assembly
 
-
-# Recording several layers in one call gives, for each layer, exactly what a
-# call for that layer alone gives, so the regions of one session share one call
-# (brainscore._model.channels). Set outside the class body: the class source is
-# part of the activation cache key, and this line must not change that key.
-VLMVisionWrapper.independent_layers = True

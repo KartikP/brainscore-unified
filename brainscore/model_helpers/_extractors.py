@@ -4,17 +4,27 @@ Each function does one job that every extractor needs: find a layer by its
 dotted path, copy a hooked output to numpy, hold hooks on the forward pass that
 the extractor or another caller runs, run inputs in batches, key the
 activation cache, and copy stimulus columns onto an assembly.
+
+The activation cache key of a wrapper is explicit (``cache_config``): it names
+the ``_VERSION`` in the body of the wrapper's class, not source text. A change
+that moves the values a wrapper extracts raises that ``_VERSION`` by hand. This holds for
+code outside the wrapper classes too: this module, and what the wrappers call
+(``video_wrapper._window_features``, ``_shared_clock``, ``_edges_from_centers``,
+``brainscore.temporal.window_plan``, ``brainscore_core.assembly_builder``). A
+change here raises the ``_VERSION`` of every wrapper class that uses the
+changed code. ``tests/test_wrapper_cache_guard.py`` fails when values move
+under an unchanged ``_VERSION``.
 """
 import inspect
-import sys
+import warnings
 from collections import OrderedDict
 from typing import Callable, List
 
 import numpy as np
 from tqdm.auto import tqdm
 
-from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords
-from brainscore_core.extraction_cache import extraction_fingerprint, wrapper_config
+from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
+from brainscore_core.extraction_cache import extraction_fingerprint, model_config
 from brainscore.model_helpers.selection import split_site
 
 
@@ -281,16 +291,58 @@ def layer_assembly(identifier: str, layer: str, values: np.ndarray):
     return make_assembly(values, coords=coords, dims=dims)
 
 
-def cache_config(wrapper, fields):
-    """The wrapper's cache configuration, with this module's source in its implementation.
+def kind(wrapper) -> str:
+    """The wrapper's class as ``<module>.<Class>``: the store path of its cache entries."""
+    cls = type(wrapper)
+    return f'{cls.__module__}.{cls.__qualname__}'
 
-    The source of the wrapper class is part of the cache key, so an edit to the
-    extraction code recomputes cached activations. The code here is extraction
-    code too.
+
+def cache_config(wrapper, fields):
+    """The explicit cache key of a wrapper, without its inputs.
+
+    Parts: the kind (``<module>.<Class>``); the ``_VERSION`` in the body of the
+    wrapper's class; the settings ``fields`` (``CACHE_FIELDS``, batch size included; a
+    callable counts by its code); the model (weights hash, structure, dtypes,
+    library versions, precision, hooks); the input device. ``cache_signature``
+    adds the inputs. No source text is part of it, so an edit that keeps values
+    (a comment, a docstring, a move) keeps the key.
+
+    ``_VERSION`` is read from the body of the wrapper's own class only. A
+    subclass does not inherit it, since its own code can change values; without
+    its own ``_VERSION``, ``cache_signature`` does not cache it.
+
+    A torch autocast context around the call changes the values, so when
+    autocast is enabled for the input device type, its dtype is part of the
+    key (``autocast``). Without autocast the key has no such part.
     """
-    config = wrapper_config(wrapper, fields)
-    config['implementation'].append((__name__, inspect.getsource(sys.modules[__name__])))
+    config = {'kind': kind(wrapper), 'version': _version(type(wrapper)),
+              'settings': {field: getattr(wrapper, field) for field in fields},
+              'input_device': str(getattr(wrapper, '_device', None)),
+              'model': model_config(wrapper._model)}
+    autocast = _autocast(getattr(wrapper, '_device', None))
+    if autocast is not None:
+        config['autocast'] = autocast
     return config
+
+
+def _autocast(device):
+    """The autocast dtype in force for ``device``'s type at this moment, or None when autocast is off."""
+    import torch
+    device_type = torch.device(device).type if device is not None else 'cpu'
+    try:
+        if not torch.is_autocast_enabled(device_type):
+            return None
+        return {'device_type': device_type, 'dtype': str(torch.get_autocast_dtype(device_type))}
+    except RuntimeError:                  # a device type autocast does not know
+        return None
+
+
+def _version(cls):
+    """The ``_VERSION`` in the body of ``cls`` itself, or None; never inherited."""
+    return vars(cls).get('_VERSION')
+
+
+_UNVERSIONED = set()        # classes already warned about
 
 
 def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
@@ -299,13 +351,65 @@ def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
     ``stored`` names the wrapper's ``@store_xarray`` method; ``inputs`` is what
     the fingerprint reads for the stimuli (the texts, or the files behind paths).
     """
-    if not (wrapper.backbone_id and stimuli_identifier):
+    if not stimuli_identifier:
         return None
-    return extraction_fingerprint(
-        {'configuration': wrapper.cache_config(), 'inputs': inputs},
-        cache_identifier=(f'{type(wrapper).__module__}.{type(wrapper).__name__}'
-                          f'.{stored}/identifier={wrapper.backbone_id}'),
-    )
+    if _version(type(wrapper)) is None:
+        cls = type(wrapper)
+        if cls not in _UNVERSIONED:
+            _UNVERSIONED.add(cls)
+            warnings.warn(
+                f'{kind(wrapper)} has no _VERSION of its own, so it extracts every time and does not use '
+                f'the activation cache. To cache it, add _VERSION = 1 to its class body and a guard test '
+                f'that pins its values (see tests/test_wrapper_cache_guard.py).', stacklevel=3)
+        return None
+    return extraction_fingerprint({'configuration': wrapper.cache_config(), 'inputs': inputs},
+                                  cache_identifier=f'{kind(wrapper)}.{stored}')
+
+
+def labelled(assembly, identifier: str):
+    """``assembly`` with its ``model`` and ``neuroid_id`` coordinates naming ``identifier``.
+
+    The cache key leaves the identifier out, so wrappers with the same weights
+    and settings share one stored entry, and that entry carries the labels of
+    the wrapper that wrote it. Every cache return passes through here. Only the
+    two unit labels are replaced; every other coordinate, index, name and
+    attribute stays as stored. An assembly that already names ``identifier``, or
+    has no ``model`` coordinate, is returned as it is.
+    """
+    try:
+        models = assembly['model'].values
+    except KeyError:
+        return assembly
+    if (models == identifier).all():
+        return assembly
+    layers, units = assembly['layer'].values, assembly['neuroid_num'].values
+    ids = {layer: make_neuroid_ids(identifier, layer, int(units[layers == layer].max()) + 1)
+           for layer in set(layers)}
+    labels = {'model': [identifier] * len(models),
+              'neuroid_id': [ids[layer][unit] for layer, unit in zip(layers, units)]}
+    index = assembly.indexes.get('neuroid')
+    if index is not None and getattr(index, 'nlevels', 1) > 1:
+        import pandas as pd
+        arrays = [pd.Index(labels[name], dtype=index.levels[i].dtype) if name in labels
+                  else index.get_level_values(i) for i, name in enumerate(index.names)]
+        assembly = assembly.assign_coords(neuroid=pd.MultiIndex.from_arrays(arrays, names=index.names))
+        labels = {name: values for name, values in labels.items() if name not in index.names}
+    return assembly.assign_coords({name: ('neuroid', values) for name, values in labels.items()})
+
+
+def in_layer_order(assembly, layers):
+    """``assembly`` with its units in the order of the requested ``layers``.
+
+    The one rule of the caching wrappers: a result has its units in the order
+    the caller requested, whether it was computed now or returned by the store
+    (which merges a cached layer and a new one in its own order). Stable within
+    a layer; an assembly already in that order is returned as it is.
+    """
+    position = {layer: i for i, layer in enumerate(layers)}
+    order = [position.get(layer, len(position)) for layer in assembly['layer'].values]
+    if order == sorted(order):
+        return assembly
+    return assembly.isel(neuroid=np.argsort(order, kind='stable'))
 
 
 def attach_stimulus_set(assembly, stimuli):

@@ -28,7 +28,7 @@ def fused_chat_extractor(model, processor, *, root, identifier: str,
 class FusedChatExtractor:
     def __init__(self, model, processor, root, identifier, order, template):
         self._model, self._processor, self._root = model, processor, root
-        self._identifier = self.backbone_id = identifier
+        self._identifier = identifier
         self._order, self._template = order, template
         config = getattr(model, 'config', None)
         self._token_kinds = {kind: getattr(config, f'{kind}_token_id', None) for kind in ('image', 'video')}

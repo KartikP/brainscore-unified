@@ -27,13 +27,12 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, layer_assembly, one_dtype,
-    run_batches,
+    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, in_layer_order, labelled,
+    layer_assembly, one_dtype, run_batches,
 )
 
 
 logger = logging.getLogger(__name__)
-
 
 def align_word_times_to_tokens(word_ids, word_onsets_ms, word_durations_ms):
     """Map per-token ``word_ids`` to per-token (start_ms, end_ms) windows.
@@ -132,14 +131,9 @@ class TextWrapper:
     Args:
         model: A PyTorch text model (e.g., CLIPTextModel, GPT2Model).
         tokenizer: A HuggingFace tokenizer.
-        identifier: Model identifier for display/logging. Defaults to class name.
-        backbone_id: Optional cache-key identifier. When two registrations
-            share the same underlying backbone weights (e.g., two LM-adapted
-            models sitting on top of the same LLaMA-3.2-3B) they can pass the
-            same ``backbone_id`` so the @store_xarray cache entry is shared
-            across registrations. Defaults to ``identifier``. Shared entries
-            also require identical extraction fingerprints. Pre-fingerprint
-            entries are left untouched and miss once.
+        identifier: Model identifier for display and the ``model`` coordinate.
+            Defaults to the class name. It is not part of the cache key: two
+            registrations with the same weights and settings share one entry.
         layer_aggregation: How to reduce (batch, seq_len, hidden) to (batch, hidden).
             'last_token' for causal models, 'mean_tokens' for encoders.
         max_length: Max token length for truncation.
@@ -152,9 +146,19 @@ class TextWrapper:
             (None): no attr is added.
     """
 
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
+
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
+
     VALID_AGGREGATIONS = ('last_token', 'mean_tokens', 'per_token')
 
-    def __init__(self, model, tokenizer, identifier=None, backbone_id=None,
+    def __init__(self, model, tokenizer, identifier=None,
                  layer_aggregation='last_token', max_length=512,
                  batch_size=32, provenance=None, device=None):
         import torch
@@ -192,17 +196,11 @@ class TextWrapper:
             self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
-        # The cache key: backbone_id when given, else the identifier.
-        self._backbone_id = backbone_id or self._identifier
         self._provenance = None if provenance is None else deepcopy(dict(provenance))
 
     @property
     def identifier(self):
         return self._identifier
-
-    @property
-    def backbone_id(self):
-        return self._backbone_id
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
         """Extract activations from text stimuli.
@@ -223,7 +221,7 @@ class TextWrapper:
         if isinstance(stimuli, StimulusSet):
             assembly = self._from_stimulus_set(stimuli, layers, stimuli_identifier)
         else:
-            assembly = self._from_texts(stimuli, layers, stimuli_identifier)
+            assembly = in_layer_order(self._from_texts(stimuli, layers, stimuli_identifier), layers)
         if self._provenance is not None:
             assembly.attrs['provenance'] = deepcopy(self._provenance)
         return assembly
@@ -259,13 +257,13 @@ class TextWrapper:
     def _from_texts_cached(self, texts, layers, stimuli_identifier=None):
         signature = cache_signature(self, '_from_texts_stored', texts, stimuli_identifier)
         if signature is None:
-            return self._from_texts(texts, layers, stimuli_identifier)
-        return self._from_texts_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
-                                       layers=layers, texts=texts, extraction_fingerprint=signature)
+            return in_layer_order(self._from_texts(texts, layers, stimuli_identifier), layers)
+        stored = self._from_texts_stored(stimuli_identifier=stimuli_identifier, layers=layers, texts=texts,
+                                         extraction_fingerprint=signature)
+        return in_layer_order(labelled(stored, self._identifier), layers)
 
     @store_xarray(identifier_ignore=['texts', 'layers'], combine_fields={'layers': 'layer'})
-    def _from_texts_stored(self, identifier, layers, stimuli_identifier, texts,
-                           extraction_fingerprint):
+    def _from_texts_stored(self, layers, stimuli_identifier, texts, extraction_fingerprint):
         return self._from_texts(texts, layers, stimuli_identifier)
 
     def _from_texts(self, texts, layers, stimuli_identifier=None):
@@ -630,9 +628,3 @@ class TextWrapper:
             time_bin_start_ms=(('presentation', 'time_bin'), start),
             time_bin_end_ms=(('presentation', 'time_bin'), end))
 
-
-# Recording several layers in one call gives, for each layer, exactly what a
-# call for that layer alone gives, so the regions of one session share one call
-# (brainscore._model.channels). Set outside the class body: the class source is
-# part of the activation cache key, and this line must not change that key.
-TextWrapper.independent_layers = True

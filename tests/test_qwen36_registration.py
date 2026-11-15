@@ -105,8 +105,8 @@ def test_both_towers_are_wired(built):
     assert vision.kwargs['forward_kwargs_map'] == {'grid_thw': 'image_grid_thw'}
     assert isinstance(vision.kwargs['model'].blocks, torch.nn.ModuleList)
     assert len(text.kwargs['model'].layers) == 64
-    # Same identifier and cache key as the earlier text-only registration.
-    assert (text.identifier, text.kwargs['backbone_id']) == ('qwen3.6-27b-text', 'qwen3.6-27b')
+    # Same identifier as the earlier text-only registration.
+    assert text.identifier == 'qwen3.6-27b-text'
     assert 'text' in model.in_channels
     # Stills as images, clips as video, from the same vision tower.
     assert {'vision:image', 'vision:video'} <= model.in_channels
@@ -168,7 +168,7 @@ def test_vision_extractor_keeps_its_identifier_and_cache_key(monkeypatch):
                         lambda model, processor, identifier: FakeWrapper(model=model, identifier=identifier))
     vision = registration.get_model('qwen3.6-27b').extractor['vision']
     assert type(vision) is vlm_vision_wrapper.VLMVisionWrapper
-    assert (vision.identifier, vision.backbone_id) == ('qwen3.6-27b-vision', 'qwen3.6-27b-vision')
+    assert vision.identifier == 'qwen3.6-27b-vision'
     settings = vision.cache_config()['settings']
     assert {key: settings[key] for key in ('_image_input_key', '_forward_kwargs_map',
                                            '_layer_aggregation', '_batch_size')} == {

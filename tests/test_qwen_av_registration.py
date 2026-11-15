@@ -1,11 +1,11 @@
-"""The Qwen A+V registration builds and declares the shared vision backbone id."""
+"""The Qwen A+V registration builds its vision tower on the Qwen vision encoder."""
 from unittest.mock import MagicMock, patch
 
 import pytest
 import torch
 
 
-def test_qwen_av_registration_builds_with_shared_backbone_id():
+def test_qwen_av_registration_builds_its_vision_tower():
     pytest.importorskip('transformers')
     import transformers
     from brainscore.models.multimodal_av_qwen_wav2vec2 import model as reg
@@ -27,4 +27,5 @@ def test_qwen_av_registration_builds_with_shared_backbone_id():
         model = reg.get_model('qwen2.5-vl-wav2vec2')
     vision = model.extractor['vision']
     assert model.identifier == 'qwen2.5-vl-wav2vec2'
-    assert vision.backbone_id == 'qwen2.5-vl-3b-vision'
+    assert vision.identifier == 'qwen2.5-vl-wav2vec2-vision'
+    assert vision._model is visual

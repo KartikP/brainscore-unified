@@ -11,7 +11,7 @@ returns ``(presentation, neuroid)``; ``time_series`` additionally preserves a
 ``time_bin`` dimension.
 
 Design:
-- Constructor: ``AudioWrapper(model, processor, identifier, backbone_id=...)``
+- Constructor: ``AudioWrapper(model, processor, identifier)``
 - ``__call__(stimuli, layers)`` — accepts a StimulusSet with ``audio_path``
   column (or a list of paths).
 - Layer aggregation modes:
@@ -25,9 +25,9 @@ Design:
 - Sampling rate: the wrapper target rate is taken from the processor's
     ``sampling_rate`` attribute; audio is resampled on load so the processor
     sees the rate it expects.
-- Caching: ``backbone_id`` (default = identifier) keys the ``@store_xarray``
-    cache so two registrations sharing the same audio backbone (e.g.,
-    TRIBEv2 and a standalone Wav2Vec-Bert registration) reuse activations.
+- Caching: the ``@store_xarray`` key is explicit (``_extractors.cache_config``):
+    the weights, settings and inputs, not the identifier. Two registrations
+    sharing one audio backbone and its settings reuse activations.
 
 Long clips are split into consecutive, non-overlapping chunks of at most
 ``max_duration_sec`` and recombined per clip. Multi-channel audio is mixed down
@@ -50,12 +50,12 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_numpy, attach_stimulus_set, attention_mask, cache_signature, one_dtype, run_batches,
+    LiveRecording, as_numpy, attach_stimulus_set, attention_mask, cache_signature, in_layer_order, labelled,
+    one_dtype, run_batches,
 )
 
 
 logger = logging.getLogger(__name__)
-
 
 # ── Default audio loader ────────────────────────────────────────────
 
@@ -103,12 +103,8 @@ class AudioWrapper:
             attribute (or be queryable with ``processor.feature_extractor
             .sampling_rate`` — Wav2Vec2 convention). If neither is present,
             ``target_sample_rate`` must be passed explicitly.
-        identifier: Human-readable model id (used for logs + as the cache
-            key when ``backbone_id`` is not set).
-        backbone_id: Optional shared cache key. When multiple registrations
-            use the same audio backbone weights, set them all to the same
-            backbone_id so ``@store_xarray`` reuses the cached activations.
-            Defaults to ``identifier``.
+        identifier: Human-readable model id (logs and the ``model``
+            coordinate); not part of the cache key.
         target_sample_rate: Override the processor's expected sample rate.
             Usually unnecessary — read from ``processor.sampling_rate``.
         layer_aggregation: ``'mean_time'`` (default) reduces (B, T, H) →
@@ -122,6 +118,16 @@ class AudioWrapper:
             waveform``. Defaults to torchaudio → librosa fallback.
     """
 
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
+
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
+
     VALID_AGGREGATIONS = ('mean_time', 'time_series')
 
     def __init__(
@@ -129,7 +135,6 @@ class AudioWrapper:
         model,
         processor,
         identifier: Optional[str] = None,
-        backbone_id: Optional[str] = None,
         target_sample_rate: Optional[int] = None,
         layer_aggregation: str = 'mean_time',
         max_duration_sec: Optional[float] = 60.0,
@@ -171,7 +176,6 @@ class AudioWrapper:
             )
 
         self._identifier = identifier or model.__class__.__name__
-        self._backbone_id = backbone_id or self._identifier
         # Per-step duration in ms, derived from the first forward pass.
         # Used to attach time_bin_start_ms / time_bin_end_ms coords to
         # time_series outputs. Stays None until at least one batch has
@@ -183,10 +187,6 @@ class AudioWrapper:
     @property
     def identifier(self) -> str:
         return self._identifier
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
 
     @property
     def target_sample_rate(self) -> int:
@@ -246,14 +246,14 @@ class AudioWrapper:
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
         signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
         if signature is None:
-            return self._from_paths(paths, layers, stimuli_identifier)
-        return self._from_paths_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
-                                       layers=layers, paths=paths, extraction_fingerprint=signature)
+            return in_layer_order(self._from_paths(paths, layers, stimuli_identifier), layers)
+        stored = self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
+                                         extraction_fingerprint=signature)
+        return in_layer_order(labelled(stored, self._identifier), layers)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths,
-                           extraction_fingerprint):
+    def _from_paths_stored(self, layers, stimuli_identifier, paths, extraction_fingerprint):
         return self._from_paths(paths, layers, stimuli_identifier)
 
     def _from_paths(self, paths, layers, stimuli_identifier=None):
@@ -569,9 +569,3 @@ class AudioWrapper:
                 'presentation', *(['time_bin'] if timed else []), 'neuroid'])
         return layers
 
-
-# Recording several layers in one call gives, for each layer, exactly what a
-# call for that layer alone gives, so the regions of one session share one call
-# (brainscore._model.channels). Set outside the class body: the class source is
-# part of the activation cache key, and this line must not change that key.
-AudioWrapper.independent_layers = True

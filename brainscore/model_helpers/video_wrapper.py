@@ -28,7 +28,7 @@ The output assembly already has a ``time_bin`` dimension; downstream code
 matches against fMRI TRs) consumes it directly.
 
 Design symmetry with other wrappers:
-    - ``backbone_id`` (default: the identifier) keys the @store_xarray cache
+    - An explicit key (weights, settings, inputs) keys the @store_xarray cache
     - Accepts a StimulusSet with ``video_path`` column (or list of paths)
     - Takes ``layers`` kwarg; returns NeuroidAssembly
 
@@ -40,6 +40,12 @@ Design asymmetry (video-specific):
     - Configurable ``t_to_time_ms_fn`` maps hook-output time index to
       absolute ms within the video, for layers that downsample time
       (e.g., a transformer with patch-wise temporal compression).
+
+Cache key: ``VideoWrapper._VERSION`` is part of the activation cache key. The module
+functions ``_window_features``, ``_shared_clock``, ``_edges_from_centers`` and
+``_default_time_mapping``, and ``brainscore.temporal.window_plan`` and
+``brainscore_core.assembly_builder``, shape the values this wrapper returns but
+are not hashed: a change there that moves values needs a raise of ``_VERSION``.
 
 Memory: videos are processed one-at-a-time by default (batch_size=1)
 because video models have large T×C×H×W tensors. Batch size can be
@@ -67,11 +73,12 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.temporal import window_plan
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
-from brainscore.model_helpers._extractors import LiveRecording, as_float32, cache_signature
+from brainscore.model_helpers._extractors import (
+    LiveRecording, as_float32, cache_signature, in_layer_order, labelled,
+)
 
 
 logger = logging.getLogger(__name__)
-
 
 def pad_out_of_bound(frames: List[Optional[np.ndarray]], oob_mask: List[bool],
                      strategy: str = 'repeat') -> List[np.ndarray]:
@@ -153,9 +160,8 @@ class VideoWrapper:
             producing a tensor appropriate for the model. Typical layouts:
             ``(T, C, H, W)`` for a single video, or already batched
             ``(1, T, C, H, W)``. The wrapper normalizes to ``(B, T, C, H, W)``.
-        identifier: Model identifier for caching.
-        backbone_id: Optional cache-key identifier shared by registrations
-            backed by the same weights. Defaults to ``identifier``.
+        identifier: Model identifier for the ``model`` coordinate; not part
+            of the cache key.
         target_fps: Frame sampling rate, in Hz. Default 5.
         num_frames: If set, sample exactly this many frames per video
             (overrides target_fps behavior). Defaults to None.
@@ -186,12 +192,21 @@ class VideoWrapper:
             and should be handled with ``context_window_ms``.
     """
 
+    # The version of what this class extracts: a part of the activation cache key
+    # (``_extractors.cache_config``), read from this class body only. Raise it by
+    # hand when a change can move the extracted values, also through code it calls.
+    _VERSION = 1
+
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
+
     def __init__(
         self,
         model,
         preprocessing: Callable[[List[np.ndarray]], 'torch.Tensor'],  # noqa: F821
         identifier: Optional[str] = None,
-        backbone_id: Optional[str] = None,
         target_fps: float = 5.0,
         num_frames: Optional[int] = None,
         frame_sampler: Optional[Callable] = None,
@@ -226,18 +241,10 @@ class VideoWrapper:
         self._model = self._model.to(self._device)
 
         self._identifier = identifier or model.__class__.__name__
-        # V-JEPA v1/v2 both wrap the same underlying ViT-L weights in many
-        # configurations; set a shared backbone_id so cached activations
-        # are reused across registrations. Defaults to identifier.
-        self._backbone_id = backbone_id or self._identifier
 
     @property
     def identifier(self) -> str:
         return self._identifier
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
 
     def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs) -> NeuroidAssembly:
         """Extract temporal activations from a batch of videos.
@@ -257,7 +264,7 @@ class VideoWrapper:
         """
         if isinstance(stimuli, StimulusSet):
             return self._from_stimulus_set(stimuli, layers, stimuli_identifier)
-        return self._from_paths(list(stimuli), layers, stimuli_identifier)
+        return in_layer_order(self._from_paths(list(stimuli), layers, stimuli_identifier), layers)
 
     def _from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
         if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
@@ -302,14 +309,14 @@ class VideoWrapper:
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
         signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
         if signature is None:
-            return self._from_paths(paths, layers, stimuli_identifier)
-        return self._from_paths_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
-                                       layers=layers, paths=paths, extraction_fingerprint=signature)
+            return in_layer_order(self._from_paths(paths, layers, stimuli_identifier), layers)
+        stored = self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
+                                         extraction_fingerprint=signature)
+        return in_layer_order(labelled(stored, self._identifier), layers)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths,
-                           extraction_fingerprint):
+    def _from_paths_stored(self, layers, stimuli_identifier, paths, extraction_fingerprint):
         return self._from_paths(paths, layers, stimuli_identifier)
 
     def _from_paths(self, paths: List[str], layers: List[str],
@@ -712,9 +719,3 @@ def _default_time_mapping(n_time_steps_out: int, video_duration_ms: float) -> Li
     step_ms = video_duration_ms / n_time_steps_out
     return [step_ms * (i + 0.5) for i in range(n_time_steps_out)]
 
-
-# Recording several layers in one call gives, for each layer, exactly what a
-# call for that layer alone gives, so the regions of one session share one call
-# (brainscore._model.channels). Set outside the class body: the class source is
-# part of the activation cache key, and this line must not change that key.
-VideoWrapper.independent_layers = True

@@ -58,19 +58,20 @@ def _grid(args, kwargs):
 
 
 class VLMVideoWrapper:
-    def __init__(self, model, processor, identifier: str, *, backbone_id: str = None):
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
+
+    def __init__(self, model, processor, identifier: str):
         self._model, self._processor = model, processor
-        self._identifier, self._backbone_id = identifier, backbone_id or identifier
+        self._identifier = identifier
         video = processor.video_processor
         self._step_ms = 1000.0 * video.temporal_patch_size / video.fps
 
     @property
     def identifier(self) -> str:
         return self._identifier
-
-    @property
-    def backbone_id(self) -> str:
-        return self._backbone_id
 
     def __call__(self, stimuli, layers: List[str], stimuli_identifier=None, **kwargs):
         import torch
@@ -152,9 +153,3 @@ class VLMVideoWrapper:
             return [str(paths[sid]) for sid in stimuli['stimulus_id']]
         raise ValueError(f'No clip column {clip_columns} in {list(stimuli.columns)}')
 
-
-# Recording several layers in one call gives, for each layer, exactly what a
-# call for that layer alone gives, so the regions of one session share one call
-# (brainscore._model.channels). Set outside the class body: the class source is
-# part of the activation cache key, and this line must not change that key.
-VLMVideoWrapper.independent_layers = True

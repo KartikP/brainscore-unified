@@ -56,12 +56,10 @@ def build_audio_wrapper(combo_identifier: str, random_init: bool = False):
             wav = wav.mean(axis=-1)
         return wav
 
-    backbone_id = 'random-wav2vec2-base' if random_init else 'wav2vec2-base'
     wrapper = AudioWrapper(
         model=model,
         processor=processor,
         identifier=f'{combo_identifier}-audio',
-        backbone_id=backbone_id,
         layer_aggregation='time_series',
         audio_loader=_wav_loader,
     )

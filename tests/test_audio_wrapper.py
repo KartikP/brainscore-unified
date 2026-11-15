@@ -1,11 +1,10 @@
 """Unit tests for AudioWrapper — the fifth activations_model wrapper.
 
 Covers the pieces that don't require downloading a real audio checkpoint:
-- construction contract (identifier, backbone_id, sampling_rate resolution)
+- construction contract (identifier, sampling_rate resolution)
 - ``_extract_paths`` stimulus-column detection
 - ``_aggregate`` reduces (B, T, H) correctly under each mode
 - ``_load_waveform`` truncates clips longer than max_duration_sec
-- cache key propagation uses backbone_id (not identifier)
 - column-to-modality map knows ``audio_path`` / ``audio_file_name``
 
 A small real forward-pass test against a tiny HuggingFace model (e.g.
@@ -75,24 +74,14 @@ def wrapper():
     processor = _FakeProcessor(sampling_rate=16000)
     return AudioWrapper(
         model=model, processor=processor,
-        identifier='test-wrapper', backbone_id='test-backbone',
+        identifier='test-wrapper',
     )
 
 
 class TestConstruction:
 
-    def test_identifier_and_backbone_id(self, wrapper):
+    def test_identifier(self, wrapper):
         assert wrapper.identifier == 'test-wrapper'
-        assert wrapper.backbone_id == 'test-backbone'
-
-    def test_default_backbone_id_equals_identifier(self):
-        from brainscore.model_helpers.audio_wrapper import AudioWrapper
-        import torch.nn as nn
-        w = AudioWrapper(
-            model=nn.Identity(), processor=_FakeProcessor(),
-            identifier='audio-a',
-        )
-        assert w.backbone_id == 'audio-a'
 
     def test_sampling_rate_from_processor(self, wrapper):
         assert wrapper.target_sample_rate == 16000
@@ -392,36 +381,6 @@ class TestWaveformChunking:
         # Clip 1 has T=2 valid + NaN padding for T=2,3
         np.testing.assert_allclose(out[1, :2], [[7, 8], [9, 10]])
         assert np.isnan(out[1, 2:]).all()
-
-
-# ── Cache key propagation ───────────────────────────────────────────
-
-class TestCacheKey:
-
-    def test_from_paths_cached_uses_backbone_id(self, wrapper, tmp_path, monkeypatch):
-        monkeypatch.setenv('RESULTCACHING_DISABLE', '0')
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / 'x.wav').write_bytes(b'input')
-        captured = {}
-
-        def fake_stored(identifier, stimuli_identifier, layers, paths, extraction_fingerprint):
-            captured['identifier'] = identifier
-            return 'sentinel'
-
-        wrapper._from_paths_stored = fake_stored
-        result = wrapper._from_paths_cached(
-            paths=['x.wav'], layers=['enc'], stimuli_identifier='stim')
-        assert result == 'sentinel'
-        assert captured['identifier'] == 'test-backbone'
-
-    def test_different_backbone_ids_dont_collide(self):
-        from brainscore.model_helpers.audio_wrapper import AudioWrapper
-        import torch.nn as nn
-        a = AudioWrapper(model=nn.Identity(), processor=_FakeProcessor(),
-                         identifier='a', backbone_id='wav2vec-bert')
-        b = AudioWrapper(model=nn.Identity(), processor=_FakeProcessor(),
-                         identifier='b', backbone_id='hubert')
-        assert a.backbone_id != b.backbone_id
 
 
 # ── Stimulus columns that feed the audio channel ───────────────────

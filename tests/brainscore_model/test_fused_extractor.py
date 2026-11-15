@@ -13,7 +13,7 @@ pytestmark = pytest.mark.unit
 
 class Fused:
     """Sees the image and the sentence of each stimulus together; returns one step per input."""
-    identifier = backbone_id = 'fused'
+    identifier = 'fused'
 
     def __init__(self):
         self.calls = []

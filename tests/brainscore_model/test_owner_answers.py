@@ -235,7 +235,7 @@ def _rows(rows, ids):
 
 class _PassExtractor:
     """Records the first pass of each trial, as TextWrapper.record does."""
-    identifier = backbone_id = 'pass-net'
+    identifier = 'pass-net'
 
     def __init__(self, net):
         self.net = net
