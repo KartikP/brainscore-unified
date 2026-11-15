@@ -76,7 +76,9 @@ def test_required_profile_exit_status(tmp_path, source, code, passed, unexpected
 
 
 def test_required_profile_accounts_for_every_test_under_xdist(tmp_path):
-    import xdist  # noqa: F401  (installed with the test extra; a missing plugin must fail)
+    # The GitHub jobs install the test extra and run this suite with -n; there a skip here
+    # is an unexpected skip and fails the job, so a missing plugin still fails in CI.
+    pytest.importorskip('xdist', reason='pytest-xdist is not installed; install brainscore[test]')
     (tmp_path / 'test_sample.py').write_text(
         'import pytest\n'
         'def test_a(): pass\n'
