@@ -297,6 +297,18 @@ def extract_for_modality(model, stimuli, modality: str, layers: List[str]):
     return _extract(model, stimuli, modality, layers)
 
 
+def call_extractor(extractor, stimuli, layers):
+    """The one place where the model receives a result from an extractor: its values in C order.
+
+    An extractor with its own store (the legacy vision ``PytorchWrapper``) returns
+    stored activations in another memory layout than computed ones, and later
+    reductions round by the layout; ``c_order`` makes the store-on result equal
+    the store-off result bit for bit, and leaves a C-ordered result as it is.
+    """
+    from brainscore.model_helpers._extractors import c_order
+    return c_order(extractor(stimuli, layers=layers))
+
+
 def _extract(model, stimuli, modality: str, layers: List[str]):
     extractor = extractor_for(model, modality, stimuli, layers)
     if extractor is not None:
@@ -305,7 +317,7 @@ def _extract(model, stimuli, modality: str, layers: List[str]):
                 if shared is not None and shared[0] is stimuli else None)
         if call is not None:
             return call(stimuli, layers)
-        return extractor(stimuli, layers=layers)
+        return call_extractor(extractor, stimuli, layers)
     modality = canonical_modality(modality)
     if extractor_keys(model, modality):
         raise ValueError(
@@ -326,7 +338,7 @@ def extract_modalities(model, stimuli, detected: Set[str], layers: List[str]):
     fused = fused_for(model, detected)
     if fused is not None:
         # One fused extractor takes every input type: one forward pass.
-        assembly = fused(stimuli, layers=layers)
+        assembly = call_extractor(fused, stimuli, layers)
         if recorder.is_multi_region:
             assembly = recorder.tag_neuroids_with_regions(assembly)
         return assembly
@@ -400,14 +412,14 @@ class _SharedCall:
         if self.shared and set(layers) <= set(self.layers):
             if self.output is None:
                 try:
-                    self.output = self.extractor(stimuli, layers=self.layers)
+                    self.output = call_extractor(self.extractor, stimuli, self.layers)
                 except LayerDtypesDiffer:
                     self.shared = False
-                    return self.extractor(stimuli, layers=layers)
+                    return call_extractor(self.extractor, stimuli, layers)
             part = _layers_of(self.output, list(layers))
             if part is not None:
                 return part
-        return self.extractor(stimuli, layers=layers)
+        return call_extractor(self.extractor, stimuli, layers)
 
 
 def _layers_of(output, layers):
