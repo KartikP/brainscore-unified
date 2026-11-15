@@ -27,8 +27,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, layer_assembly, one_dtype,
-    run_batches,
+    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, labelled, layer_assembly,
+    one_dtype, run_batches,
 )
 
 
@@ -259,8 +259,8 @@ class TextWrapper:
         signature = cache_signature(self, '_from_texts_stored', texts, stimuli_identifier)
         if signature is None:
             return self._from_texts(texts, layers, stimuli_identifier)
-        return self._from_texts_stored(stimuli_identifier=stimuli_identifier, layers=layers, texts=texts,
-                                       extraction_fingerprint=signature)
+        return labelled(self._from_texts_stored(stimuli_identifier=stimuli_identifier, layers=layers, texts=texts,
+                                                extraction_fingerprint=signature), self._identifier)
 
     @store_xarray(identifier_ignore=['texts', 'layers'], combine_fields={'layers': 'layer'})
     def _from_texts_stored(self, layers, stimuli_identifier, texts, extraction_fingerprint):
