@@ -345,16 +345,17 @@ class BehavioralReadout:
     _PATHS = ('generation', 'likelihood', 'readout')
 
     def _select(self, output, can, task) -> Optional[str]:
-        """The part that gives ``output`` for ``task``, from the parts that can serve it (``can``).
+        """The part that answers bare ``behavior`` (a legacy task), from the parts that can serve it.
 
         The owner stated at registration answers when it can serve the task
         (``answer_owners``; with one wired part, that part). When the task form
         excludes the owner, the one other part that can serve it answers: a
-        registered model relies on this, for example a legacy task without an
-        instruction goes to the readout, and a Choice with raw scores to the
-        likelihood (design note ANSWER_ownership, section 5). When two or more
-        parts that do not own the output can serve it, nothing chooses between
-        them: the task is refused before any compute. ``None``: no part can.
+        legacy task without an instruction, as the facade sends, goes to the
+        readout (design note ANSWER_ownership, section 5). Only bare
+        ``behavior`` keeps this fallback; a format channel is answered by its
+        owner (``_owner_serving``). When two or more parts that do not own the
+        output can serve it, the task is refused before any compute. ``None``:
+        no part can.
         """
         from brainscore_core.compatibility import ExecutionNotFeasibleError
         formats = _formats_by_part(self.owner)
@@ -370,15 +371,43 @@ class BehavioralReadout:
             f"serve this task, and the parts {eligible} that can do not own it. State an owner "
             f"that serves the task, or build one model per part.", task_type=task.task_type)
 
+    def _owner_serving(self, output, can, task, settings) -> Optional[str]:
+        """The owner of the answer format ``output``, when it can serve ``task`` (rule 4.11).
+
+        The owner is the stated part, or the one wired part that gives the format.
+        When the owner cannot serve the task form, the task is refused before any
+        compute: no other part answers a format it does not own (only bare
+        ``behavior`` keeps that fallback, ``_select``). ``None``: no part gives it.
+        """
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        formats = _formats_by_part(self.owner)
+        givers = [p for p in self._PATHS if output in formats.get(p, ())]
+        owner = self.owners.get(output) or (givers[0] if len(givers) == 1 else None)
+        if owner is None and len(givers) > 1:
+            raise ExecutionNotFeasibleError(
+                f"Subject '{self.owner.identifier}': the parts {givers} give {output!r} and no "
+                f"owner is stated.", task_type=task.task_type)
+        if owner is None or not (can.get(owner) or any(can.get(p) for p in givers)):
+            return None          # no part can serve it: the caller names what each needs
+        if not can.get(owner):
+            raise ExecutionNotFeasibleError(
+                f"Subject '{self.owner.identifier}': {output!r} is owned by {owner!r}, which "
+                f"cannot serve this task"
+                + (f" (task settings: {', '.join(settings)})" if settings else '')
+                + '; no other part answers it.', task_type=task.task_type)
+        return owner
+
     def _choose_path(self, task) -> Tuple[str, Optional[str]]:
         """The part that answers ``task`` and the source of implied probabilities, before any compute.
 
-        A part is eligible for an output when it is wired and can serve the
-        task's settings (``can`` below). One eligible part answers; several
-        answer through the owner the registration states for the output
-        (rule 4.11, ``answer_owners``). A legacy task (``task_type`` with
-        ``label_set``) answers on ``behavior``, through ``answer=`` (with an
-        instruction and labels) or the readout (with fitting stimuli).
+        A task with a response is answered by the owner of its answer format
+        (the raw scores of a raw-scores Choice, else the response's first
+        format) and its implied probabilities by the owner of
+        ``behavior:probabilities`` (rule 4.11, ``answer_owners``); an owner
+        that cannot serve the task's settings (``can`` below) is refused, no
+        other part stands in. A legacy task (``task_type`` with ``label_set``)
+        answers on ``behavior``, through ``answer=`` (with an instruction and
+        labels) or the readout (with fitting stimuli).
 
         A task that no part of the model can answer raises
         ``ExecutionNotFeasibleError`` before any compute. Sessions refuse with
@@ -424,7 +453,14 @@ class BehavioralReadout:
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
                         and not reported_confidence and not raw_scores and not per_row),
         }
-        path = self._select(response.channels[0], can, task)
+        # The answer format: the raw scores of a raw-scores Choice (they travel on
+        # behavior:probabilities), else the response's first format. Its owner answers;
+        # a task form the owner cannot serve is refused (no other part stands in).
+        settings = [name for name, on in (('raw_text', raw_text), ('raw_scores', raw_scores),
+                                          ('confidence', reported_confidence),
+                                          ('labels per row', per_row)) if on]
+        answer_format = 'behavior:probabilities' if raw_scores else response.channels[0]
+        path = self._owner_serving(answer_format, can, task, settings)
         if path is None:
             needs = {'generation': 'reply= (or answer= for a plain Choice)',
                      'likelihood': 'likelihood= and a Choice without reported confidence',
@@ -437,9 +473,9 @@ class BehavioralReadout:
         source = None
         if isinstance(response, Choice) and (response.probabilities or response.reaction_time
                                              or response.raw_scores):
-            source = self._select('behavior:probabilities', {
+            source = self._owner_serving('behavior:probabilities', {
                 'likelihood': owner._likelihood is not None,
-                'readout': readout_wired and not per_row}, task)
+                'readout': readout_wired and not per_row}, task, settings)
             if source is None:
                 raise ExecutionNotFeasibleError(
                     f"Subject '{owner.identifier}' cannot give implied probabilities: "

@@ -186,12 +186,13 @@ def test_a_generated_choice_takes_probabilities_from_their_owner(probabilities, 
 
 def test_several_parts_that_do_not_own_the_output_are_refused_before_compute():
     """The owner (generation, answer=) cannot serve raw text; likelihood and readout
-    both could, and neither owns the choice: nothing chooses between them."""
+    both could, and neither owns the choice: no other part answers it (C4)."""
     calls = []
     model = _model('answer', 'likelihood', 'behavioral_readout_layer', calls=calls,
                    owners=fixed_order_owners('answer', 'likelihood', 'behavioral_readout_layer'))
     task = TaskContext(response=Choice(['cat', 'dog'], raw_text=True), fitting_stimuli=FITTING)
-    with pytest.raises(ExecutionNotFeasibleError, match=r"\['likelihood', 'readout'\] that can do not own it"):
+    with pytest.raises(ExecutionNotFeasibleError, match=r"'behavior:choice' is owned by 'generation', "
+                                                        r"which cannot serve this task \(task settings: raw_text\)"):
         _run(model, ['behavior:choice'], task)
     assert calls == []
 
@@ -202,19 +203,14 @@ QWEN = ('answer', 'reply', 'likelihood', 'behavioral_readout_layer')
 BLIP2 = ('answer', 'behavioral_readout_layer')
 CAUSAL_LM = ('reply', 'likelihood')
 
-# The cases where a registered model answers an output through a part that does
+# The cases where a registered model answers bare behavior through a part that does
 # not own it, because the task form excludes the owner and exactly one other part
-# can serve it. Ownership is stated per output; these differ by task form, which
-# the statement cannot express (design note ANSWER_ownership, section 5).
+# can serve it: a legacy task without an instruction (as the facade sends) goes to
+# the readout. Only bare behavior keeps this fallback (C4); a format channel is
+# answered by its owner or refused.
 TASK_FORM_CASES = {
     'qwen legacy without instruction': (QWEN, LEGACY_NO_INSTRUCTION, ['behavior'], 'readout'),
     'blip2 legacy without instruction': (BLIP2, LEGACY_NO_INSTRUCTION, ['behavior'], 'readout'),
-    'qwen raw scores': (QWEN, TaskContext(response=Choice(['cat', 'dog'], raw_scores=True)),
-                        ['behavior:choice'], 'likelihood'),
-    'causal lm raw scores': (CAUSAL_LM, TaskContext(response=Choice(['cat', 'dog'], raw_scores=True)),
-                             ['behavior:choice'], 'likelihood'),
-    'blip2 raw text': (BLIP2, TaskContext(response=Choice(['cat', 'dog'], raw_text=True),
-                                          fitting_stimuli=FITTING), ['behavior:choice'], 'readout'),
 }
 
 
@@ -241,11 +237,18 @@ REGISTERED_STATEMENTS = {
     CAUSAL_LM: {'behavior:probabilities': ('likelihood', 'softmax')},
     ('answer', 'reply'): {},
 }
-# The only cases where the new rule differs from the base commit: two parts that
-# do not own the choice could serve it (above). No registered part set is among them.
-REFUSED_NOW = {(('answer', 'likelihood', 'behavioral_readout_layer'),
-                (('labels', 'shared'), ('probabilities', p), ('raw_text', True), ('reaction_time', rt)))
-               for p in (False, True) for rt in (None, 'surprisal')}
+# The only cases where the owner rule differs from the base commit: a raw-text Choice,
+# whose choice is owned by answer= (generation without reply), which cannot serve raw
+# text; the base commit let the likelihood or the readout answer it. Since C4 no part
+# answers a format it does not own, so these are refused. Of the registered part sets
+# only BLIP-2 (answer, readout) is among them, with shared labels (a readout reads no
+# per-row options).
+REFUSED_NOW = {(parts, (('labels', labels), ('probabilities', p), ('raw_text', True), ('reaction_time', rt)))
+               for parts, all_labels in ((BLIP2, ('shared',)),
+                                         (('answer', 'likelihood'), ('shared', 'per_row')),
+                                         (('answer', 'likelihood', 'behavioral_readout_layer'),
+                                          ('shared', 'per_row')))
+               for labels in all_labels for p in (False, True) for rt in (None, 'surprisal')}
 
 
 def _key(case):
@@ -273,10 +276,10 @@ def test_the_fixed_order_owners_choose_what_the_base_commit_chose(monkeypatch, p
         except ExecutionNotFeasibleError:
             outcome = 'refused'
         if outcome != case['outcome']:
-            assert outcome == 'refused' and case['task']['fitting'] and not case['task']['confidence'], case
+            assert outcome == 'refused' and case['task']['raw_text'] and not case['task']['confidence'], case
             differences.add(_key(case))
     assert differences == {key for key in REFUSED_NOW if key[0] == parts}
-    if parts in REGISTERED_PART_SETS:
+    if parts in REGISTERED_PART_SETS and parts != BLIP2:
         assert not differences
 
 
