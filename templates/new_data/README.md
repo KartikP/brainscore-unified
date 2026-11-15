@@ -62,7 +62,7 @@ Each corresponds to a failure that is easy to hit and hard to read:
 
 - A recognized modality column: `image_path`, `sentence`, `audio_path`,
   `video_path`. The subject finds a stimulus set's modality by column name. Without
-  one you get `No recognized modality columns`.
+  one you get `No column in this stimulus set says what kind of input it holds`.
 - `stimulus_paths` pointing at files that exist. A real model opens them. Paths that
   merely look plausible fail only once someone runs a real model, not in your tests.
 - At least two coords per axis. With one, brainio never builds the MultiIndex, and

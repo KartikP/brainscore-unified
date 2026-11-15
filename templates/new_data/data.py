@@ -80,8 +80,8 @@ def _build_example_files():
                      # 'image_path' is load-bearing: dispatch decides a stimulus
                      # set's MODALITY by looking for a recognized column name. Use
                      # 'sentence' for text, 'audio_path' for audio, 'video_path' for
-                     # video. Without one of these, process() raises
-                     # "No recognized modality columns".
+                     # video. Without one of these, a session raises "No column in
+                     # this stimulus set says what kind of input it holds".
                      'image_path': path,
                      # Any extra columns ride along as presentation metadata. Keep
                      # 'object_name' (or whatever your categories are called) — the
