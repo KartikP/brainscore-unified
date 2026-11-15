@@ -3,10 +3,12 @@
 Guideline "one owner for each responsibility"; Architecture and Ownership Map,
 sections 3, 3a and 6 (E4).
 
-Reads (with ``ast``, never imported) the library code of core, unified, vision
-and language. Tests are not read. The legacy plugin folders of vision and
-language (``models``, ``benchmarks``, ``data``, ``metrics``) are not read:
-legacy plugins are permanent and own nothing of the contract.
+Reads (with ``ast``, never imported) the library code of core and unified, and
+the UMI code of vision and language: the score entry point (``__init__.py``),
+the adapters (``compat/``) and vision's ``benchmark_helpers/test_db_contract.py``.
+Tests are not read. The rest of vision and language is Brain-Score 2.0 code
+(the plugin folders and the library code such as ``model_helpers``): it is
+permanent and owns nothing of the contract (Contract Rule 11.2), so it is not read.
 
 A static check sees names, not meaning. For each responsibility it checks one
 concrete signal, listed with what it cannot detect:
@@ -28,7 +30,9 @@ R9 extractor choice for a region. Signal: a function named ``extractor_keys``
     or ``region_extractor_keys`` is defined. Cannot detect: an extractor
     picked inline from a mapping.
 R11 hooks on a network. Signal: a call of ``register_forward_hook``,
-    ``register_forward_pre_hook`` or ``register_full_backward_hook``. Cannot
+    ``register_forward_pre_hook`` or ``register_full_backward_hook``. Owners:
+    the extractors (recording), ``perturbation.py`` (interventions) and
+    ``TorchInstrumentation`` (experiment tools, House Style pattern 4). Cannot
     detect: hooks installed through a third-party helper.
 R12 intervention apply and undo. Signal: an in-place write to a tensor's
     ``.data`` (``.data.copy_``, ``.data.index_copy_``, ``.data.mul_``,
@@ -37,13 +41,19 @@ R12 intervention apply and undo. Signal: an in-place write to a tensor's
     intervention). Cannot detect: interventions made with hooks (R11 reports
     those, for example the ``Ablate`` tool family) or with ``torch.no_grad``
     assignments to parameters.
-R14 regression for encoding scores. Signal: an import from
-    ``sklearn.linear_model`` or ``sklearn.cross_decomposition``. Cannot detect:
-    a regression written with numpy, or a fit through a third package.
+R14 regression for encoding scores. Signal: a regression estimator of
+    ``sklearn.linear_model`` or ``sklearn.cross_decomposition`` (``REGRESSORS``)
+    is imported or named; a classifier (``LogisticRegression``) is not a
+    regression. Cannot detect: a regression written with numpy, or a fit
+    through a third package.
 R15 score construction. Signal: a call of ``Score(`` in unified
-    ``benchmarks``, ``metrics`` or ``harnesses``. Cannot detect: a score built
-    by a legacy helper (``explained_variance``, ``ceiling_normalize`` in the
-    ``-unified`` MajajHong and Pereira pair) or by ``Score.__new__``.
+    ``benchmarks`` or ``harnesses`` that is not part of a ``ceiling=``
+    argument. A metric returns its raw value as a ``Score`` by the core
+    ``Metric`` contract, and a ceiling handed to the base class or to
+    ``benchmark_score`` is a reference, not a score; neither is score
+    construction. Cannot detect: a score built by a legacy helper
+    (``explained_variance``, ``ceiling_normalize`` in the ``-unified``
+    MajajHong and Pereira pair) or by ``Score.__new__``.
 R17 score metadata stamp. Signal: ``stamp_score_metadata`` is defined or
     called. Cannot detect: score attributes written directly.
 R18 activation cache validity. Signal: a write to the
@@ -55,9 +65,10 @@ R20 registry assignment. Signal: a module-level name ending in ``_registry``
     is assigned, or a module-level function ``register_*`` is defined. Cannot
     detect: a registry held under another name.
 
-Each finding is one (responsibility, file). The allow-list holds the second
-sites of today with a reason; it may only shrink: an entry that no longer
-violates fails the test.
+Each finding is one (responsibility, file). ``ALLOWED`` holds the violations
+of today with a reason; its target is empty. ``STATED_EXCEPTIONS`` holds the
+second sites that a rule states as exceptions, each with the rule sentence.
+Both may only shrink: an entry that is no longer found fails the test.
 """
 import ast
 
@@ -67,7 +78,9 @@ from tests.architecture_support import compare, package_root, python_files
 
 PACKAGES = {'core': 'brainscore_core', 'unified': 'brainscore',
             'vision': 'brainscore_vision', 'language': 'brainscore_language'}
-LEGACY_PLUGIN_FOLDERS = ('models/', 'benchmarks/', 'data/', 'metrics/')
+# The UMI code of vision and language; the rest is Brain-Score 2.0 code (Contract Rule 11.2).
+UMI_CODE = {'vision': ('__init__.py', 'compat/', 'benchmark_helpers/test_db_contract.py'),
+            'language': ('__init__.py', 'compat/')}
 ENTRY_POINTS = {'unified:__init__.py', 'vision:__init__.py', 'language:__init__.py'}
 
 
@@ -103,18 +116,33 @@ def _writes_tensor_data(tree):
                for node in ast.walk(tree))
 
 
+_REGRESSION_MODULES = ('sklearn.linear_model', 'sklearn.cross_decomposition')
+REGRESSORS = {'LinearRegression', 'Ridge', 'RidgeCV', 'Lasso', 'LassoCV', 'LassoLars',
+              'ElasticNet', 'ElasticNetCV', 'MultiTaskLasso', 'MultiTaskElasticNet',
+              'BayesianRidge', 'HuberRegressor', 'SGDRegressor', 'Lars',
+              'PLSRegression', 'PLSCanonical', 'PLSSVD', 'CCA'}
+
+
 def _imports_sklearn_regression(tree):
+    """A regression estimator imported from, or named through, the two sklearn modules."""
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            modules = [alias.name for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            modules = [node.module] + [f'{node.module}.{alias.name}' for alias in node.names]
-        else:
-            continue
-        if any(module.startswith(('sklearn.linear_model', 'sklearn.cross_decomposition'))
-               for module in modules):
+        if isinstance(node, ast.ImportFrom) and (node.module or '').startswith(_REGRESSION_MODULES):
+            if any(alias.name in REGRESSORS for alias in node.names):
+                return True
+        elif isinstance(node, ast.Attribute) and node.attr in REGRESSORS \
+                and ast.unparse(node.value).endswith(('linear_model', 'cross_decomposition')):
             return True
     return False
+
+
+def _builds_score(tree):
+    """A ``Score(`` call that is not part of a ``ceiling=`` argument."""
+    in_ceiling = {id(inner) for node in ast.walk(tree) if isinstance(node, ast.keyword)
+                  and node.arg == 'ceiling' for inner in ast.walk(node.value)}
+    return any(isinstance(node, ast.Call) and id(node) not in in_ceiling
+               and (node.func.attr if isinstance(node.func, ast.Attribute)
+                    else getattr(node.func, 'id', None)) == 'Score'
+               for node in ast.walk(tree))
 
 
 def _writes_cache_switch(tree):
@@ -152,7 +180,7 @@ def _core_and_unified_library(site):
 
 
 def _unified_score_code(site):
-    return site.startswith(('unified:benchmarks/', 'unified:metrics/', 'unified:harnesses/'))
+    return site.startswith(('unified:benchmarks/', 'unified:harnesses/'))
 
 
 # id: (signal, scope, allowed definition sites)
@@ -173,12 +201,13 @@ RESPONSIBILITIES = {
     'R11 hooks on a network': (
         lambda tree: _calls(tree, {'register_forward_hook', 'register_forward_pre_hook',
                                    'register_full_backward_hook'}),
-        _everywhere, {'unified:model_helpers/_extractors.py', 'unified:perturbation.py'}),
+        _everywhere, {'unified:model_helpers/_extractors.py', 'unified:perturbation.py',
+                      'unified:experiments/tools.py'}),
     'R12 intervention apply and undo': (_writes_tensor_data, _core_and_unified_library,
                                         {'unified:perturbation.py'}),
     'R14 encoding regression': (_imports_sklearn_regression, _everywhere,
                                 {'unified:metrics/encoding.py', 'unified:_model/behavior.py'}),
-    'R15 score construction': (lambda tree: _calls(tree, {'Score'}), _unified_score_code,
+    'R15 score construction': (_builds_score, _unified_score_code,
                                {'unified:benchmarks/_score.py'}),
     'R17 metadata stamp': (
         lambda tree: _defines(tree, {'stamp_score_metadata'}) or _calls(tree, {'stamp_score_metadata'}),
@@ -188,45 +217,33 @@ RESPONSIBILITIES = {
                                 {'unified:__init__.py', 'core:io_catalog.py'}),
 }
 
-_HOOK_TOOL = 'an observer or tool, not a score path; a second way to attach hooks (second audit P5)'
-_LEGACY = 'legacy Brain-Score 2.0 helper, permanent'
-_NO_CEILING = '"no ceiling" or a benchmark ceiling built as Score(...) beside benchmark_score (project record decision 29)'
-# (responsibility, site): reason
+# (responsibility, site): reason. Violations only; the target is empty.
 ALLOWED = {
-    ('R11 hooks on a network', 'unified:activation_window.py'): _HOOK_TOOL,
-    ('R11 hooks on a network', 'unified:percept_window.py'): _HOOK_TOOL,
-    ('R11 hooks on a network', 'unified:experiments/tools.py'):
-        'TorchInstrumentation: the Ablate tool family intervenes through its own hooks (R12, decision 14)',
-    ('R11 hooks on a network', 'vision:model_helpers/activations/pytorch.py'): _LEGACY,
-    ('R11 hooks on a network', 'vision:model_helpers/activations/temporal/model/pytorch.py'): _LEGACY,
-    ('R11 hooks on a network', 'language:model_helpers/huggingface.py'): _LEGACY,
-    ('R11 hooks on a network', 'language:model_helpers/localize.py'): _LEGACY,
-    ('R14 encoding regression', 'unified:tools/linear_probe.py'):
-        'the linear probe tool fits its own sklearn model',
-    ('R14 encoding regression', 'vision:model_helpers/brain_transformation/behavior.py'): _LEGACY,
-    ('R15 score construction', 'unified:metrics/direct_comparison/metric.py'):
-        'registered metric builds Score directly (second score builder)',
-    ('R15 score construction', 'unified:metrics/topographic/metric.py'):
-        'registered metric builds Score directly (second score builder)',
-    ('R15 score construction', 'unified:benchmarks/grid_game/benchmark.py'): _NO_CEILING,
-    ('R15 score construction', 'unified:benchmarks/lahner2024/benchmark.py'): _NO_CEILING,
-    ('R15 score construction', 'unified:benchmarks/lahner2024/benchmark_timeresolved.py'): _NO_CEILING,
-    ('R15 score construction', 'unified:benchmarks/roar_yeatman2021/benchmark.py'): _NO_CEILING,
-    ('R15 score construction', 'unified:harnesses/human_replay.py'): _NO_CEILING,
-    ('R18 cache validity', 'vision:model_helpers/check_submission/check_models.py'): _LEGACY,
-    ('R20 registry assignment', 'vision:__init__.py'): 'domain registries of vision, permanent',
-    ('R20 registry assignment', 'language:__init__.py'): 'domain registries of language, permanent',
-    ('R20 registry assignment', 'unified:tools/_registry.py'):
-        'register_tool: a second registration style (R20)',
     ('R20 registry assignment', 'unified:capabilities/registry.py'):
-        'register_capability and capability_registry: a second registration style (R20)',
+        'register_capability and capability_registry: a second registration style (R20); '
+        'decided after the response format work joins (D9)',
+}
+
+_OBSERVER = ('Ownership Map R11: a user-attached observer (ActivationWindow, PerceptWindow) '
+             'installs its own hooks on a network passed to it; it never runs in a score path')
+_DOMAIN_REGISTRIES = ('Contract Rule 11.2: the registries of vision and language are '
+                      'Brain-Score 2.0 code and permanent; unified loads from them as a fallback')
+# (responsibility, site): the rule sentence that states the exception
+STATED_EXCEPTIONS = {
+    ('R11 hooks on a network', 'unified:activation_window.py'): _OBSERVER,
+    ('R11 hooks on a network', 'unified:percept_window.py'): _OBSERVER,
+    ('R20 registry assignment', 'vision:__init__.py'): _DOMAIN_REGISTRIES,
+    ('R20 registry assignment', 'language:__init__.py'): _DOMAIN_REGISTRIES,
+    ('R20 registry assignment', 'unified:tools/_registry.py'):
+        'Ownership Map R20: a tool is registered with register_tool(identifier, factory); '
+        'a built-in tool is a lazy import path in _TOOLS, which a dict entry cannot hold',
 }
 
 
 def _library_files():
     for repo, package in PACKAGES.items():
         for path, source in python_files(package_root(package)):
-            if repo in ('vision', 'language') and path.startswith(LEGACY_PLUGIN_FOLDERS):
+            if repo in UMI_CODE and not path.startswith(UMI_CODE[repo]):
                 continue
             yield f'{repo}:{path}', source
 
@@ -242,7 +259,12 @@ def violations(files, responsibilities=RESPONSIBILITIES):
 
 
 def test_each_exclusive_responsibility_has_one_definition_site():
-    compare(violations(_library_files()), ALLOWED, 'second definition sites')
+    compare(violations(_library_files()), {**ALLOWED, **STATED_EXCEPTIONS},
+            'second definition sites')
+
+
+def test_a_stated_exception_is_not_also_a_violation():
+    assert not set(ALLOWED) & set(STATED_EXCEPTIONS)
 
 
 def test_every_allowed_site_still_holds_its_signal():
@@ -279,6 +301,10 @@ def test_check_fails_on_a_stale_entry():
     ('R9 extractor choice', 'def extractor_keys(m, r): ...'),
     ('R11 hooks on a network', 'module.register_forward_hook(f)'),
     ('R12 intervention apply and undo', 'parameter.data.copy_(original)'),
+    ('R14 encoding regression', 'import sklearn.linear_model\nfit = sklearn.linear_model.Ridge(1.0)'),
+    ('R14 encoding regression', 'from sklearn.cross_decomposition import PLSRegression'),
+    ('R15 score construction', 'score = Score(raw)'),
+    ('R15 score construction', 'benchmark_score(b, raw=r, ceiling=c)\nextra = Score(0.1)'),
     ('R17 metadata stamp', 'stamp_score_metadata(score, b, s)'),
     ('R18 cache validity', "os.environ['RESULTCACHING_DISABLE'] = '1'"),
     ('R18 cache validity', "os.environ.pop('RESULTCACHING_DISABLE', None)"),
@@ -293,6 +319,10 @@ def test_signal_catches(name, source):
 @pytest.mark.parametrize('name, source', [
     ('R4 N/A decision', 'from brainscore_core.score_status import is_na'),
     ('R12 intervention apply and undo', 'result.data = cast'),
+    ('R14 encoding regression', 'from sklearn.linear_model import LogisticRegression'),
+    ('R14 encoding regression', 'import sklearn.linear_model\nc = sklearn.linear_model.LogisticRegression()'),
+    ('R15 score construction', 'super().__init__(identifier=i, ceiling=Score(0.8))'),
+    ('R15 score construction', 'Base(ceiling=not_estimated() if c is None else Score(float(c)))'),
     ('R18 cache validity', "os.environ.get('RESULTCACHING_DISABLE')"),
     ('R18 cache validity', "env.update(RESULTCACHING_DISABLE='1')"),
     ('R20 registry assignment', "model_registry['x'] = build"),
@@ -301,3 +331,20 @@ def test_signal_catches(name, source):
 def test_signal_allows(name, source):
     signal = RESPONSIBILITIES[name][0]
     assert not signal(ast.parse(source))
+
+
+def test_a_metric_returns_its_raw_score_outside_the_r15_scope():
+    """A registered metric returns its raw value as a Score (core Metric contract)."""
+    assert not violations([('unified:metrics/new/metric.py', 'score = Score(median_r)\n')])
+    assert violations([('unified:benchmarks/new/benchmark.py', 'score = Score(median_r)\n')])
+
+
+def test_only_the_umi_code_of_vision_and_language_is_read():
+    """Brain-Score 2.0 library code is permanent and owns nothing of the contract."""
+    sites = {site for site, _ in _library_files()}
+    assert {'vision:__init__.py', 'language:__init__.py'} <= sites
+    assert any(site.startswith('vision:compat/') for site in sites)
+    assert any(site.startswith('language:compat/') for site in sites)
+    assert not any(site.startswith(('vision:model_helpers/', 'language:model_helpers/'))
+                   for site in sites)
+
