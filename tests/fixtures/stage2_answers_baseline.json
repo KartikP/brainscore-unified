@@ -974,7 +974,7 @@
        "method": "generation",
        "origin": "native",
        "parameters": {
-        "template": "the reply part's chat template"
+        "template": "the reply part's own, if it has one"
        },
        "parsed_by": "model",
        "source_format": null
@@ -1882,7 +1882,7 @@
        "method": "generation",
        "origin": "native",
        "parameters": {
-        "template": "the reply part's chat template"
+        "template": "the reply part's own, if it has one"
        },
        "parsed_by": "model",
        "source_format": null
@@ -3988,7 +3988,7 @@
        "method": "generation",
        "origin": "native",
        "parameters": {
-        "template": "the reply part's chat template"
+        "template": "the reply part's own, if it has one"
        },
        "parsed_by": "model",
        "source_format": null

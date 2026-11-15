@@ -949,8 +949,9 @@ def answer_owners(subject, stated) -> Dict[str, str]:
 
 
 RATING_ROUNDING = 'nearest step, ties to the higher step'
-# A verbatim trial text reaches a reply part inside that part's own chat template (ADR-0063).
-VERBATIM_IN_TEMPLATE = {'template': "the reply part's chat template"}
+# A verbatim trial text reaches a reply part as given; the part may wrap it in its own chat
+# template (ADR-0063). The record says only that: a reply part is any callable.
+VERBATIM_IN_TEMPLATE = {'template': "the reply part's own, if it has one"}
 
 
 def _on_scale_steps(values, scale) -> Tuple[list, dict]:

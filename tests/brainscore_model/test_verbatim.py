@@ -19,7 +19,7 @@ def test_a_verbatim_choice_from_a_reply_names_the_chat_template():
     choice = _run(model, ['behavior:choice'], TaskContext(response=Choice(['cat', 'dog'], verbatim=True)))
     choice = choice.collect('behavior:choice')
     assert calls == ['reply'] * 3
-    assert choice.attrs['response']['parameters'] == {'template': "the reply part's chat template"}
+    assert choice.attrs['response']['parameters'] == {'template': "the reply part's own, if it has one"}
     plain = _run(_model(*API, owners=REGISTERED_STATEMENTS[API]), ['behavior:choice'],
                  TaskContext(instruction='Which?', response=Choice(['cat', 'dog'])))
     assert plain.collect('behavior:choice').attrs['response']['parameters'] == {}
