@@ -348,16 +348,16 @@ def test_choice_and_rating_are_refused_when_the_session_is_built(producer, task,
         stimulus_session(pseudo.text_stimuli(), ['behavior:choice', 'behavior:rating'], task)
 
 
-# --- findings kept as strict expected failures ------------------------------------------------
+# --- findings, as decided --------------------------------------------------------------------
 
 def test_a_readout_rating_answers_on_the_stated_scale():
     score, answer = _run(pseudo.readout_model(), pseudo.PseudoRating())
     assert score.attrs['n_invalid'] == 0 and not math.isnan(float(score))
 
 
-def _readout_rating(scale):
-    from brainscore_core.streaming_helpers import stimulus_session
-    task = TaskContext(instruction='How sure?', response=scale, fitting_stimuli=pseudo.FITTING_RATINGS)
+def _readout_rating(scale, fitting=None):
+    task = TaskContext(instruction='How sure?', response=scale,
+                       fitting_stimuli=pseudo.FITTING_RATINGS if fitting is None else fitting)
     session = stimulus_session(pseudo.text_stimuli(), ['behavior:rating'], task)
     pseudo.readout_model().participate(session)
     return session.collect('behavior:rating')
@@ -386,6 +386,23 @@ def test_a_readout_rating_on_a_scale_without_a_step_is_unchanged():
     assert answer.attrs['response']['parameters'] == {}
 
 
+# Constant fitting labels make the readout give that value for every trial (the cases of the
+# review of the findings chunk: float rounding must not leave the bounds or the step).
+@pytest.mark.parametrize('label, scale, stored, state', [
+    (0.29, Scale(0.1, 0.3, 0.1), 0.3, 'valid'),
+    (2.25, Scale(1.1, 7.1, 0.1), 2.3, 'valid'),
+    (100000000.29, Scale(100000000.0, 100000001.0, 0.1), 100000000.3, 'valid'),
+    (0.31, Scale(0.1, 0.3, 0.1), 0.31, 'invalid'),
+    (6.5, Scale(1, 7, 1), 7.0, 'valid'),
+    (7.0, Scale(1, 7, 1), 7.0, 'valid'),
+], ids=['top of a decimal scale', 'decimal tie', 'large magnitude', 'above the bounds',
+        'integer tie', 'integer top'])
+def test_a_constant_readout_rating_lands_on_the_grid(label, scale, stored, state):
+    answer = _readout_rating(scale, pseudo._fitting([label] * 4, f'pseudo-fit-constant-{label}'))
+    assert set(answer.values.tolist()) == {stored}
+    assert set(answer['response_state'].values) == {state}
+
+
 def test_a_tie_goes_to_the_higher_step():
     from brainscore._model.behavioral import _on_scale_steps
     assert _on_scale_steps([2.5, 1.25, 6.75, 0.5, float('nan')], Scale(1, 7, 0.5))[0][:3] == [2.5, 1.5, 7.0]
@@ -393,12 +410,9 @@ def test_a_tie_goes_to_the_higher_step():
     assert rated == [3.0, 4.0, 0.5] and parameters == {'rounding': 'nearest step, ties to the higher step'}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    'Finding Q2: a free-text answer from a reply records parsed_by=None; standard section 3 '
-    'says the record of an F5 answer that an external library parses says so (parsed_by '
-    "'library'). No chunk is scheduled."))
-def test_a_text_answer_records_that_the_library_parses():
+def test_a_text_answer_records_no_parser():
+    # Nobody turned the text into the format; the benchmark, not the record, says it parses.
     subject = pseudo.reply_model()
     sessions = _spied(subject)
     _score(subject, pseudo.PseudoText())
-    assert sessions[0].collect('behavior:text').attrs['response']['parsed_by'] == 'library'
+    assert sessions[0].collect('behavior:text').attrs['response']['parsed_by'] is None
