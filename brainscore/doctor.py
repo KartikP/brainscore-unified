@@ -42,9 +42,9 @@ def _import_rows():
 # The platforms with a full lock (every package at one version): (sys.platform, machine,
 # Python major.minor) -> the lock file in unified/install. Elsewhere only the bounds apply.
 LOCKS = {('linux', 'x86_64', '3.11'): 'lock-linux-py311-cu124.txt'}
-# Installed from their checkouts, not from the lock; pip's own tools are not in a freeze.
-_NOT_LOCKED = {'brainscore', 'brainscore-core', 'brainscore-vision', 'brainscore-language',
-               'pip', 'setuptools', 'wheel'}
+# Installed from their checkouts, not from the lock. pip, setuptools and wheel are locked
+# like every other distribution: the environment fingerprint counts them.
+_NOT_LOCKED = {'brainscore', 'brainscore-core', 'brainscore-vision', 'brainscore-language'}
 
 
 def _normalized(name):
@@ -65,6 +65,21 @@ def read_lock(path):
             name, version = line.split('==', 1)
             lock[_normalized(name)] = version
     return lock
+
+
+def read_lock_python(path):
+    """The Python of a lock file, from its line ``# python==<three numbers>``; None if absent."""
+    match = re.search(r'^# python==(\d+\.\d+\.\d+)$', Path(path).read_text(), re.MULTILINE)
+    return match.group(1) if match else None
+
+
+def python_difference(lock_python, installed_python):
+    """The report line for a Python other than the lock's, or None."""
+    if lock_python is None:
+        return f'{"python":<28s} the lock names no Python'
+    if installed_python != lock_python:
+        return f'{"python":<28s} {installed_python:<20s} lock {lock_python}'
+    return None
 
 
 def lock_differences(lock, installed):
@@ -150,6 +165,9 @@ def report():
                      f'(locked platforms: {", ".join(" ".join(key) for key in LOCKS)})')
     else:
         differences = lock_differences(read_lock(lock), _installed_distributions())
+        python = python_difference(read_lock_python(lock), platform.python_version())
+        if python:
+            differences.insert(0, python)
         lines.append(f'full lock    {lock.name}: {len(differences)} package(s) differ')
         for difference in differences:
             lines.append(f'  XX {difference}')
