@@ -25,12 +25,10 @@ from result_caching import is_enabled
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
-from brainscore_core.extraction_cache import (extraction_fingerprint, file_inputs, model_config,
-                                              weight_fingerprint_scope)
+from brainscore_core.extraction_cache import extraction_fingerprint, file_inputs, model_config
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.selection import split_site
 
-NOT_STATED = 'not stated'
 
 
 def get_layer(root, layer: str):
@@ -363,14 +361,16 @@ def _version(cls):
 _UNVERSIONED = set()        # classes already warned about
 
 
-def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
+def cache_signature(wrapper, stored: str, inputs, stimuli_identifier, *, settings: bool = False):
     """The cache fingerprint for one extraction, or None when the cache does not apply.
 
     ``stored`` names the wrapper's ``@store_xarray`` method; ``inputs`` is what
     the fingerprint reads for the stimuli (the texts, or the files behind paths).
+    With ``settings``, a pair: the fingerprint and the fingerprint of the
+    configuration alone (the key without the inputs), from the same traversal.
     """
     if not stimuli_identifier:
-        return None
+        return (None, None) if settings else None
     if _version(type(wrapper)) is None:
         cls = type(wrapper)
         if cls not in _UNVERSIONED:
@@ -379,9 +379,10 @@ def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
                 f'{kind(wrapper)} has no _VERSION of its own, so it extracts every time and does not use '
                 f'the activation cache. To cache it, add _VERSION = 1 to its class body and a guard test '
                 f'that pins its values (see tests/test_wrapper_cache_guard.py).', stacklevel=3)
-        return None
+        return (None, None) if settings else None
     return extraction_fingerprint({'configuration': wrapper.cache_config(), 'inputs': inputs},
-                                  cache_identifier=f'{kind(wrapper)}.{stored}')
+                                  cache_identifier=f'{kind(wrapper)}.{stored}',
+                                  part='configuration' if settings else None)
 
 
 class CachingExtractor:
@@ -444,18 +445,15 @@ class CachingExtractor:
     def _signature_and_facts(self, stored, inputs, stimuli_identifier):
         """The cache signature, and this call's settings fingerprint in ``_session_facts``.
 
-        The settings fingerprint is the cache key without the inputs. One weight scope
-        holds both, so the weights hashed for the signature are not hashed again; with
-        the store off nothing is hashed and the fact says so.
+        The settings fingerprint is the cache key without the inputs, taken from the
+        traversal that makes the signature: no tensor is read a second time. With the
+        store off nothing is hashed and the fact says so.
         """
-        with weight_fingerprint_scope():
-            signature = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier)
-            if signature is not None:
-                settings = extraction_fingerprint(self.cache_config()) or NOT_STATED
-            elif not is_enabled(f'{kind(self)}.{stored}'):
-                settings = 'not hashed (store off)'
-            else:
-                settings = 'not hashed (store not used)'
+        signature, settings = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier,
+                                              settings=True)
+        if signature is None:
+            settings = ('not hashed (store off)' if not is_enabled(f'{kind(self)}.{stored}')
+                        else 'not hashed (store not used)')
         self._session_facts.add(settings)
         return signature
 

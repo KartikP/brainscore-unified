@@ -257,18 +257,35 @@ def test_with_the_store_off_no_weight_is_hashed(monkeypatch, tmp_path, run):
     assert calls == []
 
 
+def _model(inference):
+    """The text model; with ``inference``, its weights are made under torch.inference_mode, so they
+    have no version counters and core never memoizes their hashes."""
+    import contextlib
+    import torch
+    with torch.inference_mode() if inference else contextlib.nullcontext():
+        return _text_model(batch_size=2)
+
+
+@pytest.mark.parametrize('inference', [False, True], ids=['ordinary', 'inference'])
 @pytest.mark.parametrize('run', sorted(RUNS))
-def test_with_the_store_on_the_note_adds_no_weight_hash(monkeypatch, tmp_path, run):
+def test_with_the_store_on_the_note_adds_no_weight_hash(monkeypatch, tmp_path, run, inference):
     monkeypatch.delenv('RESULTCACHING_DISABLE')
     with monkeypatch.context() as patch:
         _without_the_note(patch)
         _store_in(patch, tmp_path / 'store-before')
         before = _counting(patch)
-        RUNS[run](_text_model(batch_size=2), tmp_path)
+        RUNS[run](_model(inference), tmp_path)
     _store_in(monkeypatch, tmp_path / 'store-after')
     after = _counting(monkeypatch)
-    RUNS[run](_text_model(batch_size=2), tmp_path)
+    RUNS[run](_model(inference), tmp_path)
     assert len(before) > 0 and len(after) == len(before)
+
+
+@pytest.mark.parametrize('run', sorted(RUNS))
+def test_with_the_store_off_no_inference_weight_is_hashed(monkeypatch, tmp_path, run):
+    calls = _counting(monkeypatch)
+    RUNS[run](_model(True), tmp_path)
+    assert calls == []
 
 
 def test_a_store_off_recording_replays_equal_with_the_store_on(monkeypatch, tmp_path):
