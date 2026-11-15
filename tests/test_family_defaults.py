@@ -213,3 +213,83 @@ def test_a_recorded_pass_of_flattened_patches_without_a_grid_is_refused():
     with wrapper.record(['blocks.0']), torch.no_grad():
         with pytest.raises(ValueError, match='without grid_thw'):
             wrapper._model(torch.ones(6, 12))
+
+
+# -- input columns from the core catalog ----------------------------------------------
+
+def test_each_wrapper_reads_the_columns_the_catalog_binds_to_its_channel():
+    import pandas as pd
+    from brainscore_core.io_catalog import stimulus_columns
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    catalog = stimulus_columns()
+    readers = {'audio': AudioWrapper._extract_paths,
+               'vision:video': lambda table: VideoWrapper._extract_video_paths(None, table),
+               'vision:image': lambda table: VLMVisionWrapper._extract_paths(None, table)}
+    for channel, read in readers.items():
+        for column in [column for column, fed in catalog.items() if fed == channel]:
+            assert read(pd.DataFrame({'stimulus_id': ['a'], column: ['x']})) == ['x'], (channel, column)
+        others = [column for column, fed in catalog.items() if fed != channel]
+        with pytest.raises(ValueError, match='expected one of'):
+            read(pd.DataFrame({'stimulus_id': ['a'], **{column: ['x'] for column in others}}))
+
+
+def test_stored_paths_keep_their_place_in_each_wrapper():
+    """Images: ``stimulus_paths`` first (a brainio ``filename`` column holds names, not paths).
+    Clips: a clip column first, then ``stimulus_paths``. Sound: a sound column only."""
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    table = _stimuli('family-paths', filename=['a.png'], video_path=['clip.mp4'])
+    table.stimulus_paths = {'s0': '/stored/a.png'}
+    assert VLMVisionWrapper._extract_paths(None, table) == ['/stored/a.png']
+    assert VideoWrapper._extract_video_paths(None, table) == ['clip.mp4']
+    del table['video_path']
+    table.stimulus_paths = {'s0': '/stored/clip.mp4'}
+    assert VideoWrapper._extract_video_paths(None, table) == ['/stored/clip.mp4']
+
+
+@pytest.mark.parametrize('channel, columns', [
+    ('audio', ['audio', 'audio_path']), ('vision:video', ['video', 'video_path']),
+    ('vision:image', ['filename', 'image_file_name'])])
+def test_of_two_candidate_columns_the_catalog_order_decides(channel, columns):
+    """The table lists the less preferred column first; the catalog's order still decides."""
+    import pandas as pd
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    read = {'audio': AudioWrapper._extract_paths,
+            'vision:video': lambda table: VideoWrapper._extract_video_paths(None, table),
+            'vision:image': lambda table: VLMVisionWrapper._extract_paths(None, table)}[channel]
+    table = pd.DataFrame({'stimulus_id': ['a'], columns[0]: ['less preferred'], columns[1]: ['preferred']})
+    assert read(table) == ['preferred']
+
+
+@pytest.mark.parametrize('channel, accepted', [
+    ('audio', "['audio_path', 'audio_file_name', 'audio_file', 'audio']"),
+    ('vision:video', "['video_path', 'video_file_name', 'video']"),
+    ('vision:image', "['image_file_name', 'image_path', 'filename', 'image', 'vision']")])
+def test_a_table_without_an_accepted_column_is_refused_with_the_accepted_columns(channel, accepted):
+    import re
+    import pandas as pd
+    from brainscore.model_helpers.audio_wrapper import AudioWrapper
+    from brainscore.model_helpers.video_wrapper import VideoWrapper
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    read = {'audio': AudioWrapper._extract_paths,
+            'vision:video': lambda table: VideoWrapper._extract_video_paths(None, table),
+            'vision:image': lambda table: VLMVisionWrapper._extract_paths(None, table)}[channel]
+    with pytest.raises(ValueError, match=re.escape(f'expected one of {accepted}')):
+        read(pd.DataFrame({'stimulus_id': ['a'], 'sentence': ['x']}))
+
+
+def test_a_clip_table_without_stimulus_ids_is_refused_before_any_pass():
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    from tests.test_wrapper_cache_guard import _video_files, video_wrapper
+    wrapper = video_wrapper()
+    passes = []
+    wrapper._model.register_forward_pre_hook(lambda *_: passes.append(1))
+    table = StimulusSet({'video_path': _video_files()})
+    table.identifier = 'no-ids'
+    with pytest.raises(ValueError, match='needs a stimulus_id column'):
+        wrapper(table, layers=['block'])
+    assert passes == []

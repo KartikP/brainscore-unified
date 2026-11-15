@@ -131,7 +131,7 @@ print(activations.dims, activations.shape)   # ('presentation', 'neuroid') (2, 8
 notebook, `model.start_recording('IT')` followed by `model.process(stimuli)` gives the same
 assembly; `process` is a convenience of `BrainScoreModel`, not part of the contract.
 
-The column name tells the model what kind of input each row holds (`sentence` for text, `audio_path` for audio). A `stimulus_paths` dictionary alone is not enough.
+The column name tells the model what kind of input each row holds (`sentence` for text, `audio_path` for audio). A `stimulus_paths` dictionary alone is not enough. A wrapper takes only the column names that the core catalog binds to its input (`brainscore_core.io_catalog.stimulus_columns`), tried in the catalog's order: `audio_path`, `audio_file_name`, `audio_file`, `audio` for sound; `video_path`, `video_file_name`, `video` for clips; `image_file_name`, `image_path`, `filename`, `image`, `vision` for images.
 
 ## Models with several inputs
 

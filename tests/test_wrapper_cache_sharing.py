@@ -178,3 +178,44 @@ def test_a_subclass_with_its_own_version_is_cached_under_its_own_key(store, tmp_
     assert cache_signature(wrapper, '_from_texts_stored', texts, 'x') != \
         cache_signature(parent, '_from_texts_stored', texts, 'x')
     assert wrapper.cache_config()['version'] == 1
+
+
+LIST_INPUTS = {'text': lambda: ['the cat sat', 'dog ran'], 'audio': _audio_files, 'video': _video_files,
+               'vlm_vision': _image_files}
+
+
+@pytest.mark.parametrize('name', sorted(LIST_INPUTS))
+def test_a_list_of_inputs_with_a_stimuli_identifier_is_cached_as_a_table_is(name, store, tmp_path, monkeypatch):
+    """One scaffold for the four wrappers: a list takes the same cache path as a table."""
+    from brainscore.model_helpers._extractors import CachingExtractor
+    monkeypatch.chdir(tmp_path)
+    build, _, layers = CASES[name]
+    wrapper = build()
+    assert isinstance(wrapper, CachingExtractor) and '__call__' not in vars(type(wrapper))
+    store.install(wrapper)
+    inputs = LIST_INPUTS[name]()
+    computed = wrapper(inputs, layers=layers, stimuli_identifier='share-list')
+    assert len(list(store.folder.rglob('*.pkl'))) == 1
+    compute = f'_from_{wrapper._INPUTS}'
+    monkeypatch.setattr(wrapper, compute, lambda *a, **k: pytest.fail('the stored entry was not read'))
+    xarray.testing.assert_identical(wrapper(inputs, layers=layers, stimuli_identifier='share-list'), computed)
+
+
+@pytest.mark.parametrize('name', sorted(LIST_INPUTS))
+@pytest.mark.parametrize('store_state', ['warm', 'cold', 'off'])
+def test_layers_other_than_a_list_of_names_are_refused_before_any_pass(name, store_state, store, tmp_path,
+                                                                      monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    build, _, layers = CASES[name]
+    wrapper = build()
+    store.install(wrapper)
+    inputs = LIST_INPUTS[name]()
+    if store_state == 'warm':
+        wrapper(inputs, layers=layers, stimuli_identifier='share-layers')
+    store.enabled = store_state != 'off'
+    passes = []
+    wrapper._model.register_forward_pre_hook(lambda *_: passes.append(1))
+    for bad in ([], None, layers[0]):
+        with pytest.raises(ValueError, match='non-empty list of layer names'):
+            wrapper(inputs, layers=bad, stimuli_identifier='share-layers')
+    assert passes == []

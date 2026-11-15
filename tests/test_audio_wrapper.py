@@ -127,8 +127,7 @@ class TestConstruction:
 # ── Stimulus column detection ───────────────────────────────────────
 
 class TestExtractPaths:
-    """_extract_paths should find audio paths under any of the known
-    column names (audio_path, audio_file_name, audio_file, filename)."""
+    """_extract_paths finds audio paths under the columns the core catalog binds to ``audio``."""
 
     def test_audio_path_column(self, wrapper):
         df = pd.DataFrame({

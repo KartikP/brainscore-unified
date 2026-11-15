@@ -24,7 +24,8 @@ import numpy as np
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
-from brainscore_core.extraction_cache import extraction_fingerprint, model_config
+from brainscore_core.extraction_cache import extraction_fingerprint, file_inputs, model_config
+from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.model_helpers.selection import split_site
 
 
@@ -379,6 +380,67 @@ def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
                                   cache_identifier=f'{kind(wrapper)}.{stored}')
 
 
+class CachingExtractor:
+    """The one sequence of the caching wrappers: a stimulus table, its inputs, the cache, its columns.
+
+    ``extractor(stimuli, layers)`` checks ``layers`` first (a non-empty list of
+    layer names), before the store and before any compute. It takes a ``StimulusSet`` (its inputs come from
+    ``_table_inputs`` and its columns go onto the result with ``_columns``) or a
+    list of inputs. Both pass through ``_cached``: with a stimuli identifier and
+    the cache on, the wrapper's ``@store_xarray`` method (``_STORED``) gives the
+    layers, otherwise ``_from_<inputs>`` computes them; the result names the
+    reading wrapper (``labelled``) and has its units in the requested layer
+    order (``in_layer_order``). ``_finish`` sets what every result carries.
+
+    A wrapper sets ``_INPUTS`` (``'texts'`` or ``'paths'``), ``CACHE_FIELDS`` and
+    its own ``_VERSION``, and defines ``_from_<inputs>(inputs, layers,
+    stimuli_identifier)``, its stored method and ``_table_inputs``; it keeps
+    its forward pass and its reduce and package functions.
+    """
+
+    _INPUTS = 'paths'
+
+    @property
+    def identifier(self) -> str:
+        return self._identifier
+
+    def __call__(self, stimuli, layers, stimuli_identifier=None, **kwargs):
+        if (not isinstance(layers, (list, tuple)) or not layers
+                or not all(isinstance(layer, str) for layer in layers)):
+            raise ValueError(f'layers is a non-empty list of layer names, for example '
+                             f"['encoder.layers.6']; got {layers!r}.")
+        if isinstance(stimuli, StimulusSet):
+            if stimuli_identifier is None and hasattr(stimuli, 'identifier'):
+                stimuli_identifier = stimuli.identifier
+            assembly = self._cached(self._table_inputs(stimuli), layers, stimuli_identifier)
+            assembly = self._columns(assembly, stimuli)
+        else:
+            assembly = self._cached(list(stimuli), layers, stimuli_identifier)
+        return self._finish(assembly)
+
+    def cache_config(self):
+        return cache_config(self, self.CACHE_FIELDS)
+
+    def _cached(self, inputs, layers, stimuli_identifier=None):
+        stored = f'_from_{self._INPUTS}_stored'
+        signature = cache_signature(self, stored, self._key_inputs(inputs), stimuli_identifier)
+        if signature is None:
+            return in_layer_order(getattr(self, f'_from_{self._INPUTS}')(inputs, layers, stimuli_identifier), layers)
+        result = getattr(self, stored)(stimuli_identifier=stimuli_identifier, layers=layers,
+                                       extraction_fingerprint=signature, **{self._INPUTS: inputs})
+        return in_layer_order(labelled(result, self._identifier), layers)
+
+    def _key_inputs(self, inputs):
+        """What the cache key reads of the inputs: the bytes of the files behind paths."""
+        return file_inputs(inputs)
+
+    def _columns(self, assembly, stimuli):
+        return attach_stimulus_set(assembly, stimuli)
+
+    def _finish(self, assembly):
+        return assembly
+
+
 def labelled(assembly, identifier: str):
     """``assembly`` with its ``model`` and ``neuroid_id`` coordinates naming ``identifier``.
 
@@ -423,6 +485,26 @@ def in_layer_order(assembly, layers):
     if order == sorted(order):
         return assembly
     return assembly.isel(neuroid=np.argsort(order, kind='stable'))
+
+
+def catalog_paths(stimuli, channel: str):
+    """The values of the first column of ``stimuli`` that the core catalog binds to ``channel``, or None.
+
+    The catalog (``brainscore_core.io_catalog.stimulus_columns``) is the one
+    answer to which column feeds which channel, for pre-flight, dispatch and
+    the wrappers; columns are tried in its order.
+    """
+    from brainscore_core.io_catalog import stimulus_columns
+    for column, fed in stimulus_columns().items():
+        if fed == channel and column in stimuli.columns:
+            return list(stimuli[column].values)
+    return None
+
+
+def catalog_columns(channel: str) -> list:
+    """The stimulus columns the core catalog binds to ``channel``, in its order (for messages)."""
+    from brainscore_core.io_catalog import stimulus_columns
+    return [column for column, fed in stimulus_columns().items() if fed == channel]
 
 
 def attach_stimulus_set(assembly, stimuli):

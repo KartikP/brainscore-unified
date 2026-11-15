@@ -12,8 +12,10 @@ returns ``(presentation, neuroid)``; ``sequence`` additionally preserves a
 
 Design:
 - Constructor: ``AudioWrapper(model, processor, identifier)``
-- ``__call__(stimuli, layers)`` — accepts a StimulusSet with ``audio_path``
-  column (or a list of paths).
+- ``__call__(stimuli, layers)`` — accepts a StimulusSet (or a list of paths).
+  The paths come from the first column that the core catalog binds to
+  ``audio`` (``audio_path``, ``audio_file_name``, ``audio_file``, ``audio``,
+  in that order).
 - Layer aggregation modes:
     ``mean`` (default): reduce (B, T, H) → (B, H). Matches frame-based
         extraction patterns used by TextWrapper for classification benchmarks.
@@ -46,12 +48,10 @@ from brainscore_core.assembly_builder import (
     make_layer_neuroid_coords,
 )
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
-from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
-from brainscore_core.extraction_cache import store_xarray, file_inputs
-from brainscore.model_helpers import _extractors
+from brainscore_core.extraction_cache import store_xarray
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_numpy, attach_stimulus_set, attention_mask, cache_signature, checked_aggregation, in_layer_order,
-    labelled, one_dtype, run_batches,
+    CachingExtractor, LiveRecording, as_numpy, attention_mask, catalog_columns, catalog_paths,
+    checked_aggregation, one_dtype, run_batches,
 )
 
 
@@ -92,7 +92,7 @@ def _default_audio_loader(
 
 # ── Main wrapper ────────────────────────────────────────────────────
 
-class AudioWrapper:
+class AudioWrapper(CachingExtractor):
     """Wraps an audio backbone for Brain-Score activation extraction.
 
     Args:
@@ -181,51 +181,21 @@ class AudioWrapper:
     # ── Identity ────────────────────────────────────────────────────
 
     @property
-    def identifier(self) -> str:
-        return self._identifier
-
-    @property
     def target_sample_rate(self) -> int:
         return self._target_sample_rate
 
     # ── Call site ───────────────────────────────────────────────────
 
-    def __call__(
-        self, stimuli, layers, stimuli_identifier: Optional[str] = None,
-        **kwargs,
-    ) -> NeuroidAssembly:
-        """Extract audio activations.
-
-        Args:
-            stimuli: StimulusSet with an ``audio_path`` column (or
-                ``audio_file_name``), or a list of audio file paths.
-            layers: Layer name strings (dotted paths into ``self._model``).
-            stimuli_identifier: Cache key component; falls back to
-                ``stimuli.identifier``.
-        """
-        if isinstance(stimuli, StimulusSet):
-            return self._from_stimulus_set(stimuli, layers, stimuli_identifier)
-        return self._from_paths_cached(stimuli, layers, stimuli_identifier)
-
-    def _from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
-        if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
-            stimuli_identifier = stimulus_set.identifier
-        paths = self._extract_paths(stimulus_set)
-        activations = self._from_paths_cached(paths, layers, stimuli_identifier)
-        return attach_stimulus_set(activations, stimulus_set)
+    def _table_inputs(self, stimulus_set) -> List[str]:
+        return self._extract_paths(stimulus_set)
 
     @staticmethod
     def _extract_paths(stimulus_set) -> List[str]:
-        for col in ('audio_path', 'audio_file_name', 'audio_file', 'filename'):
-            if col in stimulus_set.columns:
-                return list(stimulus_set[col].values)
-        raise ValueError(
-            f"No audio column found in stimulus set. Columns: "
-            f"{list(stimulus_set.columns)}. Expected one of: audio_path, "
-            f"audio_file_name, audio_file, filename."
-        )
-
-    # ── Caching boundary ────────────────────────────────────────────
+        paths = catalog_paths(stimulus_set, 'audio')
+        if paths is None:
+            raise ValueError(f"No audio column found in stimulus set: expected one of "
+                             f"{catalog_columns('audio')}; got {list(stimulus_set.columns)}.")
+        return paths
 
     CACHE_FIELDS = (
         '_processor',
@@ -235,17 +205,6 @@ class AudioWrapper:
         '_audio_loader',
         '_target_sample_rate',
     )
-
-    def cache_config(self):
-        return _extractors.cache_config(self, self.CACHE_FIELDS)
-
-    def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
-        signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
-        if signature is None:
-            return in_layer_order(self._from_paths(paths, layers, stimuli_identifier), layers)
-        stored = self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
-                                         extraction_fingerprint=signature)
-        return in_layer_order(labelled(stored, self._identifier), layers)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
