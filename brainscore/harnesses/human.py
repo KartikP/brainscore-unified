@@ -6,8 +6,8 @@ harness realizes the same contract on a biological subject: it presents inputs
 records outputs (electrodes or fMRI for neural, a button box or eye tracker for
 behavior). The same benchmark code that scores a model scores a human.
 
-This module is a scaffold. It uses the ``UnifiedModel`` compatibility base and routes
-each typed method to pluggable hardware I/O callables that a real deployment fills in.
+This module is a scaffold. It runs sessions through its typed methods
+(``drive_typed_session``) and routes each typed method to pluggable hardware I/O callables that a real deployment fills in.
 With no hardware attached, the callables default to raising, making the
 "not yet wired to hardware" boundary explicit; tests inject in-memory mocks.
 Nothing here drives real hardware. The point is that the specification already
@@ -17,7 +17,7 @@ stimulus presentation.
 """
 from typing import Any, Callable, Dict, List, Optional, Set, Union
 
-from brainscore_core.contract import UnifiedModel, TaskContext
+from brainscore_core.contract import Subject, TaskContext
 
 
 def _no_hardware(*_args, **_kwargs):
@@ -27,7 +27,7 @@ def _no_hardware(*_args, **_kwargs):
     )
 
 
-class HumanHarness(UnifiedModel):
+class HumanHarness(Subject):
     """A ``Subject`` backed by a biological participant via pluggable I/O.
 
     :param identifier: a label for the participant or session.
@@ -68,6 +68,16 @@ class HumanHarness(UnifiedModel):
     @property
     def in_channels(self) -> Set[str]:
         return self._in_channels
+
+    @property
+    def out_channels(self) -> Set[str]:
+        """``neural:<region>`` for every mapped region."""
+        return {f"neural:{region}" for region in self._region_layer_map}
+
+    def participate(self, session) -> None:
+        """Run ``session`` through the typed methods below."""
+        from brainscore_core.streaming_helpers import drive_typed_session
+        drive_typed_session(self, session)
 
     def start_recording(self, recording_target, time_bins=None, recording_type=None) -> None:
         self._recording_region = recording_target

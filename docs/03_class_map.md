@@ -28,13 +28,6 @@ classDiagram
         participate(session)
         reset()
     }
-    class UnifiedModel {
-        <<abstract>>
-        region_layer_map
-        process(event)
-        start_recording(region)
-        start_task(task)
-    }
     class BrainScoreModel {
         extractor
         region_layer_map
@@ -44,10 +37,9 @@ classDiagram
     class LanguageModelAdapter
     class YourSubject
     Subject <|-- YourSubject : write participate yourself
-    Subject <|-- UnifiedModel
-    UnifiedModel <|-- BrainScoreModel : assemble from parts
-    UnifiedModel <|-- VisionModelAdapter : wraps a classic BrainModel
-    UnifiedModel <|-- LanguageModelAdapter : wraps a classic ArtificialSubject
+    Subject <|-- BrainScoreModel : assemble from parts
+    Subject <|-- VisionModelAdapter : wraps a classic BrainModel
+    Subject <|-- LanguageModelAdapter : wraps a classic ArtificialSubject
 ```
 
 | Class | Choose it when | You provide |
@@ -55,7 +47,6 @@ classDiagram
 | `Subject` | Your system has its own loop: a remote API, a simulator agent, a hand-written rule. | `identifier`, channels, `participate` |
 | `BrainScoreModel` | You have a network and want recording, behavior, intervention and closed-loop parts without writing a loop. | The parts below |
 | `VisionModelAdapter`, `LanguageModelAdapter` | You have a classic Brain-Score model. `brainscore.load_model` applies these automatically. | Nothing |
-| `UnifiedModel` | Rarely. It is the shared base of the classes above. | |
 
 ## From an abstract part to a concrete class
 
