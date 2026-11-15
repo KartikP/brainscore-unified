@@ -388,9 +388,9 @@ def test_clip_keeps_its_wrappers_and_preprocessing(build, tmp_path):
     preprocessing = vision.kwargs['preprocessing']
     assert vision.kwargs == {'identifier': 'clip-vit-b-32', 'model': clip.vision_model,
                              'preprocessing': preprocessing}
-    assert vision.image_size == 224
+    assert 'image_size' not in vars(vision)
     assert preprocessing.func is module._load_preprocess_images
-    assert preprocessing.keywords == {'processor': processor, 'image_size': 224}
+    assert preprocessing.keywords == {'processor': processor}
     assert text.kwargs == {'model': clip.text_model, 'tokenizer': processor.tokenizer,
                            'identifier': 'clip-vit-b-32-text',
                            'layer_aggregation': 'mean_tokens', 'max_length': 77}

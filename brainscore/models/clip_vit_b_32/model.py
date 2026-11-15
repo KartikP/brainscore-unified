@@ -13,13 +13,13 @@ are therefore relative to the respective sub-module root.
 
 import functools
 
-from PIL import Image
 from transformers import CLIPModel, CLIPProcessor
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore import BrainScoreModel, LayerSelector
 from brainscore_vision.model_helpers.activations.pytorch import PytorchWrapper
 from brainscore_core.hf_compat import pin_image_processor
+from brainscore.models._shared import _load_preprocess_images
 
 
 REGION_LAYER_MAP = {
@@ -31,19 +31,6 @@ REGION_LAYER_MAP = {
     # Language region -- relative to text_model (TextWrapper root)
     'language_system': 'encoder.layers.10',
 }
-
-
-def _load_preprocess_images(image_filepaths, processor, image_size=224):
-    """Load and preprocess images using CLIPProcessor."""
-    images = []
-    for path in image_filepaths:
-        with Image.open(path) as img:
-            if img.mode not in ('RGB',):
-                img = img.convert('RGB')
-            images.append(img.copy())
-
-    processed = processor(images=images, return_tensors='pt')
-    return processed['pixel_values'].numpy()
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -58,7 +45,6 @@ def get_model(identifier: str) -> BrainScoreModel:
     preprocessing = functools.partial(
         _load_preprocess_images,
         processor=clip_processor,
-        image_size=224,
     )
 
     # Vision: PytorchWrapper wraps vision_model sub-module.
@@ -67,7 +53,6 @@ def get_model(identifier: str) -> BrainScoreModel:
         model=clip_model.vision_model,
         preprocessing=preprocessing,
     )
-    vision_wrapper.image_size = 224
 
     # Text: TextWrapper wraps text_model sub-module. CLIP's text encoder is
     # bidirectional (BERT-like), so mean_tokens aggregation is appropriate.

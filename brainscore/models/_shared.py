@@ -57,7 +57,8 @@ def fit_frames(frames, count: int) -> List[np.ndarray]:
     return frames
 
 
-def _load_preprocess_images(image_filepaths, processor, image_size=224):
+def _load_preprocess_images(image_filepaths, processor):
+    """The images at ``image_filepaths`` as RGB, prepared by a HuggingFace image ``processor``."""
     images = []
     for path in image_filepaths:
         with Image.open(path) as img:

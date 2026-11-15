@@ -157,3 +157,34 @@ def test_the_shared_wav_loader_reads_as_the_old_copies(tiny_wav2vec2, tmp_path):
         assert result.dtype == expected.dtype and np.array_equal(result, expected)
     with pytest.raises(ValueError):
         wrapper._audio_loader(path, 8000)
+
+
+# -- HuggingFace image processors (CLIP, BLIP-2) ------------------------------------
+
+def _old_load_preprocess_images(image_filepaths, processor, image_size=224):
+    """Frozen copy of the five image loaders before they were shared (``image_size`` was never read)."""
+    images = []
+    for path in image_filepaths:
+        with Image.open(path) as img:
+            if img.mode not in ('RGB',):
+                img = img.convert('RGB')
+            images.append(img.copy())
+    processed = processor(images=images, return_tensors='pt')
+    return processed['pixel_values'].numpy()
+
+
+class _PixelProcessor:
+    def __call__(self, images, return_tensors='pt'):
+        return {'pixel_values': torch.from_numpy(np.stack([np.asarray(image, np.float32) for image in images]))}
+
+
+def test_the_shared_image_loader_prepares_images_as_the_old_copies(tmp_path):
+    from brainscore.models._shared import _load_preprocess_images
+    rng = np.random.default_rng(2)
+    paths = []
+    for mode, shape in (('RGB', (4, 4, 3)), ('L', (4, 4)), ('RGBA', (4, 4, 4))):
+        paths.append(str(tmp_path / f'{mode}.png'))
+        Image.fromarray(rng.integers(0, 256, shape, dtype=np.uint8), mode).save(paths[-1])
+    result = _load_preprocess_images(paths, processor=_PixelProcessor())
+    expected = _old_load_preprocess_images(paths, processor=_PixelProcessor())
+    assert result.dtype == expected.dtype and np.array_equal(result, expected)
