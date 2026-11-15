@@ -87,6 +87,8 @@ def test_bf16_is_a_separate_lazy_registration_and_uses_pinned_precision(build):
     assert [entry['identifier'] for entry in wrappers] == ['qwen2.5-vl-3b-bf16-vision', 'qwen2.5-vl-3b-bf16-text']
     assert {'behavior:text', 'neural:IT', 'neural:language_system'} <= subject.out_channels
     assert 'lesion' not in subject.in_channels
+    assert subject.visual_degrees() == 8   # the legacy facade places stimuli by it
+    assert subject.output_inputs == subject._subject.output_inputs
     session = stimulus_session(StimulusSet([{'stimulus_id': 'a', 'sentence': 'red?'}]), ['behavior:text'], task=TaskContext(response=Text()))
     subject.participate(session)
     response = session.collect('behavior:text')

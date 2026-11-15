@@ -22,10 +22,19 @@ def _attach(provenance, event):
 class ProvenanceSubject(Subject):
     """A response-metadata decorator; all declarations and lifecycle delegate.
 
+    Delegated: the contract declarations (``identifier``, ``in_channels``,
+    ``out_channels``, ``required_channels``, ``output_inputs``, ``traits``),
+    ``participate``, ``reset``, and the optional declarations that pre-flight,
+    the memory check and the legacy facade read when a subject has them
+    (``OPTIONAL_DECLARATIONS``). An optional one the wrapped subject lacks is
+    absent here too, so a subject with no visual field still has none.
+
     This adds no model ability or evaluation path. Assemblies share their data
     with the original response and receive a separate attrs dictionary. Each
     response gets its own metadata copy so consumers cannot rewrite later runs.
     """
+
+    OPTIONAL_DECLARATIONS = ('visual_degrees', 'region_layer_map', 'probe_safe_regions')
 
     def __init__(self, subject: Subject, provenance: Mapping[str, Any]) -> None:
         self._subject = subject
@@ -48,8 +57,17 @@ class ProvenanceSubject(Subject):
         return self._subject.required_channels
 
     @property
+    def output_inputs(self) -> Mapping[str, frozenset[str]]:
+        return self._subject.output_inputs
+
+    @property
     def traits(self) -> set[str]:
         return self._subject.traits
+
+    def __getattr__(self, name: str) -> Any:
+        if name in ProvenanceSubject.OPTIONAL_DECLARATIONS:
+            return getattr(self._subject, name)
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
 
     def participate(self, session: Session) -> None:
         from brainscore_core.score_metadata import note_session
