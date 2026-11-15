@@ -90,6 +90,8 @@ benchmark_registry: Dict[str, Callable[[], Benchmark]] = _Registry()
 metric_registry: Dict[str, Callable[[], Metric]] = _Registry()
 data_registry: Dict[str, Callable[..., Any]] = _Registry()
 stimulus_set_registry: Dict[str, Callable[..., Any]] = _Registry()
+# Lazy factories of local data builders (``brainscore.data.preparation.DataBuilder``).
+data_builder_registry: Dict[str, Callable[[], Any]] = _Registry()
 
 
 def _populate_unified_registries() -> None:

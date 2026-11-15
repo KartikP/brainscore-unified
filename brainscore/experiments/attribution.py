@@ -79,6 +79,7 @@ def _selections(provider, operation, targets):
 
 def _capture(provider, selections, call, objective, location, *, gradients):
     import torch
+    from .tools import _forward_hook
     tensors, values, shapes, dtypes = {}, {}, {}, {}
     with ExitStack() as stack:
         for selection in selections:
@@ -99,8 +100,7 @@ def _capture(provider, selections, call, objective, location, *, gradients):
                     # Downstream in-place operations must not rewrite the captured value.
                     return _replace(output, tensor.clone())
                 tensors[name] = tensor
-            handle = provider.targets[selection.layer].register_forward_hook(hook)
-            stack.callback(handle.remove)
+            _forward_hook(stack, provider.targets[selection.layer], hook)
         with torch.enable_grad() if gradients else torch.no_grad():
             score = objective(call())
         if set(tensors) != {s.layer for s in selections}:
@@ -223,6 +223,7 @@ def validate_reference(provider: Any, targets: Any, reference: dict) -> None:
 def patch(provider: Any, targets: Any, reference: dict) -> Iterator[None]:
     """Replace selected outputs on exactly one forward call; always remove hooks."""
     import torch
+    from .tools import _forward_hook
     selections = _selections(provider, 'patch', targets)
     validate_reference(provider, selections, reference)
     reference = copy.deepcopy(reference)
@@ -254,8 +255,7 @@ def patch(provider: Any, targets: Any, reference: dict) -> Iterator[None]:
                 view = result if location is None else result[location]
                 view[..., indices] = replacement
                 return _replace(output, result)
-            handle = provider.targets[selection.layer].register_forward_hook(hook)
-            stack.callback(handle.remove)
+            _forward_hook(stack, provider.targets[selection.layer], hook)
         yield
         if seen != {s.layer for s in selections}:
             raise ValueError('Every patch target must run exactly once per scope')

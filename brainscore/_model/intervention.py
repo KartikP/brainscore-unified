@@ -6,9 +6,6 @@ from typing import Callable, Dict
 from brainscore_core.events import PerturbationApplied
 from ..selection import require_resolved
 
-# The catalog's intervention input channels; the target is in the payload (rule 3.1).
-INTERVENTION_CHANNELS = ('lesion', 'stimulation', 'pharmacological')
-
 
 class Interventions:
     """Owns the active interventions of one BrainScoreModel instance.

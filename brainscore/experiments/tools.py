@@ -200,6 +200,15 @@ class PatchActivity(Ablate):
         return instrumentation.patch(self.targets, reference=self.reference)
 
 
+def _forward_hook(stack, module, hook):
+    """Run ``hook`` on each forward call of ``module`` until ``stack`` closes.
+
+    The one place the experiment tools hook a module (R11); recording uses
+    ActivationWindow and interventions use build_pytorch_ablation_fn.
+    """
+    stack.callback(module.register_forward_hook(hook).remove)
+
+
 def _selection(target):
     return Selection(layer=target) if isinstance(target, str) else target
 
@@ -265,13 +274,13 @@ class TorchInstrumentation:
 
     @contextmanager
     def record(self, targets, receive):
-        from brainscore.activation_window import ActivationWindow, _first_tensor_out
+        from brainscore.activation_window import ActivationWindow, first_tensor_out
         self.validate('record', targets)
         with ExitStack() as stack:
             for target in targets:
                 selection = _selection(target)
                 def select(output, selection=selection):
-                    tensor = _first_tensor_out(output)
+                    tensor = first_tensor_out(output)
                     if tensor is None:
                         raise TypeError('Activity target must expose a tensor')
                     from brainscore.model_helpers.selection import selection_view
@@ -343,12 +352,6 @@ class TorchInstrumentation:
             for target in targets:
                 selection = _selection(target)
                 module = self.targets[selection.layer]
-                def validate_output(module, inputs, output):
-                    tensor = output[0] if isinstance(output, tuple) and output else output
-                    if not isinstance(tensor, torch.Tensor):
-                        raise TypeError('Ablation target must return a tensor or a tuple beginning with one')
-                handle = module.register_forward_hook(validate_output)
-                stack.callback(handle.remove)
                 # An auxiliary root provides a stable path without modifying the model.
                 root = torch.nn.ModuleDict({'target': module})
                 apply = build_pytorch_ablation_fn(root)

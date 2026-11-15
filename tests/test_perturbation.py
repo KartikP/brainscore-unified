@@ -622,3 +622,43 @@ def test_index_out_of_range_for_the_selected_axis_fails_on_every_device():
                          perturbation=Perturbation(kind='zero')))
     with pytest.raises(ValueError, match='out of range for axis'):
         conv(torch.ones(1, 1, 3, 3))
+
+
+class _DictOutput(torch.nn.Module):
+    """A module whose output has no leading tensor (a mapping, as a ModelOutput-like part)."""
+
+    def forward(self, x):
+        return {'hidden': x * 2}
+
+
+class _NoneFirst(torch.nn.Module):
+    def forward(self, x):
+        return (None, x)
+
+
+class _EmptyTuple(torch.nn.Module):
+    def forward(self, x):
+        return ()
+
+
+@pytest.mark.parametrize('module', [_DictOutput(), _NoneFirst(), _EmptyTuple()],
+                         ids=['mapping', 'tuple-led-by-none', 'empty-tuple'])
+def test_an_intervention_on_an_output_with_no_leading_tensor_raises(module):
+    """The change cannot be made; before the repair the output passed unchanged and silently."""
+    net = torch.nn.Sequential(module)
+    apply_fn = build_pytorch_ablation_fn(net)
+    _, cleanup = apply_fn(StateChange(kind='ablation', target=Selection(layer='0'),
+                                      perturbation=Perturbation(kind='zero')))
+    with pytest.raises(TypeError, match="'0' gives a .*, not a tensor"):
+        net(torch.ones(1, 3))
+    cleanup()
+    net(torch.ones(1, 3))  # the network runs again once the change is undone
+
+
+def test_ablate_tool_refuses_a_target_without_a_leading_tensor():
+    from brainscore.experiments.tools import TorchInstrumentation
+    instrumentation = TorchInstrumentation({'part': _DictOutput()})
+    with instrumentation.ablate(['part']):
+        with pytest.raises(TypeError, match='not a tensor'):
+            instrumentation.targets['part'](torch.ones(1, 3))
+    assert not instrumentation.targets['part']._forward_hooks

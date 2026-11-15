@@ -11,7 +11,7 @@ It cannot run in ordinary CI: it needs the benchmark assemblies, real model
 weights, and a few hours. So it is a release-time check, and this module exists
 so that running it is one command rather than a remembered incantation.
 
-    python -m brainscore.validation.run_parity --resnet18 <path> --gpt2 <dir>
+    RESULTCACHING_DISABLE=1 python -m brainscore.validation.run_parity --resnet18 <path> --gpt2 <dir>
 
 Staging the two reference checkpoints, on a machine with a GPU::
 
@@ -62,8 +62,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     # The harness refuses to run against a warm cache, and it is right to: a
-    # cached activation cannot testify about the route that produced it.
-    os.environ['RESULTCACHING_DISABLE'] = '1'
+    # cached activation cannot testify about the route that produced it. The
+    # caller turns the cache off; this command does not change it (R18).
+    if os.environ.get('RESULTCACHING_DISABLE') != '1':
+        parser.error('Run with RESULTCACHING_DISABLE=1: a cached activation cannot testify '
+                     'about the route that produced it')
     os.environ['RUN_UMI_PARITY'] = '1'
     os.environ['UMI_PARITY_RESNET18'] = str(pathlib.Path(args.resnet18).expanduser())
     os.environ['UMI_PARITY_GPT2'] = str(pathlib.Path(args.gpt2).expanduser())

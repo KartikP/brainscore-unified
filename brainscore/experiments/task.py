@@ -19,7 +19,7 @@ from brainscore_core.events import StateChange
 from brainscore_core.streaming import check_response_formats
 from brainscore_core.streaming_helpers import apply_state_change, stimulus_session, task_input_channels
 
-from brainscore._model.intervention import INTERVENTION_CHANNELS
+from brainscore.perturbation import INTERVENTION_CHANNELS
 from brainscore.selection import require_resolved
 
 from .runner import SessionProtocol, Tool

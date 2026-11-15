@@ -9,46 +9,13 @@ input of a fused (tuple-key) extractor, ``fused_for`` picks that extractor
 for all requested layers (the fused extractor need not get all its inputs).
 """
 
-import os
-import threading
 from collections.abc import Mapping
 from contextlib import contextmanager
 from typing import List, Set
 
+from brainscore_core.extraction_cache import activation_cache_disabled
 from brainscore_core.io_catalog import canonical_modality
 from .recording import INPUT_SITE
-
-
-_cache_disable_depth = 0
-_cache_disable_prev = None
-_cache_disable_lock = threading.Lock()
-
-
-@contextmanager
-def _activation_cache_disabled():
-    """Bypass result_caching for the duration. Used when an intervention makes the
-    cached (unchanged) activations invalid but the cache key cannot see it.
-
-    Reentrancy- and thread-safe via a lock-guarded depth counter: nested,
-    interleaved, or concurrent contexts only restore the original
-    ``RESULTCACHING_DISABLE`` when the outermost/last one exits (a plain
-    save/restore would clear the flag early; an unlocked counter would race)."""
-    global _cache_disable_depth, _cache_disable_prev
-    with _cache_disable_lock:
-        if _cache_disable_depth == 0:
-            _cache_disable_prev = os.environ.get('RESULTCACHING_DISABLE')
-            os.environ['RESULTCACHING_DISABLE'] = '1'
-        _cache_disable_depth += 1
-    try:
-        yield
-    finally:
-        with _cache_disable_lock:
-            _cache_disable_depth -= 1
-            if _cache_disable_depth == 0:
-                if _cache_disable_prev is None:
-                    os.environ.pop('RESULTCACHING_DISABLE', None)
-                else:
-                    os.environ['RESULTCACHING_DISABLE'] = _cache_disable_prev
 
 
 def fused_for(owner, detected):
@@ -325,7 +292,7 @@ def extract_for_modality(model, stimuli, modality: str, layers: List[str]):
     so the cache is bypassed while any intervention is active.
     """
     if model._interventions.active_interventions:
-        with _activation_cache_disabled():
+        with activation_cache_disabled():
             return _extract(model, stimuli, modality, layers)
     return _extract(model, stimuli, modality, layers)
 

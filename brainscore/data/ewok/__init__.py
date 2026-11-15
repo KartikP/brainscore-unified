@@ -1,6 +1,6 @@
 """Register EWoK data and its local builder without reading protected text."""
-from brainscore import data_registry, stimulus_set_registry
-from brainscore.data.preparation import DataBuilder, data_builder_registry
+from brainscore import data_builder_registry, data_registry, stimulus_set_registry
+from brainscore.data.preparation import DataBuilder
 
 IDENTIFIER = 'EWoK-core-1.0'
 

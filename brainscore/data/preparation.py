@@ -7,6 +7,8 @@ import shutil
 import tempfile
 from typing import Callable
 
+from brainscore import data_builder_registry
+
 
 @dataclass(frozen=True)
 class DataBuilder:
@@ -22,8 +24,6 @@ class DataBuilder:
     resolve: Callable[[str], tuple[Path, dict]] | None = None
 
 
-# Factories are lazy: listing builders must not download data or import ML code.
-data_builder_registry: dict[str, Callable[[], DataBuilder]] = {}
 
 
 def prepare_dataset(

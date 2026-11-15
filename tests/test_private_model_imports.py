@@ -43,20 +43,10 @@ TYPED_METHODS = {'process', 'start_recording', 'start_task'}
 _TYPED = 'the typed calling convention of the -unified MajajHong/Pereira pair (R21); needs a parity run to change'
 # (path inside brainscore, finding): reason
 ALLOWED = {
-    ('experiments/task.py', 'import brainscore._model.intervention'):
-        'the Intervene tool reads INTERVENTION_CHANNELS; named in the Ownership Map E3',
     ('benchmarks/majajhong2015/benchmark.py', 'call candidate.start_recording'): _TYPED,
     ('benchmarks/majajhong2015/benchmark.py', 'call candidate.process'): _TYPED,
     ('benchmarks/pereira2018/benchmark.py', 'call candidate.start_recording'): _TYPED,
     ('benchmarks/pereira2018/benchmark.py', 'call candidate.process'): _TYPED,
-    ('benchmarks/coggym/benchmark.py', 'private brainscore.harnesses.coggym._PROMPT_NOTE'):
-        'the CogGym benchmark reuses the prompt note of the CogGym harness',
-    ('harnesses/adapter.py', 'private brainscore.benchmarks._score'):
-        'the external-library adapter builds its score with benchmark_score (R15 owner)',
-    ('harnesses/human_replay.py', 'private brainscore.benchmarks._score'):
-        'human replay builds its score with benchmark_score (R15 owner)',
-    ('experiments/tools.py', 'private brainscore.activation_window._first_tensor_out'):
-        'TorchInstrumentation shares the tensor unwrapping of ActivationWindow',
 }
 
 

@@ -43,13 +43,6 @@ DEFAULT_EXPERIMENT = 'Hu2023Fine/exp1'
 # The input channel and the stimulus column of each kind of message part.
 _PART_CHANNELS = {'text': 'text', 'image': 'vision:image', 'video': 'vision:video'}
 _PART_COLUMNS = {'text': 'text', 'image': 'image_path', 'video': 'video_path'}
-# Why a score can differ from one made with CogGym's own client (Contract Rule 3.9).
-_PROMPT_NOTE = {
-    'kind': 'subject_prompt',
-    'reason': ('The subject builds its own prompt from the instruction and the parts. '
-               'A chat model can place the instruction in the user turn, where '
-               "CogGym's own client sends a separate system text."),
-}
 
 
 def _prompt_key(system, messages):

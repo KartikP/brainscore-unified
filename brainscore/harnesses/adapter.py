@@ -28,7 +28,7 @@ from brainscore_core.metrics import Score
 from brainscore_core.streaming import Session
 from brainscore_core.streaming_helpers import stimulus_session
 
-from brainscore.benchmarks._score import benchmark_score
+from brainscore.benchmarks import benchmark_score
 from brainscore.experiments import Experiment, RecordInputsOutputs
 from brainscore.experiments.runner import participate_observed
 

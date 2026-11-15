@@ -48,6 +48,8 @@ import numpy as np
 from brainscore.model_helpers.selection import split_site
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
 
+# The catalog's intervention input channels; the target is in the payload (rule 3.1).
+INTERVENTION_CHANNELS = ('lesion', 'stimulation', 'pharmacological')
 
 # The on/off switch of each change made here, keyed by its cleanup: switch(False)
 # makes the network intact and switch(True) makes the change again. The change
@@ -174,7 +176,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         def hook(_module, _inputs, output):
             # Some layers return tuples (e.g., MultiheadAttention).
             # We modify the leading tensor only; the rest pass through.
-            if isinstance(output, tuple):
+            if isinstance(output, tuple) and output:
                 head, *rest = output
                 head = _apply(head)
                 return (head, *rest)
@@ -182,7 +184,11 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
 
         def _apply(tensor):
             if not isinstance(tensor, torch.Tensor):
-                return tensor  # don't touch non-tensors
+                # The change would not be made and nothing would say so.
+                raise TypeError(
+                    f"'{selection.layer}' gives a {type(tensor).__name__}, not a tensor: an "
+                    f"intervention changes a tensor or the leading tensor of a tuple. Select "
+                    f"a module whose output (or ':input' first argument) is a tensor.")
             from brainscore.model_helpers.selection import selection_view
             view, axis = selection_view(tensor, selection)
             if indices is None:
