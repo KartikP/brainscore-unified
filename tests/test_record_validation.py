@@ -219,7 +219,21 @@ def test_open_record_reads_validated_prefix_and_stays_unscorable(tmp_path):
         record.evaluate(lambda actual, target: actual, None)
 
 
-def test_closed_log_changed_during_iteration_is_rejected(tmp_path):
+@pytest.fixture(params=['filesystem clock', 'coarse clock'])
+def clock(request, monkeypatch):
+    """'coarse clock' drops mtime and ctime from every status the reader takes.
+
+    This is the worst case of a coarse filesystem clock (Linux ext4 stamps files from a
+    clock that ticks every few milliseconds): every change lands in the same tick, so
+    the times never show it. The reader must still refuse each change.
+    """
+    if request.param == 'coarse clock':
+        from brainscore import run_record
+        stamp = run_record._stamp
+        monkeypatch.setattr(run_record, '_stamp', lambda handle: stamp(handle)[:3])
+
+
+def test_closed_log_changed_during_iteration_is_rejected(tmp_path, clock):
     directory = long_recording(tmp_path / 'record', 3)
     events = RunRecord(directory).outputs()
     assert next(events) == [0, '']
@@ -229,7 +243,7 @@ def test_closed_log_changed_during_iteration_is_rejected(tmp_path):
         next(events)
 
 
-def test_restored_mtime_edit_is_rejected_before_affected_output(tmp_path):
+def test_restored_mtime_edit_is_rejected_before_affected_output(tmp_path, clock):
     """Restoring mtime with utime still changes ctime, which the reader checks before each yield."""
     import os
     directory = long_recording(tmp_path / 'record', 3)
@@ -257,7 +271,7 @@ def test_restored_mtime_edit_is_rejected_before_affected_output(tmp_path):
     (2, 'changed while reading'),  # between validation and iteration
     (3, 'changed while reading'),  # after decoding, immediately before the first yield
 ])
-def test_ordinary_write_at_each_stamp_is_rejected(tmp_path, monkeypatch, call, message):
+def test_ordinary_write_at_each_stamp_is_rejected(tmp_path, monkeypatch, clock, call, message):
     from brainscore import run_record
     directory = long_recording(tmp_path / 'record', 1)
     path = directory / 'events.jsonl'
@@ -276,8 +290,8 @@ def test_ordinary_write_at_each_stamp_is_rejected(tmp_path, monkeypatch, call, m
     assert yielded == []
 
 
-def test_replaced_closed_log_fails_closed(tmp_path):
-    """Rename-over drops a link from the open inode, changing its ctime."""
+def test_replaced_closed_log_fails_closed(tmp_path, clock):
+    """After a rename-over the path no longer names the open file."""
     import os
     directory = long_recording(tmp_path / 'record', 3)
     events = RunRecord(directory).outputs()
@@ -287,6 +301,22 @@ def test_replaced_closed_log_fails_closed(tmp_path):
     os.replace(replacement, directory / 'events.jsonl')
     with pytest.raises(ValueError, match='changed while reading'):
         next(events)
+
+
+def test_change_in_a_later_block_is_refused_before_its_events(tmp_path, clock):
+    """The second pass verifies each block of the log before it yields an event from it."""
+    directory = long_recording(tmp_path / 'record', 10, width=20000)  # several blocks
+    path = directory / 'events.jsonl'
+    events = RunRecord(directory).outputs()
+    yielded = [next(events)[0]]
+    blob = path.read_bytes()
+    with path.open('r+b') as handle:  # same size, in place, in a block not yet read
+        handle.seek(blob.index(b'[8, '))
+        handle.write(b'[7, ')
+    with pytest.raises(ValueError, match='changed while reading'):
+        for output in events:
+            yielded.append(output[0])
+    assert yielded == list(range(len(yielded))) and len(yielded) <= 8, yielded  # never the edit
 
 
 def test_finalize_and_read_memory_do_not_scale_with_log_length(tmp_path):
@@ -898,7 +928,7 @@ def test_closed_manifest_without_checks_or_with_unknown_status_is_refused(record
     assert RunRecord.inspect(recording)['status'] == 'corrupt'
 
 
-def test_evaluate_reads_to_end_before_scoring(tmp_path, monkeypatch):
+def test_evaluate_reads_to_end_before_scoring(tmp_path, monkeypatch, clock):
     from brainscore import run_record
     directory = long_recording(tmp_path / 'record', 3)
     path = directory / 'events.jsonl'
