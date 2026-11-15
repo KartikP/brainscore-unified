@@ -122,8 +122,8 @@ def _model_template_subject():
     """Return the model template's subject, or None if it is genuinely not installed.
 
     Resolution order matters. Once you follow the install instructions this file lives
-    under `brainscore/benchmarks/<name>/`, where the sibling `new_model` package no
-    longer exists — so a bare `import new_model` fails and, if that failure is swallowed,
+    in `tests/`, where the sibling `new_model` package does not
+    exist — so a bare `import new_model` fails and, if that failure is swallowed,
     the composition check below silently turns into a no-op exactly for the person who
     did what the docs said. Ask the registry first, which is what "installed" means.
 

@@ -33,9 +33,9 @@ def tiny_stimuli():
         p = os.path.join(directory, f'{sid}.png')
         rng = np.random.RandomState(i)
         Image.fromarray(rng.randint(0, 255, (64, 64, 3), dtype=np.uint8)).save(p)
-        # 'image_file_name' is load-bearing: dispatch picks the modality by looking for
+        # 'image_path' is load-bearing: dispatch picks the modality by looking for
         # a RECOGNIZED column name. stimulus_paths alone is not enough.
-        rows.append({'stimulus_id': sid, 'image_file_name': p})
+        rows.append({'stimulus_id': sid, 'image_path': p})
         paths[sid] = p
     stimuli = StimulusSet(rows)
     stimuli.stimulus_paths = paths

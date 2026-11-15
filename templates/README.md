@@ -1,6 +1,6 @@
 # Extension templates
 
-Starting points for all five extension seams: model, benchmark, metric, data and
+Starting points for the extension seams: model, benchmark, metric, data, tool and
 capability. Each folder is a runnable skeleton with `TODO` markers, a `README.md`, and
 tests that define the contract. `../docs/02_core_concepts.md` covers the vocabulary and
 `../EXTENDING.md` the contracts.
@@ -11,15 +11,21 @@ tests that define the contract. `../docs/02_core_concepts.md` covers the vocabul
 | `new_benchmark/` | Benchmark | a `BenchmarkBase` subclass | `load_benchmark('id')` |
 | `new_metric/` | Metric | a `Metric` subclass | `load_metric('id')` |
 | `new_data/` | Data / Stimulus set | loaders for stimuli and measurements | `load_stimulus_set('id')` / `load_dataset('id')` |
+| `new_tool/` | Tool | a `Tool` subclass (one module) | `load_tool('id')` |
 | `new_capability/` | Capability | an `answer`/`policy`/`intervention` function, or a registered `Capability` | `capability_config` on a model |
 
 ## Workflow
 
 1. Copy the relevant folder into `brainscore/{models,benchmarks,metrics,data}/<your_name>/`
-   (a capability lives in your own package; call its `register()` once).
+   (a tool is one module, `brainscore/tools/<your_name>.py`; a capability lives in your own
+   package; call its `register()` once).
 2. Fill the `TODO`s.
-3. Register it (`__init__.py`) and add `from . import <your_name>` to the parent package's `__init__.py`.
-4. Adapt and run the template's test.
+3. Register it (`__init__.py`) and add `from . import <your_name>` to the parent package's
+   `__init__.py`. A plugin registers when its package is imported; without that line,
+   `load_*` does not find it. A tool is one line in `_TOOLS` of `brainscore/tools/_registry.py`.
+4. Move the template's test to `tests/test_<your_name>.py`, adapt it and run it. Every
+   plugin's test lives in `tests/`; the template keeps its test beside it only so the
+   template can be tried in place.
 
 The core package is deliberately small: it ships the extension seams and a few reference
 integrations, and the catalog grows through contributed plugins. `../EXTENDING.md`
