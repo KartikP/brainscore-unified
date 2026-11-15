@@ -512,10 +512,11 @@ class BehavioralReadout:
                 f"Subject '{owner.identifier}' gives {LOG_PROBABILITIES} only for a verbatim "
                 'Choice (Choice(..., verbatim=True)): its tokenization is then the plain text.',
                 task_type=task.task_type)
+        presented = task.present is not None
         can = {
             'generation': not log_probabilities and (owner._reply is not None or (
                 owner._answer is not None and isinstance(response, Choice)
-                and not verbatim)),   # answer= takes no settings
+                and not verbatim and not presented)),   # answer= takes no settings
             'likelihood': owner._likelihood is not None and isinstance(response, Choice),
             'readout': (readout_wired and isinstance(response, (Choice, Scale))
                         and not log_probabilities and not per_row),
@@ -523,17 +524,19 @@ class BehavioralReadout:
         # The answer format: the log probabilities when the session requests them,
         # else the response's first format. Its owner answers; a task form the owner
         # cannot serve is refused (no other part stands in).
-        settings = [name for name, on in (('verbatim', verbatim),
+        settings = [name for name, on in (('verbatim', verbatim), ('present', presented),
                                           ('labels per row', per_row)) if on]
         answer_format = (LOG_PROBABILITIES if log_probabilities
                          else dict(self._ANSWER_FORMATS)[type(response).__name__])
         path = self._owner_serving(answer_format, can, task, settings)
         if path is None:
-            needs = {'generation': 'reply= (or answer= for a plain Choice)',
+            needs = {'generation': 'reply= (or answer= for a plain Choice with none of the settings '
+                                   'verbatim, present)',
                      'likelihood': 'likelihood= and a Choice',
                      'readout': 'behavioral_readout_layer=, an extractor and fitting_stimuli'}
             raise ExecutionNotFeasibleError(
                 f"Subject '{owner.identifier}' cannot give a {type(response).__name__} answer"
+                + (f" with the task settings {', '.join(settings)}" if settings else '')
                 + '. Paths tried: ' + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                 task_type=task.task_type)
         source = None
@@ -635,11 +638,12 @@ class BehavioralReadout:
                 return replace(prompt, history=tuple(self.history)) if remember else prompt
 
             # Within generation a plain Choice goes to answer= when it is wired (point r): the
-            # call a registration makes for a choice. The reply answers task settings (verbatim,
-            # options per row), a Scale or a Text, trial history, or when answer= is absent.
+            # call a registration makes for a choice. The reply, which receives the full
+            # prompt, answers task settings (verbatim, present, options per row), a Scale or
+            # a Text, trial history, or when answer= is absent.
             by_answer = (owner._answer is not None and isinstance(response, Choice)
-                         and not response.verbatim and not isinstance(response.labels, str)
-                         and not remember)
+                         and not response.verbatim and task.present is None
+                         and not isinstance(response.labels, str) and not remember)
             if path == 'likelihood':
                 def call(row, prompt):
                     scores = owner._likelihood(with_history(prompt), list(prompt.response.labels))
