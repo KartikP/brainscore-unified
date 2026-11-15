@@ -37,7 +37,7 @@ def _counting(calls):
 
 def test_a_text_only_reader_is_not_applicable_on_roar_image_before_any_call(synthetic_roar):
     calls = []
-    score = _score(_counting(calls), Yeatman2021LexicalDecision(channels=('vision:image',)))
+    score = _score(_counting(calls), Yeatman2021LexicalDecision(channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image'))
     assert score.attrs['status'] == 'N/A' and math.isnan(float(score))
     assert ONLY_INSTRUCTION in score.attrs['reason']
     assert calls == []
@@ -49,7 +49,7 @@ def test_the_causal_lm_is_not_applicable_on_roar_image_before_any_forward_pass(c
     calls = []
     hook = net.register_forward_pre_hook(lambda module, args: calls.append(1))
     try:
-        score = _score(model, Yeatman2021LexicalDecision(channels=('vision:image',)))
+        score = _score(model, Yeatman2021LexicalDecision(channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image'))
     finally:
         hook.remove()
     assert score.attrs['status'] == 'N/A' and ONLY_INSTRUCTION in score.attrs['reason']
@@ -59,13 +59,13 @@ def test_the_causal_lm_is_not_applicable_on_roar_image_before_any_forward_pass(c
 def test_a_picture_and_text_reader_is_applicable_on_roar_image(synthetic_roar):
     subject = BrainScoreModel('picture-reader', in_channels={'vision:image', 'text'},
                               reply=lambda prompt: 'real')
-    match = check_channel_compatibility(subject, Yeatman2021LexicalDecision(channels=('vision:image',)))
+    match = check_channel_compatibility(subject, Yeatman2021LexicalDecision(channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image'))
     assert match.consumed_inputs == {'vision:image', 'instruction'}
 
 
 def test_a_text_only_reader_is_applicable_on_roar_text(synthetic_roar):
     calls = []
-    score = _score(_counting(calls), Yeatman2021LexicalDecision(channels=('text',)))
+    score = _score(_counting(calls), Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text'))
     assert 'status' not in score.attrs and score.attrs['n_test_stimuli'] == 100
     assert calls
 
@@ -108,8 +108,8 @@ def test_a_text_only_api_model_is_na_on_roar_image_and_applicable_on_roar_text(i
     monkeypatch.setattr(api_closed, '_CACHE_ROOT', str(tmp_path))
     subject = api_closed.get_model(identifier)
     assert subject.in_channels >= {'text', 'instruction'} and 'vision:image' not in subject.in_channels
-    image = _score(subject, Yeatman2021LexicalDecision(channels=('vision:image',)))
+    image = _score(subject, Yeatman2021LexicalDecision(channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image'))
     assert image.attrs['status'] == 'N/A' and ONLY_INSTRUCTION in image.attrs['reason']
     assert calls == []
-    match = check_channel_compatibility(subject, Yeatman2021LexicalDecision(channels=('text',)))
+    match = check_channel_compatibility(subject, Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text'))
     assert match.consumed_inputs == {'text', 'instruction'}

@@ -54,7 +54,7 @@ from brainscore_core.streaming_helpers import apply_state_change
 from brainscore.benchmarks._score import benchmark_score, not_estimated
 
 from ..roar_yeatman2021.benchmark import (
-    Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX, _CHANNEL_SUFFIX,
+    Yeatman2021LexicalDecision, DYSLEXIA_THRESHOLD, BIBTEX, _CHANNEL_COLUMNS,
 )
 
 
@@ -68,6 +68,7 @@ class InducedDyslexia(BenchmarkBase):
     :param n_units: how many top-selective units to ablate per layer.
     :param control_seed: seed for the matched :class:`RandomSelection` control.
     :param channels: ``('vision:image',)`` (word images) or ``('text',)`` (word strings).
+    :param identifier: the benchmark identifier (required; a registry line passes its key).
     """
 
     # One lesion experiment is one pass; the reading trials inside it are independent.
@@ -75,14 +76,14 @@ class InducedDyslexia(BenchmarkBase):
 
     def __init__(self, localizer_region: str = 'VWFA', n_units: int = 500,
                  control_seed: int = 0, channels: Sequence[str] = ('vision:image',),
-                 reading_benchmark=None, localizer_stimuli=None):
+                 reading_benchmark=None, localizer_stimuli=None, *, identifier: str):
         self.localizer_region = localizer_region
         self.n_units = n_units
         self.control_seed = control_seed
         channels = tuple(channels)
-        if len(channels) != 1 or channels[0] not in _CHANNEL_SUFFIX:
+        if len(channels) != 1 or channels[0] not in _CHANNEL_COLUMNS:
             raise ValueError(
-                f"channels must be one of {[(c,) for c in _CHANNEL_SUFFIX]}; "
+                f"channels must be one of {[(c,) for c in _CHANNEL_COLUMNS]}; "
                 f"got {channels!r}")
         channel = channels[0]
         # Declarations decide compatibility (rule 5): the benchmark sends the
@@ -102,11 +103,12 @@ class InducedDyslexia(BenchmarkBase):
             self._reading = reading_benchmark
             self._localizer_stimuli = localizer_stimuli
         else:
-            self._reading = Yeatman2021LexicalDecision(channels=channels)
+            # Part of this benchmark: its scores are not returned, so it carries this identifier.
+            self._reading = Yeatman2021LexicalDecision(channels=channels, identifier=identifier)
             self._localizer_stimuli = self._reading._train_stimuli
 
         super().__init__(
-            identifier=f'Yeatman2021-induced_dyslexia-{_CHANNEL_SUFFIX[channel]}',
+            identifier=identifier,
             version=1,
             parent='perturbation',
             ceiling=not_estimated(),   # the reference is "no deficit"; the floor is the chance reader

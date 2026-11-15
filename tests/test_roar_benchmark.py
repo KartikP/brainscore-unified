@@ -87,14 +87,14 @@ class TestParameterizedChannels:
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm = Yeatman2021LexicalDecision()
+        bm = Yeatman2021LexicalDecision(identifier='Yeatman2021-lexical_decision-image')
         assert benchmark_required_input_channels(bm) == {'vision:image', 'instruction'}
 
     def test_vision_variant_columns(self):
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm = Yeatman2021LexicalDecision(channels=('vision:image',))
+        bm = Yeatman2021LexicalDecision(channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image')
         assert benchmark_required_input_channels(bm) == {'vision:image', 'instruction'}
         assert 'image_file_name' in bm._train_stimuli.columns
         assert 'sentence' not in bm._train_stimuli.columns
@@ -105,7 +105,7 @@ class TestParameterizedChannels:
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm = Yeatman2021LexicalDecision(channels=('text',))
+        bm = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')
         assert benchmark_required_input_channels(bm) == {'text', 'instruction'}
         assert 'sentence' in bm._train_stimuli.columns
         assert 'image_file_name' not in bm._train_stimuli.columns
@@ -117,7 +117,7 @@ class TestParameterizedChannels:
             Yeatman2021LexicalDecision,
         )
         with pytest.raises(ValueError, match="channels must be one of"):
-            Yeatman2021LexicalDecision(channels=('audio',))
+            Yeatman2021LexicalDecision(channels=('audio',), identifier='Yeatman2021-test')
 
     def test_variants_share_split(self):
         """Train/test split is consistent across the variants — only
@@ -125,19 +125,17 @@ class TestParameterizedChannels:
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm_vision = Yeatman2021LexicalDecision(channels=('vision:image',))
-        bm_text = Yeatman2021LexicalDecision(channels=('text',))
+        bm_vision = Yeatman2021LexicalDecision(channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image')
+        bm_text = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')
         assert (sorted(bm_vision._train_stimuli['stimulus_id'].values)
                 == sorted(bm_text._train_stimuli['stimulus_id'].values))
         assert (sorted(bm_vision.stimulus_set['stimulus_id'].values)
                 == sorted(bm_text.stimulus_set['stimulus_id'].values))
 
     def test_variant_identifiers_distinct(self):
-        from brainscore.benchmarks.roar_yeatman2021.benchmark import (
-            Yeatman2021LexicalDecision,
-        )
-        bm_vision = Yeatman2021LexicalDecision(channels=('vision:image',))
-        bm_text = Yeatman2021LexicalDecision(channels=('text',))
+        import brainscore
+        bm_vision = brainscore.load_benchmark('Yeatman2021-lexical_decision-image')
+        bm_text = brainscore.load_benchmark('Yeatman2021-lexical_decision-text')
         assert bm_vision.identifier == 'Yeatman2021-lexical_decision-image'
         assert bm_text.identifier == 'Yeatman2021-lexical_decision-text'
 
@@ -147,8 +145,8 @@ class TestParameterizedChannels:
         from brainscore.benchmarks.roar_yeatman2021.benchmark import (
             Yeatman2021LexicalDecision,
         )
-        bm_vision = Yeatman2021LexicalDecision(channels=('vision:image',))
-        bm_text = Yeatman2021LexicalDecision(channels=('text',))
+        bm_vision = Yeatman2021LexicalDecision(channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image')
+        bm_text = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')
         assert np.isclose(bm_vision._human_accuracy, bm_text._human_accuracy)
 
 

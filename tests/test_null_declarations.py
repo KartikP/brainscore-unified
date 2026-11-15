@@ -30,7 +30,7 @@ def test_chance_baseline_scores_the_chance_floor_on_roar(synthetic_roar):
     sessions = []
     participate = model.participate
     model.participate = lambda session: sessions.append(session) or participate(session)
-    score = Yeatman2021LexicalDecision(channels=('text',))(model)
+    score = Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')(model)
     assert float(score.attrs['raw']) == 0.5
     assert (score.attrs['accuracy_real'], score.attrs['accuracy_pseudo']) == (1.0, 0.0)
     record = sessions[0].collect('behavior:choice').attrs['response']
@@ -43,7 +43,7 @@ def test_random_vit_keeps_its_readout_choice_and_is_applicable_on_roar_image(mon
     from tests.test_readout_registrations import BUILDERS
     subject = BUILDERS['random-vit-b-32'](monkeypatch).get_model('random-vit-b-32')
     assert 'behavior:choice' in subject.out_channels
-    assert check_compatibility(subject, Yeatman2021LexicalDecision(channels=('vision:image',)))
+    assert check_compatibility(subject, Yeatman2021LexicalDecision(channels=('vision:image',), identifier='Yeatman2021-lexical_decision-image'))
 
 
 def _session(rows, labels):

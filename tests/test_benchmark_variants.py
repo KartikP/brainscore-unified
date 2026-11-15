@@ -8,6 +8,7 @@ when they are built; here a synthetic ROAR set stands behind their loaders, so
 the test needs no network. A change to a registry line that moves one of
 these fails here (Contract Rules 10: identifiers are stable and scores do not move).
 """
+import functools
 import warnings
 from types import SimpleNamespace
 
@@ -278,3 +279,22 @@ def test_the_27_built_keys_name_the_identifier_they_build():
     """
     assert len(BUILT) == 27 and len(REGISTERED) == 62
     assert all(key == built for key, (built, *_rest) in BUILT.items())
+
+
+# A variant of these families is a registry line that names its identifier; the class builds none.
+NAMED = sorted(key for key in REGISTERED if key.startswith(('Algonauts2025-', 'Lahner2024-', 'Yeatman2021-')))
+
+
+@pytest.mark.parametrize('key', NAMED)
+def test_a_registry_line_names_its_key_as_the_identifier(key):
+    factory = brainscore.benchmark_registry[key]       # read, not built
+    assert isinstance(factory, functools.partial) and factory.keywords['identifier'] == key
+
+
+def test_the_benchmark_classes_need_an_identifier():
+    from brainscore.benchmarks.algonauts2025.benchmark import Algonauts2025
+    from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
+    from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
+    for build in (lambda: Algonauts2025(participant=1), InducedDyslexia, Yeatman2021LexicalDecision):
+        with pytest.raises(TypeError, match='identifier'):
+            build()

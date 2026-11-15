@@ -163,7 +163,7 @@ def test_no_pair_that_answers_today_becomes_not_applicable():
 def test_the_benchmark_declarations_match_the_matrix(synthetic_roar, prepared):
     from brainscore.benchmarks.roar_yeatman2021.benchmark import Yeatman2021LexicalDecision
     for word, name in (('vision:image', 'ROAR image'), ('text', 'ROAR text')):
-        roar = Yeatman2021LexicalDecision(channels=(word,))
+        roar = Yeatman2021LexicalDecision(channels=(word,), identifier='Yeatman2021-test')
         assert (benchmark_required_input_channels(roar), set(roar.requested_output_channels)) == BENCHMARKS[name]
     for mode in ('choice', 'logprobs'):
         ewok = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
@@ -192,7 +192,7 @@ def test_causal_lm_answers_roar_text_through_its_reply(causal_lm, synthetic_roar
     sessions = []
     participate = model.participate
     model.participate = lambda session: sessions.append(session) or participate(session)
-    score = brainscore.score(model, Yeatman2021LexicalDecision(channels=('text',)), check_mem=False)
+    score = brainscore.score(model, Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text'), check_mem=False)
     assert score.attrs['n_test_stimuli'] == 100
     assert sessions[0].collect(CH).attrs['response']['parsed_by'] == 'model'
 

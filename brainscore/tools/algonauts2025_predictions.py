@@ -16,7 +16,7 @@ from brainscore.benchmarks.algonauts2025.scoring import (
 def generate_predictions(subject, held_out: Algonauts2025, out_dir, train_benchmark=None):
     """Predict every scan of ``held_out`` and write ``sub-<NN>_<split>.npy`` into ``out_dir``.
 
-    ``held_out`` is ``Algonauts2025(participant, split='friends_s7' or 'ood', ...)``.
+    ``held_out`` is ``Algonauts2025(participant, split='friends_s7' or 'ood', ..., identifier=...)``.
     The method is the scoring method without the outer folds. The bands are
     recorded on the participant's Friends training films and on the held-out
     films. The preparation of each band is fitted on the training films, the
@@ -34,7 +34,8 @@ def generate_predictions(subject, held_out: Algonauts2025, out_dir, train_benchm
         raise ValueError(
             "generate_predictions is for held-out splits; the friends "
             "training split is scored via __call__.")
-    train = train_benchmark or Algonauts2025(**{**settings, 'split': 'friends'})
+    # Part of this prediction: its scores are not returned, so it carries the held-out identifier.
+    train = train_benchmark or Algonauts2025(**{**settings, 'split': 'friends'}, identifier=held_out.identifier)
     if dict(train.settings) != {**settings, 'split': 'friends'}:
         raise ValueError('Prediction requires the Friends training split of the same participant, '
                          'with the same channels, streaming, stimulus window and HRF delay.')

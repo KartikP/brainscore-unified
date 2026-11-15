@@ -134,10 +134,6 @@ def _human_accuracy_on_stimuli(ds, stimulus_ids: List[str]) -> float:
     return float(accuracy[mask].mean())
 
 
-# The two input formats of the word: an image or a string. The suffix is the
-# user-facing leaderboard suffix of the identifier.
-_CHANNEL_SUFFIX = {'vision:image': 'image', 'text': 'text'}
-
 # Columns to retain per channel. Anything not in the retained set is dropped from
 # the projected stimulus set, so the subject sees one input format and no stimulus
 # row carries a column the benchmark isn't presenting.
@@ -162,7 +158,7 @@ def _project_to_channel(stimulus_set: StimulusSet, channel: str) -> StimulusSet:
     df = stimulus_set[keep_cols].copy()
 
     projected = StimulusSet(df)
-    projected.identifier = f'{stimulus_set.identifier}-{_CHANNEL_SUFFIX[channel]}'
+    projected.identifier = f"{stimulus_set.identifier}-{channel.split(':')[-1]}"   # -image, -text
     if channel == 'vision:image':
         # Images resolve stimulus paths via stimulus_paths.
         projected.stimulus_paths = dict(stimulus_set.stimulus_paths)
@@ -187,7 +183,8 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
     split, ceiling, and metric — only the presentation differs.
 
     Toolbox use: construct directly with `channels=('vision:image',)` or
-    `channels=('text',)` to compare across input formats.
+    `channels=('text',)` to compare across input formats. ``identifier`` is
+    required; a registry line passes its key.
     """
 
     # Asks for the choice of each word; every word is an independent trial.
@@ -195,7 +192,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
     requested_output_channels = frozenset({'behavior:choice'})
     trial_memory = 'none'
 
-    def __init__(self, channels: Sequence[str] = ('vision:image',)):
+    def __init__(self, channels: Sequence[str] = ('vision:image',), *, identifier: str):
         channels = tuple(channels)
         if len(channels) != 1 or channels[0] not in _CHANNEL_COLUMNS:
             raise ValueError(
@@ -216,7 +213,7 @@ class Yeatman2021LexicalDecision(BenchmarkBase):
         self._human_accuracy = _human_accuracy_on_stimuli(self._human_ds, test_ids)
 
         super().__init__(
-            identifier=f'Yeatman2021-lexical_decision-{_CHANNEL_SUFFIX[channel]}',
+            identifier=identifier,
             version=1,
             parent='behavioral',
             ceiling=Score(self._human_accuracy),

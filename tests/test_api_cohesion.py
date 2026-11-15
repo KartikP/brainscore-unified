@@ -289,7 +289,7 @@ def test_roar_task_carries_no_answer_path_and_splits_train_from_test(monkeypatch
     })
     monkeypatch.setattr(module, 'load_stimulus_set', lambda identifier: stimuli)
     monkeypatch.setattr(module, 'load_dataset', lambda identifier: human)
-    benchmark = module.Yeatman2021LexicalDecision(channels=('text',))
+    benchmark = module.Yeatman2021LexicalDecision(channels=('text',), identifier='Yeatman2021-lexical_decision-text')
     assert benchmark.identifier == 'Yeatman2021-lexical_decision-text'
     tasks = []
     truth = dict(zip(stimuli.stimulus_id, stimuli.image_label))
