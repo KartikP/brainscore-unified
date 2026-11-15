@@ -12,7 +12,6 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from tests.fixed_order import owned
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Text
@@ -41,7 +40,7 @@ def _build(kind, folder, **parts):
     chosen = {'reply': reply, 'policy': policy}
     wired = {name: chosen[name] if value is True else value for name, value in parts.items()}
     model = BrainScoreModel(f'tiny-{kind}', extractor={tiny_wrappers.MODALITY[kind]: wrapper},
-                            region_layer_map={REGION: regions[REGION]}, **wired, **owned(*wired))
+                            region_layer_map={REGION: regions[REGION]}, **wired)
     return model, stimuli
 
 
@@ -129,7 +128,8 @@ def test_a_region_recorded_during_a_policy_step_of_the_same_input_equals_passive
 def test_a_readout_and_an_answering_part_record_on_the_answering_path(tmp_path):
     """Before: the readout made pre-flight accept the region; the task took the
     reply, and AudioWrapper, with no record(layers), failed at run time."""
-    model, stimuli = _build('audio', tmp_path, reply=True, behavioral_readout_layer='head')
+    model, stimuli = _build('audio', tmp_path, reply=True, behavioral_readout_layer='head',
+                            capability_config={'behavior-sessions': {'behavior:rating': 'generation'}})
     task = TaskContext(instruction='Is it there?', response=Choice(['yes', 'no']))
     session = stimulus_session(stimuli, ['behavior:choice', f'neural:{REGION}'], task=task)
     model.participate(session)
@@ -181,7 +181,8 @@ def test_a_region_that_cannot_record_during_the_answer_is_refused_before_compute
     network.register_forward_pre_hook(lambda module, args: passes.append(1))
     model = BrainScoreModel('plain-audio', extractor={'audio': _Plain(wrapper)},
                             region_layer_map={REGION: regions[REGION]}, behavioral_readout_layer='head',
-                            reply=lambda prompt: 'yes', **owned('reply', 'behavioral_readout_layer'))
+                            reply=lambda prompt: 'yes',
+                            capability_config={'behavior-sessions': {'behavior:rating': 'generation'}})
     task = TaskContext(instruction='Is it there?', response=Choice(['yes', 'no']))
     with pytest.raises(ExecutionNotFeasibleError, match='cannot record'):
         model.participate(stimulus_session(stimuli, channels, task=task))

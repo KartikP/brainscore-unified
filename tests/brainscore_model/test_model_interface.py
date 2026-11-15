@@ -2,7 +2,6 @@ import pytest
 import warnings
 
 from brainscore import BrainScoreModel, UnitSelector, LayerSelector
-from tests.fixed_order import owned
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 
@@ -427,7 +426,7 @@ class TestBehavioralPathDispatch:
             extractor={'vision': make_stub_extractor()},
             behavioral_readout_layer='layer4' if has_readout else None,
             **answer,
-            **owned(*answer, *(['behavioral_readout_layer'] if has_readout else [])),
+            **({'capability_config': {'behavior-sessions': {'behavior': 'generation'}}} if answer and has_readout else {}),
         )
 
     def _fitting_stub(self):

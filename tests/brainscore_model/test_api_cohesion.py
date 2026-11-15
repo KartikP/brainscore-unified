@@ -3,7 +3,6 @@ import numpy as np
 import pytest
 import xarray as xr
 from brainscore import BrainScoreModel, LayerSelector, CompositeSelector
-from tests.fixed_order import owned
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
@@ -213,7 +212,8 @@ def test_the_model_parts_choose_the_behavioral_path(monkeypatch, parts):
     answer = {'answer': lambda **kwargs: 'yes'} if parts == 'answer and readout' else {}
     model = BrainScoreModel(
         identifier='dual-path', in_channels={'text'}, behavioral_readout_layer='layer',
-        extractor={'text': Extractor()}, **answer, **owned('behavioral_readout_layer', *answer),
+        extractor={'text': Extractor()}, **answer,
+        **({'capability_config': {'behavior-sessions': {'behavior': 'generation'}}} if answer else {}),
     )
     fitted = []
     monkeypatch.setattr(model._behavioral, 'fit_behavioral_readout', lambda stimuli: fitted.append(stimuli))

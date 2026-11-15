@@ -12,7 +12,6 @@ import numpy as np
 import pytest
 
 from brainscore import BrainScoreModel
-from tests.fixed_order import owned
 from brainscore_core.response_formats import response_record
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
@@ -40,6 +39,17 @@ def _features(stimuli, layers, **kwargs):
         'neuroid_id': ('neuroid', ['n0', 'n1']), 'layer': ('neuroid', [layers[0]] * 2)})
 
 
+# The owner statement of each part set built below (each with the readout).
+STATEMENTS = {
+    frozenset(): {},
+    frozenset({'answer'}): {'behavior': 'generation'},
+    frozenset({'reply', 'likelihood'}): {'behavior:rating': 'generation',
+                                         'behavior:probabilities': ('likelihood', 'softmax')},
+    frozenset({'answer', 'reply', 'likelihood'}): {'behavior': 'generation', 'behavior:rating': 'generation',
+                                                   'behavior:probabilities': ('likelihood', 'softmax')},
+}
+
+
 def _model(calls, **parts):
     def answer(stimulus_row, instruction, label_set):
         calls.append(('answer', stimulus_row['stimulus_id'], instruction, list(label_set)))
@@ -55,7 +65,7 @@ def _model(calls, **parts):
     chosen = {'answer': answer, 'reply': reply, 'likelihood': likelihood}
     return BrainScoreModel('paths', extractor={'text': _features}, behavioral_readout_layer='late',
                            **{name: chosen[name] for name in parts},
-                           **owned('behavioral_readout_layer', *parts))
+                           capability_config={'behavior-sessions': STATEMENTS[frozenset(parts)]})
 
 
 def _run(model, outputs, task):

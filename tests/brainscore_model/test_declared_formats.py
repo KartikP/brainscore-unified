@@ -23,7 +23,7 @@ from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
 from tests.brainscore_model.test_answer_ownership import _registrations
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI, _features
-from tests.brainscore_model.test_answer_ownership import RATINGS
+from tests.brainscore_model.stage2_answers_baseline import RATINGS
 from tests.test_causal_lm import subject as causal_lm  # noqa: F401  (fixture)
 from tests.test_ewok import native, prepared  # noqa: F401  (fixtures)
 from tests.test_induced_dyslexia import synthetic_roar  # noqa: F401  (fixture)

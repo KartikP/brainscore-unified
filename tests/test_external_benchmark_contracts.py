@@ -7,7 +7,6 @@ import base64
 import pandas as pd
 import pytest
 
-from tests.fixed_order import owned
 
 import brainscore
 from brainscore_core.compatibility import CompatibilityError, check_channel_compatibility
@@ -257,8 +256,7 @@ def test_ewok_subject_without_the_text_input_rejected_without_calls(prepared, mo
     calls = []
     subject = BrainScoreModel('pictures-only', in_channels={'vision:image'},
                                 reply=lambda prompt: calls.append(prompt) or '1',
-                                likelihood=lambda prompt, options: calls.append(prompt) or {},
-                                **owned('reply', 'likelihood'))
+                                likelihood=lambda prompt, options: calls.append(prompt) or {})
     benchmark = brainscore.load_benchmark(f'EWoK-core-1.0-{mode}', root=prepared)
     result = brainscore.score(subject, benchmark, check_mem=False)
     assert result.attrs['status'] == 'N/A'

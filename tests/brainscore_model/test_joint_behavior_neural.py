@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
-from tests.fixed_order import owned
 from dataclasses import replace
 
 from brainscore_core.events import Perturbation, PerturbationApplied, Selection, StateChange
@@ -104,7 +103,8 @@ def _model(net, extractor_type=ToyExtractor, **kwargs):
                            region_layer_map={'A': LayerSelector('early', modality='text'),
                                              'B': LayerSelector('late', modality='text')},
                            answer=answer, intervention=intervention, **kwargs,
-                           **owned('answer', *kwargs))
+                           capability_config={'behavior-sessions': (
+                               {'behavior': 'generation'} if 'behavioral_readout_layer' in kwargs else {})})
 
 
 def _run(model, task, channels):

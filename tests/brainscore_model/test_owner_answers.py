@@ -6,19 +6,15 @@ Choice, else the response's first format. A task form its owner cannot serve is
 refused before any compute; only bare ``behavior`` (a legacy task) keeps the
 fallback to the one other part that can serve it.
 """
-from itertools import combinations
-
 import pytest
 
 from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice
 from tests.brainscore_model.test_answer_ownership import (
-    ARGUMENTS, BLIP2, CAUSAL_LM, LEGACY_NO_INSTRUCTION, QWEN, RATINGS, REGISTERED_STATEMENTS, SESSIONS,
-    _model, _run)
-from tests.brainscore_model.fixed_order_baseline import task_from
+    BLIP2, CAUSAL_LM, LEGACY_NO_INSTRUCTION, QWEN, REGISTERED_STATEMENTS, _model, _run)
+from tests.brainscore_model.stage2_answers_baseline import RATINGS, SESSIONS, task_from
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI
-from tests.fixed_order import OUTPUTS, fixed_order_owners
 
 pytestmark = pytest.mark.unit
 
@@ -82,29 +78,32 @@ def test_two_owners_for_choice_and_probabilities_are_refused_before_compute():
 
 # --- no part answers a format channel it does not own ---------------------------------
 
-PART_SETS = [parts for n in range(1, 5) for parts in combinations(ARGUMENTS, n)]
+G, L = 'generation', ('likelihood', 'softmax')
+# Every part set with the statement a registrant writes for it.
+STATEMENTS = {
+    ('answer',): {}, ('reply',): {}, ('likelihood',): {}, ('behavioral_readout_layer',): {},
+    ('answer', 'reply'): {}, ('answer', 'likelihood'): {'behavior:probabilities': L},
+    ('reply', 'likelihood'): {'behavior:probabilities': L},
+    ('answer', 'reply', 'likelihood'): {'behavior:probabilities': L},
+    ('answer', 'behavioral_readout_layer'): {'behavior': G},
+    ('reply', 'behavioral_readout_layer'): {'behavior:rating': G},
+    ('likelihood', 'behavioral_readout_layer'): {'behavior:choice': ('likelihood', 'softmax_argmax'),
+                                                 'behavior:probabilities': L},
+    ('answer', 'reply', 'behavioral_readout_layer'): {'behavior': G, 'behavior:rating': G},
+    ('answer', 'likelihood', 'behavioral_readout_layer'): {'behavior': G, 'behavior:probabilities': L},
+    ('reply', 'likelihood', 'behavioral_readout_layer'): {'behavior:rating': G, 'behavior:probabilities': L},
+    ('answer', 'reply', 'likelihood', 'behavioral_readout_layer'): {
+        'behavior': G, 'behavior:rating': G, 'behavior:probabilities': L},
+}
 
 
-def _owners_or_none(parts):
-    try:
-        return _model(*parts, owners=fixed_order_owners(*parts))
-    except ValueError:
-        return None
-
-
-@pytest.mark.parametrize('parts', PART_SETS, ids='+'.join)
+@pytest.mark.parametrize('parts', sorted(STATEMENTS), ids='+'.join)
 def test_each_answered_format_comes_from_its_owner(parts):
     """Every session of SESSIONS on every part set: each answered format channel was given
     by the part that owns it (the probabilities' owner also gives the choice that comes
     with raw scores; a reaction time names the probabilities' method)."""
-    model = _owners_or_none(parts)
-    if model is None:
-        pytest.skip('the fixed order states no owner for a format with two native parts')
+    model = _model(*parts, owners=STATEMENTS[parts])
     owners = model._behavioral.owners
-
-    def owner_of(fmt):     # the stated owner, or the one part that gives the format (oracle table)
-        givers = {OUTPUTS[name][0] for name in parts if fmt in OUTPUTS[name][1]}
-        return owners.get(fmt) or (givers.pop() if len(givers) == 1 else None)
     for name, (description, outputs) in SESSIONS.items():
         task = task_from(description, RATINGS if description['kind'] == 'scale' else FITTING)
         requested = [c for c in outputs if c in model.out_channels]
@@ -119,7 +118,7 @@ def test_each_answered_format_comes_from_its_owner(parts):
                 continue                  # bare behavior: the legacy fallback stays
             record = session.collect(channel).attrs['response']
             raw_scores = getattr(task.response, 'raw_scores', False)
-            owner = owner_of('behavior:probabilities' if raw_scores else channel)
+            owner = owners['behavior:probabilities' if raw_scores else channel]
             assert record['method'] == owner, (parts, name, channel)
 
 

@@ -19,7 +19,46 @@ from pathlib import Path
 
 import numpy as np
 
+from tests.brainscore_model.test_behavior_paths import FITTING
+
 FIXTURE = Path(__file__).resolve().parents[1] / 'fixtures' / 'stage2_answers_baseline.json'
+
+RATINGS = FITTING.copy()
+RATINGS['label'] = [6.0, 2.0, 6.0, 2.0]
+RATINGS.identifier = 'behavior-paths-ratings'
+CHOICE_FORM = {'kind': 'choice', 'labels': 'shared', 'probabilities': False, 'reaction_time': None,
+               'raw_scores': False, 'raw_text': False, 'confidence': False, 'fitting': True}
+SESSIONS = {   # task descriptions and the outputs the session requests
+    'legacy answer': ({'kind': 'legacy', 'instruction': True, 'label_set': ['cat', 'dog'], 'fitting': True},
+                      ['behavior']),
+    'legacy readout': ({'kind': 'legacy', 'instruction': False, 'label_set': ['cat', 'dog'], 'fitting': True},
+                       ['behavior']),
+    'choice': (dict(CHOICE_FORM, probabilities=True), ['behavior:choice', 'behavior:probabilities']),
+    'raw scores': (dict(CHOICE_FORM, raw_scores=True, fitting=False),
+                   ['behavior:choice', 'behavior:probabilities']),
+    'rating': ({'kind': 'scale', 'fitting': True}, ['behavior:rating']),
+}
+
+
+def task_from(description, fitting_stimuli):
+    """The TaskContext of a task description of ``SESSIONS``."""
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice, Scale
+    fitting = fitting_stimuli if description['fitting'] else None
+    kind = description['kind']
+    if kind == 'legacy':
+        return TaskContext(task_type='probabilities', label_set=description['label_set'],
+                           instruction='Which?' if description['instruction'] else None,
+                           fitting_stimuli=fitting)
+    if kind == 'scale':
+        return TaskContext(instruction='How much?', response=Scale(1, 7), fitting_stimuli=fitting)
+    choice = Choice(['cat', 'dog'] if description['labels'] == 'shared' else 'options',
+                    probabilities=description['probabilities'],
+                    reaction_time=description['reaction_time'], raw_scores=description['raw_scores'],
+                    raw_text=description['raw_text'],
+                    confidence=Scale(1, 5) if description['confidence'] else None)
+    return TaskContext(instruction=None if description['raw_text'] else 'Which?', response=choice,
+                       fitting_stimuli=fitting)
 
 
 def _hex(value):
@@ -50,7 +89,6 @@ def _cases():
     """(name, outputs, task builder) for every session beyond the ones named in SESSIONS."""
     from brainscore_core.contract import TaskContext
     from brainscore_core.responses import Choice
-    from tests.brainscore_model.test_behavior_paths import FITTING
 
     def choice(**settings):
         return TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], **settings),
@@ -64,10 +102,8 @@ def _cases():
 
 def capture():
     from brainscore_core.streaming_helpers import stimulus_session
-    from tests.brainscore_model.test_answer_ownership import (
-        REGISTERED_PART_SETS, REGISTERED_STATEMENTS, RATINGS, SESSIONS, _model)
-    from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI
-    from tests.brainscore_model.fixed_order_baseline import task_from
+    from tests.brainscore_model.test_answer_ownership import REGISTERED_PART_SETS, REGISTERED_STATEMENTS, _model
+    from tests.brainscore_model.test_behavior_paths import STIMULI
 
     sessions = {}
     for name, (description, outputs) in SESSIONS.items():

@@ -14,7 +14,6 @@ import pytest
 import torch
 
 from brainscore import BrainScoreModel, LayerSelector
-from tests.fixed_order import owned
 from brainscore.perturbation import build_pytorch_ablation_fn
 from brainscore_core.compatibility import CompatibilityError, check_compatibility, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
@@ -591,7 +590,7 @@ def _parts(owner, names):
                                    ('reply', 'likelihood'), ('policy', 'answer', 'reply', 'likelihood')])
 def test_the_owner_of_bound_method_parts_is_reset_once_per_episode_and_reset(names):
     owner = _Owner()
-    model = BrainScoreModel('m', in_channels={'text'}, **_parts(owner, names), **owned(*names))
+    model = BrainScoreModel('m', in_channels={'text'}, **_parts(owner, names))
     model._begin_episode()
     assert owner.resets == 1
     model.reset()
@@ -628,7 +627,7 @@ def test_a_part_object_and_the_owner_of_another_part_are_each_reset_once():
             return {label: 0.0 for label in labels}
     owner, scorer = _Owner(), Scorer()
     model = BrainScoreModel('m', in_channels={'text'}, reply=owner.reply, answer=owner.answer,
-                            likelihood=scorer, **owned('reply', 'answer', 'likelihood'))
+                            likelihood=scorer)
     model.reset()
     assert (owner.resets, scorer.resets) == (1, 1)
 

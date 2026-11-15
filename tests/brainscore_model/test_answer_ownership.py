@@ -1,12 +1,10 @@
 """Rule 4.11: the registration states which part owns an answer output several parts can give.
 
 One eligible part answers without a statement; several need an owner, checked
-at construction. Each output's owner stands on its own. The parity tests
-compare with the selection of the base commit 280f49c, captured in
-``tests/fixtures/fixed_order_baseline.json`` by ``fixed_order_baseline.py``.
+at construction. Each output's owner stands on its own. The answers of the
+registered part sets are pinned by ``test_answer_baseline.py``.
 """
 import ast
-import json
 from pathlib import Path
 
 import pytest
@@ -18,8 +16,6 @@ from brainscore_core.contract import TaskContext
 from brainscore_core.responses import Choice, Scale, Text
 from brainscore_core.streaming_helpers import stimulus_session
 from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI, _features
-from tests.brainscore_model.fixed_order_baseline import FIXTURE, task_from
-from tests.fixed_order import fixed_order_owners
 
 pytestmark = pytest.mark.unit
 
@@ -122,7 +118,7 @@ def test_an_owner_that_cannot_give_the_output_is_refused(owners, message):
 
 
 def test_a_task_no_part_can_serve_stays_not_feasible():
-    model = _model('answer', 'behavioral_readout_layer', owners=fixed_order_owners('answer', 'behavioral_readout_layer'))
+    model = _model('answer', 'behavioral_readout_layer', owners={'behavior': 'generation'})
     task = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], confidence=Scale(1, 5)),
                        fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError, match='cannot give a Choice answer with reported confidence'):
@@ -189,7 +185,7 @@ def test_several_parts_that_do_not_own_the_output_are_refused_before_compute():
     both could, and neither owns the choice: no other part answers it (C4)."""
     calls = []
     model = _model('answer', 'likelihood', 'behavioral_readout_layer', calls=calls,
-                   owners=fixed_order_owners('answer', 'likelihood', 'behavioral_readout_layer'))
+                   owners={'behavior': 'generation', 'behavior:probabilities': ('likelihood', 'softmax')})
     task = TaskContext(response=Choice(['cat', 'dog'], raw_text=True), fitting_stimuli=FITTING)
     with pytest.raises(ExecutionNotFeasibleError, match=r"'behavior:choice' is owned by 'generation', "
                                                         r"which cannot serve this task \(task settings: raw_text\)"):
@@ -217,15 +213,14 @@ TASK_FORM_CASES = {
 @pytest.mark.parametrize('case', sorted(TASK_FORM_CASES))
 def test_the_one_part_that_serves_a_task_form_answers_for_a_registered_model(case):
     parts, task, outputs, source = TASK_FORM_CASES[case]
-    owners = fixed_order_owners(*parts)
+    owners = REGISTERED_STATEMENTS[parts]
     assert owners[outputs[0]] != source                  # not the owner of the output
     session = _run(_model(*parts, owners=owners), outputs, task)
     assert session.collect(outputs[0]).attrs['response']['method'] == source
 
 
-# --- finding 3: parity with the base commit ----------------------------------
+# --- the registered part sets ------------------------------------------------
 
-BASELINE = json.loads(Path(FIXTURE).read_text(encoding='utf-8'))
 REGISTERED_PART_SETS = {('behavioral_readout_layer',), BLIP2, QWEN, CAUSAL_LM, ('answer', 'reply')}
 # The statement each registered part set carries in the library (CLIP, random ViT and
 # GPT-2; BLIP-2; the Qwen family; causal_lm; the API models), checked by the scan below.
@@ -237,107 +232,59 @@ REGISTERED_STATEMENTS = {
     CAUSAL_LM: {'behavior:probabilities': ('likelihood', 'softmax')},
     ('answer', 'reply'): {},
 }
-# The only cases where the owner rule differs from the base commit: a raw-text Choice,
-# whose choice is owned by answer= (generation without reply), which cannot serve raw
-# text; the base commit let the likelihood or the readout answer it. Since C4 no part
-# answers a format it does not own, so these are refused. Of the registered part sets
-# only BLIP-2 (answer, readout) is among them, with shared labels (a readout reads no
-# per-row options).
-REFUSED_NOW = {(parts, (('labels', labels), ('probabilities', p), ('raw_text', True), ('reaction_time', rt)))
-               for parts, all_labels in ((BLIP2, ('shared',)),
-                                         (('answer', 'likelihood'), ('shared', 'per_row')),
-                                         (('answer', 'likelihood', 'behavioral_readout_layer'),
-                                          ('shared', 'per_row')))
-               for labels in all_labels for p in (False, True) for rt in (None, 'surprisal')}
+API = ('answer', 'reply')
+READOUT = ('behavioral_readout_layer',)
 
-
-def _key(case):
-    task = case['task']
-    return (tuple(case['parts']), tuple(sorted((k, v) for k, v in task.items() if k in (
-        'labels', 'probabilities', 'raw_text', 'reaction_time'))))
-
-
-def test_the_baseline_covers_every_part_combination_and_task_form():
-    assert BASELINE['base'] == '280f49c'
-    assert len({tuple(case['parts']) for case in BASELINE['cases']}) == 15
-    assert len(BASELINE['cases']) == 15 * 80
-
-
-@pytest.mark.parametrize('parts', sorted({tuple(case['parts']) for case in BASELINE['cases']}),
-                         ids='+'.join)
-def test_the_fixed_order_owners_choose_what_the_base_commit_chose(monkeypatch, parts):
-    model = _model(*parts, owners=fixed_order_owners(*parts))
-    monkeypatch.setattr(model._behavioral, 'fit_behavioral_readout', lambda stimuli: None)
-    differences = set()
-    for case in (case for case in BASELINE['cases'] if tuple(case['parts']) == parts):
-        try:
-            model.start_task(task_from(case['task'], FITTING))
-            outcome = [model._behavioral.response_path, model._behavioral.probability_source]
-        except ExecutionNotFeasibleError:
-            outcome = 'refused'
-        if outcome != case['outcome']:
-            assert outcome == 'refused' and case['task']['raw_text'] and not case['task']['confidence'], case
-            differences.add(_key(case))
-    assert differences == {key for key in REFUSED_NOW if key[0] == parts}
-    if parts in REGISTERED_PART_SETS and parts != BLIP2:
-        assert not differences
-
-
-SOURCE = {'generation': {'answer': 'answer', 'reply': 'reply'}, 'likelihood': 'likelihood', 'readout': 'readout'}
-RATINGS = FITTING.copy()
-RATINGS['label'] = [6.0, 2.0, 6.0, 2.0]
-RATINGS.identifier = 'behavior-paths-ratings'
-CHOICE_FORM = {'kind': 'choice', 'labels': 'shared', 'probabilities': False, 'reaction_time': None,
-               'raw_scores': False, 'raw_text': False, 'confidence': False, 'fitting': True}
-SESSIONS = {   # baseline task descriptions and the outputs the session requests
-    'legacy answer': ({'kind': 'legacy', 'instruction': True, 'label_set': ['cat', 'dog'], 'fitting': True},
-                      ['behavior']),
-    'legacy readout': ({'kind': 'legacy', 'instruction': False, 'label_set': ['cat', 'dog'], 'fitting': True},
-                       ['behavior']),
-    'choice': (dict(CHOICE_FORM, probabilities=True), ['behavior:choice', 'behavior:probabilities']),
-    'raw scores': (dict(CHOICE_FORM, raw_scores=True, fitting=False),
-                   ['behavior:choice', 'behavior:probabilities']),
-    'rating': ({'kind': 'scale', 'fitting': True}, ['behavior:rating']),
+OPTIONS = STIMULI.copy()
+OPTIONS['options'] = [['cat', 'dog']] * len(STIMULI)
+OPTIONS.identifier = 'behavior-paths-options'
+# The task forms the library's benchmarks and harnesses send beyond the numeric
+# baseline: EWoK (raw-text choice; raw scores of the options of each row),
+# CogGym (free text), and a choice with reported confidence.
+EWOK_CHOICE = TaskContext(response=Choice(['1', '2'], raw_text=True))
+EWOK_LOGPROBS = TaskContext(response=Choice('options', raw_scores=True, raw_text=True))
+FREE_TEXT = TaskContext(instruction='Say it.', response=Text())
+CONFIDENCE = TaskContext(instruction='Which?', response=Choice(['cat', 'dog'], confidence=Scale(1, 5)),
+                         fitting_stimuli=FITTING)
+# (part set, task, stimuli, requested channel, method in the response record or None when refused)
+TASK_FORMS = {
+    'qwen ewok choice': (QWEN, EWOK_CHOICE, STIMULI, 'behavior:choice', 'generation'),
+    'causal lm ewok choice': (CAUSAL_LM, EWOK_CHOICE, STIMULI, 'behavior:choice', 'generation'),
+    'api ewok choice': (API, EWOK_CHOICE, STIMULI, 'behavior:choice', 'generation'),
+    'readout ewok choice': (READOUT, EWOK_CHOICE, STIMULI, 'behavior:choice', None),
+    'qwen ewok logprobs': (QWEN, EWOK_LOGPROBS, OPTIONS, 'behavior:probabilities', 'likelihood'),
+    'causal lm ewok logprobs': (CAUSAL_LM, EWOK_LOGPROBS, OPTIONS, 'behavior:probabilities', 'likelihood'),
+    'qwen free text': (QWEN, FREE_TEXT, STIMULI, 'behavior:text', 'generation'),
+    'causal lm free text': (CAUSAL_LM, FREE_TEXT, STIMULI, 'behavior:text', 'generation'),
+    'api free text': (API, FREE_TEXT, STIMULI, 'behavior:text', 'generation'),
+    'qwen confidence': (QWEN, CONFIDENCE, STIMULI, 'behavior:choice', 'generation'),
+    'api confidence': (API, CONFIDENCE, STIMULI, 'behavior:choice', 'generation'),
+    'blip2 confidence': (BLIP2, CONFIDENCE, STIMULI, 'behavior:choice', None),
+    'readout confidence': (READOUT, CONFIDENCE, STIMULI, 'behavior:choice', None),
 }
 
 
-# Sessions that request a format the part set does not declare are refused at
-# session start (C3). Every registered part set declares the formats of SESSIONS.
-UNDECLARED = set()
-
-
-@pytest.mark.parametrize('session_name', sorted(SESSIONS))
-@pytest.mark.parametrize('parts', sorted(REGISTERED_PART_SETS), ids='+'.join)
-def test_registered_part_sets_emit_the_sources_the_base_commit_chose(parts, session_name):
-    """What a session emits (the source of each answer and the parts called) follows the base selection."""
-    description, outputs = SESSIONS[session_name]
-    case = next(c for c in BASELINE['cases'] if tuple(c['parts']) == parts and c['task'] == description)
-    task = task_from(description, RATINGS if description['kind'] == 'scale' else FITTING)
+@pytest.mark.parametrize('case', sorted(TASK_FORMS))
+def test_the_owner_answers_each_task_form_a_registered_benchmark_sends(case):
+    parts, task, stimuli, channel, method = TASK_FORMS[case]
     calls = []
     model = _model(*parts, owners=REGISTERED_STATEMENTS[parts], calls=calls)
-    if case['outcome'] == 'refused' or (parts, session_name) in UNDECLARED:
+    session = stimulus_session(stimuli, [channel], task)
+    if method is None:
         with pytest.raises(ExecutionNotFeasibleError):
-            _run(model, outputs, task)
+            model.participate(session)
         assert calls == []
         return
-    path, source = case['outcome']
-    # A legacy task is answered by answer=; a response task by reply= when wired.
-    generator = 'reply' if 'reply' in parts and task.response is not None else 'answer'
-    session = _run(model, outputs, task)
-    answer = session.collect(outputs[0])
-    # Both answer= and reply= are the generation method; `calls` below names the part.
-    assert answer.attrs['response']['method'] == path
-    if source is not None:
-        assert session.collect('behavior:probabilities').attrs['response']['method'] == source
-    called = {'likelihood': 'likelihood', 'readout': 'extract', 'generation': generator}
-    assert called[path] in calls
-    for part in {'answer', 'reply', 'likelihood'} - {called[path], called.get(source)}:
-        assert part not in calls, (part, calls)
+    model.participate(session)
+    assert session.collect(channel).attrs['response']['method'] == method
 
 
-# --- the registrations state the owners the base order chose ------------------
+# --- the registrations state the owners in the table ---------------------------
 
 ARGUMENTS_WITH_OUTPUTS = ('answer', 'reply', 'likelihood', 'behavioral_readout_layer')
+# The statement of every part set the library builds: the registered part sets, a
+# model with answer= alone, and models with no answer part.
+LIBRARY_STATEMENTS = {**REGISTERED_STATEMENTS, (): {}, ('answer',): {}}
 # Constructor calls whose keywords come partly from ``**`` expansion: the scan cannot
 # see those keywords. Each is listed with what the expansion carries.
 EXPANDED = {
@@ -365,10 +312,9 @@ def _registrations():
     return found, expanded
 
 
-def test_every_registration_keeps_the_owner_the_base_order_chose():
+def test_every_registration_states_the_owners_of_the_table():
     """Covers every ``BrainScoreModel(...)`` and ``<module>.BrainScoreModel(...)`` call in
-    the library, helpers included (``model_helpers/causal_lm.py``). A statement may be
-    left out where the one native part is the owner the base order chose. Not covered:
+    the library, helpers included (``model_helpers/causal_lm.py``). Not covered:
     keywords that arrive through ``**`` expansion (``EXPANDED``) and models built outside
     the library; the constructor checks those."""
     registrations, expanded = _registrations()
@@ -376,9 +322,5 @@ def test_every_registration_keeps_the_owner_the_base_order_chose():
     assert {'models/qwen25_vl_3b/model.py', 'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',
             'model_helpers/causal_lm.py'} <= {r[0] for r in registrations}
     for where, wired, stated in registrations:
-        if tuple(wired) in REGISTERED_STATEMENTS:
-            assert stated == REGISTERED_STATEMENTS[tuple(wired)], where
-        owners = _model(*wired, owners=stated)._behavioral.owners   # construction accepts it
-        for output, statement in fixed_order_owners(*wired).items():
-            part = statement if isinstance(statement, str) else statement[0]
-            assert owners[output] == part, (where, output)
+        assert stated == LIBRARY_STATEMENTS[tuple(wired)], where
+        _model(*wired, owners=stated)                       # construction accepts it

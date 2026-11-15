@@ -8,7 +8,6 @@ import pytest
 
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.contract import TaskContext
-from tests.fixed_order import owned
 from brainscore_core.responses import Choice
 from brainscore_core.streaming_helpers import stimulus_session
 from brainscore.selection import CompositeSelector, LayerSelector
@@ -81,8 +80,6 @@ def _model(net, region_map=None, replies=True):
                            reply=reply if replies else None, likelihood=likelihood,
                            capability_config={'behavior-sessions': {
                                # The likelihood derives these formats; the statements declare them.
-                               **owned('likelihood', *(['reply'] if replies else []))[
-                                   'capability_config']['behavior-sessions'],
                                'behavior:probabilities': ('likelihood', 'softmax'),
                                **({} if replies else {'behavior:choice': ('likelihood', 'softmax_argmax')})}})
 
