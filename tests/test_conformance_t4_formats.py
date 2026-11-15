@@ -416,3 +416,57 @@ def test_a_text_answer_records_no_parser():
     sessions = _spied(subject)
     _score(subject, pseudo.PseudoText())
     assert sessions[0].collect('behavior:text').attrs['response']['parsed_by'] is None
+
+
+# --- behavior:log_probabilities (F6): a pseudo benchmark and every kind of producer --------
+
+def test_log_probabilities_from_a_likelihood_part_score_the_known_value():
+    calls = []
+    score, answer = _run(pseudo.likelihood_model(calls), pseudo.PseudoLogProbabilities())
+    assert float(score) == 0.75 and score.attrs['n_invalid'] == 0     # 6 of 8 agree with people
+    assert calls == ['likelihood'] * len(pseudo.IDS)
+    assert answer.values.dtype == np.float64
+    assert answer.values[0].tolist() == [-0.10536051565782628, -2.302585092994046]   # log 0.9, log (1 - 0.9)
+    record = answer.attrs['response']
+    assert (record['format'], record['origin'], record['method'], record['category']) == (
+        'behavior:log_probabilities', 'native', 'likelihood', 'model-derived')
+    assert record['parameters'] == pseudo.LOG_PROBABILITY_SCHEMA
+
+
+def test_log_probabilities_from_a_custom_assembly_subject_score_the_known_value():
+    subject = pseudo.LogProbabilityAssemblySubject()
+    score, answer = _run(subject, pseudo.PseudoLogProbabilities())
+    assert float(score) == 0.75 and score.attrs['n_invalid'] == 0
+    assert answer.attrs['response']['method'] == 'lookup'
+
+
+def test_log_probabilities_as_cells_are_malformed_and_nothing_is_stored():
+    # Point m: the format is an assembly with its record only; five schema fields cannot
+    # default from a cell.
+    subject = pseudo.CellSubject(out_channels={'behavior:log_probabilities'}, in_channels={'text'})
+    sessions = _spied(subject)
+    with pytest.raises(ValueError, match='an assembly with its response record'):
+        _score(subject, pseudo.PseudoLogProbabilities())
+    assert sessions[0].emitted == []
+
+
+@pytest.mark.parametrize('producer', ['reply', 'readout', 'text only'])
+def test_a_subject_that_does_not_declare_log_probabilities_is_na(producer):
+    calls = []
+    subject = {'reply': lambda: pseudo.reply_model(calls), 'readout': lambda: pseudo.readout_model(calls),
+               'text only': pseudo.text_only_subject}[producer]()
+    score = _score(subject, pseudo.PseudoLogProbabilities())
+    assert score.attrs['status'] == 'N/A' and math.isnan(float(score))
+    assert calls == []
+
+
+def test_a_pseudo_ewok_runs_the_real_benchmark_on_made_up_items(tmp_path):
+    calls = []
+    benchmark = pseudo.pseudo_ewok(tmp_path)
+    sessions = _spied(subject := pseudo.marker_likelihood_model(calls))
+    score = _score(subject, benchmark)
+    assert float(score) == 0.5                          # version 0: 1.0, version 1: 0.0
+    assert score.attrs['version_scores'] == {'0': 1.0, '1': 0.0}
+    assert calls == ['likelihood'] * 6                  # six contexts, one pass each
+    answers = [session.collect('behavior:log_probabilities') for session in sessions]
+    assert all(answer.attrs['response']['parameters']['layout'] == 'continuation' for answer in answers)
