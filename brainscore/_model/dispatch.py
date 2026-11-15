@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from typing import List, Set
 
+from brainscore_core.compatibility import ExecutionNotFeasibleError
 from brainscore_core.extraction_cache import activation_cache_disabled
 from brainscore_core.io_catalog import canonical_modality
 from .recording import INPUT_SITE
@@ -144,8 +145,11 @@ def record(model, stimuli, multi_modality: bool = False, check_only: bool = Fals
     ``MODALITY_PRIORITY``); with it, every detected one, concatenated along
     ``neuroid`` with a ``modality`` coordinate. Several recording time bins
     repeat a static response across the bins, as legacy vision models do.
-    ``check_only`` makes every refusal of the recording and calls no extractor
-    (a session's plan checks every region before the first pass).
+    ``check_only`` makes the dispatch refusals of the recording and calls no
+    extractor: a session's plan checks every region before the first pass. In
+    that check, a missing input (R20) and an extractor that cannot record the
+    region (R24) are ``ExecutionNotFeasibleError`` (Status terms); a direct call
+    keeps ``ValueError`` and ``NotImplementedError`` with the same messages.
     """
     if not model._input_keys:
         raise TypeError(f"Subject '{model.identifier}' declares no input, so it cannot take "
@@ -186,7 +190,8 @@ def _record(model, stimuli, multi_modality, check_only=False):
                             for r in recorder.recording_regions if r in model._region_modality_map}
     missing = requested_modalities - detected
     if missing:
-        raise ValueError(f'Recording targets require missing input modalities: {sorted(missing)}.')
+        raise (ExecutionNotFeasibleError if check_only else ValueError)(
+            f'Recording targets require missing input modalities: {sorted(missing)}.')
     if len(requested_modalities) == 1:
         modality = next(iter(requested_modalities))
     elif len(requested_modalities) > 1 and not multi_modality:
@@ -225,7 +230,7 @@ def _record(model, stimuli, multi_modality, check_only=False):
         return recorder.process_composite_regions(stimuli, modality, check_only)
     layers = recorder.filter_layers_for_modality(layers, modality)
     if check_only:
-        extractor_or_refuse(model, stimuli, modality, layers)
+        extractor_or_refuse(model, stimuli, modality, layers, in_session=True)
         return None
     assembly = extract_for_modality(model, stimuli, modality, layers)
     if recorder.is_multi_region and supports_layer_extraction(model, modality):
@@ -327,17 +332,21 @@ def _extract(model, stimuli, modality: str, layers: List[str]):
     return call_extractor(extractor, stimuli, layers)
 
 
-def extractor_or_refuse(model, stimuli, modality: str, layers: List[str]):
-    """The extractor that records ``layers`` of ``modality`` from ``stimuli``; refuse when there is none."""
+def extractor_or_refuse(model, stimuli, modality: str, layers: List[str], in_session: bool = False):
+    """The extractor that records ``layers`` of ``modality`` from ``stimuli``; refuse when there is none.
+
+    ``in_session``: the refusal is a session's (``ExecutionNotFeasibleError``); a direct
+    call raises ``ValueError`` or ``NotImplementedError`` with the same message.
+    """
     extractor = extractor_for(model, modality, stimuli, layers)
     if extractor is not None:
         return extractor
     modality = canonical_modality(modality)
     if extractor_keys(model, modality):
-        raise ValueError(
+        raise (ExecutionNotFeasibleError if in_session else ValueError)(
             f"Subject '{model.identifier}' has no {modality!r} extractor for the inputs "
             f"in this stimulus set that has all of the layers {list(layers)}.")
-    raise NotImplementedError(
+    raise (ExecutionNotFeasibleError if in_session else NotImplementedError)(
         f"Subject '{model.identifier}' declares {modality!r} input but has no "
         'activation extractor for it. Pass extractor={modality: extractor} to '
         'record internal activity, or use a behavioral task for an output-only model.')
@@ -378,7 +387,7 @@ def extract_modalities(model, stimuli, detected: Set[str], layers: List[str], ch
             if recorder.composite_recording:
                 recorder.process_composite_regions(stimuli, modality, check_only=True)
             else:
-                extractor_or_refuse(model, stimuli, modality, modality_layers)
+                extractor_or_refuse(model, stimuli, modality, modality_layers, in_session=True)
             sub_assemblies.append(None)
             continue
         sub = (recorder.process_composite_regions(stimuli, modality)

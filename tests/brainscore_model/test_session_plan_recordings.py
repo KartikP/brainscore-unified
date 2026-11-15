@@ -119,7 +119,7 @@ def test_a_region_with_no_extractor_for_its_layers_is_refused_before_the_first_r
     model = BrainScoreModel('two-forms', extractor={'vision': _Layered(['late'], calls),
                                                     'video': _Layered(['early'], calls)},
                             region_layer_map={'IT': 'late', 'V4': 'early'})
-    with pytest.raises(ValueError, match=r"has no 'vision' extractor .* layers \['early'\]"):
+    with pytest.raises(ExecutionNotFeasibleError, match=r"has no 'vision' extractor .* layers \['early'\]"):
         model.participate(stimulus_session(_pictures(), ['neural:IT', 'neural:V4']))
     assert calls == []
 

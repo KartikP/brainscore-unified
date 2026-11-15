@@ -486,7 +486,8 @@ def test_a_region_lists_only_the_forms_whose_extractor_has_its_layer(layer, moda
         if form in forms:              # a listed form runs
             assert neural_response(model, stimuli, ['neural:IT']).values.max() == value
         else:                          # an unlisted form is refused before the extractor runs
-            with pytest.raises(ValueError, match='has all of the layers'):
+            from brainscore_core.compatibility import ExecutionNotFeasibleError
+            with pytest.raises(ExecutionNotFeasibleError, match='has all of the layers'):   # a session's refusal
                 neural_response(model, stimuli, ['neural:IT'])
     if 'vision:video' in forms:
         assert check_compatibility(model, _clip_benchmark()).kind == 'full'

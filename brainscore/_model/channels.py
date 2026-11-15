@@ -58,9 +58,11 @@ def plan_channels(model, stimuli, regions: Sequence[str], time_bins=None,
     """The order of ``regions`` and the calls they share; every region checked before the first pass.
 
     Returns ``(order, shared)`` as ``run_neural_channels`` uses them. Each region
-    makes every refusal of its recording here, with no extractor called (a
-    duplicate channel, a missing input, no stimulus column, no extractor with the
-    region's layers). A session decides this once, in its plan, for its table.
+    makes the dispatch refusals of its recording here, with no extractor called:
+    a duplicate channel and no stimulus column (``ValueError``), a missing input
+    and no extractor with the region's layers (``ExecutionNotFeasibleError``, the
+    session's class). A session decides this once, in its plan, for a table its
+    source presents; otherwise ``run_neural_channels`` decides it for each batch.
     """
     regions = list(regions)
     _refuse_duplicates([f'neural:{region}' for region in regions])
@@ -87,17 +89,13 @@ def run_neural_channels(model, stimuli, channel_regions: Sequence[Tuple[str, str
     without it they are decided here.
     """
     regions = [region for _, region in channel_regions]
-    if planned is None:
-        _refuse_duplicates([channel for channel, _ in channel_regions])
+    if planned is None:     # a batch with no plan of its own: checked and planned here, before its first pass
+        planned = plan_channels(model, stimuli, regions, time_bins, multi_modality, plan)
     _start(model, regions[0] if len(regions) == 1 else regions, time_bins)
     state = model._recorder.snapshot()   # the combined recording, as before
     try:
         payloads = {}
-        if planned is None:
-            order = _plan(model, stimuli, regions)
-            shared = _shared_layers(model, stimuli, order) if plan == 'all' else []
-        else:
-            order, shared = list(planned[0]), list(planned[1])
+        order, shared = list(planned[0]), list(planned[1])
         with one_call_per_extractor(model, stimuli, shared):
             for region in order:
                 _start(model, region, time_bins)
@@ -130,8 +128,11 @@ def _plan(model, stimuli, regions: List[str]) -> List[str]:
                    for region in regions if region in routing}
     missing = set(modality_of.values()) - set(detected)
     if missing:
-        raise ValueError(
-            f'Recording targets require missing input modalities: {sorted(missing)}.')
+        # A session's refusal (``_plan`` serves sessions only): execution not feasible.
+        from brainscore_core.compatibility import ExecutionNotFeasibleError
+        raise ExecutionNotFeasibleError(
+            f'Recording targets require missing input modalities: {sorted(missing)}.',
+            channels={f'neural:{region}' for region, modality in modality_of.items() if modality in missing})
 
     priority = list(model.MODALITY_PRIORITY)
     rank = lambda modality: (priority.index(modality) if modality in priority

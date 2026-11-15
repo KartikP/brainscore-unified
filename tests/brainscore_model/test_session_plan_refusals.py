@@ -43,8 +43,9 @@ CLASS = {
     'R16 table': ValueError, 'R16 stream with a table': ValueError, 'R16 no table, one at a time': ValueError,
     'R17 table': ENFE, 'R17 stream with a table': ENFE, 'R17 no table': ENFE,
     'R18 table': ENFE, 'R18 no table': ENFE, 'R18 policy step': ENFE,
-    'R19': ValueError, 'R20': ValueError, 'R21': ValueError, 'R22 process': ValueError,
-    'R23 process': ValueError, 'R24 layers': ValueError, 'R24 no extractor': NotImplementedError,
+    'R19': ValueError, 'R20': ENFE, 'R20 direct call': ValueError, 'R21': ValueError, 'R22 process': ValueError,
+    'R23 process': ValueError, 'R24 layers': ENFE, 'R24 no extractor': ENFE,
+    'R24 layers direct call': ValueError, 'R24 no extractor direct call': NotImplementedError,
     'R25': ValueError, 'R26': ValueError, 'R27': ValueError,
     'R28 parts': ENFE, 'R28 history': ENFE,
     'R29 reset without handle': ValueError, 'R29 unknown handle': KeyError,
@@ -383,6 +384,14 @@ def _r20(log, monkeypatch, tmp_path):
     model.participate(stimulus_session(STIMULI, ['neural:A1']))
 
 
+@row('R20 direct call', r"Recording targets require missing input modalities: \['audio'\]")
+def _r20_direct(log, monkeypatch, tmp_path):
+    from brainscore.selection import LayerSelector
+    model = _subject(log, extractors=('text', 'audio'), regions={'A1': LayerSelector('late', modality='audio')})
+    model.start_recording('A1')
+    model.process(STIMULI)
+
+
 @row('R21', r'No column in this stimulus set says what kind of input it holds')
 def _r21(log, monkeypatch, tmp_path):
     table = StimulusSet({'stimulus_id': ['s0', 's1'], 'words': ['real a', 'fake b']})
@@ -434,6 +443,25 @@ def _r24_layers(log, monkeypatch, tmp_path):
 def _r24_none(log, monkeypatch, tmp_path):
     _subject(log, extractors=('vision',), regions={'IT': 'late'}).participate(
         stimulus_session(STIMULI, ['neural:IT']))
+
+
+@row('R24 layers direct call', r"Subject 'two-forms' has no 'vision' extractor for the inputs in this stimulus "
+                              r"set that has all of the layers \['early'\]")
+def _r24_layers_direct(log, monkeypatch, tmp_path):
+    model = BrainScoreModel('two-forms', extractor={'vision': _Layered(['late'], log),
+                                                    'video': _Layered(['early'], log)},
+                            region_layer_map={'IT': 'late', 'V4': 'early'})
+    table = StimulusSet({'stimulus_id': ['p0'], 'image_path': ['p0.png']})
+    table.identifier = 'refusals-pictures-direct'
+    model.start_recording('V4')
+    model.process(table)
+
+
+@row('R24 no extractor direct call', r"Subject 'logged' declares 'text' input but has no activation extractor for it")
+def _r24_none_direct(log, monkeypatch, tmp_path):
+    model = _subject(log, extractors=('vision',), regions={'IT': 'late'})
+    model.start_recording('IT')
+    model.process(STIMULI)
 
 
 @row('R25', r"Neural output for region 'IT' has no 'neuroid' dimension\.", ['extract'])

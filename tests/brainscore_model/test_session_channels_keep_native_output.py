@@ -210,7 +210,8 @@ def test_missing_input_is_refused_before_any_extractor_runs():
     outputs = {'video': video(), 'audio': audio()}
     regions = {'IT': ('blocks.16', 'video'), 'A1': ('encoder.layers.6', 'audio')}
     session = stimulus_session(stimuli()[['stimulus_id', 'video_path']], ['neural:IT', 'neural:A1'], task=TaskContext(task_type='passive'))
-    with pytest.raises(ValueError, match='missing input modalities'):
+    from brainscore_core.compatibility import ExecutionNotFeasibleError
+    with pytest.raises(ExecutionNotFeasibleError, match='missing input modalities'):   # a session's refusal
         subject(outputs, regions, calls).participate(session)
     assert calls == []
 

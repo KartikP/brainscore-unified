@@ -523,7 +523,7 @@ class Recorder:
             selector = region_selector(owner, region)
             layer_paths = list(selector.layer_paths)
             if check_only:
-                extractor_or_refuse(owner, stimuli, modality, layer_paths)
+                extractor_or_refuse(owner, stimuli, modality, layer_paths, in_session=True)
                 continue
             assembly = extract_for_modality(owner, stimuli, modality, layer_paths)
             assembly = self.ensure_layer_provenance(
