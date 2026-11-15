@@ -65,10 +65,9 @@ def _cases():
 def capture():
     from brainscore_core.streaming_helpers import stimulus_session
     from tests.brainscore_model.test_answer_ownership import (
-        REGISTERED_PART_SETS, RATINGS, SESSIONS, _model)
+        REGISTERED_PART_SETS, REGISTERED_STATEMENTS, RATINGS, SESSIONS, _model)
     from tests.brainscore_model.test_behavior_paths import FITTING, STIMULI
     from tests.brainscore_model.fixed_order_baseline import task_from
-    from tests.fixed_order import fixed_order_owners
 
     sessions = {}
     for name, (description, outputs) in SESSIONS.items():
@@ -76,7 +75,7 @@ def capture():
     sessions.update(_cases())
     found = {}
     for parts in sorted(REGISTERED_PART_SETS):
-        model = _model(*parts, owners=fixed_order_owners(*parts))
+        model = _model(*parts, owners=REGISTERED_STATEMENTS[parts])
         entry = {'out_channels': sorted(model.out_channels), 'sessions': {}}
         for name in sorted(sessions):
             outputs, task = sessions[name]

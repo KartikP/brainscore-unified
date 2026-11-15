@@ -221,6 +221,16 @@ def test_the_one_part_that_serves_a_task_form_answers_for_a_registered_model(cas
 
 BASELINE = json.loads(Path(FIXTURE).read_text(encoding='utf-8'))
 REGISTERED_PART_SETS = {('behavioral_readout_layer',), BLIP2, QWEN, CAUSAL_LM, ('answer', 'reply')}
+# The statement each registered part set carries in the library (CLIP, random ViT and
+# GPT-2; BLIP-2; the Qwen family; causal_lm; the API models), checked by the scan below.
+REGISTERED_STATEMENTS = {
+    ('behavioral_readout_layer',): {},
+    BLIP2: {'behavior': 'generation'},
+    QWEN: {'behavior': 'generation', 'behavior:rating': 'generation',
+           'behavior:probabilities': ('likelihood', 'softmax')},
+    CAUSAL_LM: {'behavior:probabilities': ('likelihood', 'softmax')},
+    ('answer', 'reply'): {},
+}
 # The only cases where the new rule differs from the base commit: two parts that
 # do not own the choice could serve it (above). No registered part set is among them.
 REFUSED_NOW = {(('answer', 'likelihood', 'behavioral_readout_layer'),
@@ -286,7 +296,7 @@ def test_registered_part_sets_emit_the_sources_the_base_commit_chose(parts, sess
     case = next(c for c in BASELINE['cases'] if tuple(c['parts']) == parts and c['task'] == description)
     task = task_from(description, RATINGS if description['kind'] == 'scale' else FITTING)
     calls = []
-    model = _model(*parts, owners=fixed_order_owners(*parts), calls=calls)
+    model = _model(*parts, owners=REGISTERED_STATEMENTS[parts], calls=calls)
     if case['outcome'] == 'refused':
         with pytest.raises(ExecutionNotFeasibleError):
             _run(model, outputs, task)
@@ -348,6 +358,8 @@ def test_every_registration_keeps_the_owner_the_base_order_chose():
     assert {'models/qwen25_vl_3b/model.py', 'models/qwen36_27b/model.py', 'models/blip2_opt_2_7b/model.py',
             'model_helpers/causal_lm.py'} <= {r[0] for r in registrations}
     for where, wired, stated in registrations:
+        if tuple(wired) in REGISTERED_STATEMENTS:
+            assert stated == REGISTERED_STATEMENTS[tuple(wired)], where
         owners = _model(*wired, owners=stated)._behavioral.owners   # construction accepts it
         for output, statement in fixed_order_owners(*wired).items():
             part = statement if isinstance(statement, str) else statement[0]
