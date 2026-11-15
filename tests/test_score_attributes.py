@@ -55,6 +55,31 @@ def test_a_per_target_value_needs_a_measured_ceiling():
         benchmark_score(_benchmark(not_estimated()), value=0.7, raw=0.4, metric='r')
 
 
+@pytest.mark.parametrize('ceiling,flag', [
+    (not_estimated(), True), (Score(0.8), False), (Score(0.8), 1), (not_estimated(), 'yes')])
+def test_the_normalized_flag_cannot_be_set(ceiling, flag):
+    with pytest.raises(TypeError, match="normalized"):
+        benchmark_score(_benchmark(ceiling), raw=0.4, metric='r', normalized=flag)
+
+
+def test_benchmark_version_cannot_be_set():
+    with pytest.raises(TypeError, match="benchmark_version"):
+        benchmark_score(_benchmark(Score(0.8)), raw=0.4, metric='r', benchmark_version=9)
+
+
+@pytest.mark.parametrize('ceiling', [Score(float('nan')), float('nan')])
+def test_an_untagged_nan_ceiling_is_refused(ceiling):
+    with pytest.raises(ValueError, match=r'not_estimated\(\)'):
+        benchmark_score(_benchmark(not_estimated()), raw=0.4, metric='r', ceiling=ceiling)
+    with pytest.raises(ValueError, match=r'not_estimated\(\)'):
+        benchmark_score(_benchmark(Score(float('nan'))), raw=0.4, metric='r')
+
+
+def test_a_measured_ceiling_of_one_stays_measured():
+    score = benchmark_score(_benchmark(Score(1.0)), raw=0.4, metric='r')
+    assert float(score) == 0.4 and score.attrs['normalized'] is True
+
+
 def test_no_unified_benchmark_writes_the_common_attributes_by_hand():
     """The common attributes come from benchmark_score only, so they have one shape."""
     root = Path(__file__).parents[1] / 'brainscore'

@@ -24,6 +24,10 @@ from typing import Optional
 from brainscore_core.metrics import Score
 
 
+# The attributes benchmark_score writes; a caller cannot set them.
+_DERIVED = ('raw', 'ceiling', 'normalized', 'metric', 'benchmark_version')
+
+
 def not_estimated() -> Score:
     """The ceiling of a benchmark that measures none: the score is the raw value."""
     ceiling = Score(float('nan'))
@@ -40,13 +44,21 @@ def benchmark_score(benchmark, *, raw: float, metric: str, ceiling: Optional[Sco
     to ``benchmark.ceiling``; pass it only when the score used another reference
     (for example the median of per-voxel ceilings). Pass ``value`` only when the
     benchmark normalizes each target on its own (for example ``median(r_i / c_i)``);
-    it needs a measured ceiling.
+    it needs a measured ceiling. ``attrs`` cannot hold the attributes this
+    function writes (``normalized``, ``benchmark_version``, ...), and a NaN ceiling
+    must be :func:`not_estimated`.
     """
+    reserved = sorted(set(attrs) & set(_DERIVED))
+    if reserved:
+        raise TypeError(f'benchmark_score writes {reserved} itself; do not pass them')
     if ceiling is None:
         ceiling = benchmark.ceiling
     if not isinstance(ceiling, Score):
         ceiling = Score(float(ceiling))
     normalized = not math.isnan(float(ceiling))
+    if not normalized and ceiling.attrs.get('status') != 'not_estimated':
+        raise ValueError('the ceiling is NaN but not not_estimated(); pass not_estimated() '
+                         'for a benchmark that measures no ceiling')
     if value is None:
         value = float(raw) / float(ceiling) if normalized else float(raw)
     elif not normalized:

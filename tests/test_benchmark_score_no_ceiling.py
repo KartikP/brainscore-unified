@@ -89,19 +89,26 @@ CASES = {
 }
 
 
+def _same(a: Score, b: Score) -> bool:
+    """Equal dtype and equal bytes: a float comparison would hide both."""
+    a, b = np.asarray(a.values), np.asarray(b.values)
+    return a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
+
+
 @pytest.mark.parametrize('case', sorted(CASES))
 def test_the_value_and_raw_do_not_move(case):
     old_call, new_call, ceiling_after, normalized_before, normalized_after = CASES[case]
     old, new = old_call(), new_call()
-    assert float(new) == float(old)                       # bit for bit
-    assert float(new.attrs['raw']) == float(old.attrs['raw'])
+    assert _same(new, old)                                 # bit for bit, same dtype
+    assert _same(new.attrs['raw'], old.attrs['raw'])
     assert old.attrs['normalized'] is normalized_before
     assert new.attrs['normalized'] is normalized_after
     if ceiling_after == 'not_estimated':
         assert math.isnan(float(new.attrs['ceiling']))
         assert new.attrs['ceiling'].attrs['status'] == 'not_estimated'
     else:
-        assert float(new.attrs['ceiling']) == float(old.attrs['ceiling']) == ceiling_after
+        assert _same(new.attrs['ceiling'], old.attrs['ceiling'])
+        assert float(new.attrs['ceiling']) == ceiling_after
 
 
 def test_before_values_from_the_frozen_builder():
@@ -112,21 +119,39 @@ def test_before_values_from_the_frozen_builder():
     assert float(CASES['measured'][0]()) == RAW / MEASURED
 
 
-def test_lahner_whole_cortex_value_equals_the_old_division_by_one(monkeypatch, tmp_path):
-    install(monkeypatch, tmp_path)
-    benchmark = brainscore.load_benchmark('Lahner2024-fMRI-naturalistic')
-    score = benchmark(Recorder({'vision:video'}))
-    raw = float(score.attrs['raw'])
-    old = old_benchmark_score(_bench(Score(1.0)), raw / 1.0, raw=raw, metric='m',
-                              normalized=False)
-    assert float(score) == float(old)
-    assert score.attrs['normalized'] is False
-    assert score.attrs['ceiling'].attrs['status'] == 'not_estimated'
+def _old_lahner_builder(benchmark, *, raw, metric, ceiling=None, value=None, **attrs):
+    """The two Lahner calls at 9442779, with the old constructor ceiling (Score(1.0)
+    where no ceiling was given), run through the frozen builder."""
+    if value is not None:                                  # per-voxel, measured
+        return old_benchmark_score(benchmark, value, raw=raw, metric=metric,
+                                   normalized=True, ceiling=ceiling, **attrs)
+    measured = not math.isnan(float(benchmark.ceiling))
+    old_ceiling = benchmark.ceiling if measured else Score(1.0)
+    return old_benchmark_score(benchmark, raw / float(old_ceiling), raw=raw, metric=metric,
+                               normalized=float(old_ceiling) != 1.0, ceiling=old_ceiling,
+                               **attrs)
 
 
-def test_lahner_visual_region_keeps_its_measured_ceiling(monkeypatch, tmp_path):
+@pytest.mark.parametrize('identifier,measured', [
+    ('Lahner2024-fMRI-naturalistic', False),
+    ('Lahner2024-fMRI-naturalistic-visualROI', True),
+])
+def test_lahner_old_and_new_benchmark_paths_agree(monkeypatch, tmp_path, identifier, measured):
+    """The same synthetic data through the old and the new builder: value, raw,
+    flag and (where measured) ceiling are byte-identical."""
+    import brainscore.benchmarks.lahner2024.benchmark as lahner
     install(monkeypatch, tmp_path)
-    score = brainscore.load_benchmark('Lahner2024-fMRI-naturalistic-visualROI')(
-        Recorder({'vision:video'}))
-    assert score.attrs['normalized'] is True
-    assert np.isfinite(float(score.attrs['ceiling']))
+    new = brainscore.load_benchmark(identifier)(Recorder({'vision:video'}))
+    with monkeypatch.context() as patch:
+        patch.setattr(lahner, 'benchmark_score', _old_lahner_builder)
+        old = brainscore.load_benchmark(identifier)(Recorder({'vision:video'}))
+    assert _same(new, old)
+    assert _same(new.attrs['raw'], old.attrs['raw'])
+    assert new.attrs['normalized'] is old.attrs['normalized'] is measured
+    np.testing.assert_array_equal(new.attrs['per_voxel_r'], old.attrs['per_voxel_r'])
+    if measured:
+        assert _same(new.attrs['ceiling'], old.attrs['ceiling'])
+        assert old.attrs['ceiling_aggregation'] == 'per_voxel'
+    else:
+        assert float(old.attrs['ceiling']) == 1.0
+        assert new.attrs['ceiling'].attrs['status'] == 'not_estimated'
