@@ -5,7 +5,6 @@ import json
 import numpy as np
 import pytest
 import torch
-from concept_erasure import LeaceEraser
 
 from brainscore.experiments import Experiment, SessionProtocol, TorchInstrumentation
 from brainscore.run_record import RunRecord
@@ -14,6 +13,10 @@ from brainscore_core.events import Selection
 from brainscore_core.streaming import Session, StreamEvent
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from tests.test_ablation_tool_loader import FixtureSubject
+
+LeaceEraser = pytest.importorskip(
+    'concept_erasure',
+    reason='concept-erasure is not installed; install brainscore[test] (or brainscore[interpretability])').LeaceEraser
 
 pytestmark = pytest.mark.unit
 

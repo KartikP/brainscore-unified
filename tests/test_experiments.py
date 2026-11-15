@@ -223,6 +223,10 @@ def test_saved_calls_explicit_allowlist_and_reset(tmp_path):
 
 
 def test_cross_domain_demonstrations(tmp_path):
+    # The example is its own distribution; it records its installed version. The GitHub
+    # jobs install it (and also run its installed module on its own).
+    pytest.importorskip('umi_partner_tool', reason='the example package is not installed: '
+                        'python -m pip install ./examples/partner_tool')
     from umi_partner_tool.toolbox import run
 
     summary = run(directory=tmp_path / 'installed-examples')
