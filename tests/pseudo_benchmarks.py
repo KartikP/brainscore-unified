@@ -24,7 +24,7 @@ import re
 import numpy as np
 
 from brainscore import BrainScoreModel
-from brainscore.benchmarks._score import benchmark_score, not_estimated
+from brainscore.benchmarks import benchmark_score, not_estimated
 from brainscore_core import Subject
 from brainscore_core.benchmarks import BenchmarkBase
 from brainscore_core.contract import TaskContext
@@ -124,7 +124,7 @@ class PseudoChoice(BenchmarkBase):
                                               answer['response_state'].values, answer.values)]
         correct += [False] * (len(IDS) - len(correct))
         accuracy = float(np.mean(correct))
-        return benchmark_score(self, accuracy, raw=accuracy, metric='accuracy', normalized=False,
+        return benchmark_score(self, raw=accuracy, metric='accuracy',
                                **_counts(answer))
 
 
@@ -152,8 +152,7 @@ class PseudoProbabilities(BenchmarkBase):
                                             answer['response_state'].values, answer.values)
                  if state == 'valid']
         value = float(np.mean(given)) if given else float('nan')
-        return benchmark_score(self, value, raw=value, metric='mean probability of the human choice',
-                               normalized=False, **_counts(answer))
+        return benchmark_score(self, raw=value, metric='mean probability of the human choice', **_counts(answer))
 
 
 class PseudoRating(BenchmarkBase):
@@ -179,8 +178,7 @@ class PseudoRating(BenchmarkBase):
             answer['stimulus_id'].values, answer['response_state'].values, answer.values)
             if state == 'valid']
         value = _pearson(pairs)
-        return benchmark_score(self, value, raw=value, metric='pearson r with human ratings',
-                               normalized=False, **_counts(answer))
+        return benchmark_score(self, raw=value, metric='pearson r with human ratings', **_counts(answer))
 
 
 class PseudoResponseTime(BenchmarkBase):
@@ -208,8 +206,7 @@ class PseudoResponseTime(BenchmarkBase):
             answer['stimulus_id'].values, answer['response_state'].values, answer.values)
             if state == 'valid']
         value = _pearson(pairs)
-        return benchmark_score(self, value, raw=value, metric='pearson r with human response times',
-                               normalized=False, **_counts(answer))
+        return benchmark_score(self, raw=value, metric='pearson r with human response times', **_counts(answer))
 
 
 class PseudoText(BenchmarkBase):
@@ -240,8 +237,7 @@ class PseudoText(BenchmarkBase):
             answer['response_state'].values, answer.values)]
         correct = [p == HUMAN_CHOICE[sid] for sid, p in zip(answer['stimulus_id'].values, parsed)]
         accuracy = float(np.mean(correct))
-        return benchmark_score(self, accuracy, raw=accuracy, metric='exact match after parse',
-                               normalized=False, n_unparsed=parsed.count(None), **_counts(answer))
+        return benchmark_score(self, raw=accuracy, metric='exact match after parse', n_unparsed=parsed.count(None), **_counts(answer))
 
 
 BENCHMARKS = {'behavior:choice': PseudoChoice, 'behavior:probabilities': PseudoProbabilities,
