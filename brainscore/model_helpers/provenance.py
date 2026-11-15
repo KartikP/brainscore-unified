@@ -141,12 +141,15 @@ def session_entry(model, session, log) -> dict:
     """
     items = []
     served = set()
+    facts = {}      # the facts of each part object, read once in the session
     for record in log.records.values():
         obj = log.objects[record['object']]
         served |= set(record['serves'])
+        if record['object'] not in facts:
+            facts[record['object']] = _facts(obj, log.settings.get(record['object']))
         items.append({'part': record['part'], 'kind': _kind(obj), 'serves': list(record['serves']),
                       'layers': sorted(record['layers']), 'conversion': dict(record['conversion']),
-                      **_facts(obj, log.settings.get(record['object']))})
+                      **facts[record['object']]})
     for channel in sorted(set(session.outputs or ()) - served):
         items.append({'part': NOT_STATED, 'kind': NOT_STATED, 'serves': [channel], 'layers': [],
                       'conversion': {}, **_facts(None, None)})

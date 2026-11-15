@@ -618,3 +618,25 @@ def test_an_inner_score_keeps_its_silent_subject_and_names_no_part_that_never_ra
     score = _score(outer, _InnerScore(inner))
     assert calls == []                                   # the outer model's part never ran
     assert score.attrs['provenance'] == ({'subject': inner.identifier, 'parts': NS, 'activation_store': 'off'},)
+
+
+def test_the_facts_of_a_part_are_read_once_per_session(monkeypatch):
+    """One TextWrapper serves IT and V4: two items, one reading of its parameters."""
+    monkeypatch.setenv('BRAINSCORE_REGIONS_PER_PASS', 'one')
+    wrapper = text_wrapper(batch_size=2)
+    reads, parameters = [], wrapper._model.parameters
+    monkeypatch.setattr(wrapper._model, 'parameters', lambda *a, **k: reads.append(1) or parameters(*a, **k))
+    model = BrainScoreModel('read-once', extractor={'text': wrapper}, region_layer_map={'IT': 'proj', 'V4': 'enc'})
+    from brainscore.model_helpers import provenance
+    build = provenance.session_entry
+
+    def counted(*a):
+        before = len(reads)
+        entry = build(*a)
+        counts.append(len(reads) - before)
+        return entry
+    counts = []
+    monkeypatch.setattr(provenance, 'session_entry', counted)
+    score = _score(model, _Neural(_sentences(), {'neural:IT', 'neural:V4'}))
+    assert len(_entry(score)['parts']) == 2
+    assert counts == [1]
