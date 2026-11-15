@@ -1,7 +1,6 @@
 """Load a validated local EWoK build through the ordinary data registries."""
 import hashlib
 import json
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,7 +10,8 @@ if TYPE_CHECKING:
 
 
 def load_prepared(root: str | Path | None = None) -> tuple[list[dict], dict]:
-    root = Path(root or os.environ.get('BRAINSCORE_EWOK_ROOT', '~/.brainio/ewok-core-1.0')).expanduser()
+    from . import EWOK_ROOT
+    root = Path(root).expanduser() if root else EWOK_ROOT.resolved()
     try:
         manifest = json.loads((root / 'manifest.json').read_text())
         raw = (root / 'items.json').read_bytes()

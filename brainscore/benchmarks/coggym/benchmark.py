@@ -90,7 +90,8 @@ class CogGymBenchmark(BenchmarkBase):
         if experiment not in EXPERIMENTS:
             raise ValueError(f'Unknown public CogGym experiment: {experiment}')
         if checkout is None:
-            from brainscore.data.local import COGGYM_CHECKOUT, path
+            from brainscore.data.coggym import COGGYM_CHECKOUT
+            from brainscore.data.local import path
             checkout = path(COGGYM_CHECKOUT.name)      # the registered data location
         if reset is not None and not callable(reset):
             raise TypeError('reset must be a provider reset(repetition) callback')

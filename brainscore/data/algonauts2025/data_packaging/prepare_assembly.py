@@ -40,7 +40,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from brainscore.data import local
+from brainscore.data.algonauts2025 import ALGONAUTS_PREPARED
 
 
 ALGONAUTS_SUBJECTS = (1, 2, 3, 5)
@@ -423,7 +423,7 @@ def main():
     parser.add_argument('--algonauts-root', type=Path, required=True,
                         help='DataLad-installed dataset directory')
     parser.add_argument('--output-root', type=Path,
-                        default=local.ALGONAUTS_PREPARED.resolved())
+                        default=ALGONAUTS_PREPARED.resolved())
     parser.add_argument('--subjects', type=int, nargs='+',
                         default=list(ALGONAUTS_SUBJECTS))
     parser.add_argument('--splits', type=str, nargs='+',

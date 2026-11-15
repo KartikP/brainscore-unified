@@ -97,8 +97,9 @@ class TestFriendsLocation:
     """The Friends benchmarks read two folders; each has one BRAINSCORE_ variable."""
 
     def test_two_assets_with_prefixed_variables(self):
-        assert local.ALGONAUTS_ROOT.env_var == 'BRAINSCORE_ALGONAUTS_ROOT'
-        assert local.ALGONAUTS_PREPARED.env_var == 'BRAINSCORE_ALGONAUTS_PREPARED'
+        from brainscore.data.algonauts2025 import ALGONAUTS_PREPARED, ALGONAUTS_ROOT
+        assert ALGONAUTS_ROOT.env_var == 'BRAINSCORE_ALGONAUTS_ROOT'
+        assert ALGONAUTS_PREPARED.env_var == 'BRAINSCORE_ALGONAUTS_PREPARED'
 
     def test_data_code_reads_the_prepared_asset(self, tmp_path, monkeypatch):
         from brainscore.data.algonauts2025 import default_data_root
@@ -152,3 +153,25 @@ def test_records_name_exactly_the_registered_benchmarks_that_read_them():
     assert {name: set(asset.used_by) for name, asset in local.REGISTRY.items()} == expected
     for name, asset in local.REGISTRY.items():
         assert len(asset.used_by) == len(set(asset.used_by)), f'{name} repeats an identifier'
+
+
+def test_the_asset_list_needs_no_ml_import():
+    """Each data plugin declares its assets in its own ``__init__.py``; listing them
+    (``python -m brainscore.data``) imports no ML library."""
+    import subprocess
+    import sys
+    code = (
+        "import sys\n"
+        "from brainscore.data.__main__ import main\n"
+        "main([])\n"
+        "loaded = [m for m in ('torch', 'transformers', 'cv2', 'sklearn') if m in sys.modules]\n"
+        "assert not loaded, loaded\n")
+    result = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    for name in local.REGISTRY:
+        assert name in result.stdout
+
+
+def test_a_second_asset_with_the_same_name_is_refused(asset):
+    with pytest.raises(ValueError, match='already declared'):
+        local.register(asset)

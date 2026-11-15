@@ -16,6 +16,46 @@ from typing import Dict, Optional, Sequence
 from brainscore import data_registry, stimulus_set_registry
 from brainscore.data import local
 
+# Friends benchmarks: every registered identifier that reads the prepared files.
+_ALGONAUTS_IDENTIFIERS = (
+    [f'Algonauts2025-friends-sub{participant:02d}' for participant in (1, 2, 3, 5)]
+    + ['Algonauts2025-friends-sub01-video',
+       'Algonauts2025-friends-sub01-video-audio'])
+
+ALGONAUTS_ROOT = local.register(local.LocalAsset(
+    name='algonauts2025-root',
+    env_var='BRAINSCORE_ALGONAUTS_ROOT',
+    default_path='algonauts_2025',
+    kind='stimuli',
+    why_local='The stimuli are the Friends and Movie10 films; the fMRI is '
+              'released under a data-use agreement the downloader signs.',
+    source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
+    obtain='The competition dataset via DataLad (~130 GB: 129 GB stimuli, ~1 GB '
+           'fMRI per subject). Ubuntu 22.04 ships a git-annex too old for '
+           'current DataLad; install it from conda-forge instead.',
+    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
+            '--algonauts-root <root> --subjects 1',
+    used_by=_ALGONAUTS_IDENTIFIERS,
+))
+
+ALGONAUTS_PREPARED = local.register(local.LocalAsset(
+    name='algonauts2025-prepared',
+    env_var='BRAINSCORE_ALGONAUTS_PREPARED',
+    default_path='.brainio/algonauts2025',
+    kind='neural data',
+    why_local='The converter builds these files from the provider files above; '
+              'Brain-Score does not host them.',
+    source='https://github.com/courtois-neuromod/algonauts_2025.competitors',
+    obtain='Nothing to download. Run the converter on the dataset above; it '
+           'writes the per-TR assemblies and stimulus tables that the '
+           'benchmarks read. Then cut the films into one file per scan with '
+           'brainscore.data.algonauts2025.data_packaging.prepare_stimuli '
+           '(see brainscore/data/algonauts2025/README.md).',
+    prepare='python -m brainscore.data.algonauts2025.data_packaging.prepare_assembly '
+            '--algonauts-root <root> --output-root <this folder> --subjects 1',
+    used_by=_ALGONAUTS_IDENTIFIERS,
+))
+
 
 PARTICIPANTS = (1, 2, 3, 5)
 SPLITS = ('friends', 'friends_s7', 'ood')
@@ -43,7 +83,7 @@ _PREPARE_STIMULI = ['python', '-m', 'brainscore.data.algonauts2025.data_packagin
 
 def default_data_root() -> Path:
     """The folder of prepared files: the local asset ``algonauts2025-prepared``."""
-    return local.ALGONAUTS_PREPARED.resolved()
+    return ALGONAUTS_PREPARED.resolved()
 
 
 def _split_identifier(split: str) -> str:
