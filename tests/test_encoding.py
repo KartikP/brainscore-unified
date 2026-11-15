@@ -334,6 +334,11 @@ def _tr_data(n_runs=20, per_run=60, n_feat=48, n_vox=4500, n_participants=4, see
     return X, Y, run_idx, participants
 
 
+def _rows_of(X, run_idx):
+    """``features_for`` of a fixed design: the rows of the scope runs."""
+    return lambda train_runs, scope_runs: X[np.isin(run_idx, scope_runs)]
+
+
 class TestIdentityLahnerTimeResolved:
     """``Lahner2024-fMRI-naturalistic-timeresolved{,-visualROI,-improved,
     -improved-visualROI}``: scikit-learn ridge at penalty 1, voxel batches of 2000,
@@ -342,14 +347,14 @@ class TestIdentityLahnerTimeResolved:
     def test_run_blocks(self):
         from brainscore.benchmarks.lahner2024 import RunBlocks
         X, Y, run_idx, participants = _tr_data()
-        new = RunBlocks(4).per_voxel_r(X, Y, run_idx, participants)
+        new = RunBlocks(4).per_voxel_r(_rows_of(X, run_idx), Y, run_idx, participants)
         _same(new, old.tr_cross_validated_ridge(X, Y, run_idx, n_held_out=4))
         assert new.dtype == np.float32
 
     def test_run_blocks_within_participant(self):
         from brainscore.benchmarks.lahner2024 import ParticipantRunBlocks
         X, Y, run_idx, participants = _tr_data()
-        new = ParticipantRunBlocks(2).per_voxel_r(X, Y, run_idx, participants)
+        new = ParticipantRunBlocks(2).per_voxel_r(_rows_of(X, run_idx), Y, run_idx, participants)
         _same(new, old.tr_cross_validated_ridge_within_participant(
             X, Y, run_idx, participants, n_held_out_per_participant=2))
 

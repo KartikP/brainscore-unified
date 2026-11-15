@@ -21,7 +21,7 @@ from brainscore.benchmarks.lahner2024.benchmark import _split_half_reliability
 from brainscore.benchmarks.lahner2024.benchmark_timeresolved import TR_SEC
 from brainscore.temporal import double_gamma_hrf, hrf_convolve
 from tests.lahner_synthetic import (
-    CLIPS, GLM_REPS, N_TR, N_VOXELS, Recorder, glm_assembly, glm_values, install, tr_events,
+    CLIPS, GLM_CLIPS, GLM_REPS, N_TR, N_VOXELS, TEST_CLIPS, Recorder, glm_assembly, glm_values, install, tr_events,
     tr_runs, unit_values)
 
 WIDTH = 4   # features per clip of the default Recorder
@@ -52,10 +52,11 @@ def mask_of(voxels):
 # ── GLM betas ─────────────────────────────────────────────────────
 
 
-def glm_expected_r(values, mask):
-    """5 shuffled folds over the clips (seed 0), ridge at penalty 1, on the clip means."""
-    features = np.stack([unit_values(clip, 'neural:IT', WIDTH)[0] for clip in CLIPS])
-    neural = values.reshape(GLM_REPS, len(CLIPS), N_VOXELS).mean(0)[:, mask]
+def glm_expected_r(values, mask, clips=GLM_CLIPS):
+    """5 shuffled folds over ``clips`` (seed 0), ridge at penalty 1, on the clip means."""
+    features = np.stack([unit_values(clip, 'neural:IT', WIDTH)[0] for clip in clips])
+    rows = [GLM_CLIPS.index(clip) for clip in clips]
+    neural = values.reshape(GLM_REPS, len(GLM_CLIPS), N_VOXELS).mean(0)[rows][:, mask]
     folds = list(KFold(n_splits=5, shuffle=True, random_state=0).split(features))
     return held_out_r(features, neural, folds)
 
@@ -84,11 +85,12 @@ def test_a_constant_voxel_in_the_region_is_left_out_and_counted(monkeypatch, tmp
 def test_with_a_measured_ceiling_a_voxel_without_r_or_ceiling_is_left_out(monkeypatch, tmp_path):
     """Version 1 divided the shorter vector of finite r by every ceiling: a shape error
     here. Version 2 leaves out the constant voxel (no r, no ceiling) and the voxel
-    whose reliability is at or below zero (an r, no ceiling)."""
+    whose reliability is at or below zero (an r, no ceiling). The ceilings come from
+    the test-set videos and only the training videos are scored."""
     values = glm_values()
     constant = 20000
     values[:, constant] = 3.0
-    reliability = _split_half_reliability(glm_assembly(values))
+    reliability = _split_half_reliability(glm_assembly(values), stimuli=TEST_CLIPS)
     reliable = [int(v) for v in np.flatnonzero(reliability > 0.3)[-30:]]
     unreliable = int(np.flatnonzero((reliability <= 0) & (np.arange(N_VOXELS) < 1000))[0])
     mask = mask_of(reliable + [constant, unreliable])
@@ -96,7 +98,7 @@ def test_with_a_measured_ceiling_a_voxel_without_r_or_ceiling_is_left_out(monkey
     score = Lahner2024BOLDMoments(ceiling=VISUAL_ROI_CEILING, voxel_mask_fn=lambda: mask, identifier='Lahner2024-fMRI-naturalistic')(
         Recorder({'vision:video'}))
 
-    expected = glm_expected_r(values, mask)
+    expected = glm_expected_r(values, mask, CLIPS)
     ceiling = np.sqrt(np.clip(reliability[mask], 0.0, 1.0))
     counts = ~np.isnan(expected) & (ceiling > 0)
     r = score.attrs['per_voxel_r']
@@ -193,15 +195,14 @@ def test_a_voxel_is_preprocessed_alike_in_any_selection(monkeypatch, tmp_path, c
     bold[:, :, 6] = 10000.0 + 0.001 * (np.arange(N_TR) % 2)
     install(monkeypatch, tmp_path, runs=runs, bold=bold)
     benchmark = Lahner2024BOLDMoments_timeresolved(confounds=confounds, identifier='Lahner2024-fMRI-naturalistic-timeresolved')
-    design = np.zeros((len(runs), N_TR, 2), dtype=np.float32)
-    every = benchmark._concatenate_with_mask(design, benchmark.assembly)[1]
+    every = benchmark._concatenate_with_mask(benchmark.assembly)[0]
     assert every.dtype == np.float32
     assert not every[:, 5].any()
     assert every[:, 6].all() and every[:, 6].std() == pytest.approx(1, abs=1e-5)
     for voxels in ([5], [5, 6], [0, 5, 6, 9], range(0, N_VOXELS, 7)):
         region = mask_of(voxels)
         np.testing.assert_array_equal(
-            benchmark._concatenate_with_mask(design, benchmark.assembly, region)[1], every[:, region])
+            benchmark._concatenate_with_mask(benchmark.assembly, region)[0], every[:, region])
 
 
 @pytest.mark.parametrize('r,ceiling,kept', [

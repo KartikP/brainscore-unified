@@ -413,7 +413,10 @@ def cross_validated_r(features, Y, folds, fit, *, groups=None,
     """Held-out Pearson r of each target, and the penalties chosen in each fit.
 
     Args:
-        features: ``(n_rows, n_features)`` or a list of bands with the same rows.
+        features: ``(n_rows, n_features)`` or a list of bands with the same rows;
+            or a function of the fold's position that returns either (features
+            prepared on that fold's training rows). It is called once per fold
+            and target batch, so it must remember what it built.
         Y: ``(n_rows, n_targets)`` recorded data.
         folds: ``(train_rows, test_rows)`` pairs, as masks or positions.
         fit: from ``ridge``.
@@ -428,7 +431,8 @@ def cross_validated_r(features, Y, folds, fit, *, groups=None,
     correlation); ``chosen`` lists what each fit returned, batch by batch and
     fold by fold.
     """
-    bands = _as_bands(features)
+    per_fold = callable(features)
+    bands = None if per_fold else _as_bands(features)
     folds = list(folds)
     n_targets = Y.shape[1]
     if target_batch is None:
@@ -440,10 +444,11 @@ def cross_validated_r(features, Y, folds, fit, *, groups=None,
     for columns in batches:
         Y_part = Y if columns is None else Y[:, columns]
         held = np.full_like(Y_part, np.nan)
-        for train, test in folds:
+        for position, (train, test) in enumerate(folds):
+            fold_bands = _as_bands(features(position)) if per_fold else bands
             predictions, fold_chosen = fit(
-                [band[train] for band in bands], Y_part[train],
-                [band[test] for band in bands],
+                [band[train] for band in fold_bands], Y_part[train],
+                [band[test] for band in fold_bands],
                 None if groups is None else groups[train])
             held[test] = predictions
             chosen.append(fold_chosen)
