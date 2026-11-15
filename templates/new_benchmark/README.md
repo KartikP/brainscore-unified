@@ -14,7 +14,7 @@ See `EXTENDING.md` (Seam 2) for the contract.
 
 ## Variants
 
-A variant of a benchmark is one more registry line: `benchmark_registry['<id>-<suffix>'] = partial(YourBenchmark, <arguments>)` (or `lambda: YourBenchmark(<arguments>)`). Put the arguments that make the variant in that line, for example `channels=('text',)` for a variant that sends text. The registry line names the identifier too: a class with variants takes it as an argument, `identifier='<id>-<suffix>'`, as ROAR, induced dyslexia and Algonauts2025 do, and does not build it from a table of suffixes. Do not write a subclass or a factory function that only passes arguments. Write a subclass only when it adds behavior. The identifier of a variant stays fixed once registered.
+A variant of a benchmark is one more registry line: `benchmark_registry['<id>-<suffix>'] = partial(YourBenchmark, <arguments>)` (or `lambda: YourBenchmark(<arguments>)`). Put the arguments that make the variant in that line, for example `channels=('text',)` for a variant that sends text. The registry line names the identifier too: a class with variants takes it as an argument, `identifier='<id>-<suffix>'`, as ROAR, induced dyslexia and Algonauts2025 do, and does not build it from a table of suffixes. When an argument changes what the variant requests, the class sets `self.requested_output_channels` in `__init__` from it (an instance attribute), before `super().__init__(...)`. Do not write a subclass or a factory function that only passes arguments. Write a subclass only when it adds behavior. The identifier of a variant stays fixed once registered.
 
 From the `templates/` folder, the template benchmark scores the template model
 offline:
