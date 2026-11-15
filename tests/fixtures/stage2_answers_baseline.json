@@ -1,0 +1,3690 @@
+{
+ "answer+behavioral_readout_layer": {
+  "out_channels": [
+   "behavior",
+   "behavior:choice",
+   "behavior:probabilities",
+   "behavior:rating",
+   "behavior:rt"
+  ],
+  "sessions": {
+   "choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[0.5019920468330383, 0.49800798296928406]",
+        "[0.49800798296928406, 0.5019920468330383]",
+        "[0.5019920468330383, 0.49800798296928406]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000a05110e03f",
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f"
+      ]
+     }
+    }
+   },
+   "choice with reaction time evidence_margin": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[0.5019920468330383, 0.49800798296928406]",
+        "[0.49800798296928406, 0.5019920468330383]",
+        "[0.5019920468330383, 0.49800798296928406]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000a05110e03f",
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f"
+      ]
+     },
+     "behavior:rt": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rt",
+       "method": "link",
+       "origin": "derived",
+       "parameters": {
+        "link": "evidence_margin",
+        "source_method": "readout",
+        "units": "monotone"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:346d61db5cdfef3f",
+       "f64:346d61db5cdfef3f",
+       "f64:346d61db5cdfef3f"
+      ]
+     }
+    }
+   },
+   "choice with reaction time surprisal": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[0.5019920468330383, 0.49800798296928406]",
+        "[0.49800798296928406, 0.5019920468330383]",
+        "[0.5019920468330383, 0.49800798296928406]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000a05110e03f",
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f"
+      ]
+     },
+     "behavior:rt": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rt",
+       "method": "link",
+       "origin": "derived",
+       "parameters": {
+        "link": "surprisal",
+        "source_method": "readout",
+        "units": "monotone"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:857e4f0602d1ef3f",
+       "f64:857e4f0602d1ef3f",
+       "f64:857e4f0602d1ef3f"
+      ]
+     }
+    }
+   },
+   "legacy answer": {
+    "outputs": {
+     "behavior": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     }
+    }
+   },
+   "legacy readout": {
+    "outputs": {
+     "behavior": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
+      ]
+     }
+    }
+   },
+   "probabilities only": {
+    "outputs": {
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[0.5019920468330383, 0.49800798296928406]",
+        "[0.49800798296928406, 0.5019920468330383]",
+        "[0.5019920468330383, 0.49800798296928406]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000a05110e03f",
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f"
+      ]
+     }
+    }
+   },
+   "rating": {
+    "outputs": {
+     "behavior:rating": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "5.777777777777778",
+        "2.2222222222222223",
+        "5.777777777777778"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rating",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:c7711cc7711c1740",
+       "f64:721cc7711cc70140",
+       "f64:c7711cc7711c1740"
+      ]
+     }
+    }
+   },
+   "raw scores": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
+    ]
+   }
+  }
+ },
+ "answer+reply": {
+  "out_channels": [
+   "behavior",
+   "behavior:choice",
+   "behavior:confidence",
+   "behavior:rating",
+   "behavior:text"
+  ],
+  "sessions": {
+   "choice": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+    ]
+   },
+   "choice with reaction time evidence_margin": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities', 'behavior:rt'] in one session: it does not produce ['behavior:probabilities', 'behavior:rt']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+    ]
+   },
+   "choice with reaction time surprisal": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities', 'behavior:rt'] in one session: it does not produce ['behavior:probabilities', 'behavior:rt']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+    ]
+   },
+   "legacy answer": {
+    "outputs": {
+     "behavior": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     }
+    }
+   },
+   "legacy readout": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Subject 'owned' cannot run the behavioral task task_type='probabilities'. Paths tried: generation needs answer=, TaskContext.instruction and TaskContext.label_set; likelihood needs a TaskContext(response=Choice(...)); a legacy task has no likelihood path; readout needs TaskContext.fitting_stimuli (and behavioral_readout_layer=)"
+    ]
+   },
+   "probabilities only": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+    ]
+   },
+   "rating": {
+    "outputs": {
+     "behavior:rating": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        false,
+        false,
+        false
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "no number in the reply",
+        "no number in the reply",
+        "no number in the reply"
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "no number in the reply",
+        "no number in the reply",
+        "no number in the reply"
+       ],
+       "response_state": [
+        "invalid",
+        "invalid",
+        "invalid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rating",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f"
+      ]
+     }
+    }
+   },
+   "raw scores": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+    ]
+   }
+  }
+ },
+ "answer+reply+likelihood+behavioral_readout_layer": {
+  "out_channels": [
+   "behavior",
+   "behavior:choice",
+   "behavior:confidence",
+   "behavior:probabilities",
+   "behavior:rating",
+   "behavior:rt",
+   "behavior:text"
+  ],
+  "sessions": {
+   "choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax",
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f"
+      ]
+     }
+    }
+   },
+   "choice with reaction time evidence_margin": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax",
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f"
+      ]
+     },
+     "behavior:rt": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.7310585975646973, 0.2689414322376251]",
+        "[0.7310585975646973, 0.2689414322376251]",
+        "[0.7310585975646973, 0.2689414322376251]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rt",
+       "method": "link",
+       "origin": "derived",
+       "parameters": {
+        "link": "evidence_margin",
+        "source_method": "likelihood",
+        "units": "monotone"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:000000105636e13f",
+       "f64:000000105636e13f",
+       "f64:000000105636e13f"
+      ]
+     }
+    }
+   },
+   "choice with reaction time surprisal": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax",
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f"
+      ]
+     },
+     "behavior:rt": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.7310585975646973, 0.2689414322376251]",
+        "[0.7310585975646973, 0.2689414322376251]",
+        "[0.7310585975646973, 0.2689414322376251]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rt",
+       "method": "link",
+       "origin": "derived",
+       "parameters": {
+        "link": "surprisal",
+        "source_method": "likelihood",
+        "units": "monotone"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:b2b0c4229aecdc3f",
+       "f64:b2b0c4229aecdc3f",
+       "f64:b2b0c4229aecdc3f"
+      ]
+     }
+    }
+   },
+   "legacy answer": {
+    "outputs": {
+     "behavior": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     }
+    }
+   },
+   "legacy readout": {
+    "outputs": {
+     "behavior": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
+      ]
+     }
+    }
+   },
+   "probabilities only": {
+    "outputs": {
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax",
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f"
+      ]
+     }
+    }
+   },
+   "rating": {
+    "outputs": {
+     "behavior:rating": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        false,
+        false,
+        false
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "no number in the reply",
+        "no number in the reply",
+        "no number in the reply"
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "no number in the reply",
+        "no number in the reply",
+        "no number in the reply"
+       ],
+       "response_state": [
+        "invalid",
+        "invalid",
+        "invalid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rating",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f"
+      ]
+     }
+    }
+   },
+   "raw scores": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax_argmax",
+       "format": "behavior:choice",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "tie": "first",
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "model-derived",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "native",
+       "parameters": {
+        "scale": "log"
+       },
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf"
+      ]
+     }
+    }
+   }
+  }
+ },
+ "behavioral_readout_layer": {
+  "out_channels": [
+   "behavior",
+   "behavior:choice",
+   "behavior:probabilities",
+   "behavior:rating",
+   "behavior:rt"
+  ],
+  "sessions": {
+   "choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "argmax",
+       "format": "behavior:choice",
+       "method": "readout",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "readout",
+        "tie": "first"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[0.5019920468330383, 0.49800798296928406]",
+        "[0.49800798296928406, 0.5019920468330383]",
+        "[0.5019920468330383, 0.49800798296928406]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000a05110e03f",
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f"
+      ]
+     }
+    }
+   },
+   "choice with reaction time evidence_margin": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "argmax",
+       "format": "behavior:choice",
+       "method": "readout",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "readout",
+        "tie": "first"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[0.5019920468330383, 0.49800798296928406]",
+        "[0.49800798296928406, 0.5019920468330383]",
+        "[0.5019920468330383, 0.49800798296928406]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000a05110e03f",
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f"
+      ]
+     },
+     "behavior:rt": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rt",
+       "method": "link",
+       "origin": "derived",
+       "parameters": {
+        "link": "evidence_margin",
+        "source_method": "readout",
+        "units": "monotone"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:346d61db5cdfef3f",
+       "f64:346d61db5cdfef3f",
+       "f64:346d61db5cdfef3f"
+      ]
+     }
+    }
+   },
+   "choice with reaction time surprisal": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "argmax",
+       "format": "behavior:choice",
+       "method": "readout",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "readout",
+        "tie": "first"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[0.5019920468330383, 0.49800798296928406]",
+        "[0.49800798296928406, 0.5019920468330383]",
+        "[0.5019920468330383, 0.49800798296928406]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000a05110e03f",
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f"
+      ]
+     },
+     "behavior:rt": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rt",
+       "method": "link",
+       "origin": "derived",
+       "parameters": {
+        "link": "surprisal",
+        "source_method": "readout",
+        "units": "monotone"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:857e4f0602d1ef3f",
+       "f64:857e4f0602d1ef3f",
+       "f64:857e4f0602d1ef3f"
+      ]
+     }
+    }
+   },
+   "legacy answer": {
+    "outputs": {
+     "behavior": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
+      ]
+     }
+    }
+   },
+   "legacy readout": {
+    "outputs": {
+     "behavior": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f",
+       "f64:346d61db5cdfdf3f",
+       "f64:66494f925110e03f",
+       "f64:66494f925110e03f",
+       "f64:346d61db5cdfdf3f"
+      ]
+     }
+    }
+   },
+   "probabilities only": {
+    "outputs": {
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[0.5019920468330383, 0.49800798296928406]",
+        "[0.49800798296928406, 0.5019920468330383]",
+        "[0.5019920468330383, 0.49800798296928406]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000e05cdfdf3f",
+       "f64:000000a05110e03f",
+       "f64:000000a05110e03f",
+       "f64:000000e05cdfdf3f"
+      ]
+     }
+    }
+   },
+   "rating": {
+    "outputs": {
+     "behavior:rating": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "5.777777777777778",
+        "2.2222222222222223",
+        "5.777777777777778"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rating",
+       "method": "readout",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:c7711cc7711c1740",
+       "f64:721cc7711cc70140",
+       "f64:c7711cc7711c1740"
+      ]
+     }
+    }
+   },
+   "raw scores": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
+    ]
+   }
+  }
+ },
+ "reply+likelihood": {
+  "out_channels": [
+   "behavior",
+   "behavior:choice",
+   "behavior:confidence",
+   "behavior:probabilities",
+   "behavior:rating",
+   "behavior:rt",
+   "behavior:text"
+  ],
+  "sessions": {
+   "choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax",
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f"
+      ]
+     }
+    }
+   },
+   "choice with reaction time evidence_margin": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax",
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f"
+      ]
+     },
+     "behavior:rt": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.7310585975646973, 0.2689414322376251]",
+        "[0.7310585975646973, 0.2689414322376251]",
+        "[0.7310585975646973, 0.2689414322376251]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rt",
+       "method": "link",
+       "origin": "derived",
+       "parameters": {
+        "link": "evidence_margin",
+        "source_method": "likelihood",
+        "units": "monotone"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:000000105636e13f",
+       "f64:000000105636e13f",
+       "f64:000000105636e13f"
+      ]
+     }
+    }
+   },
+   "choice with reaction time surprisal": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax",
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f"
+      ]
+     },
+     "behavior:rt": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.7310585975646973, 0.2689414322376251]",
+        "[0.7310585975646973, 0.2689414322376251]",
+        "[0.7310585975646973, 0.2689414322376251]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rt",
+       "method": "link",
+       "origin": "derived",
+       "parameters": {
+        "link": "surprisal",
+        "source_method": "likelihood",
+        "units": "monotone"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:b2b0c4229aecdc3f",
+       "f64:b2b0c4229aecdc3f",
+       "f64:b2b0c4229aecdc3f"
+      ]
+     }
+    }
+   },
+   "legacy answer": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Subject 'owned' cannot run the behavioral task task_type='probabilities'. Paths tried: generation needs answer=, TaskContext.instruction and TaskContext.label_set; likelihood needs a TaskContext(response=Choice(...)); a legacy task has no likelihood path; readout needs TaskContext.fitting_stimuli (and behavioral_readout_layer=)"
+    ]
+   },
+   "legacy readout": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Subject 'owned' cannot run the behavioral task task_type='probabilities'. Paths tried: generation needs answer=, TaskContext.instruction and TaskContext.label_set; likelihood needs a TaskContext(response=Choice(...)); a legacy task has no likelihood path; readout needs TaskContext.fitting_stimuli (and behavioral_readout_layer=)"
+    ]
+   },
+   "probabilities only": {
+    "outputs": {
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax",
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f",
+       "f64:00000000d564e73f",
+       "f64:000000205636d13f"
+      ]
+     }
+    }
+   },
+   "rating": {
+    "outputs": {
+     "behavior:rating": {
+      "dims": [
+       "presentation"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "answer_valid": [
+        false,
+        false,
+        false
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "no number in the reply",
+        "no number in the reply",
+        "no number in the reply"
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "no number in the reply",
+        "no number in the reply",
+        "no number in the reply"
+       ],
+       "response_state": [
+        "invalid",
+        "invalid",
+        "invalid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:rating",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3
+      ],
+      "values": [
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f"
+      ]
+     }
+    }
+   },
+   "raw scores": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "softmax_argmax",
+       "format": "behavior:choice",
+       "method": "likelihood",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "trial",
+        "temperature": 1,
+        "tie": "first",
+        "units": "nats"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:log_probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     },
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "model-derived",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "native",
+       "parameters": {
+        "scale": "log"
+       },
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf"
+      ]
+     }
+    }
+   }
+  }
+ }
+}
