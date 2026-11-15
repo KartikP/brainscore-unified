@@ -107,3 +107,58 @@ def test_score_matches_baseline(key, entry):
     assert abs(val - base) < tol, (
         f"{key}: scored {val:.6f}, baseline {base:.4f}, |Δ|={abs(val-base):.2e} > {tol}")
     assert 'runtime_sec' in score.attrs and score.attrs['runtime_sec'] >= 0.0
+
+
+class _Requests:
+    """A participate-only subject that keeps the channel each session requests and answers it."""
+    identifier = 'format-check'
+    in_channels = {'vision:image', 'text'}
+    out_channels = {'behavior', 'behavior:choice', 'neural:IT', 'neural:V4', 'neural:language_system'}
+    required_channels = set()
+
+    def __init__(self):
+        self.requested = []
+
+    def participate(self, session):
+        import numpy as np
+        from brainscore_core.streaming import StreamEvent
+        from brainscore_core.supported_data_standards.brainio.assemblies import (
+            BehavioralAssembly, NeuroidAssembly)
+        while session.next_input() is not None:
+            pass
+        self.requested += list(session.outputs)
+        ids = list(session.stimuli['stimulus_id'])
+        for channel in session.outputs:
+            cls = NeuroidAssembly if channel.startswith('neural:') else BehavioralAssembly
+            session.respond(StreamEvent(channel, cls(
+                np.zeros((len(ids), 2)), coords={'stimulus_id': ('presentation', ids)},
+                dims=['presentation', 'neuroid' if channel.startswith('neural:') else 'choice']), None))
+
+    def reset(self):
+        pass
+
+
+@pytest.mark.unit
+def test_every_pair_names_the_format_the_facade_requests():
+    """T5: each regression pair names the channel its benchmark's old call is asked on
+    (stage 5: the probabilities task stays on bare behavior; a label list is behavior:choice)."""
+    import pandas as pd
+    from brainscore_core.legacy_facade import LegacyBenchmarkFacade
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    stimuli = StimulusSet(pd.DataFrame({'stimulus_id': ['a', 'b'], 'image_label': ['x', 'y'],
+                                        'sentence': ['one', 'two']}))
+    stimuli.identifier = 'regression-format-check'
+    for key, entry in _load_all().items():
+        subject = _Requests()
+        facade = LegacyBenchmarkFacade(subject, visual_degrees=8)
+        fmt = entry['format']
+        if 'old_task' in entry:
+            facade.start_task(entry['old_task'], stimuli)
+            facade.look_at(stimuli)
+        elif entry['domain'] == 'language':
+            facade.start_neural_recording(fmt.split(':', 1)[1])
+            facade.digest_text(['one two'])
+        else:
+            facade.start_recording(fmt.split(':', 1)[1], time_bins=[(70, 170)])
+            facade.look_at(stimuli)
+        assert subject.requested == [fmt], key
