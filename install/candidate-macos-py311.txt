@@ -1,3 +1,5 @@
+# Record of a past environment, not a current pin: the package list of the macOS (Python 3.11, CPU)
+# cold install of the candidate wheels, 2026-09-16; no script, test or doctor reads it.
 anyio==4.14.1
 appnope==0.1.4
 argon2-cffi==25.1.0
