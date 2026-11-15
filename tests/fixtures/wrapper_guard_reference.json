@@ -740,6 +740,69 @@
      7
     ],
     "values": "a5dc690808c8791ab1c2002bc3a8efa9f05a1a47c6e1f45470738951132573cf"
+   },
+   "per_image_mean_patches": {
+    "coords": {
+     "image_file_name": [
+      [
+       "presentation"
+      ],
+      "<U12",
+      "f9587adc22243da6784b802090415c382328ca998ce3923802eecf5af52f8c59"
+     ],
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "ebe540aa7b64a078b206f3a82d1ba1115d11ffe53abc49efebba03a03af1e56c"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "e6c0adad53d277c5d92e9602079d29c0c43e8c1b49c5e2d16306cdb9652eb6a2"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "686324d5c97c7cb69ae657ef41890bffd2e44bb0147029935527fb26ddad03ad"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "098357ede35ded0d811547610a8bda8566a699b2a7fdd42d8d0408e099fcdd02"
+     ],
+     "presentation": [
+      [
+       "presentation"
+      ],
+      "int64",
+      "de02690f7bea6d80b4550ba579a66f22268391abac2613f20272306b536bb166"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "<U2",
+      "532b18dbd1e7bcdc59354f6f122fb419c22d14542c9838fa6479765b1de468a9"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     3,
+     7
+    ],
+    "values": "a1781e3a33d3859d55306cd3050849fb73bd04d48e32fc06ebea9862ce4b199c"
    }
   },
   "version": 1

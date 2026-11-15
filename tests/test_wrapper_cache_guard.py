@@ -12,9 +12,19 @@ sum is exact in float32 and the digest does not depend on the order of a sum
 (machine, BLAS). Paths are relative to a temporary folder, so path coordinates
 are the same on every machine.
 
-To record the digests after a raise of ``_VERSION``, run this file with
-``BRAINSCORE_WRAPPER_GUARD_UPDATE=1``. A digest that changed under an unchanged
-``_VERSION`` is refused in that mode too.
+To record the digests after a raise of ``_VERSION``, or of a new case, run this
+file with ``BRAINSCORE_WRAPPER_GUARD_UPDATE=1``. A digest that changed under an
+unchanged ``_VERSION`` is refused in that mode too.
+
+The guards are samples: they catch a change of values only in code that their
+inputs run. Code they do not run still needs a manual raise of ``_VERSION`` when
+a change there can move values. Not run by these cases: text inputs longer than
+``max_length`` (chunked ``per_token`` passes); audio layers with a pooled 2-D
+output, and a mask at the resolution of the hooked output; video with a
+``post_hook_fn``, a custom or non-uniform clock, sampling by ``target_fps``
+(``num_frames=None``), and the ``black`` and ``gray`` padding; the VLM vision
+``none`` reduction; other devices and reduced-precision models; the ``record``
+paths of every wrapper.
 """
 import hashlib
 import json
@@ -235,12 +245,20 @@ def vlm_vision_wrapper(**settings):
                             device='cpu', **settings)
 
 
-def _image_files():
+class _PerImageProcessor(_PatchProcessor):
+    """The same patches, one row per image: ``(images, patches, 12)``, as a model that keeps images apart."""
+
+    def __call__(self, images=None, return_tensors='pt'):
+        flat = super().__call__(images=images)
+        return {'pixel_values': flat['pixel_values'].reshape(len(images), -1, 12)}
+
+
+def _image_files(sizes=((4, 4), (4, 6), (2, 2)), seed=6):
     from PIL import Image
-    generator = np.random.default_rng(6)
+    generator = np.random.default_rng(seed)
     names = []
-    for i, (height, width) in enumerate(((4, 4), (4, 6), (2, 2))):
-        names.append(f'image{i}.png')
+    for i, (height, width) in enumerate(sizes):
+        names.append(f'image{seed}-{i}.png' if seed != 6 else f'image{i}.png')
         Image.fromarray(generator.integers(0, 256, (height, width, 3), dtype=np.uint8)).save(names[-1])
     return names
 
@@ -250,6 +268,12 @@ def _vlm_vision_cases():
     for aggregation in ('mean_patches', 'first_patch'):
         wrapper = vlm_vision_wrapper(layer_aggregation=aggregation, batch_size=2)
         yield aggregation, wrapper(stimuli, layers=['blocks.0', 'blocks.1'])
+    # Images already apart on the first axis (no patch counts): the per-image branch.
+    from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
+    same_size = _stimuli('guard-vlm-per-image', image_file_name=_image_files(((4, 4),) * 3, seed=7))
+    wrapper = VLMVisionWrapper(_eighths(_PatchNet(), 5), _PerImageProcessor(), identifier='guard-vlm',
+                               batch_size=2, device='cpu')
+    yield 'per_image_mean_patches', wrapper(same_size, layers=['blocks.0', 'blocks.1'])
 
 
 CASES = {'text': _text_cases, 'audio': _audio_cases, 'video': _video_cases, 'vlm_vision': _vlm_vision_cases}
@@ -292,7 +316,8 @@ def _reference() -> dict:
 def test_values_are_pinned_for_the_current_version(wrapper):
     actual = {case: digest(assembly) for case, assembly in CASES[wrapper]()}
     version, recorded = current_version(wrapper), _reference().get(wrapper)
-    changed = recorded is not None and recorded['version'] == version and recorded['cases'] != actual
+    changed = recorded is not None and recorded['version'] == version and any(
+        recorded['cases'].get(case, digest_) != digest_ for case, digest_ in actual.items())
     raise_message = (f'The values that {MODULES[wrapper]} extracts changed, and its _VERSION is still '
                      f'{version}. The activation cache would serve the old values. Raise _VERSION in '
                      f'{MODULES[wrapper]}, then record the new digests with '
@@ -308,3 +333,6 @@ def test_values_are_pinned_for_the_current_version(wrapper):
         f'{MODULES[wrapper]} has _VERSION {version}; the reference is for {recorded["version"]}. '
         f'Record the digests of the new version with BRAINSCORE_WRAPPER_GUARD_UPDATE=1.')
     assert not changed, raise_message
+    assert set(recorded['cases']) == set(actual), (
+        f'The guard cases of {wrapper} are {sorted(actual)}; the reference holds {sorted(recorded["cases"])}. '
+        f'Record a new case with BRAINSCORE_WRAPPER_GUARD_UPDATE=1.')
