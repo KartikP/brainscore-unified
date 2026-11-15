@@ -1,11 +1,15 @@
-"""Old models wrapped by the permanent adapters stay applicable on ROAR (review S7-01).
+"""Old models wrapped by the permanent adapters on ROAR, which requests behavior:choice.
 
-ROAR requests ``behavior:choice``. The vision and language adapters answer a Choice task
-from the old model's own forced-choice task (``'probabilities'``), as the old ROAR asked
-it on bare ``behavior``, and turn its rows into the choice by core's ``argmax``. The
-expected score 0.51 (real 0.68, pseudo 0.34) is what the same stand-ins scored through
-``brainscore.score`` on the code before ROAR's switch (unified fe1a799, core 92f85d9,
-vision 9317ca34, language 6163650), measured once on that tree.
+Vision (review S7-01): the adapter answers a Choice task from the old model's own
+forced-choice task (``'probabilities'`` with fitting stimuli, which a ModelCommitment
+has), as the old ROAR asked it on bare ``behavior``, and turns its rows into the choice by
+core's ``argmax``. The expected score 0.51 (real 0.68, pseudo 0.34) is what the same
+stand-in scored through ``brainscore.score`` on the code before ROAR's switch (unified
+fe1a799, core 92f85d9, vision 9317ca34), measured once on that tree.
+
+Language: an old language model has only the tasks next_word and reading_times, so the
+adapter declares no choice and the pair is N/A before any call (a stated change: before,
+the pair was applicable by declaration and failed during the run).
 """
 import numpy as np
 import pytest
@@ -48,7 +52,7 @@ class LegacyVisionModel:
 
 
 class LegacyLanguageModel:
-    """A legacy language subject: start_behavioral_task, digest_text -> {'behavior': rows}."""
+    """An old language subject with the real behavioral tasks: next_word and reading_times."""
 
     def __init__(self):
         self.tasks = []
@@ -57,10 +61,12 @@ class LegacyLanguageModel:
         return 'legacy-language-stand-in'
 
     def start_behavioral_task(self, task):
+        if task not in ('next_word', 'reading_times'):
+            raise NotImplementedError(f'task {task!r} is not supported')
         self.tasks.append(task)
 
     def digest_text(self, text):
-        return {'behavior': _rows([f's{int(word.split("-")[1])}' for word in text])}
+        raise AssertionError('never called on ROAR')
 
 
 @pytest.fixture
@@ -77,17 +83,9 @@ def roar_words(monkeypatch):
     monkeypatch.setattr(roar, '_human_accuracy_on_stimuli', lambda *a, **k: 1.0)
 
 
-def _adapters():
-    from brainscore_language.compat.unified_adapter import LanguageModelAdapter
+def test_an_old_vision_model_scores_roar_image_as_before(roar_words):
     from brainscore_vision.compat.unified_adapter import VisionModelAdapter
-    return {'vision': (lambda: VisionModelAdapter(LegacyVisionModel()), 'vision:image'),
-            'language': (lambda: LanguageModelAdapter(LegacyLanguageModel()), 'text')}
-
-
-@pytest.mark.parametrize('kind', ['vision', 'language'])
-def test_an_old_model_scores_roar_as_before(kind, roar_words):
-    build, channel = _adapters()[kind]
-    subject = build()
+    subject, channel = VisionModelAdapter(LegacyVisionModel()), 'vision:image'
     assert {'behavior', 'behavior:choice'} <= subject.out_channels
     sessions = []
     participate = subject.participate
@@ -100,6 +98,16 @@ def test_an_old_model_scores_roar_as_before(kind, roar_words):
     record = sessions[0].collect('behavior:choice').attrs['response']
     assert (record['origin'], record['method'], record['conversion'], record['source_format']) == (
         'derived', 'legacy', 'argmax', 'behavior:probabilities')
+
+
+def test_an_old_language_model_is_not_applicable_on_roar_text_before_any_call(roar_words):
+    from brainscore_language.compat.unified_adapter import LanguageModelAdapter
+    legacy = LegacyLanguageModel()
+    subject = LanguageModelAdapter(legacy)
+    assert 'behavior:choice' not in subject.out_channels
+    score = brainscore.score(subject, Yeatman2021LexicalDecision(channels=('text',)), check_mem=False)
+    assert score.attrs['status'] == 'N/A' and 'behavior:choice' in score.attrs['reason']
+    assert legacy.tasks == []
 
 
 def test_an_old_model_with_no_behavior_task_stays_not_applicable(roar_words):
