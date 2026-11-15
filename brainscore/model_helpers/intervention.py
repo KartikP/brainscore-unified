@@ -1,7 +1,7 @@
 """Build the ``intervention`` part of a PyTorch subject.
 
 Lives in ``unified`` (not ``core``) because it depends on ``torch``.
-:func:`build_pytorch_ablation_fn` turns a torch module into an intervention
+:func:`pytorch_intervention` turns a torch module into an intervention
 part that installs a forward hook to zero, scale or drive units at a layer.
 A parameter edit (``kind='weights'``) also takes ``'replace'``; attention
 heads take ``'zero'``, ``'scale'``, ``'drive'`` or ``'replace'``.
@@ -13,7 +13,7 @@ also has an on/off switch, so a readout can be fitted on the intact network
 Usage::
 
     from brainscore import BrainScoreModel
-    from brainscore.perturbation import build_pytorch_ablation_fn
+    from brainscore.model_helpers.intervention import pytorch_intervention
     from brainscore_core import Perturbation, Selection, StateChange
     from brainscore_core.streaming_helpers import apply_state_change
 
@@ -21,7 +21,7 @@ Usage::
         identifier='clip-with-ablation',
         model=clip_model,
         ...,
-        intervention=build_pytorch_ablation_fn(clip_model),
+        intervention=pytorch_intervention(clip_model),
     )
 
     # Apply: zero units 0-99 at the last text-encoder block
@@ -81,7 +81,7 @@ def _hooked(module, hook, site: str) -> Callable[[], None]:
     return cleanup
 
 
-def build_pytorch_ablation_fn(model: Any) -> Callable:
+def pytorch_intervention(model: Any) -> Callable:
     """Build an ``intervention`` part that changes units via a torch forward hook.
 
     The returned closure understands these perturbation kinds:
@@ -352,7 +352,7 @@ def build_pytorch_ablation_fn(model: Any) -> Callable:
         if state_change.target is None or state_change.perturbation is None:
             raise ValueError(
                 f"StateChange(kind={state_change.kind!r}) for "
-                f"build_pytorch_ablation_fn requires both target and "
+                f"pytorch_intervention requires both target and "
                 f"perturbation to be set."
             )
         if state_change.kind == 'weights':

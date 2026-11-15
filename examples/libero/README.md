@@ -161,7 +161,7 @@ OpenPI JAX sampler. `qualify_tools.py` compares baseline, recorded, ablated and
 restored inference on saved requests. See [policy instrumentation](../../docs/archive/policy_instrumentation.md)
 for the target names, client example and cleanup rules.
 
-The providers have 36 CPU checks plus trained NVIDIA L4 same-input and remote checks. Selected-unit recording at all three sites preserved actions exactly on ten inputs each. The separate ten-task simulator check uses shared GPU autotuning results; it is not full benchmark reproduction.
+The instrumentations have 36 CPU checks plus trained NVIDIA L4 same-input and remote checks. Selected-unit recording at all three sites preserved actions exactly on ten inputs each. The separate ten-task simulator check uses shared GPU autotuning results; it is not full benchmark reproduction.
 
 To run the optional tests, add these dependencies to an isolated Python 3.11
 UMI test environment. `OPENPI_SOURCE` must point to the pinned checkout above:

@@ -14,7 +14,7 @@ import pytest
 import torch
 
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore.model_helpers.intervention import pytorch_intervention
 from brainscore_core.compatibility import CompatibilityError, check_compatibility, ExecutionNotFeasibleError
 from brainscore_core.contract import TaskContext
 from brainscore_core.events import Perturbation, Selection, StateChange
@@ -34,7 +34,7 @@ def _weight_subject(value=1.0, size=1):
     net = torch.nn.Linear(size, 1, bias=False)
     with torch.no_grad():
         net.weight.fill_(value)
-    return net, BrainScoreModel('weights', model=net, intervention=build_pytorch_ablation_fn(net))
+    return net, BrainScoreModel('weights', model=net, intervention=pytorch_intervention(net))
 
 
 def _edit(subject, kind='scale', indices=None, **values):
@@ -77,7 +77,7 @@ def test_only_the_outermost_intact_block_switches_a_hook_on_again():
     net = torch.nn.Sequential(torch.nn.Linear(1, 1, bias=False))
     with torch.no_grad():
         net[0].weight.fill_(1.0)
-    subject = BrainScoreModel('hook', model=net, intervention=build_pytorch_ablation_fn(net))
+    subject = BrainScoreModel('hook', model=net, intervention=pytorch_intervention(net))
     apply_state_change(subject, StateChange(kind='ablation', target=Selection('0'),
                                             perturbation=Perturbation('zero')))
     one = torch.ones(1, 1)
@@ -638,7 +638,7 @@ def test_a_part_object_and_the_owner_of_another_part_are_each_reset_once():
 def test_a_reset_refused_inside_intact_leaves_every_state_as_it_was():
     net, _ = _weight_subject()
     owner = _Owner()
-    subject = BrainScoreModel('weights', model=net, intervention=build_pytorch_ablation_fn(net),
+    subject = BrainScoreModel('weights', model=net, intervention=pytorch_intervention(net),
                               extractor={'vision': _forms_extractor(1.0)}, region_layer_map={'IT': 'x'},
                               answer=owner.answer)
     handle = _edit(subject, scale=2)
@@ -649,7 +649,7 @@ def test_a_reset_refused_inside_intact_leaves_every_state_as_it_was():
     def state():
         return (net.weight.item(), list(subject._interventions.active_interventions), subject._behavioral.task,
                 subject._behavioral.response_path, list(subject._behavioral.history),
-                subject._recorder.snapshot(), dict(subject._capability_state),
+                subject._recording_request.snapshot(), dict(subject._capability_state),
                 set(subject._capability_setup_done), owner.resets)
     with subject._interventions.intact():
         before = state()

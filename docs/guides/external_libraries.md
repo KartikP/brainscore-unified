@@ -30,7 +30,7 @@ Where your protocol fixes the exact text, use `Choice(..., verbatim=True)`: the 
 ## Three shapes
 
 1. **Your metric on answers that Brain-Score collects** (EWoK). The benchmark builds a session from the table and the task, the subject takes part, and the metric reads the stored answers. Use this shape when your evaluator needs only the answers.
-2. **Your own runner, driven through a harness** (CogGym). The library keeps its trial loop and its scoring. Each request the runner sends to its model provider becomes one session (`brainscore.harnesses.adapter.run_request`), and the subject's written answer goes back to the runner. The score is your evaluator's number, unchanged (`brainscore.harnesses.adapter.adapter_score`).
+2. **Your own runner, driven through a harness** (CogGym). The library keeps its trial loop and its scoring. Each request the runner sends to its model becomes one session (`brainscore.harnesses.adapter.run_request`), and the subject's written answer goes back to the runner. The score is your evaluator's number, unchanged (`brainscore.harnesses.adapter.adapter_score`).
 3. **A closed-loop environment.** The subject's action decides the next observation (a game, a simulator). See [Closed loop](closed_loop.md).
 
 ## What your library must not do

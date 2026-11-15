@@ -3,7 +3,7 @@
 Requires a freshly initialized policy server and the same checkpoint/runtime
 profile as the source. This does not run LIBERO physics or reproduce task scores.
 Never attach this client to a server currently running a benchmark: calls change
-its random state. Internal activity/ablation needs a provider inside that server.
+its random state. Internal activity/ablation needs an instrumentation inside that server.
 """
 import argparse
 import importlib.util

@@ -5,7 +5,7 @@ One registration declares, and answers through ``participate`` (or ``process``):
 - recording: ``neural:<region>`` (``TextWrapper``; layer names accept the
   ``':input'`` site, e.g. ``'model.layers.14.mlp.down_proj:input'``), e.g. via
   ``brainscore_core.streaming_helpers.neural_response``,
-- interventions: ``lesion`` / ``stimulation`` (``build_pytorch_ablation_fn``; send one
+- interventions: ``lesion`` / ``stimulation`` (``pytorch_intervention``; send one
   with ``brainscore_core.streaming_helpers.apply_state_change`` or the ``Intervene``
   tool, and undo only it with a reset ``StateChange`` that names its handle),
 - a ``reply`` part: a written answer to the trial's text through the chat
@@ -25,7 +25,7 @@ from brainscore_core.responses import Choice, Text
 
 from brainscore.model_helpers.replies import _generation_settings, _plain_text_scores
 from brainscore.model_helpers.text_wrapper import TextWrapper
-from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore.model_helpers.intervention import pytorch_intervention
 
 
 class _CausalLMParts:
@@ -147,7 +147,7 @@ def build_causal_lm_subject(identifier: str, model: Any, tokenizer: Any, *,
         extractor={'text': TextWrapper(model, tokenizer, identifier=identifier,
                                        layer_aggregation=layer_aggregation, batch_size=batch_size,
                                        provenance=provenance)},
-        intervention=build_pytorch_ablation_fn(model),
+        intervention=pytorch_intervention(model),
         reply=parts.reply,
         likelihood=parts.likelihood,
         # The reply gives the choice natively; the likelihood derives the probabilities.

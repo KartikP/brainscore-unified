@@ -51,7 +51,7 @@ def load_clip(random_init: bool = False):
     return CLIPModel.from_pretrained('openai/clip-vit-base-patch32'), clip_processor
 
 
-def picture_tower(clip_model, clip_processor, identifier: str, backbone_id=None) -> PytorchWrapper:
+def picture_extractor(clip_model, clip_processor, identifier: str, backbone_id=None) -> PytorchWrapper:
     """The picture extractor of every CLIP registration: the vision model with the image loader.
 
     ``identifier`` labels the activations; ``backbone_id`` names the stored
@@ -68,7 +68,7 @@ def picture_tower(clip_model, clip_processor, identifier: str, backbone_id=None)
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'clip-vit-b-32'
     clip_model, clip_processor = load_clip()
-    vision_wrapper = picture_tower(clip_model, clip_processor, identifier)
+    vision_wrapper = picture_extractor(clip_model, clip_processor, identifier)
 
     # Text: TextWrapper wraps text_model sub-module. CLIP's text encoder is
     # bidirectional (BERT-like), so mean aggregation is appropriate.

@@ -14,7 +14,7 @@ Deterministic seed so re-runs are reproducible.
 
 from brainscore.model_helpers.text_wrapper import TextWrapper
 from brainscore import BrainScoreModel, LayerSelector
-from brainscore.models.clip_vit_b_32.model import REGION_LAYER_MAP, load_clip, picture_tower
+from brainscore.models.clip_vit_b_32.model import REGION_LAYER_MAP, load_clip, picture_extractor
 
 
 def get_model(identifier: str) -> BrainScoreModel:
@@ -23,7 +23,7 @@ def get_model(identifier: str) -> BrainScoreModel:
     # Same architecture as CLIP ViT-B/32 but untrained (``load_clip(random_init=True)``);
     # the processor is reused: its preprocessing is not learned.
     clip_model, clip_processor = load_clip(random_init=True)
-    vision_wrapper = picture_tower(clip_model, clip_processor, identifier)
+    vision_wrapper = picture_extractor(clip_model, clip_processor, identifier)
 
     text_wrapper = TextWrapper(
         model=clip_model.text_model,

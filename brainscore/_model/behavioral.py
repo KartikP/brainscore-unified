@@ -388,17 +388,17 @@ class BehavioralReadout:
 
     def extract_behavioral_features(self, stimuli):
         """Run the model once at the behavioral readout layer."""
-        owner, recorder = self.owner, self.owner._recorder
-        saved, saved_classifier = recorder.snapshot(), self.readout_classifier
+        owner, request = self.owner, self.owner._recording_request
+        saved, saved_classifier = request.snapshot(), self.readout_classifier
         layer = owner._behavioral_readout_layer
         # Record the readout layer alone; the time bins stay as configured.
-        recorder.recording_layer, recorder.recording_layers = layer, [layer] if layer else []
-        recorder.recording_regions, recorder.is_multi_region, recorder.composite_recording = [], False, False
+        request.recording_layer, request.recording_layers = layer, [layer] if layer else []
+        request.recording_regions, request.is_multi_region, request.composite_recording = [], False, False
         self.readout_classifier = None
         try:
             features = record(owner, stimuli)
         finally:
-            recorder.restore(saved)
+            request.restore(saved)
             self.readout_classifier = saved_classifier
 
         if 'presentation' in features.dims and 'neuroid' in features.dims:
@@ -892,7 +892,7 @@ class BehavioralReadout:
                 f'neural:{region}' for region, region_layers in layers.items()
                 if set(region_layers) & set(call_layers)]
             with parts.serving(serves):
-                extracted = owner._recorder.ensure_layer_provenance(
+                extracted = owner._recording_request.ensure_layer_provenance(
                     extract_for_modality(owner, stimuli, modality, call_layers), call_layers,
                     description='Readout extraction')
             layer_of = extracted['layer'].values

@@ -31,7 +31,7 @@ class _OldLanguageModel:
 
 def subjects():
     from brainscore import BrainScoreModel
-    from brainscore.harnesses.human import HumanHarness
+    from brainscore.harnesses.human import HumanSubject
     from brainscore.models.chance_baseline.model import ChanceBaseline
     from brainscore_vision.compat.unified_adapter import VisionModelAdapter
     from brainscore_language.compat.unified_adapter import LanguageModelAdapter
@@ -41,8 +41,8 @@ def subjects():
         'BrainScoreModel, policy': BrainScoreModel('agent', policy=lambda step: None),
         'BrainScoreModel, readout': BrainScoreModel('clf', None, {'IT': 'layer4'}, extractor=extractor,
                                                     behavioral_readout_layer='layer4'),
-        'HumanHarness, default': HumanHarness('human'),
-        'HumanHarness, regions': HumanHarness('human', in_channels={'vision:image', 'text'},
+        'HumanSubject, default': HumanSubject('human'),
+        'HumanSubject, regions': HumanSubject('human', in_channels={'vision:image', 'text'},
                                               region_layer_map={'IT': 'probe'}),
         'ChanceBaseline': ChanceBaseline(),
         'VisionModelAdapter': VisionModelAdapter(_OldVisionModel()),
@@ -116,7 +116,7 @@ EXPECTED = {
         "required_channels": [],
         "traits": []
     },
-    "HumanHarness, default": {
+    "HumanSubject, default": {
         "in_channels": [
             "vision:image"
         ],
@@ -125,7 +125,7 @@ EXPECTED = {
         "required_channels": [],
         "traits": []
     },
-    "HumanHarness, regions": {
+    "HumanSubject, regions": {
         "in_channels": [
             "text",
             "vision:image"

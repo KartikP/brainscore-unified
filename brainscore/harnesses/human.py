@@ -1,7 +1,7 @@
-"""Human harness scaffold for the v1.5 subject-agnostic interface.
+"""Human subject scaffold for the v1.5 subject-agnostic interface.
 
 The specification describes a *subject*, not specifically a model. A human
-harness realizes the same contract on a biological subject: it presents inputs
+subject realizes the same contract on a biological subject: it presents inputs
 (a screen for vision, speakers for audio, a real coil for stimulation) and
 records outputs (electrodes or fMRI for neural, a button box or eye tracker for
 behavior). The same benchmark code that scores a model scores a human.
@@ -22,12 +22,12 @@ from brainscore_core.contract import Subject, TaskContext
 
 def _no_hardware(*_args, **_kwargs):
     raise NotImplementedError(
-        "HumanHarness has no hardware attached. Inject present_fn / record_fn / "
+        "HumanSubject has no hardware attached. Inject present_fn / record_fn / "
         "respond_fn to drive a real subject, or use mocks in tests."
     )
 
 
-class HumanHarness(Subject):
+class HumanSubject(Subject):
     """A ``Subject`` backed by a biological participant via pluggable I/O.
 
     :param identifier: a label for the participant or session.

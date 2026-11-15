@@ -29,16 +29,16 @@ _PROMPT_NOTE = {
 
 
 def _require_reset(reset):
-    """The provider's reset(repetition) callback, or an error before any compute.
+    """The adapter's reset(repetition) callback, or an error before any compute.
 
     The benchmark never reads it from the subject (Contract Rule 2.2): the
-    caller supplies it, because only the caller knows its provider.
+    caller supplies it, because only the caller knows its adapter.
     """
     if reset is None:
         raise ValueError(
             'The CogGym benchmark needs a reset callback. Load it with '
-            "load_benchmark('CogGym...', reset=provider.reset). "
-            'A provider with no state can pass reset=lambda repetition: None.'
+            "load_benchmark('CogGym...', reset=adapter.reset). "
+            'An adapter with no state can pass reset=lambda repetition: None.'
         )
     return reset
 
@@ -47,7 +47,7 @@ class CogGymBenchmark(BenchmarkBase):
     """One public experiment, returning upstream raw R² without a human ceiling.
 
     Supply a pinned checkout or set BRAINSCORE_COGGYM_CHECKOUT. ``reset`` is the
-    provider's reset(repetition) callback; it must preserve instrumentation.
+    adapter's reset(repetition) callback; it must preserve instrumentation.
     Scoring needs it: give it here or to ``protocol``.
     One repetition is a preliminary evaluation, not a leaderboard replication.
 
@@ -94,7 +94,7 @@ class CogGymBenchmark(BenchmarkBase):
             from brainscore.data.local import path
             checkout = path(COGGYM_CHECKOUT.name)      # the registered data location
         if reset is not None and not callable(reset):
-            raise TypeError('reset must be a provider reset(repetition) callback')
+            raise TypeError("reset must be the adapter's reset(repetition) callback")
         self.experiment = experiment
         self.modality = EXPERIMENTS[experiment]
         self._reset = reset

@@ -242,7 +242,7 @@ def test_shared_layer_names_keep_towers_and_regions_separate(composite):
 
 @pytest.mark.parametrize('layers', [('L',), ('L', 'M')])
 def test_localized_and_random_lesions_use_original_subset_indices(layers):
-    from brainscore.perturbation import build_pytorch_ablation_fn
+    from brainscore.model_helpers.intervention import pytorch_intervention
     from brainscore.benchmarks.induced_dyslexia.benchmark import InducedDyslexia
     net = nn.Module()
     for layer in layers:
@@ -255,7 +255,7 @@ def test_localized_and_random_lesions_use_original_subset_indices(layers):
     model = BrainScoreModel('subset', model=net,
         region_layer_map={'VWFA': CompositeSelector(tuple((layer, (4, 1)) for layer in layers))},
         extractor={'text': _Extractor(lambda: net.L(x).detach().numpy())},
-        intervention=build_pytorch_ablation_fn(net))
+        intervention=pytorch_intervention(net))
     localizer = InducedDyslexia(identifier='Yeatman2021-induced_dyslexia-text', n_units=1, channels=('text',),
         reading_benchmark=object(), localizer_stimuli=_stimuli())
     selections = localizer._localize(model)
@@ -283,7 +283,7 @@ def test_reset_and_readout_clear_composite_recording():
     model.start_task(task)
     assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
     model.reset()
-    assert not model._recorder.composite_recording and model._recorder.time_bins is None
+    assert not model._recording_request.composite_recording and model._recording_request.time_bins is None
     model.start_task(task)
     assert isinstance(model._behavioral.predict_probabilities(_stimuli()), BehavioralAssembly)
 

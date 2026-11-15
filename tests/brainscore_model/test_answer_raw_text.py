@@ -81,11 +81,11 @@ def _qwen36(reply):
 
 
 def _api(reply):
-    from brainscore.model_helpers.api_behavioral import build_api_generation_fn
+    from brainscore.model_helpers.api_behavioral import api_answer
 
     def client(model, system, messages, settings):
         return reply
-    return build_api_generation_fn(client, 'stand-in')
+    return api_answer(client, 'stand-in')
 
 
 PARTS = {'qwen2.5-vl': _qwen25, 'blip-2': _blip2, 'qwen3.6': _qwen36, 'api': _api}

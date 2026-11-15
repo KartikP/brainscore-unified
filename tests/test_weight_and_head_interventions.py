@@ -5,7 +5,7 @@ import torch
 from brainscore.brainscore_model import BrainScoreModel
 from brainscore_core.events import Perturbation, Selection, StateChange
 from brainscore_core.streaming_helpers import apply_state_change
-from brainscore.perturbation import build_pytorch_ablation_fn
+from brainscore.model_helpers.intervention import pytorch_intervention
 
 pytestmark = pytest.mark.unit
 
@@ -30,7 +30,7 @@ class Net(torch.nn.Module):
 
 def _subject(net):
     return BrainScoreModel('net', model=net, in_channels={'vision:image'},
-                           intervention=build_pytorch_ablation_fn(net))
+                           intervention=pytorch_intervention(net))
 
 
 def test_a_weight_edit_changes_outputs_and_undo_restores_it_exactly():

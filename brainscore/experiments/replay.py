@@ -89,7 +89,7 @@ def replay_calls(directory, *, methods, reset):
     """Replay explicit allowlisted methods with caller-supplied reset behavior.
 
     reset(subject) runs before and after the saved call sequence. Use a no-op
-    only for a known stateless provider. Restart remote policy RNG separately
+    only for a known stateless subject. Restart remote policy RNG separately
     when its API offers no reset. Never infer reset behavior from a method name.
     """
     events = read_events(directory)

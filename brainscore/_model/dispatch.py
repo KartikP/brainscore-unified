@@ -158,7 +158,7 @@ def record(model, stimuli, multi_modality: bool = False, check_only: bool = Fals
         _record(model, stimuli, multi_modality, check_only=True)
         return None
     output = _record(model, stimuli, multi_modality)
-    time_bins = model._recorder.time_bins
+    time_bins = model._recording_request.time_bins
     if time_bins is not None and len(time_bins) > 1:
         from brainscore_core.legacy_facade import repeat_over_time_bins
         output = repeat_over_time_bins(output, time_bins)
@@ -166,7 +166,7 @@ def record(model, stimuli, multi_modality: bool = False, check_only: bool = Fals
 
 
 def _record(model, stimuli, multi_modality, check_only=False):
-    recorder = model._recorder
+    request = model._recording_request
     detected = detect_modalities(model, stimuli)
     if not detected:
         from brainscore_core.io_catalog import stimulus_columns
@@ -184,10 +184,10 @@ def _record(model, stimuli, multi_modality, check_only=False):
             f"the column names the input type."
         )
 
-    layers = recorder.current_layers()
+    layers = request.current_layers()
     modality = pick_modality(model, detected)
     requested_modalities = {canonical_modality(model._region_modality_map[r])
-                            for r in recorder.recording_regions if r in model._region_modality_map}
+                            for r in request.recording_regions if r in model._region_modality_map}
     missing = requested_modalities - detected
     if missing:
         raise (ExecutionNotFeasibleError if check_only else ValueError)(
@@ -202,7 +202,7 @@ def _record(model, stimuli, multi_modality, check_only=False):
     # selected input is not refused because another tower is layer-aware.
     will_run = detected if (multi_modality and len(detected) > 1) else {modality}
     if (not layers and model._region_layer_map_dict
-            and not recorder.composite_recording
+            and not request.composite_recording
             and any(supports_layer_extraction(model, m) for m in will_run)):
         raise ValueError(
             f"Subject '{model.identifier}' records no region: request a "
@@ -226,15 +226,15 @@ def _record(model, stimuli, multi_modality, check_only=False):
             UserWarning,
             stacklevel=3,
         )
-    if recorder.composite_recording and supports_layer_extraction(model, modality):
-        return recorder.process_composite_regions(stimuli, modality, check_only)
-    layers = recorder.filter_layers_for_modality(layers, modality)
+    if request.composite_recording and supports_layer_extraction(model, modality):
+        return request.process_composite_regions(stimuli, modality, check_only)
+    layers = request.filter_layers_for_modality(layers, modality)
     if check_only:
         extractor_or_refuse(model, stimuli, modality, layers, in_session=True)
         return None
     assembly = extract_for_modality(model, stimuli, modality, layers)
-    if recorder.is_multi_region and supports_layer_extraction(model, modality):
-        assembly = recorder.tag_neuroids_with_regions(assembly, modality)
+    if request.is_multi_region and supports_layer_extraction(model, modality):
+        assembly = request.tag_neuroids_with_regions(assembly, modality)
     return assembly
 
 
@@ -365,15 +365,15 @@ def extract_modalities(model, stimuli, detected: Set[str], layers: List[str], ch
     import numpy as np
     import xarray as xr
 
-    recorder = model._recorder
+    request = model._recording_request
     fused = fused_for(model, detected)
     if fused is not None:
         if check_only:
             return None
         # One fused extractor takes every input type: one forward pass.
         assembly = call_extractor(fused, stimuli, layers)
-        if recorder.is_multi_region:
-            assembly = recorder.tag_neuroids_with_regions(assembly)
+        if request.is_multi_region:
+            assembly = request.tag_neuroids_with_regions(assembly)
         return assembly
     priority = model.MODALITY_PRIORITY
     ordered = sorted(detected, key=lambda m: (
@@ -383,20 +383,20 @@ def extract_modalities(model, stimuli, detected: Set[str], layers: List[str], ch
     for modality in ordered:
         if not _declares(model, modality):
             continue
-        modality_layers = recorder.filter_layers_for_modality(layers, modality)
+        modality_layers = request.filter_layers_for_modality(layers, modality)
         if (model._region_modality_map
                 and not modality_layers
-                and recorder.recording_regions):
+                and request.recording_regions):
             continue
         if check_only:
-            if recorder.composite_recording:
-                recorder.process_composite_regions(stimuli, modality, check_only=True)
+            if request.composite_recording:
+                request.process_composite_regions(stimuli, modality, check_only=True)
             else:
                 extractor_or_refuse(model, stimuli, modality, modality_layers, in_session=True)
             sub_assemblies.append(None)
             continue
-        sub = (recorder.process_composite_regions(stimuli, modality)
-               if recorder.composite_recording else
+        sub = (request.process_composite_regions(stimuli, modality)
+               if request.composite_recording else
                extract_for_modality(model, stimuli, modality, modality_layers))
         if not hasattr(sub, 'dims') or 'neuroid' not in sub.dims:
             raise TypeError(
@@ -407,8 +407,8 @@ def extract_modalities(model, stimuli, detected: Set[str], layers: List[str], ch
                 f"(TextWrapper / VLMVisionWrapper) via "
                 f"extractor={{modality: extractor}}."
             )
-        if recorder.is_multi_region and not recorder.composite_recording:
-            sub = recorder.tag_neuroids_with_regions(sub, modality)
+        if request.is_multi_region and not request.composite_recording:
+            sub = request.tag_neuroids_with_regions(sub, modality)
         n_neuroid = sub.sizes['neuroid']
         sub = sub.assign_coords(
             modality=('neuroid', np.array([modality] * n_neuroid))

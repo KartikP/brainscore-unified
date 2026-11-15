@@ -72,8 +72,8 @@ class TestCompositeMapping:
         sel = CompositeSelector(layers=(('layer.5', None), ('layer.8', None)))
         m = _model({'Vc': sel})
         m.start_recording('Vc')
-        assert m._recorder.composite_recording is True
-        assert m._recorder.recording_layers == ['layer.5', 'layer.8']
+        assert m._recording_request.composite_recording is True
+        assert m._recording_request.recording_layers == ['layer.5', 'layer.8']
 
     def test_composite_all_units(self):
         sel = CompositeSelector(layers=(('layer.5', None), ('layer.8', None)))

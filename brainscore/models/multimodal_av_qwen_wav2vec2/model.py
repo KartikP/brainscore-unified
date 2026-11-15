@@ -24,11 +24,11 @@ REGION_LAYER_MAP = {
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'qwen2.5-vl-wav2vec2'
     from brainscore.models._shared import build_audio_wrapper
-    from brainscore.models.qwen25_vl_3b.model import load_qwen, picture_tower
+    from brainscore.models.qwen25_vl_3b.model import load_qwen, picture_extractor
 
-    # The picture tower of qwen2.5-vl-3b: the same load and the same extractor.
+    # The picture extractor of qwen2.5-vl-3b: the same load and the same wrapper.
     qwen_model, qwen_processor, _ = load_qwen(identifier, 'qwen2.5-vl-3b')
-    vision_wrapper = picture_tower(qwen_model, qwen_processor, identifier)
+    vision_wrapper = picture_extractor(qwen_model, qwen_processor, identifier)
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)
 
     return BrainScoreModel(

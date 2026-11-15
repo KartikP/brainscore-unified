@@ -8,9 +8,9 @@ on each, mean-pool over frames before regression.
 ViT-G hook outputs (batch, 257, 1408) flatten to 361K features per
 image — far too many for sklearn ridge. The standalone BLIP-2 model
 applies LayerPCA(1000) at registration time to keep features
-manageable. The picture tower is the one of ``blip2-opt-2.7b``: the same
+manageable. The picture extractor is the one of ``blip2-opt-2.7b``: the same
 load (float16) and the same picture extractor (``load_blip2``,
-``picture_tower``).
+``picture_extractor``).
 
 Single registration only (no random-init null variants — BLIP-2 is
 2.7B params and re-randomizing would be costly compute we'd repeat
@@ -40,12 +40,12 @@ REGION_MODALITY_MAP = {
 
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'blip2-wav2vec2'
-    from brainscore.models.blip2_opt_2_7b.model import load_blip2, picture_tower
+    from brainscore.models.blip2_opt_2_7b.model import load_blip2, picture_extractor
     from brainscore.model_helpers._device import select_device
 
     blip_model, blip_processor = load_blip2(identifier)
     # The activations carry the reduced backbone's name; the cache key is the combo's.
-    vision_wrapper = picture_tower(blip_model, blip_processor, 'blip2-vision-pca1000',
+    vision_wrapper = picture_extractor(blip_model, blip_processor, 'blip2-vision-pca1000',
                                    backbone_id=f'{identifier}-vision')
 
     audio_wrapper, _ = build_audio_wrapper(identifier, random_init=False)

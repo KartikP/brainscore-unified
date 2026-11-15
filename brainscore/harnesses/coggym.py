@@ -1,7 +1,7 @@
 """Run the pinned CogGym evaluator with existing UMI experiment tools.
 
 CogGym owns prompts, trial selection, parsing, and scientific scoring. This
-adapter turns each provider call into a session on the common channels and
+adapter turns each call CogGym makes to its model into a session on the common channels and
 saves CogGym's unmodified trial results.
 
 Each call becomes one stimulus row: its text, image and video parts in
@@ -81,12 +81,12 @@ def _load_reference(checkout):
         sys.modules[name] = package
         spec.loader.exec_module(package)
     try:
-        # Upstream imports google-genai even when the provider is a local model.
+        # Upstream imports google-genai even when its 'provider' is a local model.
         importlib.import_module(f'{name}.providers')
     except ImportError as error:
         raise ImportError(
             'Install the pinned CogGym checkout\'s evaluation/requirements.txt '
-            'in your experiment environment. Local providers need no API key.'
+            'in your experiment environment. CogGym\'s local providers need no API key.'
         ) from error
     return importlib.import_module(f'{name}.cli'), importlib.import_module(f'{name}.analyze')
 
@@ -169,11 +169,11 @@ def _written_answer(event) -> str:
     return payload
 
 
-class _SubjectProvider:
-    """Translate CogGym provider calls into sessions on the common channels.
+class _SubjectAdapter:
+    """Translate CogGym's model calls into sessions on the common channels.
 
-    CogGym calls the object that answers its requests a provider; this one
-    answers through the subject. Each provider call is one ``run_request``
+    CogGym calls the object that answers its requests a "provider"; this adapter
+    answers through the subject. Each call is one ``run_request``
     session: one stimulus row (the
     message parts in order), a ``TaskContext`` (the system text as the
     instruction, a ``Text`` response with the call's temperature and length,
@@ -183,7 +183,7 @@ class _SubjectProvider:
     (``<CogGym repetition>.<call>``), so tools record the request and the
     answer between that session's own boundaries, and ``replay_sessions``
     rebuilds one session per call. The
-    subject is not reset between calls; the provider's reset(repetition)
+    subject is not reset between calls; the adapter's reset(repetition)
     runs only between CogGym repetitions.
 
     CogGym stores ``reasoning`` and ``token_usage`` with each trial and never
@@ -226,7 +226,7 @@ class CogGymRunner:
     ``protocol(reset=...)`` returns a standard CallableProtocol. ``run`` calls
     the same reference evaluator directly, for parity checks. The required
     reset callback receives a one-based repetition number; it must reset the
-    provider's state/RNG without replacing the instrumented model or its hooks.
+    adapter's state/RNG without replacing the instrumented model or its hooks.
 
     ``trial_ids`` selects an explicit smoke subset of the canonical selection.
     It is always labelled as a subset, never a complete CogGym evaluation.
@@ -258,7 +258,7 @@ class CogGymRunner:
         modalities: Sequence[str] = ('text',),
     ) -> None:
         if not isinstance(model, str) or not model.strip():
-            raise ValueError('Supply the provider model identifier')
+            raise ValueError('Supply the model identifier')
         if not isinstance(temperature, (int, float)) or not math.isfinite(temperature) or temperature < 0:
             raise ValueError('temperature must be finite and nonnegative')
         if type(max_tokens) is not int or max_tokens < 1:
@@ -314,7 +314,7 @@ class CogGymRunner:
                 elif not isinstance(content, str):
                     raise TypeError('CogGym message content must be text or a list of parts')
             if not isinstance(system, str) or required - set(self.modalities):
-                raise ValueError(f'Provider must support these modalities: {sorted(required)}')
+                raise ValueError(f'The adapter must support these modalities: {sorted(required)}')
             shown |= required
             self._prompt_trials.setdefault(_prompt_key(system, messages), []).append(trial.id)
         # The inputs the experiment sends: the system text is the instruction, and
@@ -347,15 +347,15 @@ class CogGymRunner:
         """Build evaluation steps for Experiment without running CogGym yet.
 
         CallableProtocol lets tools observe the subject while CogGym keeps its
-        trial loop and scoring. reset(repetition) clears provider history and
+        trial loop and scoring. reset(repetition) clears the adapter's history and
         sampling state as needed, while preserving model instrumentation.
 
-        Each provider call is one record repetition ``<CogGym repetition>.<call>``
+        Each model call is one record repetition ``<CogGym repetition>.<call>``
         in condition ``default``. CogGym question IDs are call metadata, not tool
         filters.
         """
         if not callable(reset):
-            raise TypeError('Supply a reset(repetition) callback for your provider')
+            raise TypeError('Supply a reset(repetition) callback for your adapter')
 
         def evaluate(subject, context):
             def register(path):
@@ -363,11 +363,11 @@ class CogGymRunner:
                     path, producer='CogGym evaluator via UMI adapter',
                     description='Reference trial results, summary, and explicit run coverage',
                 )
-            # Translate CogGym provider calls into sessions on the common channels.
+            # Translate CogGym's model calls into sessions on the common channels.
             # This is where the external evaluator connects to UMI tools.
             stored = []
             result = self._run(
-                lambda repetition: _SubjectProvider(
+                lambda repetition: _SubjectAdapter(
                     subject, context, repetition, self._prompt_trials, stored,
                 ),
                 context.directory / 'coggym', reset, register,
@@ -376,26 +376,29 @@ class CogGymRunner:
             result['stored_answers'] = stored
             return result
 
-        # The provider records its own sessions, so no subject method is observed.
+        # The adapter records its own sessions, so no subject method is observed.
         return CallableProtocol(
             f'coggym:{self.experiment}', evaluate, methods=(), metadata=self.describe(),
         )
 
     def run(
         self,
-        provider: Any,
+        adapter: Any,
         *,
         output_dir: str | Path,
         reset: Callable[[int], None],
     ) -> dict[str, Any]:
-        """Run CogGym directly, without UMI observation or instrumentation."""
-        if not callable(getattr(provider, 'complete_with_metadata', None)):
-            raise TypeError('Provider must implement complete_with_metadata')
-        return self._run(lambda repetition: provider, Path(output_dir), reset, lambda path: None)
+        """Run CogGym directly, without UMI observation or instrumentation.
 
-    def _run(self, provider_factory, directory, reset, register):
+        ``adapter`` implements CogGym's "provider" interface (``complete_with_metadata``).
+        """
+        if not callable(getattr(adapter, 'complete_with_metadata', None)):
+            raise TypeError('The adapter must implement complete_with_metadata')
+        return self._run(lambda repetition: adapter, Path(output_dir), reset, lambda path: None)
+
+    def _run(self, adapter_factory, directory, reset, register):
         if not callable(reset):
-            raise TypeError('Supply a reset(repetition) callback for your provider')
+            raise TypeError('Supply a reset(repetition) callback for your adapter')
         _check_checkout(self.checkout)
         directory.mkdir(parents=True, exist_ok=False)
         artifacts = []
@@ -403,7 +406,7 @@ class CogGymRunner:
         for repetition in range(1, self.repetitions + 1):
             reset(repetition)
             results = self._cli._run_experiment(
-                self._experiment, self._trials, provider_factory(repetition),
+                self._experiment, self._trials, adapter_factory(repetition),
                 self.model, self.temperature, self.max_tokens,
             )
             # Keep reference parsing and scoring intact. Check separately whether

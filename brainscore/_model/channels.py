@@ -67,7 +67,7 @@ def plan_channels(model, stimuli, regions: Sequence[str], time_bins=None,
     """
     regions = list(regions)
     _refuse_duplicates([f'neural:{region}' for region in regions])
-    state = model._recorder.snapshot()
+    state = model._recording_request.snapshot()
     try:
         _start(model, regions[0] if len(regions) == 1 else regions, time_bins)
         order = _plan(model, stimuli, regions)
@@ -76,7 +76,7 @@ def plan_channels(model, stimuli, regions: Sequence[str], time_bins=None,
             _start(model, region, time_bins)
             record(model, stimuli, multi_modality, check_only=True)
     finally:
-        model._recorder.restore(state)
+        model._recording_request.restore(state)
     return tuple(order), tuple(shared)
 
 
@@ -93,7 +93,7 @@ def run_neural_channels(model, stimuli, channel_regions: Sequence[Tuple[str, str
     if planned is None:     # a batch with no plan of its own: checked and planned here, before its first pass
         planned = plan_channels(model, stimuli, regions, time_bins, multi_modality, plan)
     _start(model, regions[0] if len(regions) == 1 else regions, time_bins)
-    state = model._recorder.snapshot()   # the combined recording, as before
+    state = model._recording_request.snapshot()   # the combined recording, as before
     try:
         payloads = {}
         order, shared = list(planned[0]), list(planned[1])
@@ -106,7 +106,7 @@ def run_neural_channels(model, stimuli, channel_regions: Sequence[Tuple[str, str
                 payloads[region] = output
         return {channel: payloads[region] for channel, region in channel_regions}
     finally:
-        model._recorder.restore(state)
+        model._recording_request.restore(state)
 
 
 def _refuse_duplicates(channels: List[str]) -> None:

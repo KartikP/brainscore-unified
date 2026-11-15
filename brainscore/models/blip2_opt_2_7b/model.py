@@ -117,7 +117,7 @@ def load_blip2(identifier: str):
     return blip_model, blip_processor
 
 
-def picture_tower(blip_model, blip_processor, identifier: str, backbone_id=None) -> PytorchWrapper:
+def picture_extractor(blip_model, blip_processor, identifier: str, backbone_id=None) -> PytorchWrapper:
     """The picture extractor of every BLIP-2 registration: the vision model, the image loader, LayerPCA(1000).
 
     ``identifier`` labels the activations; ``backbone_id`` names the stored
@@ -143,7 +143,7 @@ def picture_tower(blip_model, blip_processor, identifier: str, backbone_id=None)
 def get_model(identifier: str) -> BrainScoreModel:
     assert identifier == 'blip2-opt-2.7b'
     blip_model, blip_processor = load_blip2(identifier)
-    vision_wrapper = picture_tower(blip_model, blip_processor, identifier)
+    vision_wrapper = picture_extractor(blip_model, blip_processor, identifier)
 
     # Text: TextWrapper wraps the OPT decoder. Causal LM → last aggregation.
     # Wrap language_model.model.decoder so layer paths are 'layers.{N}'.

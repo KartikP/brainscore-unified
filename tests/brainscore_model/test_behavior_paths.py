@@ -210,7 +210,7 @@ def test_the_one_chooser_names_every_path_it_tried():
 def test_an_api_answer_part_sends_the_request_it_always_sent(provider, image_first, settings,
                                                               monkeypatch, tmp_path):
     """One client per provider; the answer part's request is unchanged."""
-    from brainscore.model_helpers.api_behavioral import build_api_generation_fn
+    from brainscore.model_helpers.api_behavioral import api_answer
     requests = []
 
     class Messages:
@@ -231,7 +231,7 @@ def test_an_api_answer_part_sends_the_request_it_always_sent(provider, image_fir
         OpenAI=lambda **kwargs: types.SimpleNamespace(chat=types.SimpleNamespace(completions=Completions()))))
     image = tmp_path / 'w.png'
     image.write_bytes(b'png')
-    answer = build_api_generation_fn(provider, 'm', max_tokens=16)
+    answer = api_answer(provider, 'm', max_tokens=16)
     assert answer({'stimulus_id': 's', 'image_file_name': str(image)}, 'Real?', ['real', 'pseudo']) == 'real'
     (request,) = requests
     content = request['messages'][-1]['content']

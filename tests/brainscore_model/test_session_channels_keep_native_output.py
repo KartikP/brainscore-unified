@@ -307,7 +307,7 @@ def test_combined_recording_stays_active_after_the_session():
     model = layered_subject([])
     session = stimulus_session(layered_stimuli(), ['neural:IT', 'neural:A1'], task=TaskContext(task_type='passive'))
     model.participate(session)
-    assert model._recorder.recording_regions == ['IT', 'A1']
+    assert model._recording_request.recording_regions == ['IT', 'A1']
 
 
 def test_combined_recording_is_restored_after_a_failure():
@@ -319,7 +319,7 @@ def test_combined_recording_is_restored_after_a_failure():
     session = stimulus_session(layered_stimuli(), ['neural:IT', 'neural:A1'], task=TaskContext(task_type='passive'))
     with pytest.raises(RuntimeError, match='extractor failed'):
         model.participate(session)
-    assert model._recorder.recording_regions == ['IT', 'A1']
+    assert model._recording_request.recording_regions == ['IT', 'A1']
 
 
 def test_request_order_does_not_change_extractor_order():

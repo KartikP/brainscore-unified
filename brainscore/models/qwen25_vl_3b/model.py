@@ -161,7 +161,7 @@ def load_qwen(identifier: str, size: str):
     return qwen_model, qwen_processor, download
 
 
-def picture_tower(qwen_model, qwen_processor, identifier: str):
+def picture_extractor(qwen_model, qwen_processor, identifier: str):
     """The picture extractor of every Qwen2.5-VL registration: the visual tower, ``<identifier>-vision``."""
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     # VLMVisionWrapper handles Qwen's flattened-patch layout by default
@@ -178,7 +178,7 @@ def get_model(identifier: str) -> Subject:
     from brainscore.model_helpers.text_wrapper import TextWrapper
 
     qwen_model, qwen_processor, download = load_qwen(identifier, size)
-    vision_wrapper = picture_tower(qwen_model, qwen_processor, identifier)
+    vision_wrapper = picture_extractor(qwen_model, qwen_processor, identifier)
 
     # Text: TextWrapper wraps model.language_model (causal decoder).
     # last aggregation with attention_mask handles padded batches.
@@ -201,11 +201,11 @@ def get_model(identifier: str) -> Subject:
     layers = dict(REGION_LAYER_MAP, language_system=language_layer)
     variant_kwargs = {}
     if identifier in VARIANTS:
-        from brainscore.perturbation import build_pytorch_ablation_fn
+        from brainscore.model_helpers.intervention import pytorch_intervention
         layers['VWFA'] = VWFA_LAYER
         # Selection paths are relative to the extraction root. The same
         # visual module is also used by the full model's generate().
-        variant_kwargs = dict(intervention=build_pytorch_ablation_fn(qwen_model.model.visual))
+        variant_kwargs = dict(intervention=pytorch_intervention(qwen_model.model.visual))
     subject = BrainScoreModel(
         identifier=identifier,
         model=qwen_model,

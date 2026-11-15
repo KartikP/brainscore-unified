@@ -33,7 +33,7 @@ def test_intervention_validation_names_the_selected_tool(tool_class, invalid):
         protocol=CallableProtocol('external-evaluation', lambda subject, context: None),
     )
     message = (
-        f'{tool_class.__name__} requires an instrumentation provider'
+        f'{tool_class.__name__} requires an instrumentation'
         if invalid == 'instrumentation'
         else f'{tool_class.__name__} {invalid} must belong to the protocol'
     )
