@@ -556,6 +556,18 @@
      }
     }
    },
+   "ewok choice": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Subject 'owned' cannot give a Choice answer. Paths tried: generation needs reply= (or answer= for a plain Choice); likelihood needs likelihood= and a Choice without reported confidence; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
+    ]
+   },
+   "ewok log scores": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
+    ]
+   },
    "legacy answer": {
     "outputs": {
      "behavior": {
@@ -801,6 +813,81 @@
      "ExecutionNotFeasibleError",
      "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
     ]
+   },
+   "roar plain choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     }
+    }
    }
   }
  },
@@ -829,6 +916,87 @@
     "error": [
      "ExecutionNotFeasibleError",
      "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities', 'behavior:rt'] in one session: it does not produce ['behavior:probabilities', 'behavior:rt']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
+    ]
+   },
+   "ewok choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        false,
+        false,
+        false
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "no label in the reply",
+        "no label in the reply",
+        "no label in the reply"
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "no label in the reply",
+        "no label in the reply",
+        "no label in the reply"
+       ],
+       "response_state": [
+        "invalid",
+        "invalid",
+        "invalid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f"
+      ]
+     }
+    }
+   },
+   "ewok log scores": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
    },
    "legacy answer": {
@@ -978,6 +1146,81 @@
      "ExecutionNotFeasibleError",
      "Session refused (task type 'choice'): Subject 'owned' cannot answer ['behavior:choice', 'behavior:probabilities'] in one session: it does not produce ['behavior:probabilities']; out_channels: ['behavior', 'behavior:choice', 'behavior:confidence', 'behavior:rating', 'behavior:text']. The pair passed the declared compatibility check, so this limit is not expressed in the declarations of the subject or the benchmark; the session was refused and there is no result."
     ]
+   },
+   "roar plain choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     }
+    }
    }
   }
  },
@@ -1582,6 +1825,148 @@
      }
     }
    },
+   "ewok choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        false,
+        false,
+        false
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "no label in the reply",
+        "no label in the reply",
+        "no label in the reply"
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "no label in the reply",
+        "no label in the reply",
+        "no label in the reply"
+       ],
+       "response_state": [
+        "invalid",
+        "invalid",
+        "invalid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f"
+      ]
+     }
+    }
+   },
+   "ewok log scores": {
+    "outputs": {
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "model-derived",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "native",
+       "parameters": {
+        "scale": "log"
+       },
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf"
+      ]
+     }
+    }
+   },
    "legacy answer": {
     "outputs": {
      "behavior": {
@@ -1975,6 +2360,81 @@
        "f64:000000000000f0bf",
        "f64:0000000000000080",
        "f64:000000000000f0bf"
+      ]
+     }
+    }
+   },
+   "roar plain choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
       ]
      }
     }
@@ -2547,6 +3007,18 @@
      }
     }
    },
+   "ewok choice": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Subject 'owned' cannot give a Choice answer. Paths tried: generation needs reply= (or answer= for a plain Choice); likelihood needs likelihood= and a Choice without reported confidence; readout needs behavioral_readout_layer=, an extractor and fitting_stimuli"
+    ]
+   },
+   "ewok log scores": {
+    "error": [
+     "ExecutionNotFeasibleError",
+     "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
+    ]
+   },
    "legacy answer": {
     "outputs": {
      "behavior": {
@@ -2777,6 +3249,84 @@
      "ExecutionNotFeasibleError",
      "Subject 'owned' cannot give raw scores of the options: they come only from a likelihood= part."
     ]
+   },
+   "roar plain choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "[0.501992021332893, 0.498007978667107]",
+        "[0.498007978667107, 0.501992021332893]",
+        "[0.501992021332893, 0.498007978667107]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": "argmax",
+       "format": "behavior:choice",
+       "method": "readout",
+       "origin": "derived",
+       "parameters": {
+        "option_order": "readout",
+        "tie": "first"
+       },
+       "parsed_by": null,
+       "source_format": "behavior:probabilities"
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
+      ]
+     }
+    }
    }
   }
  },
@@ -3380,6 +3930,148 @@
      }
     }
    },
+   "ewok choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        false,
+        false,
+        false
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "no label in the reply",
+        "no label in the reply",
+        "no label in the reply"
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "no label in the reply",
+        "no label in the reply",
+        "no label in the reply"
+       ],
+       "response_state": [
+        "invalid",
+        "invalid",
+        "invalid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f",
+       "f64:000000000000f87f"
+      ]
+     }
+    }
+   },
+   "ewok log scores": {
+    "outputs": {
+     "behavior:probabilities": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float64",
+      "presentation": {
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "raw_answer": [
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]",
+        "[-0.0, -1.0]"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "model-derived",
+       "conversion": null,
+       "format": "behavior:probabilities",
+       "method": "likelihood",
+       "origin": "native",
+       "parameters": {
+        "scale": "log"
+       },
+       "parsed_by": null,
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf",
+       "f64:0000000000000080",
+       "f64:000000000000f0bf"
+      ]
+     }
+    }
+   },
    "legacy answer": {
     "error": [
      "ExecutionNotFeasibleError",
@@ -3680,6 +4372,81 @@
        "f64:000000000000f0bf",
        "f64:0000000000000080",
        "f64:000000000000f0bf"
+      ]
+     }
+    }
+   },
+   "roar plain choice": {
+    "outputs": {
+     "behavior:choice": {
+      "dims": [
+       "presentation",
+       "choice"
+      ],
+      "dtype": "float32",
+      "presentation": {
+       "answer_valid": [
+        true,
+        true,
+        true
+       ],
+       "label": [
+        "cat",
+        "dog",
+        "cat"
+       ],
+       "parse_error": [
+        "",
+        "",
+        ""
+       ],
+       "raw_answer": [
+        "cat",
+        "cat",
+        "cat"
+       ],
+       "response_reason": [
+        "",
+        "",
+        ""
+       ],
+       "response_state": [
+        "valid",
+        "valid",
+        "valid"
+       ],
+       "sentence": [
+        "real x",
+        "fake y",
+        "real z"
+       ],
+       "stimulus_id": [
+        "a",
+        "b",
+        "c"
+       ]
+      },
+      "response": {
+       "category": "behavioral",
+       "conversion": null,
+       "format": "behavior:choice",
+       "method": "generation",
+       "origin": "native",
+       "parameters": {},
+       "parsed_by": "model",
+       "source_format": null
+      },
+      "shape": [
+       3,
+       2
+      ],
+      "values": [
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000",
+       "f64:000000000000f03f",
+       "f64:0000000000000000"
       ]
      }
     }

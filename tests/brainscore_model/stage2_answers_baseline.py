@@ -6,7 +6,7 @@ Run from the unified root to regenerate ``tests/fixtures/stage2_answers_baseline
 
 For each registered part set and each session (the five of ``SESSIONS``, a Choice
 with each reaction-time link, and one session that requests only the
-probabilities) it records, per requested channel, the values as the exact bytes
+probabilities, and the three task forms of ``stage3_cases``) it records, per requested channel, the values as the exact bytes
 of each float64 (NaN and signed zero kept), the dtype, the trial states, the raw
 answers, the response record and the model's ``out_channels``. A refused session
 records the error type and message. The stand-in parts are fixed functions: no
@@ -100,6 +100,23 @@ def _cases():
     return cases
 
 
+def stage3_cases():
+    """(outputs, task, stimuli) of the task forms stage 3 changes: ROAR (a plain Choice with
+    an instruction and fitting stimuli), EWoK log scores (options per row, raw scores and
+    raw text, no fitting stimuli) and EWoK choice (raw text, no fitting stimuli)."""
+    from brainscore_core.contract import TaskContext
+    from brainscore_core.responses import Choice
+    from tests.brainscore_model.test_answer_ownership import OPTIONS
+    from tests.brainscore_model.test_behavior_paths import STIMULI
+    return {
+        'roar plain choice': (['behavior:choice'], TaskContext(
+            instruction='Which?', response=Choice(['cat', 'dog']), fitting_stimuli=FITTING), STIMULI),
+        'ewok log scores': (['behavior:probabilities'], TaskContext(
+            response=Choice('options', raw_scores=True, raw_text=True)), OPTIONS),
+        'ewok choice': (['behavior:choice'], TaskContext(response=Choice(['1', '2'], raw_text=True)), STIMULI),
+    }
+
+
 def capture():
     from brainscore_core.streaming_helpers import stimulus_session
     from tests.brainscore_model.test_answer_ownership import REGISTERED_PART_SETS, REGISTERED_STATEMENTS, _model
@@ -107,15 +124,17 @@ def capture():
 
     sessions = {}
     for name, (description, outputs) in SESSIONS.items():
-        sessions[name] = (outputs, task_from(description, RATINGS if description['kind'] == 'scale' else FITTING))
-    sessions.update(_cases())
+        sessions[name] = (outputs, task_from(description, RATINGS if description['kind'] == 'scale' else FITTING),
+                          STIMULI)
+    sessions.update({name: (*case, STIMULI) for name, case in _cases().items()})
+    sessions.update(stage3_cases())
     found = {}
     for parts in sorted(REGISTERED_PART_SETS):
         model = _model(*parts, owners=REGISTERED_STATEMENTS[parts])
         entry = {'out_channels': sorted(model.out_channels), 'sessions': {}}
         for name in sorted(sessions):
-            outputs, task = sessions[name]
-            session = stimulus_session(STIMULI, outputs, task)
+            outputs, task, stimuli = sessions[name]
+            session = stimulus_session(stimuli, outputs, task)
             try:
                 with warnings.catch_warnings():
                     warnings.simplefilter('ignore')
