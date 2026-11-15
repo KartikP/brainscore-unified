@@ -383,7 +383,8 @@ def labelled(assembly, identifier: str):
     if (models == identifier).all():
         return assembly
     layers, units = assembly['layer'].values, assembly['neuroid_num'].values
-    ids = {layer: make_neuroid_ids(identifier, layer, int(units[layers == layer].max()) + 1) for layer in set(layers)}
+    ids = {layer: make_neuroid_ids(identifier, layer, int(units[layers == layer].max()) + 1)
+           for layer in set(layers)}
     labels = {'model': [identifier] * len(models),
               'neuroid_id': [ids[layer][unit] for layer, unit in zip(layers, units)]}
     index = assembly.indexes.get('neuroid')
@@ -394,6 +395,21 @@ def labelled(assembly, identifier: str):
         assembly = assembly.assign_coords(neuroid=pd.MultiIndex.from_arrays(arrays, names=index.names))
         labels = {name: values for name, values in labels.items() if name not in index.names}
     return assembly.assign_coords({name: ('neuroid', values) for name, values in labels.items()})
+
+
+def in_layer_order(assembly, layers):
+    """``assembly`` with its units in the order of the requested ``layers``.
+
+    The one rule of the caching wrappers: a result has its units in the order
+    the caller requested, whether it was computed now or returned by the store
+    (which merges a cached layer and a new one in its own order). Stable within
+    a layer; an assembly already in that order is returned as it is.
+    """
+    position = {layer: i for i, layer in enumerate(layers)}
+    order = [position.get(layer, len(position)) for layer in assembly['layer'].values]
+    if order == sorted(order):
+        return assembly
+    return assembly.isel(neuroid=np.argsort(order, kind='stable'))
 
 
 def attach_stimulus_set(assembly, stimuli):

@@ -31,7 +31,7 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_float32, cache_signature, labelled, layer_assembly, run_batches,
+    LiveRecording, as_float32, cache_signature, in_layer_order, labelled, layer_assembly, run_batches,
 )
 
 
@@ -109,7 +109,7 @@ class VLMVisionWrapper:
         """
         if isinstance(stimuli, StimulusSet):
             return self._from_stimulus_set(stimuli, layers, stimuli_identifier)
-        return self._from_paths(stimuli, layers, stimuli_identifier)
+        return in_layer_order(self._from_paths(stimuli, layers, stimuli_identifier), layers)
 
     def _from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
         if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
@@ -147,9 +147,10 @@ class VLMVisionWrapper:
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
         signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
         if signature is None:
-            return self._from_paths(paths, layers, stimuli_identifier)
-        return labelled(self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
-                                                extraction_fingerprint=signature), self._identifier)
+            return in_layer_order(self._from_paths(paths, layers, stimuli_identifier), layers)
+        stored = self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
+                                         extraction_fingerprint=signature)
+        return in_layer_order(labelled(stored, self._identifier), layers)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})

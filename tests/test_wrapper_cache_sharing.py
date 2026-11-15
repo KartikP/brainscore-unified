@@ -93,6 +93,29 @@ def test_a_warm_video_result_keeps_the_requested_layer_order(store, tmp_path, mo
     xarray.testing.assert_identical(second_warm, second_cold)
 
 
+# The stand-ins reach their layers in this order; each test requests them in the other one.
+PASS_ORDER = {'text': ['enc', 'proj'], 'audio': ['frames', 'head'], 'vlm_vision': ['blocks.0', 'blocks.1']}
+
+
+@pytest.mark.parametrize('name', sorted(PASS_ORDER))
+def test_units_follow_the_requested_layer_order_computed_and_stored(name, store, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    build, stimuli, _ = CASES[name]
+    stimuli = stimuli()
+    first, second = build(), build()
+    second._identifier = 'second'
+    requested = PASS_ORDER[name][::-1]
+    store.install(first)
+    first(stimuli, layers=[requested[1]])                  # one layer cached
+    warm = second(stimuli, layers=requested)               # the other one computed, merged by the store
+    full_hit = second(stimuli, layers=requested)
+    store.enabled = False
+    cold = second(stimuli, layers=requested)
+    assert list(dict.fromkeys(cold['layer'].values)) == requested
+    xarray.testing.assert_identical(warm, cold)
+    xarray.testing.assert_identical(full_hit, cold)
+
+
 class _Unversioned(__import__('brainscore.model_helpers.text_wrapper', fromlist=['TextWrapper']).TextWrapper):
     """A subclass with code of its own and no ``_VERSION`` of its own."""
 

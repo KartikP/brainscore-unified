@@ -27,8 +27,8 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.extraction_cache import store_xarray
 from brainscore.model_helpers import _extractors
 from brainscore.model_helpers._extractors import (
-    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, labelled, layer_assembly,
-    one_dtype, run_batches,
+    LiveRecording, as_array, attach_stimulus_set, attention_mask, cache_signature, in_layer_order, labelled,
+    layer_assembly, one_dtype, run_batches,
 )
 
 
@@ -221,7 +221,7 @@ class TextWrapper:
         if isinstance(stimuli, StimulusSet):
             assembly = self._from_stimulus_set(stimuli, layers, stimuli_identifier)
         else:
-            assembly = self._from_texts(stimuli, layers, stimuli_identifier)
+            assembly = in_layer_order(self._from_texts(stimuli, layers, stimuli_identifier), layers)
         if self._provenance is not None:
             assembly.attrs['provenance'] = deepcopy(self._provenance)
         return assembly
@@ -257,9 +257,10 @@ class TextWrapper:
     def _from_texts_cached(self, texts, layers, stimuli_identifier=None):
         signature = cache_signature(self, '_from_texts_stored', texts, stimuli_identifier)
         if signature is None:
-            return self._from_texts(texts, layers, stimuli_identifier)
-        return labelled(self._from_texts_stored(stimuli_identifier=stimuli_identifier, layers=layers, texts=texts,
-                                                extraction_fingerprint=signature), self._identifier)
+            return in_layer_order(self._from_texts(texts, layers, stimuli_identifier), layers)
+        stored = self._from_texts_stored(stimuli_identifier=stimuli_identifier, layers=layers, texts=texts,
+                                         extraction_fingerprint=signature)
+        return in_layer_order(labelled(stored, self._identifier), layers)
 
     @store_xarray(identifier_ignore=['texts', 'layers'], combine_fields={'layers': 'layer'})
     def _from_texts_stored(self, layers, stimuli_identifier, texts, extraction_fingerprint):

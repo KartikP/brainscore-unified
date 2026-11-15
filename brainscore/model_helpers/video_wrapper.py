@@ -73,7 +73,9 @@ from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore.temporal import window_plan
 from brainscore_core.extraction_cache import store_xarray, file_inputs
 from brainscore.model_helpers import _extractors
-from brainscore.model_helpers._extractors import LiveRecording, as_float32, cache_signature, labelled
+from brainscore.model_helpers._extractors import (
+    LiveRecording, as_float32, cache_signature, in_layer_order, labelled,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -262,7 +264,7 @@ class VideoWrapper:
         """
         if isinstance(stimuli, StimulusSet):
             return self._from_stimulus_set(stimuli, layers, stimuli_identifier)
-        return self._from_paths(list(stimuli), layers, stimuli_identifier)
+        return in_layer_order(self._from_paths(list(stimuli), layers, stimuli_identifier), layers)
 
     def _from_stimulus_set(self, stimulus_set, layers, stimuli_identifier=None):
         if stimuli_identifier is None and hasattr(stimulus_set, 'identifier'):
@@ -307,15 +309,10 @@ class VideoWrapper:
     def _from_paths_cached(self, paths, layers, stimuli_identifier=None):
         signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
         if signature is None:
-            return self._from_paths(paths, layers, stimuli_identifier)
+            return in_layer_order(self._from_paths(paths, layers, stimuli_identifier), layers)
         stored = self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
                                          extraction_fingerprint=signature)
-        # ``_package`` stacks the layers in the requested order; the store merges a
-        # cached layer and a new one in its own order, so restore the requested one.
-        position = [list(layers).index(layer) for layer in stored['layer'].values]
-        if position != sorted(position):
-            stored = stored.isel(neuroid=np.argsort(position, kind='stable'))
-        return labelled(stored, self._identifier)
+        return in_layer_order(labelled(stored, self._identifier), layers)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
