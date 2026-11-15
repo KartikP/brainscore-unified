@@ -10,6 +10,7 @@ which legacy behavioral benchmarks score. The packaging is in ``answers``;
 the recording during the answering pass is in ``recording``.
 """
 
+import math
 from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from typing import Any, Dict, Optional, Tuple
@@ -593,8 +594,13 @@ class BehavioralReadout:
         if path == 'readout':
             values, neural = self._read_out_and_record(stimuli, layers, raw=True)
             if isinstance(response, Scale):
+                # The readout answers on the task's scale: the regression value is put on the
+                # nearest step (the raw answer keeps it); a value outside the bounds stays.
+                rated, parameters = _on_scale_steps([v for v, _ in values], response)
                 outputs['behavior:rating'] = answers.numbers(
-                    values, stimuli, response_record('behavior:rating', 'readout'))
+                    [(v, None) for v in rated], stimuli,
+                    response_record('behavior:rating', 'readout', parameters=parameters),
+                    raw=[v for v, _ in values])
             else:
                 # The readout's own column order, as before: ties go to its first column.
                 source = np.asarray(values.values)
@@ -948,6 +954,23 @@ def answer_owners(subject, stated) -> Dict[str, str]:
                 + ' or '.join(repr(p) for p in native[1:]) + ').')
         owners[output] = native[0]
     return owners
+
+
+RATING_ROUNDING = 'nearest step, ties to the higher step'
+
+
+def _on_scale_steps(values, scale) -> Tuple[list, dict]:
+    """Each value on the nearest step of ``scale``, and the record parameters that say so.
+
+    A tie (exactly between two steps) goes to the higher step. A value outside the
+    bounds, or not finite, stays as it is (core marks it invalid). A scale with no
+    step leaves every value unchanged and records no rounding.
+    """
+    if scale.step is None:
+        return list(values), {}
+    rated = [scale.low + math.floor((v - scale.low) / scale.step + 0.5) * scale.step
+             if math.isfinite(v) and scale.low <= v <= scale.high else v for v in values]
+    return rated, {'rounding': RATING_ROUNDING}
 
 
 def _fitted_intact(task) -> bool:

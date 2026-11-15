@@ -295,8 +295,8 @@ def test_text_the_benchmark_cannot_parse_is_valid_but_counts_as_wrong():
 
 @pytest.mark.parametrize('fmt, cell, message', [
     ('behavior:probabilities', np.array([0.2, 0.3, 0.5]), '3 values for 2 options'),
-    ('behavior:rating', 'seven', 'a behavior:rating cell is one number, not str'),
-    ('behavior:choice', 1, 'a behavior:choice cell is a str, not int'),
+    ('behavior:rating', 'seven', 'a cell is one number, not str'),
+    ('behavior:choice', 1, 'a cell is a str, not int'),
 ], ids=['probabilities of the wrong shape', 'rating as text', 'choice as a number'])
 def test_a_malformed_cell_raises_and_nothing_is_stored(fmt, cell, message):
     subject = pseudo.CellSubject(cells={(fmt, 's0'): cell})
@@ -364,19 +364,47 @@ def test_a_choice_cell_under_a_scale_task_is_a_contract_error():
 
 # --- findings kept as strict expected failures ------------------------------------------------
 
-@pytest.mark.xfail(strict=True, reason=(
-    'Finding Q1: a readout rating is a ridge regression value that is not put on the scale '
-    'step, so every trial of Scale(1, 7, 1) is invalid and the score is NaN. No chunk is '
-    'scheduled; it passes when the readout answers on the requested scale.'))
 def test_a_readout_rating_answers_on_the_stated_scale():
     score, answer = _run(pseudo.readout_model(), pseudo.PseudoRating())
     assert score.attrs['n_invalid'] == 0 and not math.isnan(float(score))
 
 
-def test_a_readout_rating_today_is_invalid_on_every_trial():
-    score, answer = _run(pseudo.readout_model(), pseudo.PseudoRating())
-    assert score.attrs['n_invalid'] == len(pseudo.IDS) and math.isnan(float(score))
-    assert _trial(answer, 's0') == ('invalid', '5.777777777777778', '5.777777777777778 is not on the scale step 1')
+def _readout_rating(scale):
+    from brainscore_core.streaming_helpers import stimulus_session
+    task = TaskContext(instruction='How sure?', response=scale, fitting_stimuli=pseudo.FITTING_RATINGS)
+    session = stimulus_session(pseudo.text_stimuli(), ['behavior:rating'], task)
+    pseudo.readout_model().participate(session)
+    return session.collect('behavior:rating')
+
+
+def test_a_readout_rating_is_put_on_the_nearest_step_and_keeps_its_regression_value():
+    answer = _readout_rating(Scale(1, 7, 1))
+    assert answer.values.tolist() == [6.0, 2.0, 5.0, 2.0, 6.0, 3.0, 6.0, 2.0]
+    assert list(answer['raw_answer'].values) == [
+        '5.777777777777778', '2.2222222222222223', '4.888888888888889', '2.2222222222222223',
+        '5.777777777777778', '3.111111111111111', '5.777777777777778', '2.2222222222222223']
+    assert set(answer['response_state'].values) == {'valid'}
+    assert answer.attrs['response']['parameters'] == {'rounding': 'nearest step, ties to the higher step'}
+
+
+def test_a_readout_rating_outside_the_bounds_is_not_clipped():
+    answer = _readout_rating(Scale(1, 5, 1))
+    assert _trial(answer, 's0') == ('invalid', '5.777777777777778', '5.777777777777778 is outside 1 to 5')
+    assert answer.values[0] == 5.777777777777778
+    assert _trial(answer, 's1')[0] == 'valid' and answer.values[1] == 2.0
+
+
+def test_a_readout_rating_on_a_scale_without_a_step_is_unchanged():
+    answer = _readout_rating(Scale(1, 7))
+    assert answer.values.tolist()[:3] == [5.777777777777778, 2.2222222222222223, 4.888888888888889]
+    assert answer.attrs['response']['parameters'] == {}
+
+
+def test_a_tie_goes_to_the_higher_step():
+    from brainscore._model.behavioral import _on_scale_steps
+    assert _on_scale_steps([2.5, 1.25, 6.75, 0.5, float('nan')], Scale(1, 7, 0.5))[0][:3] == [2.5, 1.5, 7.0]
+    rated, parameters = _on_scale_steps([2.5, 3.5, 0.5], Scale(1, 7, 1))
+    assert rated == [3.0, 4.0, 0.5] and parameters == {'rounding': 'nearest step, ties to the higher step'}
 
 
 @pytest.mark.xfail(strict=True, reason=(
