@@ -222,8 +222,6 @@ ALLOWED = {
         'register_tool: a second registration style (R20)',
     ('R20 registry assignment', 'unified:capabilities/registry.py'):
         'register_capability and capability_registry: a second registration style (R20)',
-    ('R20 registry assignment', 'unified:data/preparation.py'):
-        'data_builder_registry: a sixth registry, not named in the Ownership Map',
 }
 
 

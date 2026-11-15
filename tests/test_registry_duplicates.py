@@ -5,7 +5,8 @@ import brainscore
 
 
 @pytest.mark.parametrize('registry', ['model_registry', 'benchmark_registry', 'metric_registry',
-                                      'data_registry', 'stimulus_set_registry'])
+                                      'data_registry', 'stimulus_set_registry',
+                                      'data_builder_registry'])
 def test_a_second_registration_raises_and_names_both_sources(registry):
     registry = getattr(brainscore, registry)
     registry['duplicate-check'] = lambda: 'first'

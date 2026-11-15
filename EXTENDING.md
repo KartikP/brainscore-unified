@@ -2,7 +2,7 @@
 
 [Build tools and integrations](docs/guides/extend.md) | [Support matrix](docs/reference/features.md) | [Release qualification](docs/archive/production_release.md)
 
-Extend the unified interface through five registries and Capability.
+Extend the unified interface through six registries and Capability.
 
 For a model registration, instantiate `BrainScoreModel`, the concrete `Subject`
 subclass that composes wrappers, recording, and capability callables. For benchmark
@@ -18,8 +18,8 @@ with `process`, task/recording setup, and layer/modality declarations.
 
 ## Registries
 
-Everything is a factory registered under a string identifier. All five registries live
-in `brainscore/__init__.py`:
+Everything is a factory registered under a string identifier. All six registries live
+in `brainscore/__init__.py`, and each refuses a second registration of a key from another source:
 
 ```text
 data_registry:         Dict[str, Callable[[], DataAssembly]]
@@ -27,6 +27,7 @@ stimulus_set_registry: Dict[str, Callable[[], StimulusSet]]
 metric_registry:       Dict[str, Callable[[], Metric]]
 benchmark_registry:    Dict[str, Callable[[], Benchmark]]
 model_registry:        Dict[str, Callable[[], Subject]]
+data_builder_registry: Dict[str, Callable[[], DataBuilder]]   # local builds of protected data
 ```
 
 Each `load_*` checks this package first, then falls back to the `brainscore_vision` and
