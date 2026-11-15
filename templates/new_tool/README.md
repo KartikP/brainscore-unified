@@ -17,7 +17,9 @@ for experiments.
 4. Move `test_tool.py` to `tests/test_<your_name>.py`, adapt it and run it.
 
 A tool in your own package (outside Brain-Score) is added with
-`register_tool('<your-id>', YourTool)` from `brainscore.tools`, before `load_tool`.
+`register_tool('<your-id>', YourTool)` from `brainscore.tools`. Call it when your package is
+imported, and import the package before `load_tool`: `load_tool` finds only what is in the
+table or registered. The same call tries a tool without editing `_TOOLS`, as below.
 
 From the `templates/` folder:
 
