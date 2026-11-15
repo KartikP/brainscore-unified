@@ -538,11 +538,15 @@ class BehavioralReadout:
                     return reply, scores, extra
             else:   # a registration's answer: it phrases and parses a Choice itself
                 def call(row, prompt):
-                    return owner._answer(stimulus_row=row, instruction=task.instruction,
-                                                label_set=list(prompt.response.labels))
+                    # The likelihood scores the prompt first when it owns the probabilities.
+                    scores = (owner._likelihood(prompt, list(prompt.response.labels))
+                              if score_first else None)
+                    reply = owner._answer(stimulus_row=row, instruction=task.instruction,
+                                          label_set=list(prompt.response.labels))
+                    return reply, scores, {}
             replies, neural = per_stimulus(owner, stimuli, layers, call, prompts)
             scores = None
-            if path == 'generation' and owner._reply is not None:
+            if path == 'generation':
                 replies, scores, extras = (list(column) for column in zip(*replies)) if replies else ([], [], [])
             if path == 'likelihood':
                 logp = answers.score_rows(replies, row_labels)
