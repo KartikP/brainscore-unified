@@ -236,6 +236,14 @@ def test_an_empty_chat_text_is_conditioned_on_the_template(subject):
 
 # Provenance travels with neural responses.
 
+EXTRACTION_KEYS = {'extractor', 'extraction', 'activation_store'}
+
+
+def _model_part(provenance):
+    """The provenance the registration supplied, without the extraction facts the wrapper adds."""
+    assert EXTRACTION_KEYS <= set(provenance)
+    return {key: value for key, value in provenance.items() if key not in EXTRACTION_KEYS}
+
 def test_neural_responses_carry_a_copy_of_the_provenance(subject):
     from brainscore_core.streaming_helpers import stimulus_session
     from brainscore_core.streaming_helpers import neural_response
@@ -245,11 +253,11 @@ def test_neural_responses_carry_a_copy_of_the_provenance(subject):
     model.participate(session)
     (event,) = session.emitted
     assert event.meta == {'driver': 'interact', 'record': 'mlp_in'}  # record format unchanged
-    assert event.payload.attrs['provenance'] == expected
+    assert _model_part(event.payload.attrs['provenance']) == expected
     event.payload.attrs['provenance']['revision'] = 'edited'  # a copy per response
-    assert neural_response(model, _stimuli(), ['neural:mlp_in']).attrs['provenance'] == expected
+    assert _model_part(neural_response(model, _stimuli(), ['neural:mlp_in']).attrs['provenance']) == expected
     model.start_recording('mlp_in')
-    assert model.process(_stimuli()).attrs['provenance'] == expected
+    assert _model_part(model.process(_stimuli()).attrs['provenance']) == expected
 
 
 def test_caller_provenance_is_copied_at_registration(subject):
@@ -261,14 +269,14 @@ def test_caller_provenance_is_copied_at_registration(subject):
     supplied['revision'] = 'changed'
     supplied['settings']['dtype'] = 'changed'
     expected = {'identifier': 'tiny-qwen-copy', 'revision': 'abc', 'settings': {'dtype': 'float32'}}
-    assert neural_response(model, _stimuli(), ['neural:mlp_in']).attrs['provenance'] == expected
+    assert _model_part(neural_response(model, _stimuli(), ['neural:mlp_in']).attrs['provenance']) == expected
 
 
-def test_text_wrapper_adds_no_provenance_by_default(subject):
+def test_text_wrapper_adds_only_its_extraction_facts_by_default(subject):
     from brainscore.model_helpers.text_wrapper import TextWrapper
     _, net, tok = subject
     assembly = TextWrapper(net, tok, identifier='plain', layer_aggregation='sequence')(_stimuli(), [NEURON_IN])
-    assert 'provenance' not in assembly.attrs
+    assert _model_part(assembly.attrs['provenance']) == {}
 
 
 @pytest.mark.parametrize('layer', [':input', 'model.layers.1.mlp.down_proj:middle:input',

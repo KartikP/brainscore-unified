@@ -21,6 +21,7 @@ from collections import OrderedDict
 from typing import Callable, List
 
 import numpy as np
+from result_caching import is_enabled
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords, make_neuroid_ids
@@ -416,7 +417,30 @@ class CachingExtractor:
             assembly = self._columns(assembly, stimuli)
         else:
             assembly = self._cached(list(stimuli), layers, stimuli_identifier)
-        return self._finish(assembly)
+        return self._with_provenance(self._finish(assembly), stimuli_identifier)
+
+    def _with_provenance(self, assembly, stimuli_identifier):
+        """Add what made the values to ``assembly.attrs['provenance']`` (rule 6.3).
+
+        ``extractor`` (the kind), ``extraction`` (the fingerprint of the cache key
+        without the inputs: weights, dtypes, devices, precision, settings such as
+        the batch size, class version; None when it cannot be fingerprinted) and
+        ``activation_store`` (``'on'`` when the call went through the activation
+        store, as a hit or as a new entry, else ``'off'``). A provenance the wrapper already set (the model's) is kept.
+        Core copies it to the score when a session accepts the response. Inside
+        a scored run the weight hashes are shared with the cache key, so the
+        fingerprint costs no second pass over the weights.
+        """
+        if not hasattr(assembly, 'attrs'):
+            return assembly
+        extraction = extraction_fingerprint(self.cache_config())
+        # The conditions under which cache_signature gives a key, without hashing the inputs again.
+        store_on = (bool(stimuli_identifier) and _version(type(self)) is not None and extraction is not None
+                    and is_enabled(f'{kind(self)}._from_{self._INPUTS}_stored'))
+        assembly.attrs['provenance'] = {**assembly.attrs.get('provenance', {}),
+                                        'extractor': kind(self), 'extraction': extraction,
+                                        'activation_store': 'on' if store_on else 'off'}
+        return assembly
 
     def cache_config(self):
         return cache_config(self, self.CACHE_FIELDS)

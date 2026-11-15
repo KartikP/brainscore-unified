@@ -58,6 +58,11 @@ def test_both_values_give_identical_channels(tmp_path, monkeypatch, kind, stream
         assert len(mine) == len(theirs) > 0
         for (t_a, meta_a, a), (t_b, meta_b, b) in zip(mine, theirs):
             assert t_a == t_b and meta_a == meta_b
+            # The counting hook's list is part of the extraction fingerprint (the model's hooks
+            # enter the cache key), and it holds more passes under 'one'; the rest is identical.
+            provenance_a, provenance_b = a.attrs.pop('provenance', {}), b.attrs.pop('provenance', {})
+            assert ({k: v for k, v in provenance_a.items() if k != 'extraction'}
+                    == {k: v for k, v in provenance_b.items() if k != 'extraction'})
             assert_same_output(a, b)
 
 
