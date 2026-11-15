@@ -135,7 +135,7 @@ def one_call_per_extractor(model, stimuli, plan):
         model._shared_calls = previous
 
 
-def record(model, stimuli, multi_modality: bool = False):
+def record(model, stimuli, multi_modality: bool = False, check_only: bool = False):
     """The activity of the regions ``start_recording`` set, for a stimulus table.
 
     The one step that records from the extractors: the neural session part,
@@ -144,10 +144,15 @@ def record(model, stimuli, multi_modality: bool = False):
     ``MODALITY_PRIORITY``); with it, every detected one, concatenated along
     ``neuroid`` with a ``modality`` coordinate. Several recording time bins
     repeat a static response across the bins, as legacy vision models do.
+    ``check_only`` makes every refusal of the recording and calls no extractor
+    (a session's plan checks every region before the first pass).
     """
     if not model._input_keys:
         raise TypeError(f"Subject '{model.identifier}' declares no input, so it cannot take "
                         f"{type(stimuli).__name__}.")
+    if check_only:
+        _record(model, stimuli, multi_modality, check_only=True)
+        return None
     output = _record(model, stimuli, multi_modality)
     time_bins = model._recorder.time_bins
     if time_bins is not None and len(time_bins) > 1:
@@ -156,7 +161,7 @@ def record(model, stimuli, multi_modality: bool = False):
     return output
 
 
-def _record(model, stimuli, multi_modality):
+def _record(model, stimuli, multi_modality, check_only=False):
     recorder = model._recorder
     detected = detect_modalities(model, stimuli)
     if not detected:
@@ -203,8 +208,8 @@ def _record(model, stimuli, multi_modality):
         )
 
     if (multi_modality or fused_for(model, detected) is not None) and len(detected) > 1:
-        return extract_modalities(model, stimuli, detected, layers)
-    if not multi_modality and len(detected) > 1:
+        return extract_modalities(model, stimuli, detected, layers, check_only)
+    if not multi_modality and len(detected) > 1 and not check_only:
         import warnings
         warnings.warn(
             f"Stimulus set contains multiple supported modalities "
@@ -217,8 +222,11 @@ def _record(model, stimuli, multi_modality):
             stacklevel=3,
         )
     if recorder.composite_recording and supports_layer_extraction(model, modality):
-        return recorder.process_composite_regions(stimuli, modality)
+        return recorder.process_composite_regions(stimuli, modality, check_only)
     layers = recorder.filter_layers_for_modality(layers, modality)
+    if check_only:
+        extractor_or_refuse(model, stimuli, modality, layers)
+        return None
     assembly = extract_for_modality(model, stimuli, modality, layers)
     if recorder.is_multi_region and supports_layer_extraction(model, modality):
         assembly = recorder.tag_neuroids_with_regions(assembly, modality)
@@ -310,14 +318,20 @@ def call_extractor(extractor, stimuli, layers):
 
 
 def _extract(model, stimuli, modality: str, layers: List[str]):
+    extractor = extractor_or_refuse(model, stimuli, modality, layers)
+    shared = model._shared_calls
+    call = (shared[1].get(id(extractor))
+            if shared is not None and shared[0] is stimuli else None)
+    if call is not None:
+        return call(stimuli, layers)
+    return call_extractor(extractor, stimuli, layers)
+
+
+def extractor_or_refuse(model, stimuli, modality: str, layers: List[str]):
+    """The extractor that records ``layers`` of ``modality`` from ``stimuli``; refuse when there is none."""
     extractor = extractor_for(model, modality, stimuli, layers)
     if extractor is not None:
-        shared = model._shared_calls
-        call = (shared[1].get(id(extractor))
-                if shared is not None and shared[0] is stimuli else None)
-        if call is not None:
-            return call(stimuli, layers)
-        return call_extractor(extractor, stimuli, layers)
+        return extractor
     modality = canonical_modality(modality)
     if extractor_keys(model, modality):
         raise ValueError(
@@ -329,14 +343,19 @@ def _extract(model, stimuli, modality: str, layers: List[str]):
         'record internal activity, or use a behavioral task for an output-only model.')
 
 
-def extract_modalities(model, stimuli, detected: Set[str], layers: List[str]):
-    """Invoke every detected-and-supported wrapper and concat assemblies."""
+def extract_modalities(model, stimuli, detected: Set[str], layers: List[str], check_only: bool = False):
+    """Invoke every detected-and-supported wrapper and concat assemblies.
+
+    ``check_only``: make the refusals of each call and call no extractor.
+    """
     import numpy as np
     import xarray as xr
 
     recorder = model._recorder
     fused = fused_for(model, detected)
     if fused is not None:
+        if check_only:
+            return None
         # One fused extractor takes every input type: one forward pass.
         assembly = call_extractor(fused, stimuli, layers)
         if recorder.is_multi_region:
@@ -354,6 +373,13 @@ def extract_modalities(model, stimuli, detected: Set[str], layers: List[str]):
         if (model._region_modality_map
                 and not modality_layers
                 and recorder.recording_regions):
+            continue
+        if check_only:
+            if recorder.composite_recording:
+                recorder.process_composite_regions(stimuli, modality, check_only=True)
+            else:
+                extractor_or_refuse(model, stimuli, modality, modality_layers)
+            sub_assemblies.append(None)
             continue
         sub = (recorder.process_composite_regions(stimuli, modality)
                if recorder.composite_recording else
@@ -381,7 +407,8 @@ def extract_modalities(model, stimuli, detected: Set[str], layers: List[str]):
             f"matching extractor. detected={detected}, "
             f"available={set(model._input_keys)}."
         )
-
+    if check_only:
+        return None
     return _concat_modalities_along_neuroid(sub_assemblies, xr)
 
 

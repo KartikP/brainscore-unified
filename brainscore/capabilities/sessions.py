@@ -61,8 +61,14 @@ class NeuralSessions(Capability):
         passes = plan.regions_per_pass
         with subject._behavioral.suspended():
             def runner(stimuli, channel_regions, time_bins, multi_modality):
+                # The plan's order and shared calls, when they were made for these regions and inputs.
+                planned = plan.passive
+                if planned is not None and (planned[2] != multi_modality or tuple(
+                        region for _, region in channel_regions) != plan.regions):
+                    planned = None
                 return run_neural_channels(subject, stimuli, channel_regions,
-                                           time_bins, multi_modality, passes)
+                                           time_bins, multi_modality, passes,
+                                           None if planned is None else planned[:2])
             if plan.delivery != 'table':
                 _drivers.drive_neural_session_streaming(
                     subject, session, channel_runner=runner, on_begin=subject._begin_episode)

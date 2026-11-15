@@ -53,21 +53,51 @@ def regions_per_pass() -> str:
     return value
 
 
+def plan_channels(model, stimuli, regions: Sequence[str], time_bins=None,
+                  multi_modality: bool = False, plan: str = 'all') -> Tuple[tuple, tuple]:
+    """The order of ``regions`` and the calls they share; every region checked before the first pass.
+
+    Returns ``(order, shared)`` as ``run_neural_channels`` uses them. Each region
+    makes every refusal of its recording here, with no extractor called (a
+    duplicate channel, a missing input, no stimulus column, no extractor with the
+    region's layers). A session decides this once, in its plan, for its table.
+    """
+    regions = list(regions)
+    _refuse_duplicates([f'neural:{region}' for region in regions])
+    state = model._recorder.snapshot()
+    try:
+        _start(model, regions[0] if len(regions) == 1 else regions, time_bins)
+        order = _plan(model, stimuli, regions)
+        shared = _shared_layers(model, stimuli, order) if plan == 'all' else []
+        for region in order:
+            _start(model, region, time_bins)
+            record(model, stimuli, multi_modality, check_only=True)
+    finally:
+        model._recorder.restore(state)
+    return tuple(order), tuple(shared)
+
+
 def run_neural_channels(model, stimuli, channel_regions: Sequence[Tuple[str, str]],
                         time_bins=None, multi_modality: bool = False,
-                        plan: str = 'all') -> Dict[str, object]:
+                        plan: str = 'all', planned=None) -> Dict[str, object]:
     """Return ``{channel: payload}`` for the requested ``neural:<region>`` channels.
 
     ``plan`` is the session's ``regions_per_pass()``: with ``'one'`` no call is shared.
+    ``planned`` is ``(order, shared)`` from the session's plan (``plan_channels``);
+    without it they are decided here.
     """
     regions = [region for _, region in channel_regions]
-    _refuse_duplicates([channel for channel, _ in channel_regions])
+    if planned is None:
+        _refuse_duplicates([channel for channel, _ in channel_regions])
     _start(model, regions[0] if len(regions) == 1 else regions, time_bins)
     state = model._recorder.snapshot()   # the combined recording, as before
     try:
         payloads = {}
-        order = _plan(model, stimuli, regions)
-        shared = _shared_layers(model, stimuli, order) if plan == 'all' else []
+        if planned is None:
+            order = _plan(model, stimuli, regions)
+            shared = _shared_layers(model, stimuli, order) if plan == 'all' else []
+        else:
+            order, shared = list(planned[0]), list(planned[1])
         with one_call_per_extractor(model, stimuli, shared):
             for region in order:
                 _start(model, region, time_bins)

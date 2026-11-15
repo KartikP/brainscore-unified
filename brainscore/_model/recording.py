@@ -508,17 +508,23 @@ class Recorder:
             )
         return assembly
 
-    def process_composite_regions(self, stimuli, modality):
-        """Extract and concatenate blocks for composite recording regions."""
+    def process_composite_regions(self, stimuli, modality, check_only=False):
+        """Extract and concatenate blocks for composite recording regions.
+
+        ``check_only``: refuse a region with no extractor, and call none.
+        """
         import numpy as np
         import xarray as xr
 
-        from .dispatch import extract_for_modality
+        from .dispatch import extract_for_modality, extractor_or_refuse
         owner = self.owner
         blocks = []
         for region in self.regions_for_modality(modality):
             selector = region_selector(owner, region)
             layer_paths = list(selector.layer_paths)
+            if check_only:
+                extractor_or_refuse(owner, stimuli, modality, layer_paths)
+                continue
             assembly = extract_for_modality(owner, stimuli, modality, layer_paths)
             assembly = self.ensure_layer_provenance(
                 assembly,
@@ -539,6 +545,8 @@ class Recorder:
             block = block.assign_coords(
                 region=('neuroid', np.array([region] * n)))
             blocks.append(block)
+        if check_only:
+            return None
         from brainscore_core.time_axis import require_one_time_axis
         require_one_time_axis(blocks, sources=[str(b['region'].values[0]) if b.sizes['neuroid'] else '?'
                                                for b in blocks])

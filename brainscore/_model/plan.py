@@ -30,6 +30,7 @@ class SessionPlan:
     pick_key: Optional[tuple] = None    # the task and formats the pick was made for
     by_answer: Optional[bool] = None    # within generation: the answer part (True) or the reply part
     recordings: Optional[tuple] = None  # groups that record the regions during the answering pass or a step
+    passive: Optional[tuple] = None     # without a task: (region order, shared calls, multi_modality)
 
     def pick_for(self, task, formats) -> Optional[Tuple[str, Optional[str]]]:
         """The planned pick when ``task`` and ``formats`` are the ones it was made for, else None."""
@@ -83,7 +84,7 @@ def plan_session(model, session, passes: str) -> SessionPlan:
     else:
         task_path = False
 
-    pick = pick_key = by_answer = recordings = None
+    pick = pick_key = by_answer = recordings = passive = None
     if task_path:
         _refuse_task_session(model, session, task, answers, regions)
         delivery = 'stream' if streaming else 'per_trial' if history else 'table'
@@ -100,6 +101,14 @@ def plan_session(model, session, passes: str) -> SessionPlan:
         refuse_variance(model, session)
         per_trial = history and (task is None or task.trial_memory == 'none')
         delivery = 'stream' if streaming else 'per_trial' if per_trial else 'table'
+        stimuli = getattr(session, 'stimuli', None)
+        if stimuli is not None and regions:
+            # Every region is checked before the first pass; the order and the shared calls
+            # are decided once. The whole table reads several inputs at once (core's driver).
+            from .channels import plan_channels
+            multi = delivery == 'table' and _spans_several_inputs(stimuli)
+            passive = plan_channels(model, stimuli, regions, getattr(session, 'time_bins', None),
+                                    multi, passes) + (multi,)
     else:
         delivery = 'stream' if streaming else 'table'
         if handler is _MOTOR and regions:
@@ -113,7 +122,14 @@ def plan_session(model, session, passes: str) -> SessionPlan:
             pick_key = _pick_key(task, ['behavior'])
     return SessionPlan(handler=handler, regions_per_pass=passes, answers=answers, regions=regions,
                        task_path=task_path, delivery=delivery, pick=pick, pick_key=pick_key,
-                       by_answer=by_answer, recordings=recordings)
+                       by_answer=by_answer, recordings=recordings, passive=passive)
+
+
+def _spans_several_inputs(stimuli) -> bool:
+    """Whether the table's stimulus columns feed more than one channel family (as core's driver reads its events)."""
+    from brainscore_core.io_catalog import column_channel
+    channels = {column_channel(column) for column in stimuli.columns} - {None}
+    return len({parse_channel(channel)[0] for channel in channels}) > 1
 
 
 def _region_layers(model, regions) -> dict:
