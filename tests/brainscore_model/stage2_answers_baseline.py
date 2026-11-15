@@ -78,7 +78,8 @@ def _channel(answer):
     else:
         flat = [str(v) for v in values.ravel()]
     index = answer.indexes['presentation']
-    return {'dtype': str(values.dtype), 'dims': list(answer.dims), 'shape': list(values.shape), 'values': flat,
+    axis = ({'choice': [_cell(v) for v in answer['choice'].values]} if 'choice' in answer.dims else {})
+    return {**axis, 'dtype': str(values.dtype), 'dims': list(answer.dims), 'shape': list(values.shape), 'values': flat,
             'presentation': {name: [_cell(v) for v in index.get_level_values(name)] for name in index.names},
             'response': json.loads(json.dumps(answer.attrs.get('response'), sort_keys=True, default=str))}
 
