@@ -20,10 +20,8 @@ def test_registered_under_both_ids():
     assert 'your-measurements' in brainscore.data_registry
 
 
-def test_stimulus_set_is_loadable_and_dispatchable():
-    import brainscore
-    stimuli = brainscore.load_stimulus_set('your-stimuli')
-
+def check_dispatchable(stimuli):
+    """A stimulus set a session can send: a recognized column, and real files or inline text."""
     assert len(stimuli) > 0
     assert 'stimulus_id' in stimuli.columns
 
@@ -32,15 +30,14 @@ def test_stimulus_set_is_loadable_and_dispatchable():
     from brainscore_core.io_catalog import stimulus_columns
     columns = stimulus_columns()
     present = set(columns) & set(stimuli.columns)
-    FILE_BACKED = {column for column in present if columns[column] != 'text'}  # text is inline
     assert present, (
         f'no recognized modality column in {list(stimuli.columns)}; a model cannot '
         f'tell what kind of data this is')
+    file_backed = {column for column in present if columns[column] != 'text'}
+    inline = present - file_backed                      # text carries its content in the table
 
-    if FILE_BACKED & present:
-        # Only file-backed modalities need paths on disk — a real model opens them.
-        # Text stimuli carry their content inline and have no files, so requiring
-        # stimulus_paths there would reject a perfectly valid language plugin.
+    if file_backed:
+        # Only file-backed modalities need paths on disk: a real model opens them.
         assert hasattr(stimuli, 'stimulus_paths'), (
             'file-backed stimuli need a stimulus_paths mapping')
         for stimulus_id in stimuli['stimulus_id'].values:
@@ -48,9 +45,14 @@ def test_stimulus_set_is_loadable_and_dispatchable():
             assert os.path.exists(path), (
                 f'stimulus_paths[{stimulus_id!r}] -> missing {path}')
     else:
-        column = sorted(INLINE & present)[0]
+        column = sorted(inline)[0]
         values = [str(v).strip() for v in stimuli[column].values]
         assert all(values), f'empty {column!r} values; inline stimuli carry their content'
+
+
+def test_stimulus_set_is_loadable_and_dispatchable():
+    import brainscore
+    check_dispatchable(brainscore.load_stimulus_set('your-stimuli'))
 
 
 def test_assembly_is_loadable_and_well_formed():
@@ -109,3 +111,13 @@ def test_carries_the_coord_metrics_stratify_on():
                     "stratify on it and raise 'Expected stratification coordinate'. "
                     "Rename to match your metric if you use a different coord.")
     assert len(set(values)) >= 2, 'stratification needs at least two categories'
+
+
+def test_participant_choices_match_the_stimuli():
+    """Behavioral data: one row per (participant, trial), the chosen label as the value."""
+    import brainscore
+    stimuli = brainscore.load_stimulus_set('your-stimuli')
+    choices = brainscore.load_dataset('your-choices')
+    assert set(np.asarray(choices['stimulus_id'].values).astype(str)) <= set(stimuli['stimulus_id'])
+    assert len(set(np.asarray(choices['participant'].values))) >= 2
+    assert set(np.unique(choices.values)) <= {'alpha', 'beta', 'gamma', 'delta'}

@@ -301,3 +301,38 @@ def test_benchmark_template_dummy_candidate_is_scorable(benchmark):
     score = benchmark(subject)
     assert np.isfinite(float(score))
     assert subject.requested == ('neural:IT',)
+
+
+# --- new_data ----------------------------------------------------------------------
+
+def test_data_template_check_accepts_a_text_stimulus_set():
+    """A language data plugin (only a `sentence` column) passes the template's check."""
+    import pandas as pd
+    from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
+    template_tests = _load('new_data/test_data.py', 'umi_template_data_tests')
+    stimuli = StimulusSet(pd.DataFrame({'stimulus_id': ['s0', 's1'], 'sentence': ['a cat', 'a dog']}))
+    template_tests.check_dispatchable(stimuli)
+    with pytest.raises(AssertionError, match='empty'):
+        template_tests.check_dispatchable(
+            StimulusSet(pd.DataFrame({'stimulus_id': ['s0'], 'sentence': ['  ']})))
+
+
+def test_data_template_choices_are_one_row_per_participant_and_trial():
+    data = _load('new_data/data.py', 'umi_template_data')
+    choices = data.load_choices()
+    assert choices.dims == ('presentation',)
+    assert choices.sizes['presentation'] == data.N_STIMULI * data.N_SUBJECTS
+    assert set(np.unique(choices.values)) <= set(data.CATEGORIES)
+
+
+# --- new_tool ----------------------------------------------------------------------
+
+def test_tool_template_tests_pass():
+    """The template's own tests, run in place."""
+    from brainscore.tools import _registry
+    template_tests = _load('new_tool/test_tool.py', 'umi_template_tool_tests')
+    try:
+        template_tests.test_loads_by_identifier()
+        template_tests.test_mean_equals_a_direct_recording(template_tests.tiny_subject_and_stimuli())
+    finally:
+        _registry._TOOLS.pop('your-tool', None)   # the template registers itself for the test

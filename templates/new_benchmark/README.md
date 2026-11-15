@@ -10,7 +10,7 @@ See `EXTENDING.md` (Seam 2) for the contract.
    `_ceiling()`, and `__call__(subject)`. Pick your metric via `load_metric(...)`.
 3. Pick your identifier in `benchmark_registry['<your-id>']`.
 4. Add `from . import <your_name>` to `brainscore/benchmarks/__init__.py`.
-5. Adapt `test_benchmark.py` and run it.
+5. Move `test_benchmark.py` to `tests/test_<your_name>.py`, adapt it and run it.
 
 ## Variants
 

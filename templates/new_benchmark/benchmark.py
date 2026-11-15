@@ -29,16 +29,18 @@ from brainscore_core.metrics import Score
 from brainscore_core.supported_data_standards.brainio.assemblies import NeuroidAssembly
 from brainscore_core.supported_data_standards.brainio.stimuli import StimulusSet
 from brainscore_core.streaming_helpers import neural_response
-from brainscore import benchmark_registry
+from brainscore import benchmark_registry, load_metric
 from brainscore.benchmarks import benchmark_score, not_estimated
-import brainscore_vision
 
 BIBTEX = """TODO: @article{...} citation for the data."""
 
-# 32 is not arbitrary: the cross-validated metrics below stratify their splits by
-# `object_name`, and a test fold must hold at least one stimulus per category. With
-# 4 categories, fewer than ~32 stimuli gives "test_size = 3 should be greater or equal
-# to the number of classes = 4". Real datasets are far larger; this is the floor.
+# 32 is not arbitrary. The metric below correlates prediction and data within each test
+# fold, and by default a test fold is 10 % of the stimuli: 4 of 32. A correlation on two
+# stimuli is always +1 or -1, so a score from folds that small means nothing, and the
+# metric does not warn. The folds are also stratified by `object_name`, so a test fold
+# needs one stimulus per category: with 4 categories, fewer than ~32 stimuli gives
+# "test_size = 3 should be greater or equal to the number of classes = 4". With fewer
+# stimuli, set a larger test fold (see the metric below).
 N_STIMULI, N_NEUROIDS = 32, 16
 CATEGORIES = ['alpha', 'beta', 'gamma', 'delta']
 
@@ -74,7 +76,7 @@ def _load_assembly():
         paths[sid] = path
 
     stimulus_set = StimulusSet([
-        {'stimulus_id': sid, 'image_file_name': paths[sid], 'object_name': obj}
+        {'stimulus_id': sid, 'image_path': paths[sid], 'object_name': obj}
         for sid, obj in zip(stimulus_ids, categories)])
     stimulus_set.stimulus_paths = paths
     stimulus_set.identifier = 'your-benchmark-stimuli'
@@ -125,7 +127,15 @@ class YourBenchmark(BenchmarkBase):
         # PLS defaults to 25 components and raises if a model has fewer units than that
         # ("`n_components` upper bound is 16. Got 25"). Production neural benchmarks
         # generally do use `pls` — switch once your models are wide enough.
-        self._metric = brainscore_vision.load_metric('linear_predictivity')
+        #
+        # The split: 10 folds, 90 % of the stimuli to fit and 10 % to test. Keep at least
+        # 3 stimuli in each test fold; more give a steadier score. With few stimuli,
+        # change the split, for example
+        #   load_metric('linear_predictivity',
+        #               crossvalidation_kwargs=dict(splits=10, train_size=0.5))
+        # (12 stimuli: 6 to fit, 6 to test). docs/guides/write_a_benchmark.md lists the
+        # metrics and their arguments.
+        self._metric = load_metric('linear_predictivity')
 
     def __call__(self, subject) -> Score:
         # 1) show the stimuli and record the subject's IT response, 70-170 ms after onset

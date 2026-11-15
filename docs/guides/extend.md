@@ -29,7 +29,8 @@ One table says which channel each column feeds: `brainscore_core.io_catalog.stim
 
 ## A new tool
 
-A tool observes or changes an experiment. Subclass `Tool` and override what you need:
+A tool observes or changes an experiment. Subclass `Tool` and override what you need.
+`templates/new_tool/` is a complete tool with its test.
 
 ```python
 from brainscore.experiments import Tool
@@ -45,17 +46,39 @@ class CountOutputs(Tool):
             self.count += 1
 ```
 
-For resources or saved files, override `attach(context)` as a context manager; add `validate` and `describe` for requirements and configuration. Copy payloads before keeping them; never modify them. A tool you write outside Brain-Score is registered with `register_tool(identifier, factory)` (from `brainscore.tools`); `load_tool(identifier, **configuration)` then calls the factory:
+The experiment calls `on_event` with one dict per event. A tool keeps its result on
+itself, as `count` here. Copy payloads before keeping them; never modify them.
 
-```python
-from brainscore.tools import register_tool
-register_tool('count-outputs', CountOutputs)          # a class or any function that returns a tool
-```
+| Key | Value |
+| --- | --- |
+| `kind` | what happened: `repetition_start`, `session_context`, `input`, `output`, `error`, `repetition_end`; tools add `intervention`, `intervention_start`, `intervention_end`, `activity`, `patch_reference` |
+| `payload` | for `input` and `output` of a session, the `StreamEvent` (`channel`, `payload`, `t_ms`, `meta`); for the other kinds, a dict |
+| `source` | who published it: `'protocol'`, or the `name` of a tool |
+| `condition`, `repetition_id` | the condition and the repetition the event belongs to |
+| `event_id` | one identifier per input; its outputs carry the same one |
+| `sequence`, `elapsed_s` | the order of the event in the repetition, and seconds since the run started |
 
-A tool that ships in Brain-Score is one line in the table in `brainscore/tools/_registry.py`: the module, the class, and whether `artifact=` loads a saved tool. The module is imported only when `load_tool` asks for it, so importing the package imports no tool:
+A tool that needs outputs from the subject names them in `requested_output_channels`
+(for example `frozenset({'neural:IT'})`); `TaskProtocol` requests them. For resources or
+saved files, override `attach(context)` as a context manager; add `validate` and
+`describe` for requirements and configuration.
+
+**Register it.** A tool that ships in Brain-Score is one module, `brainscore/tools/<name>.py`,
+and one line in the table `_TOOLS` in `brainscore/tools/_registry.py`: the module, the
+class, and whether `artifact=` loads a saved tool. The module is imported only when
+`load_tool` asks for it, so importing the package imports no tool:
 
 ```text
 'linear-probe': ('brainscore.tools.linear_probe', 'LinearProbe', True),
+```
+
+A tool in your own package is registered with `register_tool(identifier, factory)` (from
+`brainscore.tools`); `load_tool(identifier, **configuration)` then calls the factory:
+
+```python
+from brainscore.tools import load_tool, register_tool
+register_tool('count-outputs', CountOutputs)          # a class or any function that returns a tool
+print(load_tool('count-outputs').count)               # 0
 ```
 
 A complete external package is in [examples/partner_tool](../../examples/partner_tool/README.md).

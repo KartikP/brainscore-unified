@@ -105,6 +105,15 @@ def random_group_split(groups, fraction: float = 0.25, seed: int = 0):
     return [(~check, check)]
 
 
+# A Pearson r on two rows is always +1 or -1; on three it can be anything.
+_MIN_CHECK_ROWS = 3
+
+
+def _row_count(rows) -> int:
+    rows = np.asarray(rows)
+    return int(rows.sum()) if rows.dtype == bool else int(rows.size)
+
+
 def _empty(rows) -> bool:
     rows = np.asarray(rows)
     return not rows.any() if rows.dtype == bool else rows.size == 0
@@ -308,6 +317,13 @@ def grid_search(candidates: Iterable[Sequence[float]], split: Callable, *,
         for fit_rows, check_rows in split(groups):
             if _empty(fit_rows) or _empty(check_rows):
                 continue
+            n_check = _row_count(check_rows)
+            if n_check < _MIN_CHECK_ROWS:
+                raise ValueError(
+                    f'An inner check fold holds {n_check} rows; a Pearson r on fewer than '
+                    f'{_MIN_CHECK_ROWS} rows is meaningless (on two rows it is always +1 or -1). '
+                    f'Give the inner split fewer folds or a larger held-out fraction, or score '
+                    f'more stimuli.')
             prepared = solver.prepare([band[fit_rows] for band in train_bands],
                                       Y_train[fit_rows],
                                       [band[check_rows] for band in train_bands])
