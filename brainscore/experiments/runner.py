@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import tempfile
@@ -623,6 +624,40 @@ class RunContext:
         return self.artifact(destination, producer=producer, description=description)
 
 
+# A run made without output_dir lives in <tmp>/umi-run-<pid>-<random>/, with a marker file
+# that holds the id of the process that made it. Its result owns the folder; a folder whose
+# process has ended (killed before the result was collected) is removed at the next run.
+_RUN_PREFIX = 'umi-run-'
+_OWNER_MARKER = '.umi-run-owner'
+
+
+def _process_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True             # a live process of another user
+    return True
+
+
+def _remove_runs_of_ended_processes() -> None:
+    """Remove the run folders this runner made in processes that have ended.
+
+    Only a folder named ``umi-run-*`` with the owner marker is touched, so a folder the
+    user named with ``output_dir`` is never removed, nor a folder of a live process.
+    """
+    if os.name != 'posix':
+        return          # ponytail: liveness by signal 0 is POSIX only; Windows keeps leftovers
+    for folder in Path(tempfile.gettempdir()).glob(f'{_RUN_PREFIX}*'):
+        try:
+            pid = int((folder / _OWNER_MARKER).read_text())
+        except (OSError, ValueError):
+            continue
+        if pid != os.getpid() and not _process_alive(pid):
+            shutil.rmtree(folder, ignore_errors=True)
+
+
 class Experiment:
     """One execution, one subject instance, one new output directory.
 
@@ -687,7 +722,9 @@ class Experiment:
         plan = self.validate()
         if self.output_dir is None:
             # A fresh temporary folder per run, so the same Experiment can run again.
-            self._temporary = tempfile.TemporaryDirectory(prefix='umi-run-')
+            _remove_runs_of_ended_processes()
+            self._temporary = tempfile.TemporaryDirectory(prefix=f'{_RUN_PREFIX}{os.getpid()}-')
+            (Path(self._temporary.name) / _OWNER_MARKER).write_text(str(os.getpid()))
             self.run_directory = Path(self._temporary.name) / 'run'
         self.run_directory.mkdir(parents=True, exist_ok=False)
         manifest = {'schema_version': 1, 'run_id': uuid.uuid4().hex, 'status': 'running',
@@ -730,4 +767,6 @@ class Experiment:
             _write(self.run_directory / 'result.json', encoded)
             context.artifact(self.run_directory / 'result.json', producer='protocol',
                              description='Protocol return value, RunRecord payload encoding')
-        return ExperimentResult(self.run_directory, value, self._temporary)
+        # The result is the only owner of a temporary run folder from here on.
+        temporary, self._temporary = self._temporary, None
+        return ExperimentResult(self.run_directory, value, temporary)

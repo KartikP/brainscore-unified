@@ -646,6 +646,60 @@ def test_save_keeps_a_temporary_run_and_refuses_an_existing_folder(tmp_path):
         result.save(tmp_path / 'kept')
 
 
+def test_the_result_is_the_only_owner_of_its_run_folder(tmp_path, monkeypatch):
+    """The experiment keeps no reference after run(): dropping the result removes the folder."""
+    import gc
+    import os
+    import tempfile
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+    experiment = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+                            tools=[RecordBehavior()])
+    result = experiment.run()
+    folder = result.directory.parent
+    assert folder.name.startswith(f'umi-run-{os.getpid()}-')
+    assert (folder / '.umi-run-owner').read_text() == str(os.getpid())
+    del result
+    gc.collect()
+    assert not folder.exists()          # the experiment object is still alive here
+    assert experiment is not None
+
+
+def _ended_process_id():
+    import subprocess
+    import sys
+    process = subprocess.Popen([sys.executable, '-c', 'pass'])
+    process.wait()
+    return process.pid
+
+
+def test_a_run_removes_folders_of_ended_processes_only(tmp_path, monkeypatch):
+    import os
+    import tempfile
+    monkeypatch.setattr(tempfile, 'tempdir', str(tmp_path))
+
+    def folder(name, owner=None):
+        path = tmp_path / name
+        (path / 'run').mkdir(parents=True)
+        if owner is not None:
+            (path / '.umi-run-owner').write_text(str(owner))
+        return path
+
+    ended = _ended_process_id()
+    dead = folder(f'umi-run-{ended}-abc', owner=ended)
+    live = folder(f'umi-run-{os.getppid()}-def', owner=os.getppid())
+    unmarked = folder('umi-run-old')                   # made before the marker existed
+    named = folder(f'umi-run-{ended}-mine')            # a user's own folder: no marker
+    result = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+                        tools=[RecordBehavior()]).run()
+    assert not dead.exists()
+    assert live.exists() and unmarked.exists() and named.exists()
+    assert result.directory.exists()
+    explicit = tmp_path / f'umi-run-{ended}-explicit'
+    Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
+               tools=[RecordBehavior()], output_dir=explicit).run()
+    assert explicit.exists()                           # output_dir is never a temporary run
+
+
 def test_without_output_dir_each_run_gets_its_own_folder(tmp_path):
     experiment = Experiment(subject=_subject(Net()), protocol=TaskProtocol(STIMULI, TASK),
                             tools=[RecordBehavior()])
