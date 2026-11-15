@@ -144,6 +144,19 @@ def _written_answer(event) -> str:
     """The one written answer in a ``behavior:text`` event."""
     payload = event.payload
     if not isinstance(payload, str):
+        # The state core stored for the trial decides (Contract Rule 6.2): a missing or
+        # invalid written answer is an error of the run (ANSWER_POLICY of the benchmark).
+        try:
+            states = [str(state) for state in payload['response_state'].values]
+        except (KeyError, TypeError):
+            states = []
+        if any(state != 'valid' for state in states):
+            try:
+                reason = str(payload['response_reason'].values[0])
+            except (KeyError, TypeError, IndexError):
+                reason = ''
+            raise TypeError(f'The subject gave no written answer on behavior:text (state '
+                            f'{states[0]}' + (f': {reason}' if reason else '') + ')')
         valid = getattr(payload, 'coords', {}).get('answer_valid')
         if valid is not None and not bool(np.all(valid.values)):
             raise TypeError('The subject gave no written answer on behavior:text')
