@@ -22,6 +22,7 @@ Each guide answers one "how do I" question.
 | Use a model already in Brain-Score | [Existing models](guides/existing_models.md) |
 | Load or add a dataset | [Data](guides/data.md) |
 | Write a benchmark | [Write a benchmark](guides/write_a_benchmark.md) |
+| Run the experiments of my library on every model that fits | [External libraries](guides/external_libraries.md) |
 | Get choices or answers from a model | [Behavior](guides/behavior.md) |
 | Silence or change units, or choose units by function | [Perturb and select units](guides/perturb_and_select_units.md) |
 | Run a game, simulator or robot task | [Closed loop](guides/closed_loop.md) |
