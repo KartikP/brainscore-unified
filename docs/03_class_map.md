@@ -116,7 +116,7 @@ A callable cannot list its layers, so it counts as having every layer. Next to a
 | `answer` | `(stimulus_row, instruction, label_set) -> label` | `api_answer` (hosted APIs) |
 | `reply` | `prompt -> text` (or a `StreamEvent` with extra data) | `build_api_reply` (hosted APIs), `chat_parts` (Hugging Face chat models) |
 | `likelihood` | `(prompt, candidates) -> {candidate: log probability}` | `chat_parts` |
-| `policy` | `row -> {output channel: payload}`; keeps its own history and clears it in `reset()` | `build_api_action_fn` (hosted APIs), `DroidPolicy` (`brainscore.harnesses.droid_policy`), `LiberoChunkPolicy` (`brainscore.harnesses.libero_policy`) |
+| `policy` | `row -> {output channel: payload}`; keeps its own history and clears it in `reset()` | `api_policy` (hosted APIs), `DroidPolicy` (`brainscore.harnesses.droid_policy`), `LiberoChunkPolicy` (`brainscore.harnesses.libero_policy`) |
 | `intervention` | `StateChange -> (PerturbationApplied, undo_function)` | `build_pytorch_ablation_fn(net)` |
 | `behavioral_readout_layer` | a layer path; to answer a choice, add `capability_config={'behavior-sessions': {'behavior:choice': ('readout', 'argmax')}}` | |
 

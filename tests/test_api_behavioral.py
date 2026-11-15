@@ -156,7 +156,7 @@ class TestGenerationClosure:
 
 
 class TestGameActionFn:
-    """build_api_action_fn drives the embodied game via process(row)."""
+    """api_policy drives the embodied game via process(row)."""
 
     def _env_step(self, n_actions=3, ascii_board=None):
         import numpy as np
@@ -178,31 +178,31 @@ class TestGameActionFn:
         return call
 
     def test_parses_action_index(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
-        act = build_api_action_fn(self._mock('Let me think... Action: 2'), 'mock')
+        from brainscore.model_helpers.api_behavioral import api_policy
+        act = api_policy(self._mock('Let me think... Action: 2'), 'mock')
         resp = act(self._env_step(n_actions=3))['motor']
         assert resp.channel == 'motor' and resp.meta['valid']
         assert int(resp.payload) == 2
 
     def test_frame_sent_as_image(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore.model_helpers.api_behavioral import api_policy
         calls = []
-        act = build_api_action_fn(self._mock('Action: 1', counter=calls), 'mock')
+        act = api_policy(self._mock('Action: 1', counter=calls), 'mock')
         act(self._env_step())
         user_text, image = calls[0]
         assert image is not None and image[0] == 'image/png'   # frame -> PNG
         assert 'reach the goal' in user_text                   # mission in prompt
 
     def test_unparseable_falls_back_to_legal_random(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
-        act = build_api_action_fn(self._mock('no idea'), 'mock', fallback_seed=0)
+        from brainscore.model_helpers.api_behavioral import api_policy
+        act = api_policy(self._mock('no idea'), 'mock', fallback_seed=0)
         resp = act(self._env_step(n_actions=3))['motor']
         assert 0 <= int(resp.payload) < 3                       # random but legal
 
     def test_action_cache(self, tmp_path):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore.model_helpers.api_behavioral import api_policy
         calls = []
-        act = build_api_action_fn(self._mock('Action: 0', counter=calls), 'mock',
+        act = api_policy(self._mock('Action: 0', counter=calls), 'mock',
                                   cache_dir=str(tmp_path))
         s = self._env_step()
         a = act(s)['motor']
@@ -212,9 +212,9 @@ class TestGameActionFn:
         assert len(calls) == 1                                 # identical frame, same step -> cached
 
     def test_action_cache_keyed_by_step(self, tmp_path):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore.model_helpers.api_behavioral import api_policy
         calls = []
-        act = build_api_action_fn(self._mock('Action: 0', counter=calls), 'mock',
+        act = api_policy(self._mock('Action: 0', counter=calls), 'mock',
                                   cache_dir=str(tmp_path))
         s = self._env_step()
         act(s), act(s)
@@ -224,15 +224,15 @@ class TestGameActionFn:
         assert len(calls) == 2                                 # re-run replays from cache
 
     def test_missing_frame_raises(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
-        act = build_api_action_fn(self._mock(), 'mock')
+        from brainscore.model_helpers.api_behavioral import api_policy
+        act = api_policy(self._mock(), 'mock')
         with pytest.raises(ValueError, match="no 'frame'"):
             act({'observation': {'instruction': 'x'}})
 
     def test_ascii_mode_sends_board_no_image(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore.model_helpers.api_behavioral import api_policy
         calls = []
-        act = build_api_action_fn(self._mock('Action: 1', counter=calls), 'mock',
+        act = api_policy(self._mock('Action: 1', counter=calls), 'mock',
                                   obs_mode='ascii')
         resp = act(self._env_step(n_actions=3, ascii_board='P . .\n. . G'))['motor']
         user_text, image = calls[0]
@@ -241,14 +241,14 @@ class TestGameActionFn:
         assert int(resp.payload) == 1
 
     def test_ascii_mode_missing_board_raises(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
-        act = build_api_action_fn(self._mock(), 'mock', obs_mode='ascii')
+        from brainscore.model_helpers.api_behavioral import api_policy
+        act = api_policy(self._mock(), 'mock', obs_mode='ascii')
         with pytest.raises(ValueError, match="no 'ascii'"):
             act(self._env_step(n_actions=3))   # frame-only step, no ascii
 
     def test_trace_captures_reasoning(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
-        act = build_api_action_fn(
+        from brainscore.model_helpers.api_behavioral import api_policy
+        act = api_policy(
             self._mock('The goal is below me. Action: 1'), 'mock')
         assert act.trace == []                          # empty before any tick
         act(self._env_step(n_actions=3))
@@ -259,23 +259,23 @@ class TestGameActionFn:
         assert rec['step'] == 0
 
     def test_trace_flags_fallback_moves(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
-        act = build_api_action_fn(self._mock('no idea'), 'mock', fallback_seed=0)
+        from brainscore.model_helpers.api_behavioral import api_policy
+        act = api_policy(self._mock('no idea'), 'mock', fallback_seed=0)
         act(self._env_step(n_actions=3))
         assert act.trace[0]['fallback'] is True          # unparseable -> random
         assert 0 <= act.trace[0]['action'] < 3
 
     def test_history_window_zero_omits_history(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore.model_helpers.api_behavioral import api_policy
         calls = []
-        act = build_api_action_fn(self._mock('Action: 2', counter=calls), 'mock')
+        act = api_policy(self._mock('Action: 2', counter=calls), 'mock')
         act(self._env_step(n_actions=3)); act(self._env_step(n_actions=3))
         assert 'recent moves' not in calls[1][0].lower()   # memoryless by default
 
     def test_history_window_includes_recent_moves(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore.model_helpers.api_behavioral import api_policy
         calls = []
-        act = build_api_action_fn(self._mock('Action: 2', counter=calls), 'mock',
+        act = api_policy(self._mock('Action: 2', counter=calls), 'mock',
                                   history_window=8)
         act(self._env_step(n_actions=3))                   # tick 0: no history yet
         assert 'recent moves' not in calls[0][0].lower()
@@ -284,9 +284,9 @@ class TestGameActionFn:
         assert 'move 2' in calls[1][0]                     # the prior action's label
 
     def test_history_flags_noop_when_view_unchanged(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore.model_helpers.api_behavioral import api_policy
         calls = []
-        act = build_api_action_fn(self._mock('Action: 2', counter=calls), 'mock',
+        act = api_policy(self._mock('Action: 2', counter=calls), 'mock',
                                   obs_mode='ascii', history_window=8)
         board = 'P . .\n. . G'
         act(self._env_step(n_actions=3, ascii_board=board))
@@ -294,9 +294,9 @@ class TestGameActionFn:
         assert 'did NOT change' in calls[1][0]                # blocked/no-op flagged
 
     def test_history_flags_repeated_action(self):
-        from brainscore.model_helpers.api_behavioral import build_api_action_fn
+        from brainscore.model_helpers.api_behavioral import api_policy
         calls = []
-        act = build_api_action_fn(self._mock('Action: 2', counter=calls), 'mock',
+        act = api_policy(self._mock('Action: 2', counter=calls), 'mock',
                                   obs_mode='ascii', history_window=8)
         # three identical ticks -> 4th prompt warns about the repeated action
         for board in ('a', 'b', 'c', 'd'):

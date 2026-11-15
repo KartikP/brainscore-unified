@@ -35,5 +35,5 @@ Naming: a function that builds a part is called `build_<part>` and returns it, f
 example `build_policy()` returns the function passed as `policy=`. Constructor slots
 are `extractor`, `answer`, `policy` and `intervention` (and `reply` and `likelihood`
 for answers). Three ready-made builders still carry the names of removed parts:
-`api_answer(...)` returns an `answer`, `build_api_action_fn(...)` a
+`api_answer(...)` returns an `answer`, `api_policy(...)` a
 `policy`, and `build_pytorch_ablation_fn(model)` an `intervention`.

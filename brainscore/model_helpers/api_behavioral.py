@@ -468,7 +468,7 @@ def _parse_action_index(response: str, n_actions: int) -> Optional[int]:
     return None
 
 
-def build_api_action_fn(
+def api_policy(
     provider: Union[str, Callable],
     model: str,
     *,
@@ -570,7 +570,7 @@ def build_api_action_fn(
         if obs_mode == 'ascii':
             board = obs.get('ascii')
             if board is None:
-                raise ValueError("build_api_action_fn(obs_mode='ascii'): "
+                raise ValueError("api_policy(obs_mode='ascii'): "
                                  "the row's observation has no 'ascii'.")
             image = None
             payload = hashlib.sha256(str(board).encode('utf-8')).hexdigest()[:16]
@@ -582,7 +582,7 @@ def build_api_action_fn(
         else:  # vision
             frame = obs.get('frame')
             if frame is None:
-                raise ValueError("build_api_action_fn(obs_mode='vision'): "
+                raise ValueError("api_policy(obs_mode='vision'): "
                                  "the row's observation has no 'frame'.")
             media, b64 = _encode_frame(frame, frame_resize)
             image = (media, b64)
