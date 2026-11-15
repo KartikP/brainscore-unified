@@ -288,14 +288,20 @@ class VLMVisionWrapper:
         received gives the patches of each image. One image gives ``(presentation, neuroid)``; a pass over several images (a
         trial showing a sequence) gives one step per image, ``(presentation, part,
         neuroid)``, in the order shown. A pass without ``grid_thw`` gives one output
-        row per image. A later pass of the same presentation with other images is
-        refused before it runs.
+        row per image when its input keeps images apart (more than two axes); a
+        pass of flattened patches (two axes) without ``grid_thw`` is refused before
+        it runs, as is a later pass of the same presentation with other images.
         """
         def inputs(args, kwargs):
             counts = self._patch_counts({'image_grid_thw': kwargs.get('grid_thw')})
             if counts is not None:
                 return [int(c) for c in counts], len(counts)
-            return None, (args[0] if args else kwargs['pixel_values']).shape[0]
+            shown = args[0] if args else kwargs['pixel_values']
+            if shown.ndim == 2:
+                raise ValueError(f'This pass shows flattened patches {tuple(shown.shape)} without grid_thw '
+                                 f'(the image_grid_thw of the processor), so the patches of each image are '
+                                 f'unknown; give the encoder grid_thw.')
+            return None, shown.shape[0]
 
         def package(activity, read, _row):
             per_image = self._per_image(activity, read[1], read[0])

@@ -206,3 +206,10 @@ def test_every_wrapper_takes_the_one_value_set_and_refuses_others_at_constructio
                       'first_patch', 'none', 'max'):
             with pytest.raises(ValueError, match=r"layer_aggregation must be one of \(.*\); got"):
                 build(layer_aggregation=value)
+
+
+def test_a_recorded_pass_of_flattened_patches_without_a_grid_is_refused():
+    wrapper = vlm_vision_wrapper()
+    with wrapper.record(['blocks.0']), torch.no_grad():
+        with pytest.raises(ValueError, match='without grid_thw'):
+            wrapper._model(torch.ones(6, 12))
