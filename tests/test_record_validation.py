@@ -342,6 +342,29 @@ def test_finalize_and_read_memory_do_not_scale_with_log_length(tmp_path):
     print(f'log bytes={size} peaks(close, read)={peaks}')
 
 
+def test_reader_index_grows_at_most_32_bytes_per_64_kib(tmp_path):
+    """While events are read, the reader keeps a constant plus one 32-byte digest per
+    64 KiB block of log (the index of its first pass); nothing per block beyond that."""
+    import math
+    import tracemalloc
+    held, digests, blocks = {}, {}, {}
+    for count in (200, 20000):
+        directory = long_recording(tmp_path / str(count), count, width=500)
+        blocks[count] = math.ceil((directory / 'events.jsonl').stat().st_size / 65536)
+        tracemalloc.start()
+        events = RunRecord(directory).events()
+        next(events)  # suspended in the second pass, with the whole index built
+        held[count] = tracemalloc.get_traced_memory()[0]
+        index = events.gi_frame.f_locals.get('index')
+        digests[count] = len(index) if isinstance(index, bytearray) else None
+        events.close()
+        tracemalloc.stop()
+    allowed = 32 * (blocks[20000] - blocks[200]) + 8192  # the index plus allocator slack
+    assert held[20000] - held[200] <= allowed, (held, blocks)
+    assert digests == {count: 32 * blocks[count] for count in blocks}, digests
+    print(f'blocks={blocks} index bytes={digests} held bytes={held}')
+
+
 def recorded_size(directory):
     """Bytes the budget covers: the event log plus stored array and file assets."""
     assets = [p for name in ('arrays', 'files') for p in (directory / name).glob('*')]

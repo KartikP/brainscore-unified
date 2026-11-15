@@ -4,6 +4,11 @@ No pickle or dynamic class imports. Unknown payload types fail explicitly.
 Callers provide model/checkpoint, protocol, environment and tool provenance in
 metadata. A record preserves observations; it does not promise deterministic
 re-execution of a model or environment.
+
+Memory of RunRecord.events() (and outputs(), evaluate()): a constant (one 64 KiB
+verification block, the largest event line, one decoded event) plus an index of
+32 bytes per 64 KiB of log, 1/2048 of the log size (5 MB for a 10 GB log). The
+index is what lets the second pass refuse a block that changed after the first.
 """
 
 from contextlib import contextmanager
@@ -33,9 +38,11 @@ def _event_types():
     return {t.__name__: t for t in [*types, TaskContext, StreamEvent, Choice, Scale, Text, Prompt]}
 
 
-# The second pass of RunRecord.events() verifies the log in blocks of about this many
-# bytes before it yields any event of a block; memory holds one block.
+# RunRecord.events() verifies the log in fixed blocks of this many bytes (the last one
+# shorter) before it yields any event that ends in a block. The first pass keeps one
+# SHA-256 digest per block, back to back in one bytearray: _DIGEST bytes per block.
 _VERIFY_BLOCK = 1 << 16
+_DIGEST = 32
 
 
 def _stamp(handle):
@@ -540,9 +547,9 @@ class RunRecord:
     def events(self):
         """Yield events after the whole log passes checksum, JSON, count and order checks.
 
-        Two passes over one open file: memory is bounded by one verification block
-        (_VERIFY_BLOCK bytes) plus the largest event line, and one 32-byte digest per
-        block; not by the events. Callers that collect events into a list are not bounded.
+        Two passes over one open file. Memory: a constant (one verification block, the
+        largest event line) plus 32 bytes per 64 KiB of log (see the module docstring).
+        Callers that collect events into a list are not bounded.
         """
         expected = self.manifest.get('events_sha256')
         status = self.manifest.get('status')
@@ -577,14 +584,19 @@ class RunRecord:
                     raise ValueError('Run event log changed while reading')
 
             digest, size, count, parse_error, order_error = hashlib.sha256(), 0, 0, None, None
-            blocks, block, block_start = [], hashlib.sha256(), 0  # (end offset, digest)
+            index, block, filled = bytearray(), hashlib.sha256(), 0  # one digest per block
             for chunk in iter(handle.readline, b''):
                 digest.update(chunk)
-                block.update(chunk)
                 size += len(chunk)
-                if size - block_start >= _VERIFY_BLOCK:
-                    blocks.append((size, block.digest()))
-                    block, block_start = hashlib.sha256(), size
+                rest = memoryview(chunk)
+                while rest:
+                    taken = rest[:_VERIFY_BLOCK - filled]
+                    block.update(taken)
+                    filled += len(taken)
+                    rest = rest[len(taken):]
+                    if filled == _VERIFY_BLOCK:
+                        index += block.digest()
+                        block, filled = hashlib.sha256(), 0
                 for line in chunk.splitlines():
                     if parse_error is None:
                         try:
@@ -607,29 +619,31 @@ class RunRecord:
                 raise ValueError('Run event count mismatch')
             if order_error is not None:
                 raise order_error
-            if size > block_start:
-                blocks.append((size, block.digest()))
+            if filled:
+                index += block.digest()
             check_unchanged()
             handle.seek(0)
-            digest, index, offset = hashlib.sha256(), 0, 0
-            for end, expected_block in blocks:
-                chunks, block = [], hashlib.sha256()
-                while offset < end:
-                    chunk = handle.readline(end - offset)
-                    if not chunk:
-                        raise ValueError('Run event log changed while reading')
-                    chunks.append((offset, chunk))
-                    offset += len(chunk)
-                    block.update(chunk)
-                    digest.update(chunk)
-                if expected and block.digest() != expected_block:
+            digest, sequence, offset, carry, carry_start = hashlib.sha256(), 0, 0, b'', 0
+            for position in range(0, len(index), _DIGEST):
+                data = handle.read(min(_VERIFY_BLOCK, size - offset))
+                if (len(data) != min(_VERIFY_BLOCK, size - offset) or expected
+                        and hashlib.sha256(data).digest() != index[position:position + _DIGEST]):
                     raise ValueError('Run event log changed while reading')
-                for start, chunk in chunks:
+                offset += len(data)
+                digest.update(data)
+                # Only lines that end in a verified block are yielded; a partial line waits.
+                *pieces, carry = (carry + data).split(b'\n')
+                chunks = [piece + b'\n' for piece in pieces]
+                if offset == size and carry:
+                    chunks.append(carry)  # a final line without a newline, as readline reads it
+                    carry = b''
+                for chunk in chunks:
+                    start, carry_start = carry_start, carry_start + len(chunk)
                     for line in chunk.splitlines():
                         row = json.loads(line)
-                        if row['sequence'] != index:
+                        if row['sequence'] != sequence:
                             raise ValueError('Run event log changed while reading')
-                        index += 1
+                        sequence += 1
                         for key in ('args', 'kwargs', 'payload'):
                             if key in row:
                                 row[key] = self.codec.decode(row[key])
@@ -644,7 +658,7 @@ class RunRecord:
                         if initial and os.pread(handle.fileno(), len(chunk), start) != chunk:
                             raise ValueError('Run event log changed while reading')
                         yield row
-            if index != count or digest.hexdigest() != verified:
+            if sequence != count or digest.hexdigest() != verified:
                 raise ValueError('Run event log changed while reading')
 
     def outputs(self):
