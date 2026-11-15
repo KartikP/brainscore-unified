@@ -4,7 +4,7 @@ The Unified Model Interface (UMI) is how Brain-Score runs experiments on models.
 
 ## Start here
 
-1. [What UMI is](01_what_is_umi.md): the "lab for models" idea, in one page and one diagram.
+1. [What UMI is](01_what_is_umi.md): a common interface where experiments meet models.
 2. [Core concepts](02_core_concepts.md): the eight terms everything else is built from, each with a few lines of code.
 3. [Class map](03_class_map.md): which class to use, which method to call, and how the abstract ideas turn into concrete code.
 

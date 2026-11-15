@@ -1,12 +1,21 @@
 # What UMI is
 
-## A lab for models
+## A common interface where experiments meet models
 
-In a neuroscience or psychology lab, an experimenter presents stimuli to a participant, records what the participant does or what their neurons do, and compares those measurements across conditions or with other participants. The experimenter may also intervene, for example by silencing a brain area, and observe what changes.
+In a neuroscience or psychology experiment, an experimenter presents stimuli to a participant, records what the participant does or what their neurons do, and compares the measurements across conditions or participants. The experimenter may also intervene, for example by silencing a brain area, and observe what changes. The result is data: behavior and brain activity recorded from people and animals.
 
-UMI lets you do the same things with an artificial model as the participant. A model can be shown images, text, sounds or video, or placed in a game or robot task. Its answers and its internal activity can be recorded, and its units can be silenced or changed. The results can then be compared with data recorded from people and animals.
+The Unified Model Interface (UMI, a working name) runs such an experiment with a model in the participant's place and compares what the model does with that data. A **benchmark** is an experiment together with its data and a metric. Its score says how close a model's answers, or the activity of the layers that stand for the brain regions the benchmark names, come to what was measured. A score is reported for each benchmark, next to a reference: a ceiling estimated from the data, or the scores of null models.
 
-Classic Brain-Score asked one question per benchmark: how well does this model's activity or behavior match a fixed dataset? UMI keeps every classic benchmark and model, and adds the rest of the lab: any kind of input, closed-loop tasks, interventions, several regions or conditions in one run, and saved records that can be re-analyzed.
+Two kinds of users meet here, and each one does their part once.
+
+- **An experimenter** writes a procedure once: the stimuli, the task, the outputs to record, the data and the metric. The procedure then runs on every model that fits. That is a column of results, one for each model.
+- **A modeler** adapts a model once, as a subject. The model then takes part in every experiment that fits. That is a row of results, one for each experiment.
+
+Both work with the instruments of a lab: recording of answers and of internal activity, localizers that find units by how they respond, interventions that silence or change units and can be undone, and saved records that can be replayed and analyzed again. The induced dyslexia benchmark uses them on one question, what a model needs in order to read. It records a model's responses to words and pseudowords, finds the units that respond more to words, switches them off, and measures how the model's lexical decision changes on the stimuli of a reading study, with a lesion of the same size at random units as the control.
+
+An experiment can also come from another library through an adapter, with its human data, and then runs on every subject that fits. And an experiment can be run on models alone, before any data from people exists. That is a way to find a hypothesis; it becomes a benchmark when the data exists.
+
+Every Brain-Score vision and language benchmark and model keeps working. UMI widens what an experiment can be: any kind of input (images, text, sound, video), tasks in which the model acts in a game or a robot environment, interventions, several regions or conditions in one run, and records that are saved for a later analysis.
 
 ## The one diagram
 
@@ -14,7 +23,7 @@ Classic Brain-Score asked one question per benchmark: how well does this model's
 flowchart LR
     subgraph Experiment["Experiment or benchmark (the experimenter)"]
         S[Stimuli or environment]
-        M[Metric and measured data]
+        M[Brain or behavior data, and a metric]
     end
     subgraph Subj["Subject (the participant)"]
         P["participate(session)"]
@@ -22,17 +31,17 @@ flowchart LR
     end
     S -- "input events on channels<br/>(vision:image, text, audio, observation, lesion)" --> P
     P <--> MOD
-    P -- "response events on channels<br/>(behavior, neural:IT, motor)" --> M
-    M --> SC[Score or saved record]
+    P -- "response events on channels<br/>(behavior:choice, neural:IT, motor)" --> M
+    M --> SC[Score with its reference, or a saved record]
 ```
 
 Read it left to right:
 
-1. The **experiment** (or a **benchmark**, which is an experiment with a fixed scoring rule) decides what to present.
+1. The **experiment** (or a **benchmark**, which is an experiment with its data and a metric) decides what to present.
 2. Inputs travel as **events** on named **channels**, such as `vision:image` or `text`.
 3. The **subject** is the participant. It receives the inputs through a **session** and responds. Inside, it may run a neural network, a robot policy, a remote API or a simple rule. The experiment does not need to know which.
-4. Responses travel back as events on output channels, such as `behavior` (choices), `neural:IT` (activity standing in for brain area IT) or `motor` (actions).
-5. The experiment compares the responses with measured data and produces a **score**, or saves everything for later analysis.
+4. Responses travel back as events on output channels, such as `behavior:choice` (a choice), `neural:IT` (the activity of the layer that stands for brain area IT) or `motor` (actions).
+5. The benchmark compares the responses with the measured data and gives a **score**. An experiment with no data yet saves everything for a later analysis.
 
 ## Why it is built this way
 
