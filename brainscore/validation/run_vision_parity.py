@@ -19,7 +19,7 @@ import psutil
 from .benchmark_parity import RELEASE_CASES, CPU_FP32_POLICY
 
 
-VISION_CASES = tuple(case.unified for case in RELEASE_CASES if case.domain == 'vision')
+VISION_CASES = tuple(case.legacy for case in RELEASE_CASES if case.domain == 'vision')
 GIB = 2 ** 30
 
 

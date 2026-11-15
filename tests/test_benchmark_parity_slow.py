@@ -21,11 +21,11 @@ def _require_checkpoint(domain):
 
 
 @pytest.mark.parametrize('case', [case for case in CASES if case.domain == 'vision'],
-                         ids=lambda case: case.unified)
+                         ids=lambda case: case.legacy)
 def test_registered_benchmark_both_routes(case, tmp_path):
     _require_checkpoint(case.domain)
     report = validate_case(case, local_subject)
-    path = tmp_path / (case.unified + '.json')
+    path = tmp_path / (case.legacy + '.json')
     path.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, sort_keys=True))
 
@@ -35,7 +35,7 @@ def test_pereira_243_and_384_score_parity(tmp_path):
     reports = []
     for case in PEREIRA_CASES:
         report = validate_case(case, local_subject)
-        (tmp_path / (case.unified + '.json')).write_text(json.dumps(report, indent=2) + '\n')
+        (tmp_path / (case.legacy + '.json')).write_text(json.dumps(report, indent=2) + '\n')
         print(json.dumps(report, sort_keys=True))
         reports.append(report)
     # Keep the two cases in one test: independent parametrized tests cannot

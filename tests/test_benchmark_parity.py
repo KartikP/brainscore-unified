@@ -123,7 +123,7 @@ def _vision_subject(case, route):
     return VisionModelAdapter(legacy) if route == 'adapter' else legacy
 
 
-@pytest.mark.parametrize('case', CASES, ids=lambda case: case.unified)
+@pytest.mark.parametrize('case', CASES, ids=lambda case: case.legacy)
 def test_all_registered_factories_on_both_routes(case, synthetic_benchmarks, language_pair):
     native, adapter = language_pair
     def factory(case, route):
@@ -214,7 +214,7 @@ def run_parity_observations(language_pair):
     return run
 
 
-@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.unified)
+@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.legacy)
 @pytest.mark.parametrize('field', ['activation_delta', 'score', 'raw'])
 def test_adapter_guards_cannot_be_relaxed_by_native_tolerances(case, field, run_parity_observations):
     baseline = {'activation_delta': 0, 'score': 0.5, 'raw': 0.25}[field]
@@ -225,7 +225,7 @@ def test_adapter_guards_cannot_be_relaxed_by_native_tolerances(case, field, run_
                                 native_atol=1, score_atol=1)
 
 
-@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.unified)
+@pytest.mark.parametrize('case', GUARD_CASES, ids=lambda case: case.legacy)
 @pytest.mark.parametrize('field', ['score', 'raw'])
 def test_adapter_scores_allow_four_fp32_ulps_with_exact_activations(case, field, run_parity_observations):
     # Controlled scalar perturbations, not invented CI activation arrays.
@@ -358,7 +358,7 @@ def test_vision_native_keeps_original_absolute_tolerance(run_parity_observations
 
 def _paired_score_reports(deltas, raw_deltas=None):
     raw_deltas = deltas if raw_deltas is None else raw_deltas
-    return [dict(benchmark=case.unified, routes={
+    return [dict(benchmark=case.legacy, routes={
         'legacy': dict(score=0.5, raw=0.25, ceiling=0.5),
         'native': dict(score=0.5 + delta, raw=0.25 + raw_delta * 0.5, ceiling=0.5),
     }) for case, delta, raw_delta in zip(PEREIRA_CASES, deltas, raw_deltas)]
@@ -406,7 +406,7 @@ def test_slow_entrypoint_actually_enforces_joint_bias_guard(monkeypatch, tmp_pat
     from tests import test_benchmark_parity_slow as slow
     reports = {report['benchmark']: report for report in _paired_score_reports((0.0001, 0.0001))}
     monkeypatch.setattr(slow, '_require_checkpoint', lambda domain: None)
-    monkeypatch.setattr(slow, 'validate_case', lambda case, factory: reports[case.unified])
+    monkeypatch.setattr(slow, 'validate_case', lambda case, factory: reports[case.legacy])
     with pytest.raises(AssertionError, match='same-sign drift'):
         slow.test_pereira_243_and_384_score_parity(tmp_path)
 
@@ -487,6 +487,6 @@ def test_l4_preserves_paired_bias_guard():
     from brainscore.validation.benchmark_parity import L4_FP32_POLICY, RIDGE_CASES
     reports = _paired_score_reports((6e-6, 6e-6))
     for case, report in zip(RIDGE_CASES, reports):
-        report['benchmark'] = case.unified
+        report['benchmark'] = case.legacy
     with pytest.raises(AssertionError, match='mean signed drift'):
         assert_pereira_score_drift(reports, policy=L4_FP32_POLICY)

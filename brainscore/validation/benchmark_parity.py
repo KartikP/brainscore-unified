@@ -1,4 +1,8 @@
-"""Compare both unified model routes with a separately run legacy reference.
+"""Compare the adapter and native routes with a separately run legacy reference.
+
+Each route scores the same legacy benchmark: the legacy route calls it with the original
+domain subject; the adapter and native routes reach it through the legacy-benchmark facade,
+as ``brainscore.score`` does (``subject_for_benchmark``).
 
 This module never downloads weights. The runner is opt-in and uses explicit
 local checkpoints; benchmark assemblies/ceilings/stimuli must already be staged.
@@ -20,10 +24,6 @@ class ParityCase:
     legacy: str
     domain: str
 
-    @property
-    def unified(self):
-        return self.legacy + '-unified'
-
 
 CASES = tuple(
     ParityCase(f'MajajHong2015{access}.{region}-pls', 'vision')
@@ -39,6 +39,11 @@ RELEASE_CASES = CASES + RIDGE_CASES
 
 
 PEREIRA_CASES = tuple(case for case in CASES if case.domain == 'language')
+# Every budget below (ULPs, score tolerances, drift limits) was measured when the adapter and
+# native routes scored the `-unified` copies of these benchmarks with the typed calls
+# (start_recording, process). The routes now score the legacy benchmarks through the facade;
+# the values are kept unchanged until a cloud run of run_parity on the release cases confirms
+# them. No value changes without a measurement.
 ADAPTER_SCORE_ULPS = 4
 HISTORICAL_POLICY = 'historical-v1'
 CPU_FP32_POLICY = 'gpt2-pereira-cpu-fp32-v1'
@@ -107,8 +112,8 @@ PEREIRA_SCORE_ATOL = 0.002
 # pass 0.002. Sub-resolution changes within these intervals remain possible;
 # no finite tolerance can detect every infinitesimal or score-invariant defect.
 PEREIRA_SCORE_DRIFT_LIMITS = {
-    PEREIRA_CASES[0].unified: 0.00125,
-    PEREIRA_CASES[1].unified: 0.00045,
+    PEREIRA_CASES[0].legacy: 0.00125,
+    PEREIRA_CASES[1].legacy: 0.00045,
 }
 
 
@@ -150,7 +155,7 @@ def assert_pereira_score_drift(reports, *, policy=HISTORICAL_POLICY):
     if policy in FP32_POLICIES:
         found = False
         for cases in (PEREIRA_CASES, RIDGE_CASES):
-            names = {case.unified for case in cases}
+            names = {case.legacy for case in cases}
             pair = [report for report in reports if report['benchmark'] in names]
             if not pair:
                 continue
@@ -236,8 +241,8 @@ def validate_case(case, subject_factory, benchmark_loader=None, *,
 
 
 def _compare_snapshots(actual, reference, *, route, case, native_atol, pereira, native_ulps):
-    assert actual.shape == reference.shape, f'{case.unified}: {route} activation shapes differ'
-    assert np.prod(actual.shape) > 0, f'{case.unified}: empty activations'
+    assert actual.shape == reference.shape, f'{case.legacy}: {route} activation shapes differ'
+    assert np.prod(actual.shape) > 0, f'{case.legacy}: empty activations'
     # Both files use the same element boundaries even if their dtypes differ.
     elements = CHUNK_BYTES // max(actual.dtype.itemsize, reference.dtype.itemsize)
     max_delta, max_ulps = 0., 0.
@@ -246,12 +251,12 @@ def _compare_snapshots(actual, reference, *, route, case, native_atol, pereira, 
         try:
             if route == 'native' and pereira:
                 max_ulps = max(max_ulps, assert_pereira_activations(
-                    values, expected, err_msg=f'{case.unified}: native activations differ',
+                    values, expected, err_msg=f'{case.legacy}: native activations differ',
                     ulps=native_ulps))
             else:
                 np.testing.assert_allclose(
                     values, expected, rtol=0, atol=0 if route == 'adapter' else native_atol,
-                    err_msg=f'{case.unified}: {route} activations differ',
+                    err_msg=f'{case.legacy}: {route} activations differ',
                 )
         except AssertionError as failure:
             if route == 'adapter':
@@ -268,6 +273,7 @@ def _validate_case(case, subject_factory, benchmark_loader, *,
     from brainscore import BrainScoreModel
     from brainscore_language.compat.unified_adapter import LanguageModelAdapter
     from brainscore_vision.compat.unified_adapter import VisionModelAdapter
+    from brainscore_core.legacy_facade import declared_visual_degrees, subject_for_benchmark
     if os.environ.get('RESULTCACHING_DISABLE') != '1':
         raise RuntimeError('Parity validation requires RESULTCACHING_DISABLE=1')
     benchmark_loader = benchmark_loader or load_benchmark
@@ -285,7 +291,7 @@ def _validate_case(case, subject_factory, benchmark_loader, *,
     runs = {}
     reference = None
     def report():
-        return {'benchmark': case.unified, 'policy': policy,
+        return {'benchmark': case.legacy, 'policy': policy,
                 'native_atol': None if pereira else native_atol,
                 'native_ulps': native_ulps if pereira else None,
                 'native_ulp_magnitude_floor': PEREIRA_ULP_MAGNITUDE_FLOOR if pereira else None,
@@ -298,7 +304,7 @@ def _validate_case(case, subject_factory, benchmark_loader, *,
             raise TypeError('adapter route requires a domain adapter')
         if route == 'legacy' and isinstance(subject, (*adapters, BrainScoreModel)):
             raise TypeError('legacy route requires the original domain subject')
-        benchmark = benchmark_loader(case.legacy if route == 'legacy' else case.unified)
+        benchmark = benchmark_loader(case.legacy)
         attr = '_similarity_metric' if case.domain == 'vision' else 'metric'
         metric = getattr(benchmark, attr)
         captured = []
@@ -311,7 +317,11 @@ def _validate_case(case, subject_factory, benchmark_loader, *,
             return metric(source, target, *args, **kwargs)
         setattr(benchmark, attr, capture)
         try:
-            score = benchmark(subject)
+            # The legacy route calls the benchmark with the domain subject itself; the
+            # adapter and native routes receive what brainscore.score gives them (the facade).
+            received = subject if route == 'legacy' else subject_for_benchmark(
+                subject, benchmark, visual_degrees=declared_visual_degrees(subject))
+            score = benchmark(received)
             observed = {'score': _scalar(score), 'raw': _scalar(score.attrs['raw'])}
             runs[route] = observed
             observed['metric_inputs'] = [
@@ -376,7 +386,7 @@ def _validate_case(case, subject_factory, benchmark_loader, *,
                             limit *= runs['legacy']['ceiling']
                         np.testing.assert_allclose(observed[key], runs['legacy'][key], rtol=0,
                             atol=limit,
-                            err_msg=f'{case.unified}: {route} {key} differs')
+                            err_msg=f'{case.legacy}: {route} {key} differs')
                     except AssertionError as error:
                         if route == 'adapter':
                             raise

@@ -1,8 +1,9 @@
 """``python -m brainscore.validation.run_parity`` -- the three-route check.
 
-The parity suite is the standing guard against a whole class of defect: a
-`-unified` benchmark variant agreeing with its legacy counterpart on one code
-path while silently diverging on another. That is not hypothetical. The Pereira
+The parity suite is the standing guard against a whole class of defect: a model
+route agreeing with the legacy reference on one code path while silently diverging
+on another. Every route scores the legacy benchmark; the adapter and native routes
+reach it through the legacy-benchmark facade, as ``brainscore.score`` does. That is not hypothetical. The Pereira
 variants ran for months showing natively-registered models one bare sentence at
 a time while adapter-routed models received the running passage context, and it
 went unnoticed because the original validation only ever exercised the adapter.
@@ -73,10 +74,10 @@ def main(argv=None):
     os.environ.update(HF_HUB_OFFLINE='1', TRANSFORMERS_OFFLINE='1', BS_INSTALL_DEPENDENCIES='no')
 
     wanted = set(args.only.split(',')) if args.only else None
-    known = {case.unified for case in RELEASE_CASES}
+    known = {case.legacy for case in RELEASE_CASES}
     if wanted and wanted - known:
         parser.error(f'Unknown parity cases: {sorted(wanted - known)}')
-    paired = {case.unified for case in PEREIRA_CASES}
+    paired = {case.legacy for case in PEREIRA_CASES}
     if wanted and wanted & paired and not paired <= wanted:
         parser.error('Select both Pereira linear cases to enforce the paired drift guard')
     if args.threads < 1:
@@ -90,7 +91,7 @@ def main(argv=None):
         if args.device != 'cuda' or args.language_precision != 'float32':
             parser.error('The L4 FP32 policy requires --device cuda --language-precision float32')
     if args.policy in FP32_POLICIES:
-        ridge = {case.unified for case in RIDGE_CASES}
+        ridge = {case.legacy for case in RIDGE_CASES}
         if wanted and wanted & ridge and not ridge <= wanted:
             parser.error('Select both Pereira ridge cases to enforce the FP32 paired drift guard')
     reports, failures, failed_observations = {}, {}, {}
@@ -106,7 +107,7 @@ def main(argv=None):
         temporary.replace(output)
     def factory(case, route):
         def observe(values):
-            result.setdefault('models', {}).setdefault(case.unified, {})[route] = values
+            result.setdefault('models', {}).setdefault(case.legacy, {})[route] = values
             if args.device != 'auto':
                 actual = {device.split(':')[0] for device in values['parameter_devices']}
                 if actual != {args.device}:
@@ -126,24 +127,24 @@ def main(argv=None):
                 raise ValueError(f'The L4 profile requires NVIDIA L4; observed {environment.get("cuda_name")}')
             save()
             for case in RELEASE_CASES:
-                if wanted and case.unified not in wanted:
+                if wanted and case.legacy not in wanted:
                     continue
                 started = time.time()
                 try:
-                    reports[case.unified] = validate_case(
+                    reports[case.legacy] = validate_case(
                         case, factory, policy=args.policy, scratch_dir=args.scratch_dir,
                     )
-                    print(f'  PASS {case.unified} ({time.time() - started:.0f}s)', flush=True)
+                    print(f'  PASS {case.legacy} ({time.time() - started:.0f}s)', flush=True)
                 except Exception as error:                  # noqa: BLE001
                     if isinstance(error, ParityFailure):
-                        failed_observations[case.unified] = error.report
-                    failures[case.unified] = f'{type(error).__name__}: {error}'
-                    print(f'  FAIL {case.unified} ({time.time() - started:.0f}s)\n'
-                          f'       {failures[case.unified]}', flush=True)
+                        failed_observations[case.legacy] = error.report
+                    failures[case.legacy] = f'{type(error).__name__}: {error}'
+                    print(f'  FAIL {case.legacy} ({time.time() - started:.0f}s)\n'
+                          f'       {failures[case.legacy]}', flush=True)
                 save()
             groups = (PEREIRA_CASES, RIDGE_CASES) if args.policy in FP32_POLICIES else (PEREIRA_CASES,)
             for group in groups:
-                names = {case.unified for case in group}
+                names = {case.legacy for case in group}
                 if names <= reports.keys():
                     try:
                         assert_pereira_score_drift([reports[name] for name in sorted(names)], policy=args.policy)
