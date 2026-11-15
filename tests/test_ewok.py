@@ -225,7 +225,8 @@ def test_registered_benchmark_through_score_and_tools(mode, prepared, tmp_path, 
         batch_size=2,output_dir=tmp_path/'scored')
     value=brainscore.score(make(),benchmark,check_mem=False)
     assert float(value)==1 and value.attrs['normalized'] is False
-    assert value.attrs['items']==3 and value.attrs['questions']==6
+    assert value.attrs['items']==3 and value.attrs['n_trials']==6
+    assert (value.attrs['n_invalid'], value.attrs['n_missing']) == (0, 0)
     assert value.attrs['paper_replication'] is False
     sent=len(requests)
     run=Experiment(subject=make(),protocol=benchmark.protocol(),
@@ -256,7 +257,9 @@ def test_equal_weight_versions_not_pooled_rows(prepared, tmp_path):
 def test_invalid_choice_counts_as_wrong_not_dropped(prepared, tmp_path):
     def reply(prompt):return 'Reasoning says 1 but answer is 2'
     b=brainscore.load_benchmark('EWoK-core-1.0-choice',root=prepared,output_dir=tmp_path/'run')
-    value=b(chooser(reply));assert float(value)==0;assert value.attrs['invalid_answers']==6
+    value=b(chooser(reply));assert float(value)==0
+    assert (value.attrs['n_trials'], value.attrs['n_invalid'], value.attrs['n_missing']) == (6, 6, 0)
+    assert value.attrs['answer_policy'] == 'invalid: wrong, counted; missing: wrong, counted'
 
 
 def test_choice_prompt_is_ewoks_own_text_with_nothing_added(prepared, tmp_path):
@@ -784,9 +787,9 @@ def test_choice_item_scores_match_the_native_choice_answers(prepared, tmp_path):
                                           output_dir=tmp_path / 'run')
     value = benchmark(chooser())
     items = json.loads((tmp_path / 'run' / 'item-scores.json').read_text())
-    assert [(item['accuracy'], item['invalid_answers']) for item in items] == [(1.0, 0)] * 3
+    assert [(item['accuracy'], item['n_invalid'], item['n_missing']) for item in items] == [(1.0, 0, 0)] * 3
     assert value.attrs['version_scores'] == {'0': 1.0, '1': 1.0}
-    assert value.attrs['invalid_answers'] == 0
+    assert (value.attrs['n_invalid'], value.attrs['n_missing']) == (0, 0)
 
 
 def test_choice_replay_rebuilds_one_session_per_request(prepared, tmp_path):
@@ -815,3 +818,39 @@ def test_a_readout_only_model_is_not_applicable_on_logprobs(prepared):
     with pytest.raises(CompatibilityError, match='behavior:log_probabilities'):
         check_channel_compatibility(readout, benchmark)
     assert calls == []
+
+
+def test_one_unparsed_choice_reply_of_six_counts_wrong_and_is_counted(prepared, tmp_path):
+    """Step 9: the choice form reads the state of each answer."""
+    seen = []
+
+    def reply(prompt):
+        seen.append(prompt)
+        return 'I cannot tell' if len(seen) == 1 else native_choice(prompt)
+    b = brainscore.load_benchmark('EWoK-core-1.0-choice', root=prepared, batch_size=3,
+                                  output_dir=tmp_path / 'run')
+    value = b(chooser(reply))
+    assert (value.attrs['n_trials'], value.attrs['n_valid'], value.attrs['n_invalid'],
+            value.attrs['n_missing']) == (6, 5, 1, 0)
+    items = json.loads((tmp_path / 'run' / 'item-scores.json').read_text())
+    assert sorted(item['accuracy'] for item in items) == [0.5, 1.0, 1.0]
+    assert sum(item['n_invalid'] for item in items) == 1
+    assert value.attrs['result_validity'] == 'valid'
+
+
+def test_a_positive_log_probability_is_scored_and_counted_as_invalid(prepared, tmp_path):
+    """Step 9, the decided policy: today's behavior (only a non-finite value stops the
+    run); a finite value above 0, which core marks invalid, is scored and counted."""
+    b = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, output_dir=tmp_path / 'run')
+    value = b(likelihood_subject(lambda prompt, candidates: {c: 0.5 for c in candidates}))
+    assert float(value) == 0.5                                     # every comparison a tie
+    assert (value.attrs['n_trials'], value.attrs['n_invalid'], value.attrs['n_missing']) == (6, 6, 0)
+
+
+def test_the_log_probability_form_writes_the_counts_and_its_policy(prepared, tmp_path):
+    b = brainscore.load_benchmark('EWoK-core-1.0-logprobs', root=prepared, output_dir=tmp_path / 'run')
+    value = b(likelihood_subject(lambda prompt, candidates: {c: -1.0 - i for i, c in enumerate(candidates)}))
+    assert (value.attrs['n_invalid'], value.attrs['n_missing']) == (0, 0)
+    assert value.attrs['answer_policy'] == (
+        'non-finite or missing: an error of the run (an item needs four finite values); '
+        'a finite value above 0: scored as given, counted as invalid')
