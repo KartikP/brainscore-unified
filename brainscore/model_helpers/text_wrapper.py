@@ -34,6 +34,11 @@ from brainscore.model_helpers._extractors import (
 
 logger = logging.getLogger(__name__)
 
+# The version of what this module extracts: a part of the activation cache key
+# (``_extractors.cache_config``). Raise it by hand when a change can move the
+# extracted values, also through code this module calls.
+_VERSION = 1
+
 
 def align_word_times_to_tokens(word_ids, word_onsets_ms, word_durations_ms):
     """Map per-token ``word_ids`` to per-token (start_ms, end_ms) windows.
@@ -152,6 +157,11 @@ class TextWrapper:
             (None): no attr is added.
     """
 
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
+
     VALID_AGGREGATIONS = ('last_token', 'mean_tokens', 'per_token')
 
     def __init__(self, model, tokenizer, identifier=None, backbone_id=None,
@@ -260,12 +270,11 @@ class TextWrapper:
         signature = cache_signature(self, '_from_texts_stored', texts, stimuli_identifier)
         if signature is None:
             return self._from_texts(texts, layers, stimuli_identifier)
-        return self._from_texts_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
-                                       layers=layers, texts=texts, extraction_fingerprint=signature)
+        return self._from_texts_stored(stimuli_identifier=stimuli_identifier, layers=layers, texts=texts,
+                                       extraction_fingerprint=signature)
 
     @store_xarray(identifier_ignore=['texts', 'layers'], combine_fields={'layers': 'layer'})
-    def _from_texts_stored(self, identifier, layers, stimuli_identifier, texts,
-                           extraction_fingerprint):
+    def _from_texts_stored(self, layers, stimuli_identifier, texts, extraction_fingerprint):
         return self._from_texts(texts, layers, stimuli_identifier)
 
     def _from_texts(self, texts, layers, stimuli_identifier=None):
@@ -630,9 +639,3 @@ class TextWrapper:
             time_bin_start_ms=(('presentation', 'time_bin'), start),
             time_bin_end_ms=(('presentation', 'time_bin'), end))
 
-
-# Recording several layers in one call gives, for each layer, exactly what a
-# call for that layer alone gives, so the regions of one session share one call
-# (brainscore._model.channels). Set outside the class body: the class source is
-# part of the activation cache key, and this line must not change that key.
-TextWrapper.independent_layers = True

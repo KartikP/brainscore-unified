@@ -4,6 +4,16 @@ Each function does one job that every extractor needs: find a layer by its
 dotted path, copy a hooked output to numpy, hold hooks on the forward pass that
 the extractor or another caller runs, run inputs in batches, key the
 activation cache, and copy stimulus columns onto an assembly.
+
+The activation cache key of a wrapper is explicit (``cache_config``): it names
+the ``_VERSION`` of the wrapper's module, not source text. A change that moves
+the values a wrapper extracts raises that ``_VERSION`` by hand. This holds for
+code outside the wrapper classes too: this module, and what the wrappers call
+(``video_wrapper._window_features``, ``_shared_clock``, ``_edges_from_centers``,
+``brainscore.temporal.window_plan``, ``brainscore_core.assembly_builder``). A
+change here raises the ``_VERSION`` of every wrapper module that uses the
+changed code. ``tests/test_wrapper_cache_guard.py`` fails when values move
+under an unchanged ``_VERSION``.
 """
 import inspect
 import sys
@@ -14,7 +24,7 @@ import numpy as np
 from tqdm.auto import tqdm
 
 from brainscore_core.assembly_builder import make_assembly, make_layer_neuroid_coords
-from brainscore_core.extraction_cache import extraction_fingerprint, wrapper_config
+from brainscore_core.extraction_cache import extraction_fingerprint, model_config
 from brainscore.model_helpers.selection import split_site
 
 
@@ -281,16 +291,37 @@ def layer_assembly(identifier: str, layer: str, values: np.ndarray):
     return make_assembly(values, coords=coords, dims=dims)
 
 
-def cache_config(wrapper, fields):
-    """The wrapper's cache configuration, with this module's source in its implementation.
+def kind(wrapper) -> str:
+    """The wrapper's class as ``<module>.<Class>``: the store path of its cache entries."""
+    cls = type(wrapper)
+    return f'{cls.__module__}.{cls.__qualname__}'
 
-    The source of the wrapper class is part of the cache key, so an edit to the
-    extraction code recomputes cached activations. The code here is extraction
-    code too.
+
+def cache_config(wrapper, fields):
+    """The explicit cache key of a wrapper, without its inputs.
+
+    Parts: the kind (``<module>.<Class>``); the ``_VERSION`` of the wrapper's
+    module; the settings ``fields`` (``CACHE_FIELDS``, batch size included; a
+    callable counts by its code); the model (weights hash, structure, dtypes,
+    library versions, precision, hooks); the input device. ``cache_signature``
+    adds the inputs. No source text is part of it, so an edit that keeps values
+    (a comment, a docstring, a move) keeps the key.
+
+    ``_VERSION`` is read from the first module along the class's MRO that has
+    one, so a subclass in another module shares its parent's version.
     """
-    config = wrapper_config(wrapper, fields)
-    config['implementation'].append((__name__, inspect.getsource(sys.modules[__name__])))
-    return config
+    return {'kind': kind(wrapper), 'version': _version(type(wrapper)),
+            'settings': {field: getattr(wrapper, field) for field in fields},
+            'input_device': str(getattr(wrapper, '_device', None)),
+            'model': model_config(wrapper._model)}
+
+
+def _version(cls) -> int:
+    for base in cls.__mro__:
+        version = getattr(sys.modules.get(base.__module__), '_VERSION', None)
+        if version is not None:
+            return version
+    raise TypeError(f'{cls.__qualname__} caches activations, and no module of its classes has a _VERSION.')
 
 
 def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
@@ -299,13 +330,10 @@ def cache_signature(wrapper, stored: str, inputs, stimuli_identifier):
     ``stored`` names the wrapper's ``@store_xarray`` method; ``inputs`` is what
     the fingerprint reads for the stimuli (the texts, or the files behind paths).
     """
-    if not (wrapper.backbone_id and stimuli_identifier):
+    if not stimuli_identifier:
         return None
-    return extraction_fingerprint(
-        {'configuration': wrapper.cache_config(), 'inputs': inputs},
-        cache_identifier=(f'{type(wrapper).__module__}.{type(wrapper).__name__}'
-                          f'.{stored}/identifier={wrapper.backbone_id}'),
-    )
+    return extraction_fingerprint({'configuration': wrapper.cache_config(), 'inputs': inputs},
+                                  cache_identifier=f'{kind(wrapper)}.{stored}')
 
 
 def attach_stimulus_set(assembly, stimuli):

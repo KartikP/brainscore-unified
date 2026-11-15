@@ -211,9 +211,7 @@ def test_vlm_video_regions_share_one_call(tmp_path, streaming):
     assert len(calls) == (2 if streaming else 1)
 
 
-def test_the_declaration_keeps_the_activation_cache_key():
-    """The class source is part of the cache key; the declaration sits outside it."""
-    import inspect
+def test_every_wrapper_declares_independent_layers():
     from brainscore.model_helpers.audio_wrapper import AudioWrapper
     from brainscore.model_helpers.text_wrapper import TextWrapper
     from brainscore.model_helpers.video_wrapper import VideoWrapper
@@ -221,7 +219,6 @@ def test_the_declaration_keeps_the_activation_cache_key():
     from brainscore.model_helpers.vlm_vision_wrapper import VLMVisionWrapper
     for wrapper in (TextWrapper, VLMVisionWrapper, VLMVideoWrapper, VideoWrapper, AudioWrapper):
         assert wrapper.independent_layers is True
-        assert 'independent_layers' not in inspect.getsource(wrapper)
 
 
 # --- the rules of issue #80, with a declared extractor -------------------------

@@ -1,0 +1,747 @@
+{
+ "audio": {
+  "cases": {
+   "mean_time": {
+    "coords": {
+     "audio_path": [
+      [
+       "presentation"
+      ],
+      "<U9",
+      "867b9e6d7396a62b338a917c692976af3cd2cd709f52b4c81811d5350223122a"
+     ],
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "89068ed2934ec340142dd2dd1b88ebfaf14e437d816faa714e915b1e1f3b152b"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "f55269acfac40d905c57c3f33f0cb38068af4063caacf67ec0c37e098a9307f1"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "db3e5eeae7976da9b122d841a26bd16385c5032989784f1ba2bac004498b3040"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "098357ede35ded0d811547610a8bda8566a699b2a7fdd42d8d0408e099fcdd02"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "<U2",
+      "532b18dbd1e7bcdc59354f6f122fb419c22d14542c9838fa6479765b1de468a9"
+     ],
+     "stimulus_path": [
+      [
+       "presentation"
+      ],
+      "object",
+      "867b9e6d7396a62b338a917c692976af3cd2cd709f52b4c81811d5350223122a"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     3,
+     7
+    ],
+    "values": "5b94b3aa0342b42840432fc9628b55a96e5bdd67016e5ff5183bda7702388ecb"
+   },
+   "time_series": {
+    "coords": {
+     "audio_path": [
+      [
+       "presentation"
+      ],
+      "<U9",
+      "867b9e6d7396a62b338a917c692976af3cd2cd709f52b4c81811d5350223122a"
+     ],
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "89068ed2934ec340142dd2dd1b88ebfaf14e437d816faa714e915b1e1f3b152b"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "f55269acfac40d905c57c3f33f0cb38068af4063caacf67ec0c37e098a9307f1"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "db3e5eeae7976da9b122d841a26bd16385c5032989784f1ba2bac004498b3040"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "098357ede35ded0d811547610a8bda8566a699b2a7fdd42d8d0408e099fcdd02"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "<U2",
+      "532b18dbd1e7bcdc59354f6f122fb419c22d14542c9838fa6479765b1de468a9"
+     ],
+     "stimulus_path": [
+      [
+       "presentation"
+      ],
+      "object",
+      "867b9e6d7396a62b338a917c692976af3cd2cd709f52b4c81811d5350223122a"
+     ],
+     "time_bin_end_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "3b5b6bd8eb34ee40ca904d29db5b10087f90faf8fa051badd7135c65703c74a3"
+     ],
+     "time_bin_id": [
+      [
+       "time_bin"
+      ],
+      "int64",
+      "53126600b67ba0e8d4093d16441d30e717ba51d5da74c8e55cca1fe4e3bdb6ab"
+     ],
+     "time_bin_start_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "6df92953294b62d0871f39c464c0085343b2e8f7f554e73122edbd47d96b0a5c"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "time_bin",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     3,
+     16,
+     7
+    ],
+    "values": "cf3957a2b0124c9d337c00363fcc3913387d5676bb36d07c5d14f398951067c4"
+   }
+  },
+  "version": 1
+ },
+ "text": {
+  "cases": {
+   "last_token": {
+    "coords": {
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "385db78dbe2ddf8778aa4c90950a67428d5771724171ddcba8f31744af4819a3"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "edb57e4af4b3191f7c6f798a6b09b5957db580f10b282fa34e74705a99653099"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "f2eaa6f77f7dd6d9f0cb77f23e613e91a92b9a82cec7d732a3f4f70ed3de3f59"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "098357ede35ded0d811547610a8bda8566a699b2a7fdd42d8d0408e099fcdd02"
+     ],
+     "sentence": [
+      [
+       "presentation"
+      ],
+      "<U22",
+      "986263b3672dfc8fe65323fa0ff845db37fd33f902ebb07da926099f7e548188"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "<U2",
+      "532b18dbd1e7bcdc59354f6f122fb419c22d14542c9838fa6479765b1de468a9"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     3,
+     7
+    ],
+    "values": "71965822a242d7e2a4cf01ce2f4346a88505e4bf263a27eab58a1d9db34b41b9"
+   },
+   "mean_tokens": {
+    "coords": {
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "385db78dbe2ddf8778aa4c90950a67428d5771724171ddcba8f31744af4819a3"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "edb57e4af4b3191f7c6f798a6b09b5957db580f10b282fa34e74705a99653099"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "f2eaa6f77f7dd6d9f0cb77f23e613e91a92b9a82cec7d732a3f4f70ed3de3f59"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "098357ede35ded0d811547610a8bda8566a699b2a7fdd42d8d0408e099fcdd02"
+     ],
+     "sentence": [
+      [
+       "presentation"
+      ],
+      "<U22",
+      "986263b3672dfc8fe65323fa0ff845db37fd33f902ebb07da926099f7e548188"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "<U2",
+      "532b18dbd1e7bcdc59354f6f122fb419c22d14542c9838fa6479765b1de468a9"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "neuroid"
+    ],
+    "dtype": "float64",
+    "shape": [
+     3,
+     7
+    ],
+    "values": "3e98ff4cbee33187779c83c3356379ea2dbe9641001b773bdbec46823002a8d9"
+   },
+   "per_token": {
+    "coords": {
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "385db78dbe2ddf8778aa4c90950a67428d5771724171ddcba8f31744af4819a3"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "edb57e4af4b3191f7c6f798a6b09b5957db580f10b282fa34e74705a99653099"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "f2eaa6f77f7dd6d9f0cb77f23e613e91a92b9a82cec7d732a3f4f70ed3de3f59"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "098357ede35ded0d811547610a8bda8566a699b2a7fdd42d8d0408e099fcdd02"
+     ],
+     "sentence": [
+      [
+       "presentation"
+      ],
+      "<U22",
+      "986263b3672dfc8fe65323fa0ff845db37fd33f902ebb07da926099f7e548188"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "<U2",
+      "532b18dbd1e7bcdc59354f6f122fb419c22d14542c9838fa6479765b1de468a9"
+     ],
+     "token_length": [
+      [
+       "presentation"
+      ],
+      "int64",
+      "b23e4243f54f48fbffad8072b6331267ffba1bb86e808de4118fa1340229c503"
+     ],
+     "token_position": [
+      [
+       "time_bin"
+      ],
+      "int64",
+      "f452067ccf47c06f0d357bf4f4c4bee3832fa944261362a155df12fbe182486c"
+     ],
+     "word_id": [
+      [
+       "presentation",
+       "time_bin"
+      ],
+      "int64",
+      "4b35f61627f02afe3c2af949b60c590ff6162c7b14490ee8a986b44e4961b21d"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "time_bin",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     3,
+     6,
+     7
+    ],
+    "values": "7f3a79e7c3f99e60a617a11bde12a4d922d536baecc6907086efefb61bad068c"
+   }
+  },
+  "version": 1
+ },
+ "video": {
+  "cases": {
+   "block": {
+    "coords": {
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "008f28393b1f92adc7a388bdc140fc5b570c9eedda20e6bdda7a3ceb5f335eff"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "72240f86b8eeff6cd2c2b10c2f51fc553d8229406b482cc17bd9e511130cc11e"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "c349e98948822c5d7f906b0c92c06581f21e5691fefde651046fc42197a88f15"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "fdf4ae42c45bde8e8505d8fe7ed404594c5bb18d945d2d982ca4f69d806c38ec"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "object",
+      "183b802091aa933e191a8c3391690e19d73a3095b70e07682865a9eab21f3ff4"
+     ],
+     "time_bin_center_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "1a8969c80eb99f4ae3092d676b504d3920d86cca5b648277fc058696fc4bdb05"
+     ],
+     "time_bin_end_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "c0351efa9ac9a7ec518871c45c4f723d668673e03bdb81a682cea82f6a4d51ef"
+     ],
+     "time_bin_idx": [
+      [
+       "time_bin"
+      ],
+      "int64",
+      "d0ce4d500794f4e60f0ee37eeddb07e9a3e41e07a996234cc9f933923cfc4ddd"
+     ],
+     "time_bin_start_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "213d18b550f730747afd15721bd39009d522b98043274289b01003013510b162"
+     ],
+     "video_path": [
+      [
+       "presentation"
+      ],
+      "object",
+      "1faf6ec0c01140da16bb32cafbc8b458d86a8a92e1a327ec5c2827218ee75eff"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "time_bin",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     2,
+     12,
+     6
+    ],
+    "values": "349de044b105dc1e29c1ee4f40dbac7998fae58a1c496dbd6a364b9ed8e6eeae"
+   },
+   "causal": {
+    "coords": {
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "008f28393b1f92adc7a388bdc140fc5b570c9eedda20e6bdda7a3ceb5f335eff"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "72240f86b8eeff6cd2c2b10c2f51fc553d8229406b482cc17bd9e511130cc11e"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "c349e98948822c5d7f906b0c92c06581f21e5691fefde651046fc42197a88f15"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "fdf4ae42c45bde8e8505d8fe7ed404594c5bb18d945d2d982ca4f69d806c38ec"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "object",
+      "183b802091aa933e191a8c3391690e19d73a3095b70e07682865a9eab21f3ff4"
+     ],
+     "time_bin_center_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "482566799b488e4ce6b36a29f6aa2283740d42f59f935d8c1875d8f6fb987da4"
+     ],
+     "time_bin_end_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "46613f93f91bd999d6eeaa7978aa65e42ef75448cf4a20bc0aaf8aec42153b1a"
+     ],
+     "time_bin_idx": [
+      [
+       "time_bin"
+      ],
+      "int64",
+      "de02690f7bea6d80b4550ba579a66f22268391abac2613f20272306b536bb166"
+     ],
+     "time_bin_start_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "a6478b67db6646ecc7dfea17813b672d4031fe40c62dad0e702c0dce10ac0c2e"
+     ],
+     "video_path": [
+      [
+       "presentation"
+      ],
+      "object",
+      "1faf6ec0c01140da16bb32cafbc8b458d86a8a92e1a327ec5c2827218ee75eff"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "time_bin",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     2,
+     3,
+     6
+    ],
+    "values": "794527b271704b43c20c7f7523eca14f33e7f64bcd424e5f35c24f12e84f3997"
+   },
+   "whole": {
+    "coords": {
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "008f28393b1f92adc7a388bdc140fc5b570c9eedda20e6bdda7a3ceb5f335eff"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "72240f86b8eeff6cd2c2b10c2f51fc553d8229406b482cc17bd9e511130cc11e"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "c349e98948822c5d7f906b0c92c06581f21e5691fefde651046fc42197a88f15"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "fdf4ae42c45bde8e8505d8fe7ed404594c5bb18d945d2d982ca4f69d806c38ec"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "object",
+      "183b802091aa933e191a8c3391690e19d73a3095b70e07682865a9eab21f3ff4"
+     ],
+     "time_bin_center_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "7f48605242f971bec125019d9cbf9504c32b7477d7c9837966e1519584ba529a"
+     ],
+     "time_bin_end_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "d7f8fcd22948c52ea4edfbbcf998268978389614214b3ce1ed631df4b5e61972"
+     ],
+     "time_bin_idx": [
+      [
+       "time_bin"
+      ],
+      "int64",
+      "52b6f7683bd8d9c34cfb30aa9a5d3ca2a108ce3776db6aa3a33b7e716cb2b9b8"
+     ],
+     "time_bin_start_ms": [
+      [
+       "time_bin"
+      ],
+      "float64",
+      "e95589f1372be8947b45e978b92dd5730d7b33a5931d7edf4421bd7437ba4eec"
+     ],
+     "video_path": [
+      [
+       "presentation"
+      ],
+      "object",
+      "1faf6ec0c01140da16bb32cafbc8b458d86a8a92e1a327ec5c2827218ee75eff"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "time_bin",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     2,
+     4,
+     6
+    ],
+    "values": "fc1a457f89579f6fea362da7e04215f4101723a4945c754dd5ad6c2aaac23b2c"
+   }
+  },
+  "version": 1
+ },
+ "vlm_vision": {
+  "cases": {
+   "first_patch": {
+    "coords": {
+     "image_file_name": [
+      [
+       "presentation"
+      ],
+      "<U10",
+      "def38d9c7bab88f0e0329bef75e80b9964837541fc71b0c57f4a98adce0269e5"
+     ],
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "ebe540aa7b64a078b206f3a82d1ba1115d11ffe53abc49efebba03a03af1e56c"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "e6c0adad53d277c5d92e9602079d29c0c43e8c1b49c5e2d16306cdb9652eb6a2"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "686324d5c97c7cb69ae657ef41890bffd2e44bb0147029935527fb26ddad03ad"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "098357ede35ded0d811547610a8bda8566a699b2a7fdd42d8d0408e099fcdd02"
+     ],
+     "presentation": [
+      [
+       "presentation"
+      ],
+      "int64",
+      "de02690f7bea6d80b4550ba579a66f22268391abac2613f20272306b536bb166"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "<U2",
+      "532b18dbd1e7bcdc59354f6f122fb419c22d14542c9838fa6479765b1de468a9"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     3,
+     7
+    ],
+    "values": "2264f0a5a13401a6564dfa56d134d0331b6ed580c3a29792c145405f90573dd0"
+   },
+   "mean_patches": {
+    "coords": {
+     "image_file_name": [
+      [
+       "presentation"
+      ],
+      "<U10",
+      "def38d9c7bab88f0e0329bef75e80b9964837541fc71b0c57f4a98adce0269e5"
+     ],
+     "layer": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "ebe540aa7b64a078b206f3a82d1ba1115d11ffe53abc49efebba03a03af1e56c"
+     ],
+     "model": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "e6c0adad53d277c5d92e9602079d29c0c43e8c1b49c5e2d16306cdb9652eb6a2"
+     ],
+     "neuroid_id": [
+      [
+       "neuroid"
+      ],
+      "object",
+      "686324d5c97c7cb69ae657ef41890bffd2e44bb0147029935527fb26ddad03ad"
+     ],
+     "neuroid_num": [
+      [
+       "neuroid"
+      ],
+      "int64",
+      "098357ede35ded0d811547610a8bda8566a699b2a7fdd42d8d0408e099fcdd02"
+     ],
+     "presentation": [
+      [
+       "presentation"
+      ],
+      "int64",
+      "de02690f7bea6d80b4550ba579a66f22268391abac2613f20272306b536bb166"
+     ],
+     "stimulus_id": [
+      [
+       "presentation"
+      ],
+      "<U2",
+      "532b18dbd1e7bcdc59354f6f122fb419c22d14542c9838fa6479765b1de468a9"
+     ]
+    },
+    "dims": [
+     "presentation",
+     "neuroid"
+    ],
+    "dtype": "float32",
+    "shape": [
+     3,
+     7
+    ],
+    "values": "a5dc690808c8791ab1c2002bc3a8efa9f05a1a47c6e1f45470738951132573cf"
+   }
+  },
+  "version": 1
+ }
+}

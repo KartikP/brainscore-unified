@@ -7,7 +7,9 @@ The shared extraction cache checks:
 - Model parameters and buffers, including their values, shapes, and dtypes.
 - Wrapper configuration, preprocessing, and supported hook configuration.
 - Text contents, or file bytes for image, audio, and video inputs.
-- The existing model/backbone identifier, stimulus identifier, and channel where declared.
+- The stimulus identifier, and channel where declared. Vision's `PytorchWrapper` also keys by its model or backbone identifier and the source of its classes.
+
+The unified text, VLM, audio, and video wrappers use an explicit key: the wrapper class, the `_VERSION` of its module, its settings (`CACHE_FIELDS`, batch size included), the model state above, the input device, and the inputs. The identifier and the source text are not part of it, so two registrations with the same weights and settings share one entry, and an edit that keeps values keeps the key. A change that moves the values a wrapper extracts must raise `_VERSION` in its module; `tests/test_wrapper_cache_guard.py` fails when values move under an unchanged `_VERSION`.
 
 Changing these inputs causes a cache miss. Identical contents can reuse entries across model instances. Entries created with older keys remain on disk but do not satisfy the new content checks.
 

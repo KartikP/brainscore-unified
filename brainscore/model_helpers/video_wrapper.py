@@ -41,6 +41,12 @@ Design asymmetry (video-specific):
       absolute ms within the video, for layers that downsample time
       (e.g., a transformer with patch-wise temporal compression).
 
+Cache key: ``_VERSION`` below is part of the activation cache key. The module
+functions ``_window_features``, ``_shared_clock``, ``_edges_from_centers`` and
+``_default_time_mapping``, and ``brainscore.temporal.window_plan`` and
+``brainscore_core.assembly_builder``, shape the values this wrapper returns but
+are not hashed: a change there that moves values needs a raise of ``_VERSION``.
+
 Memory: videos are processed one-at-a-time by default (batch_size=1)
 because video models have large T×C×H×W tensors. Batch size can be
 increased if memory permits.
@@ -71,6 +77,11 @@ from brainscore.model_helpers._extractors import LiveRecording, as_float32, cach
 
 
 logger = logging.getLogger(__name__)
+
+# The version of what this module extracts: a part of the activation cache key
+# (``_extractors.cache_config``). Raise it by hand when a change can move the
+# extracted values, also through code this module calls.
+_VERSION = 1
 
 
 def pad_out_of_bound(frames: List[Optional[np.ndarray]], oob_mask: List[bool],
@@ -185,6 +196,11 @@ class VideoWrapper:
         max_clip_ms: Optional whole-clip duration guard. Over-long clips raise
             and should be handled with ``context_window_ms``.
     """
+
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
 
     def __init__(
         self,
@@ -303,13 +319,12 @@ class VideoWrapper:
         signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
         if signature is None:
             return self._from_paths(paths, layers, stimuli_identifier)
-        return self._from_paths_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
-                                       layers=layers, paths=paths, extraction_fingerprint=signature)
+        return self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
+                                       extraction_fingerprint=signature)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths,
-                           extraction_fingerprint):
+    def _from_paths_stored(self, layers, stimuli_identifier, paths, extraction_fingerprint):
         return self._from_paths(paths, layers, stimuli_identifier)
 
     def _from_paths(self, paths: List[str], layers: List[str],
@@ -712,9 +727,3 @@ def _default_time_mapping(n_time_steps_out: int, video_duration_ms: float) -> Li
     step_ms = video_duration_ms / n_time_steps_out
     return [step_ms * (i + 0.5) for i in range(n_time_steps_out)]
 
-
-# Recording several layers in one call gives, for each layer, exactly what a
-# call for that layer alone gives, so the regions of one session share one call
-# (brainscore._model.channels). Set outside the class body: the class source is
-# part of the activation cache key, and this line must not change that key.
-VideoWrapper.independent_layers = True

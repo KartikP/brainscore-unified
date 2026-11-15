@@ -56,6 +56,11 @@ from brainscore.model_helpers._extractors import (
 
 logger = logging.getLogger(__name__)
 
+# The version of what this module extracts: a part of the activation cache key
+# (``_extractors.cache_config``). Raise it by hand when a change can move the
+# extracted values, also through code this module calls.
+_VERSION = 1
+
 
 # ── Default audio loader ────────────────────────────────────────────
 
@@ -121,6 +126,11 @@ class AudioWrapper:
         audio_loader: Optional callable ``(path, target_sr) -> 1-D float32
             waveform``. Defaults to torchaudio → librosa fallback.
     """
+
+    # Recording several layers in one call gives, for each layer, exactly what a
+    # call for that layer alone gives, so the regions of one session share one
+    # call (brainscore._model.channels).
+    independent_layers = True
 
     VALID_AGGREGATIONS = ('mean_time', 'time_series')
 
@@ -247,13 +257,12 @@ class AudioWrapper:
         signature = cache_signature(self, '_from_paths_stored', file_inputs(paths), stimuli_identifier)
         if signature is None:
             return self._from_paths(paths, layers, stimuli_identifier)
-        return self._from_paths_stored(identifier=self._backbone_id, stimuli_identifier=stimuli_identifier,
-                                       layers=layers, paths=paths, extraction_fingerprint=signature)
+        return self._from_paths_stored(stimuli_identifier=stimuli_identifier, layers=layers, paths=paths,
+                                       extraction_fingerprint=signature)
 
     @store_xarray(identifier_ignore=['paths', 'layers'],
                   combine_fields={'layers': 'layer'})
-    def _from_paths_stored(self, identifier, layers, stimuli_identifier, paths,
-                           extraction_fingerprint):
+    def _from_paths_stored(self, layers, stimuli_identifier, paths, extraction_fingerprint):
         return self._from_paths(paths, layers, stimuli_identifier)
 
     def _from_paths(self, paths, layers, stimuli_identifier=None):
@@ -569,9 +578,3 @@ class AudioWrapper:
                 'presentation', *(['time_bin'] if timed else []), 'neuroid'])
         return layers
 
-
-# Recording several layers in one call gives, for each layer, exactly what a
-# call for that layer alone gives, so the regions of one session share one call
-# (brainscore._model.channels). Set outside the class body: the class source is
-# part of the activation cache key, and this line must not change that key.
-AudioWrapper.independent_layers = True
