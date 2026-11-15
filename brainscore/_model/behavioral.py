@@ -256,10 +256,16 @@ class BehavioralReadout:
             self.response_path = self.probability_source = None
             self.readout_classifier = None
             return
-        path, source = self._choose_path(task)
-        self.response_path, self.probability_source = path, source
+        # The setup is keyed by the task alone: each format the task can give is
+        # selected on its own (a single format never crosses two parts), so every
+        # refusal comes before the fit, and the readout fits once when it serves any.
+        from brainscore_core.responses import response_channels
+        picks = [self._choose_path(task, [output])
+                 for output in (response_channels(task.response) or ('behavior',))]
+        self.response_path = picks[0][0]
+        self.probability_source = next((source for _, source in picks if source), None)
         self.readout_classifier = None
-        if 'readout' in (path, source):
+        if any('readout' in pick for pick in picks):
             self.fit_behavioral_readout(task.fitting_stimuli)
 
     def _clear_task(self) -> None:
@@ -395,18 +401,29 @@ class BehavioralReadout:
                 + '; no other part answers it.', task_type=task.task_type)
         return owner
 
-    def _choose_path(self, task) -> Tuple[str, Optional[str]]:
-        """The part that answers ``task`` and the source of implied probabilities, before any compute.
+    # The formats of a response task on each side of a crossed likelihood/readout pair.
+    _CHOICE_SIDE = frozenset({'behavior', 'behavior:choice'})
+    _PROBABILITY_SIDE = frozenset({'behavior:probabilities', 'behavior:rt'})
+    _ANSWER_FORMATS = (('Choice', 'behavior:choice'), ('Scale', 'behavior:rating'),
+                       ('Text', 'behavior:text'))
+
+    def _choose_path(self, task, formats=()) -> Tuple[str, Optional[str]]:
+        """The part that answers ``task`` on the requested ``formats`` and the probability source.
 
         A task with a response is answered by the owner of its answer format
-        (the raw scores of a raw-scores Choice, else the response's first
-        format) and its implied probabilities by the owner of
-        ``behavior:probabilities`` (rule 4.11, ``answer_owners``); an owner
-        that cannot serve the task's settings (``can`` below) is refused, no
-        other part stands in. The choice that accompanies raw scores comes from the
-        owner of the probabilities. A legacy task (``task_type`` with ``label_set``)
-        answers on ``behavior``, through ``answer=`` (with an instruction and
-        labels) or the readout (with fitting stimuli).
+        (the raw scores of a raw-scores Choice, else the response kind's own
+        format: choice, rating or text) and, when ``formats`` request
+        probabilities or a reaction time, its implied probabilities by the
+        owner of ``behavior:probabilities`` (rule 4.11, ``answer_owners``); an
+        owner that cannot serve the task's settings (``can`` below) is refused,
+        no other part stands in. The choice that accompanies raw scores comes
+        from the owner of the probabilities. When the choice and the
+        probabilities have two owners, a likelihood and a readout, one pass
+        cannot give both: formats on one side are answered by that side's
+        owner, formats on both sides are refused (point j). A legacy task
+        (``task_type`` with ``label_set``) answers on ``behavior``, through
+        ``answer=`` (with an instruction and labels) or the readout (with
+        fitting stimuli).
 
         A task that no part of the model can answer raises
         ``ExecutionNotFeasibleError`` before any compute. Sessions refuse with
@@ -457,7 +474,8 @@ class BehavioralReadout:
         settings = [name for name, on in (('raw_text', raw_text), ('raw_scores', raw_scores),
                                           ('confidence', reported_confidence),
                                           ('labels per row', per_row)) if on]
-        answer_format = 'behavior:probabilities' if raw_scores else response.channels[0]
+        answer_format = ('behavior:probabilities' if raw_scores   # decision: raw scores travel there
+                         else dict(self._ANSWER_FORMATS)[type(response).__name__])
         path = self._owner_serving(answer_format, can, task, settings)
         if path is None:
             needs = {'generation': 'reply= (or answer= for a plain Choice)',
@@ -469,8 +487,8 @@ class BehavioralReadout:
                 + '. Paths tried: ' + '; '.join(f'{p} needs {need}' for p, need in needs.items()),
                 task_type=task.task_type)
         source = None
-        if isinstance(response, Choice) and (response.probabilities or response.reaction_time
-                                             or response.raw_scores):
+        requested = set(formats)
+        if isinstance(response, Choice) and requested & self._PROBABILITY_SIDE:
             source = self._owner_serving('behavior:probabilities', {
                 'likelihood': owner._likelihood is not None,
                 'readout': readout_wired and not per_row}, task, settings)
@@ -479,36 +497,15 @@ class BehavioralReadout:
                     f"Subject '{owner.identifier}' cannot give implied probabilities: "
                     'it needs likelihood= or a readout (behavioral_readout_layer=, '
                     'fitting_stimuli).', task_type=task.task_type)
-        return path, source
-
-    # The formats of a response task on each side of a crossed likelihood/readout pair.
-    _CHOICE_SIDE = frozenset({'behavior', 'behavior:choice'})
-    _PROBABILITY_SIDE = frozenset({'behavior:probabilities', 'behavior:rt'})
-
-    def _parts_for(self, task, channels, path=None, source=None) -> Tuple[str, Optional[str]]:
-        """The part that answers and the probability source for the requested ``channels``.
-
-        When the choice and the probabilities have two owners, a likelihood and a
-        readout, one pass cannot give both: a session that requests one format is
-        answered by that format's owner, and a session that requests both is
-        refused before any compute (point j). ``path`` and ``source`` default to
-        the choice for ``task`` (``_choose_path``).
-        """
-        from brainscore_core.compatibility import ExecutionNotFeasibleError
-        if path is None:
-            path, source = self._choose_path(task)
         if {path, source} != {'likelihood', 'readout'}:
             return path, source
-        requested = set(channels)
-        if requested & self._CHOICE_SIDE and requested & self._PROBABILITY_SIDE:
+        if requested & self._CHOICE_SIDE:
             raise ExecutionNotFeasibleError(
-                f"Subject '{self.owner.identifier}' cannot give choices from its {path} part "
+                f"Subject '{owner.identifier}' cannot give choices from its {path} part "
                 f"and probabilities from its {source} part in one session; request one format "
                 "in the session, or state one owner for both outputs.",
                 task_type=task.task_type)
-        if requested & self._PROBABILITY_SIDE:
-            return source, source
-        return path, None
+        return source, source
 
     def respond(self, stimuli, channels, regions=()):
         """Answer a response task; return ``({channel: assembly}, {region: NeuroidAssembly})``.
@@ -523,7 +520,7 @@ class BehavioralReadout:
         owner, task = self.owner, self.task
         response, path, probability_source = task.response, self.response_path, self.probability_source
         if response is not None:
-            path, probability_source = self._parts_for(task, channels, path, probability_source)
+            path, probability_source = self._choose_path(task, channels)
         layers = {region: list(region_selector(owner, region).layer_paths) for region in regions}
         if response is None:
             behavior, neural = self._answer_legacy_task(stimuli, layers)

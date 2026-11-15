@@ -294,7 +294,7 @@ def drive_behavior_and_neural_session(subject, session, driver: str = "interact"
     _drivers.refuse_variance(subject, session)
     if task.response is not None:
         # The requested formats decide the answering parts; refused here before any compute.
-        subject._behavioral._parts_for(task, answers)
+        subject._behavioral._choose_path(task, answers)
     subject.start_task(task)
     # A streaming session reads one trial, answers it and sends its outputs, then
     # reads the next. Otherwise the inputs are read first. A subject without the

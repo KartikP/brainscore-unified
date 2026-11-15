@@ -2,7 +2,7 @@
 
 For a task with a response, the part that answers is the owner of the task's
 answer format: the raw scores (``behavior:probabilities``) of a raw-scores
-Choice, else the response's first format. A task form its owner cannot serve is
+Choice, else the response kind's own format. A task form its owner cannot serve is
 refused before any compute; only bare ``behavior`` (a legacy task) keeps the
 fallback to the one other part that can serve it.
 """
@@ -160,3 +160,54 @@ def test_both_formats_of_a_crossed_pair_are_refused_before_compute(arrangement):
                              r"(readout|likelihood) part in one session; request one format in the session"):
         _run(model, ['behavior:choice', 'behavior:probabilities'], CHOICE_AND_PROBABILITIES)
     assert calls == []
+
+
+# --- stage 3, S2: the formats the session requests choose the parts -------------------
+
+def _count_fits(model):
+    """Wrap the readout fit so each call is counted; the fit itself still runs."""
+    fits, fit = [], model._behavioral.fit_behavioral_readout
+    model._behavioral.fit_behavioral_readout = lambda stimuli: fits.append(1) or fit(stimuli)
+    return fits
+
+
+def test_a_readout_alone_answers_probabilities_with_one_fit():
+    model = _model('behavioral_readout_layer',
+                   owners=REGISTERED_STATEMENTS[('behavioral_readout_layer',)])
+    fits = _count_fits(model)
+    answer = _run(model, ['behavior:probabilities'], CHOICE_AND_PROBABILITIES).collect(
+        'behavior:probabilities')
+    assert answer.attrs['response']['method'] == 'readout'
+    assert fits == [1]
+
+
+@pytest.mark.parametrize('owners', [CROSSED['likelihood choice'], CROSSED['readout choice'],
+                                    {'behavior:choice': ('readout', 'argmax')}],
+                         ids=['likelihood choice', 'readout choice', 'readout owns both'])
+def test_one_configured_task_serves_two_sessions_of_different_formats(owners):
+    """Choice only, then probabilities only, on the same task: each format's owner answers,
+    and the readout is fitted once in total (the setup is keyed by the task alone)."""
+    calls = []
+    model = _model('likelihood', 'behavioral_readout_layer', owners=owners, calls=calls)
+    fits = _count_fits(model)
+    for channel in ('behavior:choice', 'behavior:probabilities'):
+        del calls[:]
+        answer = _run(model, [channel], CHOICE_AND_PROBABILITIES).collect(channel)
+        owner = owners.get(channel, 'readout')
+        owner = owner if isinstance(owner, str) else owner[0]
+        assert answer.attrs['response']['method'] == owner
+        assert calls.count('likelihood') == (len(STIMULI) if owner == 'likelihood' else 0)
+    assert fits == [1]
+
+
+def test_a_choice_only_session_does_not_call_the_probability_owner():
+    """Qwen's reply gives the choice; its likelihood owns the probabilities and is called
+    only when a session requests them."""
+    calls = []
+    model = _model(*QWEN, owners=REGISTERED_STATEMENTS[QWEN], calls=calls)
+    choice = _run(model, ['behavior:choice'], CHOICE_AND_PROBABILITIES).collect('behavior:choice')
+    assert choice.attrs['response']['method'] == 'generation'
+    assert calls.count('reply') == len(STIMULI) and 'likelihood' not in calls
+    del calls[:]
+    _run(model, ['behavior:choice', 'behavior:probabilities'], CHOICE_AND_PROBABILITIES)
+    assert calls.count('reply') == calls.count('likelihood') == len(STIMULI)
