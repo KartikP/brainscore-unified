@@ -63,8 +63,10 @@ def get_model(identifier: str) -> BrainScoreModel:
 
     preprocessing = functools.partial(
         _load_preprocess_images, processor=blip_processor, image_size=224)
+    # The activations carry the reduced backbone's name; the cache key is the combo's.
     vision_wrapper = PytorchWrapper(
         identifier='blip2-vision-pca1000',
+        backbone_id=f'{identifier}-vision',
         model=blip_model.vision_model,
         preprocessing=preprocessing,
     )

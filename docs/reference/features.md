@@ -63,6 +63,6 @@ Each part has one name. The older names in the right column were removed without
 | `policy=` | `action_fn=` |
 | `intervention=` | `state_change_fn=` |
 | `region_layer_map` values with `modality=` | `region_modality_map=` |
-| none: the activation cache key holds the weights | `backbone_id=` on `BrainScoreModel` and on the wrappers of `brainscore.model_helpers` |
+| none: the activation cache key holds the weights | `backbone_id=` on `BrainScoreModel` and on the wrappers of `brainscore.model_helpers` (the legacy vision `PytorchWrapper` keeps its own `backbone_id`: it names the path of its stored activations, and that path does not change here) |
 
 `process(...)` is not deprecated, but it is a convenience on `BrainScoreModel` and the adapters, not part of the contract. Benchmarks call `participate`.
