@@ -27,15 +27,31 @@ def test_the_lock_parses_with_every_line_pinned_and_no_duplicate():
             name, version = line.split('==', 1)
             assert re.fullmatch(r'[0-9][0-9A-Za-z.+!-]*', version), line
         names.append(doctor._normalized(name))
-    assert len(names) == len(set(names)) == packages == 227
+    assert len(names) == len(set(names)) == packages == 230
     lock = doctor.read_lock(LOCK)
     assert lock['torch'] == '2.6.0+cu124' and lock['quickbrain'] is None
+    assert (lock['pip'], lock['setuptools'], lock['wheel']) == ('26.0.1', '82.0.1', '0.46.3')
+
+
+def test_the_lock_names_the_python_and_setup_reads_the_same_line():
+    import subprocess
+    assert doctor.read_lock_python(LOCK) == '3.11.15'
+    script = LOCK.with_name('setup.sh').read_text()
+    pattern = re.search(r"sed -n '([^']+)' \"\$LOCK_FILE\"", script).group(1)
+    out = subprocess.run(['sed', '-n', pattern, str(LOCK)], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == '3.11.15'
+    assert '"python==$LOCK_PYTHON"' in script and 'python=3.11 ' not in script
+
+
+def test_the_doctor_leaves_out_the_four_brainscore_packages_the_fingerprint_leaves_out():
+    from brainscore_core.environment_check import _BRAINSCORE_PACKAGES
+    assert doctor._NOT_LOCKED == {doctor._normalized(distribution) for _module, distribution in _BRAINSCORE_PACKAGES}
 
 
 def test_a_made_up_difference_is_reported():
     lock = {'numpy': '1.26.4', 'torch': '2.6.0+cu124', 'quickbrain': None}
     installed = {'numpy': '1.26.4', 'torch': '2.6.0', 'quickbrain': '0.1', 'extra-tool': '3.0',
-                 'brainscore': '0.0', 'pip': '25.0'}
+                 'brainscore': '0.0'}
     differences = doctor.lock_differences(lock, installed)
     assert len(differences) == 2
     assert differences[0].startswith('extra-tool') and 'not in the lock' in differences[0]
@@ -57,6 +73,29 @@ def test_the_doctor_reports_lock_differences_on_the_locked_platform(monkeypatch)
     assert 'lock-linux-py311-cu124.txt: 1 package(s) differ' in text
     assert re.search(r'XX numpy\s+1\.26\.3\s+lock 1\.26\.4', text)
     assert problems == 1 and 'setup.sh --lock' in text  # each lock difference is a problem
+
+
+def test_another_pip_version_is_one_difference_and_so_is_another_python():
+    lock = doctor.read_lock(LOCK)
+    assert doctor.lock_differences(lock, dict(lock)) == []
+    differences = doctor.lock_differences(lock, dict(lock, pip='26.2.2'))
+    assert len(differences) == 1 and re.match(r'pip\s+26\.2\.2\s+lock 26\.0\.1', differences[0])
+    assert 'not installed' in doctor.lock_differences(lock, {k: v for k, v in lock.items() if k != 'wheel'})[0]
+    assert doctor.python_difference('3.11.15', '3.11.15') is None
+    assert re.match(r'python\s+3\.11\.18\s+lock 3\.11\.15', doctor.python_difference('3.11.15', '3.11.18'))
+
+
+def test_the_doctor_reports_a_python_other_than_the_lock(monkeypatch):
+    lock = doctor.read_lock(LOCK)
+    monkeypatch.setattr(doctor, '_lock_file', lambda: LOCK)
+    monkeypatch.setattr(doctor, '_installed_distributions', lambda: dict(lock))
+    monkeypatch.setattr(doctor.platform, 'python_version', lambda: '3.11.18')
+    for name in ('_dependency_rows', '_import_rows', '_asset_rows'):
+        monkeypatch.setattr(doctor, name, lambda: [])
+    monkeypatch.setenv('RESULTCACHING_DISABLE', '1')
+    text, problems = doctor.report()
+    assert 'lock-linux-py311-cu124.txt: 1 package(s) differ' in text
+    assert re.search(r'XX python\s+3\.11\.18\s+lock 3\.11\.15', text) and problems == 1
 
 
 @pytest.mark.parametrize('platform_key', [('darwin', 'arm64', '3.11'), ('linux', 'aarch64', '3.11'),

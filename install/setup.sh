@@ -4,7 +4,8 @@ set -euo pipefail
 # Brain-Score Unified Model Interface local bootstrap.
 # Usage: bash setup.sh            the pinned environment (environment-unified.yml)
 #        bash setup.sh --lock     the exact scoring platform (Linux x86_64, Python 3.11,
-#                                 CUDA 12.4): every package at the version of
+#                                 CUDA 12.4): the Python and every package (pip,
+#                                 setuptools and wheel included) at the version of
 #                                 unified/install/lock-linux-py311-cu124.txt
 # Optional: UMI_ENV_NAME=my-env bash setup.sh
 # Both create the environment from conda-forge only, so a fresh miniconda does not stop
@@ -144,7 +145,14 @@ fi
 cd "$WORKDIR"
 if [[ "$LOCK" == 1 ]]; then
     LOCK_FILE="$WORKDIR/unified/install/lock-linux-py311-cu124.txt"
-    conda create --yes --name "$ENV_NAME" --override-channels --channel conda-forge python=3.11 pip
+    # The lock names the Python (line "# python==3.11.15"); the same line is read by the doctor.
+    LOCK_PYTHON="$(sed -n 's/^# python==\([0-9.]*\)$/\1/p' "$LOCK_FILE")"
+    if [[ -z "$LOCK_PYTHON" ]]; then
+        echo "Error: $LOCK_FILE names no Python (a line '# python==3.11.15')." >&2
+        exit 1
+    fi
+    conda create --yes --name "$ENV_NAME" --override-channels --channel conda-forge "python==$LOCK_PYTHON" pip
+    # The lock also names pip, setuptools and wheel, so the next step ends with those versions.
     echo "Installing every package at the version of $LOCK_FILE"
     conda run --name "$ENV_NAME" python -m pip install -r "$LOCK_FILE"
     echo "Installing the four repositories from this checkout (their dependencies are in the lock)"

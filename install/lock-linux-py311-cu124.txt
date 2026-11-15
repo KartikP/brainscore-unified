@@ -1,8 +1,11 @@
 # Full lock of the scoring platform: Linux x86_64, Python 3.11, CUDA 12.4 (torch 2.6.0+cu124).
-# Every package of the reference cloud environment, at its exact version: 226 versions and
+# Every package of the reference cloud environment, at its exact version: 229 versions and
 # one package pinned to a git commit (quickbrain), equal to the reference machine's list of
 # 2026-11-15 after it moved to datasets 2.21.0 (with dill 0.3.8, fsspec 2024.6.1, multiprocess
 # 0.70.16). A fresh cloud machine built from the list before that change reproduced every package.
+# pip, setuptools and wheel are in the list: the environment fingerprint counts them, so a
+# different version of one gives a different fingerprint. The Python is named below, for the
+# same reason; setup.sh --lock and the doctor read it from this line.
 # The four Brain-Score repositories are not in the list; they are installed from their
 # checkouts with --no-deps after it.
 #
@@ -11,6 +14,8 @@
 #           python -m pip install --no-deps -e ./core -e ./vision -e ./language -e ./unified
 # Do not combine with install/v2-constraints.txt: that is the CPU test profile. It names the
 # versions of this list (torch and torchvision without +cu124, so pip takes the CPU wheels).
+#
+# python==3.11.15
 #
 # torch, torchvision and the nvidia-* packages for CUDA 12.4 come from the PyTorch index:
 --extra-index-url https://download.pytorch.org/whl/cu124
@@ -157,6 +162,7 @@ patsy==1.0.2
 peewee==4.0.4
 pexpect==4.9.0
 pillow==12.1.1
+pip==26.0.1
 platformdirs==4.9.6
 pluggy==1.6.0
 pooch==1.9.0
@@ -201,6 +207,7 @@ scipy==1.17.1
 seaborn==0.13.2
 Send2Trash==2.1.0
 sentence-transformers==5.4.1
+setuptools==82.0.1
 six==1.17.0
 smart_open==7.6.0
 smmap==5.0.3
@@ -235,6 +242,7 @@ wcwidth==0.7.0
 webcolors==25.10.0
 webencodings==0.5.1
 websocket-client==1.9.0
+wheel==0.46.3
 widgetsnbextension==4.0.15
 wrapt==2.1.2
 xarray==2022.3.0

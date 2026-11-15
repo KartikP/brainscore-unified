@@ -56,12 +56,14 @@ version of the reference scoring machine:
 ~~~bash
 bash setup.sh --lock
 conda activate brainscore-unified
-python -m brainscore.doctor     # lists every package that differs from the lock
+python -m brainscore.doctor     # lists the Python and every package that differs from the lock
 ~~~
 
-It creates the environment with `conda create --override-channels -c conda-forge python=3.11 pip`,
-installs `unified/install/lock-linux-py311-cu124.txt` (it names the PyTorch CUDA 12.4 index
-itself), then installs the four repositories from their checkouts with `--no-deps`. On another
+It reads the Python version from the line `# python==3.11.15` of the lock and creates the
+environment with `conda create --override-channels -c conda-forge python==3.11.15 pip`.
+It installs `unified/install/lock-linux-py311-cu124.txt` (it names the PyTorch CUDA 12.4 index
+itself, and also `pip`, `setuptools` and `wheel`, so the environment ends with their locked
+versions; the environment fingerprint counts them), then installs the four repositories from their checkouts with `--no-deps`. On another
 platform the option stops with a message; the pinned setup above and the bounds of the doctor
 apply there. Do not combine the lock with `v2-constraints.txt`: that file is the CPU test
 profile. It names the lock's versions (torch and torchvision without the `+cu124` tag, so

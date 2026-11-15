@@ -35,8 +35,8 @@ conda activate brainscore-unified
 
 **The exact scoring platform** (Linux x86_64, Python 3.11, CUDA 12.4), for scores to be
 compared bit for bit: the same bootstrap with `--lock` installs every package at the version
-of `install/lock-linux-py311-cu124.txt` (227 packages, torch 2.6.0+cu124), and
-`python -m brainscore.doctor` then lists every package that differs from that lock:
+of `install/lock-linux-py311-cu124.txt` (230 packages, torch 2.6.0+cu124), and
+`python -m brainscore.doctor` then lists the Python and every package that differs from that lock:
 
 ```bash
 bash setup.sh --lock
