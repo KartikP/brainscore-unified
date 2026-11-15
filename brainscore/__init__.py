@@ -356,7 +356,7 @@ def score(model_identifier, benchmark_identifier,
     built without registering it first::
 
         subject = BrainScoreModel('my-vlm', ...)
-        score(subject, 'MajajHong2015public.IT-pls-unified')
+        score(subject, 'MajajHong2015public.IT-pls')
 
     then runs the benchmark on the subject.
 

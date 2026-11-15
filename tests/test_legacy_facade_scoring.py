@@ -39,9 +39,9 @@ class _LegacyBenchmark:
         return score
 
 
-class _TypedBenchmark(_LegacyBenchmark):
-    identifier = 'typed-vision'
-    subject_api = 'typed'
+class _UnmarkedBenchmark(_LegacyBenchmark):
+    identifier = 'unmarked-vision'
+    subject_api = None  # not marked legacy: the benchmark receives the subject itself
 
     def __call__(self, candidate):
         candidate.start_recording('IT', time_bins=[(70, 170)])
@@ -51,15 +51,15 @@ class _TypedBenchmark(_LegacyBenchmark):
         return score
 
 
-def test_score_wraps_a_legacy_benchmark_and_not_a_typed_one():
+def test_score_wraps_a_legacy_benchmark_and_not_an_unmarked_one():
     model = BrainScoreModel('typed', region_layer_map={'IT': 'layer'},
                             extractor={'vision': _Extractor()}, visual_degrees=8)
     legacy = brainscore.score(model, _LegacyBenchmark(), check_mem=False)
-    typed = brainscore.score(model, _TypedBenchmark(), check_mem=False)
+    unmarked = brainscore.score(model, _UnmarkedBenchmark(), check_mem=False)
     assert legacy.attrs['candidate'] == 'LegacyBenchmarkFacade'
     assert legacy.attrs['degrees'] == 8
-    assert typed.attrs['candidate'] == 'BrainScoreModel'
-    np.testing.assert_array_equal(legacy.attrs['output'].values, typed.attrs['output'].values)
+    assert unmarked.attrs['candidate'] == 'BrainScoreModel'
+    np.testing.assert_array_equal(legacy.attrs['output'].values, unmarked.attrs['output'].values)
     assert legacy.attrs['compatibility']['match'] == 'full'
 
 

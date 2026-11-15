@@ -71,8 +71,8 @@ def test_adapter_still_requires_exact_values(tmp_path, monkeypatch):
 
 def test_chunked_pereira_ulps_match_full_array_policy(tmp_path, monkeypatch):
     reference = np.linspace(-300, 300, 20, dtype=np.float32).reshape(4, 5)
-    actual = reference.astype(np.float64) + parity.fp32_ulp_tolerance(reference)
-    full = parity.assert_pereira_activations(actual, reference)
+    actual = reference.astype(np.float64) + parity.fp32_ulp_tolerance(reference, ulps=16)
+    full = parity.assert_pereira_activations(actual, reference, ulps=16)
     delta, ulps, error = compare(tmp_path, actual, reference, monkeypatch, pereira=True)
     assert error is None
     assert ulps == full
