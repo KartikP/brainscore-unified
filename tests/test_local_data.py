@@ -42,6 +42,22 @@ class TestResolution:
         monkeypatch.setenv(asset.env_var, str(target))
         assert local.path(asset.name) == target
 
+    def test_a_tilde_means_the_home_folder(self, asset, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv(asset.env_var, '~/frames')
+        assert asset.resolved() == pathlib.Path.home() / 'frames'
+
+    def test_a_tilde_with_a_literal_folder_here_is_refused(self, asset, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / '~' / 'frames').mkdir(parents=True)
+        monkeypatch.setenv(asset.env_var, '~/frames')
+        with pytest.raises(ValueError, match='ambiguous') as caught:
+            asset.resolved()
+        assert str(pathlib.Path.home() / 'frames') in str(caught.value)
+        assert str(tmp_path / '~' / 'frames') in str(caught.value)
+        row, = [row for row in local.status() if row['name'] == asset.name]
+        assert row['present'] is False and row['path'].startswith('refused:')
+
     def test_unknown_asset_names_the_known_ones(self):
         with pytest.raises(KeyError, match='known:'):
             local.path('no-such-asset')

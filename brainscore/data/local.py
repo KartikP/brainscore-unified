@@ -76,10 +76,22 @@ class LocalAsset:
     used_by: List[str] = field(default_factory=list)
 
     def resolved(self) -> pathlib.Path:
-        """Where it is expected, honouring the environment override."""
+        """Where it is expected, honouring the environment override.
+
+        A leading ``~`` in the variable means the home folder. When a folder with
+        that literal name (for example ``./~/frames``) also exists under the current
+        folder, the value is ambiguous and is refused.
+        """
         override = os.environ.get(self.env_var)
         if override:
-            return pathlib.Path(override).expanduser()
+            expanded = pathlib.Path(override).expanduser()
+            literal = pathlib.Path.cwd() / override
+            if override.startswith('~') and literal.exists() and literal != expanded:
+                raise ValueError(
+                    f'{self.env_var}={override!r} is ambiguous: it means {expanded} (the '
+                    f'home folder), but {literal} also exists. Set {self.env_var} to the '
+                    f'absolute path of the folder you mean.')
+            return expanded
         return pathlib.Path.home() / self.default_path
 
     def present(self) -> bool:
@@ -132,9 +144,15 @@ def path(name: str) -> pathlib.Path:
 def status(name: Optional[str] = None) -> List[dict]:
     """Presence of every declared asset, for a pre-run check."""
     assets = [REGISTRY[name]] if name else list(REGISTRY.values())
-    return [{'name': a.name, 'kind': a.kind, 'present': a.present(),
-             'path': str(a.resolved()), 'used_by': a.used_by}
-            for a in sorted(assets, key=lambda a: a.name)]
+    rows = []
+    for asset in sorted(assets, key=lambda a: a.name):
+        try:
+            where, present = str(asset.resolved()), asset.present()
+        except ValueError as refused:            # a variable that names no single folder
+            where, present = f'refused: {refused}', False
+        rows.append({'name': asset.name, 'kind': asset.kind, 'present': present,
+                     'path': where, 'used_by': asset.used_by})
+    return rows
 
 
 def format_status() -> str:
